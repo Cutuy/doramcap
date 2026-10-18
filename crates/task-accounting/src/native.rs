@@ -33,7 +33,7 @@ impl Backend {
             .find(|map| map.name() == "tasks")
             .ok_or(Error::Unsupported("task map missing"))?
             .set_max_entries(capacity as u32)?;
-        let object = open.load()?;
+        let object = load_bpf_object(open)?;
         let tasks_fd = object
             .maps()
             .find(|map| map.name() == "tasks")
@@ -46,11 +46,7 @@ impl Backend {
             .ok_or(Error::Unsupported("task losses map missing"))?
             .as_fd()
             .as_raw_fd();
-        let link = object
-            .progs()
-            .find(|prog| prog.name() == "charge")
-            .ok_or(Error::Unsupported("task runtime probe missing"))?
-            .attach()?;
+        let link = attach_runtime_probe(&object)?;
         Ok(Self {
             _link: link,
             _object: object,
@@ -124,4 +120,20 @@ impl Backend {
         }
         Ok(losses)
     }
+}
+
+// Declarative Linux capability requirements; no automatic grant or preprocessing.
+// #[cap(CAP_BPF, CAP_PERFMON)]
+fn load_bpf_object(open: libbpf_rs::OpenObject) -> Result<Object> {
+    Ok(open.load()?)
+}
+
+// #[cap(CAP_BPF, CAP_PERFMON)]
+fn attach_runtime_probe(object: &Object) -> Result<Link> {
+    let link = object
+        .progs_mut()
+        .find(|prog| prog.name() == "charge")
+        .ok_or(Error::Unsupported("task runtime probe missing"))?
+        .attach()?;
+    Ok(link)
 }

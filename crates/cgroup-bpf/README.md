@@ -30,3 +30,18 @@ API: `Backend::new(record_capacity)` then `collect_into(&mut Vec<CgroupRecord>)`
 Neither method silently falls back to synthetic or filesystem metrics. Creating
 a disabled backend returns `FeatureDisabled`. Dictionary discovery belongs to
 the host's metadata path; the reader only emits kernel numeric identities.
+
+Qualification commands:
+
+```sh
+cargo test -p cgroup-bpf
+cargo check -p cgroup-bpf --features bpf
+cargo run -p cgroup-bpf --features bpf --example snapshot
+```
+
+Initial development validation: default ABI/feature tests and native Rust/BPF
+compilation passed. The one-shot native run failed at libbpf's trivial program
+probe with `EPERM` (also unable to raise RLIMIT_MEMLOCK); the actual cgroup
+program has **not** passed the kernel verifier or produced measurements here.
+Pinned-load comparisons, allocation profiling and target ARM64 qualification
+remain open.

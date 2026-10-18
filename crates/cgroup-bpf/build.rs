@@ -1,5 +1,6 @@
 fn main() {
     println!("cargo:rerun-if-changed=src/bpf/monitor.bpf.c");
+    println!("cargo:rerun-if-env-changed=CLANG");
     #[cfg(feature = "bpf")]
     {
         let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());

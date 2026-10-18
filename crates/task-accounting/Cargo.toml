@@ -10,6 +10,7 @@ bpf = ["dep:libbpf-rs", "dep:libbpf-cargo"]
 
 [dependencies]
 libbpf-rs = { version = "0.26", optional = true }
+serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 libbpf-cargo = { version = "0.26", optional = true }

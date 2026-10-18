@@ -54,15 +54,8 @@ impl Backend {
             .find(|m| m.name() == "records")
             .ok_or(Error::Unsupported("BPF records map missing"))?
             .set_max_entries(capacity as u32)?;
-        let object = open.load()?;
-        let root = File::open("/sys/fs/cgroup")?;
-        let mut opts = CgroupIterOpts::from_fd(root.as_fd());
-        opts.order = CgroupIterOrder::DescendantsPre;
-        let link = object
-            .progs()
-            .find(|p| p.name() == "collect")
-            .ok_or(Error::Unsupported("BPF iterator missing"))?
-            .attach_iter_with_opts(IterOpts::Cgroup(opts))?;
+        let object = load_bpf_object(open)?;
+        let link = attach_cgroup_iterator(&object)?;
         let records_fd = object
             .maps()
             .find(|m| m.name() == "records")
@@ -150,4 +143,23 @@ fn lookup<T>(fd: RawFd, key: u32, value: &mut T) -> Result<()> {
         return Err(std::io::Error::last_os_error().into());
     }
     Ok(())
+}
+
+// Declarative Linux capability requirements; no automatic grant or preprocessing.
+// #[cap(CAP_BPF, CAP_PERFMON)]
+fn load_bpf_object(open: libbpf_rs::OpenObject) -> Result<Object> {
+    Ok(open.load()?)
+}
+
+// #[cap(CAP_BPF, CAP_PERFMON)]
+fn attach_cgroup_iterator(object: &Object) -> Result<Link> {
+    let root = File::open("/sys/fs/cgroup")?;
+    let mut opts = CgroupIterOpts::from_fd(root.as_fd());
+    opts.order = CgroupIterOrder::DescendantsPre;
+    let link = object
+        .progs_mut()
+        .find(|p| p.name() == "collect")
+        .ok_or(Error::Unsupported("BPF iterator missing"))?
+        .attach_iter_with_opts(IterOpts::Cgroup(opts))?;
+    Ok(link)
 }

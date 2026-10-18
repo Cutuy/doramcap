@@ -1,7 +1,7 @@
 //! A separate Dora process; collection never calls the MCAP writer.
 use dora_node_api::{
-    arrow::array::{Array, UInt8Array},
-    DoraNode, Event, Parameter,
+    futures::{executor::block_on, StreamExt},
+    DoraNode, Event, Parameter, StopCause,
 };
 use eyre::{bail, eyre, Result};
 use monitor_output::McapSink;
@@ -17,7 +17,9 @@ fn main() -> Result<()> {
     let (_node, mut events) = DoraNode::init_from_env_force()?;
     let mut sink = McapSink::create(path)?;
     let result = (|| -> Result<()> {
-        while let Some(event) = events.recv() {
+        // The scheduled recv() can deliver InputClosed before its buffered inputs.
+        // Drain to stream exhaustion after normal input closure, including buffered inputs.
+        while let Some(event) = block_on(events.next()) {
             match event {
                 Event::Input { id, data, metadata } if id.as_str() == "snapshots" => {
                     let read_u64 = |key: &str| -> Result<u64> {
@@ -28,16 +30,13 @@ fn main() -> Result<()> {
                     };
                     let sequence = read_u64("sequence")?;
                     let capture = read_u64("capture_unix_ns")?;
-                    let bytes = data
-                        .as_any()
-                        .downcast_ref::<UInt8Array>()
-                        .ok_or_else(|| eyre!("snapshot must be UInt8 JSON bytes"))?;
-                    if bytes.null_count() != 0 {
+                    if data.null_count() != 0 {
                         bail!("snapshot contains null bytes");
                     }
-                    sink.write(sequence, capture, bytes.values())?;
+                    let bytes: &[u8] = (&data).try_into()?;
+                    sink.write(sequence, capture, bytes)?;
                 }
-                Event::InputClosed { id } if id.as_str() == "snapshots" => break,
+                Event::InputClosed { .. } | Event::Stop(StopCause::AllInputsClosed) => {}
                 Event::Stop(_) => break,
                 Event::Error(error) => bail!("Dora event error: {error}"),
                 Event::NodeFailed { error, .. } => bail!("upstream node failed: {error}"),

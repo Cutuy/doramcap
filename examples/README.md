@@ -26,3 +26,14 @@ recorder process. The system monitor's publisher may allocate; the periodic
 collection thread has a separate allocation contract. The example's Dora input
 queue is bounded but is not a guarantee of lossless delivery through arbitrary
 consumer stalls. Sequence numbers expose gaps.
+
+Run the real publisher/recorder shutdown regression after building:
+
+```sh
+python3 examples/validate_dora.py --dora /path/to/dora --bin-dir target/debug
+```
+
+The script isolates binaries and output in a temporary directory, launches Dora,
+and reads the resulting uncompressed MCAP to verify all ten final samples,
+sequences, and original timestamps. This specifically guards against stopping
+the recorder on a lifecycle notification before buffered inputs are drained.

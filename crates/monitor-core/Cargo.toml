@@ -7,3 +7,5 @@ license.workspace = true
 [dependencies]
 crossbeam-queue = "0.3.12"
 serde = { version = "1.0", features = ["derive"] }
+
+task-accounting = { path = "../task-accounting" }

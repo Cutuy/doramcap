@@ -12,6 +12,8 @@ pub const FLAG_USER_SYSTEM: u32 = 2;
 pub const FLAG_INCLUSIVE: u32 = 4;
 pub const FLAG_SYNTHETIC: u32 = 8;
 pub const FLAG_ROOT: u32 = 16;
+pub const FLAG_RAW_USER_SYSTEM: u32 = 32;
+pub const FLAG_READ_ERROR: u32 = 64;
 pub const ALL_CPUS: u32 = u32::MAX;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
@@ -37,10 +39,15 @@ pub struct Snapshot {
     pub dropped_batches: u64,
     pub capacity_overflow: u64,
     pub records: Vec<CpuRecord>,
+    pub task_records: Vec<task_accounting::TaskRecord>,
+    pub task_losses: task_accounting::Losses,
 }
 
 impl Snapshot {
     pub fn with_capacity(records: usize) -> Self {
+        Self::with_capacities(records, 0)
+    }
+    pub fn with_capacities(records: usize, tasks: usize) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
             sequence: 0,
@@ -50,11 +57,15 @@ impl Snapshot {
             dropped_batches: 0,
             capacity_overflow: 0,
             records: Vec::with_capacity(records),
+            task_records: Vec::with_capacity(tasks),
+            task_losses: task_accounting::Losses::default(),
         }
     }
 
     pub fn reset(&mut self) {
         self.records.clear();
+        self.task_records.clear();
+        self.task_losses = task_accounting::Losses::default();
         self.capacity_overflow = 0;
     }
 
@@ -85,7 +96,17 @@ pub struct Producer(Arc<Shared>);
 /// A single consumer owns this endpoint.
 pub struct Consumer(Arc<Shared>);
 
-pub fn handoff(slots: usize, records_per_slot: usize) -> Result<(Producer, Consumer), &'static str> {
+pub fn handoff(
+    slots: usize,
+    records_per_slot: usize,
+) -> Result<(Producer, Consumer), &'static str> {
+    handoff_with_tasks(slots, records_per_slot, 0)
+}
+pub fn handoff_with_tasks(
+    slots: usize,
+    records_per_slot: usize,
+    tasks_per_slot: usize,
+) -> Result<(Producer, Consumer), &'static str> {
     if slots == 0 || records_per_slot == 0 {
         return Err("handoff slots and record capacity must be nonzero");
     }
@@ -94,7 +115,10 @@ pub fn handoff(slots: usize, records_per_slot: usize) -> Result<(Producer, Consu
         ready: ArrayQueue::new(slots),
     });
     for _ in 0..slots {
-        shared.free.push(Snapshot::with_capacity(records_per_slot)).unwrap();
+        shared
+            .free
+            .push(Snapshot::with_capacities(records_per_slot, tasks_per_slot))
+            .unwrap();
     }
     Ok((Producer(shared.clone()), Consumer(shared)))
 }
@@ -108,7 +132,10 @@ impl Producer {
     pub fn try_acquire(&self) -> Option<WriteLease<'_>> {
         let mut snapshot = self.0.free.pop()?;
         snapshot.reset();
-        Some(WriteLease { owner: self, snapshot: Some(snapshot) })
+        Some(WriteLease {
+            owner: self,
+            snapshot: Some(snapshot),
+        })
     }
 }
 impl WriteLease<'_> {
@@ -138,7 +165,10 @@ pub struct ReadLease<'a> {
 }
 impl Consumer {
     pub fn try_recv(&self) -> Option<ReadLease<'_>> {
-        self.0.ready.pop().map(|snapshot| ReadLease { owner: self, snapshot: Some(snapshot) })
+        self.0.ready.pop().map(|snapshot| ReadLease {
+            owner: self,
+            snapshot: Some(snapshot),
+        })
     }
 }
 impl ReadLease<'_> {
@@ -160,7 +190,12 @@ pub struct SyntheticMonitor {
     cores: u32,
 }
 impl SyntheticMonitor {
-    pub fn new(cores: u32) -> Self { Self { elapsed_ns: 0, cores } }
+    pub fn new(cores: u32) -> Self {
+        Self {
+            elapsed_ns: 0,
+            cores,
+        }
+    }
 }
 impl Monitor for SyntheticMonitor {
     type Error = std::convert::Infallible;
