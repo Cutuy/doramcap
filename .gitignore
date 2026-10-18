@@ -1,3 +1,6 @@
 target/
 *.mcap
 *.jsonl
+
+# Local credential for explicitly authorized privileged tests.
+/.sudo-password
