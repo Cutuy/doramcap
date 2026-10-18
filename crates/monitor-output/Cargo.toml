@@ -1,0 +1,19 @@
+[package]
+name = "monitor-output"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+dora = ["dep:dora-node-api"]
+
+[dependencies]
+eyre = "0.6"
+mcap = { version = "=0.25.0", default-features = false }
+serde_json = "1"
+dora-node-api = { version = "=1.1.0", optional = true, default-features = false }
+
+[[bin]]
+name = "mcap-recorder"
+path = "src/bin/mcap-recorder.rs"
+required-features = ["dora"]

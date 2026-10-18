@@ -1,0 +1,13 @@
+nodes:
+  - id: system-monitor
+    path: ../target/debug/system-monitor
+    args: --backend synthetic --samples 10 --dora
+    outputs:
+      - snapshots
+  - id: recorder
+    path: ../target/debug/mcap-recorder
+    args: phase0.mcap
+    inputs:
+      snapshots:
+        source: system-monitor/snapshots
+        queue_size: 64
