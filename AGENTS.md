@@ -11,16 +11,22 @@ when Linux capabilities are required (for example, native BPF load/attach and
 collection validation). This authorization covers test execution, not unrelated
 system administration or persistent system configuration changes.
 
-The local sudo password file is `.sudo-password` at the root of the active
-worktree. It must remain gitignored and have mode `0600`. Never print its
-contents, include it in logs or command arguments, commit it, or copy it into
-artifacts. Pass it to sudo through standard input, for example:
+The shared local sudo password file is `.sudo-password` at the root of the
+**main checkout**, not the active worktree. Resolve the main checkout from Git's
+worktree list (the first entry), so all pooled worktrees use the same file.
+It must remain gitignored in the main checkout and have mode `0600`. Never print
+its contents, include it in logs or command arguments, commit it, or copy it into
+worktrees or artifacts. Pass it to sudo through standard input, for example:
 
 ```sh
-sudo -S -p '' -- ./target/debug/examples/snapshot < .sudo-password
+doramcap_main_checkout="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
+doramcap_sudo_password_file="$doramcap_main_checkout/.sudo-password"
+test -n "$doramcap_main_checkout" && test -r "$doramcap_sudo_password_file" || exit 1
+sudo -S -p '' -- ./target/debug/examples/snapshot < "$doramcap_sudo_password_file"
 ```
 
 Build as the normal user; elevate only the test executable that needs it.
-Ignored credential files are not copied by the worktree-pool helper. If the file
-is absent in another worktree, request local provisioning rather than adding a
-credential to tracked files. If authentication fails, stop and report the failure.
+Ignored credential files are intentionally not copied by the worktree-pool
+helper. A missing worktree-local `.sudo-password` is expected; use the shared
+main-checkout path above. If the shared file is absent or unreadable, request
+local provisioning. If authentication fails, stop and report the failure.
