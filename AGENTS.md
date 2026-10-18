@@ -1,5 +1,5 @@
 # Agent workflow
 
-Every AI coding CLI must use the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md) before touching code for a new feature. Acquire one of the five slots, keep its token, and work only in the returned worktree. Reuse the lease when continuing the same task. Release it after the PR is created and published.
+Every AI coding CLI must follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the returned checkout, and release after publishing the PR. Reuse the lease for continued work. Leases never expire. Never wipe main; obtain approval before discarding dirty worktree files.
 
-Leases never expire. Never steal a lease or wipe the main checkout. Show the user the warning and obtain approval before discarding dirty pool-worktree files. See the skill for commands and refresh semantics.
+Keep main history linear: rebase feature commits onto current main, then cherry-pick them onto main. Never use `git merge` for worktree integration.
