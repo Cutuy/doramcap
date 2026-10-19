@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+<title id="title">Resource policy configuration and deployment architecture</title><desc id="desc">Protobuf schemas define pbtxt fragments and resolved policies. Profiles and host facts feed validation. Caller reconciliation, systemd and Kubernetes adapters consume the goal state; effective policy records feed telemetry.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#526278"/></marker></defs>
+<rect width="1100" height="620" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif;fill:#172a40;font-size:16px} .box{fill:#e6effa;stroke:#5280ac;stroke-width:1.5;rx:9} .later{fill:#f1eefb;stroke:#8c75ba;stroke-width:1.5;rx:9} .edge{fill:none;stroke:#526278;stroke-width:1.8;marker-end:url(#arrow)} .label{font-size:13px;fill:#475569} .head{font-size:21px;font-weight:bold}</style>
+<text x="35" y="35" class="head">resource-policy · CPU affinity + RT priority first</text>
+<rect class="box" x="35" y="65" width="210" height="65"/><text x="55" y="92">Protobuf schemas</text><text x="55" y="114" class="label">fragments · resolved policy</text>
+<rect class="box" x="325" y="65" width="220" height="65"/><text x="345" y="92">pbtxt sources</text><text x="345" y="114" class="label">apps · host · profile</text>
+<path class="edge" d="M245 97 H325"/><text x="260" y="84" class="label">types</text>
+<rect class="box" x="620" y="65" width="230" height="65"/><text x="640" y="92">pbtxt-config</text><text x="640" y="114" class="label">includes · presence · precedence</text>
+<path class="edge" d="M545 97 H620"/><text x="554" y="84" class="label">fragments</text>
+<rect class="box" x="620" y="190" width="230" height="65"/><text x="640" y="217">Policy adapter</text><text x="640" y="239" class="label">cpulist · scheduler · app IDs</text>
+<path class="edge" d="M735 130 V190"/><text x="745" y="165" class="label">composed policy</text>
+<rect class="box" x="325" y="190" width="220" height="65"/><text x="345" y="217">Host / target facts</text><text x="345" y="239" class="label">topology · delegation · RT</text>
+<path class="edge" d="M545 222 H620"/><text x="550" y="208" class="label">capabilities</text>
+<rect class="box" x="620" y="310" width="230" height="65"/><text x="640" y="337">Resolved goal state</text><text x="640" y="359" class="label">Protobuf · provenance · digest</text>
+<path class="edge" d="M735 255 V310"/>
+<rect class="box" x="70" y="430" width="260" height="75"/><text x="90" y="458">Caller enforcement API</text><text x="90" y="482" class="label">inspect → apply → verify → app init</text>
+<rect class="later" x="420" y="430" width="260" height="75"/><text x="440" y="458">systemd adapter · later</text><text x="440" y="482" class="label">goal → units · systemd cgroups</text>
+<rect class="later" x="770" y="430" width="260" height="75"/><text x="790" y="458">Kubernetes adapter · later</text><text x="790" y="482" class="label">YAML · runtime owns cgroups</text>
+<path class="edge" d="M665 375 V395 H200 V430"/><path class="edge" d="M735 375 V407 H550 V430"/><path class="edge" d="M805 375 V395 H900 V430"/>
+<text x="210" y="419" class="label">goal / observed diff</text><text x="560" y="422" class="label">unit model</text><text x="910" y="419" class="label">manifest model</text>
+<rect class="box" x="325" y="550" width="450" height="45"/><text x="345" y="579">ThreadResources + lifecycle → Dora / MCAP adapter</text>
+<path class="edge" d="M200 505 V572 H325"/><text x="90" y="543" class="label">observed state</text>
+<text x="35" y="225" class="label">lab / production / test</text><text x="35" y="248" class="label">One entrypoint per selection</text><text x="35" y="271" class="label">Entrypoint → app shared library</text>
+</svg>

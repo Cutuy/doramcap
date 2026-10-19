@@ -1,0 +1,28 @@
+syntax = "proto3";
+package resource_policy.v1;
+
+// Presence is significant during composition. A selection replaces its predecessor.
+message Policy {
+  oneof placement {
+    string cpus = 1; // Decimal Linux cpulist, e.g. "4,5-7,9-11".
+    bool inherit_cpus = 2; // Must be true; resolves against caller's affinity.
+  }
+  optional uint32 rt_priority = 3; // 0: OTHER; 1..99: RR.
+}
+message App {
+  string id = 1;
+  Policy policy = 2;
+}
+message Fragment {
+  repeated string include = 1; // Relative to this file, ordered, depth-first.
+  repeated App app = 2;
+}
+message ResolvedDeployment {
+  uint32 version = 1;
+  repeated App app = 2; // Sorted by ID; cpulists canonical, defaults explicit.
+}
+message EffectivePolicy {
+  string cpus = 1;
+  int32 scheduler = 2; // Linux SCHED_* constant; preserves observed policies.
+  int32 priority = 3;
+}

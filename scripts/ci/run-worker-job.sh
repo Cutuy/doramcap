@@ -16,6 +16,7 @@ cargo test --locked -p storage-persistence --no-default-features
 cargo test --locked --workspace
 cargo test --locked --workspace --all-features
 cargo build --locked --workspace --all-features --examples --bins
+"$CARGO_TARGET_DIR/debug/examples/policy_overhead"
 sudo -n /usr/local/libexec/doramcap-ci-native-tests "$PWD"
 
 "$CARGO_TARGET_DIR/debug/examples/storage_benchmark"

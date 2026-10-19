@@ -1,0 +1,19 @@
+[package]
+name = "pbtxt-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+prost-types = "0.14"
+thiserror = "2"
+sha2 = "0.10"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

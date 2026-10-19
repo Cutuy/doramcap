@@ -5,6 +5,8 @@ Each component owns its documentation, tests, examples, and benchmarks.
 
 | Component | Purpose |
 |---|---|
+| [pbtxt-config](libs/pbtxt-config/) | Typed pbtxt composition, app registry, provenance, and deployment fingerprints |
+| [resource-policy](libs/resource-policy/) | Composable Protobuf CPU/RT goals and caller enforcement |
 | [cgroup-bpf](libs/cgroup-bpf/) | Native per-CPU cgroup accounting |
 | [task-accounting](libs/task-accounting/) | Experimental kernel-thread runtime accounting |
 | [activity-tracing](libs/activity-tracing/) | Bounded activity capture and embedded MCAP/live/OTel outputs |

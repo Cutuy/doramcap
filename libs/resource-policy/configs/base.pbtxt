@@ -1,0 +1,2 @@
+app { id: "perception" config { [type.googleapis.com/resource_policy.v1.Policy] { placement { cpus: "4,5-7,9-11" } rt_priority: 30 } } }
+app { id: "recorder" config { [type.googleapis.com/resource_policy.v1.Policy] { placement { cpus: "2-3" } rt_priority: 0 } } }

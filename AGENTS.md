@@ -28,6 +28,8 @@ Use the serial default queue and verify the job result. Build unprivileged; nati
 
 ## Documentation style
 
+Milestone and planning documents must live under the owning component at `xxx/docs/mmddyy-some-feature.md`, using the creation date in `mmddyy` format and a descriptive kebab-case feature name. For example: `libs/resource-policy/docs/101926-resource-policy.md`. Keep updates in the same dated file and supporting SVGs alongside it.
+
 State what things are or do directly. Avoid “this is A, not B” and equivalent contrastive phrasing.
 
 For architecture diagrams, prefer SVG. Focus on component interactions and the artifacts passed between components. Minimize text; use short component and edge labels.

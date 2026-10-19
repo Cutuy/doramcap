@@ -28,6 +28,11 @@ def main():
     parser.add_argument('--monitor', required=True, type=Path)
     args = parser.parse_args()
     assert os.geteuid() == 0, 'native validation requires privilege'
+    # The approved worker launcher runs this aggregate native suite. Build remains unprivileged.
+    policy_suite = Path(__file__).resolve().parents[3] / 'libs/resource-policy/tests/validate_native.py'
+    if policy_suite.exists():
+        policy_binary = args.monitor.resolve().parent / 'examples/native_policy'
+        subprocess.run([sys.executable, str(policy_suite), '--binary', str(policy_binary), '--enable-root-cpuset'], check=True, timeout=90)
     cpus = sorted(os.sched_getaffinity(0))
     assert len(cpus) >= 2, 'two available CPUs required'
     root = Path('/sys/fs/cgroup') / f'doramcap-validation-{os.getpid()}'

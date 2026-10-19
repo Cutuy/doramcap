@@ -1,0 +1,2 @@
+include: "base.pbtxt"
+app { id: "perception" config { [type.googleapis.com/resource_policy.v1.Policy] { placement { cpus: "1-3" } rt_priority: 10 } } }
