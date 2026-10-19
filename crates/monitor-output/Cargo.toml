@@ -10,6 +10,7 @@ dora = ["dep:dora-node-api"]
 [dependencies]
 monitor-wire = { path = "../monitor-wire" }
 eyre = "0.6"
+prost = "0.14"
 mcap = { version = "=0.25.0", default-features = false }
 dora-node-api = { version = "=1.1.0", optional = true, default-features = false }
 

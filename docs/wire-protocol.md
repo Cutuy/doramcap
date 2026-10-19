@@ -16,6 +16,16 @@ bindings. The application uses DORA pub/sub and binary WebSocket transport.
 | Recorder → MCAP | Original Packet bytes on two channels, with embedded schema |
 | Standalone file / stdout | Repeated u32 little-endian byte length + Packet bytes |
 
+## DORA publication buffers
+
+The publisher builds an immutable Protobuf packet, checks `encoded_len()` against
+`MAX_FRAME_BYTES`, and encodes directly into the destination supplied by DORA's
+`send_output_raw()`. Both snapshot and dictionary topics use this path. DORA
+owns buffer allocation and lifetime, selecting shared memory or its heap
+fallback. The application creates no intermediate serialized byte vector on
+this publication path. Constructing the generated packet and consumer-side
+Protobuf decoding still allocate. Standalone output uses a reusable byte vector.
+
 ## Data and frequency
 
 `snapshots` publishes at 10 Hz. Records contain integer cgroup/parent IDs,

@@ -165,10 +165,9 @@ pub fn decode_packet(bytes: &[u8]) -> eyre::Result<pb::Packet> {
     eyre::ensure!(packet.body.is_some(), "missing packet body");
     Ok(packet)
 }
-pub fn encode<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEntry]>>(
+pub fn snapshot_packet<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEntry]>>(
     frame: &Frame<S, D>,
-    output: &mut Vec<u8>,
-) -> eyre::Result<()> {
+) -> pb::Packet {
     let value = pb::SnapshotFrame {
         version: frame.version,
         snapshot: Some(frame.snapshot.borrow().into()),
@@ -182,12 +181,15 @@ pub fn encode<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEntry]>>(
         dictionary: frame.dictionary.as_ref().to_vec(),
         viewer_ingress: frame.viewer_ingress.clone(),
     };
-    encode_packet(
-        pb::Packet {
-            body: Some(pb::packet::Body::Snapshot(value)),
-        },
-        output,
-    )
+    pb::Packet {
+        body: Some(pb::packet::Body::Snapshot(value)),
+    }
+}
+pub fn encode<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEntry]>>(
+    frame: &Frame<S, D>,
+    output: &mut Vec<u8>,
+) -> eyre::Result<()> {
+    encode_packet(snapshot_packet(frame), output)
 }
 pub fn decode(bytes: &[u8]) -> eyre::Result<Frame> {
     let Some(pb::packet::Body::Snapshot(f)) = decode_packet(bytes)?.body else {
@@ -217,23 +219,23 @@ pub fn decode(bytes: &[u8]) -> eyre::Result<Frame> {
         viewer_ingress: f.viewer_ingress,
     })
 }
+pub fn dictionary_packet<D: AsRef<[DictionaryEntry]>>(f: &DictionaryFrame<D>) -> pb::Packet {
+    pb::Packet {
+        body: Some(pb::packet::Body::Dictionary(pb::DictionaryFrame {
+            version: f.version,
+            session_id: f.session_id.clone(),
+            revision: f.revision,
+            overflow: f.overflow,
+            entries: f.entries.as_ref().to_vec(),
+            capture_unix_ns: f.capture_unix_ns,
+        })),
+    }
+}
 pub fn encode_dictionary<D: AsRef<[DictionaryEntry]>>(
     f: &DictionaryFrame<D>,
     output: &mut Vec<u8>,
 ) -> eyre::Result<()> {
-    encode_packet(
-        pb::Packet {
-            body: Some(pb::packet::Body::Dictionary(pb::DictionaryFrame {
-                version: f.version,
-                session_id: f.session_id.clone(),
-                revision: f.revision,
-                overflow: f.overflow,
-                entries: f.entries.as_ref().to_vec(),
-                capture_unix_ns: f.capture_unix_ns,
-            })),
-        },
-        output,
-    )
+    encode_packet(dictionary_packet(f), output)
 }
 pub fn decode_dictionary(bytes: &[u8]) -> eyre::Result<DictionaryFrame> {
     let Some(pb::packet::Body::Dictionary(f)) = decode_packet(bytes)?.body else {

@@ -2485,6 +2485,7 @@ dependencies = [
  "mcap",
  "monitor-core",
  "monitor-wire",
+ "prost",
 ]
 
 [[package]]

@@ -409,11 +409,10 @@ fn run(opts: Options) -> Result<()> {
             result
         })?;
     let mut dictionary = Dictionary::new(opts.records);
-    let mut payload = Vec::with_capacity(opts.records.saturating_mul(200));
+    let mut payload = Vec::new();
     let session = format!("{}-{}", unix_ns(), std::process::id());
     let mut published = 0u64;
     let mut dictionary_sent_at: Option<Instant> = None;
-    let mut dictionary_payload = Vec::new();
     let publish_result = (|| -> Result<()> {
         loop {
             #[cfg(feature = "dora")]
@@ -429,20 +428,18 @@ fn run(opts: Options) -> Result<()> {
                     dictionary_sent_at.is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
                 if dictionary_due {
                     dictionary.update(snapshot, opts.backend == "synthetic");
-                    monitor_wire::encode_dictionary(
-                        &monitor_wire::DictionaryFrame {
-                            version: VERSION,
-                            session_id: session.clone(),
-                            revision: dictionary.revision,
-                            overflow: dictionary.overflow,
-                            entries: &dictionary.entries,
-                            capture_unix_ns: snapshot.capture_unix_ns,
-                        },
-                        &mut dictionary_payload,
-                    )?;
                     #[cfg(feature = "dora")]
                     if let Some(publisher) = publisher.as_mut() {
-                        publisher.publish_dictionary(&dictionary_payload)?;
+                        let packet =
+                            monitor_wire::dictionary_packet(&monitor_wire::DictionaryFrame {
+                                version: VERSION,
+                                session_id: session.clone(),
+                                revision: dictionary.revision,
+                                overflow: dictionary.overflow,
+                                entries: &dictionary.entries,
+                                capture_unix_ns: snapshot.capture_unix_ns,
+                            });
+                        publisher.publish_dictionary(&packet)?;
                     }
                     dictionary_sent_at = Some(Instant::now());
                 }
@@ -465,13 +462,12 @@ fn run(opts: Options) -> Result<()> {
                     dictionary_overflow: dictionary.overflow,
                     dictionary: &[] as &[DictionaryEntry],
                 };
-                monitor_wire::encode(&envelope, &mut payload)?;
                 #[cfg(feature = "dora")]
                 if let Some(publisher) = publisher.as_mut() {
-                    publisher.publish_bytes(
+                    publisher.publish_packet(
                         snapshot.sequence,
                         snapshot.capture_unix_ns,
-                        &payload,
+                        &monitor_wire::snapshot_packet(&envelope),
                     )?;
                 }
                 if let Some(output) = output.as_mut() {
