@@ -31,8 +31,8 @@ cargo test --locked --workspace --all-features
 
 Loading requires BPF/tracing privileges, readable kernel BTF, cgroup v2 and the
 required iterator/kfunc support. Intended minimum qualification target is ARM64
-Linux 6.8. A successful capability report does **not** prove attach support.
-Native mode fails explicitly; it never substitutes synthetic measurements.
+Linux 6.8. Validate attach support with a live load/attach test after checking
+capabilities. Native mode reports collection failures explicitly.
 
 With Dora CLI 1.1.0 installed and the all-feature build complete:
 
@@ -51,18 +51,19 @@ I/O occur in the separate recorder process.
 ## Timing and memory contract
 
 Collection runs every 100 ms and records start/end monotonic timestamps plus
-Unix capture time. Counters are cumulative; a snapshot is not an atomic kernel
-transaction. Missed deadlines skip catch-up bursts. `--records` (default 4096)
+Unix capture time. Counters are cumulative and can change during snapshot
+collection. Missed deadlines skip catch-up bursts. `--records` (default 4096)
 bounds cgroup × possible-CPU rows; `--queue-slots` (default 8) bounds batches.
 When the pool is exhausted, collection continues into a reusable discard batch,
 increments loss, and publishes again when a slot is available. Final session
 statistics on stderr include losses after the last published snapshot.
 
 Numeric collection/handoff uses preallocated storage. The synthetic allocator
-test covers 10,000 iterations with zero allocations. A separate native probe also observed zero allocations in 40 warmed-up calls
-on each validation host; this is a bounded test, not a universal guarantee. Kernel iterator creation itself allocates
-kernel descriptor/seq state. Metadata discovery, JSON serialization and Dora
-publication may allocate on the publication thread.
+test covers 10,000 iterations with zero allocations. A separate native probe
+also observed zero allocations in 40 warmed-up calls on each validation host.
+Longer runs and other platforms need allocation qualification. Kernel iterator
+creation itself allocates kernel descriptor/seq state. Metadata discovery, JSON
+serialization and Dora publication may allocate on the publication thread.
 
 Published JSON includes a schema version, session identity, sequence, timestamps,
 losses, numeric cgroup rows and a bounded cgroup-path dictionary. MCAP stores the
@@ -83,13 +84,13 @@ The collector supports both legacy and newer rstat layouts/functions through
 BTF. Loading may additionally require CAP_SYSLOG for kernel symbol visibility;
 CAP_BPF/CAP_PERFMON alone were insufficient on the local host. Root metrics stay
 explicitly unavailable. Linux 6.8, Jetson BSP and long-duration overhead
-qualification remain open; WSL2 validation is not Jetson qualification.
+qualification remain open.
 
 `--task-capacity N` enables experimental task runtime diagnostics with feature
 `task-bpf`. Counters retain task lifetime, cgroup and CPU identity; finite map
 capacity eventually fills under task churn. Task names, retirement, IRQ/idle
 reconciliation and vendor scheduler qualification remain future work.
 
-See [native backend details](crates/cgroup-bpf/README.md) and
-[task accounting semantics](crates/task-accounting/README.md) before interpreting
-measurements. This is a development prototype, not a qualified production monitor.
+See [native backend details](crates/cgroup-bpf/README.md) and [task accounting
+semantics](crates/task-accounting/README.md) before interpreting measurements.
+Production qualification remains open for this development prototype.

@@ -18,17 +18,17 @@ ssh doramcap-ci@100.64.0.20 pueue wait 0
 ssh doramcap-ci@100.64.0.20 pueue kill 0
 ```
 
-Replace `0` with the returned job ID. Inspect `pueue status --json` for automated
-success/failure handling; waiting for completion alone isn't a test verdict.
-Use `pueue restart ID` to rerun the same snapshot. Git pushes do not submit jobs.
-Pueue supports groups, but keep native test jobs in the serial default group.
+Replace `0` with the returned job ID. Inspect `pueue status --json` for
+automated success/failure handling. Use `pueue restart ID` to rerun the same
+snapshot. Git pushes do not submit jobs. Keep native test jobs in the serial
+default group.
 
 Submission copies an allowlisted snapshot of Cargo files, crates and examples,
 including uncommitted source changes, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,
-`.git`, and local build directories are not copied. Snapshots are separate per
-job, but remain writable by the trusted CI account.
+`.git`, and local build directories are not copied. Each job has a separate
+snapshot writable by the trusted CI account.
 
 Each job runs default and all-feature Rust tests, builds native binaries/examples,
 then runs privileged cgroup accounting integration and allocation validation.
@@ -64,10 +64,9 @@ sudo bash install-worker.sh /path/to/authorized-key.pub
 This creates the dedicated user, installs clang18/libelf/zlib/build tooling,
 verifies pinned Pueue binary hashes, installs the service and sudo launcher, and
 installs Rust unprivileged. It replaces this account's authorized_keys and Pueue
-config; it restarts the daemon, so only reprovision while idle. The script does
-not configure SSH itself or Windows startup. Keep the WSL distro running:
-systemd starts Pueue when the distro boots, but does not start Windows/WSL or
-prevent host sleep. Enable a Windows-side startup task separately if required.
+config; it restarts the daemon, so only reprovision while idle. Provision SSH
+separately and keep the WSL distro running. Systemd starts Pueue when the distro
+boots. Configure Windows startup and sleep policy separately if required.
 
 Administrator service commands:
 
@@ -79,5 +78,5 @@ sudo journalctl -u doramcap-pueued
 
 The approved trust boundary is explicit: the launcher runs CI-owned scripts and
 binaries as root. Anyone with CI SSH access or control over submitted source has
-effective root access to this WSL distro. This is not suitable for untrusted PRs.
+effective root access to this WSL distro. Restrict submissions to trusted code.
 No sudo password is stored in the CI account or submitted snapshots.

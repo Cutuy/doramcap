@@ -1,6 +1,6 @@
 # Agent workflow
 
-Every AI coding CLI must follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the returned checkout, and release after publishing the PR. Reuse the lease for continued work. Leases never expire. Never wipe main; obtain approval before discarding dirty worktree files.
+Every AI coding CLI must follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the returned checkout, and release after local integration or PR publication. Reuse the lease for continued work. Leases never expire. Never wipe main; obtain approval before discarding dirty worktree files.
 
 Keep main history linear: rebase feature commits onto current main, then cherry-pick them onto main. Never use `git merge` for worktree integration.
 
@@ -8,15 +8,16 @@ Keep main history linear: rebase feature commits onto current main, then cherry-
 
 The user authorizes running this project's tests and test programs under sudo
 when Linux capabilities are required (for example, native BPF load/attach and
-collection validation). This authorization covers test execution, not unrelated
-system administration or persistent system configuration changes.
+collection validation). This authorization covers capability-required test
+execution. System administration and persistent configuration changes require
+separate authorization.
 
 The shared local sudo password file is `.sudo-password` at the root of the
-**main checkout**, not the active worktree. Resolve the main checkout from Git's
-worktree list (the first entry), so all pooled worktrees use the same file.
-It must remain gitignored in the main checkout and have mode `0600`. Never print
-its contents, include it in logs or command arguments, commit it, or copy it into
-worktrees or artifacts. Pass it to sudo through standard input, for example:
+**main checkout**. Resolve the main checkout from Git's worktree list (the first
+entry), so all pooled worktrees use the same file. It must remain gitignored in
+the main checkout and have mode `0600`. Never print its contents, include it in
+logs or command arguments, commit it, or copy it into worktrees or artifacts.
+Pass it to sudo through standard input, for example:
 
 ```sh
 doramcap_main_checkout="$(git worktree list --porcelain | sed -n '1s/^worktree //p')"
@@ -44,11 +45,12 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ```
 
 Keep jobs in the serial default queue; Cargo caches persist. Check the job's
-result, not just completion. The suite covers default/all-feature Rust tests,
-native cgroup accounting and allocations; Dora end-to-end tests are separate.
-WSL must be running; Git pushes do not trigger jobs.
-See [worker setup and operation](scripts/ci/README.md).
+success/failure result. The suite covers default/all-feature Rust tests, native
+cgroup accounting and allocations; Dora end-to-end tests are separate. WSL must
+be running; Git pushes do not trigger jobs. See [worker setup and
+operation](scripts/ci/README.md).
 
 ## Documentation style
 
-Never use “this is A, not B” phrasing or equivalent contrastive framing in documentation. State what something is or does directly.
+Never use “this is A, not B” phrasing or equivalent contrastive framing in
+documentation. State what something is or does directly.

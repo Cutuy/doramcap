@@ -21,21 +21,20 @@ Upstream Linux **v6.8** provides a promising common native runtime basis:
 - [rt.c](https://github.com/torvalds/linux/blob/v6.8/kernel/sched/rt.c) and
   [deadline.c](https://github.com/torvalds/linux/blob/v6.8/kernel/sched/deadline.c):
   `update_curr_rt()` / `update_curr_dl()` use `update_curr_common()`, which calls
-  `update_curr_task()`. This tracepoint is **not fair-only in upstream v6.8**.
+  `update_curr_task()`. The tracepoint covers fair, RT and deadline paths in upstream v6.8.
 - [stop_task.c](https://github.com/torvalds/linux/blob/v6.8/kernel/sched/stop_task.c):
-  `put_prev_task_stop()` also calls `update_curr_common()`. Idle has distinct
-  semantics and is not a task-runtime stream here.
+  `put_prev_task_stop()` also calls `update_curr_common()`. Idle accounting remains outside this task-runtime stream.
 
-These are source findings, not confirmation of NVIDIA's exact BSP. Attach/load,
-all scheduling classes, kernel threads, CPU attribution, cgroup movement, and
-interrupt accounting must still be exercised on each supported target.
+NVIDIA BSP qualification remains open. Attach/load, all scheduling classes,
+kernel threads, CPU attribution, cgroup movement, and interrupt accounting must
+still be exercised on each supported target.
 
 The raw tracepoint supplies the actual task pointer and charged duration. The
-probe reads TID, TGID, `start_boottime`, `PF_KTHREAD`, and the task's real default
-cgroup ID. It obtains the attributed CPU from `task->thread_info.cpu` (the native
-SMP `task_cpu()` representation), **not the CPU executing the probe**: runtime
-updates can execute remotely. This CO-RE layout currently requires SMP kernels
-with embedded `thread_info.cpu`; incompatible BTF fails load explicitly.
+probe reads TID, TGID, `start_boottime`, `PF_KTHREAD`, and the task's real
+default cgroup ID. It obtains the attributed CPU from `task->thread_info.cpu`
+(the native SMP `task_cpu()` representation), because runtime updates can
+execute remotely. This CO-RE layout currently requires SMP kernels with embedded
+`thread_info.cpu`; incompatible BTF fails load explicitly.
 
 ## Counter and timing contract
 
@@ -51,22 +50,22 @@ and NO_HZ tasks may delay updates. Repeated snapshots can therefore remain
 unchanged while a task runs. Do not label a delta as an exact 100 ms wall-clock
 execution slice. Collect start/end monotonic timestamps in the containing batch.
 
-Snapshots are **not atomic** across records. Concurrently inserted keys may first
-appear in the next traversal. No deletion occurs while attached, which avoids
-iteration restarts and silently discarded final counters for short-lived tasks.
-The deliberately fixed capacity counts task-lifetime × cgroup × core combinations.
-Churn eventually fills the map: new keys increment cumulative dropped-event and
-dropped-runtime counters; existing keys continue updating. Restarting attachment
-starts a new session and resets counters. A bounded retirement/acknowledgement
-protocol is required before enabling this for long unattended runs.
+Records can change during snapshot traversal. Concurrently inserted keys may
+first appear in the next traversal. No deletion occurs while attached, which
+avoids iteration restarts and silently discarded final counters for short-lived
+tasks. The deliberately fixed capacity counts task-lifetime × cgroup × core
+combinations. Churn eventually fills the map: new keys increment cumulative
+dropped-event and dropped-runtime counters; existing keys continue updating.
+Restarting attachment starts a new session and resets counters. A bounded
+retirement/acknowledgement protocol is required before enabling this for long
+unattended runs.
 
-The kernel hash map uses its default preallocated entries; userspace reserves its
-output vector at startup and uses raw map syscalls with stack key/value storage.
-Normal collection does not deliberately allocate strings or per-record buffers.
+The kernel hash map uses its default preallocated entries; userspace reserves
+its output vector at startup and uses raw map syscalls with stack key/value
+storage. Normal collection reuses reserved buffers and stack key/value storage.
 This implementation still needs allocator and overhead profiling on a real BPF
 run. Loading, attaching, error construction, and publication are outside that
-claim. The optional `RuntimeAccumulator` is a replay/testing reference, not the
-production acquisition path or a high-rate userspace event processor.
+claim. The optional `RuntimeAccumulator` supports replay and testing.
 
 ## IRQ, idle, and reconciliation
 
@@ -77,11 +76,10 @@ their respective facilities are enabled; it also documents attribution lag at
 interrupt boundaries. `ksoftirqd` task work must not be counted twice as both
 thread execution and a generic softirq duration.
 
-This crate does **not** measure idle, separate IRQ/softirq totals, or unexplained
-residuals. Those remain unavailable, not zero. Do not equate the sum of these task
-counters with root `cpu.stat`, or add task diagnostics to native cgroup totals.
-Do not force a residual to zero. No workload-origin attribution of asynchronous
-kernel work is claimed.
+Idle, separate IRQ/softirq totals, and unexplained residuals remain unavailable.
+Do not equate the sum of these task counters with root `cpu.stat`, or add task
+diagnostics to native cgroup totals. Do not force a residual to zero. No
+workload-origin attribution of asynchronous kernel work is claimed.
 
 ## Remaining qualification gates
 

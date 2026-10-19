@@ -14,9 +14,9 @@ This plan supersedes the original roadmap's Phase 0 scope where they differ. Lat
 - Minimum qualification target: ARM64 Linux 6.8, including NVIDIA Jetson Linux 39.2.1 / JetPack 7.2.1 for Thor and Orin. Kernel configuration, BTF, permitted BPF hooks, and kfuncs must be checked; a version number alone is insufficient.
 - Develop in this repository using Rust/Cargo; consume Dora and libbpf-rs as external dependencies. Use small C CO-RE programs through libbpf-cargo where needed.
 - Reuse the kernel's native cgroup hierarchy and inclusive counters at every level. **Never derive parent cgroup totals by summing tasks or child cgroups.** Root accounting has distinct native semantics.
-- Prefer snapshotting native per-CPU cgroup counters after the kernel flushes rstat. Any inaccessible metric is explicitly unavailable, not silently synthesized.
+- Prefer snapshotting native per-CPU cgroup counters after the kernel flushes rstat. Mark inaccessible metrics explicitly unavailable.
 - Individual task/kernel-thread measurements are diagnostic views. Preserve identity and actual cgroup membership; do not claim asynchronous kernel work belongs to its initiating application.
-- Collect every 100 ms using actual monotonic timestamps. Collection reads cumulative counters, not statistical samples of whichever task is running at that instant.
+- Collect every 100 ms using actual monotonic timestamps. Collection reads cumulative runtime counters.
 - Preallocate batches and queue capacity. Numeric IDs appear in the hot path; names reside in a bounded dictionary with revision/generation information. Metadata work is outside the periodic collection path.
 - A single collection producer hands owned batches to a single publication consumer. The collector never waits for Dora, compression, or disk I/O. On exhaustion, drop the new batch and expose cumulative loss counters. Recycle consumed buffers.
 - Publish snapshots and dictionary context through the Dora node. No requirement for MCAP bytes on the collection thread. A separate downstream recorder can write the same published payloads into MCAP.
@@ -34,7 +34,8 @@ native kernel accounting / eBPF
     -> live consumer and/or separate MCAP recorder
 ```
 
-A capability report and deterministic synthetic backend make the executable testable without BPF privilege. Synthetic data must be explicitly selected and labeled; it is not a fallback pretending to be kernel data.
+A capability report and deterministic synthetic backend make the executable
+testable without BPF privilege. Select and label synthetic data explicitly.
 
 ## Milestones and validation
 
@@ -54,7 +55,7 @@ Validation:
 - [x] Detect kernel/architecture, cgroup v2, BTF, CPU capacity, and BPF load/attach errors.
 - [x] Build CO-RE BPF with libbpf-rs/libbpf-cargo and collect native inclusive CPU counters for all discoverable cgroups.
 - [x] Read native per-core counters where qualified, retaining special root semantics and explicit availability.
-- [x] Bound result capacity and report overflow/errors instead of reallocating or silently losing data.
+- [x] Use fixed result capacity and explicit overflow/error counters.
 - [x] Establish dictionary entries for cgroup IDs, parent IDs and paths outside the periodic hot path.
 
 Validation:
@@ -113,9 +114,9 @@ Validation:
 
 ## Evidence and decisions
 
-- `below` reviewed at `bbddf87047e6e548527ab6331af9ad2f610482d8`: useful native-counter reader, but per-snapshot map/vector/string allocations and non-preallocated BPF results do not satisfy our collection-path goals.
+- `below` reviewed at `bbddf87047e6e548527ab6331af9ad2f610482d8`: its per-snapshot map/vector/string allocations and BPF result allocation exceed our collection-path allocation budget.
 - Linux 6.8 is the agreed common minimum. Older Orin JetPack 6 / kernel 5.15 support is outside this initial profile.
-- Full native per-core and task accounting are feasibility/qualification work, not capabilities assumed from the scaffold.
+- Full native per-core and task accounting require feasibility and qualification checks.
 
 ## Implementation log
 
@@ -123,7 +124,7 @@ Validation:
 - `cargo test --workspace --all-features`: 11 tests pass, including 10,000 zero-allocation synthetic collection/handoff iterations, concurrent buffer transfer, ABI checks, task replay and MCAP readback.
 - Real native load smoke test: blocked by `EPERM` at libbpf probe. Native per-core comparisons, verifier acceptance and native allocation measurements remain unfulfilled.
 - ARM64 SSH attempt: `Host key verification failed`; no bypass or remote changes performed.
-- Experimental task backend is implemented, but M5 is incomplete: no live scheduler-class qualification, task-name dictionary, retirement, idle/IRQ or residual measurements.
+- Experimental task backend is implemented. M5 remains incomplete: no live scheduler-class qualification, task-name dictionary, retirement, idle/IRQ or residual measurements.
 - New repository worktree workflow appeared during implementation. Continuing in pool slot 2 on `feature/phase0-cgroup-monitor`; lease retained until publication. Original checkout was preserved.
 - Backpressure smoke: 8 collected, 5 published, 3 reported drops with a deliberately slow publisher. SIGTERM smoke: 4 collected and published, clean exit.
 - Cgroup dictionary uses bounded session-local entries and revisioned upserts; paths refresh at most every 10 seconds. Task names and safe retirement remain deferred.
@@ -133,20 +134,20 @@ Validation:
 ### Capability declarations
 
 - [x] Keep commented `#[cap(CAP_BPF, CAP_PERFMON)]` declarations only on native leaf helpers that load BPF objects or attach tracing programs. Constructors, monitor entry points and publication carry no blanket declarations.
-- [ ] Qualify exact capability requirements on the target kernel; declarations describe the intended Linux 6.8 tracing profile, not a proven minimum. No macro, aggregation framework or automatic privilege grant is introduced.
+- [ ] Qualify exact capability requirements on the target kernel; declarations describe the intended Linux 6.8 tracing profile. Minimum capabilities still need qualification. No macro, aggregation framework or automatic privilege grant is introduced.
 
 Validation: compile both BPF backends after extracting load/attach helpers. Existing-descriptor map access and iterator creation are not automatically annotated merely because they use BPF APIs; kernel-policy qualification remains open.
 
 ### Privileged native smoke test
 
 Sudo-authenticated execution of `target/debug/examples/snapshot` on host
-`7.0.0-38-generic` passed the earlier permission barrier, then failed during
-BPF external-function resolution: `cgroup_rstat_flush` was not found in kernel
-or module BTF. Host vmlinux BTF strings contain `css_rstat_flush` instead.
-This establishes a host kernel compatibility blocker, not successful verifier
-acceptance or live accounting. The Linux 6.8 target still needs direct validation;
-a 7.0 adapter requires checking the changed accounting structures and kfunc ABI.
-No credentials were persisted in repository files.
+`7.0.0-38-generic` passed the earlier permission barrier, then failed during BPF
+external-function resolution: `cgroup_rstat_flush` was not found in kernel or
+module BTF. Host vmlinux BTF strings contain `css_rstat_flush` instead. The
+smoke test stopped at a host kernel compatibility blocker, before verifier
+acceptance or live accounting. The Linux 6.8 target still needs direct
+validation; a 7.0 adapter requires checking the changed accounting structures
+and kfunc ABI. No credentials were persisted in repository files.
 
 ### Native and ARM64 validation completed
 
@@ -155,5 +156,5 @@ The previous EPERM and missing-function blockers are resolved for local Linux
 accounting against cpu.stat, 65-sample 10 Hz collection, overflow, warmed-up
 allocation probes, all-feature tests, and ten native Dora/MCAP sessions each.
 See [the validation plan and evidence](101826-native-kernel-validation.md).
-This does not qualify NVIDIA BSP, Linux 6.8 or the experimental task backend.
+NVIDIA BSP, Linux 6.8 and experimental task-backend qualification remain open.
 Root CPU accounting remains explicitly unavailable.

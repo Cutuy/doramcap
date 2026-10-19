@@ -4,9 +4,9 @@
 
 Finish Phase 0 native validation before advancing the roadmap. First qualify
 native inclusive cgroup/per-core accounting on the local Linux 7.0 host; then
-run on the user's ARM64 host at cutuy@100.64.0.20. Preserve Linux 6.8 compatibility
-as an explicit target. Adapt to BTF/kernel accounting changes rather than
-substituting synthetic counters or summing child cgroups.
+run on the user's ARM64 host at cutuy@100.64.0.20. Preserve Linux 6.8
+compatibility as an explicit target. Adapt to BTF/kernel accounting changes
+while reading native counters at each cgroup level.
 
 Use the shared ignored sudo credential only for authorized test executables.
 Keep test cgroups and workloads isolated, bounded, and cleaned up. Do not alter
@@ -44,11 +44,12 @@ Validated October 18, 2026, using real kernel data on both hosts.
 | Real native Dora → MCAP | 10 sessions, 100/100 snapshots | 10 sessions, 100/100 snapshots |
 | All-feature Rust regression suite | 11 passing tests | 11 passing tests |
 
-These short runs establish functional behavior, not worst-case latency or a
-long-duration overhead budget. The allocation probe measures successful native
-userspace collection after warm-up; kernel iterator allocations still occur.
-Root counters remain explicitly unavailable. Task/kernel-thread attribution,
-IRQ/idle reconciliation, Linux 6.8, and NVIDIA BSP qualification remain open.
+These short runs establish functional behavior. Worst-case latency and
+long-duration overhead qualification remain open. The allocation probe measures
+successful native userspace collection after warm-up; kernel iterator
+allocations still occur. Root counters remain explicitly unavailable.
+Task/kernel-thread attribution, IRQ/idle reconciliation, Linux 6.8, and NVIDIA
+BSP qualification remain open.
 
 ## Implementation changes demonstrated necessary by live testing
 
@@ -88,4 +89,3 @@ outside the source tree; the local main-checkout credential was not copied there
 
 Source references: Linux [v7.0 rstat implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/cgroup/rstat.c)
 and [v6.8 rstat implementation](https://github.com/torvalds/linux/blob/v6.8/kernel/cgroup/rstat.c).
-

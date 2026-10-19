@@ -6,8 +6,8 @@ Use `doramcap-ci@100.64.0.20` with SSH keys, Pueue over its local Unix socket,
 and a systemd daemon running as that dedicated user. One queued job at a time;
 persistent Cargo downloads and target cache. Jobs build unprivileged and use
 passwordless sudo only for the native-test launcher. That launcher executes
-CI-owned code: this is a trusted-code worker with effective root access, not a
-sandbox for untrusted contributions. No credentials enter source snapshots.
+CI-owned code with effective root access. Restrict submissions to trusted code.
+No credentials enter source snapshots.
 
 Source snapshots are separate per job; record source provenance and kernel/tool
 versions in logs. Pueue supplies queueing, status, cancellation, and retained logs;

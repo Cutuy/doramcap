@@ -6,11 +6,12 @@ libbpf-rs). Set `CLANG` when clang is outside PATH.
 
 The sleepable cgroup iterator walks the kernel hierarchy in preorder, flushes
 native rstat once, and reads each non-root cgroup's per-CPU `subtree_bstat`.
-CO-RE selects `rstat_base_cpu` or legacy `rstat_cpu`; weak kfunc detection selects
-`css_rstat_flush` or `cgroup_rstat_flush`. Separate field reads preserve layout
-correctness. There is no custom hierarchy rollup. Root rows are emitted with
-`ROOT_UNAVAILABLE`; native global accounting must be acquired separately.
-`RAW_USER_SYSTEM` means user/system counters are raw, before cpu.stat adjustment.
+CO-RE selects `rstat_base_cpu` or legacy `rstat_cpu`; weak kfunc detection
+selects `css_rstat_flush` or `cgroup_rstat_flush`. Separate field reads preserve
+layout correctness. Hierarchy totals come directly from kernel counters. Root
+rows are emitted with `ROOT_UNAVAILABLE`; native global accounting must be
+acquired separately. `RAW_USER_SYSTEM` means user/system counters are raw,
+before cpu.stat adjustment.
 
 Requirements: BTF, cgroup iterator, numeric BPF iterator, a supported rstat flush
 kfunc, and visible `__per_cpu_offset` kernel symbol. The native per-CPU pointers
@@ -21,15 +22,14 @@ Linux 6.8 remains the intended minimum, with direct qualification still pending.
 
 A record capacity bounds cgroup × possible-CPU rows (including root). The
 backend counts excess rows in `CollectionStats::overflow`. Output Vec must
-already have capacity at least equal to the configured capacity. Array maps
-are preallocated once, reused without insert/delete churn; map reads use
-caller-owned stack memory, avoiding libbpf-rs allocating lookup convenience APIs.
-Each collection creates a kernel iterator descriptor and seq-file state. This
-is **not** a claim of zero kernel allocations or atomic snapshots: concurrent
-kernel flushes/updates can race reads, and observation timestamps must bracket
-the traversal. Successful userspace collection is intended to allocate no heap
-memory; error diagnostics and backend creation may allocate. Allocation and
-performance qualification on NVIDIA BSP remains required.
+already have capacity at least equal to the configured capacity. Array maps are
+preallocated once, reused without insert/delete churn; map reads use
+caller-owned stack memory, avoiding libbpf-rs allocating lookup convenience
+APIs. Each collection allocates a kernel iterator descriptor and seq-file state.
+Concurrent kernel flushes/updates can race reads; observation timestamps must
+bracket the traversal. Successful userspace collection is intended to allocate
+no heap memory; error diagnostics and backend creation may allocate. Allocation
+and performance qualification on NVIDIA BSP remains required.
 
 API: `Backend::new(record_capacity)` then `collect_into(&mut Vec<CgroupRecord>)`.
 Neither method silently falls back to synthetic or filesystem metrics. Creating

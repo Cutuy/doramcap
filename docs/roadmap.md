@@ -99,7 +99,9 @@ Safety certification, deterministic physical replay, and universal hard-deadline
 - **LIFE-09:** Permit profiler and diagnostics attachment within a declared resource and permission budget.
 - **LIFE-10:** Support controlled workload replacement with version capture, drain behavior, and rollback eligibility. Fleet package distribution remains a separate integration.
 
-**Acceptance:** A persistent service and a transient experiment can coexist, recover independently, and produce complete lifecycle histories. Repeated failures terminate or degrade according to policy rather than entering an uncontrolled restart cycle.
+**Acceptance:** A persistent service and a transient experiment can coexist,
+recover independently, and produce complete lifecycle histories. Repeated
+failures terminate or degrade according to policy.
 
 ### 4.2 Heartbeats, watchdogs, and recovery
 
@@ -295,7 +297,7 @@ CUDA, JetPack, green contexts, and GPU profiling facilities are **vendor depende
 - Preserve native debugging and inspection tools where practical.
 - Maintain a supported-version matrix and a clear upgrade/rollback path.
 - Record third-party versions and relevant configuration in evidence bundles.
-- Qualify transport, recorder, and scheduler behavior under overload rather than relying on nominal feature availability.
+- Qualify transport, recorder, and scheduler behavior under overload.
 - Keep adapters replaceable so the project's execution contract survives a building-block change.
 - Contribute generally useful fixes upstream when feasible.
 - Publish licenses, dependency inventory, and security-update ownership.
@@ -310,7 +312,7 @@ The review used Dora commit `9bae21efbed5e0d1fc0a2df9143b019e84b51041`. Revalida
 - The tensor-pool extension is opt-in, outside the core compatibility guarantee, and documents defects and GPU coverage gaps.
 - Transparent SHM behavior depends on locality, route eligibility, allocation capacity, and retained samples. Slow readers can change the effective copy path.
 
-These findings define integration work rather than permanent limitations of the upstream project.
+Revisit these integration findings as upstream capabilities evolve.
 
 ## 6. Delivery roadmap
 

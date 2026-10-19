@@ -32,42 +32,43 @@ system-monitor → Dora snapshots (10 Hz) + dictionary (~0.5 Hz) → cpu-viewer
 One chart per CPU automatically shows its eight busiest active cgroups, ranked
 by time-weighted activity over five seconds and refreshed once per second.
 Charts refresh at 10 Hz and retain 30 seconds, expiring even during silence.
-100% means one occupied core. Cgroup counters include descendants, so lines
-are not stacked or summed. Root cgroup runtime, first samples and resets show
-as gaps. History is bounded by 600 points, 64 CPUs and 8192 cgroup records per
-snapshot. Colors remain stable across rankings. These are cgroup paths, not
-individual program names.
+100% means one occupied core. Cgroup counters include descendants, so lines are
+not stacked or summed. Root cgroup runtime, first samples and resets show as
+gaps. History is bounded by 600 points, 64 CPUs and 8192 cgroup records per
+snapshot. Colors remain stable across rankings. Labels show cgroup paths.
 
 The persistent dashed virtual/kernel line uses backend-aggregated PF_KTHREAD
 runtime by charged CPU. The BPF probe excludes all non-PF_KTHREAD tasks before
-map insertion. Individual task records are not published. It is a reporting aggregate, not a
-real cgroup, and may overlap cgroup runtime. It excludes separate IRQ/idle
-accounting and is not total kernel time. Task-map capacity and losses are
-visible; records persist until restart and the bounded map can fill. Remove
-`--task-capacity 32768` to disable this experimental diagnostic.
-See [accounting nuances](../crates/task-accounting/CPU-ACCOUNTING.md).
+map insertion. Individual task records are not published. This reporting
+aggregate may overlap cgroup runtime. Its scope is PF_KTHREAD runtime;
+application syscalls and separate IRQ/idle accounting are outside it. Task-map
+capacity and losses are visible; records persist until restart and the bounded
+map can fill. Remove `--task-capacity 32768` to disable this experimental
+diagnostic. See [accounting
+nuances](../crates/task-accounting/CPU-ACCOUNTING.md).
 
 The server keeps one latest frame shared across browser clients; slow clients
-skip frames instead of building unbounded queues. Browser reconnects are
-automatic. Names arrive as separate full dictionary checkpoints about every 2 seconds,
-with session/revision matching; reconnects receive the cached checkpoint first. Snapshot payloads are
-binary on both hops; see `docs/wire-protocol.md` for the versioned array schema,
-64-bit precision, MCAP encoding, and standalone output framing.
+skip intermediate frames to keep buffering bounded. Browser reconnects are
+automatic. Names arrive as separate full dictionary checkpoints about every 2
+seconds, with session/revision matching; reconnects receive the cached
+checkpoint first. Snapshot payloads are binary on both hops; see
+`docs/wire-protocol.md` for the versioned array schema, 64-bit precision, MCAP
+encoding, and standalone output framing.
 
 Ingress metrics count original Dora snapshot plus dictionary bytes; the message
-count/rate counts snapshots only, independent
-of browser count, before dictionary expansion or WebSocket framing. Rates use
-completed intervals of at least one second; cumulative counters begin at viewer
-startup. These are payload rates, not NIC traffic. Capture-to-receive latency
-uses the shared host wall clock from producer capture to subscriber dequeue,
-including collection, publication and queueing, but excluding browser rendering.
+count/rate counts snapshots only, independent of browser count, before
+dictionary expansion or WebSocket framing. Rates use completed intervals of at
+least one second; cumulative counters begin at viewer startup. These rates
+measure application payload bytes. Capture-to-receive latency uses the shared
+host wall clock from producer capture to subscriber dequeue, including
+collection, publication and queueing. Browser rendering follows receipt.
 Latest/mean latency are shown; invalid timestamps are excluded. Stale rates and
-latency are hidden after two seconds. Throughput uses monotonic time.
-Browser latency uses `/clock` calibration (fastest of three probes every 30 s)
-and browser monotonic time, so it does not require matching wall clocks. It is
-an estimate: half the probe round trip is shown as timing uncertainty, and
-network asymmetry/drift can affect it. It ends at WebSocket callback entry,
-before decode/render. Calibration expires after 90 s.
+latency are hidden after two seconds. Throughput uses monotonic time. Browser
+latency uses `/clock` calibration (fastest of three probes every 30 s) and
+browser monotonic time, so it does not require matching wall clocks. It is an
+estimate: half the probe round trip is shown as timing uncertainty, and network
+asymmetry/drift can affect it. It ends at WebSocket callback entry, before
+decode/render. Calibration expires after 90 s.
 
 The server binds IPv4 loopback only. Change `--port 8080` in the YAML if needed.
 Assets default to this checkout's `frontend/dist`; use `--assets /absolute/path`
@@ -76,7 +77,7 @@ frontend`; Vite proxies WebSocket `/stream` to 8080.
 
 ## Synthetic transport test and recording
 
-Synthetic mode is an explicit test configuration, never a fallback:
+Select synthetic mode explicitly for transport testing:
 
 ```sh
 dora run examples/live-cpu-synthetic-dataflow.yml

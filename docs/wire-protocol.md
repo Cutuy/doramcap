@@ -1,10 +1,9 @@
 # Snapshot binary protocol v1
 
 Dora carries an application-defined UInt8 array. The application payload is
-MessagePack, encoded as positional arrays by `rmp-serde` (not named maps).
-The browser receives the same schema in binary WebSocket messages at `/stream`.
-There is no JSON, base64 or decimal-string encoding on either snapshot path.
-This does not assume Dora's transport/control protocol is protobuf.
+MessagePack, encoded as positional arrays by `rmp-serde`. The browser receives
+the same schema in binary WebSocket messages at `/stream`. There is no JSON,
+base64 or decimal-string encoding on either snapshot path.
 
 Every frame is one MessagePack value. Fields below are in exact array order:
 
@@ -38,39 +37,40 @@ the revision. Newly discovered groups can show numeric IDs until the next
 checkpoint. The dictionary remains bounded by the configured record capacity.
 
 WebSocket forwards the two packet types independently. The viewer retains only
-the latest of each and sends the cached dictionary before the cached snapshot
-on reconnect. Cross-topic ordering is not assumed: browsers use a dictionary
-only for the same session with revision at least the requested revision (the
+the latest of each and sends the cached dictionary before the cached snapshot on
+reconnect. Browsers handle independent topic arrival by using a dictionary only
+for the same session with revision at least the requested revision (the
 dictionary is append-only within a session). Missing dictionaries give numeric
-labels, never another session's names. A late viewer gets a full checkpoint
-within about 2 seconds. Slow browsers skip intermediate snapshots.
+labels. A late viewer gets a full checkpoint within about 2 seconds. Slow
+browsers skip intermediate snapshots.
 
 `FLAG_VIRTUAL_KERNEL` (128) puts a CPU record in a separate virtual namespace:
 `cgroup_id=0` denotes `virtual/kernel`, with `FLAG_RUNTIME`, CPU and cumulative
-PF_KTHREAD runtime. It is not real cgroup ID 0; user/system are unavailable.
-No real dictionary entry is used for this reporting group. Consumers must honor
-the flag, and never sum this series with native cgroup totals. Task filtering
-happens in BPF before map insertion; publication aggregates by CPU and sends an
-empty `task_records` array. Task-loss counters remain available. The task map
-still retains kernel lifetimes internally and may eventually fill.
+PF_KTHREAD runtime. The flag distinguishes this virtual identity from native
+cgroup IDs; user/system are unavailable. No real dictionary entry is used for
+this reporting group. Consumers must honor the flag, and never sum this series
+with native cgroup totals. Task filtering happens in BPF before map insertion;
+publication aggregates by CPU and sends an empty `task_records` array. Task-loss
+counters remain available. The task map still retains kernel lifetimes
+internally and may eventually fill.
 
 Ingress byte rates include both Dora topics; message counts/rates and latency
 refer only to numeric snapshots. The 10 Hz path contains no cgroup names or task
-names (only small envelope strings such as session/source). MCAP records both
-`doramcap/snapshots` and `doramcap/dictionary` channels. Standalone framed output
-remains self-contained with an embedded dictionary, unlike the Dora path.
+names; session/source remain small envelope strings. MCAP records both
+`doramcap/snapshots` and `doramcap/dictionary` channels. Standalone framed
+output embeds its dictionary in each frame.
 
 The TypeScript decoder uses `useBigInt64` and converts integer fields into
-in-memory strings for the existing BigInt rate model. That adapter does not
-inflate network traffic. A Rust-generated fixture with u64::MAX verifies
-cross-language decoding (`frontend/src/fixtures/snapshot-v1.msgpack`).
+in-memory strings for the existing BigInt rate model after receipt. A
+Rust-generated fixture with u64::MAX verifies cross-language decoding
+(`frontend/src/fixtures/snapshot-v1.msgpack`).
 
 MCAP records the original binary payload, with `message_encoding=messagepack`
 and channel metadata `protocol=doramcap.snapshot.msgpack.v1`. There is no JSON
 schema registration. Dora sequence/capture metadata are checked against the
 binary body; MCAP timestamps preserve the original capture time. Legacy JSON
-MCAP files remain legacy recordings, not inputs to this decoder.
+MCAP files require a separate decoder.
 
 Standalone monitor output (`--output`, or stdout without `--dora`) is a stream
 of u32 little-endian byte lengths followed by MessagePack frames. `--check`
-remains a human-readable JSON capability report; it is not telemetry transport.
+produces a human-readable JSON capability report.

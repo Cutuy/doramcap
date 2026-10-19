@@ -44,7 +44,9 @@ def main():
     a.add_argument('--discard-dirty', action='store_true', help='Only after user authorizes the displayed cleanup')
     r = sub.add_parser('release')
     r.add_argument('--token', required=True)
-    r.add_argument('--pr', required=True, help='Published GitHub PR URL; verified with gh')
+    release_mode = r.add_mutually_exclusive_group(required=True)
+    release_mode.add_argument('--pr', help='Published GitHub PR URL; verified with gh')
+    release_mode.add_argument('--main', action='store_true', help='Release after user-requested cherry-pick integration into main')
     args = p.parse_args()
     common = Path(git(args.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()).resolve()
     records = git(args.repo, 'worktree', 'list', '--porcelain', '-z').split(b'\0')
@@ -141,12 +143,24 @@ def main():
                 raise RuntimeError('Incomplete acquisition needs manual repair; cannot release')
             branch = git(path, 'branch', '--show-current').decode().strip()
             head = git(path, 'rev-parse', 'HEAD').decode().strip()
-            pr = json.loads(run('gh', 'pr', 'view', args.pr, '--json', 'url,state,headRefName,headRefOid', cwd=path))
-            if pr['url'] != args.pr or pr['state'] not in ('OPEN', 'MERGED') or pr['headRefName'] != branch or branch != lease['branch'] or pr['headRefOid'] != head:
-                raise RuntimeError('PR must be published for the leased branch at its current HEAD')
+            if branch != lease['branch']:
+                raise RuntimeError('Worktree branch differs from leased branch')
             if git(path, 'status', '--porcelain', '--untracked-files=all'):
-                raise RuntimeError('Worktree has unpublished local edits. Commit/push them or preserve them before release.')
-            slot['last_pr'] = pr['url']
+                raise RuntimeError('Worktree has uncommitted changes; preserve them before release')
+            if args.main:
+                main_head = git(main_root, 'rev-parse', 'refs/heads/main').decode().strip()
+                patches = git(path, 'cherry', main_head, head).decode().splitlines()
+                if any(line.startswith('+') for line in patches):
+                    raise RuntimeError('Feature patches remain unintegrated into main')
+                slot['last_local_integration'] = {
+                    'branch': branch, 'feature_head': head, 'main_head': main_head,
+                    'authorization': 'User-requested local cherry-pick integration and release',
+                }
+            else:
+                pr = json.loads(run('gh', 'pr', 'view', args.pr, '--json', 'url,state,headRefName,headRefOid', cwd=path))
+                if pr['url'] != args.pr or pr['state'] not in ('OPEN', 'MERGED') or pr['headRefName'] != branch or pr['headRefOid'] != head:
+                    raise RuntimeError('PR must be published for the leased branch at its current HEAD')
+                slot['last_pr'] = pr['url']
             slot['lease'] = None
             save(statefile, state)
         print(json.dumps(state, indent=2))
