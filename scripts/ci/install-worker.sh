@@ -27,7 +27,7 @@ job=$(realpath -- "$1")
 [[ $job == /home/doramcap-ci/jobs/* && -d $job ]]
 export CARGO_TARGET_DIR=/home/doramcap-ci/target
 cd "$job"
-python3 examples/validate_native.py --monitor "$CARGO_TARGET_DIR/debug/system-monitor"
+python3 apps/system-monitor/tests/validate_native.py --monitor "$CARGO_TARGET_DIR/debug/system-monitor"
 "$CARGO_TARGET_DIR/debug/examples/native_allocations"
 LAUNCHER
 chmod 755 /usr/local/libexec/doramcap-ci-native-tests

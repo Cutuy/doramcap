@@ -23,7 +23,7 @@ automated success/failure handling. Use `pueue restart ID` to rerun the same
 snapshot. Git pushes do not submit jobs. Keep native test jobs in the serial
 default group.
 
-Submission copies an allowlisted snapshot of Cargo files, crates and examples,
+Submission copies an allowlisted snapshot of Cargo files, libraries and applications,
 including uncommitted source changes, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,
@@ -81,3 +81,12 @@ The approved trust boundary is explicit: the launcher runs CI-owned scripts and
 binaries as root. Anyone with CI SSH access or control over submitted source has
 effective root access to this WSL distro. Restrict submissions to trusted code.
 No sudo password is stored in the CI account or submitted snapshots.
+
+## Component layout compatibility
+
+Source snapshots include `libs/` and `apps/`. The native integration test lives
+at `apps/system-monitor/tests/validate_native.py`; new privileged launchers use
+that path. Submission adds a small forwarding script at the legacy path inside
+the worker archive so previously installed launchers continue to work. This shim
+exists only in the submitted snapshot. Python validation requires the protobuf
+runtime described in `libs/telemetry-protocol/python/requirements.txt`.

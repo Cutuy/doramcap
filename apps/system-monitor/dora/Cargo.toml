@@ -1,0 +1,11 @@
+[package]
+name = "system-monitor-dora"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+telemetry-protocol = { path = "../../../libs/telemetry-protocol" }
+dora-node-api = { version = "=1.1.0", default-features = false }
+prost = "0.14"
+eyre = "0.6"

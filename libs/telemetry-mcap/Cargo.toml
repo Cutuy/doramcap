@@ -1,0 +1,13 @@
+[package]
+name = "telemetry-mcap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+telemetry-protocol = { path = "../telemetry-protocol" }
+eyre = "0.6"
+mcap = { version = "=0.25.0", default-features = false }
+
+[dev-dependencies]
+monitor-core = { path = "../monitor-core" }

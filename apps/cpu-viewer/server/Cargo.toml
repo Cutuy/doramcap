@@ -1,0 +1,14 @@
+[package]
+name = "cpu-viewer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+telemetry-protocol = { path = "../../../libs/telemetry-protocol" }
+axum = { version = "0.8", features = ["ws"] }
+futures-util = "0.3"
+dora-node-api = { version = "=1.1.0", default-features = false }
+eyre = "0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal"] }
+tower-http = { version = "0.6", features = ["fs"] }

@@ -6,5 +6,8 @@ target/
 /.sudo-password
 
 node_modules/
-frontend/dist/
-examples/out/
+apps/cpu-viewer/frontend/dist/
+apps/cpu-viewer/dataflows/out/
+
+__pycache__/
+*.pyc

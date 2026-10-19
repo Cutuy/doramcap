@@ -16,7 +16,7 @@ parser.add_argument('--source', type=Path, default=Path.cwd())
 parser.add_argument('--host', default='doramcap-ci@100.64.0.20')
 args = parser.parse_args()
 source = args.source.resolve()
-for required in ('examples/validate_native.py', 'crates/cgroup-bpf/examples/native_allocations.rs'):
+for required in ('apps/system-monitor/tests/validate_native.py', 'libs/cgroup-bpf/examples/native_allocations.rs'):
     if not (source / required).is_file():
         parser.error(f'Source lacks {required}; use a checkout containing the native validation suite')
 job = '/home/doramcap-ci/jobs/' + uuid.uuid4().hex
@@ -27,7 +27,7 @@ def git(*argv):
 # Include only build/test source paths; never tar the checkout or ignored files.
 paths = sorted(set(git('ls-files', '-z', '--cached', '--others', '--exclude-standard').decode().split('\0')))
 paths = [p for p in paths if p in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml')
-         or p.startswith(('crates/', 'examples/'))]
+         or p.startswith(('libs/', 'apps/'))]
 manifest = {'head': git('rev-parse', 'HEAD').decode().strip(),
             'dirty': bool(git('status', '--porcelain')), 'files_sha256': {}}
 with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
@@ -45,6 +45,14 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
             info.size = len(data)
             info.mode = path.stat().st_mode & 0o777
             tar.addfile(info, io.BytesIO(data))
+        # Older root-owned launchers invoke examples/validate_native.py. Keep their
+        # source snapshot entry point until those launchers are upgraded.
+        compatibility = b"import runpy\nfrom pathlib import Path\nrunpy.run_path(str(Path(__file__).resolve().parents[1] / 'apps/system-monitor/tests/validate_native.py'), run_name='__main__')\n"
+        info = tarfile.TarInfo('examples/validate_native.py')
+        info.size = len(compatibility)
+        info.mode = 0o644
+        tar.addfile(info, io.BytesIO(compatibility))
+        manifest['files_sha256'][info.name] = hashlib.sha256(compatibility).hexdigest()
         runner = Path(__file__).with_name('run-worker-job.sh').read_bytes()
         manifest['runner_sha256'] = hashlib.sha256(runner).hexdigest()
         for name, data in [('run-worker-job.sh', runner),

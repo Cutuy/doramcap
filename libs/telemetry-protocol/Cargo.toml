@@ -1,0 +1,16 @@
+[package]
+name = "telemetry-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+monitor-core = { path = "../monitor-core" }
+prost = "0.14"
+task-accounting = { path = "../task-accounting" }
+eyre = "0.6"
+[dev-dependencies]
+prost-types = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"

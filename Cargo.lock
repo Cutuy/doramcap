@@ -866,7 +866,7 @@ dependencies = [
  "dora-node-api",
  "eyre",
  "futures-util",
- "monitor-wire",
+ "telemetry-protocol",
  "tokio",
  "tower-http",
 ]
@@ -2410,6 +2410,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcap-recorder"
+version = "0.1.0"
+dependencies = [
+ "dora-node-api",
+ "eyre",
+ "telemetry-mcap",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2473,31 +2482,6 @@ version = "0.1.0"
 dependencies = [
  "crossbeam-queue",
  "serde",
- "task-accounting",
-]
-
-[[package]]
-name = "monitor-output"
-version = "0.1.0"
-dependencies = [
- "dora-node-api",
- "eyre",
- "mcap",
- "monitor-core",
- "monitor-wire",
- "prost",
-]
-
-[[package]]
-name = "monitor-wire"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "monitor-core",
- "prost",
- "prost-build",
- "prost-types",
- "protoc-bin-vendored",
  "task-accounting",
 ]
 
@@ -4152,11 +4136,21 @@ dependencies = [
  "ctrlc",
  "eyre",
  "monitor-core",
- "monitor-output",
- "monitor-wire",
  "serde",
  "serde_json",
+ "system-monitor-dora",
  "task-accounting",
+ "telemetry-protocol",
+]
+
+[[package]]
+name = "system-monitor-dora"
+version = "0.1.0"
+dependencies = [
+ "dora-node-api",
+ "eyre",
+ "prost",
+ "telemetry-protocol",
 ]
 
 [[package]]
@@ -4172,6 +4166,29 @@ dependencies = [
  "libbpf-cargo",
  "libbpf-rs",
  "serde",
+]
+
+[[package]]
+name = "telemetry-mcap"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "mcap",
+ "monitor-core",
+ "telemetry-protocol",
+]
+
+[[package]]
+name = "telemetry-protocol"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "monitor-core",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "protoc-bin-vendored",
+ "task-accounting",
 ]
 
 [[package]]
