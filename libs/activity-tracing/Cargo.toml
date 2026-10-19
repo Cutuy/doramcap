@@ -1,0 +1,28 @@
+[package]
+name = "activity-tracing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+websocket = ["dep:tungstenite"]
+otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:futures-executor"]
+
+[dependencies]
+crossbeam-queue = "0.3.12"
+crossbeam-channel = "0.5"
+tracing = "0.1"
+tracing-core = "0.1"
+prost = "0.14"
+libc = "0.2"
+mcap = { version = "=0.25.0", default-features = false }
+tungstenite = { version = "0.29", optional = true }
+opentelemetry = { version = "0.33", optional = true, default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.33", optional = true, default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.33", optional = true, default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+futures-executor = { version = "0.3", optional = true }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"

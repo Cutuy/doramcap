@@ -1,0 +1,38 @@
+syntax = "proto3";
+package doramcap.activity.v1;
+message Batch {
+  uint32 version = 1;
+  fixed64 session = 2;
+  uint64 sequence = 3;
+  uint64 unix_origin_ns = 4;
+  uint64 dropped_records = 5;
+  uint32 pid = 6;
+  repeated string dictionary = 7;
+  bytes strings = 8;
+  repeated Record records = 9;
+  uint64 dropped_fields = 10;
+  uint64 rejected_spans = 11;
+  uint64 unregistered_records = 12;
+}
+message Record {
+  enum Kind { BEGIN = 0; EVENT = 1; UPDATE = 2; LINK = 3; END = 4; }
+  Kind kind = 1;
+  uint64 monotonic_ns = 2;
+  uint64 span_id = 3;
+  uint64 trace_root = 4;
+  uint64 parent_id = 5;
+  uint64 linked_id = 6;
+  uint64 linked_root = 7;
+  uint32 tid = 8;
+  uint32 thread_name = 9;
+  uint32 name = 10;
+  repeated Field fields = 11;
+}
+message Field {
+  enum Kind { UNSIGNED = 0; SIGNED = 1; FLOAT = 2; BOOL = 3; STRING = 4; }
+  uint32 name = 1;
+  Kind kind = 2;
+  fixed64 bits = 3;
+  uint32 offset = 4;
+  uint32 length = 5;
+}

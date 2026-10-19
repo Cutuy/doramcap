@@ -54,3 +54,5 @@ operation](scripts/ci/README.md).
 
 Never use “this is A, not B” phrasing or equivalent contrastive framing in
 documentation. State what something is or does directly.
+
+For architecture diagrams, prefer SVG. Focus on component interactions and the artifacts passed between components. Minimize text; use short component and edge labels.

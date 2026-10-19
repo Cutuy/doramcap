@@ -7,6 +7,7 @@ Each component owns its documentation, tests, examples, and benchmarks.
 |---|---|
 | [cgroup-bpf](libs/cgroup-bpf/) | Native per-CPU cgroup accounting |
 | [task-accounting](libs/task-accounting/) | Experimental kernel-thread runtime accounting |
+| [activity-tracing](libs/activity-tracing/) | Bounded activity capture and embedded MCAP/live/OTel outputs |
 | [monitor-core](libs/monitor-core/) | Bounded snapshot buffers and collection handoff |
 | [telemetry-protocol](libs/telemetry-protocol/) | Protobuf schemas, codecs, and descriptors |
 | [telemetry-mcap](libs/telemetry-mcap/) | Reusable MCAP recording sink |
