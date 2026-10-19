@@ -51,3 +51,5 @@ Run `examples/validate_native.py` for controlled integration and the
 `native_allocations` Cargo example for the allocation probe. See
 [validation evidence](../../docs/101826-native-kernel-validation.md).
 Linux 6.8/NVIDIA qualification and long-duration overhead testing remain open.
+
+See [CPU accounting nuances](../task-accounting/CPU-ACCOUNTING.md) for worker attribution and reporting without double-counting.

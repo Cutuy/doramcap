@@ -34,6 +34,19 @@ impl Publisher {
         Ok(())
     }
 
+    pub fn publish_dictionary(&mut self, payload: &[u8]) -> Result<()> {
+        self.node
+            .as_mut()
+            .ok_or_else(|| eyre!("publisher already finished"))?
+            .send_output_bytes(
+                "dictionary".into(),
+                MetadataParameters::default(),
+                payload.len(),
+                payload,
+            )?;
+        Ok(())
+    }
+
     /// Poll stop/error events without delaying the host's publication loop.
     pub fn stop_requested(&mut self) -> Result<bool> {
         loop {

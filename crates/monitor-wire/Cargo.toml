@@ -1,0 +1,13 @@
+[package]
+name = "monitor-wire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+[dependencies]
+monitor-core = { path = "../monitor-core" }
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1.3"
+eyre = "0.6"
+[dev-dependencies]
+task-accounting = { path = "../task-accounting" }
+serde_json = "1"

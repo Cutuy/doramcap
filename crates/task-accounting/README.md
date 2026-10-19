@@ -1,9 +1,14 @@
 # Experimental task runtime diagnostics
 
+See [CPU accounting nuances](CPU-ACCOUNTING.md) for shared runtime semantics, worker
+attribution, and reporting without double-counting.
+
 This optional crate is separate from native cgroup collection. It never builds
 cgroup totals or ancestor rollups. `Backend::new_experimental(capacity)` (feature
 `bpf`) explicitly attaches a CO-RE raw tracepoint program to
-`sched_stat_runtime`. Default builds contain only contracts and a deterministic
+`sched_stat_runtime`. The probe admits only `PF_KTHREAD` tasks, before
+identity lookup or map insertion. User threads and I/O workers without that flag
+are excluded. A native map-read invariant rejects non-kernel records. Default builds contain only contracts and a deterministic
 replay accumulator; they do not acquire or fabricate task measurements.
 
 ## Native source and coverage
@@ -92,3 +97,13 @@ kernel work is claimed.
 M5 remains incomplete until those gates pass. The monitor must expose this as an
 explicit experimental option if integrated; it must not imply qualification from
 successful compilation alone.
+
+## Local live-viewer validation
+
+On 2026-10-18, the raw tracepoint program compiled, loaded and attached on
+x86_64 Linux 7.0.0-38-generic. The Dora snapshot stream contained PF_KTHREAD
+records attributed across all 20 CPUs, initially with zero dropped events,
+dropped runtime and identity errors. The live publication path reduces these to one virtual/kernel counter per CPU,
+with no task identities transmitted, and exposes loss counters. This does
+not qualify all scheduling classes, interrupt accounting, ARM64, or sustained
+map churn; the qualification gates above remain applicable.

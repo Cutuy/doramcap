@@ -1,5 +1,6 @@
 use eyre::{Result, WrapErr, bail, eyre};
 use monitor_core::{CpuRecord, Monitor, Snapshot, SyntheticMonitor, handoff_with_tasks};
+use monitor_wire::{DictionaryEntry, Frame as Envelope, VERSION};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -46,8 +47,8 @@ impl Options {
                 }
                 "--samples" => opts.samples = value(&mut args, &arg)?.parse()?,
                 "--records" => opts.records = value(&mut args, &arg)?.parse()?,
-                "--queue-slots" => opts.slots = value(&mut args, &arg)?.parse()?,
                 "--task-capacity" => opts.tasks = value(&mut args, &arg)?.parse()?,
+                "--queue-slots" => opts.slots = value(&mut args, &arg)?.parse()?,
                 "--publisher-delay-ms" => {
                     opts.publisher_delay = Duration::from_millis(value(&mut args, &arg)?.parse()?)
                 }
@@ -184,9 +185,7 @@ impl Backend {
                     if row.flags & cgroup_bpf::VALID != 0 {
                         flags |= monitor_core::FLAG_RUNTIME;
                     }
-                    if row.flags & (cgroup_bpf::VALID | cgroup_bpf::RAW_USER_SYSTEM)
-                        == (cgroup_bpf::VALID | cgroup_bpf::RAW_USER_SYSTEM)
-                    {
+                    if row.flags & cgroup_bpf::RAW_USER_SYSTEM != 0 {
                         flags |=
                             monitor_core::FLAG_USER_SYSTEM | monitor_core::FLAG_RAW_USER_SYSTEM;
                     }
@@ -212,12 +211,6 @@ impl Backend {
     }
 }
 
-#[derive(Serialize)]
-struct DictionaryEntry {
-    id: u64,
-    parent_id: u64,
-    path: Option<String>,
-}
 struct Dictionary {
     entries: Vec<DictionaryEntry>,
     index: HashMap<u64, usize>,
@@ -250,7 +243,7 @@ impl Dictionary {
         let refresh = !synthetic && now >= self.next_refresh;
         if refresh {
             scan_cgroups(Path::new("/sys/fs/cgroup"), &mut paths, self.capacity, 0);
-            self.next_refresh = now + Duration::from_secs(10);
+            self.next_refresh = now + Duration::from_secs(2);
             for (index, entry) in self.entries.iter_mut().enumerate() {
                 if let Some(path) = paths.get(&entry.id) {
                     if entry.path.as_ref() != Some(path) {
@@ -313,18 +306,6 @@ fn scan_cgroups(path: &Path, paths: &mut HashMap<u64, String>, capacity: usize, 
         }
     }
 }
-#[derive(Serialize)]
-struct Envelope<'a> {
-    #[serde(flatten)]
-    snapshot: &'a Snapshot,
-    source: &'a str,
-    session_id: &'a str,
-    dictionary_revision: u64,
-    dictionary_full: bool,
-    dictionary_overflow: u64,
-    dictionary: &'a [DictionaryEntry],
-}
-
 fn run(opts: Options) -> Result<()> {
     if opts.check {
         println!("{}", serde_json::to_string_pretty(&capabilities()?)?);
@@ -431,6 +412,8 @@ fn run(opts: Options) -> Result<()> {
     let mut payload = Vec::with_capacity(opts.records.saturating_mul(200));
     let session = format!("{}-{}", unix_ns(), std::process::id());
     let mut published = 0u64;
+    let mut dictionary_sent_at: Option<Instant> = None;
+    let mut dictionary_payload = Vec::new();
     let publish_result = (|| -> Result<()> {
         loop {
             #[cfg(feature = "dora")]
@@ -439,29 +422,50 @@ fn run(opts: Options) -> Result<()> {
                     stop.store(true, Ordering::Release);
                 }
             }
-            // Observe completion before checking the queue. Once finished is
-            // true no later enqueue is possible, so an empty read is final.
-            // is_finished also prevents hanging if collection panics.
             let finished = done.load(Ordering::Acquire) || worker.is_finished();
             if let Some(lease) = consumer.try_recv() {
                 let snapshot = lease.snapshot();
-                let first_new = dictionary.update(snapshot, opts.backend == "synthetic");
-                let full = published % 100 == 0;
-                let envelope = Envelope {
-                    snapshot,
-                    source: &opts.backend,
-                    session_id: &session,
-                    dictionary_revision: dictionary.revision,
-                    dictionary_full: full,
-                    dictionary_overflow: dictionary.overflow,
-                    dictionary: if full {
-                        &dictionary.entries
-                    } else {
-                        &dictionary.entries[first_new..]
-                    },
+                let dictionary_due =
+                    dictionary_sent_at.is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
+                if dictionary_due {
+                    dictionary.update(snapshot, opts.backend == "synthetic");
+                    monitor_wire::encode_dictionary(
+                        &monitor_wire::DictionaryFrame {
+                            version: VERSION,
+                            session_id: session.clone(),
+                            revision: dictionary.revision,
+                            overflow: dictionary.overflow,
+                            entries: &dictionary.entries,
+                            capture_unix_ns: snapshot.capture_unix_ns,
+                        },
+                        &mut dictionary_payload,
+                    )?;
+                    #[cfg(feature = "dora")]
+                    if let Some(publisher) = publisher.as_mut() {
+                        publisher.publish_dictionary(&dictionary_payload)?;
+                    }
+                    dictionary_sent_at = Some(Instant::now());
+                }
+                let report = if opts.tasks != 0 {
+                    Some(monitor_core::kernel_reporting_snapshot(snapshot))
+                } else {
+                    None
                 };
-                payload.clear();
-                serde_json::to_writer(&mut payload, &envelope)?;
+                let snapshot = report.as_ref().unwrap_or(snapshot);
+                let mut envelope = Envelope {
+                    version: VERSION,
+                    viewer_ingress: None,
+                    snapshot,
+                    source: opts.backend.clone(),
+                    task_collection_enabled: opts.tasks != 0,
+                    task_capacity: opts.tasks,
+                    session_id: session.clone(),
+                    dictionary_revision: dictionary.revision,
+                    dictionary_full: false,
+                    dictionary_overflow: dictionary.overflow,
+                    dictionary: &[] as &[DictionaryEntry],
+                };
+                monitor_wire::encode(&envelope, &mut payload)?;
                 #[cfg(feature = "dora")]
                 if let Some(publisher) = publisher.as_mut() {
                     publisher.publish_bytes(
@@ -471,8 +475,12 @@ fn run(opts: Options) -> Result<()> {
                     )?;
                 }
                 if let Some(output) = output.as_mut() {
+                    // Standalone files remain self-contained; Dora uses separate topics.
+                    envelope.dictionary = &dictionary.entries;
+                    envelope.dictionary_full = true;
+                    monitor_wire::encode(&envelope, &mut payload)?;
+                    output.write_all(&(payload.len() as u32).to_le_bytes())?;
                     output.write_all(&payload)?;
-                    output.write_all(b"\n")?;
                 }
                 published += 1;
                 if !opts.publisher_delay.is_zero() {

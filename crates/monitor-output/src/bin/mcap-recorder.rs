@@ -17,8 +17,6 @@ fn main() -> Result<()> {
     let (_node, mut events) = DoraNode::init_from_env_force()?;
     let mut sink = McapSink::create(path)?;
     let result = (|| -> Result<()> {
-        // The scheduled recv() can deliver InputClosed before its buffered inputs.
-        // Drain to stream exhaustion after normal input closure, including buffered inputs.
         while let Some(event) = block_on(events.next()) {
             match event {
                 Event::Input { id, data, metadata } if id.as_str() == "snapshots" => {
@@ -35,6 +33,13 @@ fn main() -> Result<()> {
                     }
                     let bytes: &[u8] = (&data).try_into()?;
                     sink.write(sequence, capture, bytes)?;
+                }
+                Event::Input { id, data, .. } if id.as_str() == "dictionary" => {
+                    if data.null_count() != 0 {
+                        bail!("dictionary contains null bytes");
+                    }
+                    let bytes: &[u8] = (&data).try_into()?;
+                    sink.write_dictionary(bytes)?;
                 }
                 Event::InputClosed { .. } | Event::Stop(StopCause::AllInputsClosed) => {}
                 Event::Stop(_) => break,

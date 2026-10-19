@@ -4,6 +4,7 @@ nodes:
     args: --backend synthetic --samples 10 --dora
     outputs:
       - snapshots
+      - dictionary
   - id: recorder
     path: ../target/debug/mcap-recorder
     args: phase0.mcap
@@ -11,3 +12,6 @@ nodes:
       snapshots:
         source: system-monitor/snapshots
         queue_size: 64
+      dictionary:
+        source: system-monitor/dictionary
+        queue_size: 4

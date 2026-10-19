@@ -7,6 +7,7 @@ which is the recorder's configured format.
 """
 import argparse
 import json
+from wire import unpack, snapshot
 from pathlib import Path
 import shutil
 import struct
@@ -19,6 +20,7 @@ def read_messages(path):
     magic = b"\x89MCAP0\r\n"
     assert content[:8] == magic and content[-8:] == magic, "incomplete MCAP"
     messages = []
+    dictionaries = []
 
     def records(buffer):
         offset = 0
@@ -35,12 +37,20 @@ def read_messages(path):
                 records(data[40 + encoding_len:40 + encoding_len + size])
             elif opcode == 5:  # Message
                 _, sequence, log_time, publish_time = struct.unpack_from("<HIQQ", data)
-                payload = json.loads(data[22:])
+                frame = unpack(data[22:])
+                if len(frame) == 6:
+                    assert frame[0] == 1 and frame[4]
+                    assert sequence == frame[2] & 0xFFFFFFFF
+                    assert log_time == publish_time == frame[5]
+                    dictionaries.append(frame)
+                    continue
+                payload = snapshot(frame)
                 assert sequence == payload["sequence"] & 0xFFFFFFFF
                 assert log_time == publish_time == payload["capture_unix_ns"]
                 messages.append(payload)
 
     records(content[8:-8])
+    assert dictionaries, "missing dictionary topic"
     return messages
 
 
@@ -67,9 +77,9 @@ def run_session(args, run):
         descriptor = work / "dataflow.yml"
         descriptor.write_text(json.dumps({"nodes": [
             {"id": "monitor", "path": str(work / "system-monitor"),
-             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora", "outputs": ["snapshots"]},
+             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora", "outputs": ["snapshots", "dictionary"]},
             {"id": "recorder", "path": str(work / "mcap-recorder"), "args": str(output),
-             "inputs": {"snapshots": {"source": "monitor/snapshots", "queue_size": 64}}},
+             "inputs": {"snapshots": {"source": "monitor/snapshots", "queue_size": 64}, "dictionary": {"source": "monitor/dictionary", "queue_size": 4}}},
         ]}))  # JSON is a YAML subset.
         subprocess.run([args.dora, "run", str(descriptor), "--stop-after", "15s"],
                        check=True, timeout=30)
@@ -77,7 +87,7 @@ def run_session(args, run):
         assert len(messages) == 10, f"expected 10 final samples, recorded {len(messages)}"
         assert [m["sequence"] for m in messages] == list(range(10))
         assert all(m["source"] == args.backend for m in messages)
-        assert messages[0]["dictionary_full"] and messages[0]["dictionary"]
+        assert all(not m["dictionary"] for m in messages), "names repeated on raw topic"
         for i, message in enumerate(messages):
             assert message["records"], "missing numeric accounting records"
             assert message["capacity_overflow"] == 0 and message["dropped_batches"] == 0

@@ -12,48 +12,43 @@ mod publication;
 #[cfg(feature = "dora")]
 pub use publication::Publisher;
 
-/// JSON envelope intentionally permits evolving backend-specific numeric fields.
-/// The full snapshot remains in the payload; these mandatory fields identify it.
-pub const SNAPSHOT_SCHEMA: &str = r#"{
-  "$schema":"http://json-schema.org/draft-07/schema#",
-  "title":"doramcap snapshot v1",
-  "type":"object",
-  "required":["sequence","capture_unix_ns"],
-  "properties":{
-    "sequence":{"type":"integer","minimum":0},
-    "capture_unix_ns":{"type":"integer","minimum":0}
-  },
-  "additionalProperties":true
-}"#;
-
 /// Separate downstream MCAP writer. This path allocates and performs disk I/O.
 pub struct McapSink {
     writer: mcap::Writer<BufWriter<File>>,
     channel: u16,
+    dictionary_channel: u16,
 }
 impl McapSink {
     /// Refuses to overwrite an existing recording.
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let file = File::options().write(true).create_new(true).open(path)?;
         let mut writer = mcap::Writer::new(BufWriter::new(file))?;
-        let schema = writer.add_schema(
-            "doramcap.snapshot.v1",
-            "jsonschema",
-            SNAPSHOT_SCHEMA.as_bytes(),
+        // MessagePack array ABI is identified in channel metadata. No JSON
+        // schema is claimed for these binary payloads.
+        let metadata = BTreeMap::from([("protocol".into(), "doramcap.snapshot.msgpack.v1".into())]);
+        let channel = writer.add_channel(0, "doramcap/snapshots", "messagepack", &metadata)?;
+        let dictionary_channel = writer.add_channel(
+            0,
+            "doramcap/dictionary",
+            "messagepack",
+            &BTreeMap::from([("protocol".into(), "doramcap.dictionary.msgpack.v1".into())]),
         )?;
-        let channel = writer.add_channel(schema, "doramcap/snapshots", "json", &BTreeMap::new())?;
-        Ok(Self { writer, channel })
+        Ok(Self {
+            writer,
+            channel,
+            dictionary_channel,
+        })
     }
 
     pub fn write(&mut self, sequence: u64, capture_unix_ns: u64, payload: &[u8]) -> Result<()> {
         // Validate the envelope at the recording boundary, never on collection.
-        let value: serde_json::Value = serde_json::from_slice(payload)?;
+        let value = monitor_wire::decode(payload)?;
         ensure!(
-            value["sequence"].as_u64() == Some(sequence),
+            value.snapshot.sequence == sequence,
             "payload sequence differs from transport metadata"
         );
         ensure!(
-            value["capture_unix_ns"].as_u64() == Some(capture_unix_ns),
+            value.snapshot.capture_unix_ns == capture_unix_ns,
             "payload capture time differs from transport metadata"
         );
         self.writer.write_to_known_channel(
@@ -63,6 +58,20 @@ impl McapSink {
                 sequence: sequence as u32,
                 log_time: capture_unix_ns,
                 publish_time: capture_unix_ns,
+            },
+            payload,
+        )?;
+        Ok(())
+    }
+
+    pub fn write_dictionary(&mut self, payload: &[u8]) -> Result<()> {
+        let frame = monitor_wire::decode_dictionary(payload)?;
+        self.writer.write_to_known_channel(
+            &mcap::records::MessageHeader {
+                channel_id: self.dictionary_channel,
+                sequence: frame.revision as u32,
+                log_time: frame.capture_unix_ns,
+                publish_time: frame.capture_unix_ns,
             },
             payload,
         )?;
@@ -79,6 +88,27 @@ impl McapSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn sample(sequence: u64, capture: u64) -> Result<Vec<u8>> {
+        let mut snapshot = monitor_core::Snapshot::with_capacity(1);
+        snapshot.sequence = sequence;
+        snapshot.capture_unix_ns = capture;
+        let frame = monitor_wire::Frame {
+            version: 1,
+            snapshot,
+            source: "test".into(),
+            task_collection_enabled: false,
+            task_capacity: 0,
+            session_id: "test".into(),
+            dictionary_revision: 0,
+            dictionary_full: true,
+            dictionary_overflow: 0,
+            dictionary: Vec::<monitor_wire::DictionaryEntry>::new(),
+            viewer_ingress: None,
+        };
+        let mut bytes = Vec::new();
+        monitor_wire::encode(&frame, &mut bytes)?;
+        Ok(bytes)
+    }
     #[test]
     fn round_trip_preserves_payload_time_and_sequence() -> Result<()> {
         let path = std::env::temp_dir().join(format!(
@@ -92,14 +122,11 @@ mod tests {
         assert!(McapSink::create(&path).is_err());
         for sequence in 0..10_u64 {
             let time = 1_800_000_000_000_000_000 + sequence * 100_000_000;
-            let payload =
-                format!(r#"{{"sequence":{sequence},"capture_unix_ns":{time},"runtime_ns":123}}"#);
-            sink.write(sequence, time, payload.as_bytes())?;
+            let payload = sample(sequence, time)?;
+            sink.write(sequence, time, &payload)?;
         }
-        assert!(sink.write(10, 12, b"not JSON").is_err());
-        assert!(sink
-            .write(10, 12, br#"{"sequence":11,"capture_unix_ns":12}"#)
-            .is_err());
+        assert!(sink.write(10, 12, b"invalid").is_err());
+        assert!(sink.write(10, 12, &sample(11, 12)?).is_err());
         sink.finish()?;
         let bytes = std::fs::read(&path)?;
         let messages =
@@ -112,14 +139,9 @@ mod tests {
                 1_800_000_000_000_000_000 + i as u64 * 100_000_000
             );
             assert_eq!(message.publish_time, message.log_time);
-            assert_eq!(message.channel.message_encoding, "json");
-            assert_eq!(
-                message.channel.schema.as_ref().unwrap().encoding,
-                "jsonschema"
-            );
-            let value: serde_json::Value = serde_json::from_slice(&message.data)?;
-            assert_eq!(value["runtime_ns"], 123);
-            assert_eq!(value["capture_unix_ns"], message.log_time);
+            assert_eq!(message.channel.message_encoding, "messagepack");
+            let value = monitor_wire::decode(&message.data)?;
+            assert_eq!(value.snapshot.capture_unix_ns, message.log_time);
         }
         std::fs::remove_file(path)?;
         Ok(())

@@ -14,7 +14,7 @@ pub const KERNEL_THREAD: u32 = 1;
 /// Identity within one boot/session. Never use TID alone: Linux reuses TIDs.
 /// A cgroup or CPU migration produces a distinct key, preserving attribution.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TaskIdentity {
     pub start_boottime_ns: u64,
     pub cgroup_id: u64,
@@ -24,14 +24,14 @@ pub struct TaskIdentity {
     pub flags: u32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TaskRecord {
     pub identity: TaskIdentity,
     pub charged_runtime_ns: u64,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Losses {
     pub dropped_events: u64,
     pub dropped_runtime_ns: u64,

@@ -100,6 +100,11 @@ impl Backend {
             if rc != 0 {
                 return Err(std::io::Error::last_os_error().into());
             }
+            if key.flags & KERNEL_THREAD == 0 {
+                return Err(Error::Unsupported(
+                    "kernel-only BPF map contained a user task",
+                ));
+            }
             output.push(TaskRecord {
                 identity: key,
                 charged_runtime_ns: runtime,

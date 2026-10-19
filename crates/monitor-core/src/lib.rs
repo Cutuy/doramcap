@@ -14,9 +14,12 @@ pub const FLAG_SYNTHETIC: u32 = 8;
 pub const FLAG_ROOT: u32 = 16;
 pub const FLAG_RAW_USER_SYSTEM: u32 = 32;
 pub const FLAG_READ_ERROR: u32 = 64;
+/// Virtual reporting namespace: id=0 denotes all PF_KTHREAD runtime.
+/// Never a real cgroup ID; never add it to overlapping native cgroup totals.
+pub const FLAG_VIRTUAL_KERNEL: u32 = 128;
 pub const ALL_CPUS: u32 = u32::MAX;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct CpuRecord {
     pub cgroup_id: u64,
     pub parent_id: u64,
@@ -29,7 +32,7 @@ pub struct CpuRecord {
     pub system_ns: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
 pub struct Snapshot {
     pub schema_version: u32,
     pub sequence: u64,
@@ -272,5 +275,78 @@ mod tests {
                 }
             }
         });
+    }
+}
+
+/// Publication-side reduction; retained kernel task identities never cross Dora.
+pub fn kernel_reporting_snapshot(source: &Snapshot) -> Snapshot {
+    let mut result = source.clone();
+    result.task_records.clear();
+    let mut totals = std::collections::BTreeMap::<u32, u64>::new();
+    for row in &source.records {
+        if row.cpu != ALL_CPUS {
+            totals.entry(row.cpu).or_default();
+        }
+    }
+    for task in &source.task_records {
+        if task.identity.flags & task_accounting::KERNEL_THREAD == 0 {
+            continue;
+        }
+        let value = totals.entry(task.identity.cpu).or_default();
+        *value = value.saturating_add(task.charged_runtime_ns);
+    }
+    for (cpu, runtime_ns) in totals {
+        result.records.push(CpuRecord {
+            cpu,
+            runtime_ns,
+            flags: FLAG_RUNTIME | FLAG_VIRTUAL_KERNEL,
+            ..Default::default()
+        });
+    }
+    result
+}
+
+#[cfg(test)]
+mod reporting_tests {
+    use super::*;
+    #[test]
+    fn kernel_virtual_group_has_its_own_namespace_and_no_task_payload() {
+        let mut input = Snapshot::with_capacities(2, 3);
+        input.records.push(CpuRecord {
+            cgroup_id: 0,
+            cpu: 0,
+            runtime_ns: 500,
+            flags: FLAG_RUNTIME,
+            ..Default::default()
+        });
+        input.records.push(CpuRecord {
+            cgroup_id: 9,
+            cpu: 1,
+            ..Default::default()
+        });
+        for (cpu, flags, runtime) in [(0, 1, 10), (0, 1, 20), (0, 0, 999)] {
+            input.task_records.push(task_accounting::TaskRecord {
+                identity: task_accounting::TaskIdentity {
+                    cpu,
+                    flags,
+                    ..Default::default()
+                },
+                charged_runtime_ns: runtime,
+            });
+        }
+        input.task_losses.dropped_events = 3;
+        let output = kernel_reporting_snapshot(&input);
+        assert!(output.task_records.is_empty());
+        assert_eq!(input.task_records.len(), 3);
+        assert_eq!(output.records[0].runtime_ns, 500);
+        let virtuals: Vec<_> = output
+            .records
+            .iter()
+            .filter(|r| r.flags & FLAG_VIRTUAL_KERNEL != 0)
+            .collect();
+        assert_eq!(virtuals.len(), 2);
+        assert_eq!(virtuals[0].runtime_ns, 30);
+        assert_eq!(virtuals[1].runtime_ns, 0);
+        assert_eq!(output.task_losses.dropped_events, 3);
     }
 }

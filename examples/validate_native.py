@@ -6,6 +6,7 @@ Build system-monitor with --features bpf. Run this script via sudo, passing
 """
 import argparse
 import json
+from wire import framed
 import os
 from pathlib import Path
 import statistics
@@ -37,7 +38,7 @@ def main():
         identities = [group.stat().st_ino for group in groups]
         baseline = [usage(group) for group in groups]
         with tempfile.TemporaryDirectory(prefix='doramcap-native-') as directory:
-            output = Path(directory) / 'snapshots.jsonl'
+            output = Path(directory) / 'snapshots.msgpack'
             monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
                                         '--records', '16384', '--output', str(output)],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
@@ -56,7 +57,7 @@ def main():
             expected = [usage(group) - before for group, before in zip(groups, baseline)]
             _, stderr = monitor.communicate(timeout=15)
             assert monitor.returncode == 0, stderr
-            batches = [json.loads(line) for line in output.read_text().splitlines()]
+            batches = framed(output.read_bytes())
             assert len(batches) == 65 and [b['sequence'] for b in batches] == list(range(65))
             assert all(b['source'] == 'bpf' and b['capacity_overflow'] == 0 and b['dropped_batches'] == 0 for b in batches)
             assert all(not (r['flags'] & 64) for b in batches for r in b['records']), 'native read error'
@@ -87,9 +88,9 @@ def main():
             assert all(b['monotonic_end_ns']>=b['monotonic_start_ns'] for b in batches)
             # Independently exercise bounded native result capacity.
             tiny = subprocess.run([str(args.monitor),'--backend','bpf','--samples','2','--records','1'],
-                                  capture_output=True,text=True,timeout=10)
+                                  capture_output=True,timeout=10)
             assert tiny.returncode == 0, tiny.stderr
-            small = [json.loads(line) for line in tiny.stdout.splitlines()]
+            small = framed(tiny.stdout)
             assert len(small)==2 and all(len(b['records'])==1 and b['capacity_overflow']>0 for b in small)
             print(json.dumps({'result':'PASS','kernel':os.uname().release,'architecture':os.uname().machine,
                 'samples':len(batches),'rows_per_snapshot':len(batches[-1]['records']),

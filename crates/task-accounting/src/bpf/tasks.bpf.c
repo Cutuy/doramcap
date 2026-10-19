@@ -45,9 +45,18 @@ int charge(struct bpf_raw_tracepoint_args *ctx) {
     __u32 zero = 0;
     struct losses *lost = bpf_map_lookup_elem(&losses, &zero);
     if (!lost || !runtime) return 0;
+    // Filter before identity reads or task-map lookup/insertion. User workers
+    // without PF_KTHREAD (including typical io_uring workers) never enter it.
+    unsigned int flags = 0;
+    if (BPF_CORE_READ_INTO(&flags, task, flags)) {
+        __sync_fetch_and_add(&lost->identity_errors, 1);
+        __sync_fetch_and_add(&lost->dropped_events, 1);
+        __sync_fetch_and_add(&lost->dropped_runtime_ns, runtime);
+        return 0;
+    }
+    if (!(flags & PF_KTHREAD)) return 0;
     struct identity key = {};
     int pid = 0, tgid = 0;
-    unsigned int flags = 0;
     struct css_set *css = 0;
     struct cgroup *cg = 0;
     struct kernfs_node *kn = 0;
@@ -57,7 +66,6 @@ int charge(struct bpf_raw_tracepoint_args *ctx) {
         BPF_CORE_READ_INTO(&tgid, task, tgid) ||
         BPF_CORE_READ_INTO(&key.start_boottime_ns, task, start_boottime) ||
         BPF_CORE_READ_INTO(&key.cpu, task, thread_info.cpu) ||
-        BPF_CORE_READ_INTO(&flags, task, flags) ||
         BPF_CORE_READ_INTO(&css, task, cgroups) || !css ||
         BPF_CORE_READ_INTO(&cg, css, dfl_cgrp) || !cg ||
         BPF_CORE_READ_INTO(&kn, cg, kn) || !kn ||

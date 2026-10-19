@@ -4,3 +4,7 @@ target/
 
 # Local credential for explicitly authorized privileged tests.
 /.sudo-password
+
+node_modules/
+frontend/dist/
+examples/out/
