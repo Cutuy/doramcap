@@ -13,3 +13,6 @@ __pycache__/
 *.pyc
 
 apps/activity-demo/frontend/dist/
+
+# Generated assets at the legacy frontend location.
+/frontend/dist/
