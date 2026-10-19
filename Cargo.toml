@@ -1,5 +1,5 @@
 [workspace]
-members = ["libs/*", "apps/system-monitor", "apps/system-monitor/dora", "apps/cpu-viewer/server", "apps/mcap-recorder"]
+members = ["libs/*", "apps/system-monitor", "apps/system-monitor/dora", "apps/cpu-viewer/server", "apps/mcap-recorder", "apps/storage-demo"]
 resolver = "2"
 
 [workspace.package]

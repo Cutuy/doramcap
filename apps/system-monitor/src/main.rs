@@ -555,6 +555,7 @@ fn run(opts: Options) -> Result<()> {
                     telemetry_protocol::encode(&envelope, &mut payload)?;
                     output.write_all(&(payload.len() as u32).to_le_bytes())?;
                     output.write_all(&payload)?;
+                    output.flush()?;
                 }
                 published += 1;
                 if !opts.publisher_delay.is_zero() {

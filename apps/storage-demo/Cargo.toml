@@ -1,0 +1,18 @@
+[package]
+name = "storage-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+storage-persistence = { path = "../../libs/storage-persistence", features = ["diagnostics"] }
+telemetry-protocol = { path = "../../libs/telemetry-protocol" }
+prost = "0.14"
+serde_json = "1"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
+futures-util = "0.3"
+libc = "0.2"
+
+[dev-dependencies]
+mcap = { version = "=0.25.0", default-features = false }

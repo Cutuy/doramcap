@@ -103,3 +103,6 @@ Dora CLI is version 1.1.0, release archive SHA256
 
 The storage-enabled runner also runs Clippy on changed storage/monitor components
 with dependency linting excluded; generated protocol code has separate lint policy.
+
+The storage-demo HTTP validation exercises live SSE, commands, aligned MCAP
+rotation, tail inspection and independent payload readback on ARM64.

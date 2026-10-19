@@ -13,6 +13,7 @@ Each component owns its documentation, tests, examples, and benchmarks.
 | [storage-persistence](libs/storage-persistence/) | Bounded io_uring MCAP writer, aligned buffer pool, combining and rotation |
 | [system-monitor](apps/system-monitor/) | Standalone collector with an optional DORA publisher |
 | [cpu-viewer](apps/cpu-viewer/) | Demo web server and React dashboard |
+| [storage-demo](apps/storage-demo/) | Live io_uring, write-combining and MCAP tail web inspector |
 | [mcap-recorder](apps/mcap-recorder/) | Independent DORA-to-MCAP recording process |
 
 ## Build
