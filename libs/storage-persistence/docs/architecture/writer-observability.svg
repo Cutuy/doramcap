@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc"><title id="title">Slab lifecycle: planned observation points</title><desc id="desc">Companion to rust-slab-writer-lifecycle.svg. The same pool, writable slab, builder, sealed slab, registration, Pending and final-release objects are shown. Amber observation points identify acquire and seal, admission, I/O, registration, readers and recycling. Typed metadata feeds stage snapshots, per-write inspection and bounded event history, then a recorder exporter and optional tracing adapter. Ownership flows remain independent of observation.</desc><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#18836b"/></marker><marker id="o" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#b97817"/></marker></defs><style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b}.title{font-size:28px;font-weight:700}.h{font-size:19px;font-weight:700}.s{font-size:16px}.code{font-family:DejaVu Sans Mono,monospace;font-size:15px}.tag{font-size:13px;font-weight:700;letter-spacing:.7px;fill:#52657a}.label{paint-order:stroke;stroke:#f8fafc;stroke-width:7px;stroke-linejoin:round}.edge{fill:none;stroke:#52657a;stroke-width:2;marker-end:url(#a)}.reuse{fill:none;stroke:#18836b;stroke-width:2;marker-end:url(#g)}.obs{fill:none;stroke:#b97817;stroke-width:2;stroke-dasharray:6 5;marker-end:url(#o)}.badge{font-size:15px;font-weight:700;fill:#8a4b00}</style><rect width="1800" height="1120" fill="#f8fafc"/>
+<text x="900" y="43" class="title" text-anchor="middle">Slab lifecycle · observation points</text>
+<text x="900" y="73" class="tag" text-anchor="middle">COMPANION TO rust-slab-writer-lifecycle.svg · AMBER = PROPOSED OBSERVABILITY</text>
+<rect x="45" y="135" width="220" height="110" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="155.0" y="165" class="h" text-anchor="middle">SlabPool</text>
+<text x="155.0" y="192" class="s" text-anchor="middle">free slots</text>
+<text x="155.0" y="217" class="s" text-anchor="middle">Arc&lt;SlabAllocation&gt;</text>
+<circle cx="60" cy="135" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="60" y="140" class="badge" text-anchor="middle">A</text>
+<rect x="330" y="135" width="220" height="110" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="440.0" y="165" class="h" text-anchor="middle">WritableSlab</text>
+<text x="440.0" y="192" class="s" text-anchor="middle">exclusive bytes</text>
+<text x="440.0" y="217" class="s" text-anchor="middle">one SlabUseId</text>
+<rect x="610" y="135" width="260" height="110" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="740.0" y="165" class="h" style="font-size:17px" text-anchor="middle">PreparedRecordsBuilder</text>
+<text x="740.0" y="192" class="s" text-anchor="middle">headers + payload + padding</text>
+<text x="740.0" y="217" class="s" text-anchor="middle">seal(self)</text>
+<rect x="930" y="135" width="220" height="110" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1040.0" y="165" class="h" text-anchor="middle">SealedSlab</text>
+<text x="1040.0" y="192" class="s" text-anchor="middle">Arc&lt;SlabLeaseInner&gt;</text>
+<text x="1040.0" y="217" class="s" text-anchor="middle">shared immutable bytes</text>
+<circle cx="945" cy="135" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="945" y="140" class="badge" text-anchor="middle">A</text>
+<path d="M265 190H330" class="edge"/>
+<text x="296" y="174" class="code label" text-anchor="middle">acquire</text>
+<path d="M550 190H610" class="edge"/>
+<text x="580" y="174" class="code label" text-anchor="middle">move</text>
+<path d="M870 190H930" class="edge"/>
+<text x="900" y="174" class="code label" text-anchor="middle">seal</text>
+<rect x="310" y="315" width="560" height="540" rx="18" fill="#f0f5fc" stroke="#8da8c4" stroke-width="2"/>
+<text x="335" y="345" class="h" text-anchor="start">McapWriter / Writer</text>
+<rect x="350" y="375" width="480" height="110" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="590.0" y="405" class="h" text-anchor="middle">PreparedBlock</text>
+<text x="590.0" y="432" class="s" text-anchor="middle">admission · same sealed slab</text>
+<text x="590.0" y="457" class="s" text-anchor="middle">accept WriteId / return rejected block</text>
+<circle cx="365" cy="375" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="365" y="380" class="badge" text-anchor="middle">B</text>
+<path d="M930 225H900V425H830" class="edge"/>
+<text x="900" y="295" class="code label" text-anchor="middle">append</text>
+<rect x="350" y="540" width="480" height="110" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="590.0" y="570" class="h" text-anchor="middle">Pending</text>
+<text x="590.0" y="597" class="s" text-anchor="middle">WriteSource::Slab(SealedSlab)</text>
+<text x="590.0" y="622" class="s" text-anchor="middle">WriteId → OperationId · file range</text>
+<circle cx="365" cy="540" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="365" y="545" class="badge" text-anchor="middle">C</text>
+<path d="M590 485V540" class="edge"/>
+<text x="590" y="520" class="code label" text-anchor="middle">accepted</text>
+<rect x="45" y="540" width="220" height="110" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="155.0" y="570" class="h" text-anchor="middle">Registered</text>
+<text x="155.0" y="597" class="s" text-anchor="middle">allocation + segments</text>
+<text x="155.0" y="622" class="s" text-anchor="middle">RegionId · cached slots</text>
+<circle cx="60" cy="540" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="60" y="545" class="badge" text-anchor="middle">D</text>
+<path d="M350 570H265" class="edge"/>
+<text x="305" y="558" class="code label" text-anchor="middle">region</text>
+<path d="M265 625H350" class="edge"/>
+<text x="305" y="613" class="code label" text-anchor="middle">slots</text>
+<rect x="930" y="335" width="220" height="110" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1040.0" y="365" class="h" text-anchor="middle">Readers</text>
+<text x="1040.0" y="392" class="s" text-anchor="middle">SealedSlab clones</text>
+<text x="1040.0" y="417" class="s" text-anchor="middle">payload views later</text>
+<circle cx="945" cy="335" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="945" y="340" class="badge" text-anchor="middle">E</text>
+<path d="M1040 245V335" class="edge"/>
+<text x="1040" y="292" class="code label" text-anchor="middle">clone</text>
+<rect x="930" y="540" width="220" height="110" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1040.0" y="570" class="h" text-anchor="middle">SlabLeaseInner</text>
+<text x="1040.0" y="597" class="s" text-anchor="middle">readers + I/O leases</text>
+<text x="1040.0" y="622" class="s" text-anchor="middle">recycle token</text>
+<circle cx="945" cy="540" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="945" y="545" class="badge" text-anchor="middle">E</text>
+<path d="M1040 445V540" class="edge"/>
+<text x="1040" y="493" class="code label" text-anchor="middle">retain</text>
+<path d="M830 595H930" class="edge"/>
+<text x="880" y="582" class="code label" text-anchor="middle">retain</text>
+<rect x="350" y="710" width="480" height="105" rx="12" fill="#e2e8f0" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="590.0" y="740" class="h" text-anchor="middle">io_uring</text>
+<text x="590.0" y="767" class="s" text-anchor="middle">SQE queued → CQE observed</text>
+<text x="590.0" y="792" class="s" text-anchor="middle">split · retry · terminal completion</text>
+<circle cx="365" cy="710" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="365" y="715" class="badge" text-anchor="middle">C</text>
+<path d="M590 650V710" class="edge"/>
+<text x="590" y="688" class="code label" text-anchor="middle">submit</text>
+<rect x="350" y="900" width="480" height="90" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="590.0" y="930" class="h" text-anchor="middle">Release writer lease</text>
+<text x="590.0" y="957" class="s" text-anchor="middle">after every referencing operation retires</text>
+<path d="M590 815V900" class="reuse"/>
+<text x="590" y="881" class="code label" text-anchor="middle">retire Pending</text>
+<rect x="930" y="900" width="220" height="90" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1040.0" y="930" class="h" text-anchor="middle">Final lease drop</text>
+<text x="1040.0" y="957" class="s" text-anchor="middle">slab reusable</text>
+<circle cx="945" cy="900" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="945" y="905" class="badge" text-anchor="middle">F</text>
+<path d="M830 950H930" class="reuse"/>
+<text x="880" y="935" class="code label" text-anchor="middle">release</text>
+<path d="M1125 650H1170V865H1040V900" class="reuse"/>
+<text x="1045" y="840" class="s" text-anchor="middle">readers done</text>
+<path d="M1040 990V1035H20V190H45" class="reuse"/>
+<text x="550" y="1021" class="code label" text-anchor="middle">recycle · registration persists</text>
+<path d="M1200 115V1060" stroke="#d7e0ea" stroke-width="2"/>
+<rect x="1240" y="125" width="520" height="305" rx="12" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1500.0" y="155" class="h" text-anchor="middle">Typed observations · A–F</text>
+<circle cx="1270" cy="190" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="195" class="badge" text-anchor="middle">A</text>
+<text x="1300" y="195" class="s" text-anchor="start">acquire / seal · available, writable, sealed</text>
+<circle cx="1270" cy="230" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="235" class="badge" text-anchor="middle">B</text>
+<text x="1300" y="235" class="s" text-anchor="start">admit / reject · bytes, pressure, oldest age</text>
+<circle cx="1270" cy="270" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="275" class="badge" text-anchor="middle">C</text>
+<text x="1300" y="275" class="s" text-anchor="start">queue / CQE / retry · progress, latency</text>
+<circle cx="1270" cy="310" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="315" class="badge" text-anchor="middle">D</text>
+<text x="1300" y="315" class="s" text-anchor="start">cache hit / update / retire · bytes, cost</text>
+<circle cx="1270" cy="350" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="355" class="badge" text-anchor="middle">E</text>
+<text x="1300" y="355" class="s" text-anchor="start">reader / I/O holds · retained slab age</text>
+<circle cx="1270" cy="390" r="15" fill="#fff0d6" stroke="#b97817" stroke-width="1.5"/>
+<text x="1270" y="395" class="badge" text-anchor="middle">F</text>
+<text x="1300" y="395" class="s" text-anchor="start">recycle · SlabUseId lifetime</text>
+<path d="M1150 190H1240" class="obs"/>
+<text x="1195" y="176" class="code label" text-anchor="middle">IDs</text>
+<rect x="1240" y="490" width="520" height="170" rx="12" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1500.0" y="520" class="h" text-anchor="middle">Diagnostic views</text>
+<text x="1500.0" y="547" class="s" text-anchor="middle">StageSnapshot · count / bytes / oldest age</text>
+<text x="1500.0" y="572" class="s" text-anchor="middle">ActiveWrite[] · WriteId + RegionId + SlabUseId</text>
+<text x="1500.0" y="597" class="s" text-anchor="middle">EventHistory · bounded sequence + gaps</text>
+<text x="1500.0" y="622" class="s" text-anchor="middle">metadata only · retains no slab leases</text>
+<path d="M1500 430V490" class="obs"/>
+<text x="1500" y="468" class="code label" text-anchor="middle">copy metadata</text>
+<rect x="1240" y="725" width="520" height="110" rx="12" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1500.0" y="755" class="h" text-anchor="middle">Recorder exporter</text>
+<text x="1500.0" y="782" class="s" text-anchor="middle">bounded handoff · coalesced snapshots</text>
+<text x="1500.0" y="807" class="s" text-anchor="middle">format + serialize outside writer thread</text>
+<path d="M1500 660V725" class="obs"/>
+<text x="1500" y="702" class="code label" text-anchor="middle">snapshots + events</text>
+<rect x="1240" y="900" width="245" height="90" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1362.5" y="930" class="h" text-anchor="middle">Live inspector</text>
+<text x="1362.5" y="957" class="s" text-anchor="middle">stages + write timeline</text>
+<rect x="1515" y="900" width="245" height="90" rx="12" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1637.5" y="930" class="h" text-anchor="middle">tracing adapter</text>
+<text x="1637.5" y="957" class="s" text-anchor="middle">independent sink</text>
+<path d="M1440 835V870H1362V900" class="obs"/>
+<text x="1362" y="859" class="code label" text-anchor="middle">SSE</text>
+<path d="M1560 835V870H1637V900" class="obs"/>
+<text x="1637" y="859" class="code label" text-anchor="middle">events</text>
+<text x="1500" y="1030" class="h" text-anchor="middle">Summary · Inspect · timed Capture</text>
+<text x="900" y="1090" class="s" text-anchor="middle">Correlation is session-scoped. Pool observations carry timestamps; event loss is explicit.</text>
+</svg>

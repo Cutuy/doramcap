@@ -52,7 +52,7 @@ The existing aligned wrapper was retained after evaluating `aligned-vec`; no dep
 - [x] Run applicable Dora end-to-end comparisons separately.
 - [ ] Add a plain stdio baseline using `fwrite`, with ordinary stdio buffering and no managed pool or io_uring.
 - [x] Keep the warmed direct path: pool-owned memory already registered with io_uring.
-- [ ] Add external-memory direct writes after E1–E2; label this path TBD until implemented.
+- [ ] Benchmark external-memory direct writes: intra-process prepared slabs are implemented in E0/E2P; large payloads remain E1–E2 work.
 - [ ] Set workload budgets; compare the three paths below on target storage.
 - [ ] Validation: use identical logical records, payload sizes and sync policy; include final `fflush`/`fsync` or direct drain/`fsync` in end-to-end throughput.
 - [ ] Validation: report call/admission, write-completion and durable-completion latency separately; collect enough samples for percentiles and report cold registration separately.
@@ -70,7 +70,7 @@ References: [registration updates](https://man7.org/linux/man-pages/man3/io_urin
 |---|---|---|
 | Buffered stdio | Plain `fwrite`; ordinary stdio buffering | Baseline to implement |
 | Direct, managed | Pool-owned allocation; io_uring registration warmed before timing | Implemented |
-| Direct, external | Original externally owned memory; persistent io_uring registration | TBD: E1–E2 |
+| Direct, external | Producer-owned memory; persistent io_uring registration | Prepared slabs implemented; benchmark pending; large payloads TBD: E1–E2 |
 
 ## Validation evidence · 2026-10-19
 

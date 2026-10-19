@@ -1,5 +1,7 @@
+mod exercises;
 mod inspect;
 mod metrics;
+mod observation;
 use axum::{
     Json, Router,
     extract::{Path as RoutePath, State},
@@ -29,6 +31,7 @@ use tokio::sync::watch;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 struct Options {
+    activity: Option<PathBuf>,
     monitor: PathBuf,
     backend: String,
     root: PathBuf,
@@ -39,6 +42,7 @@ struct Options {
 }
 fn options() -> Result<Options> {
     let mut o = Options {
+        activity: None,
         monitor: std::env::current_exe()?.with_file_name("system-monitor"),
         backend: "synthetic".into(),
         root: std::env::temp_dir().join(format!("doramcap-storage-demo-{}", now_ns())),
@@ -59,12 +63,14 @@ fn options() -> Result<Options> {
         }
         if arg == "--help" {
             println!(
-                "storage-demo [--monitor PATH] [--backend synthetic|bpf] [--dir NEW_DIR] [--port 8091] [--seconds N] [--buffered] [--start-paused]"
+                "storage-demo [--monitor PATH] [--backend synthetic|bpf] [--dir NEW_DIR] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP]"
             );
             std::process::exit(0);
         }
         let value = args.next().ok_or("missing option value")?;
         match arg.as_str() {
+            "--activity" if cfg!(feature = "activity-tracing") => o.activity = Some(value.into()),
+            "--activity" => return Err("--activity requires the activity-tracing feature".into()),
             "--monitor" => o.monitor = value.into(),
             "--backend" => o.backend = value,
             "--dir" => o.root = value.into(),
@@ -88,6 +94,9 @@ struct Control {
     action: String,
     count: usize,
     interval_ms: u64,
+    observation: Option<observation::Setting>,
+    size_mib: usize,
+    hold_reader: bool,
 }
 #[derive(Clone)]
 struct Web {
@@ -122,6 +131,11 @@ async fn control(State(s): State<Web>, Json(body): Json<Value>) -> StatusCode {
         "stop",
         "probe_burst",
         "cancel_burst",
+        "observe",
+        "managed_large",
+        "sealed_slab",
+        "release_readers",
+        "retire_slabs",
     ]
     .contains(&action)
     {
@@ -136,10 +150,26 @@ async fn control(State(s): State<Web>, Json(body): Json<Value>) -> StatusCode {
     if action == "probe_burst" && (!(1..=256).contains(&count) || interval_ms > 1000) {
         return StatusCode::BAD_REQUEST;
     }
+    let size_mib = body.get("sizeMiB").map_or(Some(1), Value::as_u64);
+    let hold_reader = body.get("holdReader").map_or(Some(true), Value::as_bool);
+    let (Some(size_mib @ (1 | 4 | 16)), Some(hold_reader)) = (size_mib, hold_reader) else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let observation = if action == "observe" {
+        match observation::Setting::parse(&body) {
+            Ok(setting) => Some(setting),
+            Err(()) => return StatusCode::BAD_REQUEST,
+        }
+    } else {
+        None
+    };
     match s.commands.try_send(Control {
         action: action.to_owned(),
         count: count as usize,
         interval_ms,
+        observation,
+        size_mib: size_mib as usize,
+        hold_reader,
     }) {
         Ok(()) => StatusCode::ACCEPTED,
         Err(mpsc::TrySendError::Full(_)) => StatusCode::TOO_MANY_REQUESTS,
@@ -275,12 +305,34 @@ fn owner(
             topic: "demo/large-probe",
             encoding: "protobuf",
         },
+        Channel {
+            id: 4,
+            topic: "demo/managed-large",
+            encoding: "protobuf",
+        },
+        Channel {
+            id: 5,
+            topic: "demo/sealed-slab",
+            encoding: "protobuf",
+        },
     ];
-    let mut writer = if o.direct {
-        McapWriter::direct(open(o, 0)?, 8, 256 * 1024, schema, &channels, 4096)?
-    } else {
-        McapWriter::new(open(o, 0)?, 8, 256 * 1024, schema, &channels)?
-    };
+    let mut writer = McapWriter::with_config(
+        open(o, 0)?,
+        8,
+        256 * 1024,
+        schema,
+        &channels,
+        if o.direct { 4096 } else { 1 },
+        storage_persistence::writer::WriterConfig {
+            max_write_bytes: 256 * 1024,
+            ..Default::default()
+        },
+    )?;
+    let mut exercises = exercises::Exercises::default();
+    let mut observation = observation::Observation::new()?;
+    writer.set_observer(observation.collector.observer());
+    #[cfg(feature = "tracing-export")]
+    observation::TraceExport::start(observation.collector.clone());
     let session = now_ns().to_string();
     let mut restart = false;
     let start = Instant::now();
@@ -296,8 +348,6 @@ fn owner(
     let mut receipts = std::collections::VecDeque::with_capacity(8);
     let mut timing = metrics::CpuTiming::default();
     let mut latency = metrics::Window::default();
-    let mut last_event = 0;
-    let mut lost_events = 0;
     let mut burst_remaining = 0usize;
     let mut burst_interval = Duration::from_millis(5);
     let mut next_probe = Instant::now();
@@ -334,6 +384,21 @@ fn owner(
         let mut manual_us = 0u128;
         if let Ok(command) = commands.try_recv() {
             match command.action.as_str() {
+                "managed_large" | "sealed_slab" | "release_readers" | "retire_slabs" => {
+                    exercises.run(
+                        &command.action,
+                        command.size_mib,
+                        command.hold_reader,
+                        &mut writer,
+                        observation.collector.observer(),
+                        &mut seq,
+                    );
+                }
+                "observe" => {
+                    if let Some(setting) = command.observation {
+                        setting.apply(&observation.collector)?;
+                    }
+                }
                 "burst" => {
                     manual_kind = Some("16 heartbeats");
                     for _ in 0..16 {
@@ -419,33 +484,22 @@ fn owner(
             }
         }
         writer.poll(Instant::now())?;
-        let seen_event = last_event;
-        for event in writer.write_events().filter(|e| e.sequence > seen_event) {
-            if event.sequence > last_event + 1 {
-                lost_events += event.sequence - last_event - 1;
-            }
-            last_event = event.sequence;
-            if event.result >= 0
-                && let Some(us) = event.latency_us
-            {
-                latency.push(us as f64 / 1000.0);
-            }
-        }
+        observation.poll(&mut latency);
         if Instant::now() >= publish {
-            let d = writer.diagnostics();
-            if d.outstanding == 0 {
+            let d = writer.snapshot();
+            if d.writer.pending == 0 {
                 disk = inspector.read(
                     &o.root.join(format!("capture-{index:04}.mcap")),
                     index,
                     false,
                 )?;
             }
-            let events:Vec<_>=writer.write_events().map(|e|json!({"id":e.sequence,"file":e.file,"us":e.elapsed_us,"offset":e.offset,"len":e.len,"slot":e.slot,"result":e.result,"latencyUs":e.latency_us,"kind":if e.completion {"CQE"}else{"SQE queued"}})).collect();
             tx.send_replace(json!({"status":"live","session":session,"backend":o.backend,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"cpu":cpu,"heartbeats":beats,"probes":probes,"inputDrops":drops.load(Ordering::Relaxed),"lastCpu":last_cpu,
-                "combining":{"used":d.combining_bytes,"capacity":d.combining_capacity,"ageMs":d.combining_age_us as f64/1000.0,"deadlineMs":100},
-                "pool":{"free":d.buffers_available,"total":d.buffers_total,"allocatedBytes":d.allocated_bytes,"freeBytes":d.free_bytes,"inFlightBytes":d.in_flight_bytes,"registeredBytes":d.registered_bytes},"ring":{"pendingCapacity":d.pending_capacity,"outstanding":d.outstanding,"submitted":d.submitted_operations,"completions":d.completions,"accepted":d.accepted_bytes,"completed":d.completed_bytes},
-                "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":lost_events,"burstRemaining":burst_remaining,
-                "receipts":receipts,"messages":recent,"events":events,"file":disk,"lastSealed":last_sealed}).to_string());
+                "combining":observation::combining(d),
+                "pool":observation::pool(d),"ring":observation::ring(d),
+                "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&writer),
+                "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":observation.lost,"burstRemaining":burst_remaining,
+                "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}).to_string());
             publish = Instant::now() + Duration::from_millis(40);
         }
         if burst_remaining > 0 && burst_interval.is_zero() {
@@ -454,19 +508,20 @@ fn owner(
             std::thread::sleep(Duration::from_millis(5));
         }
     }
-    let final_diagnostics = writer.finish_with_diagnostics()?;
+    exercises.release();
+    let final_snapshot = writer.finish_with_snapshot()?;
+    observation.poll(&mut latency);
     sealed.store(index + 1, Ordering::Release);
     let mut final_state: Value = serde_json::from_str(&tx.borrow())?;
     final_state["status"] = json!("sealed");
     final_state["burstRemaining"] = json!(0);
-    final_state["combining"]["used"] = json!(0);
-    final_state["combining"]["ageMs"] = json!(0);
-    final_state["pool"]["free"] = json!(final_diagnostics.buffers_available);
-    final_state["pool"]["allocatedBytes"] = json!(final_diagnostics.allocated_bytes);
-    final_state["pool"]["freeBytes"] = json!(final_diagnostics.free_bytes);
-    final_state["pool"]["inFlightBytes"] = json!(final_diagnostics.in_flight_bytes);
-    final_state["pool"]["registeredBytes"] = json!(final_diagnostics.registered_bytes);
-    final_state["ring"] = json!({"pendingCapacity":final_diagnostics.pending_capacity,"outstanding":final_diagnostics.outstanding,"submitted":final_diagnostics.submitted_operations,"completions":final_diagnostics.completions,"accepted":final_diagnostics.accepted_bytes,"completed":final_diagnostics.completed_bytes});
+    final_state["combining"] = observation::combining(final_snapshot);
+    final_state["pool"] = observation::pool(final_snapshot);
+    final_state["ring"] = observation::ring(final_snapshot);
+    final_state["exercises"] = exercises.json();
+    final_state["observation"] = observation.json();
+    final_state["activeWrites"] = json!([]);
+    final_state["events"] = json!(observation.events);
     final_state["file"] = inspector.read(
         &o.root.join(format!("capture-{index:04}.mcap")),
         index,
@@ -518,39 +573,52 @@ async fn main() -> Result<()> {
     let errors = tx.clone();
     let keepalive = tx.clone();
     let worker = std::thread::spawn(move || {
-        let mut restart = !o.start_paused;
-        while !owner_stop.load(Ordering::Relaxed) {
-            if !restart {
-                match command_rx.recv_timeout(Duration::from_millis(50)) {
-                    Ok(command) if command.action == "restart" => restart = true,
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                    _ => continue,
+        let run = || {
+            let mut restart = !o.start_paused;
+            while !owner_stop.load(Ordering::Relaxed) {
+                if !restart {
+                    match command_rx.recv_timeout(Duration::from_millis(50)) {
+                        Ok(command) if command.action == "restart" => restart = true,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                        _ => continue,
+                    }
                 }
-            }
-            if restart {
-                sealed.store(0, Ordering::Release);
-                tx.send_replace(json!({"status":"starting"}).to_string());
-                let result = clear_captures(&o.root).map_err(Into::into).and_then(|()| {
-                    owner(
-                        &o,
-                        tx.clone(),
-                        &command_rx,
-                        owner_stop.clone(),
-                        sealed.clone(),
-                    )
-                });
-                match result {
-                    Ok(requested) => restart = requested,
-                    Err(e) => {
-                        errors.send_replace(
-                            json!({"status":"error","error":e.to_string()}).to_string(),
-                        );
-                        eprintln!("storage demo: {e}");
-                        restart = false;
+                if restart {
+                    sealed.store(0, Ordering::Release);
+                    tx.send_replace(json!({"status":"starting"}).to_string());
+                    let result = clear_captures(&o.root).map_err(Into::into).and_then(|()| {
+                        owner(
+                            &o,
+                            tx.clone(),
+                            &command_rx,
+                            owner_stop.clone(),
+                            sealed.clone(),
+                        )
+                    });
+                    match result {
+                        Ok(requested) => restart = requested,
+                        Err(e) => {
+                            let mut failed: Value = serde_json::from_str(&errors.borrow()).unwrap();
+                            failed["status"] = json!("error");
+                            failed["error"] = json!(e.to_string());
+                            errors.send_replace(failed.to_string());
+                            eprintln!("storage demo: {e}");
+                            restart = false;
+                        }
                     }
                 }
             }
+        };
+        #[cfg(feature = "activity-tracing")]
+        if let Err(e) = observation::capture_activity(o.activity.as_deref(), run) {
+            eprintln!("storage activity capture: {e}");
+            let mut failed: Value = serde_json::from_str(&errors.borrow()).unwrap();
+            failed["status"] = json!("error");
+            failed["error"] = json!(e.to_string());
+            errors.send_replace(failed.to_string());
         }
+        #[cfg(not(feature = "activity-tracing"))]
+        run();
     });
     let app = Router::new()
         .route(

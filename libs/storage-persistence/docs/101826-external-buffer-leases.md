@@ -2,24 +2,49 @@
 
 ![Three input paths and the shared writer lifecycle](architecture/three-path-writer-lifecycle.svg)
 
-Status: planned · revised 2026-10-19. Builds on the implemented [managed pool](101926-growable-buffer-pool.md).
+Status: intra-process slabs qualified; mmap qualified on x86_64/ARM64; transport adapters planned · revised 2026-10-19. Builds on the implemented [managed pool](101926-growable-buffer-pool.md).
 Two distinct APIs share external ownership and I/O: large payloads need storage framing;
 prepared blocks supply complete file records and bypass combining at any aligned size.
 [Input contracts](101926-memory-ingress-cases.md) · [Ownership lifetimes](architecture/external-memory-lifecycle.svg).
 
-## E1 — Shared external-region and read-lease support
+## E0 — Intra-process sealed slabs first
 
-- [ ] Evaluate [memmap2](https://docs.rs/memmap2/latest/memmap2/) for the adapter/tests; keep storage independent of its allocator.
-- [ ] Accept caller-mapped `MAP_SHARED` regions from memfd and `/dev/shm`.
-- [ ] Keep the API to a mapped region with a validity guard and a ready byte-range lease with a reuse guard; allow one provider object to supply both.
-- [ ] Require mapping/backing identity through registration retirement and immutable bytes through write retirement; document unsafe construction for caller-enforced contracts.
-- [ ] Register lazily using G2's manager; retain registrations across messages and rotation. Return rejected leases to callers.
-- [ ] Validation: producer handoff, repeated region reuse, mapping identity/generation and guard-drop counts are correct.
-- [ ] Validation: registration and admission failures preserve existing resources and caller ownership.
-- [ ] Generalize pending writes to retain managed or external leases; reuse the current file-offset allocator, SQEs, splitting, retries and CQE retirement.
-- [ ] Keep mapping-registration guards separate from byte-reuse leases; track region identity independently of recycled pointer values.
-- [ ] Validation: append an aligned mmap range directly; verify exact readback, one registration across reuse, and release only after the final CQE.
-- [ ] Validation: a retained registration permits completed blocks to recycle; explicit retirement releases mapping guards safely.
+![Rust slab ownership and writer retention](architecture/rust-slab-writer-lifecycle.svg)
+
+- [x] Provide bounded producer-owned `SlabPool`, exclusive `WritableSlab` and cloneable `SealedSlab`; consume writable access when sealing.
+- [x] Retain `Arc<SlabAllocation>` independently in registration entries; final `Arc<SlabLeaseInner>` release recycles the whole slab.
+- [x] Extend pending writes to retain managed or sealed sources through splitting, retry, cancellation and terminal completion.
+- [x] Cache registrations per writer by allocation identity; retain resolved segments in pending writes. Pre-register pools before capture and retire explicitly.
+- [x] Track actual buffer-table update attempts; slab reuse and file rotation preserve registrations. Keep handles private to their writer and prohibit retirement while requests remain.
+- [x] Use the existing aligned allocator and standard-library ownership. `bytes` was evaluated for owned views; `memmap2` remains an E1 adapter candidate. Add no dependency for E0.
+- [x] Validation: cross-thread handoff, compile-fail exclusive borrow, reader-before-I/O and I/O-before-reader release, and registration guard lifetime.
+- [x] Validation: 1,000 warmed reuse cycles produce zero registration updates; verify exact readback and explicit retirement/re-registration.
+- [x] Validation: rejection, partial registration rollback, short/error completions, cancellation and submission failure preserve ownership.
+- [x] Validation: default/all-feature tests, Clippy and ARM64 worker result recorded below.
+
+First release uses one `Arc` allocation per seal and a mutex-protected free list.
+The storage path submits the entire sealed range; payload-only views and tracing
+sink migration remain follow-ups. Each slab allocation is fixed-size; create and
+pre-register another pool to add capacity. Mapped ranges use E1's separate registration and reuse guards.
+
+## E1 — Mapped regions and read leases
+
+![Shared mapping ownership and adapter boundaries](architecture/mmap-slab-ownership.svg)
+
+- [x] Adopt `memmap2`: `MmapRegion` owns mapping validity; `WritableRange → ReadLease` controls disjoint bytes.
+- [x] Add unsafe provider import/publication with a separate reuse token and generation; retain mapping guards through registration retirement.
+- [x] Cache registration by region identity; handle nonzero offsets and segment boundaries; return rejected leases intact.
+- [x] Frame owned mapped ranges with `MappedRecordsBuilder → PreparedMappedBlock`; preserve writer binding and rotation.
+- [x] Use pinned Zenoh POSIX SHM blocks as the test fixture. Its buffer owner retains the allocation until registration retirement.
+- [x] Gate: `MAP_PRIVATE` and `/dev/shm` shared mappings pass x86_64 and ARM64 qualification.
+- [x] Gate: split writes, stable registration counts, readers, rejection, rollback and cancellation pass on both architectures.
+- [x] Gate: separate-process publication and Zenoh provider guards pass on both architectures.
+- [ ] Follow-up: qualify memfd-backed mappings explicitly.
+- [ ] Follow-up: production ring/transport adapters provide page-aligned blocks and publication/reuse synchronization.
+
+The core checks range overlap and I/O alignment. Ring headers and synchronization
+belong to the provider. The Zenoh fixture retains immutable allocations; independent
+transport-block recycling under a retained segment registration remains E3 work.
 
 ## E2 — Large external payload API
 
@@ -38,14 +63,15 @@ prepared blocks supply complete file records and bypass combining at any aligned
 
 ## E2P — Prepared external block API
 
-- [ ] Add `append_prepared_records(block)` independently of E2's payload-size policy; accept any supported aligned block size.
-- [ ] Provide a framing helper for producer-reserved MCAP header/padding space and a sealed prepared-block type.
-- [ ] Admit existing bytes unchanged; bypass combining, serialization and framing writes after sealing.
-- [ ] Preserve channel/schema compatibility, previous combining-batch order, rotation and finalization; return rejected blocks intact.
-- [ ] Integrate tracing's slab owner and shared payload readers; the last reader/I/O lease recycles the slab.
-- [ ] Validation: 4-KiB and 64-KiB prepared blocks reach direct I/O with zero storage copies and exact independent MCAP readback.
-- [ ] Validation: hold readers beyond CQEs and CQEs beyond readers; recycling waits for both while registration persists.
-- [ ] Validation: mixed managed/payload/prepared appends preserve file order under queue pressure, cancellation and rotation.
+- [x] Add `append_prepared_records(block)` independently of E2's payload-size policy; accept any supported aligned block size.
+- [x] Provide a framing helper for producer-reserved MCAP header/padding space and a sealed prepared-block type.
+- [x] Admit existing bytes unchanged; bypass combining, serialization and framing writes after sealing.
+- [x] Preserve channel/schema compatibility, per-piece contiguous ranges, rotation and finalization; return rejected blocks intact.
+- [ ] Follow-up: integrate tracing's slab owner and optional payload views; the last reader/I/O lease recycles the slab.
+- [x] Validation: 4-KiB and 64-KiB prepared blocks reach direct I/O with zero storage copies and exact independent MCAP readback.
+- [x] Validation: hold readers beyond CQEs and CQEs beyond readers; recycling waits for both while registration persists.
+- [ ] Validation: mixed managed/payload/prepared appends preserve per-piece contiguity under queue pressure, cancellation and rotation.
+
 
 ## E3 — Dora/Zenoh integration
 
@@ -76,3 +102,48 @@ prepared blocks supply complete file records and bypass combining at any aligned
 References: [page pinning](https://docs.kernel.org/core-api/pin_user_pages.html),
 [PCI P2P](https://docs.kernel.org/driver-api/pci/p2pdma.html),
 [GPUDirect Storage](https://docs.nvidia.com/gpudirect-storage/overview-guide/).
+
+## E0 / E2P validation evidence
+
+- [x] x86_64 Linux, local ext filesystem: default and all-feature storage suites each passed 30 runtime tests and one compile-fail doctest. The existing opt-in 100-MiB registered test remains ignored in these runs.
+- [x] `cargo clippy -p storage-persistence --all-targets --all-features --no-deps -- -D warnings`, `cargo fmt --all --check`, and `git diff --check` passed.
+- [x] ARM64 WSL2: serial Pueue job **49**, result **Success**, full log inspected. Workspace default/all-feature tests, native cgroup/allocation tests, existing Dora comparisons and storage-demo validation passed.
+- [x] New gates: direct 4-KiB/64-KiB MCAP readback, cross-thread builders/readers, mixed managed/prepared ordering, rotation, intact rejection, registration rollback and guard lifetime, cancellation, injected short/error completion, and 1,000 reuse cycles with zero new table updates.
+
+Commands: `cargo test -p storage-persistence`,
+`cargo test -p storage-persistence --all-features`,
+`python3 scripts/ci/submit.py --source /home/cutuy/doramcap/.git/agent-pool/worktrees/1`,
+`ssh doramcap-ci@100.64.0.20 pueue log --full 49`.
+
+Source: base commit `5aa714c3b8c435545095ae695a0b3f58bfa987a0` plus the dirty
+snapshot at `/home/doramcap-ci/jobs/c7ef57f1308f47ce973876cc80447ae2`.
+`SOURCE.json` records per-file hashes; subsequent local edits update documentation.
+Tests live in `tests/sealed_slabs.rs` and the `slabs` / `writer` unit tests. The prepared builder binds records to the
+originating writer's schema/channel identity; that identity survives rotation.
+Blocks from another writer are rejected intact. Actual target-device DMA and
+allocation-free sealing remain unqualified.
+
+## E1 validation evidence
+
+- [x] x86_64 Linux 7.0: default/all-feature storage tests, strict Clippy, formatting and diff checks passed; `/tmp` ext filesystem and `/dev/shm` tmpfs.
+- [x] ARM64 WSL2 Linux 6.18: mmap tests passed in default/all-feature runs, including Zenoh, cross-process publication and failure injection.
+- [x] ARM64 complete worker suite: Pueue **55**, **Success**; full log inspected. Native accounting, allocation checks, Dora comparisons and storage-demo validation passed.
+- [x] Borrow-safety compile-fail test; exact bytes and independent MCAP decoding; unchanged registration counts across repeated ranges; reader and owner drop counts.
+
+Tests: `tests/mapped.rs`, `writer::tests::mapped_segment_offsets_rollback_and_cancellation`.
+Commands: `cargo test -p storage-persistence [--all-features]`,
+`cargo clippy -p storage-persistence --all-targets --all-features -- -D warnings`.
+Worker: `ssh doramcap-ci@100.64.0.20 pueue log --full 55`.
+Snapshot: `/home/doramcap-ci/jobs/a19d9b392b314b2a980a02ffa227cfd7`;
+`SOURCE.json` records source hashes against base `5aa714c3b8c435545095ae695a0b3f58bfa987a0`.
+Subsequent local edits change comments/documentation only. The existing opt-in
+100-MiB registered-I/O test remains ignored; physical-device DMA is unqualified.
+
+## Independent write-path validation
+
+- [x] Large managed, sealed-slab and mapped writes use one available pending slot while a small batch remains buffered; exact position-dependent payloads decode after split writes.
+- [x] x86_64 default/all-feature tests, strict Clippy, formatting and diff checks passed.
+- [x] ARM64 Pueue **59: Success**; full log inspected, including workspace tests and native/application checks. Snapshot: `/home/doramcap-ci/jobs/6c629ad5380846409c5389af4fbcf355`.
+
+Regression: `tests/sealed_slabs.rs::standalone_paths_do_not_flush_or_reserve_capacity_for_combining`.
+Each piece occupies contiguous offsets; cross-piece placement and completion order are unspecified.

@@ -8,7 +8,7 @@
 </defs>
 <style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b}.title{font-size:28px;font-weight:700}.h{font-size:21px;font-weight:700}.s{font-size:16px}.tag{font-size:13px;font-weight:700;letter-spacing:.7px;fill:#52657a}</style><rect width="1500" height="1130" fill="#f8fafc"/>
 <text x="750" y="42" class="title" text-anchor="middle">Three inputs · one MCAP writer lifecycle</text>
-<text x="750" y="70" class="s" text-anchor="middle" style="fill:#52657a">Managed path implemented · external payload and prepared-block paths proposed</text>
+<text x="750" y="70" class="s" text-anchor="middle" style="fill:#52657a">Managed + intra-process prepared paths implemented · external payload path planned</text>
 <path d="M80 825H30V120H1220" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5"/>
 <text x="750" y="108" class="tag" text-anchor="middle" style="fill:#18836b">REUSE AFTER I/O RETIREMENT · external reuse also waits for payload readers</text>
 <path d="M280 120V155" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#g)"/>
@@ -63,7 +63,7 @@
 <text x="280" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">commit</text>
 <text x="750" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">append payload</text>
 <text x="1220" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">append prepared</text>
-<text x="750" y="541" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="tag" text-anchor="middle">MCAP order + admission</text>
+<text x="750" y="541" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="tag" text-anchor="middle">Contiguous range admission</text>
 <rect x="550" y="555" width="400" height="132" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
 <text x="750" y="589" class="h" text-anchor="middle">Retained write request</text>
 <text x="750" y="620" class="s" text-anchor="middle">source spans + leases</text>
@@ -119,5 +119,5 @@
 <text x="500" y="1078" class="s" text-anchor="middle">f₁</text>
 <text x="960" y="1078" class="s" text-anchor="middle">f₂</text>
 <text x="1420" y="1078" class="s" text-anchor="middle">f₃</text>
-<text x="750" y="1111" class="s" text-anchor="middle" style="fill:#52657a">Aligned transfer boundaries · MCAP ordering and rotation stay with the writer · explicit retirement releases registrations</text>
+<text x="750" y="1111" class="s" text-anchor="middle" style="fill:#52657a">Aligned transfer boundaries · Per-piece contiguous offsets · independent completion · explicit retirement releases registrations</text>
 </svg>

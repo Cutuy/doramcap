@@ -116,3 +116,6 @@ compatibility. Its `--enable-root-cpuset` test option temporarily enables root
 cpuset delegation when absent, then restores the previous setting after removing
 its test subtree. This host-level test setup was explicitly approved on 2026-10-19.
 Run only on the trusted serial CI worker or an equivalently authorized test host.
+
+The activity-capture smoke test records combined, large and slab writes, then
+decodes the activity MCAP and checks closed spans and zero recorded loss.

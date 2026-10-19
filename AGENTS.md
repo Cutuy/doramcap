@@ -28,10 +28,8 @@ Use the serial default queue and verify the job result. Build unprivileged; nati
 
 ## Documentation style
 
-Milestone and planning documents must live under the owning component at `xxx/docs/mmddyy-some-feature.md`, using the creation date in `mmddyy` format and a descriptive kebab-case feature name. For example: `libs/resource-policy/docs/101926-resource-policy.md`. Keep updates in the same dated file and supporting SVGs alongside it.
-
-State what things are or do directly. Avoid “this is A, not B” and equivalent contrastive phrasing.
-
-For architecture diagrams, prefer SVG. Focus on component interactions and the artifacts passed between components. Minimize text; use short component and edge labels.
-
-For future Markdown writing, keep prose brief and use structure that supports review. Engineering plans must lead with embedded architectural SVGs showing component interactions and the artifacts passed between them, with short labels and minimal text. Put design details in the SVGs. Write the plan primarily as milestone checklists, with explicit validation-gate checkboxes under every milestone. Keep milestones and gates unchecked until their evidence is recorded. Avoid lengthy narrative design sections.
+- All Markdown, including READMEs: brief prose, short bullets, compact tables; no walls of text. READMEs link to details.
+- State what things do directly; avoid contrastive “A, not B” phrasing.
+- Architecture: SVGs with short labels showing components and exchanged artifacts.
+- Plans: use `component/docs/mmddyy-feature-name.md` with the creation date; keep updates in that file and supporting SVGs alongside it.
+- Plans: lead with an embedded architecture SVG, then milestone and validation checkboxes. Check items only after recording evidence.

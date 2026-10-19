@@ -28,6 +28,7 @@ impl From<PoolError> for std::io::Error {
 /// Registration retains this owner independently of whether a lease is free.
 /// Mutable access is exclusively mediated by BufferLease on the owner thread.
 pub(crate) struct Allocation {
+    pub(crate) region_id: u64,
     ptr: NonNull<u8>,
     layout: Layout,
 }
@@ -35,7 +36,11 @@ impl Allocation {
     fn new(layout: Layout) -> Result<Rc<Self>, PoolError> {
         let ptr =
             NonNull::new(unsafe { alloc_zeroed(layout) }).ok_or(PoolError::AllocationFailed)?;
-        Ok(Rc::new(Self { ptr, layout }))
+        Ok(Rc::new(Self {
+            ptr,
+            layout,
+            region_id: crate::observability::next_id(),
+        }))
     }
     pub(crate) fn ptr(&self) -> *mut u8 {
         self.ptr.as_ptr()

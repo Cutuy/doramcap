@@ -1,65 +1,71 @@
 # Storage persistence
 
-![Three input paths and writer lifecycle](docs/architecture/three-path-writer-lifecycle.svg)
+Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per writer. MCAP output is uncompressed and index-free.
 
-Single-owner storage primitives with growable aligned buffers, transactional file
-ranges, and one io_uring per writer. Accepted leases remain owned through write
-completion and retries. Call `close` to observe final write and sync errors.
+![Writer lifecycle](docs/architecture/three-path-writer-lifecycle.svg)
 
-The MCAP layer provides direct payload reservations and uncompressed,
-index-free files. The caller supplies schema/channel metadata and serializes
-into the returned slice. Protobuf and Dora remain application responsibilities.
+## Prepared slab example
 
-| Module | Responsibility |
-|---|---|
-| `file_offsets` | Checked, non-overlapping append ranges; abandoned reservations |
-| `managed_buffers` | Best-fit free list, stable aligned allocations and exclusive leases |
-| `writer` | Buffered/registered direct writes, retries, cancellation and retirement |
-| `mcap` | File framing, schemas/channels and payload reservations |
+```rust
+use storage_persistence::slabs::SlabPool;
 
-Registered direct I/O supports configured 512-B and 4-KiB alignment. Small
-messages share one combining allocation. `reserve(message, size)` exposes one
-contiguous writable payload slice, including for 100-MiB messages. A free-list
-miss allocates a sufficiently large buffer without waiting for earlier CQEs.
-Recorder/demo defaults are eight 256-KiB buffers; framing and alignment reduce
-the largest payload that fits in a combining buffer.
-
-New direct-I/O allocations register before use. Registrations and allocated
-capacity survive reuse and rotation; explicit idle-only `trim()` unregisters
-before releasing memory. Allocation, registration and address-space limits
-return errors. Direct I/O never falls back to buffered I/O or a copied payload.
-
-`WriterConfig` separates ring depth, pending-write capacity, registration slots
-and transfer size. Large allocations can span multiple registrations/SQEs.
-A lease returns to the free list after its last referencing CQE. For retryable
-queue pressure, use reservation `try_commit()` and `progress()`; a failed
-`try_commit()` preserves the payload. Consuming `commit()` abandons it on error.
-`Writer::try_append()` likewise returns the rejected lease without consuming a
-file range. Callers drive progress explicitly.
-
-See the [implementation milestones](docs/101926-growable-buffer-pool.md) and
-[next-stage external-memory plan](docs/101826-external-buffer-leases.md).
-
-Call `finish` to flush combining buffers and seal MCAP. Dropping an unfinished
-MCAP writer can leave an incomplete file. The owner must poll the exposed flush
-deadline while input is idle. See [validation evidence](docs/101826-mcap-writer-design.md).
-
-Validation: `cargo test -p storage-persistence` includes real Linux io_uring tests.
-The tests fail explicitly when the host cannot create a ring.
-
-## Optional diagnostics
-
-Enable the `diagnostics` Cargo feature for `McapWriter::diagnostics`,
-`write_events`, `finish_with_diagnostics`, and the underlying writer event/counter
-accessors. It adds a fixed 256-event history and per-write clock reads. The demo
-opts in explicitly. Default builds omit these APIs, event storage and timing work.
-Web transport, Protobuf inputs, percentile windows and demo controls live in
-`apps/storage-demo`. Cargo features unify across dependents in a build; build the
-production application independently to keep diagnostics disabled.
-
-The explicit large direct-I/O qualification requires over 104 MiB of available
-locked-memory allowance:
-
-```sh
-cargo test -p storage-persistence --all-features --test growable -- --include-ignored
+let pool = SlabPool::new(8, 64 * 1024, 4096)?;
+writer.prepare_slabs(&pool)?;
+let mut records = writer.prepare_records(pool.acquire()?);
+encode_into(records.reserve(message, encoded_len)?)?;
+writer.append_prepared_records(records.seal()?)?;
+writer.finish()?;
 ```
+
+`writer`, `message` and `encode_into` are application-supplied.
+
+## Mapped batch example
+
+```rust
+let region = MmapRegion::new(mapping, observer);
+writer.prepare_region(&region)?;
+let mut records = writer.prepare_mapped_records(region.acquire(block_range)?);
+encode_into(records.reserve(message, encoded_len)?)?;
+writer.append_mapped_records(records.seal()?)?;
+```
+
+`mapping` is an exclusively owned `memmap2::MmapMut`. External publishers use
+unsafe `MmapRegion::import` / `lease` with mapping and reuse guards.
+
+## Contracts
+
+- `reserve(message, size)` provides managed payload space; prepared slabs supply complete records.
+- Direct I/O requires `O_DIRECT` and configured 512-B or 4-KiB alignment.
+- Each write occupies contiguous file offsets; cross-write placement and completion order are unspecified. Standalone writes leave combining batches buffered.
+- Registrations survive reuse and rotation. Explicit idle retirement releases them.
+- Rejected prepared blocks return intact; drive `flush_written()` before retrying pressure.
+- Slab recycling waits for all readers and I/O. Sealing allocates one `Arc`; recycling uses a mutex.
+- Poll the combining deadline while idle. Call `finish()` to finalize MCAP and observe errors.
+- Inject an `Observer` for bounded events; snapshots are always available. Legacy `diagnostics` remains supported.
+
+## Activity timeline
+
+Enable `activity-tracing` and install the existing `activity_tracing::Runtime`
+subscriber on each registered writer thread. Spans carry writer/file/write IDs,
+source path, region, byte range and direct-I/O mode.
+
+| Span | Lifetime |
+|---|---|
+| `storage.combining` | First committed message → batch admission |
+| `storage.write` | Admission → terminal retirement |
+| `storage.io` | SQE queued → CQE observed; child of its write |
+
+Combining links to its write; completion results, retries and terminal outcomes
+are events. Timing includes queueing and polling delay. The feature defaults off;
+capture is independent of the dashboard collector's mode.
+
+## Details and validation
+
+| Topic | Reference |
+|---|---|
+| Input APIs and ownership | [Memory ingress](docs/101926-memory-ingress-cases.md) |
+| Managed buffers and benchmarks | [Managed-pool milestones](docs/101926-growable-buffer-pool.md) |
+| Slabs, limitations and evidence | [External-memory milestones](docs/101826-external-buffer-leases.md) |
+| Live inspection and roadmap | [Observability milestones](docs/101926-observability.md) |
+
+Run `cargo test -p storage-persistence --all-features` on Linux with io_uring support.

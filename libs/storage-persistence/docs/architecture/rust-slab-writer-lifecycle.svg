@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1330" viewBox="0 0 1600 1330" role="img" aria-labelledby="title desc"><title id="title">Proposed Rust slab ownership inside McapWriter</title><desc id="desc">An exclusive WritableSlab is framed and consumed into a shared SealedSlab. Payload view · planned readers and a Pending retain the same batch. Registered independently retains the SlabAllocation. Terminal I/O retirement drops the writer lease; the final batch lease returns the slab to its pool. Explicit registration retirement permits allocation reclamation.</desc><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#18836b"/></marker></defs><style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b}.title{font-size:28px;font-weight:700}.h{font-size:20px;font-weight:700}.s{font-size:16px}.code{font-family:DejaVu Sans Mono,monospace;font-size:16px}.tag{font-size:13px;font-weight:700;letter-spacing:1px;fill:#52657a}.edge{fill:none;stroke:#52657a;stroke-width:2;marker-end:url(#a)}.return{fill:none;stroke:#18836b;stroke-width:2;marker-end:url(#g)}.label{paint-order:stroke;stroke:#f8fafc;stroke-width:7px;stroke-linejoin:round}</style><rect width="1600" height="1330" fill="#f8fafc"/>
+<text x="800" y="45" class="title" text-anchor="middle">Rust slab ownership · producer → McapWriter → recycle</text>
+<text x="800" y="75" class="tag" text-anchor="middle">INTRA-PROCESS SLABS · PREPARED MCAP BLOCKS · PAYLOAD VIEWS PLANNED</text>
+<text x="800" y="104" class="s" text-anchor="middle">Solid arrows transfer handles or signal completion. Shared handles retain the same backing bytes.</text>
+<rect x="50" y="145" width="300" height="125" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="200.0" y="175" class="h" text-anchor="middle">SlabPool</text>
+<text x="200.0" y="203" class="code" text-anchor="middle">free slab slots</text>
+<text x="200.0" y="228" class="code" text-anchor="middle">Arc&lt;SlabAllocation&gt;</text>
+<text x="200.0" y="253" class="s" text-anchor="middle">fixed aligned allocations</text>
+<rect x="445" y="145" width="300" height="125" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="595.0" y="175" class="h" text-anchor="middle">WritableSlab</text>
+<text x="595.0" y="203" class="s" text-anchor="middle">exclusive · no Clone</text>
+<text x="595.0" y="228" class="code" text-anchor="middle">bytes_mut(&amp;mut self)</text>
+<text x="595.0" y="253" class="code" text-anchor="middle">→ &amp;mut [u8]</text>
+<rect x="850" y="145" width="325" height="125" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1012.5" y="175" class="h" text-anchor="middle">PreparedRecordsBuilder</text>
+<text x="1012.5" y="203" class="s" text-anchor="middle">headers + payload + padding</text>
+<text x="1012.5" y="228" class="code" text-anchor="middle">reserve(...) → seal(self)</text>
+<text x="1012.5" y="253" class="s" text-anchor="middle">initialized ranges validated</text>
+<rect x="1250" y="145" width="300" height="125" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1400.0" y="175" class="h" text-anchor="middle">SealedSlab</text>
+<text x="1400.0" y="203" class="code" text-anchor="middle">Arc&lt;SlabLeaseInner&gt;</text>
+<text x="1400.0" y="228" class="s" text-anchor="middle">immutable initialized byte range</text>
+<text x="1400.0" y="253" class="s" text-anchor="middle">Clone shares this batch</text>
+<path d="M350 205H445" class="edge"/>
+<text x="397" y="190" class="code label" text-anchor="middle">acquire()</text>
+<path d="M745 205H850" class="edge"/>
+<text x="797" y="190" class="code label" text-anchor="middle">move</text>
+<path d="M1175 205H1250" class="edge"/>
+<text x="1212" y="190" class="code label" text-anchor="middle">move</text>
+<rect x="1240" y="355" width="310" height="120" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1395.0" y="385" class="h" text-anchor="middle">Payload view · planned</text>
+<text x="1395.0" y="413" class="code" text-anchor="middle">Arc&lt;SlabLeaseInner&gt; + range</text>
+<text x="1395.0" y="438" class="code" text-anchor="middle">bytes(&amp;self) → &amp;[u8]</text>
+<text x="1395.0" y="463" class="s" text-anchor="middle">tracing / live consumers</text>
+<path d="M1400 270V355" class="edge"/>
+<text x="1400" y="318" class="code label" text-anchor="middle">payload(i)</text>
+<rect x="370" y="340" width="805" height="630" rx="20" fill="#f0f5fc" stroke="#8da8c4" stroke-width="2"/>
+<text x="400" y="373" class="h" text-anchor="start">McapWriter · format admission + owner-thread Writer</text>
+<rect x="420" y="405" width="705" height="115" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="772.5" y="435" class="h" text-anchor="middle">PreparedBlock</text>
+<text x="772.5" y="463" class="code" text-anchor="middle">SealedSlab + validated record / channel metadata</text>
+<text x="772.5" y="488" class="s" text-anchor="middle">preflight alignment, order, rotation and queue capacity</text>
+<path d="M1250 245H1210V430H1125" class="edge"/>
+<text x="1015" y="315" class="code label" text-anchor="middle">append_prepared_records(block)</text>
+<rect x="50" y="405" width="270" height="115" rx="12" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="185.0" y="435" class="h" text-anchor="middle">Rejected block</text>
+<text x="185.0" y="463" class="s" text-anchor="middle">PreparedBlock returned intact</text>
+<text x="185.0" y="488" class="s" text-anchor="middle">retry keeps the same lease</text>
+<path d="M420 462H320" class="edge"/>
+<text x="370" y="447" class="code label" text-anchor="middle">Err</text>
+<rect x="420" y="585" width="705" height="140" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="772.5" y="615" class="h" text-anchor="middle">Pending</text>
+<text x="772.5" y="643" class="code" text-anchor="middle">source: WriteSource::Slab(SealedSlab)</text>
+<text x="772.5" y="668" class="code" text-anchor="middle">segments: Rc&lt;[RegistrationSegment]&gt; · offset: u64</text>
+<text x="772.5" y="693" class="s" text-anchor="middle">split / retry state · owns lease through retirement</text>
+<path d="M770 520V585" class="edge"/>
+<text x="770" y="559" class="code label" text-anchor="middle">accepted → move block lease</text>
+<rect x="460" y="815" width="625" height="115" rx="12" fill="#e2e8f0" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="772.5" y="845" class="h" text-anchor="middle">io_uring · outstanding operations</text>
+<text x="772.5" y="873" class="code" text-anchor="middle">SQE: address + len + buffer ID + file offset</text>
+<text x="772.5" y="898" class="s" text-anchor="middle">terminal CQEs → retire every source reference</text>
+<path d="M770 725V815" class="edge"/>
+<text x="770" y="772" class="code label" text-anchor="middle">submit / retry</text>
+<rect x="50" y="625" width="270" height="145" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="185.0" y="655" class="h" text-anchor="middle">Registered</text>
+<text x="185.0" y="683" class="code" text-anchor="middle">slot + allocation identity</text>
+<text x="185.0" y="708" class="code" text-anchor="middle">Arc&lt;SlabAllocation&gt;</text>
+<text x="185.0" y="733" class="s" text-anchor="middle">cached across slab reuse</text>
+<text x="185.0" y="758" class="s" text-anchor="middle">and file rotation</text>
+<path d="M420 630H320" class="edge"/>
+<text x="369" y="616" class="code label" text-anchor="middle">region</text>
+<path d="M320 710H420" class="edge"/>
+<text x="368" y="697" class="code label" text-anchor="middle">buffer ID</text>
+<text x="185" y="565" class="tag" text-anchor="middle">allocation lifetime guard</text>
+<rect x="1240" y="585" width="310" height="140" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1395.0" y="615" class="h" text-anchor="middle">SlabLeaseInner</text>
+<text x="1395.0" y="643" class="s" text-anchor="middle">one batch / slab generation</text>
+<text x="1395.0" y="668" class="code" text-anchor="middle">Arc&lt;SlabAllocation&gt;</text>
+<text x="1395.0" y="693" class="s" text-anchor="middle">recycle token + pool handle</text>
+<text x="1395.0" y="718" class="s" text-anchor="middle">last read lease → recycle</text>
+<path d="M1395 475V585" class="edge"/>
+<text x="1395" y="536" class="code label" text-anchor="middle">retains batch</text>
+<path d="M1125 660H1240" class="edge"/>
+<text x="1182" y="647" class="code label" text-anchor="middle">retains</text>
+<text x="1395" y="767" class="s" text-anchor="middle">SealedSlab also retains this batch</text>
+<rect x="1240" y="815" width="310" height="115" rx="12" fill="#fff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1395.0" y="845" class="h" text-anchor="middle">Filesystem / device</text>
+<text x="1395.0" y="873" class="s" text-anchor="middle">reads submitted source bytes</text>
+<text x="1395.0" y="898" class="s" text-anchor="middle">direct path requires validation</text>
+<path d="M1085 872H1240" class="edge"/>
+<text x="1162" y="857" class="code label" text-anchor="middle">I/O</text>
+<rect x="420" y="1020" width="705" height="105" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="772.5" y="1050" class="h" text-anchor="middle">Release writer’s SealedSlab</text>
+<text x="772.5" y="1078" class="s" text-anchor="middle">after terminal completion of all parts / retries</text>
+<text x="772.5" y="1103" class="s" text-anchor="middle">cancellation waits for original I/O retirement</text>
+<path d="M770 930V1020" class="return"/>
+<text x="770" y="995" class="code label" text-anchor="middle">retire Pending</text>
+<rect x="1240" y="1020" width="310" height="105" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1395.0" y="1050" class="h" text-anchor="middle">Final slab lease drop</text>
+<text x="1395.0" y="1078" class="s" text-anchor="middle">readers = 0 · I/O leases = 0</text>
+<text x="1395.0" y="1103" class="s" text-anchor="middle">return exclusive slot to pool</text>
+<path d="M1125 1070H1240" class="return"/>
+<text x="1182" y="1057" class="code label" text-anchor="middle">release</text>
+<path d="M1515 725H1575V990H1515V1020" class="return"/>
+<text x="1435" y="969" class="s label" text-anchor="middle">reader releases</text>
+<path d="M1395 1125V1170H25V205H50" class="return"/>
+<text x="750" y="1155" class="s label" text-anchor="middle">Recycle bytes while Registered continues retaining SlabAllocation</text>
+<rect x="50" y="1220" width="720" height="75" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="410.0" y="1250" class="h" text-anchor="middle">Registration retirement</text>
+<text x="410.0" y="1278" class="s" text-anchor="middle">stop admission → drain referencing I/O → unregister → drop owner guard</text>
+<rect x="800" y="1220" width="750" height="75" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1175.0" y="1250" class="h" text-anchor="middle">Safe public API · narrow unsafe implementation</text>
+<text x="1175.0" y="1278" class="s" text-anchor="middle">unique mutation · checked ranges · stable address · synchronized recycling</text>
+</svg>

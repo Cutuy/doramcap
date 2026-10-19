@@ -1,11 +1,15 @@
 //! Uncompressed, index-free MCAP framing. Payload encoding belongs to the caller.
+use crate::timeline::Timeline;
 use crate::{
     managed_buffers::{BufferLease, BufferPool},
+    observability::{EventData, EventKind, Ids, Observer, elapsed_us},
+    slabs::{Rejected, SealedSlab, SlabPool, WritableSlab},
     writer::Writer,
 };
 use std::{
     fs::File,
     io,
+    sync::Arc,
     time::{Duration, Instant},
 };
 const MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
@@ -46,7 +50,22 @@ pub struct Diagnostics {
     pub submitted_operations: u64,
     pub completions: u64,
 }
+/// On-demand snapshot; available with default features and a disabled observer.
+#[derive(Clone, Copy, Debug)]
+pub struct McapSnapshot {
+    pub writer: crate::writer::StageSnapshot,
+    pub combining_bytes: usize,
+    pub combining_messages: usize,
+    pub combining_capacity: usize,
+    pub combining_age_us: Option<u64>,
+    pub managed_available: usize,
+    pub managed_capacity: usize,
+    pub managed_allocated_bytes: usize,
+    pub managed_free_bytes: usize,
+}
 pub struct McapWriter {
+    combining_timeline: Timeline,
+    combining_messages: usize,
     writer: Writer,
     pool: BufferPool,
     channels: Vec<u16>,
@@ -58,6 +77,7 @@ pub struct McapWriter {
     writes: u64,
     alignment: usize,
     metadata: Vec<u8>,
+    prepared_format: Arc<PreparedFormat>,
 }
 fn invalid() -> io::Error {
     io::ErrorKind::InvalidInput.into()
@@ -174,8 +194,14 @@ impl McapWriter {
             Writer::with_config(file, config)?
         };
         let mut this = Self {
+            combining_timeline: Timeline::default(),
+            combining_messages: 0,
             writer,
             pool,
+            prepared_format: Arc::new(PreparedFormat {
+                channels: ids.clone(),
+                alignment,
+            }),
             channels: ids,
             buffer_size,
             active: None,
@@ -235,6 +261,138 @@ impl McapWriter {
             return Err(io::ErrorKind::WouldBlock.into());
         }
         self.writer.trim(&self.pool)
+    }
+    /// Inject collection without changing the writer type or Cargo features.
+    pub fn set_observer(&mut self, observer: Observer) {
+        self.writer.set_observer(observer);
+    }
+    pub fn snapshot(&self) -> McapSnapshot {
+        McapSnapshot {
+            writer: self.writer.snapshot(),
+            combining_bytes: self.used,
+            combining_messages: self.combining_messages,
+            combining_capacity: self.record_capacity(),
+            combining_age_us: elapsed_us(self.since),
+            managed_available: self.pool.available(),
+            managed_capacity: self.pool.capacity(),
+            managed_allocated_bytes: self.pool.allocated_bytes(),
+            managed_free_bytes: self.pool.free_bytes(),
+        }
+    }
+    pub fn active_writes(&self) -> impl Iterator<Item = crate::writer::ActiveWrite> + '_ {
+        self.writer.active_writes()
+    }
+    /// Register producer-owned slabs before capture starts. Repeated calls are cache hits.
+    pub fn prepare_slabs(&mut self, pool: &SlabPool) -> io::Result<()> {
+        self.writer.prepare_slabs(pool)
+    }
+    /// Retire producer registrations after pending writes drain. Readers may remain.
+    pub fn retire_slabs(&mut self, pool: &SlabPool) -> io::Result<()> {
+        self.writer.retire_slabs(pool)
+    }
+    pub fn registration_updates(&self) -> u64 {
+        self.writer.registration_updates()
+    }
+    pub fn prepare_region(&mut self, region: &crate::mapped::MmapRegion) -> io::Result<()> {
+        self.writer.prepare_region(region)
+    }
+    pub fn retire_region(&mut self, region: &crate::mapped::MmapRegion) -> io::Result<()> {
+        self.writer.retire_region(region)
+    }
+    pub fn prepare_mapped_records(
+        &self,
+        range: crate::mapped::WritableRange,
+    ) -> MappedRecordsBuilder {
+        MappedRecordsBuilder {
+            range,
+            format: self.prepared_format.clone(),
+            used: 0,
+        }
+    }
+    pub fn append_mapped_records(
+        &mut self,
+        block: PreparedMappedBlock,
+    ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedMappedBlock>> {
+        let validation = (|| {
+            if !Arc::ptr_eq(&block.format, &self.prepared_format) {
+                return Err(invalid());
+            }
+            self.writer.check_capacity(1)?;
+            self.writer.prepare_mapped(&block.lease)
+        })();
+        if let Err(error) = validation {
+            self.writer.reject(
+                error.kind(),
+                block.lease.ids(),
+                block.lease.as_slice().len() as u64,
+            );
+            return Err(Rejected {
+                error,
+                value: block,
+            });
+        }
+        let PreparedMappedBlock { lease, format } = block;
+        match self.writer.try_append_mapped(lease) {
+            Ok(range) => {
+                self.writes += 1;
+                Ok(range)
+            }
+            Err(e) => Err(Rejected {
+                error: e.error,
+                value: PreparedMappedBlock {
+                    lease: e.value,
+                    format,
+                },
+            }),
+        }
+    }
+    /// Obtain a movable framing builder bound to this stream's schema and channels.
+    /// It can be sent to a producer thread and remains compatible across rotation.
+    pub fn prepare_records(&self, slab: WritableSlab) -> PreparedRecordsBuilder {
+        PreparedRecordsBuilder {
+            slab,
+            format: self.prepared_format.clone(),
+            used: 0,
+        }
+    }
+    /// Admit a complete immutable block, preserving its bytes in one contiguous file range.
+    /// Blocks from another writer are rejected intact, even if their channel IDs match.
+    pub fn append_prepared_records(
+        &mut self,
+        block: PreparedBlock,
+    ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
+        let validation = (|| {
+            if !Arc::ptr_eq(&block.format, &self.prepared_format) {
+                return Err(invalid());
+            }
+            self.writer.check_capacity(1)?;
+            self.writer.prepare_slab(&block.slab)
+        })();
+        if let Err(error) = validation {
+            self.writer.reject(
+                error.kind(),
+                block.slab.observation_ids(),
+                block.slab.as_slice().len() as u64,
+            );
+            return Err(Rejected {
+                error,
+                value: block,
+            });
+        }
+        let PreparedBlock { slab, format } = block;
+        match self.writer.try_append_slab(slab) {
+            Ok(range) => {
+                self.writes += 1;
+                Ok(range)
+            }
+            Err(e) => Err(Rejected {
+                error: e.error,
+                value: PreparedBlock {
+                    slab: e.value,
+                    format,
+                },
+            }),
+        }
     }
     pub fn allocated_bytes(&self) -> usize {
         self.pool.allocated_bytes()
@@ -361,9 +519,26 @@ impl McapWriter {
             let physical = padding(lease.as_mut_slice(), self.used, self.alignment);
             // Keep the full combining lease on failure so the batch can be retried.
             lease.truncate(physical);
-            match self.writer.try_append(lease) {
+            match self
+                .writer
+                .try_append_tagged(lease, "combined", &self.combining_timeline)
+            {
                 Ok(_) => {
                     self.writes += 1;
+                    self.writer
+                        .observer()
+                        .record(EventKind::CombiningFlushed, || EventData {
+                            ids: Ids {
+                                writer: self.writer.writer_id(),
+                                file: self.writer.file_id(),
+                                ..Default::default()
+                            },
+                            len: physical as u64,
+                            duration_us: elapsed_us(self.since),
+                            ..Default::default()
+                        });
+                    self.combining_timeline = Timeline::default();
+                    self.combining_messages = 0;
                     self.used = 0;
                     self.since = None;
                 }
@@ -408,6 +583,11 @@ impl McapWriter {
     }
     pub fn finish(mut self) -> io::Result<()> {
         self.seal()
+    }
+    /// Seal and sync, returning the final stage snapshot.
+    pub fn finish_with_snapshot(mut self) -> io::Result<McapSnapshot> {
+        self.seal()?;
+        Ok(self.snapshot())
     }
     /// Seal and sync, returning final counters after the footer write retires.
     #[cfg(feature = "diagnostics")]
@@ -455,6 +635,123 @@ impl McapWriter {
     }
 }
 
+#[derive(Debug)]
+struct PreparedFormat {
+    channels: Vec<u16>,
+    alignment: usize,
+}
+
+/// Exclusive producer-side MCAP framing. Encoders write directly into each payload.
+#[derive(Debug)]
+pub struct PreparedRecordsBuilder {
+    slab: WritableSlab,
+    format: Arc<PreparedFormat>,
+    used: usize,
+}
+impl PreparedRecordsBuilder {
+    /// Reserve a complete message. Returned payload bytes start zeroed; encode before
+    /// requesting another message. Admission failures leave previous messages intact.
+    pub fn reserve(&mut self, message: Message, payload_len: usize) -> io::Result<&mut [u8]> {
+        if !self.format.channels.contains(&message.channel) {
+            return Err(invalid());
+        }
+        let total = payload_len.checked_add(31).ok_or_else(invalid)?;
+        let end = self.used.checked_add(total).ok_or_else(invalid)?;
+        let physical = checked_padded_len(end, self.format.alignment).ok_or_else(invalid)?;
+        if physical > self.slab.capacity() {
+            return Err(io::ErrorKind::WriteZero.into());
+        }
+        let start = self.used;
+        let out = &mut self.slab.bytes_mut()[start..end];
+        message_header(out, message, total);
+        out[31..].fill(0);
+        self.used = end;
+        Ok(&mut out[31..])
+    }
+    /// Consume exclusive access after writing valid alignment padding.
+    pub fn seal(mut self) -> Result<PreparedBlock, Rejected<Self>> {
+        if self.used == 0 {
+            return Err(Rejected {
+                error: invalid(),
+                value: self,
+            });
+        }
+        let len = padding(self.slab.bytes_mut(), self.used, self.format.alignment);
+        // reserve() established nonempty initialized bounds, including padding.
+        let slab = self
+            .slab
+            .seal(len)
+            .expect("validated prepared block length");
+        Ok(PreparedBlock {
+            slab,
+            format: self.format,
+        })
+    }
+}
+/// Complete MCAP message records and padding, sealed for this writer's format.
+#[derive(Clone, Debug)]
+pub struct PreparedBlock {
+    slab: SealedSlab,
+    format: Arc<PreparedFormat>,
+}
+impl PreparedBlock {
+    /// Share the entire immutable slab with a reader. Storage uses this same range.
+    pub fn slab(&self) -> &SealedSlab {
+        &self.slab
+    }
+}
+
+/// Producer-side framing directly into an exclusively owned mapped range.
+#[derive(Debug)]
+pub struct MappedRecordsBuilder {
+    range: crate::mapped::WritableRange,
+    format: Arc<PreparedFormat>,
+    used: usize,
+}
+impl MappedRecordsBuilder {
+    pub fn reserve(&mut self, message: Message, payload_len: usize) -> io::Result<&mut [u8]> {
+        if !self.format.channels.contains(&message.channel) {
+            return Err(invalid());
+        }
+        let total = payload_len.checked_add(31).ok_or_else(invalid)?;
+        let end = self.used.checked_add(total).ok_or_else(invalid)?;
+        if checked_padded_len(end, self.format.alignment).ok_or_else(invalid)?
+            > self.range.capacity()
+        {
+            return Err(io::ErrorKind::WriteZero.into());
+        }
+        let out = &mut self.range.bytes_mut()[self.used..end];
+        message_header(out, message, total);
+        out[31..].fill(0);
+        self.used = end;
+        Ok(&mut out[31..])
+    }
+    pub fn seal(mut self) -> Result<PreparedMappedBlock, Rejected<Self>> {
+        if self.used == 0 {
+            return Err(Rejected {
+                error: invalid(),
+                value: self,
+            });
+        }
+        let len = padding(self.range.bytes_mut(), self.used, self.format.alignment);
+        let lease = self.range.seal(len).expect("validated mapped record range");
+        Ok(PreparedMappedBlock {
+            lease,
+            format: self.format,
+        })
+    }
+}
+#[derive(Clone, Debug)]
+pub struct PreparedMappedBlock {
+    lease: crate::mapped::ReadLease,
+    format: Arc<PreparedFormat>,
+}
+impl PreparedMappedBlock {
+    pub fn lease(&self) -> &crate::mapped::ReadLease {
+        &self.lease
+    }
+}
+
 fn message_header(out: &mut [u8], message: Message, total: usize) {
     out[0] = 5;
     out[1..9].copy_from_slice(&((total - 9) as u64).to_le_bytes());
@@ -495,13 +792,12 @@ impl MessageReservation<'_> {
         if self.committed {
             return Err(invalid());
         }
-        if self.standalone.is_some() {
-            // Earlier committed small records retain their file order. This may queue
-            // that batch even if this reservation then needs to retry its admission.
-            self.writer.flush_combining()?;
-        }
         if let Some(lease) = self.standalone.take() {
-            match self.writer.writer.try_append(lease) {
+            match self
+                .writer
+                .writer
+                .try_append_tagged(lease, "large", &Timeline::default())
+            {
                 Ok(_) => {
                     self.writer.writes += 1;
                 }
@@ -511,7 +807,14 @@ impl MessageReservation<'_> {
                 }
             }
         } else {
+            if self.writer.used == 0 {
+                self.writer.combining_timeline = Timeline::combining(
+                    self.writer.writer.writer_id(),
+                    self.writer.writer.file_id(),
+                );
+            }
             self.writer.used = self.end;
+            self.writer.combining_messages += 1;
             self.writer.since.get_or_insert_with(Instant::now);
         }
         self.committed = true;

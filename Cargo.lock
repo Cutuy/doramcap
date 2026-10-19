@@ -4486,6 +4486,7 @@ dependencies = [
 name = "storage-demo"
 version = "0.1.0"
 dependencies = [
+ "activity-tracing",
  "axum",
  "futures-util",
  "libc",
@@ -4495,17 +4496,23 @@ dependencies = [
  "storage-persistence",
  "telemetry-protocol",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "storage-persistence"
 version = "0.1.0"
 dependencies = [
+ "activity-tracing",
  "bytes",
  "io-uring",
  "libc",
  "mcap",
+ "memmap2",
  "prost",
+ "tracing",
+ "zenoh",
 ]
 
 [[package]]

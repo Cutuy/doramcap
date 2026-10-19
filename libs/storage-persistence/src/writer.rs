@@ -1,10 +1,14 @@
 //! Owner-driven io_uring with independent pending and registration capacities.
+use crate::timeline::Timeline;
 use crate::{
     file_offsets::{FileRange, OffsetAllocator},
     managed_buffers::{Allocation, BufferLease, BufferPool},
+    mapped::{MmapRegion, ReadLease},
+    observability::{self, EventData, EventKind, Ids, Observer, elapsed_us},
+    slabs::{Rejected, SealedSlab, SlabAllocation, SlabPool},
 };
 use io_uring::{IoUring, opcode, types};
-use std::{fs::File, io, os::fd::AsRawFd, rc::Rc};
+use std::{collections::HashMap, fs::File, io, os::fd::AsRawFd, rc::Rc, sync::Arc};
 
 /// Kernel fixed-buffer range limit. One allocation can occupy multiple entries.
 #[cfg(not(test))]
@@ -61,8 +65,179 @@ pub struct WriteEvent {
     pub latency_us: Option<u64>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum RegionKey {
+    Managed(usize),
+    Slab(u64),
+    Mapped(u64),
+}
+#[derive(Clone)]
+enum AllocationOwner {
+    Managed(Rc<Allocation>),
+    Slab(Arc<SlabAllocation>),
+    Mapped(MmapRegion),
+}
+impl AllocationOwner {
+    fn region_id(&self) -> u64 {
+        match self {
+            Self::Managed(a) => a.region_id,
+            Self::Slab(a) => a.id,
+            Self::Mapped(a) => a.id(),
+        }
+    }
+    fn key(&self) -> RegionKey {
+        match self {
+            Self::Managed(a) => RegionKey::Managed(Rc::as_ptr(a) as usize),
+            Self::Slab(a) => RegionKey::Slab(a.id),
+            Self::Mapped(a) => RegionKey::Mapped(a.id()),
+        }
+    }
+    fn ptr(&self) -> *mut u8 {
+        match self {
+            Self::Managed(a) => a.ptr(),
+            Self::Slab(a) => a.ptr(),
+            Self::Mapped(a) => a.ptr(),
+        }
+    }
+    fn capacity(&self) -> usize {
+        match self {
+            Self::Managed(a) => a.capacity(),
+            Self::Slab(a) => a.capacity(),
+            Self::Mapped(a) => a.len(),
+        }
+    }
+}
+enum WriteSource {
+    Managed(BufferLease),
+    Slab(SealedSlab),
+    Mapped(ReadLease),
+}
+impl WriteSource {
+    fn region_offset(&self) -> usize {
+        match self {
+            Self::Mapped(a) => a.offset(),
+            _ => 0,
+        }
+    }
+    fn ids(&self) -> Ids {
+        match self {
+            Self::Managed(a) => Ids {
+                region: a.allocation().region_id,
+                ..Default::default()
+            },
+            Self::Slab(a) => a.observation_ids(),
+            Self::Mapped(a) => a.ids(),
+        }
+    }
+    fn into_pending(self) -> Self {
+        match self {
+            Self::Slab(a) => Self::Slab(a.into_io()),
+            Self::Mapped(a) => Self::Mapped(a.into_io()),
+            managed => managed,
+        }
+    }
+    fn as_slice(&self) -> &[u8] {
+        match self {
+            Self::Managed(a) => a.as_slice(),
+            Self::Slab(a) => a.as_slice(),
+            Self::Mapped(a) => a.as_slice(),
+        }
+    }
+    fn capacity(&self) -> usize {
+        match self {
+            Self::Managed(a) => a.capacity(),
+            Self::Slab(a) => a.capacity(),
+            Self::Mapped(a) => a.region().len(),
+        }
+    }
+    fn owner(&self) -> AllocationOwner {
+        match self {
+            Self::Managed(a) => AllocationOwner::Managed(a.allocation().clone()),
+            Self::Slab(a) => AllocationOwner::Slab(a.allocation().clone()),
+            Self::Mapped(a) => AllocationOwner::Mapped(a.region().clone()),
+        }
+    }
+}
+// Private, ring-local handles. Entries cannot be retired while any Pending exists.
+// A handle never escapes Writer; after retirement all cache handles are discarded.
+struct RegistrationSegment {
+    slot: u16,
+    start: usize,
+    len: usize,
+}
+
+#[derive(Default)]
+struct RequestObservation {
+    id: u64,
+    accepted_at: Option<std::time::Instant>,
+    queued_at: Option<std::time::Instant>,
+    attempts: u64,
+    retries: u64,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WriteState {
+    AwaitingSubmission,
+    AwaitingCqe,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct ActiveWrite {
+    pub ids: Ids,
+    pub state: WriteState,
+    pub offset: u64,
+    pub len: u64,
+    pub completed_bytes: usize,
+    pub age_us: Option<u64>,
+    pub attempts: u64,
+    pub retries: u64,
+}
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Counters {
+    pub accepted: u64,
+    pub written: u64,
+    pub failed: u64,
+    pub cancelled: u64,
+    pub rejected_capacity: u64,
+    pub rejected_invalid: u64,
+    pub rejected_closed: u64,
+    pub rejected_other: u64,
+    pub queued_operations: u64,
+    pub observed_completions: u64,
+    pub short_retries: u64,
+    pub registration_hits: u64,
+    pub registration_misses: u64,
+    pub registration_failures: u64,
+    pub syncs: u64,
+    pub sync_failures: u64,
+    pub submit_failures: u64,
+}
+#[derive(Clone, Copy, Debug)]
+pub struct StageSnapshot {
+    pub writer_id: u64,
+    pub file_id: u64,
+    pub sampled_at: std::time::Instant,
+    pub pending_capacity: usize,
+    pub pending: usize,
+    pub pending_bytes: u64,
+    /// Includes SQEs queued in userspace and submitted operations awaiting observation.
+    pub awaiting_cqe: usize,
+    pub awaiting_submission: usize,
+    pub oldest_age_us: Option<u64>,
+    pub registered_regions: usize,
+    pub registered_bytes: usize,
+    pub registration_updates: u64,
+    /// Current file totals. Completion bytes may contain holes.
+    pub accepted_bytes: u64,
+    pub written_bytes: u64,
+    /// Prefix covered by the last successful sync after draining all writes.
+    pub synced_bytes: u64,
+    /// Writer-lifetime totals across file rotation.
+    pub counters: Counters,
+}
 struct Pending {
-    lease: BufferLease,
+    timeline: Timeline,
+    observed: RequestObservation,
+    lease: WriteSource,
+    segments: Option<Rc<[RegistrationSegment]>>,
     range: FileRange,
     done: usize,
     request: Option<u64>,
@@ -71,6 +246,23 @@ struct Pending {
     submitted_at: Option<std::time::Instant>,
 }
 impl Pending {
+    fn ids(&self, writer: u64, file: u64) -> Ids {
+        Ids {
+            writer,
+            file,
+            write: self.observed.id,
+            operation: self.request.unwrap_or(0),
+            ..self.lease.ids()
+        }
+    }
+    fn data(&self, writer: u64, file: u64) -> EventData {
+        EventData {
+            ids: self.ids(writer, file),
+            offset: self.range.offset,
+            len: self.range.len,
+            ..Default::default()
+        }
+    }
     fn advance(&mut self, result: i32) -> io::Result<bool> {
         if result < 0 {
             return Err(io::Error::from_raw_os_error(-result));
@@ -88,14 +280,18 @@ impl Pending {
     }
 }
 struct Registered {
-    allocation: Rc<Allocation>,
-    start: usize,
+    allocation: AllocationOwner,
     len: usize,
 }
 
 pub struct Writer {
     // Drop ring before registered allocation owners; persistent submit failures retain leases too.
     ring: IoUring,
+    observer: Observer,
+    observation_writer: u64,
+    observation_file: u64,
+    counters: Counters,
+    synced_bytes: u64,
     file: File,
     offsets: OffsetAllocator,
     slots: Vec<Option<Pending>>,
@@ -108,6 +304,8 @@ pub struct Writer {
     registered: Option<BufferPool>,
     registrations: Vec<Option<Registered>>,
     table_live: bool,
+    registration_cache: HashMap<RegionKey, Rc<[RegistrationSegment]>>,
+    registration_updates: u64,
     alignment: usize,
     max_write_bytes: usize,
     next_request: u64,
@@ -161,6 +359,11 @@ impl Writer {
         }
         Ok(Self {
             ring: IoUring::new(config.queue_depth)?,
+            observer: Observer::default(),
+            observation_writer: observability::next_id(),
+            observation_file: observability::next_id(),
+            counters: Counters::default(),
+            synced_bytes: 0,
             file,
             offsets: OffsetAllocator::new(0, 1).unwrap(),
             slots: (0..config.pending_capacity).map(|_| None).collect(),
@@ -173,6 +376,8 @@ impl Writer {
             registered: None,
             registrations: (0..config.registration_capacity).map(|_| None).collect(),
             table_live: false,
+            registration_cache: HashMap::new(),
+            registration_updates: 0,
             alignment: 1,
             max_write_bytes: config.max_write_bytes,
             next_request: 1,
@@ -197,6 +402,81 @@ impl Writer {
             #[cfg(test)]
             fail_registration_after: None,
         })
+    }
+    /// Attach at any time. Existing writes remain inspectable; their earlier ages may be unknown.
+    pub fn set_observer(&mut self, observer: Observer) {
+        self.observer = observer;
+    }
+    pub(crate) fn observer(&self) -> &Observer {
+        &self.observer
+    }
+    pub fn writer_id(&self) -> u64 {
+        self.observation_writer
+    }
+    pub fn file_id(&self) -> u64 {
+        self.observation_file
+    }
+    pub fn active_writes(&self) -> impl Iterator<Item = ActiveWrite> + '_ {
+        self.slots.iter().flatten().map(|p| ActiveWrite {
+            ids: p.ids(self.observation_writer, self.observation_file),
+            state: if p.request.is_some() {
+                WriteState::AwaitingCqe
+            } else {
+                WriteState::AwaitingSubmission
+            },
+            offset: p.range.offset,
+            len: p.range.len,
+            completed_bytes: p.done,
+            age_us: elapsed_us(p.observed.accepted_at),
+            attempts: p.observed.attempts,
+            retries: p.observed.retries,
+        })
+    }
+    pub fn snapshot(&self) -> StageSnapshot {
+        let mut awaiting_cqe = 0;
+        let mut pending_bytes = 0;
+        let mut oldest = None;
+        for p in self.slots.iter().flatten() {
+            awaiting_cqe += usize::from(p.request.is_some());
+            pending_bytes += p.range.len - p.done as u64;
+            oldest = oldest.max(elapsed_us(p.observed.accepted_at));
+        }
+        StageSnapshot {
+            writer_id: self.observation_writer,
+            file_id: self.observation_file,
+            sampled_at: std::time::Instant::now(),
+            pending_capacity: self.slots.len(),
+            pending: self.outstanding,
+            pending_bytes,
+            awaiting_cqe,
+            awaiting_submission: self.outstanding - awaiting_cqe,
+            oldest_age_us: oldest,
+            registered_regions: self.registration_cache.len(),
+            registered_bytes: self.registered_bytes(),
+            registration_updates: self.registration_updates,
+            accepted_bytes: self.accepted_bytes(),
+            written_bytes: self.written_bytes,
+            synced_bytes: self.synced_bytes,
+            counters: self.counters,
+        }
+    }
+    pub(crate) fn reject(&mut self, error: io::ErrorKind, source: Ids, len: u64) {
+        match error {
+            io::ErrorKind::WouldBlock => self.counters.rejected_capacity += 1,
+            io::ErrorKind::InvalidInput => self.counters.rejected_invalid += 1,
+            io::ErrorKind::BrokenPipe => self.counters.rejected_closed += 1,
+            _ => self.counters.rejected_other += 1,
+        }
+        self.observer
+            .record(EventKind::Rejected(error), || EventData {
+                ids: Ids {
+                    writer: self.observation_writer,
+                    file: self.observation_file,
+                    ..source
+                },
+                len,
+                ..Default::default()
+            });
     }
     pub fn direct(file: File, pool: BufferPool, alignment: usize) -> io::Result<Self> {
         Self::direct_with_config(file, pool, alignment, WriterConfig::default())
@@ -223,29 +503,59 @@ impl Writer {
         this.offsets = OffsetAllocator::new(0, alignment as u64).unwrap();
         this.registered = Some(pool.clone());
         for allocation in pool.allocations()? {
-            this.register_allocation(&allocation)?;
+            this.register_allocation(AllocationOwner::Managed(allocation))?;
         }
         Ok(this)
     }
-    fn register_allocation(&mut self, allocation: &Rc<Allocation>) -> io::Result<()> {
+    fn register_allocation(
+        &mut self,
+        allocation: AllocationOwner,
+    ) -> io::Result<Rc<[RegistrationSegment]>> {
+        let ids = Ids {
+            writer: self.observation_writer,
+            file: self.observation_file,
+            region: allocation.region_id(),
+            ..Default::default()
+        };
+        if let Some(segments) = self.registration_cache.get(&allocation.key()) {
+            self.counters.registration_hits += 1;
+            self.observer
+                .record(EventKind::RegistrationHit, || EventData {
+                    ids,
+                    ..Default::default()
+                });
+            return Ok(segments.clone());
+        }
+        self.counters.registration_misses += 1;
+        let len = allocation.capacity() as u64;
+        let start = self.observer.now();
+        let result = self.register_allocation_inner(allocation);
+        let kind = match &result {
+            Ok(_) => EventKind::Registered,
+            Err(e) => {
+                self.counters.registration_failures += 1;
+                EventKind::RegistrationFailed(e.kind())
+            }
+        };
+        self.observer.record(kind, || EventData {
+            ids,
+            len,
+            duration_us: elapsed_us(start),
+            ..Default::default()
+        });
+        result
+    }
+    fn register_allocation_inner(
+        &mut self,
+        allocation: AllocationOwner,
+    ) -> io::Result<Rc<[RegistrationSegment]>> {
         if !(allocation.ptr() as usize).is_multiple_of(self.alignment)
             || !allocation.capacity().is_multiple_of(self.alignment)
         {
             return Err(io::ErrorKind::InvalidInput.into());
         }
+        let key = allocation.key();
         let needed = allocation.capacity().div_ceil(REGISTRATION_BYTES);
-        let existing = self
-            .registrations
-            .iter()
-            .flatten()
-            .filter(|r| Rc::ptr_eq(&r.allocation, allocation))
-            .count();
-        if existing == needed {
-            return Ok(());
-        }
-        if existing != 0 {
-            return Err(io::ErrorKind::InvalidData.into());
-        }
         if self.registrations.iter().filter(|r| r.is_none()).count() < needed {
             return Err(io::ErrorKind::WouldBlock.into());
         }
@@ -255,6 +565,7 @@ impl Writer {
                 .register_buffers_sparse(self.registrations.len() as u32)?;
             self.table_live = true;
         }
+        let mut segments = Vec::with_capacity(needed);
         for start in (0..allocation.capacity()).step_by(REGISTRATION_BYTES) {
             let index = self.registrations.iter().position(Option::is_none).unwrap();
             let len = (allocation.capacity() - start).min(REGISTRATION_BYTES);
@@ -272,6 +583,7 @@ impl Writer {
             let result = if injected {
                 Err(io::ErrorKind::Other.into())
             } else {
+                self.registration_updates += 1;
                 unsafe {
                     self.ring
                         .submitter()
@@ -283,12 +595,13 @@ impl Writer {
                 for i in 0..self.registrations.len() {
                     if self.registrations[i]
                         .as_ref()
-                        .is_some_and(|r| Rc::ptr_eq(&r.allocation, allocation))
+                        .is_some_and(|r| r.allocation.key() == key)
                     {
                         let empty = libc::iovec {
                             iov_base: std::ptr::null_mut(),
                             iov_len: 0,
                         };
+                        self.registration_updates += 1;
                         if unsafe {
                             self.ring
                                 .submitter()
@@ -304,13 +617,19 @@ impl Writer {
                 }
                 return Err(error);
             }
-            self.registrations[index] = Some(Registered {
-                allocation: allocation.clone(),
+            segments.push(RegistrationSegment {
+                slot: index as u16,
                 start,
                 len,
             });
+            self.registrations[index] = Some(Registered {
+                allocation: allocation.clone(),
+                len,
+            });
         }
-        Ok(())
+        let segments: Rc<[RegistrationSegment]> = segments.into();
+        self.registration_cache.insert(key, segments.clone());
+        Ok(segments)
     }
     /// Register a new managed allocation without submitting or waiting for I/O.
     pub fn prepare(&mut self, lease: &BufferLease) -> io::Result<()> {
@@ -319,7 +638,7 @@ impl Writer {
             if !pool.owns(lease) {
                 return Err(io::ErrorKind::InvalidInput.into());
             }
-            self.register_allocation(lease.allocation())?;
+            self.register_allocation(AllocationOwner::Managed(lease.allocation().clone()))?;
         }
         Ok(())
     }
@@ -336,32 +655,205 @@ impl Writer {
         }
         Ok(())
     }
-    /// Retains caller ownership on any rejected admission. No file range is consumed.
+    /// Pre-register a producer pool before capture. Buffered writers need no table.
+    /// A failure preserves successful registrations and all producer ownership.
+    pub fn prepare_slabs(&mut self, pool: &SlabPool) -> io::Result<()> {
+        self.check_open()?;
+        if self.registered.is_some() {
+            for a in pool.allocations() {
+                self.register_allocation(AllocationOwner::Slab(a.clone()))?;
+            }
+        }
+        Ok(())
+    }
+    /// Validate and warm registration while the caller retains the read lease.
+    pub fn prepare_slab(&mut self, slab: &SealedSlab) -> io::Result<()> {
+        self.check_open()?;
+        if !slab.as_slice().len().is_multiple_of(self.alignment) {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        if self.registered.is_some() {
+            self.register_allocation(AllocationOwner::Slab(slab.allocation().clone()))?;
+        }
+        Ok(())
+    }
+    /// Number of buffer-table update syscall attempts, including rollback/retirement.
+    pub fn registration_updates(&self) -> u64 {
+        self.registration_updates
+    }
+    /// Validate the range and warm its mapping registration.
+    pub fn prepare_mapped(&mut self, lease: &ReadLease) -> io::Result<()> {
+        if !(lease.as_slice().as_ptr() as usize).is_multiple_of(self.alignment)
+            || !lease.as_slice().len().is_multiple_of(self.alignment)
+        {
+            return Err(io::ErrorKind::InvalidInput.into());
+        }
+        self.prepare_region(lease.region())
+    }
+    /// Cache registration by mapping identity; retain its owner until retirement.
+    pub fn prepare_region(&mut self, region: &MmapRegion) -> io::Result<()> {
+        self.check_open()?;
+        if self.registered.is_some() {
+            self.register_allocation(AllocationOwner::Mapped(region.clone()))?;
+        }
+        Ok(())
+    }
+    /// Remove cached entries while idle; existing readers retain their mapping.
+    pub fn retire_region(&mut self, region: &MmapRegion) -> io::Result<()> {
+        self.retire_key(RegionKey::Mapped(region.id()))
+    }
+    /// Retire pool entries after all writer requests retire; readers remain valid.
+    pub fn retire_slabs(&mut self, pool: &SlabPool) -> io::Result<()> {
+        for allocation in pool.allocations() {
+            self.retire_key(RegionKey::Slab(allocation.id))?;
+        }
+        Ok(())
+    }
+    fn retire_key(&mut self, key: RegionKey) -> io::Result<()> {
+        if self.outstanding + self.cancellations != 0 {
+            return Err(io::ErrorKind::WouldBlock.into());
+        }
+        for (slot, entry) in self.registrations.iter_mut().enumerate() {
+            if entry.as_ref().is_some_and(|r| r.allocation.key() == key) {
+                let empty = libc::iovec {
+                    iov_base: std::ptr::null_mut(),
+                    iov_len: 0,
+                };
+                self.registration_updates += 1;
+                // SAFETY: every write has retired; retain owner on update failure.
+                if let Err(error) = unsafe {
+                    self.ring
+                        .submitter()
+                        .register_buffers_update(slot as u32, &[empty], None)
+                } {
+                    self.error = Some(error.kind());
+                    return Err(error);
+                }
+                let r = entry.as_ref().unwrap();
+                self.observer
+                    .record(EventKind::RegistrationRetired, || EventData {
+                        ids: Ids {
+                            writer: self.observation_writer,
+                            file: self.observation_file,
+                            region: r.allocation.region_id(),
+                            ..Default::default()
+                        },
+                        len: r.len as u64,
+                        ..Default::default()
+                    });
+                *entry = None;
+            }
+        }
+        self.registration_cache.remove(&key);
+        Ok(())
+    }
+    pub fn try_append_mapped(
+        &mut self,
+        lease: ReadLease,
+    ) -> Result<FileRange, Rejected<ReadLease>> {
+        self.try_append_source(WriteSource::Mapped(lease), "mapped", &Timeline::default())
+            .map_err(|(error, source)| {
+                let WriteSource::Mapped(value) = source else {
+                    unreachable!()
+                };
+                Rejected { error, value }
+            })
+    }
+    /// Retains caller ownership on rejected admission. No file range is consumed.
     pub fn try_append(&mut self, lease: BufferLease) -> Result<FileRange, AppendError> {
+        self.try_append_tagged(lease, "managed", &Timeline::default())
+    }
+    pub(crate) fn try_append_tagged(
+        &mut self,
+        lease: BufferLease,
+        path: &'static str,
+        cause: &Timeline,
+    ) -> Result<FileRange, AppendError> {
+        self.try_append_source(WriteSource::Managed(lease), path, cause)
+            .map_err(|(error, source)| {
+                let WriteSource::Managed(lease) = source else {
+                    unreachable!()
+                };
+                AppendError { error, lease }
+            })
+    }
+    /// Submit the entire sealed byte range, retaining it through all split writes.
+    pub fn try_append_slab(&mut self, slab: SealedSlab) -> Result<FileRange, Rejected<SealedSlab>> {
+        self.try_append_source(WriteSource::Slab(slab), "slab", &Timeline::default())
+            .map_err(|(error, source)| {
+                let WriteSource::Slab(value) = source else {
+                    unreachable!()
+                };
+                Rejected { error, value }
+            })
+    }
+    fn try_append_source(
+        &mut self,
+        lease: WriteSource,
+        path: &'static str,
+        cause: &Timeline,
+    ) -> Result<FileRange, (io::Error, WriteSource)> {
         let validation = (|| {
             self.check_capacity(1)?;
-            if lease.as_slice().is_empty() || !lease.as_slice().len().is_multiple_of(self.alignment)
+            if lease.as_slice().is_empty()
+                || !(lease.as_slice().as_ptr() as usize).is_multiple_of(self.alignment)
+                || !lease.as_slice().len().is_multiple_of(self.alignment)
             {
                 return Err(io::ErrorKind::InvalidInput.into());
             }
-            self.prepare(&lease)
+            if let (Some(pool), WriteSource::Managed(managed)) = (&self.registered, &lease)
+                && !pool.owns(managed)
+            {
+                return Err(io::ErrorKind::InvalidInput.into());
+            }
+            if self.registered.is_some() {
+                self.register_allocation(lease.owner()).map(Some)
+            } else {
+                Ok(None)
+            }
         })();
-        if let Err(error) = validation {
-            return Err(AppendError { error, lease });
-        }
+        let segments = match validation {
+            Ok(segments) => segments,
+            Err(error) => {
+                self.reject(error.kind(), lease.ids(), lease.as_slice().len() as u64);
+                return Err((error, lease));
+            }
+        };
         let reservation = match self.offsets.reserve(lease.as_slice().len() as u64) {
             Ok(r) => r,
             Err(_) => {
-                return Err(AppendError {
-                    error: io::ErrorKind::InvalidInput.into(),
-                    lease,
-                });
+                self.reject(
+                    io::ErrorKind::InvalidInput,
+                    lease.ids(),
+                    lease.as_slice().len() as u64,
+                );
+                return Err((io::ErrorKind::InvalidInput.into(), lease));
             }
         };
         let range = reservation.range();
         let index = self.slots.iter().position(Option::is_none).unwrap();
+        let write_id = observability::next_id();
+        let timeline = Timeline::write(
+            Ids {
+                writer: self.observation_writer,
+                file: self.observation_file,
+                write: write_id,
+                ..lease.ids()
+            },
+            path,
+            range,
+            self.registered.is_some(),
+            cause,
+        );
         self.slots[index] = Some(Pending {
-            lease,
+            timeline,
+            observed: RequestObservation {
+                id: write_id,
+                accepted_at: self.observer.now(),
+                ..Default::default()
+            },
+            lease: lease.into_pending(),
+            segments,
             range,
             done: 0,
             request: None,
@@ -371,6 +863,11 @@ impl Writer {
         });
         reservation.commit();
         self.outstanding += 1;
+        self.counters.accepted += 1;
+        let pending = self.slots[index].as_ref().unwrap();
+        self.observer.record(EventKind::Accepted, || {
+            pending.data(self.observation_writer, self.observation_file)
+        });
         Ok(range)
     }
     /// Compatibility API: rejected ownership is returned to the pool.
@@ -393,27 +890,15 @@ impl Writer {
             }
             let bytes = &p.lease.as_slice()[p.done..];
             let mut len = bytes.len().min(self.max_write_bytes);
-            let entry = if self.registered.is_some() {
-                let (slot, r) = self
-                    .registrations
-                    .iter()
-                    .enumerate()
-                    .find_map(|(i, r)| {
-                        r.as_ref()
-                            .filter(|r| {
-                                Rc::ptr_eq(&r.allocation, p.lease.allocation())
-                                    && p.done >= r.start
-                                    && p.done < r.start + r.len
-                            })
-                            .map(|r| (i, r))
-                    })
-                    .expect("prepared allocation remains registered");
-                len = len.min(r.start + r.len - p.done);
+            let entry = if let Some(segments) = &p.segments {
+                let position = p.lease.region_offset() + p.done;
+                let r = &segments[position / REGISTRATION_BYTES];
+                len = len.min(r.start + r.len - position);
                 opcode::WriteFixed::new(
                     types::Fd(self.file.as_raw_fd()),
                     bytes.as_ptr(),
                     len as u32,
-                    slot as u16,
+                    r.slot,
                 )
                 .offset(p.range.offset + p.done as u64)
                 .build()
@@ -427,8 +912,18 @@ impl Writer {
             if unsafe { self.ring.submission().push(&entry) }.is_err() {
                 break;
             }
+            p.timeline
+                .queued(self.next_request, p.range.offset + p.done as u64, len);
             p.request = Some(self.next_request);
             p.issued = len;
+            p.observed.attempts += 1;
+            p.observed.queued_at = self.observer.now();
+            self.counters.queued_operations += 1;
+            self.observer.record(EventKind::SqeQueued, || EventData {
+                offset: p.range.offset + p.done as u64,
+                len: len as u64,
+                ..p.data(self.observation_writer, self.observation_file)
+            });
             #[cfg(feature = "diagnostics")]
             {
                 p.submitted_at = Some(std::time::Instant::now());
@@ -448,6 +943,18 @@ impl Writer {
     pub fn progress(&mut self, wait: bool) -> io::Result<()> {
         #[cfg(test)]
         if self.fail_submit {
+            self.counters.submit_failures += 1;
+            self.observer
+                .record(EventKind::SubmitFailed(io::ErrorKind::Other), || {
+                    EventData {
+                        ids: Ids {
+                            writer: self.observation_writer,
+                            file: self.observation_file,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                });
             return Err(io::ErrorKind::Other.into());
         }
         self.schedule()?;
@@ -459,7 +966,22 @@ impl Writer {
             {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 result => {
-                    let submitted = result?;
+                    let submitted = match result {
+                        Ok(n) => n,
+                        Err(error) => {
+                            self.counters.submit_failures += 1;
+                            self.observer
+                                .record(EventKind::SubmitFailed(error.kind()), || EventData {
+                                    ids: Ids {
+                                        writer: self.observation_writer,
+                                        file: self.observation_file,
+                                        ..Default::default()
+                                    },
+                                    ..Default::default()
+                                });
+                            return Err(error);
+                        }
+                    };
                     #[cfg(feature = "diagnostics")]
                     {
                         self.submitted += submitted as u64;
@@ -479,50 +1001,93 @@ impl Writer {
             let Some((id, result)) = completion else {
                 break;
             };
-            if id & CANCEL_TAG != 0 {
-                self.cancellations -= 1;
-                continue;
-            }
-            let index = self
-                .slots
-                .iter()
-                .position(|p| p.as_ref().is_some_and(|p| p.request == Some(id)))
-                .expect("unique request owns completion");
-            #[cfg(feature = "diagnostics")]
-            {
-                let p = self.slots[index].as_ref().unwrap();
-                let range = FileRange {
-                    offset: p.range.offset + p.done as u64,
-                    len: p.issued as u64,
-                };
-                self.completions += 1;
-                self.event(index, range, result, true);
-            }
-            let p = self.slots[index].as_mut().unwrap();
-            p.request = None;
-            let outcome = p.advance(result);
-            match outcome {
-                Ok(false) if !self.cancelling && p.done.is_multiple_of(self.alignment) => {}
-                other => {
-                    match other {
-                        Ok(true) => self.written_bytes += p.range.len,
-                        Err(e) => {
-                            self.error.get_or_insert(e.kind());
-                        }
-                        _ => {
-                            self.error.get_or_insert(if self.cancelling {
-                                io::ErrorKind::Interrupted
-                            } else {
-                                io::ErrorKind::InvalidData
-                            });
-                        }
-                    }
-                    self.slots[index] = None;
-                    self.outstanding -= 1;
-                }
-            }
+            self.retire_completion(id, result);
         }
         Ok(())
+    }
+    fn retire_completion(&mut self, id: u64, result: i32) {
+        if id & CANCEL_TAG != 0 {
+            self.cancellations -= 1;
+            return;
+        }
+        let index = self
+            .slots
+            .iter()
+            .position(|p| p.as_ref().is_some_and(|p| p.request == Some(id)))
+            .expect("unique request owns completion");
+        #[cfg(feature = "diagnostics")]
+        {
+            let p = self.slots[index].as_ref().unwrap();
+            let range = FileRange {
+                offset: p.range.offset + p.done as u64,
+                len: p.issued as u64,
+            };
+            self.completions += 1;
+            self.event(index, range, result, true);
+        }
+        let p = self.slots[index].as_mut().unwrap();
+        self.counters.observed_completions += 1;
+        self.observer.record(EventKind::CqeObserved, || EventData {
+            offset: p.range.offset + p.done as u64,
+            len: p.issued as u64,
+            result: Some(result),
+            duration_us: elapsed_us(p.observed.queued_at),
+            ..p.data(self.observation_writer, self.observation_file)
+        });
+        p.timeline.completed(result);
+        p.request = None;
+        let outcome = p.advance(result);
+        match outcome {
+            Ok(false) if !self.cancelling && p.done.is_multiple_of(self.alignment) => {
+                if (result as usize) < p.issued {
+                    p.observed.retries += 1;
+                    self.counters.short_retries += 1;
+                    p.timeline.outcome(EventKind::Retry);
+                    self.observer.record(EventKind::Retry, || {
+                        p.data(self.observation_writer, self.observation_file)
+                    });
+                }
+            }
+            other => {
+                let kind = match &other {
+                    Ok(true) => {
+                        self.counters.written += 1;
+                        EventKind::Written
+                    }
+                    _ if self.cancelling => {
+                        self.counters.cancelled += 1;
+                        EventKind::Cancelled
+                    }
+                    Err(e) => {
+                        self.counters.failed += 1;
+                        EventKind::Failed(e.kind())
+                    }
+                    _ => {
+                        self.counters.failed += 1;
+                        EventKind::Failed(io::ErrorKind::InvalidData)
+                    }
+                };
+                p.timeline.outcome(kind);
+                self.observer.record(kind, || {
+                    p.data(self.observation_writer, self.observation_file)
+                });
+                match other {
+                    Ok(true) => self.written_bytes += p.range.len,
+                    Err(e) => {
+                        self.error.get_or_insert(e.kind());
+                    }
+                    _ => {
+                        self.error.get_or_insert(if self.cancelling {
+                            io::ErrorKind::Interrupted
+                        } else {
+                            io::ErrorKind::InvalidData
+                        });
+                    }
+                }
+                self.slots[index] = None;
+                self.outstanding -= 1;
+            }
+        }
     }
     pub fn flush_written(&mut self) -> io::Result<()> {
         while self.outstanding + self.cancellations > 0 {
@@ -572,22 +1137,63 @@ impl Writer {
         if self.table_live {
             self.ring.submitter().unregister_buffers()?;
             self.table_live = false;
+            self.registration_cache.clear();
             for r in &mut self.registrations {
+                if let Some(entry) = r.as_ref() {
+                    self.observer
+                        .record(EventKind::RegistrationRetired, || EventData {
+                            ids: Ids {
+                                writer: self.observation_writer,
+                                file: self.observation_file,
+                                region: entry.allocation.region_id(),
+                                ..Default::default()
+                            },
+                            len: entry.len as u64,
+                            ..Default::default()
+                        });
+                }
                 *r = None;
             }
         }
         pool.trim().map_err(Into::into)
     }
-    fn sync_file(&self) -> io::Result<()> {
+    fn sync_file(&mut self, covered: u64) -> io::Result<()> {
+        let start = self.observer.now();
         #[cfg(test)]
-        if self.fail_sync {
-            return Err(io::Error::from_raw_os_error(libc::EIO));
-        }
-        self.file.sync_all()
+        let injected = self.fail_sync;
+        #[cfg(not(test))]
+        let injected = false;
+        let result = if injected {
+            Err(io::Error::from_raw_os_error(libc::EIO))
+        } else {
+            self.file.sync_all()
+        };
+        self.counters.syncs += 1;
+        let kind = match &result {
+            Ok(()) => {
+                self.synced_bytes = covered;
+                EventKind::SyncCompleted
+            }
+            Err(e) => {
+                self.counters.sync_failures += 1;
+                EventKind::SyncFailed(e.kind())
+            }
+        };
+        self.observer.record(kind, || EventData {
+            ids: Ids {
+                writer: self.observation_writer,
+                file: self.observation_file,
+                ..Default::default()
+            },
+            len: covered,
+            duration_us: elapsed_us(start),
+            ..Default::default()
+        });
+        result
     }
     pub fn sync(&mut self) -> io::Result<()> {
         self.flush_written()?;
-        self.sync_file()
+        self.sync_file(self.accepted_bytes())
     }
     pub fn cancel_and_drain(&mut self) -> io::Result<()> {
         self.closed = true;
@@ -597,6 +1203,11 @@ impl Writer {
                 continue;
             };
             let Some(id) = p.request else {
+                self.counters.cancelled += 1;
+                p.timeline.outcome(EventKind::Cancelled);
+                self.observer.record(EventKind::Cancelled, || {
+                    p.data(self.observation_writer, self.observation_file)
+                });
                 self.slots[index] = None;
                 self.outstanding -= 1;
                 continue;
@@ -630,7 +1241,8 @@ impl Writer {
             return Err(io::Error::from_raw_os_error(libc::EIO));
         }
         self.file.set_len(logical_len)?;
-        self.sync_file()
+        self.synced_bytes = self.synced_bytes.min(logical_len);
+        self.sync_file(logical_len)
     }
     pub fn close_at(mut self, logical_len: u64) -> io::Result<()> {
         self.finalize_at(logical_len)
@@ -654,6 +1266,16 @@ impl Writer {
             return Err(io::ErrorKind::InvalidInput.into());
         }
         self.file = file;
+        self.observation_file = observability::next_id();
+        self.synced_bytes = 0;
+        self.observer.record(EventKind::FileRotated, || EventData {
+            ids: Ids {
+                writer: self.observation_writer,
+                file: self.observation_file,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
         self.offsets = OffsetAllocator::new(0, self.alignment as u64).unwrap();
         self.written_bytes = 0;
         self.closed = false;
@@ -718,6 +1340,58 @@ impl Drop for Writer {
 mod tests {
     use super::*;
     use crate::managed_buffers::BufferPool;
+    #[test]
+    fn mapped_segment_offsets_rollback_and_cancellation() {
+        use crate::mapped::MmapRegion;
+        use memmap2::MmapOptions;
+        use std::os::unix::fs::OpenOptionsExt;
+        let region = MmapRegion::new(
+            MmapOptions::new().len(16384).map_anon().unwrap(),
+            Default::default(),
+        );
+        let path = std::env::temp_dir().join(format!("mapped-unit-{}", std::process::id()));
+        let file = File::options()
+            .custom_flags(libc::O_DIRECT)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let mut w = Writer::direct_with_config(
+            file,
+            BufferPool::new(1, 4096, 4096).unwrap(),
+            4096,
+            WriterConfig {
+                max_write_bytes: 8192,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        w.fail_registration_after = Some(1);
+        let rejected = w
+            .try_append_mapped(region.acquire(4096..12288).unwrap().seal(8192).unwrap())
+            .unwrap_err();
+        assert_eq!(w.accepted_bytes(), 0);
+        assert_eq!(w.registered_bytes(), 4096);
+        assert!(region.acquire(4096..12288).is_err());
+        w.fail_registration_after = None;
+        w.try_append_mapped(rejected.value).unwrap();
+        w.flush_written().unwrap();
+        assert_eq!(w.snapshot().counters.queued_operations, 2); // crosses 4-KiB test registration segments
+        assert_eq!(std::fs::read(&path).unwrap(), vec![0; 8192]);
+        let lease = region.acquire(4096..12288).unwrap().seal(8192).unwrap();
+        let reader = lease.clone();
+        w.try_append_mapped(lease).unwrap();
+        w.fail_submit = true;
+        assert!(w.progress(false).is_err());
+        assert!(region.acquire(4096..12288).is_err());
+        w.fail_submit = false;
+        let _ = w.cancel_and_drain();
+        assert!(region.acquire(4096..12288).is_err());
+        drop(reader);
+        assert!(region.acquire(4096..12288).is_ok());
+        drop(w);
+        std::fs::remove_file(path).unwrap();
+    }
     #[test]
     fn submission_failure_retains_ownership() {
         let path = std::env::temp_dir().join(format!("doramcap-submit-{}", std::process::id()));
@@ -821,10 +1495,255 @@ mod tests {
         std::fs::remove_file(path).unwrap();
     }
     #[test]
+    fn slab_registration_rollback_and_allocation_guard_lifetime() {
+        use std::os::unix::fs::OpenOptionsExt;
+        let path =
+            std::env::temp_dir().join(format!("doramcap-slab-rollback-{}", std::process::id()));
+        let file = File::options()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&path)
+            .unwrap();
+        let managed = BufferPool::new(1, 4096, 4096).unwrap();
+        let collector =
+            crate::observability::Collector::new(64, crate::observability::Mode::Inspect).unwrap();
+        let slabs = SlabPool::with_observer(1, 8192, 4096, collector.observer()).unwrap();
+        let allocation = Arc::downgrade(&slabs.allocations()[0]);
+        let mut writer = Writer::direct(file, managed.clone(), 4096).unwrap();
+        writer.append(managed.reserve(4096).unwrap()).unwrap();
+        let slab = slabs.acquire().unwrap().seal(8192).unwrap();
+        writer.fail_registration_after = Some(1);
+        let rejected = writer.try_append_slab(slab).unwrap_err();
+        assert_eq!(writer.registered_ranges(), 1);
+        assert_eq!(writer.registration_cache.len(), 1);
+        assert_eq!(writer.accepted_bytes(), 4096);
+        assert_eq!(slabs.available(), 0);
+        writer.fail_registration_after = None;
+        writer.try_append_slab(rejected.value).unwrap();
+        writer.flush_written().unwrap();
+        assert_eq!(slabs.available(), 1);
+        drop(slabs);
+        assert!(allocation.upgrade().is_some()); // kernel registration still owns allocation
+        writer.trim(&managed).unwrap();
+        assert!(allocation.upgrade().is_none());
+        assert!(!collector.read_after(0, 64).events.is_empty());
+        writer.close().unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn slab_cancellation_and_submit_failure_hold_leases() {
+        for fail in [false, true] {
+            let path = std::env::temp_dir().join(format!(
+                "doramcap-slab-cancel-{}-{fail}",
+                std::process::id()
+            ));
+            let file = File::options()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            let slabs = SlabPool::new(2, 8192, 4096).unwrap();
+            let mut writer = Writer::with_config(
+                file,
+                WriterConfig {
+                    queue_depth: 1,
+                    max_write_bytes: 4096,
+                    ..WriterConfig::default()
+                },
+            )
+            .unwrap();
+            let first = slabs.acquire().unwrap().seal(8192).unwrap();
+            let reader = first.clone();
+            writer.try_append_slab(first).unwrap();
+            writer
+                .try_append_slab(slabs.acquire().unwrap().seal(8192).unwrap())
+                .unwrap();
+            writer.schedule().unwrap();
+            assert!(writer.slots.iter().flatten().any(|p| p.request.is_some()));
+            assert_eq!(
+                writer.slots[0].as_ref().unwrap().lease.as_slice().as_ptr(),
+                reader.as_slice().as_ptr()
+            );
+            if fail {
+                writer.fail_submit = true;
+                assert!(writer.progress(false).is_err());
+                assert_eq!(slabs.available(), 0);
+                writer.fail_submit = false;
+            }
+            let _ = writer.cancel_and_drain();
+            assert_eq!(writer.outstanding(), 0);
+            assert_eq!(writer.cancellations, 0);
+            assert_eq!(slabs.available(), 1);
+            drop(reader);
+            assert_eq!(slabs.available(), 2);
+            drop(writer);
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+    #[test]
+    fn slab_short_completion_retains_source_until_terminal_retirement() {
+        let slabs = SlabPool::new(2, 4096, 4096).unwrap();
+        let mut pending: Vec<_> = (0..2)
+            .map(|_| Pending {
+                timeline: Timeline::default(),
+                observed: Default::default(),
+                lease: WriteSource::Slab(slabs.acquire().unwrap().seal(4096).unwrap()),
+                segments: None,
+                range: FileRange {
+                    offset: 0,
+                    len: 4096,
+                },
+                done: 0,
+                request: None,
+                issued: 4096,
+                #[cfg(feature = "diagnostics")]
+                submitted_at: None,
+            })
+            .collect();
+        // Reverse retirement order and an injected aligned short completion.
+        assert!(!pending[1].advance(512).unwrap());
+        assert_eq!(slabs.available(), 0);
+        pending[1].issued = 3584;
+        assert!(pending[1].advance(3584).unwrap());
+        drop(pending.pop());
+        assert_eq!(slabs.available(), 1);
+        assert!(pending[0].advance(-libc::EIO).is_err());
+        drop(pending);
+        assert_eq!(slabs.available(), 2);
+    }
+    #[test]
+    fn observation_reports_registration_submit_and_sync_failures() {
+        use crate::observability::{Collector, Mode};
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = std::env::temp_dir().join(format!(
+            "doramcap-observation-failures-{}",
+            std::process::id()
+        ));
+        let file = File::options()
+            .create_new(true)
+            .write(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&path)
+            .unwrap();
+        let pool = BufferPool::new(1, 4096, 4096).unwrap();
+        let collector = Collector::new(64, Mode::Inspect).unwrap();
+        let mut writer = Writer::direct(file, pool.clone(), 4096).unwrap();
+        writer.set_observer(collector.observer());
+        writer.fail_registration_after = Some(1);
+        let rejected = writer.try_append(pool.reserve(8192).unwrap()).unwrap_err();
+        assert_eq!(writer.snapshot().counters.registration_failures, 1);
+        assert_eq!(writer.snapshot().counters.accepted, 0);
+        writer.fail_registration_after = None;
+        writer.try_append(rejected.lease).unwrap();
+        let id = writer.active_writes().next().unwrap().ids.write;
+        writer.fail_submit = true;
+        assert!(writer.progress(false).is_err());
+        assert_eq!(writer.active_writes().next().unwrap().ids.write, id);
+        assert_eq!(writer.snapshot().counters.submit_failures, 1);
+        writer.fail_submit = false;
+        writer.flush_written().unwrap();
+        writer.fail_sync = true;
+        assert!(writer.sync().is_err());
+        assert_eq!(writer.snapshot().synced_bytes, 0);
+        assert_eq!(writer.snapshot().counters.sync_failures, 1);
+        writer.fail_sync = false;
+        writer.sync().unwrap();
+        assert_eq!(writer.snapshot().synced_bytes, 8192);
+        writer.finalize_at(1).unwrap();
+        assert_eq!(writer.snapshot().synced_bytes, 1);
+        let events = collector.read_after(0, 64).events;
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::RegistrationFailed(_)))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::SubmitFailed(_)))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::SyncFailed(_)))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.kind == EventKind::Written && e.data.ids.write == id)
+        );
+        drop(writer);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn observation_short_and_failed_completions_keep_write_identity() {
+        use crate::observability::{Collector, Mode};
+        let path =
+            std::env::temp_dir().join(format!("doramcap-short-observation-{}", std::process::id()));
+        let file = File::options()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let pool = BufferPool::new(1, 8192, 4096).unwrap();
+        let c = Collector::new(32, Mode::Inspect).unwrap();
+        let mut writer = Writer::new(file, 2).unwrap();
+        writer.set_observer(c.observer());
+        writer.try_append(pool.reserve(8192).unwrap()).unwrap();
+        let id = writer.active_writes().next().unwrap().ids.write;
+        // Inject completion-boundary inputs without submitting kernel operations.
+        let p = writer.slots[0].as_mut().unwrap();
+        p.request = Some(1);
+        p.issued = 4096;
+        writer.retire_completion(1, 512);
+        let active = writer.active_writes().next().unwrap();
+        assert_eq!(
+            (active.ids.write, active.completed_bytes, active.retries),
+            (id, 512, 1)
+        );
+        assert_eq!(writer.snapshot().counters.short_retries, 1);
+        assert_eq!(pool.available(), 0);
+        let p = writer.slots[0].as_mut().unwrap();
+        p.request = Some(2);
+        p.issued = 4096;
+        writer.retire_completion(2, -libc::EIO);
+        assert_eq!(writer.snapshot().counters.failed, 1);
+        assert_eq!(writer.outstanding(), 0);
+        assert_eq!(pool.available(), 1);
+        let events = c.read_after(0, 32).events;
+        assert!(
+            events
+                .iter()
+                .any(|e| e.kind == EventKind::Retry && e.data.ids.write == id)
+        );
+        let completions: Vec<_> = events
+            .iter()
+            .filter(|e| e.kind == EventKind::CqeObserved)
+            .collect();
+        assert_eq!(
+            completions
+                .iter()
+                .map(|e| e.data.ids.operation)
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e.kind, EventKind::Failed(_)) && e.data.ids.write == id)
+        );
+        drop(writer);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
     fn completion_contract() {
         let pool = BufferPool::new(2, 16, 512).unwrap();
         let mut p = Pending {
-            lease: pool.reserve(16).unwrap(),
+            timeline: Timeline::default(),
+            observed: Default::default(),
+            lease: WriteSource::Managed(pool.reserve(16).unwrap()),
+            segments: None,
             range: FileRange { offset: 0, len: 16 },
             done: 0,
             request: None,
@@ -839,7 +1758,10 @@ mod tests {
         assert_eq!(pool.available(), 2);
         for result in [0, -libc::EIO, -libc::ECANCELED, 17] {
             let mut p = Pending {
-                lease: pool.reserve(16).unwrap(),
+                timeline: Timeline::default(),
+                observed: Default::default(),
+                lease: WriteSource::Managed(pool.reserve(16).unwrap()),
+                segments: None,
                 range: FileRange { offset: 0, len: 16 },
                 done: 0,
                 request: None,

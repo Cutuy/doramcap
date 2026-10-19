@@ -3,7 +3,8 @@
 ![Three input paths and the shared MCAP writer lifecycle](architecture/three-path-writer-lifecycle.svg)
 
 Discussion · 2026-10-19. Diagrams show direct-mode submission. Managed reservations
-are implemented; both external paths are proposed and serve distinct use cases.
+and intra-process prepared blocks are implemented. Large external payloads and
+shared-mapping adapters remain planned.
 
 ## 1 · Managed reservations
 
@@ -27,21 +28,22 @@ and reserves their file range before accepting ownership.
 
 ## 3 · Prepared external blocks
 
-`append_prepared_records(block)` would accept sealed, complete MCAP records plus
+`append_prepared_records(block)` accepts sealed, complete MCAP records plus
 valid alignment padding. The producer chooses block size and batching. A 4-KiB
 aligned block can take this path; no 256-KiB threshold or storage combining applies.
 Storage submits the same bytes and retains the block's read lease through I/O.
 
-A storage-provided framing helper can prepare the producer's reserved header and
-padding space before sealing. A validated prepared-block type carries record
-boundaries and channel/schema compatibility for the destination MCAP stream.
+`prepare_records(WritableSlab)` supplies a builder for headers, payloads and
+padding. Sealing produces `PreparedBlock`, bound to the originating writer's
+schema/channel identity across rotation. Other writers reject it intact.
 Storage retains responsibility for file headers, metadata, rotation and finalization.
-Any preceding combining batch must be admitted first to preserve append order;
-queue pressure returns the prepared block intact for retry.
+Each submitted piece occupies one contiguous file range. Large managed and prepared
+writes leave combining batches buffered; file placement and completion order across
+pieces are unspecified. Queue pressure returns the prepared block intact for retry.
 
 ## Shared mechanism
 
-Both external paths use a mapping-validity guard for persistent registration and
+The shared design uses a mapping-validity guard for persistent registration and
 a separate read/reuse lease for each submission. Registration retains mapping
 identity; read leases keep submitted bytes immutable until every referencing
 CQE retires. Tracing readers can share the sealed-block lease. The last reader
@@ -54,3 +56,16 @@ step. Backend support must establish DMA eligibility for the actual memory type.
 
 Related: [large external-memory plan](101826-external-buffer-leases.md),
 [tracing slab ownership](../../activity-tracing/docs/external-buffer-ownership.svg).
+
+## Intra-process slab ownership
+
+`SlabPool::acquire()` supplies unique write access. `WritableSlab::seal(len)`
+produces shared immutable bytes; MCAP callers use the framing builder's `seal()`.
+`PreparedBlock::slab()` exposes the same whole-slab read lease held by storage.
+All readers and I/O must finish before recycling. Payload views are deferred.
+
+Call `prepare_slabs(&pool)` before capture to warm registration. Cache hits use
+stable allocation identity and retain resolved registration segments in pending
+writes. `registration_updates()` counts table-update attempts; warmed reuse must
+leave it unchanged. `retire_slabs(&pool)` requires no pending writer requests and
+releases that pool's registrations while existing readers remain valid.

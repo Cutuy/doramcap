@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="400" viewBox="0 0 1120 400" role="img" aria-labelledby="title desc">
+<title id="title">Writer activity span lifetimes</title>
+<desc id="desc">A combining batch remains buffered while independent large, slab and mapped writes run. Each admitted write owns child operation spans from SQE queueing to CQE observation. A causal link connects the combining span to its eventual write. Illustrative times.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#53677b"/></marker></defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b;font-size:15px}.title{font-size:25px;font-weight:bold}.lane{font-weight:bold}.op{fill:#fff;stroke:#54788b}.axis{stroke:#53677b;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1120" height="400" rx="12" fill="#f8fafc"/>
+<text x="30" y="38" class="title">Writer activity · independent lifetimes</text>
+<text x="30" y="66">Illustrative timeline · application observation times</text>
+<path d="M205 95H1080" class="axis"/><text x="1010" y="85">time →</text>
+<text x="30" y="139" class="lane">Combining</text>
+<rect x="215" y="115" width="480" height="38" rx="7" fill="#ffe8b7"/>
+<text x="235" y="140">storage.combining · first commit → admission</text>
+<path d="M695 134H735" class="axis"/>
+<rect x="740" y="112" width="330" height="52" rx="7" fill="#bfe5d1"/>
+<text x="750" y="132">storage.write · combined</text>
+<rect x="762" y="140" width="287" height="17" rx="3" class="op"/>
+<text x="696" y="183">causal link</text>
+<text x="30" y="218" class="lane">Large managed</text>
+<rect x="300" y="192" width="360" height="52" rx="7" fill="#c8def7"/>
+<text x="310" y="212">storage.write · large</text>
+<rect x="322" y="220" width="95" height="17" rx="3" class="op"/>
+<rect x="425" y="220" width="105" height="17" rx="3" class="op"/>
+<rect x="538" y="220" width="104" height="17" rx="3" class="op"/>
+<text x="30" y="283" class="lane">Sealed slab</text>
+<rect x="380" y="257" width="225" height="52" rx="7" fill="#d9cff1"/>
+<text x="390" y="277">storage.write · slab</text>
+<rect x="402" y="285" width="181" height="17" rx="3" class="op"/>
+<text x="30" y="348" class="lane">Mapped range</text>
+<rect x="470" y="322" width="265" height="52" rx="7" fill="#c4e8e9"/>
+<text x="480" y="342">storage.write · mapped</text>
+<rect x="492" y="350" width="106" height="17" rx="3" class="op"/>
+<rect x="606" y="350" width="107" height="17" rx="3" class="op"/>
+<text x="755" y="262">White bars: storage.io</text>
+<text x="755" y="287">SQE queued → CQE observed</text>
+<text x="755" y="327">IDs · offsets · lengths · results</text>
+<text x="755" y="352">Direct-I/O mode recorded per write</text>
+</svg>

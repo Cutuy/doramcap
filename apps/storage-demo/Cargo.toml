@@ -4,8 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+activity-tracing = ["dep:activity-tracing", "dep:tracing", "storage-persistence/activity-tracing"]
+tracing-export = ["dep:tracing", "dep:tracing-subscriber"]
+
 [dependencies]
-storage-persistence = { path = "../../libs/storage-persistence", features = ["diagnostics"] }
+activity-tracing = { path = "../../libs/activity-tracing", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, default-features = false, features = ["fmt"] }
+storage-persistence = { path = "../../libs/storage-persistence", default-features = true }
 telemetry-protocol = { path = "../../libs/telemetry-protocol" }
 prost = "0.14"
 serde_json = "1"
@@ -19,3 +26,7 @@ mcap = { version = "=0.25.0", default-features = false }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "validate_activity"
+required-features = ["activity-tracing"]
