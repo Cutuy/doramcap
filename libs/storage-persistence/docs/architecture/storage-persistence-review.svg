@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000"><title>Direct encoding into managed MCAP buffers</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#475569"/></marker><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#059669"/></marker></defs><rect width="1400" height="1000" fill="#f8fafc"/><g font-family="DejaVu Sans,sans-serif">
+<text x="700" y="47" text-anchor="middle" font-size="30" fill="#0f172a" font-weight="700">Reserve → encode in place → submit → reclaim</text>
+<text x="700" y="78" text-anchor="middle" font-size="17" fill="#64748b" font-weight="400">One owner thread · one io_uring per writer · SQPOLL off</text>
+<rect x="470" y="115" width="450" height="95" rx="14" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+<text x="695.0" y="162.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">Application</text>
+<text x="695.0" y="190.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">in-memory Protobuf</text>
+<rect x="70" y="115" width="300" height="95" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
+<text x="220.0" y="162.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">MCAP · reserve(n)</text>
+<text x="220.0" y="190.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">MCAP framing + placement</text>
+<path d="M470 145 H370" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="419" y="132" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">size + metadata</text>
+<rect x="70" y="300" width="300" height="110" rx="14" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="2"/>
+<text x="220.0" y="355.0" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">Managed pool</text>
+<text x="220.0" y="383.0" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">registered, aligned buffers</text>
+<path d="M220 210 V300" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="285" y="260" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">acquire lease</text>
+<path d="M370 340 H420 V185 H470" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#g)"/>
+<text x="553" y="254" text-anchor="middle" font-size="17" fill="#059669" font-weight="400">writable payload slice</text>
+<rect x="470" y="310" width="850" height="220" rx="16" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
+<text x="895" y="346" text-anchor="middle" font-size="17" fill="#1e40af" font-weight="600">FINAL STORAGE BUFFER</text>
+<rect x="490" y="380" width="155" height="70" fill="#dbeafe" stroke="#94a3b8"/>
+<text x="567.5" y="422" text-anchor="middle" font-size="17" fill="#0f172a" font-weight="600">MCAP header</text>
+<rect x="645" y="380" width="470" height="70" fill="#d1fae5" stroke="#94a3b8"/>
+<text x="880.0" y="422" text-anchor="middle" font-size="17" fill="#0f172a" font-weight="600">Protobuf payload</text>
+<rect x="1115" y="380" width="185" height="70" fill="#ede9fe" stroke="#94a3b8"/>
+<text x="1207.5" y="422" text-anchor="middle" font-size="17" fill="#0f172a" font-weight="600">Padding record</text>
+<text x="895" y="490" text-anchor="middle" font-size="16" fill="#334155" font-weight="400">Small messages reserve adjacent slices · large messages reserve whole buffers</text>
+<path d="M695 210 V380" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="790" y="290" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">encode directly</text>
+<rect x="490" y="610" width="420" height="95" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/>
+<text x="700.0" y="657.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">MCAP · commit(lease)</text>
+<text x="700.0" y="685.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">seal headers + format-valid padding</text>
+<path d="M700 530 V610" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="785" y="576" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">filled lease</text>
+<rect x="1030" y="610" width="290" height="95" rx="14" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="2"/>
+<text x="1175.0" y="657.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">Offset allocator</text>
+<text x="1175.0" y="685.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">reserve aligned file range</text>
+<path d="M910 638 H1030" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="970" y="625" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">length</text>
+<path d="M1030 681 H910" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="970" y="705" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">offset</text>
+<rect x="490" y="790" width="420" height="95" rx="14" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
+<text x="700.0" y="837.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">Storage · io_uring</text>
+<text x="700.0" y="865.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">buffer + length + file offset</text>
+<path d="M700 705 V790" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="750" y="754" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">submit</text>
+<rect x="1030" y="790" width="290" height="95" rx="14" fill="#fff" stroke="#cbd5e1" stroke-width="2"/>
+<text x="1175.0" y="837.5" text-anchor="middle" font-size="23" fill="#0f172a" font-weight="600">Linux file I/O</text>
+<text x="1175.0" y="865.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">filesystem → driver → NVMe</text>
+<path d="M910 837 H1030" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="971" y="822" text-anchor="middle" font-size="17" fill="#475569" font-weight="400">write</text>
+<path d="M490 837 H220 V410" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#g)"/>
+<text x="310" y="938" text-anchor="middle" font-size="17" fill="#059669" font-weight="400">CQE → retire → reclaim lease</text>
+<text x="220" y="739" text-anchor="middle" font-size="16" fill="#059669" font-weight="400">All referencing I/O retired</text>
+<text x="700" y="982" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">DRAFT · alignment padding included · no intermediate serialized payload buffer</text>
+</g></svg>

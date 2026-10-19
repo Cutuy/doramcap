@@ -10,6 +10,7 @@ Each component owns its documentation, tests, examples, and benchmarks.
 | [monitor-core](libs/monitor-core/) | Bounded snapshot buffers and collection handoff |
 | [telemetry-protocol](libs/telemetry-protocol/) | Protobuf schemas, codecs, and descriptors |
 | [telemetry-mcap](libs/telemetry-mcap/) | Reusable MCAP recording sink |
+| [storage-persistence](libs/storage-persistence/) | Bounded io_uring MCAP writer, aligned buffer pool, combining and rotation |
 | [system-monitor](apps/system-monitor/) | Standalone collector with an optional DORA publisher |
 | [cpu-viewer](apps/cpu-viewer/) | Demo web server and React dashboard |
 | [mcap-recorder](apps/mcap-recorder/) | Independent DORA-to-MCAP recording process |

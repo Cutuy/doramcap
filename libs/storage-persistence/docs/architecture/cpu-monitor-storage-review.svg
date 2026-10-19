@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1400" viewBox="0 0 1600 1400"><title>CPU monitoring with embedded MCAP persistence</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#475569"/></marker><marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#059669"/></marker></defs><rect width="1600" height="1400" fill="#f8fafc"/><g font-family="DejaVu Sans,sans-serif">
+<text x="800" y="48" text-anchor="middle" font-size="30" fill="#0f172a" font-weight="700">CPU monitoring · embedded MCAP recording</text>
+<text x="800" y="80" text-anchor="middle" font-size="18" fill="#64748b" font-weight="400">Proposed process and component boundaries</text>
+<rect x="90" y="115" width="950" height="95" rx="16" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="565.0" y="162.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Linux kernel · eBPF CPU monitor</text>
+<text x="565.0" y="190.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">cgroup / per-core counters</text>
+<rect x="45" y="265" width="1050" height="910" rx="16" fill="#fff" stroke="#64748b" stroke-width="2" stroke-dasharray=""/>
+<text x="565" y="300" text-anchor="middle" font-size="21" fill="#0f172a" font-weight="700">PROCESS 1 · system-monitor</text>
+<rect x="90" y="335" width="950" height="105" rx="16" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" stroke-dasharray=""/>
+<text x="565.0" y="387.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Collector thread · 10 Hz</text>
+<text x="565.0" y="415.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">cgroup-bpf → monitor-core snapshot lease</text>
+<path d="M565 210 V335" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="670" y="247" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">numeric counters</text>
+<rect x="90" y="490" width="950" height="80" rx="16" fill="#fff" stroke="#cbd5e1" stroke-width="2" stroke-dasharray=""/>
+<text x="565.0" y="530.0" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Bounded snapshot handoff</text>
+<text x="565.0" y="558.0" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">preallocated batches · explicit overflow</text>
+<path d="M565 440 V490" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="650" y="475" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">snapshot lease</text>
+<rect x="70" y="620" width="1000" height="525" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 5"/>
+<text x="570" y="650" text-anchor="middle" font-size="17" fill="#475569" font-weight="700">WRITER / PUBLICATION OWNER THREAD</text>
+<rect x="100" y="695" width="420" height="105" rx="16" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" stroke-dasharray=""/>
+<text x="310.0" y="747.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Telemetry adapter → MCAP layer</text>
+<text x="310.0" y="775.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">Protobuf encoding · schemas · channels</text>
+<rect x="650" y="695" width="390" height="105" rx="16" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="2" stroke-dasharray=""/>
+<text x="845.0" y="747.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Managed buffers</text>
+<text x="845.0" y="775.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">registered pool · exclusive leases</text>
+<path d="M565 570 V600 H310 V695" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="324" y="591" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">snapshot + dictionary state</text>
+<path d="M650 760 H520" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#g)"/>
+<text x="585" y="742" text-anchor="middle" font-size="16" fill="#059669" font-weight="400">reserve → lease</text>
+<rect x="100" y="870" width="940" height="100" rx="16" fill="#eff6ff" stroke="#93c5fd" stroke-width="2" stroke-dasharray=""/>
+<text x="570" y="897" text-anchor="middle" font-size="16" fill="#1e40af" font-weight="600">FINAL STORAGE BUFFER</text>
+<rect x="120" y="912" width="160" height="40" rx="16" fill="#dbeafe" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="200.0" y="939" text-anchor="middle" font-size="16" fill="#0f172a" font-weight="500">MCAP framing</text>
+<rect x="280" y="912" width="530" height="40" rx="16" fill="#d1fae5" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="545.0" y="939" text-anchor="middle" font-size="16" fill="#0f172a" font-weight="500">Protobuf payload</text>
+<rect x="810" y="912" width="210" height="40" rx="16" fill="#ede9fe" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="915.0" y="939" text-anchor="middle" font-size="16" fill="#0f172a" font-weight="500">Padding record</text>
+<path d="M310 800 V870" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="355" y="843" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">encode directly into reserved payload</text>
+<rect x="100" y="1030" width="420" height="85" rx="16" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="310.0" y="1072.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Storage writer</text>
+<text x="310.0" y="1100.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">offset allocator + one io_uring</text>
+<rect x="700" y="1030" width="340" height="85" rx="16" fill="#fff7ed" stroke="#fdba74" stroke-width="2" stroke-dasharray=""/>
+<text x="870.0" y="1072.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Dora publisher</text>
+<text x="870.0" y="1100.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">application-owned adapter</text>
+<path d="M310 970 V1030" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="403" y="1007" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">commit buffer lease</text>
+<path d="M810 970 V1030" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="906" y="1007" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">borrow payload slice</text>
+<path d="M520 1075 H560 V1130 H1055 V825 H845 V800" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#g)"/>
+<text x="820" y="855" text-anchor="middle" font-size="16" fill="#059669" font-weight="400">I/O retired + borrow ended → reclaim</text>
+<rect x="90" y="1230" width="950" height="100" rx="16" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2" stroke-dasharray=""/>
+<text x="565.0" y="1280.0" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Linux filesystem → storage driver → NVMe</text>
+<text x="565.0" y="1308.0" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">file descriptor + aligned offset / length + registered buffer</text>
+<path d="M310 1115 V1230" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="373" y="1207" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">file writes</text>
+<rect x="1140" y="815" width="415" height="360" rx="16" fill="#fff" stroke="#64748b" stroke-width="2" stroke-dasharray=""/>
+<text x="1347" y="850" text-anchor="middle" font-size="21" fill="#0f172a" font-weight="700">PROCESS 2 · cpu-viewer</text>
+<rect x="1170" y="890" width="355" height="85" rx="16" fill="#fff" stroke="#cbd5e1" stroke-width="2" stroke-dasharray=""/>
+<text x="1347.5" y="932.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">Dora subscriber</text>
+<text x="1347.5" y="960.5" text-anchor="middle" font-size="16" fill="#64748b" font-weight="400">Protobuf bytes</text>
+<rect x="1170" y="1040" width="355" height="85" rx="16" fill="#fff" stroke="#cbd5e1" stroke-width="2" stroke-dasharray=""/>
+<text x="1347.5" y="1089.5" text-anchor="middle" font-size="22" fill="#0f172a" font-weight="600">WebSocket / dashboard</text>
+<path d="M1347 975 V1040" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="1400" y="1012" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">telemetry</text>
+<path d="M1040 1070 H1115 V930 H1170" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="1210" y="789" text-anchor="middle" font-size="16" fill="#475569" font-weight="400">Dora transport</text>
+<rect x="1140" y="440" width="415" height="280" rx="16" fill="#fff7ed" stroke="#fdba74" stroke-width="2" stroke-dasharray=""/>
+<text x="1347" y="477" text-anchor="middle" font-size="17" fill="#9a3412" font-weight="700">PUBLICATION COPY BOUNDARY</text>
+<text x="1347" y="521" text-anchor="middle" font-size="17" fill="#334155" font-weight="400">Current Dora API owns its buffers.</text>
+<text x="1347" y="558" text-anchor="middle" font-size="17" fill="#334155" font-weight="400">Publishing this reserved payload</text>
+<text x="1347" y="585" text-anchor="middle" font-size="17" fill="#334155" font-weight="400">requires a copy into Dora storage.</text>
+<text x="1347" y="634" text-anchor="middle" font-size="17" fill="#334155" font-weight="400">Borrowed-buffer transport needs</text>
+<text x="1347" y="661" text-anchor="middle" font-size="17" fill="#334155" font-weight="400">a separate lifetime / API design.</text>
+<text x="800" y="1374" text-anchor="middle" font-size="17" fill="#64748b" font-weight="400">Recording is embedded in system-monitor. CPU collection stays on its dedicated thread. Draft for review.</text>
+</g></svg>
