@@ -11,3 +11,5 @@ apps/cpu-viewer/dataflows/out/
 
 __pycache__/
 *.pyc
+
+apps/activity-demo/frontend/dist/
