@@ -1,7 +1,11 @@
 # Embedded MCAP persistence: implementation plan
 
 Status: M1–M7 implemented and validated on x86 Linux and ARM64 WSL.
-External-buffer and CUDA extensions remain separately planned.
+The next managed-memory revision follows the
+[growable free-list plan](101926-growable-buffer-pool.md), then the
+[external-memory plan](101826-external-buffer-leases.md). Fixed-pool and segmented
+reservation requirements below describe the original implementation; the new
+plan supersedes them for future work. Historical validation remains unchanged.
 
 ## Architecture
 

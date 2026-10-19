@@ -35,7 +35,7 @@ fn meta(sequence: u32) -> Message {
     }
 }
 #[test]
-fn segmented_records_and_rotation() {
+fn contiguous_records_and_rotation() {
     for alignment in [1, 512, 4096] {
         let path = |i| {
             std::env::temp_dir().join(format!(

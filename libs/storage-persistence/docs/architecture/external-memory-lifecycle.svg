@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="390" viewBox="0 0 1120 390" role="img" aria-labelledby="title desc"><title id="title">External memory · two lifetimes</title><desc id="desc">Region validity spans many messages. Each read lease protects one message until storage finishes reading.</desc><defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#53657b"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#192e45}.title{font-size:25px;font-weight:700}.label{font-size:16px;font-weight:700}.note{font-size:14px;fill:#52657a}.edge{font-size:13px;fill:#40566e}.step{font-size:17px;font-weight:700}</style><rect width="1120" height="390" fill="#f8fafc"/><text class="title" x="36" y="43">External memory · two lifetimes</text>
+<rect x="36" y="100" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="149.0" y="129" text-anchor="middle">Produce</text>
+<text class="note" x="149.0" y="153" text-anchor="middle">provider writes range</text>
+<rect x="310" y="100" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="423.0" y="129" text-anchor="middle">Ready</text>
+<text class="note" x="423.0" y="153" text-anchor="middle">producer hands off</text>
+<rect x="584" y="100" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="697.0" y="129" text-anchor="middle">Storage reads</text>
+<text class="note" x="697.0" y="153" text-anchor="middle">immutable range</text>
+<rect x="858" y="100" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="971.0" y="129" text-anchor="middle">Reuse</text>
+<text class="note" x="971.0" y="153" text-anchor="middle">provider may overwrite</text>
+<path d="M262 138H310" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="286.0" y="126" text-anchor="middle"></text>
+<path d="M536 138H584" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="560.0" y="126" text-anchor="middle"></text>
+<path d="M810 138H858" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="834.0" y="126" text-anchor="middle"></text>
+<rect x="310" y="209" width="500" height="38" rx="7" fill="#d4e9dc"/>
+<text class="note" x="560.0" y="233" text-anchor="middle">Read lease · ready handoff through I/O retirement</text>
+<rect x="36" y="265" width="1048" height="38" rx="7" fill="#e7effa"/>
+<text class="note" x="560.0" y="289" text-anchor="middle">Region guard + registration · persist across repeated produce → read → reuse cycles</text>
+<text class="note" x="36" y="343" text-anchor="start">First use registers the mapped range. Explicit retirement drains reads, retires registration, then releases the region guard.</text>
+<text class="note" x="36" y="369" text-anchor="start">For small copied inputs, release the read lease after copying finishes.</text>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="490" viewBox="0 0 1300 490" role="img" aria-labelledby="title desc">
+<title id="title">2 · Large external payload — storage assembles the record</title><desc id="desc">PROPOSED · payload &gt;256 KiB: original memory → direct write; alignment or registration failure returns an error</desc>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker></defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#17324d}.title{font-size:25px;font-weight:700}.sub{font-size:15px;fill:#52657a}.head{font-size:19px;font-weight:700}.small{font-size:14px}.tag{font-size:12px;font-weight:700;fill:#52657a}</style><rect width="1300" height="490" fill="#f8fafc"/>
+<text x="40" y="42" class="title" text-anchor="start">2 · Large external payload — storage assembles the record</text>
+<text x="40" y="69" class="sub" text-anchor="start">PROPOSED · payload &gt;256 KiB: original memory → direct write; alignment or registration failure returns an error</text>
+<rect x="40" y="115" width="245" height="100" rx="10" fill="#def2e9" stroke="#c5d2df"/>
+<text x="162.5" y="146" class="head" text-anchor="middle">External producer</text>
+<text x="162.5" y="172" class="small" text-anchor="middle">ready payload + read lease</text>
+<text x="162.5" y="195" class="small" text-anchor="middle">producer owns the mapping</text>
+<path d="M285 165H365" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="325" y="144" class="small" text-anchor="middle">payload</text>
+<rect x="365" y="115" width="245" height="100" rx="10" fill="#fff0d6" stroke="#c5d2df"/>
+<text x="487.5" y="146" class="head" text-anchor="middle">MCAP assembler</text>
+<text x="487.5" y="172" class="small" text-anchor="middle">managed framing spans</text>
+<text x="487.5" y="195" class="small" text-anchor="middle">external payload stays in place</text>
+<path d="M610 165H690" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="650" y="144" class="small" text-anchor="middle">spans</text>
+<rect x="690" y="115" width="245" height="100" rx="10" fill="#e6efff" stroke="#c5d2df"/>
+<text x="812.5" y="146" class="head" text-anchor="middle">Append scheduler</text>
+<text x="812.5" y="172" class="small" text-anchor="middle">file range + retained lease</text>
+<text x="812.5" y="195" class="small" text-anchor="middle">admission / retries / CQEs</text>
+<path d="M935 165H1015" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="975" y="144" class="small" text-anchor="middle">SQEs</text>
+<rect x="1015" y="115" width="245" height="100" rx="10" fill="#eaf0f6" stroke="#c5d2df"/>
+<text x="1137.5" y="146" class="head" text-anchor="middle">io_uring</text>
+<text x="1137.5" y="172" class="small" text-anchor="middle">registered address + length</text>
+<text x="1137.5" y="195" class="small" text-anchor="middle">O_DIRECT write requests</text>
+<text x="40" y="257" class="tag" text-anchor="start">FILE LAYOUT · APPEND ORDER</text>
+<text x="1260" y="257" class="small" text-anchor="end">f → increasing file offset</text>
+<rect x="40" y="272" width="330" height="65" fill="#fff0d6" stroke="#c5d2df"/>
+<text x="205.0" y="297" class="head" text-anchor="middle">Padding + header</text>
+<text x="205.0" y="320" class="small" text-anchor="middle">managed prefix · aligned transfer</text>
+<rect x="370" y="272" width="660" height="65" fill="#def2e9" stroke="#c5d2df"/>
+<text x="700.0" y="297" class="head" text-anchor="middle">Original payload</text>
+<text x="700.0" y="320" class="small" text-anchor="middle">external range · aligned transfer</text>
+<rect x="1030" y="272" width="230" height="65" fill="#eaf0f6" stroke="#c5d2df"/>
+<text x="1145.0" y="297" class="head" text-anchor="middle">Next record</text>
+<text x="1145.0" y="320" class="small" text-anchor="middle">record boundary</text>
+<text x="40" y="361" class="sub" text-anchor="start">Prefix ends with the message header; payload follows immediately. Each submitted source / length / file offset is aligned.</text>
+<rect x="40" y="375" width="1220" height="35" rx="6" fill="#eaf0f6"/>
+<text x="54" y="398" class="tag" text-anchor="start">BYTE LEASE</text>
+<text x="205" y="398" class="small" text-anchor="start">Payload immutable until all referencing CQEs retire; then release the producer’s reuse guard.</text>
+<rect x="40" y="421" width="1220" height="35" rx="6" fill="#eaf0f6"/>
+<text x="54" y="444" class="tag" text-anchor="start">REGISTRATION</text>
+<text x="205" y="444" class="small" text-anchor="start">Mapping identity remains valid while registered. Register on first use; retain until explicit retirement.</text>
+</svg>

@@ -1,109 +1,78 @@
-# External-buffer leases: gated feature plan
+# External-memory persistence
 
-Status: planned separately from the managed-buffer writer. The expanded wire
-layout SVG remains a review draft outside the repository. Implementation is paused.
+![Three input paths and the shared writer lifecycle](architecture/three-path-writer-lifecycle.svg)
 
-## Design
+Status: planned · revised 2026-10-19. Builds on the implemented [managed pool](101926-growable-buffer-pool.md).
+Two distinct APIs share external ownership and I/O: large payloads need storage framing;
+prepared blocks supply complete file records and bypass combining at any aligned size.
+[Input contracts](101926-memory-ingress-cases.md) · [Ownership lifetimes](architecture/external-memory-lifecycle.svg).
 
-The application adapter supplies immutable byte ranges and an owning guard.
-The storage layer holds guards until every referencing request retires, including
-retries and cancellation. Dora-specific ownership stays in its adapter.
+## E1 — Shared external-region and read-lease support
 
-All paths persist complete MCAP Messages containing valid serialized Protobuf.
-For an external blob, the format adapter emits the field tag and length around
-the borrowed bytes. Persist blob contents and sufficient schema information for
-ordinary decoding. Existing serialized messages can be forwarded as byte spans.
-Small and large managed messages retain the base writer's reserve/encode path.
+- [ ] Evaluate [memmap2](https://docs.rs/memmap2/latest/memmap2/) for the adapter/tests; keep storage independent of its allocator.
+- [ ] Accept caller-mapped `MAP_SHARED` regions from memfd and `/dev/shm`.
+- [ ] Keep the API to a mapped region with a validity guard and a ready byte-range lease with a reuse guard; allow one provider object to supply both.
+- [ ] Require mapping/backing identity through registration retirement and immutable bytes through write retirement; document unsafe construction for caller-enforced contracts.
+- [ ] Register lazily using G2's manager; retain registrations across messages and rotation. Return rejected leases to callers.
+- [ ] Validation: producer handoff, repeated region reuse, mapping identity/generation and guard-drop counts are correct.
+- [ ] Validation: registration and admission failures preserve existing resources and caller ownership.
+- [ ] Generalize pending writes to retain managed or external leases; reuse the current file-offset allocator, SQEs, splitting, retries and CQE retirement.
+- [ ] Keep mapping-registration guards separate from byte-reuse leases; track region identity independently of recycled pointer values.
+- [ ] Validation: append an aligned mmap range directly; verify exact readback, one registration across reuse, and release only after the final CQE.
+- [ ] Validation: a retained registration permits completed blocks to recycle; explicit retirement releases mapping guards safely.
 
-The format adapter assembles ordered byte spans; the storage planner assigns
-file ranges. Eligible spans use vectored writes or separate writes at explicit
-file offsets. Submission batches may complete out of order. Fixed-buffer
-registration is a distinct resource contract from keeping a SHM owner alive.
+## E2 — Large external payload API
 
-Direct I/O requires compatible memory addresses, lengths and file offsets.
-Managed head/tail buffers can copy edge bytes when a compatible aligned middle
-exists. Valid MCAP padding between records can adjust placement. Arbitrary
-padding inside a Protobuf payload is excluded. Incompatible layouts use an
-explicit copy policy or return a clear error under require-borrow policy.
+- [ ] Validate source address, transfer length and destination offset; discover alignment where supported and validate configured fallback requirements.
+- [ ] Add `append_external_payload(message, lease)`; copy inputs ≤256 KiB into managed combining storage and release their reuse guards after copying.
+- [ ] Assemble managed framing spans around borrowed payloads >256 KiB; preflight all spans and their file range before acceptance.
+- [ ] Validation: small-copy and threshold-boundary paths reproduce exact payloads without leaked guards.
+- [ ] Persist serialized messages or adapter-provided Protobuf prefixes/blobs/suffixes with decoding metadata.
+- [ ] Reject layouts requiring payload edge copies, full copies, buffered fallback or serialization staging above 256 KiB.
+- [ ] Bound registration entries/bytes and pending requests; split supported large ranges without copying payloads.
+- [ ] Release reuse guards after all writes/retries retire; retire registrations before releasing region guards.
+- [ ] Validation: independently decode aligned and rejected-misaligned cases, multiple spans and 100-MiB payloads.
+- [ ] Validation: delayed/out-of-order completions, short writes, cancellation, failure and shutdown never permit premature reuse.
+- [ ] Validation: large-payload copy count is zero; repeated uses retain one registration per registered subrange.
+- [ ] Validation: explicit region retirement releases pins/guards safely; written completion and durability remain distinct.
 
-## Gate rules
+## E2P — Prepared external block API
 
-Follow the evidence and regression rules in the [base plan](101826-mcap-writer-design.md).
-Require the base M7 gate before starting this feature. Complete E1–E5 in order;
-check each milestone only after its acceptance checks pass on x86 and ARM64.
-Record commands, commit, worker job result, counters and failures per milestone.
-A required direct-I/O environment must be available for E4 qualification.
+- [ ] Add `append_prepared_records(block)` independently of E2's payload-size policy; accept any supported aligned block size.
+- [ ] Provide a framing helper for producer-reserved MCAP header/padding space and a sealed prepared-block type.
+- [ ] Admit existing bytes unchanged; bypass combining, serialization and framing writes after sealing.
+- [ ] Preserve channel/schema compatibility, previous combining-batch order, rotation and finalization; return rejected blocks intact.
+- [ ] Integrate tracing's slab owner and shared payload readers; the last reader/I/O lease recycles the slab.
+- [ ] Validation: 4-KiB and 64-KiB prepared blocks reach direct I/O with zero storage copies and exact independent MCAP readback.
+- [ ] Validation: hold readers beyond CQEs and CQEs beyond readers; recycling waits for both while registration persists.
+- [ ] Validation: mixed managed/payload/prepared appends preserve file order under queue pressure, cancellation and rotation.
 
-### E1 — external ownership with copy fallback
+## E3 — Dora/Zenoh integration
 
-- [ ] Accept an external lease, copy into a managed reservation, release the
-  external owner after copying, and reuse the established persistence path.
-- Gate: exact MCAP/Protobuf payload equality for SHM, large managed and combined
-  small messages; guard-drop counters show release after copy; dropped/failed
-  reservations release once; no leaked owners under exhaustion or shutdown.
-  Record copied bytes and allocations. Verify serialized input needs no decode.
+- [ ] Retain the actual received payload owner; separate mapping lifetime from message reuse where necessary.
+- [ ] Identify required adapter/upstream APIs if the received owner cannot expose those lifetimes separately.
+- [ ] Account for transport materialization separately from storage copies.
+- [ ] Validation: completed messages return to the producer pool while region registration remains valid.
+- [ ] Validation: actual Dora transport passes reuse stress, sender exit, receiver shutdown and slow-storage tests with exact hashes.
 
-### E2 — borrowed spans with buffered file I/O
+## E4 — Mixed-workload qualification
 
-- [ ] Add bounded span/request metadata and retain external guards through I/O.
-  Use ordinary buffered file I/O to validate ownership and byte ordering first.
-- Gate: byte-identical logical messages versus E1; multi-span fields and suffixes;
-  out-of-order completions, partial writes, retries and cancellation. Poison or
-  recycle source blocks only after retirement to detect premature reuse. Verify
-  no application payload copy on this path; account for kernel buffering separately.
+- [ ] Run each E1, E2, E2P and E3 gate on x86 and ARM64; verify Pueue results and applicable separate Dora end-to-end tests.
+- [ ] Benchmark [three paths](101926-growable-buffer-pool.md#benchmark-paths): plain `fwrite`, direct from already-registered managed memory, and direct from external memory.
+- [ ] Set budgets and qualify small combining, large managed reservations and external direct writes together; separate cold registration cost from warmed writes.
+- [ ] Validation: every finalized rotated file decodes; pressure and failures preserve accounting and guard reclamation.
+- [ ] Validation: record throughput, CPU, p99 latency, allocations, copy/borrow bytes and registration events against budgets.
+- [ ] Validation: attach commands, commit, filesystem/platform and worker job; qualify end-to-end DMA on target hardware.
 
-### E3 — Dora SHM adapter and pressure limits
+## E5 — Future device providers
 
-- [ ] Retain Dora's actual received backing owner; bound retained blocks/bytes.
-  Expose force-copy, prefer-borrow and require-borrow policies with explicit
-  exhaustion behavior and counters.
-- Gate: real producer/consumer reuse stress with delayed I/O; payload hashes;
-  sender exit, receiver shutdown and source-pool pressure. Verify retained-byte
-  limits and that every owner is eventually released. Measure allocation and
-  copy counts using the actual Dora transport on both hosts.
+- [ ] Qualify driver-owned host RAM for pinning, readiness and reuse.
+- [ ] Investigate PCIe BAR/P2P/DMA-BUF backends with driver removal/invalidation protocols.
+- [ ] Qualify CUDA-accessible host RAM and GPU readiness/visibility synchronization.
+- [ ] Investigate CUDA IPC-imported memory with import/export guards and a cuFile/GPUDirect backend.
+- [ ] Validation: backend selection follows backing-memory capabilities; an mmap address or `/dev/shm` name alone never establishes eligibility.
+- [ ] Validation: physical Thor tests cover events, reuse, failures and shutdown; large-payload CPU/GPU bounce-buffer paths are rejected.
 
-### E4 — aligned borrowed direct I/O
-
-- [ ] Select eligible aligned spans; assemble managed heads/tails when compatible;
-  apply full-copy fallback for incompatible layouts. Keep per-request buffer
-  registration/pinning costs visible; bound any external registration cache.
-- Gate: real direct I/O with aligned and deliberately misaligned source slices,
-  file offsets and lengths; tiny prefixes, tails and multiple blobs. Confirm
-  independent decoding and payload hashes for every path; require-borrow rejects
-  ineligible layouts. Exercise partial errors and registration teardown while
-  requests are outstanding. Record borrowed, edge-copy and fallback byte counts.
-
-### E5 — mixed-workload qualification
-
-- [ ] Combine SHM, large managed and small combined records with rotation and
-  production flush/close policies.
-- Gate: long-running bounded-memory test, source-pool reuse, failures mid-record,
-  slow storage and clean shutdown. Decode every finalized file. Compare against
-  force-copy using identical input: throughput, CPU, p99 latency, retained bytes,
-  copy bytes, allocation counts and losses. Set budgets before measurement;
-  choose default policy from results. Target hardware validates DMA performance.
-
-## Follow-up
-
-- [ ] Discover actual direct-I/O alignment and validate configuration at startup;
-  initial supported configurations are 4 KiB default and 512 B optional.
-- [ ] Consider broader external-memory providers after Dora ownership is proven.
-
-## E6 — Thor CUDA memory and GPUDirect Storage investigation
-
-- [ ] Extend external leases with a producer-readiness condition. GPU completion
-  precedes storage submission; prohibit GPU mutation until all storage reads retire.
-- [ ] First qualify aligned system-memory allocations written directly by CUDA,
-  followed by CUDA-registered host memory. Qualify managed/device allocations
-  individually for mapping, pinning and direct-I/O compatibility.
-- [ ] Investigate cuFile/GPUDirect Storage as an optional backend. Verify support
-  for the actual Jetson Thor software, filesystem and device configuration before
-  implementation. Record compatibility-mode fallback separately from direct DMA.
-- Gate: on physical Thor, test GPU-generated payload hashes, delayed CUDA events,
-  premature reuse prevention, I/O failures and shutdown. Measure payload copies,
-  CPU, memory bandwidth and throughput against explicit-copy recording. Report
-  allocation types and backend paths actually validated. ARM64 WSL supplies no
-  evidence of Thor GPU/storage DMA behavior.
-
-References: [CUDA for Tegra](https://docs.nvidia.com/cuda/cuda-for-tegra-appnote/),
+References: [page pinning](https://docs.kernel.org/core-api/pin_user_pages.html),
+[PCI P2P](https://docs.kernel.org/driver-api/pci/p2pdma.html),
 [GPUDirect Storage](https://docs.nvidia.com/gpudirect-storage/overview-guide/).

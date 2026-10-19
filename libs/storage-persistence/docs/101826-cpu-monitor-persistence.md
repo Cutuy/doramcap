@@ -68,12 +68,11 @@ explicit follow-up work if they prevent the application-level budget.
 
 ## M7 implementation policy and qualification budgets
 
-Recording is optional. Default recording pool: eight 64-KiB buffers, 4-KiB direct
-I/O, 100-ms combining age. Buffered mode is selectable. The maximum encoded
-record is bounded by pool capacity. The owner drives progress during idle polls.
-Storage errors are fatal and observable; the collector joins before exit. Pool
-pressure may stall the owner while the collector continues and counts discarded
-batches. An injected owner delay exercises the same bounded handoff.
+Recording is optional. Default recording pool: eight 256-KiB buffers, 4-KiB direct
+I/O, 100-ms combining age. Buffered mode is selectable. Large encoded records use contiguous allocations grown on demand.
+The owner drives progress during idle polls.
+Storage errors are fatal and observable; the collector joins before exit. Explicit flushes may stall the owner while the collector continues and counts
+discarded batches. An injected owner delay exercises the same bounded handoff.
 
 Rotation uses a caller-configured soft byte target, creates files exclusively,
 repeats schemas/channels and writes a full dictionary before the next snapshot.

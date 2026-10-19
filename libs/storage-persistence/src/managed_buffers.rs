@@ -1,46 +1,65 @@
-//! Single-threaded, fixed-capacity aligned memory with exclusive RAII leases.
-//! Kernel registration is added by the I/O layer; alignment alone does not pin memory.
+//! Owner-thread free list of reusable, independently aligned allocations.
 use std::{
     alloc::{Layout, alloc_zeroed, dealloc},
-    cell::RefCell,
+    cell::{Cell, RefCell},
     ptr::NonNull,
     rc::Rc,
 };
+
+pub const DEFAULT_BUFFER_SIZE: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoolError {
     InvalidLayout,
     AllocationFailed,
-    Exhausted,
-    TooLarge,
+    Busy,
 }
-
-struct Buffer {
-    ptr: NonNull<u8>,
-    layout: Layout,
-    index: usize,
-}
-impl Buffer {
-    fn new(layout: Layout, index: usize) -> Result<Self, PoolError> {
-        // SAFETY: the validated layout has nonzero size; null is handled below.
-        let ptr =
-            NonNull::new(unsafe { alloc_zeroed(layout) }).ok_or(PoolError::AllocationFailed)?;
-        Ok(Self { ptr, layout, index })
+impl From<PoolError> for std::io::Error {
+    fn from(error: PoolError) -> Self {
+        match error {
+            PoolError::InvalidLayout => std::io::ErrorKind::InvalidInput,
+            PoolError::AllocationFailed => std::io::ErrorKind::OutOfMemory,
+            PoolError::Busy => std::io::ErrorKind::WouldBlock,
+        }
+        .into()
     }
 }
-impl Drop for Buffer {
+
+/// Registration retains this owner independently of whether a lease is free.
+/// Mutable access is exclusively mediated by BufferLease on the owner thread.
+pub(crate) struct Allocation {
+    ptr: NonNull<u8>,
+    layout: Layout,
+}
+impl Allocation {
+    fn new(layout: Layout) -> Result<Rc<Self>, PoolError> {
+        let ptr =
+            NonNull::new(unsafe { alloc_zeroed(layout) }).ok_or(PoolError::AllocationFailed)?;
+        Ok(Rc::new(Self { ptr, layout }))
+    }
+    pub(crate) fn ptr(&self) -> *mut u8 {
+        self.ptr.as_ptr()
+    }
+    pub(crate) fn capacity(&self) -> usize {
+        self.layout.size()
+    }
+}
+impl Drop for Allocation {
     fn drop(&mut self) {
-        // SAFETY: this owns the allocation, with its original layout.
+        // SAFETY: last owner of this allocation, with its original layout.
         unsafe { dealloc(self.ptr.as_ptr(), self.layout) }
     }
 }
 struct Inner {
-    free: RefCell<Vec<Buffer>>,
-    capacity: usize,
-    size: usize,
+    free: RefCell<Vec<Rc<Allocation>>>,
+    count: Cell<usize>,
+    bytes: Cell<usize>,
+    minimum: usize,
+    alignment: usize,
+    #[cfg(test)]
+    fail_allocation: Cell<bool>,
 }
-/// Each lease owns its buffer; clones of the pool share a bounded free list.
-/// Rc deliberately confines the pool and leases to their owner thread.
+/// Clones share a growable free list. Allocations never move or resize.
 #[derive(Clone)]
 pub struct BufferPool {
     inner: Rc<Inner>,
@@ -52,33 +71,70 @@ impl BufferPool {
         }
         let layout =
             Layout::from_size_align(size, alignment).map_err(|_| PoolError::InvalidLayout)?;
-        capacity.checked_mul(size).ok_or(PoolError::InvalidLayout)?;
+        let bytes = capacity.checked_mul(size).ok_or(PoolError::InvalidLayout)?;
         let mut free = Vec::new();
         free.try_reserve_exact(capacity)
             .map_err(|_| PoolError::AllocationFailed)?;
-        for index in 0..capacity {
-            free.push(Buffer::new(layout, index)?);
+        for _ in 0..capacity {
+            free.push(Allocation::new(layout)?);
         }
         Ok(Self {
             inner: Rc::new(Inner {
                 free: RefCell::new(free),
-                capacity,
-                size,
+                count: Cell::new(capacity),
+                bytes: Cell::new(bytes),
+                minimum: size,
+                alignment,
+                #[cfg(test)]
+                fail_allocation: Cell::new(false),
             }),
         })
     }
+    /// Borrow a best-fit free allocation or grow immediately, without I/O waits.
     pub fn reserve(&self, len: usize) -> Result<BufferLease, PoolError> {
-        if len > self.inner.size {
-            return Err(PoolError::TooLarge);
-        }
-        let buffer = self
-            .inner
-            .free
-            .borrow_mut()
-            .pop()
-            .ok_or(PoolError::Exhausted)?;
+        let mut free = self.inner.free.borrow_mut();
+        let allocation = if let Some(index) = free
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.capacity() >= len)
+            .min_by_key(|(_, b)| b.capacity())
+            .map(|(i, _)| i)
+        {
+            free.swap_remove(index)
+        } else {
+            let size = len
+                .max(self.inner.minimum)
+                .checked_next_multiple_of(self.inner.alignment)
+                .ok_or(PoolError::InvalidLayout)?;
+            let layout = Layout::from_size_align(size, self.inner.alignment)
+                .map_err(|_| PoolError::InvalidLayout)?;
+            let count = self
+                .inner
+                .count
+                .get()
+                .checked_add(1)
+                .ok_or(PoolError::InvalidLayout)?;
+            let bytes = self
+                .inner
+                .bytes
+                .get()
+                .checked_add(size)
+                .ok_or(PoolError::InvalidLayout)?;
+            // Reserve room for EVERY allocation to return, including outstanding leases.
+            let additional = count - free.len();
+            free.try_reserve(additional)
+                .map_err(|_| PoolError::AllocationFailed)?;
+            #[cfg(test)]
+            if self.inner.fail_allocation.get() {
+                return Err(PoolError::AllocationFailed);
+            }
+            let allocation = Allocation::new(layout)?;
+            self.inner.count.set(count);
+            self.inner.bytes.set(bytes);
+            allocation
+        };
         Ok(BufferLease {
-            buffer: Some(buffer),
+            allocation: Some(allocation),
             pool: self.inner.clone(),
             len,
         })
@@ -86,60 +142,102 @@ impl BufferPool {
     pub fn available(&self) -> usize {
         self.inner.free.borrow().len()
     }
-    pub(crate) fn registration(&self) -> Result<Vec<libc::iovec>, PoolError> {
-        let free = self.inner.free.borrow();
-        if free.len() != self.inner.capacity {
-            return Err(PoolError::Exhausted);
+    pub fn capacity(&self) -> usize {
+        self.inner.count.get()
+    }
+    pub fn allocated_bytes(&self) -> usize {
+        self.inner.bytes.get()
+    }
+    pub fn free_bytes(&self) -> usize {
+        self.inner.free.borrow().iter().map(|a| a.capacity()).sum()
+    }
+    pub(crate) fn allocations(&self) -> Result<Vec<Rc<Allocation>>, PoolError> {
+        if self.available() != self.capacity() {
+            return Err(PoolError::Busy);
         }
-        let mut buffers: Vec<_> = free.iter().collect();
-        buffers.sort_by_key(|b| b.index);
-        Ok(buffers
-            .iter()
-            .map(|b| libc::iovec {
-                iov_base: b.ptr.as_ptr().cast(),
-                iov_len: b.layout.size(),
-            })
-            .collect())
+        Ok(self.inner.free.borrow().clone())
+    }
+    pub(crate) fn same_pool(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.inner, &other.inner)
     }
     pub(crate) fn owns(&self, lease: &BufferLease) -> bool {
         Rc::ptr_eq(&self.inner, &lease.pool)
     }
-    pub fn capacity(&self) -> usize {
-        self.inner.capacity
+    /// Explicit idle trim; registered allocations must first be unregistered.
+    pub fn trim(&self) -> Result<usize, PoolError> {
+        let mut free = self.inner.free.borrow_mut();
+        if free.len() != self.capacity() || free.iter().any(|a| Rc::strong_count(a) != 1) {
+            return Err(PoolError::Busy);
+        }
+        let bytes = self.inner.bytes.replace(0);
+        free.clear();
+        self.inner.count.set(0);
+        Ok(bytes)
     }
 }
-/// Dropping an abandoned lease returns its buffer. The I/O layer must retain
-/// submitted leases until all kernel references retire.
+/// Exclusive mutable lease. Drop returns the same allocation without allocating.
 pub struct BufferLease {
-    buffer: Option<Buffer>,
+    allocation: Option<Rc<Allocation>>,
     pool: Rc<Inner>,
     len: usize,
 }
-impl BufferLease {
-    pub(crate) fn index(&self) -> usize {
-        self.buffer.as_ref().unwrap().index
+impl std::fmt::Debug for BufferLease {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BufferLease")
+            .field("len", &self.len)
+            .field("capacity", &self.capacity())
+            .finish()
     }
-    /// Shortens the initialized range submitted to storage.
+}
+impl BufferLease {
+    pub(crate) fn allocation(&self) -> &Rc<Allocation> {
+        self.allocation.as_ref().unwrap()
+    }
+    pub fn capacity(&self) -> usize {
+        self.allocation().capacity()
+    }
+    pub(crate) fn restore_len(&mut self, len: usize) {
+        assert!(len <= self.capacity());
+        self.len = len;
+    }
     pub fn truncate(&mut self, len: usize) {
         assert!(len <= self.len);
         self.len = len;
     }
-
     pub fn as_slice(&self) -> &[u8] {
-        let buffer = self.buffer.as_ref().unwrap();
-        // SAFETY: allocation is initialized, retained by self, and len is bounded.
-        unsafe { std::slice::from_raw_parts(buffer.ptr.as_ptr(), self.len) }
+        // SAFETY: initialized, retained allocation and bounded length.
+        unsafe { std::slice::from_raw_parts(self.allocation().ptr(), self.len) }
     }
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
-        let buffer = self.buffer.as_mut().unwrap();
-        // SAFETY: the lease exclusively owns this buffer and self is mutably borrowed.
-        unsafe { std::slice::from_raw_parts_mut(buffer.ptr.as_ptr(), self.len) }
+        // SAFETY: only this lease exposes mutation; registration owners never access bytes.
+        unsafe { std::slice::from_raw_parts_mut(self.allocation().ptr(), self.len) }
     }
 }
 impl Drop for BufferLease {
     fn drop(&mut self) {
-        if let Some(buffer) = self.buffer.take() {
-            self.pool.free.borrow_mut().push(buffer);
+        if let Some(allocation) = self.allocation.take() {
+            self.pool.free.borrow_mut().push(allocation);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn allocation_failure_preserves_live_leases() {
+        let pool = BufferPool::new(1, 4096, 4096).unwrap();
+        let mut lease = pool.reserve(4096).unwrap();
+        lease.as_mut_slice().fill(7);
+        pool.inner.fail_allocation.set(true);
+        assert!(matches!(
+            pool.reserve(8192),
+            Err(PoolError::AllocationFailed)
+        ));
+        assert_eq!(pool.capacity(), 1);
+        assert_eq!(pool.allocated_bytes(), 4096);
+        assert!(lease.as_slice().iter().all(|b| *b == 7));
+        drop(lease);
+        assert_eq!(pool.available(), 1);
     }
 }

@@ -35,6 +35,11 @@ pub struct Diagnostics {
     pub combining_age_us: u64,
     pub buffers_available: usize,
     pub buffers_total: usize,
+    pub allocated_bytes: usize,
+    pub free_bytes: usize,
+    pub in_flight_bytes: usize,
+    pub registered_bytes: usize,
+    pub pending_capacity: usize,
     pub outstanding: usize,
     pub accepted_bytes: u64,
     pub completed_bytes: u64,
@@ -53,7 +58,6 @@ pub struct McapWriter {
     writes: u64,
     alignment: usize,
     metadata: Vec<u8>,
-    large: Vec<BufferLease>,
 }
 fn invalid() -> io::Error {
     io::ErrorKind::InvalidInput.into()
@@ -69,15 +73,19 @@ fn record(out: &mut Vec<u8>, op: u8, content: &[u8]) {
     out.extend_from_slice(&(content.len() as u64).to_le_bytes());
     out.extend_from_slice(content);
 }
-fn padded_len(used: usize, alignment: usize) -> usize {
+fn checked_padded_len(used: usize, alignment: usize) -> Option<usize> {
     if used.is_multiple_of(alignment) {
-        return used;
+        return Some(used);
     }
-    let mut len = used.next_multiple_of(alignment);
+    let len = used.checked_next_multiple_of(alignment)?;
     if len - used < 9 {
-        len += alignment;
+        len.checked_add(alignment)
+    } else {
+        Some(len)
     }
-    len
+}
+fn padded_len(used: usize, alignment: usize) -> usize {
+    checked_padded_len(used, alignment).expect("validated record size")
 }
 fn padding(out: &mut [u8], used: usize, alignment: usize) -> usize {
     let len = padded_len(used, alignment);
@@ -123,6 +131,32 @@ impl McapWriter {
         channels: &[Channel<'_>],
         alignment: usize,
     ) -> io::Result<Self> {
+        Self::with_config(
+            file,
+            buffers,
+            buffer_size,
+            schema,
+            channels,
+            alignment,
+            crate::writer::WriterConfig::default(),
+        )
+    }
+    /// Configure I/O admission independently of the initial allocation count.
+    pub fn with_config(
+        file: File,
+        buffers: u32,
+        buffer_size: usize,
+        schema: Schema<'_>,
+        channels: &[Channel<'_>],
+        alignment: usize,
+        config: crate::writer::WriterConfig,
+    ) -> io::Result<Self> {
+        if !matches!(alignment, 1 | 512 | 4096)
+            || (alignment > 1
+                && (buffer_size < 2 * alignment || !buffer_size.is_multiple_of(alignment)))
+        {
+            return Err(invalid());
+        }
         if buffer_size < 50 || channels.is_empty() {
             return Err(invalid());
         }
@@ -135,9 +169,9 @@ impl McapWriter {
         }
         let pool = BufferPool::new(buffers as usize, buffer_size, 4096).map_err(|_| invalid())?;
         let writer = if alignment > 1 {
-            Writer::direct(file, pool.clone(), alignment)?
+            Writer::direct_with_config(file, pool.clone(), alignment, config)?
         } else {
-            Writer::new(file, buffers)?
+            Writer::with_config(file, config)?
         };
         let mut this = Self {
             writer,
@@ -151,7 +185,6 @@ impl McapWriter {
             writes: 0,
             alignment,
             metadata: Vec::new(),
-            large: Vec::with_capacity(buffers as usize),
         };
         let mut bytes = MAGIC.to_vec();
         let mut content = Vec::new();
@@ -187,18 +220,30 @@ impl McapWriter {
         Ok(this)
     }
     fn acquire(&mut self, len: usize) -> io::Result<BufferLease> {
-        if self.pool.available() == 0 {
-            self.writer.flush_written()?;
-        }
-        self.pool.reserve(len).map_err(|_| invalid())
+        let lease = self.pool.reserve(len)?;
+        self.writer.prepare(&lease)?;
+        Ok(lease)
     }
     fn submit(&mut self, lease: BufferLease) -> io::Result<()> {
-        if self.writer.outstanding() == self.pool.capacity() {
-            self.writer.flush_written()?;
-        }
         self.writer.append(lease)?;
         self.writes += 1;
         Ok(())
+    }
+    /// Retire registrations and release retained memory only while fully idle.
+    pub fn trim(&mut self) -> io::Result<usize> {
+        if self.active.is_some() {
+            return Err(io::ErrorKind::WouldBlock.into());
+        }
+        self.writer.trim(&self.pool)
+    }
+    pub fn allocated_bytes(&self) -> usize {
+        self.pool.allocated_bytes()
+    }
+    pub fn registered_bytes(&self) -> usize {
+        self.writer.registered_bytes()
+    }
+    pub fn pending_writes(&self) -> usize {
+        self.writer.outstanding()
     }
     /// Dropping without commit abandons the message without reserving file bytes.
     pub fn reserve(
@@ -206,11 +251,25 @@ impl McapWriter {
         message: Message,
         payload_len: usize,
     ) -> io::Result<MessageReservation<'_>> {
-        let total = payload_len.checked_add(31).ok_or_else(invalid)?;
-        if total > self.record_capacity() || !self.channels.contains(&message.channel) {
+        if payload_len > self.max_large_payload() || !self.channels.contains(&message.channel) {
             return Err(invalid());
         }
-        self.poll(Instant::now())?;
+        let total = payload_len.checked_add(31).ok_or_else(invalid)?;
+        if total > self.record_capacity() {
+            // Keep any preceding batch until commit. Pending-queue pressure must not
+            // prevent acquiring a new contiguous payload allocation.
+            let physical = checked_padded_len(total, self.alignment).ok_or_else(invalid)?;
+            let mut lease = self.acquire(physical)?;
+            message_header(lease.as_mut_slice(), message, total);
+            padding(lease.as_mut_slice(), total, self.alignment);
+            return Ok(MessageReservation {
+                writer: self,
+                start: 0,
+                end: total,
+                standalone: Some(lease),
+                committed: false,
+            });
+        }
         if self.used + total > self.record_capacity() {
             self.flush_combining()?;
         }
@@ -219,17 +278,17 @@ impl McapWriter {
         }
         let start = self.used;
         let end = start + total;
-        let out = &mut self.active.as_mut().unwrap().as_mut_slice()[start..end];
-        out[0] = 5;
-        out[1..9].copy_from_slice(&((total - 9) as u64).to_le_bytes());
-        out[9..11].copy_from_slice(&message.channel.to_le_bytes());
-        out[11..15].copy_from_slice(&message.sequence.to_le_bytes());
-        out[15..23].copy_from_slice(&message.log_time.to_le_bytes());
-        out[23..31].copy_from_slice(&message.publish_time.to_le_bytes());
+        message_header(
+            &mut self.active.as_mut().unwrap().as_mut_slice()[start..end],
+            message,
+            total,
+        );
         Ok(MessageReservation {
             writer: self,
             start,
             end,
+            standalone: None,
+            committed: false,
         })
     }
     pub fn max_inline_payload(&self) -> usize {
@@ -253,6 +312,11 @@ impl McapWriter {
                 .map_or(0, |t| t.elapsed().as_micros().min(u64::MAX as u128) as u64),
             buffers_available: self.pool.available(),
             buffers_total: self.pool.capacity(),
+            allocated_bytes: self.pool.allocated_bytes(),
+            free_bytes: self.pool.free_bytes(),
+            in_flight_bytes: self.writer.in_flight_bytes(),
+            registered_bytes: self.writer.registered_bytes(),
+            pending_capacity: self.writer.pending_capacity(),
             outstanding: self.writer.outstanding(),
             accepted_bytes: self.writer.accepted_bytes(),
             completed_bytes: self.writer.written_bytes(),
@@ -276,29 +340,52 @@ impl McapWriter {
             .next_flush_deadline()
             .is_some_and(|deadline| now >= deadline)
         {
-            self.flush_combining()?;
+            // A full pending queue retains the batch. Still drive CQEs so a later
+            // poll can admit it; otherwise timer polling could never clear pressure.
+            if let Err(error) = self.flush_combining()
+                && error.kind() != io::ErrorKind::WouldBlock
+            {
+                return Err(error);
+            }
         }
         self.writer.progress(false)
     }
     fn flush_combining(&mut self) -> io::Result<()> {
-        if let Some(mut lease) = self.active.take() {
-            let used = self.used;
-            self.used = 0;
+        if self.used == 0 {
+            self.active = None;
             self.since = None;
-            if used > 0 {
-                let physical = padding(lease.as_mut_slice(), used, self.alignment);
-                lease.truncate(physical);
-                self.submit(lease)?;
+            return Ok(());
+        }
+        self.writer.check_capacity(1)?;
+        if let Some(mut lease) = self.active.take() {
+            let physical = padding(lease.as_mut_slice(), self.used, self.alignment);
+            // Keep the full combining lease on failure so the batch can be retried.
+            lease.truncate(physical);
+            match self.writer.try_append(lease) {
+                Ok(_) => {
+                    self.writes += 1;
+                    self.used = 0;
+                    self.since = None;
+                }
+                Err(mut e) => {
+                    e.lease.restore_len(self.buffer_size);
+                    self.active = Some(e.lease);
+                    return Err(e.error);
+                }
             }
         }
         Ok(())
     }
     pub fn flush_written(&mut self) -> io::Result<()> {
+        // Explicit flush may wait to admit the last combining buffer.
+        if self.used > 0 && self.writer.check_capacity(1).is_err() {
+            self.writer.flush_written()?;
+        }
         self.flush_combining()?;
         self.writer.flush_written()
     }
     fn seal(&mut self) -> io::Result<()> {
-        self.flush_combining()?;
+        self.flush_written()?;
         let logical_len = self
             .writer
             .accepted_bytes()
@@ -348,101 +435,104 @@ impl McapWriter {
     pub fn file_bytes(&self) -> u64 {
         self.writer.accepted_bytes() + self.used as u64
     }
+    /// Address-space bound; independent of the initial pool size.
     pub fn max_large_payload(&self) -> usize {
-        self.pool
-            .capacity()
-            .saturating_mul(self.buffer_size)
-            .saturating_sub(if self.alignment > 1 {
-                self.alignment
-            } else {
-                0
-            })
+        (isize::MAX as usize)
+            .saturating_sub(self.alignment * 2)
             .saturating_sub(31)
     }
+    /// Compatibility BufMut adapter over a single contiguous reservation.
     pub fn reserve_large(
         &mut self,
         message: Message,
         payload_len: usize,
     ) -> io::Result<LargeReservation<'_>> {
-        if payload_len > self.max_large_payload()
-            || !self.channels.contains(&message.channel)
-            || !self.large.is_empty()
-        {
-            return Err(invalid());
-        }
-        self.flush_written()?;
-        let total = payload_len.checked_add(31).ok_or_else(invalid)?;
-        let physical = padded_len(total, self.alignment);
-        let mut remaining = physical;
-        while remaining > 0 {
-            let len = remaining.min(self.buffer_size);
-            match self.acquire(len) {
-                Ok(lease) => self.large.push(lease),
-                Err(e) => {
-                    self.large.clear();
-                    return Err(e);
-                }
-            }
-            remaining -= len;
-        }
-        let out = self.large[0].as_mut_slice();
-        out[0] = 5;
-        out[1..9].copy_from_slice(&((total - 9) as u64).to_le_bytes());
-        out[9..11].copy_from_slice(&message.channel.to_le_bytes());
-        out[11..15].copy_from_slice(&message.sequence.to_le_bytes());
-        out[15..23].copy_from_slice(&message.log_time.to_le_bytes());
-        out[23..31].copy_from_slice(&message.publish_time.to_le_bytes());
-        if physical > total {
-            for index in total..physical {
-                self.large[index / self.buffer_size].as_mut_slice()[index % self.buffer_size] = 0;
-            }
-            let mut header = [0; 9];
-            header[0] = 0x80;
-            header[1..].copy_from_slice(&((physical - total - 9) as u64).to_le_bytes());
-            for (i, byte) in header.into_iter().enumerate() {
-                let index = total + i;
-                self.large[index / self.buffer_size].as_mut_slice()[index % self.buffer_size] =
-                    byte;
-            }
-        }
         Ok(LargeReservation {
-            writer: self,
+            inner: self.reserve(message, payload_len)?,
             payload_len,
             filled: 0,
         })
     }
 }
+
+fn message_header(out: &mut [u8], message: Message, total: usize) {
+    out[0] = 5;
+    out[1..9].copy_from_slice(&((total - 9) as u64).to_le_bytes());
+    out[9..11].copy_from_slice(&message.channel.to_le_bytes());
+    out[11..15].copy_from_slice(&message.sequence.to_le_bytes());
+    out[15..23].copy_from_slice(&message.log_time.to_le_bytes());
+    out[23..31].copy_from_slice(&message.publish_time.to_le_bytes());
+}
+
 pub struct MessageReservation<'a> {
     writer: &'a mut McapWriter,
     start: usize,
     end: usize,
+    standalone: Option<BufferLease>,
+    committed: bool,
 }
 impl MessageReservation<'_> {
     pub fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.writer.active.as_mut().unwrap().as_mut_slice()[self.start + 31..self.end]
+        assert!(!self.committed, "reservation already committed");
+        let lease = self
+            .standalone
+            .as_mut()
+            .or(self.writer.active.as_mut())
+            .unwrap();
+        &mut lease.as_mut_slice()[self.start + 31..self.end]
     }
     pub fn payload(&self) -> &[u8] {
-        &self.writer.active.as_ref().unwrap().as_slice()[self.start + 31..self.end]
+        assert!(!self.committed, "reservation already committed");
+        let lease = self
+            .standalone
+            .as_ref()
+            .or(self.writer.active.as_ref())
+            .unwrap();
+        &lease.as_slice()[self.start + 31..self.end]
     }
-    pub fn commit(self) -> io::Result<()> {
-        self.writer.used = self.end;
-        self.writer.since.get_or_insert_with(Instant::now);
-        if self.end == self.writer.record_capacity() {
+    /// Retryable commit: failure leaves this reservation and its bytes intact.
+    pub fn try_commit(&mut self) -> io::Result<()> {
+        if self.committed {
+            return Err(invalid());
+        }
+        if self.standalone.is_some() {
+            // Earlier committed small records retain their file order. This may queue
+            // that batch even if this reservation then needs to retry its admission.
             self.writer.flush_combining()?;
         }
+        if let Some(lease) = self.standalone.take() {
+            match self.writer.writer.try_append(lease) {
+                Ok(_) => {
+                    self.writer.writes += 1;
+                }
+                Err(e) => {
+                    self.standalone = Some(e.lease);
+                    return Err(e.error);
+                }
+            }
+        } else {
+            self.writer.used = self.end;
+            self.writer.since.get_or_insert_with(Instant::now);
+        }
+        self.committed = true;
         Ok(())
+    }
+    /// Drive pending writes while retaining a reservation rejected by backpressure.
+    pub fn progress(&mut self, wait: bool) -> io::Result<()> {
+        self.writer.writer.progress(wait)
+    }
+    /// Compatibility consuming commit; use try_commit to retain ownership on failure.
+    pub fn commit(mut self) -> io::Result<()> {
+        self.try_commit()
     }
 }
 
-/// Segmented encoding destination. Protobuf encoders can write through BufMut;
-/// bytes fields are copied once into their final payload locations.
 pub struct LargeReservation<'a> {
-    writer: &'a mut McapWriter,
+    inner: MessageReservation<'a>,
     payload_len: usize,
     filled: usize,
 }
-// SAFETY: chunk_mut exposes initialized, exclusively leased bytes; advance_mut
-// checks the remaining payload bound and never exposes headers or padding.
+// SAFETY: exposes initialized, exclusively leased payload bytes; advancement is bounded.
 unsafe impl bytes::BufMut for LargeReservation<'_> {
     fn remaining_mut(&self) -> usize {
         self.payload_len - self.filled
@@ -452,52 +542,33 @@ unsafe impl bytes::BufMut for LargeReservation<'_> {
         self.filled += cnt;
     }
     fn chunk_mut(&mut self) -> &mut bytes::buf::UninitSlice {
-        if self.filled == self.payload_len {
-            return bytes::buf::UninitSlice::new(&mut []);
-        }
-        let offset = 31 + self.filled;
-        let index = offset / self.writer.buffer_size;
-        let start = offset % self.writer.buffer_size;
-        let end = self.writer.large[index]
-            .as_slice()
-            .len()
-            .min(start + self.payload_len - self.filled);
-        bytes::buf::UninitSlice::new(&mut self.writer.large[index].as_mut_slice()[start..end])
+        bytes::buf::UninitSlice::new(&mut self.inner.payload_mut()[self.filled..])
     }
 }
 impl LargeReservation<'_> {
     pub fn payload_len(&self) -> usize {
         self.payload_len
     }
-    pub fn copy_payload_to(&self, destination: &mut [u8]) {
-        assert_eq!(destination.len(), self.payload_len);
-        let mut offset = 0;
-        for (index, lease) in self.writer.large.iter().enumerate() {
-            let start = if index == 0 { 31 } else { 0 };
-            let len = (lease.as_slice().len() - start).min(destination.len() - offset);
-            destination[offset..offset + len]
-                .copy_from_slice(&lease.as_slice()[start..start + len]);
-            offset += len;
-        }
+    pub fn payload(&self) -> &[u8] {
+        self.inner.payload()
     }
-
-    pub fn commit(self) -> io::Result<()> {
+    pub fn payload_mut(&mut self) -> &mut [u8] {
+        self.filled = self.payload_len;
+        self.inner.payload_mut()
+    }
+    pub fn copy_payload_to(&self, destination: &mut [u8]) {
+        destination.copy_from_slice(self.inner.payload());
+    }
+    pub fn try_commit(&mut self) -> io::Result<()> {
         if self.filled != self.payload_len {
             return Err(invalid());
         }
-        let mut leases = std::mem::take(&mut self.writer.large);
-        let mut result = Ok(());
-        for lease in leases.drain(..) {
-            if result.is_ok() {
-                result = self.writer.submit(lease);
-            }
-        }
-        self.writer.large = leases;
-        result
+        self.inner.try_commit()
     }
-}
-impl Drop for LargeReservation<'_> {
-    fn drop(&mut self) {
-        self.writer.large.clear();
+    pub fn progress(&mut self, wait: bool) -> io::Result<()> {
+        self.inner.progress(wait)
+    }
+    pub fn commit(mut self) -> io::Result<()> {
+        self.try_commit()
     }
 }

@@ -70,9 +70,9 @@ impl Recorder {
             },
         ];
         let writer = if direct {
-            McapWriter::direct(file, 8, 64 * 1024, schema, &channels, 4096)?
+            McapWriter::direct(file, 8, 256 * 1024, schema, &channels, 4096)?
         } else {
-            McapWriter::new(file, 8, 64 * 1024, schema, &channels)?
+            McapWriter::new(file, 8, 256 * 1024, schema, &channels)?
         };
         Ok(Self {
             writer,
@@ -121,17 +121,10 @@ impl Recorder {
             log_time: time,
             publish_time: time,
         };
-        if len <= self.writer.max_inline_payload() {
-            let mut reservation = self.writer.reserve(meta, len)?;
-            packet.encode(&mut reservation.payload_mut())?;
-            publish(&Slice(reservation.payload()))?;
-            reservation.commit()?;
-        } else {
-            let mut reservation = self.writer.reserve_large(meta, len)?;
-            packet.encode(&mut reservation)?;
-            publish(&reservation)?;
-            reservation.commit()?;
-        }
+        let mut reservation = self.writer.reserve(meta, len)?;
+        packet.encode(&mut reservation.payload_mut())?;
+        publish(&Slice(reservation.payload()))?;
+        reservation.commit()?;
         if !dictionary {
             self.snapshots += 1;
         }
@@ -147,7 +140,7 @@ impl Recorder {
 mod tests {
     use super::*;
     #[test]
-    fn publication_uses_identical_small_and_segmented_payloads() -> Result<()> {
+    fn publication_uses_identical_small_and_contiguous_payloads() -> Result<()> {
         let path =
             std::env::temp_dir().join(format!("doramcap-callback-{}.mcap", std::process::id()));
         let mut recorder = Recorder::create(&path, true, 0)?;

@@ -56,3 +56,5 @@ Never use “this is A, not B” phrasing or equivalent contrastive framing in
 documentation. State what something is or does directly.
 
 For architecture diagrams, prefer SVG. Focus on component interactions and the artifacts passed between components. Minimize text; use short component and edge labels.
+
+For future Markdown writing, keep prose brief and use structure that supports review. Engineering plans must lead with embedded architectural SVGs showing component interactions and the artifacts passed between them, with short labels and minimal text. Put design details in the SVGs. Write the plan primarily as milestone checklists, with explicit validation-gate checkboxes under every milestone. Keep milestones and gates unchecked until their evidence is recorded. Avoid lengthy narrative design sections.

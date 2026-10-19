@@ -208,15 +208,9 @@ fn record(writer: &mut McapWriter, p: &pb::Packet, channel: u16, seq: u32) -> Re
         log_time: timestamp,
         publish_time: timestamp,
     };
-    if len <= writer.max_inline_payload() {
-        let mut r = writer.reserve(message, len)?;
-        p.encode(&mut r.payload_mut())?;
-        r.commit()?;
-    } else {
-        let mut r = writer.reserve_large(message, len)?;
-        p.encode(&mut r)?;
-        r.commit()?;
-    }
+    let mut r = writer.reserve(message, len)?;
+    p.encode(&mut r.payload_mut())?;
+    r.commit()?;
     Ok(len)
 }
 fn owner(
@@ -283,9 +277,9 @@ fn owner(
         },
     ];
     let mut writer = if o.direct {
-        McapWriter::direct(open(o, 0)?, 8, 65536, schema, &channels, 4096)?
+        McapWriter::direct(open(o, 0)?, 8, 256 * 1024, schema, &channels, 4096)?
     } else {
-        McapWriter::new(open(o, 0)?, 8, 65536, schema, &channels)?
+        McapWriter::new(open(o, 0)?, 8, 256 * 1024, schema, &channels)?
     };
     let session = now_ns().to_string();
     let mut restart = false;
@@ -449,7 +443,7 @@ fn owner(
             let events:Vec<_>=writer.write_events().map(|e|json!({"id":e.sequence,"file":e.file,"us":e.elapsed_us,"offset":e.offset,"len":e.len,"slot":e.slot,"result":e.result,"latencyUs":e.latency_us,"kind":if e.completion {"CQE"}else{"SQE queued"}})).collect();
             tx.send_replace(json!({"status":"live","session":session,"backend":o.backend,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"cpu":cpu,"heartbeats":beats,"probes":probes,"inputDrops":drops.load(Ordering::Relaxed),"lastCpu":last_cpu,
                 "combining":{"used":d.combining_bytes,"capacity":d.combining_capacity,"ageMs":d.combining_age_us as f64/1000.0,"deadlineMs":100},
-                "pool":{"free":d.buffers_available,"total":d.buffers_total},"ring":{"outstanding":d.outstanding,"submitted":d.submitted_operations,"completions":d.completions,"accepted":d.accepted_bytes,"completed":d.completed_bytes},
+                "pool":{"free":d.buffers_available,"total":d.buffers_total,"allocatedBytes":d.allocated_bytes,"freeBytes":d.free_bytes,"inFlightBytes":d.in_flight_bytes,"registeredBytes":d.registered_bytes},"ring":{"pendingCapacity":d.pending_capacity,"outstanding":d.outstanding,"submitted":d.submitted_operations,"completions":d.completions,"accepted":d.accepted_bytes,"completed":d.completed_bytes},
                 "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":lost_events,"burstRemaining":burst_remaining,
                 "receipts":receipts,"messages":recent,"events":events,"file":disk,"lastSealed":last_sealed}).to_string());
             publish = Instant::now() + Duration::from_millis(40);
@@ -468,7 +462,11 @@ fn owner(
     final_state["combining"]["used"] = json!(0);
     final_state["combining"]["ageMs"] = json!(0);
     final_state["pool"]["free"] = json!(final_diagnostics.buffers_available);
-    final_state["ring"] = json!({"outstanding":final_diagnostics.outstanding,"submitted":final_diagnostics.submitted_operations,"completions":final_diagnostics.completions,"accepted":final_diagnostics.accepted_bytes,"completed":final_diagnostics.completed_bytes});
+    final_state["pool"]["allocatedBytes"] = json!(final_diagnostics.allocated_bytes);
+    final_state["pool"]["freeBytes"] = json!(final_diagnostics.free_bytes);
+    final_state["pool"]["inFlightBytes"] = json!(final_diagnostics.in_flight_bytes);
+    final_state["pool"]["registeredBytes"] = json!(final_diagnostics.registered_bytes);
+    final_state["ring"] = json!({"pendingCapacity":final_diagnostics.pending_capacity,"outstanding":final_diagnostics.outstanding,"submitted":final_diagnostics.submitted_operations,"completions":final_diagnostics.completions,"accepted":final_diagnostics.accepted_bytes,"completed":final_diagnostics.completed_bytes});
     final_state["file"] = inspector.read(
         &o.root.join(format!("capture-{index:04}.mcap")),
         index,

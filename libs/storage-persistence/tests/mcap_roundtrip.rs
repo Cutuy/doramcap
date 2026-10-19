@@ -56,7 +56,7 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
             log_time: 100,
             publish_time: 101,
         };
-        assert!(writer.reserve(meta, 4066).is_err());
+        drop(writer.reserve(meta, 4066).unwrap());
         assert!(writer.reserve(Message { channel: 2, ..meta }, 0).is_err());
         {
             let mut abandoned = writer.reserve(meta, 12).unwrap();
@@ -68,6 +68,7 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
                 let p = Payload {
                     data: vec![42; size],
                 };
+                writer.flush_written().unwrap();
                 COUNTING.store(true, Relaxed);
                 let mut reservation = writer.reserve(meta, p.encoded_len()).unwrap();
                 let original = reservation.payload().as_ptr();

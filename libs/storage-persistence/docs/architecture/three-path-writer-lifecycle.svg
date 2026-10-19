@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1130" viewBox="0 0 1500 1130" role="img" aria-labelledby="title desc">
+<title id="title">Three inputs, one MCAP writer lifecycle</title>
+<desc id="desc">Managed reservations, large external payloads and prepared external blocks converge on retained write requests, registration, file-offset allocation and io_uring. CQEs release leases back to their owners; external reuse also waits for readers. Registrations persist separately. DMA reads retained source bytes.</desc>
+<defs>
+<marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker>
+<marker id="g" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#18836b"/></marker>
+<marker id="d" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#7c3aed"/></marker>
+</defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b}.title{font-size:28px;font-weight:700}.h{font-size:21px;font-weight:700}.s{font-size:16px}.tag{font-size:13px;font-weight:700;letter-spacing:.7px;fill:#52657a}</style><rect width="1500" height="1130" fill="#f8fafc"/>
+<text x="750" y="42" class="title" text-anchor="middle">Three inputs · one MCAP writer lifecycle</text>
+<text x="750" y="70" class="s" text-anchor="middle" style="fill:#52657a">Managed path implemented · external payload and prepared-block paths proposed</text>
+<path d="M80 825H30V120H1220" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5"/>
+<text x="750" y="108" class="tag" text-anchor="middle" style="fill:#18836b">REUSE AFTER I/O RETIREMENT · external reuse also waits for payload readers</text>
+<path d="M280 120V155" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#g)"/>
+<path d="M750 120V155" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#g)"/>
+<path d="M1220 120V155" fill="none" stroke="#18836b" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#g)"/>
+<rect x="80" y="155" width="400" height="98" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="280" y="187" class="h" text-anchor="middle">1 · Managed pool</text>
+<text x="280" y="214" class="s" text-anchor="middle">small batch / large reservation</text>
+<text x="280" y="239" class="s" text-anchor="middle" style="fill:#52657a">allocation returned to free list</text>
+<path d="M280 253V325" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<rect x="550" y="155" width="400" height="98" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="750" y="187" class="h" text-anchor="middle">2 · External payload owner</text>
+<text x="750" y="214" class="s" text-anchor="middle">large payload &gt;256 KiB</text>
+<text x="750" y="239" class="s" text-anchor="middle" style="fill:#52657a">producer read lease released</text>
+<path d="M750 253V325" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<rect x="1020" y="155" width="400" height="98" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1220" y="187" class="h" text-anchor="middle">3 · Producer / tracing pool</text>
+<text x="1220" y="214" class="s" text-anchor="middle">prepared block · any aligned size</text>
+<text x="1220" y="239" class="s" text-anchor="middle" style="fill:#52657a">last reader + I/O lease recycles slab</text>
+<path d="M1220 253V325" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="280" y="294" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">caller fills reserved slice</text>
+<text x="750" y="294" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">storage builds framing spans</text>
+<text x="1220" y="294" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">producer frames + seals</text>
+<rect x="80" y="325" width="400" height="130" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<rect x="550" y="325" width="400" height="130" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<rect x="1020" y="325" width="400" height="130" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="280" y="353" class="tag" text-anchor="middle">MANAGED ALLOCATION</text>
+<text x="750" y="353" class="tag" text-anchor="middle">MANAGED + BORROWED SPANS</text>
+<text x="1220" y="353" class="tag" text-anchor="middle">SEALED EXTERNAL BLOCK</text>
+<rect x="95" y="370" width="95" height="42" rx="0" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="142.5" y="397" class="s" text-anchor="middle">header</text>
+<rect x="190" y="370" width="185" height="42" rx="0" fill="#dce8ff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="282.5" y="397" class="s" text-anchor="middle">payload</text>
+<rect x="375" y="370" width="90" height="42" rx="0" fill="#eaf0f6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="420.0" y="397" class="s" text-anchor="middle">padding</text>
+<rect x="565" y="370" width="135" height="42" rx="0" fill="#fff0d6" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="632.5" y="397" class="s" text-anchor="middle">prefix</text>
+<rect x="700" y="370" width="235" height="42" rx="0" fill="#c6e9d9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="817.5" y="397" class="s" text-anchor="middle">payload</text>
+<rect x="1035" y="370" width="245" height="42" rx="0" fill="#ddd3fc" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1157.5" y="397" class="s" text-anchor="middle">records A…N</text>
+<rect x="1280" y="370" width="125" height="42" rx="0" fill="#ddd3fc" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1342.5" y="397" class="s" text-anchor="middle">padding</text>
+<text x="280" y="438" class="s" text-anchor="middle">combine small · dedicate large</text>
+<text x="750" y="438" class="s" text-anchor="middle">prefix = padding + MCAP header</text>
+<text x="1220" y="438" class="s" text-anchor="middle">bypass storage framing + combining</text>
+<path d="M280 455V505" fill="none" stroke="#52657a" stroke-width="2.4"/>
+<path d="M750 455V505" fill="none" stroke="#52657a" stroke-width="2.4"/>
+<path d="M1220 455V505" fill="none" stroke="#52657a" stroke-width="2.4"/>
+<path d="M280 505H1220" fill="none" stroke="#52657a" stroke-width="2.4"/>
+<path d="M750 505V555" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="280" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">commit</text>
+<text x="750" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">append payload</text>
+<text x="1220" y="486" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">append prepared</text>
+<text x="750" y="541" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="tag" text-anchor="middle">MCAP order + admission</text>
+<rect x="550" y="555" width="400" height="132" rx="12" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="750" y="589" class="h" text-anchor="middle">Retained write request</text>
+<text x="750" y="620" class="s" text-anchor="middle">source spans + leases</text>
+<text x="750" y="647" class="s" text-anchor="middle">one logical append · aligned file range</text>
+<text x="750" y="673" class="s" text-anchor="middle" style="fill:#52657a">reject → caller keeps ownership</text>
+<rect x="80" y="565" width="350" height="112" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="255" y="599" class="h" text-anchor="middle">Registration cache</text>
+<text x="255" y="627" class="s" text-anchor="middle">first use → register region</text>
+<text x="255" y="654" class="s" text-anchor="middle">mapping guard retained across reuse</text>
+<path d="M550 589H430" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="490" y="578" class="s" text-anchor="middle">region</text>
+<path d="M430 648H550" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="490" y="671" class="s" text-anchor="middle">buffer IDs</text>
+<rect x="1070" y="565" width="350" height="80" rx="12" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1245" y="596" class="h" text-anchor="middle">File-offset allocator</text>
+<text x="1245" y="624" class="s" text-anchor="middle">reserve aligned append range</text>
+<path d="M950 582H1070" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="1010" y="571" class="s" text-anchor="middle">length</text>
+<path d="M1070 630H950" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="1010" y="653" class="s" text-anchor="middle">offset</text>
+<path d="M750 687V775" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="810" y="730" class="s" text-anchor="middle">SQEs</text>
+<text x="750" y="756" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="tag" text-anchor="middle">buffer ID + address + length + file offset</text>
+<rect x="550" y="775" width="400" height="100" rx="12" fill="#e2e8f0" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="750" y="814" class="h" text-anchor="middle">Storage · io_uring</text>
+<text x="750" y="844" class="s" text-anchor="middle">submit · split / retry · retire CQEs</text>
+<rect x="1070" y="775" width="350" height="100" rx="12" fill="#fff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1245" y="813" class="h" text-anchor="middle">File / storage device</text>
+<text x="1245" y="842" class="s" text-anchor="middle">filesystem → driver → device</text>
+<path d="M950 812H1070" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="1010" y="797" class="s" text-anchor="middle">issue I/O</text>
+<path d="M950 673H1470V850H1420" fill="none" stroke="#7c3aed" stroke-width="2.4" stroke-dasharray="7 5" marker-end="url(#d)"/>
+<text x="1245" y="708" class="s" text-anchor="middle" style="fill:#7c3aed">DMA · reads the retained source bytes</text>
+<rect x="80" y="775" width="350" height="100" rx="12" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="255" y="811" class="h" text-anchor="middle">Release byte leases</text>
+<text x="255" y="839" class="s" text-anchor="middle">after every referencing CQE</text>
+<text x="255" y="861" class="s" text-anchor="middle" style="fill:#52657a">registration remains cached</text>
+<path d="M550 825H430" fill="none" stroke="#18836b" stroke-width="2.4" marker-end="url(#g)"/>
+<text x="490" y="809" class="s" text-anchor="middle" style="fill:#18836b">CQEs</text>
+<path d="M1245 875V970" fill="none" stroke="#52657a" stroke-width="2.4" marker-end="url(#a)"/>
+<text x="1245" y="912" paint-order="stroke" stroke="#f8fafc" stroke-width="6" stroke-linejoin="round" class="s" text-anchor="middle">writes land at assigned offsets</text>
+<text x="80" y="948" class="tag" text-anchor="start">FILE OFFSETS · EXAMPLE APPEND ORDER</text>
+<rect x="80" y="975" width="420" height="78" rx="0" fill="#e6efff" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="290.0" y="1007" class="h" text-anchor="middle">Managed batch</text>
+<text x="290.0" y="1034" class="s" text-anchor="middle">packed small records / one large record</text>
+<rect x="500" y="975" width="460" height="78" rx="0" fill="#def2e9" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="730.0" y="1007" class="h" text-anchor="middle">External payload record</text>
+<text x="730.0" y="1034" class="s" text-anchor="middle">managed prefix + original payload</text>
+<rect x="960" y="975" width="460" height="78" rx="0" fill="#ede9fe" stroke="#c5d2df" stroke-width="1.5"/>
+<text x="1190.0" y="1007" class="h" text-anchor="middle">Prepared block</text>
+<text x="1190.0" y="1034" class="s" text-anchor="middle">producer’s complete records + padding</text>
+<text x="80" y="1078" class="s" text-anchor="middle">f₀</text>
+<text x="500" y="1078" class="s" text-anchor="middle">f₁</text>
+<text x="960" y="1078" class="s" text-anchor="middle">f₂</text>
+<text x="1420" y="1078" class="s" text-anchor="middle">f₃</text>
+<text x="750" y="1111" class="s" text-anchor="middle" style="fill:#52657a">Aligned transfer boundaries · MCAP ordering and rotation stay with the writer · explicit retirement releases registrations</text>
+</svg>

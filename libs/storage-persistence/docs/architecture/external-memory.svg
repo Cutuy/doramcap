@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="400" viewBox="0 0 1120 400" role="img" aria-labelledby="title desc"><title id="title">External memory · data path</title><desc id="desc">The caller supplies mapped memory and ownership guards. Storage chooses the size-qualified path.</desc><defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#53657b"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#192e45}.title{font-size:25px;font-weight:700}.label{font-size:16px;font-weight:700}.note{font-size:14px;fill:#52657a}.edge{font-size:13px;fill:#40566e}.step{font-size:17px;font-weight:700}</style><rect width="1120" height="400" fill="#f8fafc"/><text class="title" x="36" y="43">External memory · data path</text>
+<text class="label" x="36" y="89" text-anchor="start">≤256 KiB · COPY INTO MANAGED STORAGE</text>
+<rect x="36" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="149.0" y="137" text-anchor="middle">Caller mapping</text>
+<text class="note" x="149.0" y="161" text-anchor="middle">ready bytes</text>
+<rect x="310" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="423.0" y="137" text-anchor="middle">Combiner</text>
+<text class="note" x="423.0" y="161" text-anchor="middle">one managed allocation</text>
+<rect x="584" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="697.0" y="137" text-anchor="middle">Writer</text>
+<text class="note" x="697.0" y="161" text-anchor="middle">managed-buffer writes</text>
+<rect x="858" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="971.0" y="137" text-anchor="middle">MCAP file</text>
+<text class="note" x="971.0" y="161" text-anchor="middle">combined records</text>
+<path d="M262 146H310" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="286.0" y="134" text-anchor="middle">copy</text>
+<path d="M536 146H584" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="560.0" y="134" text-anchor="middle">lease</text>
+<path d="M810 146H858" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="834.0" y="134" text-anchor="middle">batch</text>
+<text class="label" x="36" y="236" text-anchor="start">&gt;256 KiB · ORIGINAL MEMORY</text>
+<rect x="36" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="149.0" y="284" text-anchor="middle">Caller mapping</text>
+<text class="note" x="149.0" y="308" text-anchor="middle">ready range + guard</text>
+<rect x="310" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="423.0" y="284" text-anchor="middle">Read lease</text>
+<text class="note" x="423.0" y="308" text-anchor="middle">original bytes retained</text>
+<rect x="584" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="697.0" y="284" text-anchor="middle">Writer</text>
+<text class="note" x="697.0" y="308" text-anchor="middle">register + direct writes</text>
+<rect x="858" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
+<text class="step" x="971.0" y="284" text-anchor="middle">MCAP file</text>
+<text class="note" x="971.0" y="308" text-anchor="middle">framing + payload</text>
+<path d="M262 293H310" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="286.0" y="281" text-anchor="middle">range</text>
+<path d="M536 293H584" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="560.0" y="281" text-anchor="middle">lease</text>
+<path d="M810 293H858" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="834.0" y="281" text-anchor="middle">record</text>
+<text class="note" x="36" y="374" text-anchor="start">Large path: aligned source, length and file layout required. Ineligible input returns an error.</text>
+</svg>

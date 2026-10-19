@@ -38,7 +38,7 @@ Use **Start new session** to restart collection and reset counters, including
 after the capture timer expires. It removes the previous MCAP captures in this
 demo’s directory. Other files remain untouched.
 
-Use **+16 heartbeats** to combine a burst, **+96 KiB probe** to exercise segmented
+Use **+16 heartbeats** to combine a burst, **+96 KiB probe** to exercise contiguous
 encoding, **Flush now**, and **Seal & rotate** to inspect the footer and final
 MCAP magic. The last sealed file is downloadable. The ribbon displays recent
 record order with logarithmic widths; the table gives exact byte offsets/sizes.
@@ -48,7 +48,7 @@ a unique directory under `/tmp`. `--port N` selects a port; `--seconds N` stops
 recording and seals the file after N seconds while keeping the page available.
 Ctrl-C stops the server, seals the current file and reaps its monitor subprocess.
 
-The demo input queue holds 16 packets. The MCAP pool holds eight 64-KiB buffers.
+The demo input queue holds 16 packets. The MCAP pool starts with eight 256-KiB buffers and grows on demand.
 UI snapshots run at 25 Hz. File inspection reads complete records once outstanding
 writes retire. Event sequence numbers expose history eviction. A write CQE is
 completion evidence; seal/rotate also establishes logical EOF and calls fsync.

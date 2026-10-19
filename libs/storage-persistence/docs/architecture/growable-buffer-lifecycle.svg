@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="370" viewBox="0 0 1120 370" role="img" aria-labelledby="title desc"><title id="title">Managed memory · allocation lifecycle</title><desc id="desc">Acquire, fill, submit, complete and reuse. Registration persists across cycles.</desc><defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#53657b"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#192e45}.title{font-size:25px;font-weight:700}.label{font-size:16px;font-weight:700}.note{font-size:14px;fill:#52657a}.edge{font-size:13px;fill:#40566e}.step{font-size:17px;font-weight:700}</style><rect width="1120" height="370" fill="#f8fafc"/><text class="title" x="36" y="43">Managed memory · allocation lifecycle</text>
+<rect x="36" y="100" width="184" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="128.0" y="129" text-anchor="middle">Acquire</text>
+<text class="note" x="128.0" y="153" text-anchor="middle">best-fit free buffer</text>
+<rect x="252" y="100" width="184" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="344.0" y="129" text-anchor="middle">Fill</text>
+<text class="note" x="344.0" y="153" text-anchor="middle">exclusive slice</text>
+<rect x="468" y="100" width="184" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="560.0" y="129" text-anchor="middle">Submit</text>
+<text class="note" x="560.0" y="153" text-anchor="middle">writer owns lease</text>
+<rect x="684" y="100" width="184" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="776.0" y="129" text-anchor="middle">Complete</text>
+<text class="note" x="776.0" y="153" text-anchor="middle">all reads retired</text>
+<rect x="900" y="100" width="184" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
+<text class="step" x="992.0" y="129" text-anchor="middle">Reusable</text>
+<text class="note" x="992.0" y="153" text-anchor="middle">back in free list</text>
+<path d="M220 138H252" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="236.0" y="126" text-anchor="middle"></text>
+<path d="M436 138H468" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="452.0" y="126" text-anchor="middle"></text>
+<path d="M652 138H684" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="668.0" y="126" text-anchor="middle"></text>
+<path d="M868 138H900" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
+<text class="edge" x="884.0" y="126" text-anchor="middle"></text>
+<rect x="36" y="201" width="1048" height="38" rx="7" fill="#e6f2eb"/>
+<text class="note" x="560.0" y="225" text-anchor="middle">Underlying allocation + io_uring registration persist across reuse</text>
+<rect x="36" y="256" width="400" height="38" rx="7" fill="#fff0d7"/>
+<text class="note" x="236.0" y="280" text-anchor="middle">No free buffer fits → allocate + register</text>
+<text class="note" x="464" y="280" text-anchor="start">Growth never waits for another allocation’s CQEs.</text>
+<text class="note" x="36" y="329" text-anchor="start">Explicit trim / shutdown: retire registration, then free an eligible allocation.</text>
+</svg>

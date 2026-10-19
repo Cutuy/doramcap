@@ -33,10 +33,14 @@ fn managed_resources_gate() {
         first.as_mut_slice().fill(0x55);
         second.as_mut_slice()[0] = 0xaa;
         assert!(first.as_slice().iter().all(|b| *b == 0x55));
-        assert!(matches!(pool.reserve(1), Err(PoolError::Exhausted)));
-        assert!(matches!(pool.reserve(8193), Err(PoolError::TooLarge)));
+        let third = pool.reserve(1).unwrap();
+        let large = pool.reserve(8193).unwrap();
+        assert_eq!(large.capacity(), 8193_usize.next_multiple_of(alignment));
+        assert_eq!(pool.capacity(), 4);
+        drop(third);
+        drop(large);
         drop(first);
-        assert_eq!(pool.available(), 1);
+        assert_eq!(pool.available(), 3);
         drop(second);
         assert_eq!(pool.available(), pool.capacity());
         let mut offsets = OffsetAllocator::new(0, alignment as u64).unwrap();

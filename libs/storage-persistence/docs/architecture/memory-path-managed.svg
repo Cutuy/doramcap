@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="490" viewBox="0 0 1300 490" role="img" aria-labelledby="title desc">
+<title id="title">1 · Managed memory — storage supplies writable space</title><desc id="desc">IMPLEMENTED · small records share a combining allocation; large reservations get one contiguous allocation</desc>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker></defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#17324d}.title{font-size:25px;font-weight:700}.sub{font-size:15px;fill:#52657a}.head{font-size:19px;font-weight:700}.small{font-size:14px}.tag{font-size:12px;font-weight:700;fill:#52657a}</style><rect width="1300" height="490" fill="#f8fafc"/>
+<text x="40" y="42" class="title" text-anchor="start">1 · Managed memory — storage supplies writable space</text>
+<text x="40" y="69" class="sub" text-anchor="start">IMPLEMENTED · small records share a combining allocation; large reservations get one contiguous allocation</text>
+<rect x="40" y="115" width="245" height="100" rx="10" fill="#eaf0f6" stroke="#c5d2df"/>
+<text x="162.5" y="146" class="head" text-anchor="middle">Caller</text>
+<text x="162.5" y="172" class="small" text-anchor="middle">small: copy existing bytes</text>
+<text x="162.5" y="195" class="small" text-anchor="middle">large: encode into reserve()</text>
+<path d="M285 165H365" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="325" y="144" class="small" text-anchor="middle">fill</text>
+<rect x="365" y="115" width="245" height="100" rx="10" fill="#e6efff" stroke="#c5d2df"/>
+<text x="487.5" y="146" class="head" text-anchor="middle">Managed reservation</text>
+<text x="487.5" y="172" class="small" text-anchor="middle">best-fit pool / growth</text>
+<text x="487.5" y="195" class="small" text-anchor="middle">storage writes MCAP framing</text>
+<path d="M610 165H690" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="650" y="144" class="small" text-anchor="middle">lease</text>
+<rect x="690" y="115" width="245" height="100" rx="10" fill="#e6efff" stroke="#c5d2df"/>
+<text x="812.5" y="146" class="head" text-anchor="middle">Append scheduler</text>
+<text x="812.5" y="172" class="small" text-anchor="middle">file range + retained lease</text>
+<text x="812.5" y="195" class="small" text-anchor="middle">admission / retries / CQEs</text>
+<path d="M935 165H1015" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
+<text x="975" y="144" class="small" text-anchor="middle">SQEs</text>
+<rect x="1015" y="115" width="245" height="100" rx="10" fill="#eaf0f6" stroke="#c5d2df"/>
+<text x="1137.5" y="146" class="head" text-anchor="middle">io_uring</text>
+<text x="1137.5" y="172" class="small" text-anchor="middle">registered address + length</text>
+<text x="1137.5" y="195" class="small" text-anchor="middle">O_DIRECT write requests</text>
+<text x="40" y="257" class="tag" text-anchor="start">FILE LAYOUT · APPEND ORDER</text>
+<text x="1260" y="257" class="small" text-anchor="end">f → increasing file offset</text>
+<rect x="40" y="272" width="310" height="65" fill="#fff0d6" stroke="#c5d2df"/>
+<text x="195.0" y="297" class="head" text-anchor="middle">MCAP framing</text>
+<text x="195.0" y="320" class="small" text-anchor="middle">storage-owned</text>
+<rect x="350" y="272" width="630" height="65" fill="#e6efff" stroke="#c5d2df"/>
+<text x="665.0" y="297" class="head" text-anchor="middle">Payload bytes</text>
+<text x="665.0" y="320" class="small" text-anchor="middle">inside the same managed allocation</text>
+<rect x="980" y="272" width="280" height="65" fill="#eaf0f6" stroke="#c5d2df"/>
+<text x="1120.0" y="297" class="head" text-anchor="middle">MCAP padding</text>
+<text x="1120.0" y="320" class="small" text-anchor="middle">direct-I/O alignment</text>
+<text x="40" y="361" class="sub" text-anchor="start">Small batches pack multiple records before alignment padding. Large records use their dedicated allocation.</text>
+<rect x="40" y="375" width="1220" height="35" rx="6" fill="#eaf0f6"/>
+<text x="54" y="398" class="tag" text-anchor="start">BYTE LEASE</text>
+<text x="205" y="398" class="small" text-anchor="start">Caller fills → writer holds through final CQE → allocation returns to managed free list.</text>
+<rect x="40" y="421" width="1220" height="35" rx="6" fill="#eaf0f6"/>
+<text x="54" y="444" class="tag" text-anchor="start">REGISTRATION</text>
+<text x="205" y="444" class="small" text-anchor="start">Allocation stays registered across reuse; explicit idle trim retires registration before freeing memory.</text>
+</svg>
