@@ -29,7 +29,8 @@ def save(path, state):
 
 
 def dirt(path):
-    return git(path, 'status', '--short', '--untracked-files=all', '--ignored').decode()
+    # Match release: ignored caches and local configuration may remain in a free slot.
+    return git(path, 'status', '--short', '--untracked-files=all').decode()
 
 
 # Explicit repository build outputs; dependency caches and runtime recordings are preserved.
@@ -144,7 +145,7 @@ def main():
                     git(path, 'clean', '-fdx')
                     if dirt(path):
                         raise RuntimeError('Cleanup left files (possibly a nested repository); inspect manually')
-                git(path, 'checkout', '--detach', head)
+                git(path, 'checkout', '--no-overwrite-ignore', '--detach', head)
                 git(path, 'checkout', '-b', args.branch)
                 if patch:
                     git(path, 'apply', '--binary', '-', data=patch)
@@ -153,6 +154,8 @@ def main():
                         continue
                     rel = Path(os.fsdecode(raw))
                     src, dst = main_root / rel, path / rel
+                    if dst.exists() or dst.is_symlink():
+                        raise RuntimeError(f'Existing slot file conflicts with main snapshot: {rel}')
                     if not dst.parent.resolve().is_relative_to(path):
                         raise RuntimeError(f'Unsafe destination: {rel}')
                     dst.parent.mkdir(parents=True, exist_ok=True)
@@ -181,8 +184,8 @@ def main():
             head = git(path, 'rev-parse', 'HEAD').decode().strip()
             if branch != lease['branch']:
                 raise RuntimeError('Worktree branch differs from leased branch')
-            if git(path, 'status', '--porcelain', '--untracked-files=all'):
-                raise RuntimeError('Worktree has uncommitted changes; preserve them before release')
+            if dirt(path):
+                raise RuntimeError(f'Worktree has uncommitted changes; commit and integrate them before release:\n{dirt(path)}')
             if args.main:
                 main_head = git(main_root, 'rev-parse', 'refs/heads/main').decode().strip()
                 patches = git(path, 'cherry', main_head, head).decode().splitlines()
@@ -198,6 +201,8 @@ def main():
                     raise RuntimeError('PR must be published for the leased branch at its current HEAD')
                 slot['last_pr'] = pr['url']
             clean_build_outputs(path)
+            if dirt(path) or git(path, 'rev-parse', 'HEAD').decode().strip() != head:
+                raise RuntimeError('Worktree changed during release; lease remains active')
             slot['lease'] = None
             save(statefile, state)
         print(json.dumps(state, indent=2))

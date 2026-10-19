@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release behavior exercised in disposable Git repositories."""
+"""Acquisition and release behavior exercised in disposable Git repositories."""
 import importlib.util
 import json
 from pathlib import Path
@@ -86,6 +86,80 @@ class ReleaseTests(unittest.TestCase):
         self.assertNotEqual(self.release().returncode, 0)
         self.assertTrue(artifact.exists())
         self.assertIsNotNone(self.lease())
+
+    def test_reacquire_preserves_ignored_files_and_skips_dirty_slots(self):
+        self.assertEqual(self.release().returncode, 0)
+        dirty = self.write(self.worktree, 'unfinished.rs')
+        other = self.worktree.parent / '2'
+        cache = self.write(other, 'node_modules/package/cache')
+        slot = json.loads(self.command(
+            'acq', '--owner', 'next', '--branch', 'codex/next').stdout)
+        self.assertEqual(slot['id'], 2)
+        self.assertTrue(dirty.exists())
+        self.assertEqual(cache.read_text(), 'preserve or clean')
+
+    def test_acquire_copies_main_head_and_uncommitted_snapshot(self):
+        self.assertEqual(self.release().returncode, 0)
+        for name in ('staged', 'unstaged', 'deleted'):
+            self.write(self.repo, name)
+        self.git('add', '.')
+        self.git('commit', '-m', 'Advance main')
+        (self.repo / 'staged').write_text('staged edit')
+        self.git('add', 'staged')
+        (self.repo / 'staged').write_text('staged plus unstaged edit')
+        (self.repo / 'unstaged').write_text('unstaged edit')
+        (self.repo / 'deleted').unlink()
+        self.write(self.repo, 'untracked')
+        self.write(self.repo, '.env')
+        main_status = self.git('status', '--porcelain').stdout
+        slot = json.loads(self.command(
+            'acq', '--owner', 'next', '--branch', 'codex/snapshot').stdout)
+        root = Path(slot['path'])
+        self.assertEqual(self.git('rev-parse', 'HEAD', root=root).stdout,
+                         self.git('rev-parse', 'HEAD').stdout)
+        self.assertEqual(self.git('diff', '--binary', 'HEAD', root=root).stdout,
+                         self.git('diff', '--binary', 'HEAD').stdout)
+        self.assertEqual((root / 'untracked').read_bytes(),
+                         (self.repo / 'untracked').read_bytes())
+        self.assertFalse((root / '.env').exists())
+        self.assertEqual(self.git('status', '--porcelain').stdout, main_status)
+
+    def test_release_requires_commit_and_cherry_pick(self):
+        source = self.write(self.worktree, 'source.rs')
+        self.git('add', 'source.rs', root=self.worktree)
+        self.assertNotEqual(self.release().returncode, 0)
+        self.git('commit', '-m', 'Feature', root=self.worktree)
+        commit = self.git('rev-parse', 'HEAD', root=self.worktree).stdout.decode().strip()
+        self.assertNotEqual(self.release().returncode, 0)
+        self.git('cherry-pick', commit)
+        source.write_text('uncommitted follow-up')
+        self.assertNotEqual(self.release().returncode, 0)
+        self.git('add', 'source.rs', root=self.worktree)
+        self.git('commit', '-m', 'Follow-up', root=self.worktree)
+        commit = self.git('rev-parse', 'HEAD', root=self.worktree).stdout.decode().strip()
+        self.git('cherry-pick', commit)
+        self.assertEqual(self.release().returncode, 0)
+        self.assertIsNone(self.lease())
+
+    def test_release_rechecks_after_cleanup(self):
+        argv = ['pool.py', '--repo', str(self.repo), 'release',
+                '--token', self.token, '--main']
+        with patch.object(sys, 'argv', argv), patch.object(
+                pool, 'clean_build_outputs', side_effect=lambda root: self.write(root, 'late.rs')):
+            with self.assertRaisesRegex(RuntimeError, 'changed during release'):
+                pool.main()
+        self.assertIsNotNone(self.lease())
+
+    def test_acquire_preserves_ignored_collision(self):
+        self.assertEqual(self.release().returncode, 0)
+        existing = self.write(self.worktree, '.env')
+        (self.repo / '.env').write_text('main tracked file')
+        self.git('add', '-f', '.env')
+        self.git('commit', '-m', 'Track configuration fixture')
+        result = self.command('acq', '--owner', 'next', '--branch', 'codex/collision', check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(existing.read_text(), 'preserve or clean')
+        self.assertEqual(self.lease()['state'], 'preparing')
 
     def test_symlink_blocks_cleanup_and_preserves_external_cache(self):
         artifact = self.write(self.repo, 'target/artifact')
