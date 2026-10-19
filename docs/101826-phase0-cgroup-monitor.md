@@ -1,7 +1,7 @@
 # Phase 0: native cgroup CPU monitor
 
 Date: October 18, 2026
-Status: implemented prototype; native and ARM64 qualification pending
+Status: native cgroup pipeline validated on x86_64 Linux 7.0 and ARM64 WSL2 Linux 6.18; Linux 6.8/Jetson and task diagnostics remain open
 
 ## Outcome
 
@@ -52,15 +52,15 @@ Validation:
 ### M2 — Platform capability and native cgroup backend
 
 - [x] Detect kernel/architecture, cgroup v2, BTF, CPU capacity, and BPF load/attach errors.
-- [ ] Build CO-RE BPF with libbpf-rs/libbpf-cargo and collect native inclusive CPU counters for all discoverable cgroups.
-- [ ] Read native per-core counters where qualified, retaining special root semantics and explicit availability.
+- [x] Build CO-RE BPF with libbpf-rs/libbpf-cargo and collect native inclusive CPU counters for all discoverable cgroups.
+- [x] Read native per-core counters where qualified, retaining special root semantics and explicit availability.
 - [x] Bound result capacity and report overflow/errors instead of reallocating or silently losing data.
 - [x] Establish dictionary entries for cgroup IDs, parent IDs and paths outside the periodic hot path.
 
 Validation:
 - [x] Compile BPF and Rust integration; test capability failures without privileges.
-- [ ] On a qualified host, compare native cgroup totals with `cpu.stat` over aligned intervals, including parent/child groups.
-- [ ] Validate per-core values under pinned CPU load and cgroup creation/deletion.
+- [x] On a qualified host, compare native cgroup totals with `cpu.stat` over aligned intervals, including parent/child groups.
+- [x] Validate per-core values under pinned CPU load and cgroup creation/deletion.
 - [x] Record any missing privileges or unsupported kernel features as unfulfilled qualification gates.
 
 ### M3 — Monitor host and Dora publication
@@ -96,12 +96,12 @@ Validation:
 
 ### M6 — ARM64 and handoff
 
-- [ ] Validate compilation and a one-off run on ARM64 Linux; offered host: `cutuy@100.64.0.20` (WSL2).
+- [x] Validate compilation and a one-off run on ARM64 Linux; offered host: `cutuy@100.64.0.20` (WSL2).
 - [x] Keep WSL2 functional validation distinct from Jetson BSP/performance qualification.
 - [x] Update this plan with completed work, commands/results and remaining gates.
 
 Validation:
-- [ ] Native ARM64 or cross-compilation succeeds, with the validation mode recorded.
+- [x] Native ARM64 or cross-compilation succeeds, with the validation mode recorded.
 - [x] The README describes prerequisites, bounded capacities, operational commands and limitations.
 
 ## Initial implementation choices
@@ -147,3 +147,13 @@ This establishes a host kernel compatibility blocker, not successful verifier
 acceptance or live accounting. The Linux 6.8 target still needs direct validation;
 a 7.0 adapter requires checking the changed accounting structures and kfunc ABI.
 No credentials were persisted in repository files.
+
+### Native and ARM64 validation completed
+
+The previous EPERM and missing-function blockers are resolved for local Linux
+7.0 and ARM64 WSL2 Linux 6.18. Both pass controlled native parent/child per-core
+accounting against cpu.stat, 65-sample 10 Hz collection, overflow, warmed-up
+allocation probes, all-feature tests, and ten native Dora/MCAP sessions each.
+See [the validation plan and evidence](101826-native-kernel-validation.md).
+This does not qualify NVIDIA BSP, Linux 6.8 or the experimental task backend.
+Root CPU accounting remains explicitly unavailable.

@@ -6,13 +6,18 @@ libbpf-rs). Set `CLANG` when clang is outside PATH.
 
 The sleepable cgroup iterator walks the kernel hierarchy in preorder, flushes
 native rstat once, and reads each non-root cgroup's per-CPU `subtree_bstat`.
-There is no custom hierarchy rollup. The root is emitted with
-`ROOT_UNAVAILABLE`; its native global accounting must be acquired separately.
-`RAW_USER_SYSTEM` indicates that user/system counters are native raw values,
-not the adjusted values printed by `cpu.stat`. Runtime is scheduler runtime.
-The host needs BTF, cgroup iterator, `cgroup_rstat_flush` kfunc and appropriate
-BPF/tracing privileges. Linux 6.8 is the intended qualification target, not a
-promise that every vendor kernel exposes these capabilities.
+CO-RE selects `rstat_base_cpu` or legacy `rstat_cpu`; weak kfunc detection selects
+`css_rstat_flush` or `cgroup_rstat_flush`. Separate field reads preserve layout
+correctness. There is no custom hierarchy rollup. Root rows are emitted with
+`ROOT_UNAVAILABLE`; native global accounting must be acquired separately.
+`RAW_USER_SYSTEM` means user/system counters are raw, before cpu.stat adjustment.
+
+Requirements: BTF, cgroup iterator, numeric BPF iterator, a supported rstat flush
+kfunc, and visible `__per_cpu_offset` kernel symbol. The native per-CPU pointers
+lack tags needed by `bpf_per_cpu_ptr`, so checked reads use the offset table.
+CAP_BPF/CAP_PERFMON cover tracing; CAP_SYSLOG is additionally needed when kernel
+policy hides symbol addresses. A startup check rejects hidden addresses.
+Linux 6.8 remains the intended minimum, with direct qualification still pending.
 
 A record capacity bounds cgroup × possible-CPU rows (including root). The
 backend counts excess rows in `CollectionStats::overflow`. Output Vec must
@@ -39,9 +44,10 @@ cargo check -p cgroup-bpf --features bpf
 cargo run -p cgroup-bpf --features bpf --example snapshot
 ```
 
-Initial development validation: default ABI/feature tests and native Rust/BPF
-compilation passed. The one-shot native run failed at libbpf's trivial program
-probe with `EPERM` (also unable to raise RLIMIT_MEMLOCK); the actual cgroup
-program has **not** passed the kernel verifier or produced measurements here.
-Pinned-load comparisons, allocation profiling and target ARM64 qualification
-remain open.
+Live validation now passes on x86_64 Linux 7.0 and ARM64 WSL2 Linux 6.18:
+controlled nested cgroups, pinned cores, cpu.stat comparisons, bounded overflow,
+and 40 warmed-up collection calls with zero observed userspace allocations.
+Run `examples/validate_native.py` for controlled integration and the
+`native_allocations` Cargo example for the allocation probe. See
+[validation evidence](../../docs/101826-native-kernel-validation.md).
+Linux 6.8/NVIDIA qualification and long-duration overhead testing remain open.

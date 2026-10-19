@@ -3,7 +3,7 @@ use libbpf_rs::{
     CgroupIterOpts, CgroupIterOrder, Iter, IterOpts, Link, MapCore, Object, ObjectBuilder,
 };
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read};
 use std::os::fd::{AsFd, AsRawFd, RawFd};
 
 #[repr(C)]
@@ -148,6 +148,7 @@ fn lookup<T>(fd: RawFd, key: u32, value: &mut T) -> Result<()> {
 // Declarative Linux capability requirements; no automatic grant or preprocessing.
 // #[cap(CAP_BPF, CAP_PERFMON)]
 fn load_bpf_object(open: libbpf_rs::OpenObject) -> Result<Object> {
+    require_per_cpu_symbol()?;
     Ok(open.load()?)
 }
 
@@ -162,4 +163,29 @@ fn attach_cgroup_iterator(object: &Object) -> Result<Link> {
         .ok_or(Error::Unsupported("BPF iterator missing"))?
         .attach_iter_with_opts(IterOpts::Cgroup(opts))?;
     Ok(link)
+}
+
+// Kernel policy may expose addresses without this capability; never accept a
+// hidden zero address as a usable per-CPU offset table.
+// #[cap(CAP_SYSLOG)]
+fn require_per_cpu_symbol() -> Result<()> {
+    let reader = BufReader::new(File::open("/proc/kallsyms")?);
+    for line in reader.lines() {
+        let line = line?;
+        let mut fields = line.split_whitespace();
+        let address = fields.next().unwrap_or_default();
+        let _kind = fields.next();
+        if fields.next() == Some("__per_cpu_offset") {
+            return if u64::from_str_radix(address, 16).is_ok_and(|address| address != 0) {
+                Ok(())
+            } else {
+                Err(Error::Unsupported(
+                    "kernel hides __per_cpu_offset; CAP_SYSLOG or root is required for native per-CPU address resolution",
+                ))
+            };
+        }
+    }
+    Err(Error::Unsupported(
+        "kernel __per_cpu_offset symbol is unavailable",
+    ))
 }

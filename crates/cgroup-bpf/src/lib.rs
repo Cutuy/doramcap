@@ -55,7 +55,7 @@ impl fmt::Display for Error {
             #[cfg(feature = "bpf")]
             Self::Bpf(e) => write!(
                 f,
-                "BPF load/attach/read failed (check BTF, cgroup iterator, cgroup_rstat_flush kfunc, per-CPU helper and CAP_BPF/CAP_PERFMON): {e}"
+                "BPF load/attach/read failed (check BTF, cgroup iterator, rstat flush kfunc, per-CPU offsets and CAP_BPF/CAP_PERFMON/CAP_SYSLOG): {e}"
             ),
         }
     }

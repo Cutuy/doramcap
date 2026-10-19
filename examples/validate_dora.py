@@ -47,8 +47,17 @@ def read_messages(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dora", default="dora")
+    parser.add_argument("--runs", type=int, default=1, help="repeat independent sessions to exercise shutdown races")
+    parser.add_argument("--backend", choices=("synthetic", "bpf"), default="synthetic")
     parser.add_argument("--bin-dir", type=Path, default=Path(__file__).resolve().parents[1] / "target/debug")
     args = parser.parse_args()
+    if args.runs < 1:
+        parser.error("--runs must be positive")
+    for run in range(args.runs):
+        run_session(args, run)
+
+
+def run_session(args, run):
     with tempfile.TemporaryDirectory(prefix="doramcap-dora-test-") as directory:
         work = Path(directory)
         # Isolate from concurrent Cargo builds replacing the same target binary.
@@ -58,7 +67,7 @@ def main():
         descriptor = work / "dataflow.yml"
         descriptor.write_text(json.dumps({"nodes": [
             {"id": "monitor", "path": str(work / "system-monitor"),
-             "args": "--backend synthetic --samples 10 --dora", "outputs": ["snapshots"]},
+             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora", "outputs": ["snapshots"]},
             {"id": "recorder", "path": str(work / "mcap-recorder"), "args": str(output),
              "inputs": {"snapshots": {"source": "monitor/snapshots", "queue_size": 64}}},
         ]}))  # JSON is a YAML subset.
@@ -67,15 +76,22 @@ def main():
         messages = read_messages(output)
         assert len(messages) == 10, f"expected 10 final samples, recorded {len(messages)}"
         assert [m["sequence"] for m in messages] == list(range(10))
-        assert all(m["source"] == "synthetic" for m in messages)
+        assert all(m["source"] == args.backend for m in messages)
         assert messages[0]["dictionary_full"] and messages[0]["dictionary"]
         for i, message in enumerate(messages):
             assert message["records"], "missing numeric accounting records"
-            assert all(record["runtime_ns"] == (i + 1) * 50_000_000
-                       for record in message["records"])
+            assert message["capacity_overflow"] == 0 and message["dropped_batches"] == 0
+            if args.backend == "synthetic":
+                assert all(record["runtime_ns"] == (i + 1) * 50_000_000
+                           for record in message["records"])
+            else:
+                assert any(record["flags"] & 1 and record["runtime_ns"] > 0
+                           for record in message["records"])
+                assert all(not (record["flags"] & 64) for record in message["records"])
         assert all(a["capture_unix_ns"] < b["capture_unix_ns"]
                    for a, b in zip(messages, messages[1:]))
-        print("PASS: 10 Dora samples recorded with original sequence, timestamps, and JSON payloads")
+        print(f"PASS session {run + 1}: 10 Dora samples, original sequence/timestamps, "
+              f"max {max(len(m['records']) for m in messages)} records/sample")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,18 @@
 use dora_node_api::{DoraNode, Event, EventStream, MetadataParameters, Parameter, TryRecvError};
-use eyre::{bail, Result};
+use eyre::{bail, eyre, Result};
 
 /// Owns Dora exclusively on the publication thread. Calls may allocate/block.
 pub struct Publisher {
-    node: DoraNode,
+    node: Option<DoraNode>,
     events: EventStream,
 }
 impl Publisher {
     pub fn new_from_env() -> Result<Self> {
         let (node, events) = DoraNode::init_from_env_force()?;
-        Ok(Self { node, events })
+        Ok(Self {
+            node: Some(node),
+            events,
+        })
     }
 
     pub fn publish_bytes(
@@ -25,6 +28,8 @@ impl Publisher {
             Parameter::String(capture_unix_ns.to_string()),
         );
         self.node
+            .as_mut()
+            .ok_or_else(|| eyre!("publisher already finished"))?
             .send_output_bytes("snapshots".into(), parameters, payload.len(), payload)?;
         Ok(())
     }
@@ -42,7 +47,10 @@ impl Publisher {
     }
 
     pub fn finish(&mut self) -> Result<()> {
-        self.node.close_outputs(vec!["snapshots".into()])?;
+        // close_outputs() only sends a control-plane notification. It can overtake
+        // the final direct Zenoh/SHM payload. DoraNode::drop tears down the data
+        // transport BEFORE notifying the daemon that outputs are closed.
+        drop(self.node.take());
         Ok(())
     }
 }

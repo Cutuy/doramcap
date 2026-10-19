@@ -59,8 +59,8 @@ increments loss, and publishes again when a slot is available. Final session
 statistics on stderr include losses after the last published snapshot.
 
 Numeric collection/handoff uses preallocated storage. The synthetic allocator
-test covers 10,000 iterations with zero allocations. This is not yet a measured
-guarantee for native BPF collection. Kernel iterator creation itself allocates
+test covers 10,000 iterations with zero allocations. A separate native probe also observed zero allocations in 40 warmed-up calls
+on each validation host; this is a bounded test, not a universal guarantee. Kernel iterator creation itself allocates
 kernel descriptor/seq state. Metadata discovery, JSON serialization and Dora
 publication may allocate on the publication thread.
 
@@ -72,13 +72,18 @@ or add task diagnostics to cgroup totals.
 
 ## Qualification status
 
-Native Rust and CO-RE programs compile. Unprivileged loading failed with
-`EPERM`; a subsequent sudo-authenticated smoke test reached BPF resolution but
-failed because host Linux 7.0 lacks `cgroup_rstat_flush` in BTF. Its BTF contains
-`css_rstat_flush` instead; this newer kernel needs separate compatibility work. Verifier acceptance, native allocator measurements,
-per-core accuracy, Jetson performance and ARM64 execution remain open. SSH to
-the offered ARM64 host stopped at host-key verification; no trust settings were
-changed.
+Native collection is validated on local x86_64 Linux 7.0 and ARM64 WSL2 Linux
+6.18. Both passed nested-cgroup/pinned-core comparisons against cpu.stat,
+65 samples at 10 Hz, explicit overflow, zero userspace allocations in 40 warmed-up
+native collection calls, and ten real native Dora → MCAP sessions. See the
+[validation report](docs/101826-native-kernel-validation.md) and the repeatable
+`examples/validate_native.py` and `examples/validate_dora.py --backend bpf --runs 10`.
+
+The collector supports both legacy and newer rstat layouts/functions through
+BTF. Loading may additionally require CAP_SYSLOG for kernel symbol visibility;
+CAP_BPF/CAP_PERFMON alone were insufficient on the local host. Root metrics stay
+explicitly unavailable. Linux 6.8, Jetson BSP and long-duration overhead
+qualification remain open; WSL2 validation is not Jetson qualification.
 
 `--task-capacity N` enables experimental task runtime diagnostics with feature
 `task-bpf`. Counters retain task lifetime, cgroup and CPU identity; finite map
