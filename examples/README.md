@@ -1,5 +1,10 @@
 # Dora CPU monitor demos
 
+![Live CPU dataflow and wire formats](../docs/diagrams/live-cpu-architecture.svg)
+
+See [exact binary field definitions](../docs/wire-protocol.md). The dashed MCAP
+branch is optional: the live viewer YAML does not launch the recorder.
+
 Use Dora CLI 1.1.0, matching the pinned `dora-node-api`. Build as your regular
 user. The native wrapper elevates only the collector, following main's
 `AGENTS.md`: it resolves the first Git worktree, verifies the shared
@@ -52,7 +57,7 @@ skip intermediate frames to keep buffering bounded. Browser reconnects are
 automatic. Names arrive as separate full dictionary checkpoints about every 2
 seconds, with session/revision matching; reconnects receive the cached
 checkpoint first. Snapshot payloads are binary on both hops; see
-`docs/wire-protocol.md` for the versioned array schema, 64-bit precision, MCAP
+`docs/wire-protocol.md` for the versioned Protobuf schema, 64-bit precision, MCAP
 encoding, and standalone output framing.
 
 Ingress metrics count original Dora snapshot plus dictionary bytes; the message
@@ -92,9 +97,38 @@ dora run examples/phase0-dataflow.yml
 ```
 
 The recorder refuses to overwrite `phase0.mcap`. It finalizes when its input
-closes. It stores original MessagePack payloads and capture times; MCAP's
+closes. It stores original Protobuf payloads and capture times; MCAP's
 32-bit sequence wraps while the payload retains u64. Add the recorder as an
 additional Dora subscriber for persistent recording alongside the live viewer.
+
+## Measured MessagePack → Protobuf size difference
+
+A live eBPF sample measured on 2026-10-18 contained 3,080 CPU/cgroup rows,
+zero task records and zero inline dictionary entries. The comparison used the
+same values in both formats: Protobuf was serialized after removing viewer-only
+ingress metrics; MessagePack size was calculated using the previous v1
+positional-array layout and compact integer/string/array encoding rules.
+
+| Payload | Previous MessagePack | Protobuf v2 |
+|---|---:|---:|
+| One numeric snapshot | 58,727 bytes | 64,026 bytes |
+| Snapshot payload rate at exactly 10 Hz | 587,270 bytes/s | 640,260 bytes/s |
+| Dictionary checkpoint (153 entries, about every 2 s) | 10,179 bytes | 10,442 bytes |
+
+For this sample, snapshots grew **9.02%**, adding **52,990 bytes/s** at 10 Hz.
+This explains the observed dashboard increase from roughly 580 KB/s to
+630 KB/s; live rates also vary with row counts, counter values and publication
+timing. Rates above exclude dictionary traffic, transport framing and MCAP
+container/schema overhead; KB denotes 1,000 bytes.
+
+Across the CPU rows, Protobuf used 39,944 bytes for numeric varints, 17,839
+bytes for field tags and 6,160 bytes for nested-message headers. MessagePack
+used 55,562 bytes for numeric values and 3,080 bytes for row-array headers.
+Protobuf's integer savings partially offset its per-field and per-row overhead.
+The migration provides explicit schemas, additive-field compatibility and
+embedded MCAP descriptors; payload size depends on the representation and data.
+Packed numeric columns are a possible future optimization. This measurement
+covers payload size only; encoding/decoding CPU performance was not benchmarked.
 
 ## Verification
 
@@ -108,3 +142,7 @@ npm run test:live --prefix frontend
 
 The live check exercises actual binary messages, the shared frontend decoder,
 CPU rates, 30-second eviction, and full name context on browser reconnect.
+
+Protobuf schema: [`telemetry.proto`](../crates/monitor-wire/proto/telemetry.proto).
+MCAP embeds its FileDescriptorSet on both channels. Install validation dependencies
+with `python3 -m pip install -r examples/requirements.txt` (prefer a virtual environment).

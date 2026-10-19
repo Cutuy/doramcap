@@ -2,12 +2,12 @@
 """Run real Dora nodes and verify finite-session shutdown preserves every sample.
 
 Requires prebuilt --features dora binaries and Dora CLI 1.1.0.
-Uses only Python's standard library; MCAP checks support uncompressed chunks,
+Install examples/requirements.txt. MCAP checks support uncompressed chunks,
 which is the recorder's configured format.
 """
 import argparse
 import json
-from wire import unpack, snapshot
+from wire import unpack, snapshot, packet_type
 from pathlib import Path
 import shutil
 import struct
@@ -21,6 +21,12 @@ def read_messages(path):
     assert content[:8] == magic and content[-8:] == magic, "incomplete MCAP"
     messages = []
     dictionaries = []
+    schemas = {}
+    channels = {}
+
+    def string(data, offset):
+        size = struct.unpack_from("<I", data, offset)[0]
+        return data[offset+4:offset+4+size].decode(), offset+4+size
 
     def records(buffer):
         offset = 0
@@ -35,15 +41,30 @@ def read_messages(path):
                 assert data[32:32 + encoding_len] == b"", "expected uncompressed chunk"
                 size = struct.unpack_from("<Q", data, 32 + encoding_len)[0]
                 records(data[40 + encoding_len:40 + encoding_len + size])
+            elif opcode == 3:  # Schema: decode independently from embedded descriptor.
+                schema_id = struct.unpack_from('<H', data)[0]
+                name, pos = string(data, 2)
+                encoding, pos = string(data, pos)
+                assert name == 'doramcap.telemetry.v1.Packet' and encoding == 'protobuf'
+                size = struct.unpack_from('<I', data, pos)[0]
+                schemas[schema_id] = packet_type(data[pos+4:pos+4+size])
+            elif opcode == 4:  # Channel
+                channel_id, schema_id = struct.unpack_from('<HH', data)
+                topic, pos = string(data, 4)
+                encoding, pos = string(data, pos)
+                assert encoding == 'protobuf'
+                channels[channel_id] = (schema_id, topic)
             elif opcode == 5:  # Message
-                _, sequence, log_time, publish_time = struct.unpack_from("<HIQQ", data)
-                frame = unpack(data[22:])
-                if len(frame) == 6:
-                    assert frame[0] == 1 and frame[4]
-                    assert sequence == frame[2] & 0xFFFFFFFF
-                    assert log_time == publish_time == frame[5]
+                channel_id, sequence, log_time, publish_time = struct.unpack_from("<HIQQ", data)
+                schema_id, topic = channels[channel_id]
+                frame = unpack(data[22:], schemas[schema_id])
+                if frame.WhichOneof('body') == 'dictionary':
+                    assert topic == 'doramcap/dictionary' and frame.dictionary.entries
+                    assert sequence == frame.dictionary.revision & 0xFFFFFFFF
+                    assert log_time == publish_time == frame.dictionary.capture_unix_ns
                     dictionaries.append(frame)
                     continue
+                assert topic == 'doramcap/snapshots'
                 payload = snapshot(frame)
                 assert sequence == payload["sequence"] & 0xFFFFFFFF
                 assert log_time == publish_time == payload["capture_unix_ns"]

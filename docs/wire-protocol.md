@@ -1,76 +1,88 @@
-# Snapshot binary protocol v1
+# CPU telemetry Protobuf protocol v2
 
-Dora carries an application-defined UInt8 array. The application payload is
-MessagePack, encoded as positional arrays by `rmp-serde`. The browser receives
-the same schema in binary WebSocket messages at `/stream`. There is no JSON,
-base64 or decimal-string encoding on either snapshot path.
+The canonical schema is [`telemetry.proto`](../crates/monitor-wire/proto/telemetry.proto).
+Each payload is one `doramcap.telemetry.v1.Packet`, whose `oneof body` contains
+a `SnapshotFrame` or a `DictionaryFrame`. The envelope version is 2; the CPU
+counter schema version is 1. The package's `v1` identifies the Protobuf schema
+family. Rust uses generated prost bindings; TypeScript uses generated protobufjs
+bindings. The application uses DORA pub/sub and binary WebSocket transport.
 
-Every frame is one MessagePack value. Fields below are in exact array order:
-
-| Tuple | Ordered fields |
+| Boundary | Artifact |
 |---|---|
-| Frame (11) | version, snapshot, source, task_collection_enabled, task_capacity, session_id, dictionary_revision, dictionary_full, dictionary_overflow, dictionary, viewer_ingress |
-| Snapshot (10) | schema_version, sequence, capture_unix_ns, monotonic_start_ns, monotonic_end_ns, dropped_batches, capacity_overflow, records, task_records, task_losses |
-| CPU record (7) | cgroup_id, parent_id, cpu, flags, runtime_ns, user_ns, system_ns |
-| Task record (2) | identity, charged_runtime_ns |
-| Task identity (6) | start_boottime_ns, cgroup_id, tid, tgid, cpu, flags |
-| Task losses (3) | dropped_events, dropped_runtime_ns, identity_errors |
-| Dictionary entry (3) | id, parent_id, path (string or nil) |
-| Viewer ingress (7) | total_bytes, total_messages, bytes_per_second, messages_per_second, capture_to_receive_ms, mean_capture_to_receive_ms, invalid_timestamps |
+| eBPF → collector | Native BPF records / task map entries |
+| Collector → DORA | Protobuf Packet bytes in a UInt8 array |
+| DORA → viewer / recorder | Original Protobuf Packet bytes |
+| Viewer → browser `/stream` | Binary WebSocket Packet; snapshots gain ingress metrics |
+| Recorder → MCAP | Original Packet bytes on two channels, with embedded schema |
+| Standalone file / stdout | Repeated u32 little-endian byte length + Packet bytes |
 
-Versions are currently 1. Unsigned counters/IDs retain their full u64 range.
-Rates and latency are floating point or nil during warmup/unavailable periods.
-`viewer_ingress` is nil on Dora and filled by the viewer on browser frames.
-Flags and counter semantics are defined in monitor-core and task-accounting.
-Unknown versions, malformed/truncated data and trailing bytes are rejected.
-Frame size is limited to 128 MiB; the browser also limits collection/string
-lengths. Any field order/type change requires a version change and coordinated
-producer/consumer update. This is a breaking change from the earlier JSON demo.
+## Data and frequency
 
-Dora publishes two topics: `snapshots` at 10 Hz and `dictionary` at startup
-and approximately every 2 seconds (monotonic publication time). Snapshots have
-an empty dictionary array and carry `session_id` + `dictionary_revision`.
-Dictionary packets are full checkpoints with this separate six-element array:
-`[version, session_id, revision, overflow, entries, capture_unix_ns]`.
-Revision advances when entries are added; repeated unchanged checkpoints keep
-the revision. Newly discovered groups can show numeric IDs until the next
-checkpoint. The dictionary remains bounded by the configured record capacity.
+`snapshots` publishes at 10 Hz. Records contain integer cgroup/parent IDs,
+CPU index, availability flags and cumulative nanosecond counters. Counters,
+timestamps and IDs use `uint64` varints; CPU/flags use `uint32`. Rates and latency
+metrics use optional `double` fields, preserving unavailable versus zero.
+The 10 Hz path carries an empty dictionary and empty `task_records`; small
+session/source strings remain in the envelope.
 
-WebSocket forwards the two packet types independently. The viewer retains only
-the latest of each and sends the cached dictionary before the cached snapshot on
-reconnect. Browsers handle independent topic arrival by using a dictionary only
-for the same session with revision at least the requested revision (the
-dictionary is append-only within a session). Missing dictionaries give numeric
-labels. A late viewer gets a full checkpoint within about 2 seconds. Slow
-browsers skip intermediate snapshots.
+`dictionary` publishes full checkpoints at startup and about every 2 seconds.
+Entries map numeric IDs to parent IDs and optional paths. An absent path means
+unresolved; an empty path is a valid root name. Snapshots reference a
+`session_id` and `dictionary_revision`. Dictionary revisions track metadata
+changes, including path refreshes. Entries are bounded by configured capacity.
+Standalone snapshots embed their dictionary for self-contained validation.
 
-`FLAG_VIRTUAL_KERNEL` (128) puts a CPU record in a separate virtual namespace:
-`cgroup_id=0` denotes `virtual/kernel`, with `FLAG_RUNTIME`, CPU and cumulative
-PF_KTHREAD runtime. The flag distinguishes this virtual identity from native
-cgroup IDs; user/system are unavailable. No real dictionary entry is used for
-this reporting group. Consumers must honor the flag, and never sum this series
-with native cgroup totals. Task filtering happens in BPF before map insertion;
-publication aggregates by CPU and sends an empty `task_records` array. Task-loss
-counters remain available. The task map still retains kernel lifetimes
-internally and may eventually fill.
+The viewer retains the latest packet of each type. It sends the dictionary
+before the snapshot on reconnect. Browsers join only the same session with a
+dictionary revision at least the snapshot's requested revision. Cross-topic
+ordering can temporarily leave labels numeric. Slow browsers skip intermediate
+snapshots. Display history expires after 30 seconds.
 
-Ingress byte rates include both Dora topics; message counts/rates and latency
-refer only to numeric snapshots. The 10 Hz path contains no cgroup names or task
-names; session/source remain small envelope strings. MCAP records both
-`doramcap/snapshots` and `doramcap/dictionary` channels. Standalone framed
-output embeds its dictionary in each frame.
+## Kernel accounting and timestamps
 
-The TypeScript decoder uses `useBigInt64` and converts integer fields into
-in-memory strings for the existing BigInt rate model after receipt. A
-Rust-generated fixture with u64::MAX verifies cross-language decoding
-(`frontend/src/fixtures/snapshot-v1.msgpack`).
+`FLAG_VIRTUAL_KERNEL` (128) selects a separate reporting namespace:
+`cgroup_id=0` represents `virtual/kernel`, with `FLAG_RUNTIME`, CPU index and
+cumulative PF_KTHREAD runtime. User/system counters are unavailable for this
+series. Consumers must honor the flag and keep it separate from native cgroup
+totals. BPF filters tasks before insertion; publication aggregates their counters
+by CPU. Kernel task lifetimes remain internal to the bounded task map. Loss
+counters remain on the wire.
 
-MCAP records the original binary payload, with `message_encoding=messagepack`
-and channel metadata `protocol=doramcap.snapshot.msgpack.v1`. There is no JSON
-schema registration. Dora sequence/capture metadata are checked against the
-binary body; MCAP timestamps preserve the original capture time. Legacy JSON
-MCAP files require a separate decoder.
+`capture_unix_ns` is captured at collection; monotonic start/end timestamps
+measure collection duration. Viewer ingress latency measures capture to backend
+receipt. Browser capture latency uses a calibrated server-clock mapping from
+`/clock`, with uncertainty and freshness checks. `viewer_ingress` is absent on
+DORA snapshots and populated in browser packets. Byte rates include both DORA
+topics; message rates and latency refer to numeric snapshots.
 
-Standalone monitor output (`--output`, or stdout without `--dora`) is a stream
-of u32 little-endian byte lengths followed by MessagePack frames. `--check`
-produces a human-readable JSON capability report.
+## MCAP and compatibility
+
+Both `doramcap/snapshots` and `doramcap/dictionary` use `message_encoding=protobuf`
+and a schema named `doramcap.telemetry.v1.Packet`, `encoding=protobuf`. Schema data
+is a binary `FileDescriptorSet`, including dependencies, so readers can decode
+a recording from its embedded schema. Channel metadata identifies
+`protocol=doramcap.telemetry.protobuf.v2`. MCAP preserves original payload bytes,
+capture timestamps and the low 32 bits of sequence; payloads preserve full u64
+sequences. Recording remains an optional DORA subscriber.
+
+Protobuf accepts unknown additive fields. Keep field numbers/types stable and
+reserve deleted fields; incompatible changes require a new protocol version and
+coordinated deployment. Decoders check version, body and a 128 MiB packet limit.
+Old MessagePack/JSON recordings require their corresponding legacy reader.
+
+JavaScript decoding uses Long-backed uint64 fields, then exact decimal strings
+and BigInt for rate calculation. This conversion is in memory. The Rust fixture
+`frontend/src/fixtures/snapshot-v2.pb` tests u64::MAX across languages.
+
+After schema edits, regenerate checked-in artifacts:
+
+```sh
+npm run generate:proto --prefix frontend
+cargo run -p monitor-wire --example schema -- examples/telemetry_descriptor.bin
+cargo run -p monitor-wire --example fixture -- frontend/src/fixtures/snapshot-v2.pb
+```
+
+Cargo generates Rust bindings and the embedded descriptor automatically using a
+vendored protoc. Python validators use the official protobuf runtime (install
+`examples/requirements.txt`); the MCAP validator builds its decoder from the
+recording's schema. `--check` remains a human-readable JSON capability report.

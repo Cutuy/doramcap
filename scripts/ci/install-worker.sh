@@ -6,7 +6,7 @@ worker_tmp=$(mktemp -d)
 trap 'rm -rf -- "$worker_tmp"' EXIT
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y --no-install-recommends clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config libelf-dev zlib1g-dev curl ca-certificates python3 git
+apt-get install -y --no-install-recommends clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config libelf-dev zlib1g-dev curl ca-certificates python3 python3-protobuf git
 id doramcap-ci >/dev/null 2>&1 || useradd --create-home --shell /bin/bash doramcap-ci
 install -d -m 700 -o doramcap-ci -g doramcap-ci /home/doramcap-ci/.ssh
 install -m 600 -o doramcap-ci -g doramcap-ci "$1" /home/doramcap-ci/.ssh/authorized_keys

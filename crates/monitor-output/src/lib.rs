@@ -23,16 +23,16 @@ impl McapSink {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let file = File::options().write(true).create_new(true).open(path)?;
         let mut writer = mcap::Writer::new(BufWriter::new(file))?;
-        // MessagePack array ABI is identified in channel metadata. No JSON
-        // schema is claimed for these binary payloads.
-        let metadata = BTreeMap::from([("protocol".into(), "doramcap.snapshot.msgpack.v1".into())]);
-        let channel = writer.add_channel(0, "doramcap/snapshots", "messagepack", &metadata)?;
-        let dictionary_channel = writer.add_channel(
-            0,
-            "doramcap/dictionary",
-            "messagepack",
-            &BTreeMap::from([("protocol".into(), "doramcap.dictionary.msgpack.v1".into())]),
+        let schema = writer.add_schema(
+            monitor_wire::MCAP_SCHEMA_NAME,
+            "protobuf",
+            monitor_wire::FILE_DESCRIPTOR_SET,
         )?;
+        let metadata =
+            BTreeMap::from([("protocol".into(), "doramcap.telemetry.protobuf.v2".into())]);
+        let channel = writer.add_channel(schema, "doramcap/snapshots", "protobuf", &metadata)?;
+        let dictionary_channel =
+            writer.add_channel(schema, "doramcap/dictionary", "protobuf", &metadata)?;
         Ok(Self {
             writer,
             channel,
@@ -93,7 +93,7 @@ mod tests {
         snapshot.sequence = sequence;
         snapshot.capture_unix_ns = capture;
         let frame = monitor_wire::Frame {
-            version: 1,
+            version: monitor_wire::VERSION,
             snapshot,
             source: "test".into(),
             task_collection_enabled: false,
@@ -139,7 +139,15 @@ mod tests {
                 1_800_000_000_000_000_000 + i as u64 * 100_000_000
             );
             assert_eq!(message.publish_time, message.log_time);
-            assert_eq!(message.channel.message_encoding, "messagepack");
+            assert_eq!(message.channel.message_encoding, "protobuf");
+            let schema = message
+                .channel
+                .schema
+                .as_ref()
+                .expect("embedded Protobuf schema");
+            assert_eq!(schema.name, monitor_wire::MCAP_SCHEMA_NAME);
+            assert_eq!(schema.encoding, "protobuf");
+            assert_eq!(schema.data.as_ref(), monitor_wire::FILE_DESCRIPTOR_SET);
             let value = monitor_wire::decode(&message.data)?;
             assert_eq!(value.snapshot.capture_unix_ns, message.log_time);
         }

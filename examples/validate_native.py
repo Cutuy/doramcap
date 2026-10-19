@@ -38,7 +38,7 @@ def main():
         identities = [group.stat().st_ino for group in groups]
         baseline = [usage(group) for group in groups]
         with tempfile.TemporaryDirectory(prefix='doramcap-native-') as directory:
-            output = Path(directory) / 'snapshots.msgpack'
+            output = Path(directory) / 'snapshots.pb'
             monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
                                         '--records', '16384', '--output', str(output)],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)

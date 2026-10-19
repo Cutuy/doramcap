@@ -54,7 +54,8 @@ Cancellation can interrupt cleanup in native tests; inspect leftover
 
 Requirements: ARM64 Ubuntu, systemd, SSH, a Rust-compatible kernel with BTF and
 cgroup v2, and outbound package/GitHub/Rust download access. Existing `.20` has
-all of these. As an administrator, copy `install-worker.sh` and the intended SSH
+these platform prerequisites. Protobuf validation also requires `python3-protobuf`
+(`sudo apt-get install python3-protobuf` on an existing worker). As an administrator, copy `install-worker.sh` and the intended SSH
 **public** key, then run:
 
 ```sh

@@ -23,7 +23,7 @@ fn main() -> eyre::Result<()> {
         charged_runtime_ns: u64::MAX,
     });
     let frame = Frame {
-        version: 1,
+        version: monitor_wire::VERSION,
         snapshot,
         source: "bpf".into(),
         task_collection_enabled: true,

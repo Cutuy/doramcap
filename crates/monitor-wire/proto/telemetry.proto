@@ -1,0 +1,83 @@
+syntax = "proto3";
+package doramcap.telemetry.v1;
+// Stable field numbers are the compatibility contract. Never reuse removed tags.
+// Runtime/capture values are nanoseconds; IDs and counters retain uint64 precision.
+message Packet {
+  oneof body {
+    SnapshotFrame snapshot = 1;
+    DictionaryFrame dictionary = 2;
+  }
+}
+message CpuRecord {
+  uint64 cgroup_id = 1;
+  uint64 parent_id = 2;
+  uint32 cpu = 3;
+  uint32 flags = 4;
+  uint64 runtime_ns = 5;
+  uint64 user_ns = 6;
+  uint64 system_ns = 7;
+}
+message TaskIdentity {
+  uint64 start_boottime_ns = 1;
+  uint64 cgroup_id = 2;
+  uint32 tid = 3;
+  uint32 tgid = 4;
+  uint32 cpu = 5;
+  uint32 flags = 6;
+}
+message TaskRecord {
+  TaskIdentity identity = 1;
+  uint64 charged_runtime_ns = 2;
+}
+message TaskLosses {
+  uint64 dropped_events = 1;
+  uint64 dropped_runtime_ns = 2;
+  uint64 identity_errors = 3;
+}
+message Snapshot {
+  uint32 schema_version = 1;
+  uint64 sequence = 2;
+  uint64 capture_unix_ns = 3;
+  uint64 monotonic_start_ns = 4;
+  uint64 monotonic_end_ns = 5;
+  uint64 dropped_batches = 6;
+  uint64 capacity_overflow = 7;
+  repeated CpuRecord records = 8;
+  repeated TaskRecord task_records = 9;
+  TaskLosses task_losses = 10;
+}
+message DictionaryEntry {
+  uint64 id = 1;
+  uint64 parent_id = 2;
+  optional string path = 3;
+}
+message Ingress {
+  uint64 total_bytes = 1;
+  uint64 total_messages = 2;
+  optional double bytes_per_second = 3;
+  optional double messages_per_second = 4;
+  optional double capture_to_receive_ms = 5;
+  optional double mean_capture_to_receive_ms = 6;
+  uint64 invalid_timestamps = 7;
+}
+message SnapshotFrame {
+  uint32 version = 1;
+  Snapshot snapshot = 2;
+  string source = 3;
+  bool task_collection_enabled = 4;
+  uint64 task_capacity = 5;
+  string session_id = 6;
+  uint64 dictionary_revision = 7;
+  bool dictionary_full = 8;
+  uint64 dictionary_overflow = 9;
+  repeated DictionaryEntry dictionary = 10;
+  Ingress viewer_ingress = 11;
+}
+message DictionaryFrame {
+  uint32 version = 1;
+  string session_id = 2;
+  uint64 revision = 3;
+  uint64 overflow = 4;
+  repeated DictionaryEntry entries = 5;
+  uint64 capture_unix_ns = 6;
+}

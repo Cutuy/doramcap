@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="820" viewBox="0 0 1440 820" role="img" aria-labelledby="title desc">
+<title id="title">CPU telemetry component interactions</title>
+<desc id="desc">Kernel eBPF collectors pass numeric BPF map records to system-monitor. It publishes Protobuf snapshots and dictionaries through DORA. cpu-viewer sends binary WebSocket packets to React. An optional recorder writes both topics to an MCAP file.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#63738a"/></marker></defs>
+<style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#17253b}.title{font-size:28px;font-weight:700}.head{font-size:21px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#52637b}.label{font-size:15px;font-weight:600;fill:#52637b}.edge{fill:none;stroke:#63738a;stroke-width:2.3;marker-end:url(#arrow)}.optional{stroke-dasharray:7 6}</style>
+<rect width="1440" height="820" fill="#f3f6fa"/>
+
+<text x="40" y="48" class="title" text-anchor="start">CPU telemetry · components &amp; artifacts</text>
+<text x="40" y="78" class="small" text-anchor="start">eBPF → DORA → browser   /   optional MCAP recording</text>
+<rect x="40" y="130" width="290" height="90" rx="14" fill="#eaf3ff" stroke="#b9d4ef"/>
+<text x="185.0" y="167" class="head" text-anchor="middle">Cgroup eBPF</text>
+<text x="185.0" y="194" class="small" text-anchor="middle">Native per-CPU counters</text>
+<rect x="40" y="270" width="290" height="90" rx="14" fill="#eaf3ff" stroke="#b9d4ef"/>
+<text x="185.0" y="307" class="head" text-anchor="middle">Kernel-thread eBPF</text>
+<text x="185.0" y="334" class="small" text-anchor="middle">PF_KTHREAD only</text>
+<rect x="530" y="190" width="330" height="110" rx="14" fill="#fff" stroke="#d3dce8"/>
+<text x="695.0" y="227" class="head" text-anchor="middle">system-monitor</text>
+<text x="695.0" y="254" class="small" text-anchor="middle">Collect → aggregate → encode</text>
+<path d="M330 175H445V225H530" class="edge"/>
+<text x="350" y="155" class="label" text-anchor="start">BPF record array</text>
+<path d="M330 315H445V265H530" class="edge"/>
+<text x="350" y="343" class="label" text-anchor="start">BPF task map</text>
+<rect x="1070" y="130" width="330" height="90" rx="14" fill="#fff" stroke="#d3dce8"/>
+<text x="1235.0" y="167" class="head" text-anchor="middle">Cgroup filesystem</text>
+<text x="1235.0" y="194" class="small" text-anchor="middle">Names / paths only</text>
+<path d="M1070 175H950V225H860" class="edge"/>
+<text x="880" y="155" class="label" text-anchor="start">ID → path lookup</text>
+<path d="M560 300V390" class="edge"/>
+<path d="M830 300V390" class="edge"/>
+<rect x="390" y="390" width="610" height="110" rx="14" fill="#e9f7ef" stroke="#b6ddc6"/>
+<text x="695" y="420" class="head" text-anchor="middle">DORA pub/sub</text>
+<text x="415" y="451" class="label" text-anchor="start">snapshots · 10 Hz</text>
+<text x="415" y="476" class="small" text-anchor="start">Cgroup + virtual/kernel counters</text>
+<text x="745" y="451" class="label" text-anchor="start">dictionary · ~every 2 s</text>
+<text x="745" y="476" class="small" text-anchor="start">IDs → paths + revision</text>
+<text x="695" y="330" class="label" text-anchor="middle">Protobuf bytes</text>
+<text x="695" y="354" class="small" text-anchor="middle">session + dictionary revision</text>
+<rect x="80" y="560" width="330" height="90" rx="14" fill="#fff8e8" stroke="#e4d29f"/>
+<text x="245.0" y="597" class="head" text-anchor="middle">mcap-recorder</text>
+<text x="245.0" y="624" class="small" text-anchor="middle">Optional DORA subscriber</text>
+<rect x="530" y="560" width="330" height="90" rx="14" fill="#fff" stroke="#d3dce8"/>
+<text x="695.0" y="597" class="head" text-anchor="middle">cpu-viewer</text>
+<text x="695.0" y="624" class="small" text-anchor="middle">DORA subscriber + HTTP server</text>
+<rect x="1070" y="560" width="330" height="90" rx="14" fill="#f0edff" stroke="#c9c0eb"/>
+<text x="1235.0" y="597" class="head" text-anchor="middle">React + uPlot</text>
+<text x="1235.0" y="624" class="small" text-anchor="middle">Per-CPU plots · 30 s window</text>
+<path d="M470 500V530H245V560" class="edge optional"/>
+<text x="260" y="520" class="small" text-anchor="start">Both topics</text>
+<path d="M695 500V560" class="edge"/>
+<text x="711" y="537" class="small" text-anchor="start">Both topics</text>
+<path d="M860 605H1070" class="edge"/>
+<text x="965" y="556" class="label" text-anchor="middle">Binary WebSocket</text>
+<text x="965" y="579" class="small" text-anchor="middle">/stream</text>
+<text x="965" y="635" class="small" text-anchor="middle">Counters + dictionary</text>
+<text x="965" y="658" class="small" text-anchor="middle">+ ingress metrics</text>
+<path d="M245 650V710" class="edge optional"/>
+<rect x="80" y="710" width="330" height="64" rx="10" fill="#fff8e8" stroke="#e4d29f"/>
+<text x="245" y="738" class="label" text-anchor="middle">capture.mcap</text>
+<text x="245" y="761" class="small" text-anchor="middle">2 channels · Protobuf + schema</text>
+<text x="530" y="731" class="label" text-anchor="start">Payloads: Protobuf Packet</text>
+<text x="530" y="758" class="small" text-anchor="start">DORA carries UInt8 bytes · WebSocket streams Protobuf</text>
+<text x="40" y="804" class="small" text-anchor="start">Solid: live example     Dashed: optional recording branch</text>
+</svg>

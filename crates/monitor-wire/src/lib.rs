@@ -1,24 +1,16 @@
-//! Versioned MessagePack arrays. Field order is the wire ABI; see docs/wire-protocol.md.
-use serde::{Deserialize, Serialize};
-pub const VERSION: u32 = 1;
+//! Protobuf telemetry shared by Dora, binary WebSocket and MCAP.
+use prost::Message;
+use std::borrow::Borrow;
+pub const VERSION: u32 = 2;
 pub const MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DictionaryEntry {
-    pub id: u64,
-    pub parent_id: u64,
-    pub path: Option<String>,
+pub const MCAP_SCHEMA_NAME: &str = "doramcap.telemetry.v1.Packet";
+pub const FILE_DESCRIPTOR_SET: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/telemetry_descriptor.bin"));
+pub mod pb {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.telemetry.v1.rs"));
 }
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Ingress {
-    pub total_bytes: u64,
-    pub total_messages: u64,
-    pub bytes_per_second: Option<f64>,
-    pub messages_per_second: Option<f64>,
-    pub capture_to_receive_ms: Option<f64>,
-    pub mean_capture_to_receive_ms: Option<f64>,
-    pub invalid_timestamps: u64,
-}
-#[derive(Debug, Serialize, Deserialize)]
+pub use pb::{DictionaryEntry, Ingress};
+#[derive(Debug)]
 pub struct Frame<S = monitor_core::Snapshot, D = Vec<DictionaryEntry>> {
     pub version: u32,
     pub snapshot: S,
@@ -32,43 +24,7 @@ pub struct Frame<S = monitor_core::Snapshot, D = Vec<DictionaryEntry>> {
     pub dictionary: D,
     pub viewer_ingress: Option<Ingress>,
 }
-pub fn encode<S: Serialize, D: Serialize>(
-    frame: &Frame<S, D>,
-    output: &mut Vec<u8>,
-) -> eyre::Result<()> {
-    output.clear();
-    // Default serializer uses positional arrays, NOT named maps.
-    frame.serialize(&mut rmp_serde::Serializer::new(&mut *output))?;
-    eyre::ensure!(
-        output.len() <= MAX_FRAME_BYTES,
-        "snapshot exceeds wire size limit"
-    );
-    Ok(())
-}
-pub fn decode(bytes: &[u8]) -> eyre::Result<Frame> {
-    eyre::ensure!(
-        bytes.len() <= MAX_FRAME_BYTES,
-        "snapshot exceeds wire size limit"
-    );
-    let mut cursor = std::io::Cursor::new(bytes);
-    let frame: Frame = Deserialize::deserialize(&mut rmp_serde::Deserializer::new(&mut cursor))?;
-    eyre::ensure!(
-        cursor.position() == bytes.len() as u64,
-        "trailing snapshot bytes"
-    );
-    eyre::ensure!(
-        frame.version == VERSION,
-        "unsupported snapshot wire version {}",
-        frame.version
-    );
-    eyre::ensure!(
-        frame.snapshot.schema_version == monitor_core::SCHEMA_VERSION,
-        "unsupported snapshot schema"
-    );
-    Ok(frame)
-}
-/// Full dictionary checkpoint on the low-rate topic. Separate array shape from Frame.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct DictionaryFrame<D = Vec<DictionaryEntry>> {
     pub version: u32,
     pub session_id: String,
@@ -77,39 +33,243 @@ pub struct DictionaryFrame<D = Vec<DictionaryEntry>> {
     pub entries: D,
     pub capture_unix_ns: u64,
 }
-pub fn encode_dictionary<D: Serialize>(
-    frame: &DictionaryFrame<D>,
-    output: &mut Vec<u8>,
-) -> eyre::Result<()> {
-    output.clear();
-    frame.serialize(&mut rmp_serde::Serializer::new(&mut *output))?;
+impl From<&monitor_core::CpuRecord> for pb::CpuRecord {
+    fn from(v: &monitor_core::CpuRecord) -> Self {
+        Self {
+            cgroup_id: v.cgroup_id,
+            parent_id: v.parent_id,
+            cpu: v.cpu,
+            flags: v.flags,
+            runtime_ns: v.runtime_ns,
+            user_ns: v.user_ns,
+            system_ns: v.system_ns,
+        }
+    }
+}
+impl From<pb::CpuRecord> for monitor_core::CpuRecord {
+    fn from(v: pb::CpuRecord) -> Self {
+        Self {
+            cgroup_id: v.cgroup_id,
+            parent_id: v.parent_id,
+            cpu: v.cpu,
+            flags: v.flags,
+            runtime_ns: v.runtime_ns,
+            user_ns: v.user_ns,
+            system_ns: v.system_ns,
+        }
+    }
+}
+impl From<&task_accounting::TaskIdentity> for pb::TaskIdentity {
+    fn from(v: &task_accounting::TaskIdentity) -> Self {
+        Self {
+            start_boottime_ns: v.start_boottime_ns,
+            cgroup_id: v.cgroup_id,
+            tid: v.tid,
+            tgid: v.tgid,
+            cpu: v.cpu,
+            flags: v.flags,
+        }
+    }
+}
+impl From<pb::TaskIdentity> for task_accounting::TaskIdentity {
+    fn from(v: pb::TaskIdentity) -> Self {
+        Self {
+            start_boottime_ns: v.start_boottime_ns,
+            cgroup_id: v.cgroup_id,
+            tid: v.tid,
+            tgid: v.tgid,
+            cpu: v.cpu,
+            flags: v.flags,
+        }
+    }
+}
+impl From<&task_accounting::TaskRecord> for pb::TaskRecord {
+    fn from(v: &task_accounting::TaskRecord) -> Self {
+        Self {
+            identity: Some((&v.identity).into()),
+            charged_runtime_ns: v.charged_runtime_ns,
+        }
+    }
+}
+impl From<pb::TaskRecord> for task_accounting::TaskRecord {
+    fn from(v: pb::TaskRecord) -> Self {
+        Self {
+            identity: v.identity.unwrap_or_default().into(),
+            charged_runtime_ns: v.charged_runtime_ns,
+        }
+    }
+}
+impl From<&task_accounting::Losses> for pb::TaskLosses {
+    fn from(v: &task_accounting::Losses) -> Self {
+        Self {
+            dropped_events: v.dropped_events,
+            dropped_runtime_ns: v.dropped_runtime_ns,
+            identity_errors: v.identity_errors,
+        }
+    }
+}
+impl From<pb::TaskLosses> for task_accounting::Losses {
+    fn from(v: pb::TaskLosses) -> Self {
+        Self {
+            dropped_events: v.dropped_events,
+            dropped_runtime_ns: v.dropped_runtime_ns,
+            identity_errors: v.identity_errors,
+        }
+    }
+}
+impl From<&monitor_core::Snapshot> for pb::Snapshot {
+    fn from(v: &monitor_core::Snapshot) -> Self {
+        Self {
+            schema_version: v.schema_version,
+            sequence: v.sequence,
+            capture_unix_ns: v.capture_unix_ns,
+            monotonic_start_ns: v.monotonic_start_ns,
+            monotonic_end_ns: v.monotonic_end_ns,
+            dropped_batches: v.dropped_batches,
+            capacity_overflow: v.capacity_overflow,
+            records: v.records.iter().map(Into::into).collect(),
+            task_records: v.task_records.iter().map(Into::into).collect(),
+            task_losses: Some((&v.task_losses).into()),
+        }
+    }
+}
+impl From<pb::Snapshot> for monitor_core::Snapshot {
+    fn from(v: pb::Snapshot) -> Self {
+        Self {
+            schema_version: v.schema_version,
+            sequence: v.sequence,
+            capture_unix_ns: v.capture_unix_ns,
+            monotonic_start_ns: v.monotonic_start_ns,
+            monotonic_end_ns: v.monotonic_end_ns,
+            dropped_batches: v.dropped_batches,
+            capacity_overflow: v.capacity_overflow,
+            records: v.records.into_iter().map(Into::into).collect(),
+            task_records: v.task_records.into_iter().map(Into::into).collect(),
+            task_losses: v.task_losses.unwrap_or_default().into(),
+        }
+    }
+}
+
+fn encode_packet(packet: pb::Packet, output: &mut Vec<u8>) -> eyre::Result<()> {
     eyre::ensure!(
-        output.len() <= MAX_FRAME_BYTES,
-        "dictionary exceeds size limit"
+        packet.encoded_len() <= MAX_FRAME_BYTES,
+        "frame exceeds size limit"
     );
+    output.clear();
+    packet.encode(output)?;
     Ok(())
 }
+pub fn decode_packet(bytes: &[u8]) -> eyre::Result<pb::Packet> {
+    eyre::ensure!(bytes.len() <= MAX_FRAME_BYTES, "frame exceeds size limit");
+    let packet = pb::Packet::decode(bytes)?;
+    eyre::ensure!(packet.body.is_some(), "missing packet body");
+    Ok(packet)
+}
+pub fn encode<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEntry]>>(
+    frame: &Frame<S, D>,
+    output: &mut Vec<u8>,
+) -> eyre::Result<()> {
+    let value = pb::SnapshotFrame {
+        version: frame.version,
+        snapshot: Some(frame.snapshot.borrow().into()),
+        source: frame.source.clone(),
+        task_collection_enabled: frame.task_collection_enabled,
+        task_capacity: frame.task_capacity as u64,
+        session_id: frame.session_id.clone(),
+        dictionary_revision: frame.dictionary_revision,
+        dictionary_full: frame.dictionary_full,
+        dictionary_overflow: frame.dictionary_overflow,
+        dictionary: frame.dictionary.as_ref().to_vec(),
+        viewer_ingress: frame.viewer_ingress.clone(),
+    };
+    encode_packet(
+        pb::Packet {
+            body: Some(pb::packet::Body::Snapshot(value)),
+        },
+        output,
+    )
+}
+pub fn decode(bytes: &[u8]) -> eyre::Result<Frame> {
+    let Some(pb::packet::Body::Snapshot(f)) = decode_packet(bytes)?.body else {
+        eyre::bail!("expected snapshot packet");
+    };
+    eyre::ensure!(f.version == VERSION, "unsupported snapshot wire version");
+    let snapshot = f.snapshot.ok_or_else(|| eyre::eyre!("missing snapshot"))?;
+    eyre::ensure!(
+        snapshot.schema_version == monitor_core::SCHEMA_VERSION,
+        "unsupported snapshot schema"
+    );
+    eyre::ensure!(
+        snapshot.task_records.iter().all(|r| r.identity.is_some()),
+        "missing task identity"
+    );
+    Ok(Frame {
+        version: f.version,
+        snapshot: snapshot.into(),
+        source: f.source,
+        task_collection_enabled: f.task_collection_enabled,
+        task_capacity: f.task_capacity.try_into()?,
+        session_id: f.session_id,
+        dictionary_revision: f.dictionary_revision,
+        dictionary_full: f.dictionary_full,
+        dictionary_overflow: f.dictionary_overflow,
+        dictionary: f.dictionary,
+        viewer_ingress: f.viewer_ingress,
+    })
+}
+pub fn encode_dictionary<D: AsRef<[DictionaryEntry]>>(
+    f: &DictionaryFrame<D>,
+    output: &mut Vec<u8>,
+) -> eyre::Result<()> {
+    encode_packet(
+        pb::Packet {
+            body: Some(pb::packet::Body::Dictionary(pb::DictionaryFrame {
+                version: f.version,
+                session_id: f.session_id.clone(),
+                revision: f.revision,
+                overflow: f.overflow,
+                entries: f.entries.as_ref().to_vec(),
+                capture_unix_ns: f.capture_unix_ns,
+            })),
+        },
+        output,
+    )
+}
 pub fn decode_dictionary(bytes: &[u8]) -> eyre::Result<DictionaryFrame> {
-    eyre::ensure!(
-        bytes.len() <= MAX_FRAME_BYTES,
-        "dictionary exceeds size limit"
-    );
-    let mut cursor = std::io::Cursor::new(bytes);
-    let frame: DictionaryFrame =
-        Deserialize::deserialize(&mut rmp_serde::Deserializer::new(&mut cursor))?;
-    eyre::ensure!(
-        cursor.position() == bytes.len() as u64,
-        "trailing dictionary bytes"
-    );
-    eyre::ensure!(
-        frame.version == VERSION,
-        "unsupported dictionary wire version"
-    );
-    Ok(frame)
+    let Some(pb::packet::Body::Dictionary(f)) = decode_packet(bytes)?.body else {
+        eyre::bail!("expected dictionary packet");
+    };
+    eyre::ensure!(f.version == VERSION, "unsupported dictionary wire version");
+    Ok(DictionaryFrame {
+        version: f.version,
+        session_id: f.session_id,
+        revision: f.revision,
+        overflow: f.overflow,
+        entries: f.entries,
+        capture_unix_ns: f.capture_unix_ns,
+    })
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn descriptor_matches_checked_in_validation_schema() {
+        assert_eq!(
+            FILE_DESCRIPTOR_SET,
+            include_bytes!("../../../examples/telemetry_descriptor.bin")
+        );
+        let descriptor = prost_types::FileDescriptorSet::decode(FILE_DESCRIPTOR_SET).unwrap();
+        assert_eq!(
+            descriptor.file[0].package.as_deref(),
+            Some("doramcap.telemetry.v1")
+        );
+        assert!(
+            descriptor.file[0]
+                .message_type
+                .iter()
+                .any(|m| m.name.as_deref() == Some("Packet"))
+        );
+    }
     #[test]
     fn binary_roundtrip_and_rejects_corruption() {
         let mut snapshot = monitor_core::Snapshot::with_capacity(1);
@@ -139,6 +299,9 @@ mod tests {
         assert_eq!(decode(&bytes).unwrap().snapshot.sequence, u64::MAX);
         assert!(!bytes.windows(10).any(|w| w == b"runtime_ns"));
         assert!(decode(&bytes[..bytes.len() - 1]).is_err());
+        // Unknown additive protobuf field 100 is compatible.
+        bytes.extend_from_slice(&[0xa0, 0x06, 0x01]);
+        assert_eq!(decode(&bytes).unwrap().snapshot.sequence, u64::MAX);
         bytes.push(0);
         assert!(decode(&bytes).is_err());
         frame.version = 99;
