@@ -21,7 +21,7 @@ When the user requests commit, cherry-pick (CP), and release:
 python3 /absolute/main/.agents/skills/worktree-pool/scripts/pool.py --repo /absolute/main release --token TOKEN --main
 ```
 
-`--main` checks that every feature patch is present on main and records both commit IDs. Release preserves the worktree files and branch.
+`--main` checks that every feature patch is present on main and records both commit IDs. Release preserves the worktree and branch. After integration or PR verification, the script removes the ignored build directories `target/`, `apps/cpu-viewer/frontend/dist/`, and `apps/activity-demo/frontend/dist/` before freeing the lease. Cleanup failure keeps the lease active; fix the reported problem and retry with the same token. Symlinked paths, tracked files, and directories that are no longer ignored block cleanup. Other ignored files, dependency caches, and external build caches are preserved.
 
 For a PR workflow, commit, push, and publish the PR (draft qualifies), then:
 
@@ -35,3 +35,5 @@ PR release uses authenticated `gh` to verify the branch and HEAD. Uncommitted ch
 - Integration: rebase the feature branch onto main’s latest HEAD, then cherry-pick (`git cherry-pick`) only its intended commits onto main. Never use `git merge` to integrate worktrees into main; keep history linear. Preserve local edits and resolve conflicts before proceeding.
 - Never wipe main or delete feature branches during cleanup.
 - Before `--discard-dirty`, show the exact warning/path and obtain user approval; it removes tracked, untracked, and ignored files in that slot.
+
+Validate release behavior in disposable repositories with `python3 .agents/skills/worktree-pool/scripts/test_pool.py`.

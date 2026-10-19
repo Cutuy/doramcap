@@ -32,6 +32,42 @@ def dirt(path):
     return git(path, 'status', '--short', '--untracked-files=all', '--ignored').decode()
 
 
+# Explicit repository build outputs; dependency caches and runtime recordings are preserved.
+BUILD_OUTPUTS = (
+    'target',
+    'apps/cpu-viewer/frontend/dist',
+    'apps/activity-demo/frontend/dist',
+)
+
+
+def clean_build_outputs(path):
+    outputs = []
+    for rel in BUILD_OUTPUTS:
+        output = path / rel
+        # Check each component before following it, including dangling symlinks.
+        current = path
+        for part in Path(rel).parts:
+            current = current / part
+            if current.is_symlink():
+                raise RuntimeError(f'Build output uses a symlink; inspect manually: {current}')
+        if not output.exists():
+            continue
+        if not output.is_dir():
+            raise RuntimeError(f'Build output is not a directory: {output}')
+        if git(path, 'ls-files', '--', rel):
+            raise RuntimeError(f'Build output contains tracked files: {output}')
+        ignored = subprocess.run(
+            ['git', '-C', str(path), 'check-ignore', '-q', '--', rel + '/'])
+        if ignored.returncode != 0:
+            raise RuntimeError(f'Build output is not ignored; inspect manually: {output}')
+        outputs.append(output)
+    for output in outputs:
+        print(f'Removing build output: {output}', file=sys.stderr)
+        shutil.rmtree(output)
+        if output.exists() or output.is_symlink():
+            raise RuntimeError(f'Build output cleanup incomplete: {output}')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--repo', default='.', help='Any checkout in the target repository')
@@ -161,6 +197,7 @@ def main():
                 if pr['url'] != args.pr or pr['state'] not in ('OPEN', 'MERGED') or pr['headRefName'] != branch or pr['headRefOid'] != head:
                     raise RuntimeError('PR must be published for the leased branch at its current HEAD')
                 slot['last_pr'] = pr['url']
+            clean_build_outputs(path)
             slot['lease'] = None
             save(statefile, state)
         print(json.dumps(state, indent=2))
