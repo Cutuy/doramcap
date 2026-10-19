@@ -30,3 +30,21 @@ Ignored credential files are intentionally not copied by the worktree-pool
 helper. A missing worktree-local `.sudo-password` is expected; use the shared
 main-checkout path above. If the shared file is absent or unreadable, request
 local provisioning. If authentication fails, stop and report the failure.
+
+## ARM64 CI worker
+
+Use Pueue on `doramcap-ci@100.64.0.20` (ARM64 WSL2, Linux 6.18).
+Submit trusted source only: native tests have approved passwordless sudo and
+can execute CI code as root. Build unprivileged; never copy sudo credentials.
+
+```sh
+python3 scripts/ci/submit.py --source /absolute/path/to/checkout
+ssh doramcap-ci@100.64.0.20 pueue status
+ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
+```
+
+Keep jobs in the serial default queue; Cargo caches persist. Check the job's
+result, not just completion. The suite covers default/all-feature Rust tests,
+native cgroup accounting and allocations; Dora end-to-end tests are separate.
+WSL must be running; Git pushes do not trigger jobs.
+See [worker setup and operation](scripts/ci/README.md).
