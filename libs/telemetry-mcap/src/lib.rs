@@ -153,3 +153,5 @@ mod tests {
         Ok(())
     }
 }
+
+pub mod embedded;

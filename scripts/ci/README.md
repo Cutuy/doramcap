@@ -32,7 +32,10 @@ snapshot writable by the trusted CI account.
 
 Each job runs default and all-feature Rust tests, builds native binaries/examples,
 then runs privileged cgroup accounting integration and allocation validation.
-Dora end-to-end validation is not yet part of this worker job.
+The worker also benchmarks storage allocations and runs synthetic/native Dora
+recording comparisons when the pinned CLI is installed at
+`/home/doramcap-ci/.local/bin/dora`. Native Dora validation runs through the
+approved root launcher; synthetic validation runs unprivileged.
 
 Persistent locations on the worker:
 
@@ -90,3 +93,13 @@ that path. Submission adds a small forwarding script at the legacy path inside
 the worker archive so previously installed launchers continue to work. This shim
 exists only in the submitted snapshot. Python validation requires the protobuf
 runtime described in `libs/telemetry-protocol/python/requirements.txt`.
+
+Source archives carry the snapshot creation timestamp on every entry so Cargo
+invalidates workspace artifacts in the shared target when a snapshot changes.
+
+SSH/SCP submissions use connection and keepalive timeouts. The installed ARM64
+Dora CLI is version 1.1.0, release archive SHA256
+`77fe85ff1eaf2cac2bf9e0d46d1efe00cad5076b5a0cf4e42b2cf2c646b4752f`.
+
+The storage-enabled runner also runs Clippy on changed storage/monitor components
+with dependency linting excluded; generated protocol code has separate lint policy.

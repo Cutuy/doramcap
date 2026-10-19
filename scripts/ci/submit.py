@@ -9,6 +9,7 @@ import shlex
 import subprocess
 import tarfile
 import tempfile
+import time
 import uuid
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -20,6 +21,9 @@ for required in ('apps/system-monitor/tests/validate_native.py', 'libs/cgroup-bp
     if not (source / required).is_file():
         parser.error(f'Source lacks {required}; use a checkout containing the native validation suite')
 job = '/home/doramcap-ci/jobs/' + uuid.uuid4().hex
+snapshot_mtime = time.time()
+ssh_options = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10',
+               '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3']
 
 def git(*argv):
     return subprocess.check_output(['git', '-C', str(source), *argv])
@@ -42,6 +46,7 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
             data = path.read_bytes()
             manifest['files_sha256'][relative] = hashlib.sha256(data).hexdigest()
             info = tarfile.TarInfo(relative)
+            info.mtime = snapshot_mtime
             info.size = len(data)
             info.mode = path.stat().st_mode & 0o777
             tar.addfile(info, io.BytesIO(data))
@@ -49,6 +54,7 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
         # source snapshot entry point until those launchers are upgraded.
         compatibility = b"import runpy\nfrom pathlib import Path\nrunpy.run_path(str(Path(__file__).resolve().parents[1] / 'apps/system-monitor/tests/validate_native.py'), run_name='__main__')\n"
         info = tarfile.TarInfo('examples/validate_native.py')
+        info.mtime = snapshot_mtime
         info.size = len(compatibility)
         info.mode = 0o644
         tar.addfile(info, io.BytesIO(compatibility))
@@ -58,15 +64,16 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
         for name, data in [('run-worker-job.sh', runner),
                            ('SOURCE.json', json.dumps(manifest, indent=2).encode())]:
             info = tarfile.TarInfo(name)
+            info.mtime = snapshot_mtime
             info.size = len(data)
             info.mode = 0o644
             tar.addfile(info, io.BytesIO(data))
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    subprocess.run(['ssh', args.host, 'mkdir -p ' + shlex.quote(job)], check=True)
-    subprocess.run(['scp', str(archive), f'{args.host}:{job}/source.tar.gz'], check=True)
+    subprocess.run(['ssh', *ssh_options, args.host, 'mkdir -p ' + shlex.quote(job)], check=True)
+    subprocess.run(['scp', *ssh_options, str(archive), f'{args.host}:{job}/source.tar.gz'], check=True)
     command = (f'cd {shlex.quote(job)} && '
                f'echo "{digest}  source.tar.gz" | sha256sum -c - && '
                'tar -xzf source.tar.gz && '
                'pueue add --label doramcap-native -- bash run-worker-job.sh')
-    subprocess.run(['ssh', args.host, command], check=True)
+    subprocess.run(['ssh', *ssh_options, args.host, command], check=True)
     print(f'Worker snapshot: {args.host}:{job}')

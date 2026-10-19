@@ -29,6 +29,9 @@ export CARGO_TARGET_DIR=/home/doramcap-ci/target
 cd "$job"
 python3 apps/system-monitor/tests/validate_native.py --monitor "$CARGO_TARGET_DIR/debug/system-monitor"
 "$CARGO_TARGET_DIR/debug/examples/native_allocations"
+if [[ -f apps/system-monitor/tests/validate_recording_dora.py && -x /home/doramcap-ci/.local/bin/dora ]]; then
+    python3 apps/system-monitor/tests/validate_recording_dora.py --dora /home/doramcap-ci/.local/bin/dora --bin-dir "$CARGO_TARGET_DIR/debug" --backend bpf
+fi
 LAUNCHER
 chmod 755 /usr/local/libexec/doramcap-ci-native-tests
 printf '%s\n' 'doramcap-ci ALL=(root) NOPASSWD: /usr/local/libexec/doramcap-ci-native-tests' > /etc/sudoers.d/doramcap-ci

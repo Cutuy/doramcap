@@ -4157,11 +4157,13 @@ dependencies = [
  "cgroup-bpf",
  "ctrlc",
  "eyre",
+ "mcap",
  "monitor-core",
  "serde",
  "serde_json",
  "system-monitor-dora",
  "task-accounting",
+ "telemetry-mcap",
  "telemetry-protocol",
 ]
 
@@ -4195,8 +4197,11 @@ name = "telemetry-mcap"
 version = "0.1.0"
 dependencies = [
  "eyre",
+ "libc",
  "mcap",
  "monitor-core",
+ "prost",
+ "storage-persistence",
  "telemetry-protocol",
 ]
 

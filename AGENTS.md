@@ -46,7 +46,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 Keep jobs in the serial default queue; Cargo caches persist. Check the job's
 success/failure result. The suite covers default/all-feature Rust tests, native
-cgroup accounting and allocations; Dora end-to-end tests are separate. WSL must
+cgroup accounting and allocations; Dora recording comparisons run when the pinned worker CLI is installed. WSL must
 be running; Git pushes do not trigger jobs. See [worker setup and
 operation](scripts/ci/README.md).
 

@@ -28,3 +28,21 @@ before running Python validation. Native validation needs BPF privileges:
 ```sh
 sudo /path/to/venv/bin/python apps/system-monitor/tests/validate_native.py --monitor "$PWD/target/debug/system-monitor"
 ```
+
+## Embedded MCAP recording
+
+```sh
+system-monitor --backend synthetic --samples 100 --record capture.mcap
+system-monitor --backend bpf --dora --record capture.mcap --record-rotate-bytes 67108864
+```
+
+Recording uses the publication owner thread and an eight-buffer, 512-KiB pool.
+Direct I/O uses 4-KiB alignment; `--record-buffered` selects buffered file I/O.
+The maximum encoded message is bounded by the pool. Files are created exclusively.
+Rotation is a soft limit at message boundaries and creates `capture.000001.mcap`,
+then subsequent numbered files, each with schema/channel and dictionary metadata.
+
+Small messages flush within the owner's 100-ms combining deadline. Storage
+pressure stalls the owner; the dedicated collector counts dropped batches when
+its handoff fills. Recording/publication errors terminate the session visibly.
+Callers of the library use `finish` for a finalized recording.

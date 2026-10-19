@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+storage-persistence = { path = "../storage-persistence" }
+prost = "0.14"
+libc = "0.2"
 telemetry-protocol = { path = "../telemetry-protocol" }
 eyre = "0.6"
 mcap = { version = "=0.25.0", default-features = false }

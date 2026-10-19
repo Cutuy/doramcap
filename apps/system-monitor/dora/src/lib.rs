@@ -57,6 +57,44 @@ impl Publisher {
         Ok(())
     }
 
+    /// Copy an already encoded storage payload into Dora-owned publication memory.
+    pub fn publish_serialized(
+        &mut self,
+        dictionary: bool,
+        sequence: u64,
+        time: u64,
+        len: usize,
+        fill: impl FnOnce(&mut [u8]),
+    ) -> Result<()> {
+        eyre::ensure!(
+            len <= telemetry_protocol::MAX_FRAME_BYTES,
+            "frame exceeds size limit"
+        );
+        let mut parameters = MetadataParameters::default();
+        if !dictionary {
+            parameters.insert("sequence".into(), Parameter::String(sequence.to_string()));
+            parameters.insert(
+                "capture_unix_ns".into(),
+                Parameter::String(time.to_string()),
+            );
+        }
+        self.node
+            .as_mut()
+            .ok_or_else(|| eyre!("publisher already finished"))?
+            .send_output_raw(
+                if dictionary {
+                    "dictionary"
+                } else {
+                    "snapshots"
+                }
+                .into(),
+                parameters,
+                len,
+                fill,
+            )?;
+        Ok(())
+    }
+
     /// Poll stop/error events without delaying the host's publication loop.
     pub fn stop_requested(&mut self) -> Result<bool> {
         loop {

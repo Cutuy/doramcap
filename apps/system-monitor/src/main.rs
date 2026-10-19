@@ -23,6 +23,9 @@ struct Options {
     check: bool,
     output: Option<PathBuf>,
     publisher_delay: Duration,
+    record: Option<PathBuf>,
+    record_buffered: bool,
+    record_rotate_bytes: u64,
 }
 impl Options {
     fn parse() -> Result<Self> {
@@ -36,6 +39,9 @@ impl Options {
             check: false,
             output: None,
             publisher_delay: Duration::ZERO,
+            record: None,
+            record_buffered: false,
+            record_rotate_bytes: 0,
         };
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -53,11 +59,16 @@ impl Options {
                     opts.publisher_delay = Duration::from_millis(value(&mut args, &arg)?.parse()?)
                 }
                 "--output" => opts.output = Some(value(&mut args, &arg)?.into()),
+                "--record" => opts.record = Some(value(&mut args, &arg)?.into()),
+                "--record-buffered" => opts.record_buffered = true,
+                "--record-rotate-bytes" => {
+                    opts.record_rotate_bytes = value(&mut args, &arg)?.parse()?
+                }
                 "--dora" => opts.dora = true,
                 "--check" => opts.check = true,
                 "--help" | "-h" => {
                     println!(
-                        "system-monitor [--check] [--backend bpf|synthetic] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
+                        "system-monitor [--check] [--backend bpf|synthetic] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
                     );
                     std::process::exit(0);
                 }
@@ -245,12 +256,12 @@ impl Dictionary {
             scan_cgroups(Path::new("/sys/fs/cgroup"), &mut paths, self.capacity, 0);
             self.next_refresh = now + Duration::from_secs(2);
             for (index, entry) in self.entries.iter_mut().enumerate() {
-                if let Some(path) = paths.get(&entry.id) {
-                    if entry.path.as_ref() != Some(path) {
-                        entry.path = Some(path.clone());
-                        first_changed = first_changed.min(index);
-                        self.revision = self.revision.saturating_add(1);
-                    }
+                if let Some(path) = paths.get(&entry.id)
+                    && entry.path.as_ref() != Some(path)
+                {
+                    entry.path = Some(path.clone());
+                    first_changed = first_changed.min(index);
+                    self.revision = self.revision.saturating_add(1);
                 }
             }
         }
@@ -333,11 +344,22 @@ fn run(opts: Options) -> Result<()> {
     }
     let mut output: Option<Box<dyn Write>> = if let Some(path) = opts.output.as_ref() {
         Some(Box::new(BufWriter::new(File::create(path)?)))
-    } else if !opts.dora {
+    } else if !opts.dora && opts.record.is_none() {
         Some(Box::new(BufWriter::new(std::io::stdout())))
     } else {
         None
     };
+    let mut recorder = opts
+        .record
+        .as_deref()
+        .map(|path| {
+            telemetry_mcap::embedded::Recorder::create(
+                path,
+                !opts.record_buffered,
+                opts.record_rotate_bytes,
+            )
+        })
+        .transpose()?;
     let (producer, consumer) =
         handoff_with_tasks(opts.slots, opts.records, opts.tasks).map_err(|e| eyre!(e))?;
     let stop = Arc::new(AtomicBool::new(false));
@@ -415,32 +437,62 @@ fn run(opts: Options) -> Result<()> {
     let mut dictionary_sent_at: Option<Instant> = None;
     let publish_result = (|| -> Result<()> {
         loop {
+            if let Some(recorder) = recorder.as_mut() {
+                recorder.poll()?;
+            }
             #[cfg(feature = "dora")]
-            if let Some(publisher) = publisher.as_mut() {
-                if publisher.stop_requested()? {
-                    stop.store(true, Ordering::Release);
-                }
+            if let Some(publisher) = publisher.as_mut()
+                && publisher.stop_requested()?
+            {
+                stop.store(true, Ordering::Release);
             }
             let finished = done.load(Ordering::Acquire) || worker.is_finished();
             if let Some(lease) = consumer.try_recv() {
                 let snapshot = lease.snapshot();
-                let dictionary_due =
-                    dictionary_sent_at.is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
+                let rotated = recorder.as_ref().is_some_and(|r| r.rotation_due());
+                if rotated {
+                    recorder.as_mut().unwrap().rotate()?;
+                }
+                let dictionary_due = rotated
+                    || dictionary_sent_at
+                        .is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
                 if dictionary_due {
                     dictionary.update(snapshot, opts.backend == "synthetic");
-                    #[cfg(feature = "dora")]
-                    if let Some(publisher) = publisher.as_mut() {
-                        let packet = telemetry_protocol::dictionary_packet(
-                            &telemetry_protocol::DictionaryFrame {
-                                version: VERSION,
-                                session_id: session.clone(),
-                                revision: dictionary.revision,
-                                overflow: dictionary.overflow,
-                                entries: &dictionary.entries,
-                                capture_unix_ns: snapshot.capture_unix_ns,
+                    let packet = telemetry_protocol::dictionary_packet(
+                        &telemetry_protocol::DictionaryFrame {
+                            version: VERSION,
+                            session_id: session.clone(),
+                            revision: dictionary.revision,
+                            overflow: dictionary.overflow,
+                            entries: &dictionary.entries,
+                            capture_unix_ns: snapshot.capture_unix_ns,
+                        },
+                    );
+                    if let Some(recorder) = recorder.as_mut() {
+                        recorder.record(
+                            true,
+                            dictionary.revision,
+                            snapshot.capture_unix_ns,
+                            &packet,
+                            |_payload| {
+                                #[cfg(feature = "dora")]
+                                if let Some(publisher) = publisher.as_mut() {
+                                    publisher.publish_serialized(
+                                        true,
+                                        dictionary.revision,
+                                        snapshot.capture_unix_ns,
+                                        _payload.len(),
+                                        |out| _payload.copy_to(out),
+                                    )?;
+                                }
+                                Ok(())
                             },
-                        );
-                        publisher.publish_dictionary(&packet)?;
+                        )?;
+                    } else {
+                        #[cfg(feature = "dora")]
+                        if let Some(publisher) = publisher.as_mut() {
+                            publisher.publish_dictionary(&packet)?;
+                        }
                     }
                     dictionary_sent_at = Some(Instant::now());
                 }
@@ -463,13 +515,38 @@ fn run(opts: Options) -> Result<()> {
                     dictionary_overflow: dictionary.overflow,
                     dictionary: &[] as &[DictionaryEntry],
                 };
-                #[cfg(feature = "dora")]
-                if let Some(publisher) = publisher.as_mut() {
-                    publisher.publish_packet(
-                        snapshot.sequence,
-                        snapshot.capture_unix_ns,
-                        &telemetry_protocol::snapshot_packet(&envelope),
-                    )?;
+                if recorder.is_some() || opts.dora {
+                    let packet = telemetry_protocol::snapshot_packet(&envelope);
+                    if let Some(recorder) = recorder.as_mut() {
+                        recorder.record(
+                            false,
+                            snapshot.sequence,
+                            snapshot.capture_unix_ns,
+                            &packet,
+                            |_payload| {
+                                #[cfg(feature = "dora")]
+                                if let Some(publisher) = publisher.as_mut() {
+                                    publisher.publish_serialized(
+                                        false,
+                                        snapshot.sequence,
+                                        snapshot.capture_unix_ns,
+                                        _payload.len(),
+                                        |out| _payload.copy_to(out),
+                                    )?;
+                                }
+                                Ok(())
+                            },
+                        )?;
+                    } else {
+                        #[cfg(feature = "dora")]
+                        if let Some(publisher) = publisher.as_mut() {
+                            publisher.publish_packet(
+                                snapshot.sequence,
+                                snapshot.capture_unix_ns,
+                                &packet,
+                            )?;
+                        }
+                    }
                 }
                 if let Some(output) = output.as_mut() {
                     // Standalone files remain self-contained; Dora uses separate topics.
@@ -491,6 +568,9 @@ fn run(opts: Options) -> Result<()> {
         }
         if let Some(output) = output.as_mut() {
             output.flush()?;
+        }
+        if let Some(recorder) = recorder.take() {
+            recorder.finish()?;
         }
         #[cfg(feature = "dora")]
         if let Some(publisher) = publisher.as_mut() {
