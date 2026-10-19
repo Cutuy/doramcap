@@ -48,3 +48,7 @@ result, not just completion. The suite covers default/all-feature Rust tests,
 native cgroup accounting and allocations; Dora end-to-end tests are separate.
 WSL must be running; Git pushes do not trigger jobs.
 See [worker setup and operation](scripts/ci/README.md).
+
+## Documentation style
+
+Never use “this is A, not B” phrasing or equivalent contrastive framing in documentation. State what something is or does directly.
