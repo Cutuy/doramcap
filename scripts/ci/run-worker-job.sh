@@ -8,6 +8,7 @@ uname -a
 rustc --version
 cargo --version
 cat SOURCE.json
+cargo test --locked -p storage-persistence --no-default-features
 cargo test --locked --workspace
 cargo test --locked --workspace --all-features
 cargo build --locked --workspace --all-features --examples --bins

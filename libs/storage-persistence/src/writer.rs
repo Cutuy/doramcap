@@ -6,10 +6,29 @@ use crate::{
 use io_uring::{IoUring, opcode, types};
 use std::{fs::File, io, os::fd::AsRawFd};
 
+/// Bounded diagnostic event. A CQE describes write completion, before fsync.
+#[cfg(feature = "diagnostics")]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WriteEvent {
+    pub sequence: u64,
+    pub file: u64,
+    pub elapsed_us: u64,
+    pub offset: u64,
+    pub len: u64,
+    pub slot: usize,
+    pub result: i32,
+    /// False: SQE queued. True: corresponding write CQE retired.
+    pub completion: bool,
+    /// Submission-call to CQE observation, including owner polling delay.
+    pub latency_us: Option<u64>,
+}
+
 struct Pending {
     lease: BufferLease,
     range: FileRange,
     done: usize,
+    #[cfg(feature = "diagnostics")]
+    submitted_at: Option<std::time::Instant>,
 }
 impl Pending {
     fn advance(&mut self, result: i32) -> io::Result<bool> {
@@ -42,6 +61,18 @@ pub struct Writer {
     written_bytes: u64,
     registered: Option<BufferPool>,
     alignment: usize,
+    #[cfg(feature = "diagnostics")]
+    events: [WriteEvent; 256],
+    #[cfg(feature = "diagnostics")]
+    event_sequence: u64,
+    #[cfg(feature = "diagnostics")]
+    generation: u64,
+    #[cfg(feature = "diagnostics")]
+    epoch: std::time::Instant,
+    #[cfg(feature = "diagnostics")]
+    submitted: u64,
+    #[cfg(feature = "diagnostics")]
+    completions: u64,
     #[cfg(test)]
     fail_submit: bool,
     #[cfg(test)]
@@ -78,6 +109,18 @@ impl Writer {
             written_bytes: 0,
             registered: None,
             alignment: 1,
+            #[cfg(feature = "diagnostics")]
+            events: [WriteEvent::default(); 256],
+            #[cfg(feature = "diagnostics")]
+            event_sequence: 0,
+            #[cfg(feature = "diagnostics")]
+            generation: 0,
+            #[cfg(feature = "diagnostics")]
+            epoch: std::time::Instant::now(),
+            #[cfg(feature = "diagnostics")]
+            submitted: 0,
+            #[cfg(feature = "diagnostics")]
+            completions: 0,
             #[cfg(test)]
             fail_submit: false,
             #[cfg(test)]
@@ -134,6 +177,42 @@ impl Writer {
                 .offset(offset)
                 .build()
         }
+    }
+    #[cfg(feature = "diagnostics")]
+    fn event(&mut self, slot: usize, range: FileRange, result: i32, completion: bool) {
+        self.event_sequence += 1;
+        self.events[((self.event_sequence - 1) % 256) as usize] = WriteEvent {
+            sequence: self.event_sequence,
+            file: self.generation,
+            elapsed_us: self.epoch.elapsed().as_micros().min(u64::MAX as u128) as u64,
+            offset: range.offset,
+            len: range.len,
+            slot,
+            result,
+            completion,
+            latency_us: if completion {
+                self.slots[slot]
+                    .as_ref()
+                    .and_then(|p| p.submitted_at)
+                    .map(|t| t.elapsed().as_micros().min(u64::MAX as u128) as u64)
+            } else {
+                None
+            },
+        };
+    }
+    /// Latest 256 events in order; sequence gaps reveal overwritten history.
+    #[cfg(feature = "diagnostics")]
+    pub fn events(&self) -> impl Iterator<Item = WriteEvent> + '_ {
+        let first = self.event_sequence.saturating_sub(256);
+        (first..self.event_sequence).map(|n| self.events[(n % 256) as usize])
+    }
+    #[cfg(feature = "diagnostics")]
+    pub fn submitted_operations(&self) -> u64 {
+        self.submitted
+    }
+    #[cfg(feature = "diagnostics")]
+    pub fn completion_count(&self) -> u64 {
+        self.completions
     }
     pub fn outstanding(&self) -> usize {
         self.outstanding
@@ -192,9 +271,13 @@ impl Writer {
             lease,
             range,
             done: 0,
+            #[cfg(feature = "diagnostics")]
+            submitted_at: None,
         });
         reservation.commit();
         self.outstanding += 1;
+        #[cfg(feature = "diagnostics")]
+        self.event(index, range, 0, false);
         Ok(range)
     }
     fn retry(&mut self, index: usize) -> io::Result<()> {
@@ -212,6 +295,10 @@ impl Writer {
         .user_data(index as u64);
         // SAFETY: the original request retired; the same slot owns the remainder.
         unsafe { self.ring.submission().push(&entry) }.map_err(|_| io::ErrorKind::WouldBlock)?;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.slots[index].as_mut().unwrap().submitted_at = None;
+        }
         Ok(())
     }
     /// Submit queued operations and process available completions. `wait` waits
@@ -221,13 +308,26 @@ impl Writer {
         if self.fail_submit {
             return Err(io::ErrorKind::Other.into());
         }
+        #[cfg(feature = "diagnostics")]
+        {
+            let submission_time = std::time::Instant::now();
+            for pending in self.slots.iter_mut().flatten() {
+                pending.submitted_at.get_or_insert(submission_time);
+            }
+        }
         loop {
             match self.ring.submit_and_wait(usize::from(
                 wait && (self.outstanding + self.cancellations > 0),
             )) {
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 result => {
-                    result?;
+                    let submitted = result?;
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        self.submitted += submitted as u64;
+                    }
+                    #[cfg(not(feature = "diagnostics"))]
+                    let _ = submitted;
                     break;
                 }
             }
@@ -246,6 +346,15 @@ impl Writer {
                 continue;
             }
             let index = id as usize;
+            #[cfg(feature = "diagnostics")]
+            {
+                let range = self.slots[index]
+                    .as_ref()
+                    .expect("write completion owns slot")
+                    .range;
+                self.completions += 1;
+                self.event(index, range, result, true);
+            }
             let p = self.slots[index]
                 .as_mut()
                 .expect("write completion must own a slot");
@@ -304,7 +413,13 @@ impl Writer {
                 .user_data(u64::MAX - index as u64);
             // SAFETY: cancel has no user-memory payload; original slots remain owned.
             if unsafe { self.ring.submission().push(&entry) }.is_err() {
-                self.ring.submit()?;
+                let submitted = self.ring.submit()?;
+                #[cfg(feature = "diagnostics")]
+                {
+                    self.submitted += submitted as u64;
+                }
+                #[cfg(not(feature = "diagnostics"))]
+                let _ = submitted;
                 unsafe { self.ring.submission().push(&entry) }
                     .map_err(|_| io::ErrorKind::WouldBlock)?;
             }
@@ -346,6 +461,10 @@ impl Writer {
             return Err(io::ErrorKind::InvalidInput.into());
         }
         self.file = file;
+        #[cfg(feature = "diagnostics")]
+        {
+            self.generation += 1;
+        }
         self.offsets = OffsetAllocator::new(0, self.alignment as u64).unwrap();
         self.written_bytes = 0;
         self.closed = false;
@@ -427,6 +546,8 @@ mod tests {
             lease: pool.reserve(16).unwrap(),
             range: FileRange { offset: 0, len: 16 },
             done: 0,
+            #[cfg(feature = "diagnostics")]
+            submitted_at: None,
         };
         assert!(!p.advance(7).unwrap());
         assert_eq!(pool.available(), 1);
@@ -438,6 +559,8 @@ mod tests {
                 lease: pool.reserve(16).unwrap(),
                 range: FileRange { offset: 0, len: 16 },
                 done: 0,
+                #[cfg(feature = "diagnostics")]
+                submitted_at: None,
             };
             assert!(p.advance(result).is_err());
             assert_eq!(p.done, 0);

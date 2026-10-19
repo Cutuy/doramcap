@@ -45,6 +45,24 @@ fn real_ring_readback_errors_cancellation_and_drop() {
     writer.sync().unwrap();
     assert_eq!(writer.written_bytes(), 16384);
     assert_eq!(pool.available(), 4);
+    #[cfg(feature = "diagnostics")]
+    {
+        let events: Vec<_> = writer.events().collect();
+        assert_eq!(events.len(), 8);
+        assert_eq!(writer.submitted_operations(), 4);
+        assert_eq!(writer.completion_count(), 4);
+        for queued in events.iter().filter(|e| !e.completion) {
+            let completed = events
+                .iter()
+                .find(|e| e.completion && e.offset == queued.offset)
+                .unwrap();
+            assert!(completed.latency_us.is_some());
+            assert!(queued.latency_us.is_none());
+            assert_eq!(completed.slot, queued.slot);
+            assert_eq!(completed.result as u64, queued.len);
+            assert!(completed.sequence > queued.sequence);
+        }
+    }
     let mut read = file;
     read.seek(SeekFrom::Start(0)).unwrap();
     let mut bytes = Vec::new();
@@ -59,6 +77,11 @@ fn real_ring_readback_errors_cancellation_and_drop() {
     }
     COUNTING.store(false, Relaxed);
     assert_eq!(ALLOCS.load(Relaxed), 0);
+    #[cfg(feature = "diagnostics")]
+    {
+        assert_eq!(writer.events().count(), 256);
+        assert_eq!(writer.events().last().unwrap().sequence, 2008);
+    }
     writer.append(pool.reserve(4096).unwrap()).unwrap();
     drop(writer); // pending work drained
     assert_eq!(pool.available(), 4);

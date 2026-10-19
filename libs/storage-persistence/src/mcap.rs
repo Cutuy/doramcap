@@ -26,6 +26,21 @@ pub struct Message {
     pub log_time: u64,
     pub publish_time: u64,
 }
+/// Point-in-time owner-thread diagnostics. Byte completion totals can contain holes.
+#[cfg(feature = "diagnostics")]
+#[derive(Clone, Copy, Debug)]
+pub struct Diagnostics {
+    pub combining_bytes: usize,
+    pub combining_capacity: usize,
+    pub combining_age_us: u64,
+    pub buffers_available: usize,
+    pub buffers_total: usize,
+    pub outstanding: usize,
+    pub accepted_bytes: u64,
+    pub completed_bytes: u64,
+    pub submitted_operations: u64,
+    pub completions: u64,
+}
 pub struct McapWriter {
     writer: Writer,
     pool: BufferPool,
@@ -228,6 +243,27 @@ impl McapWriter {
                 0
             }
     }
+    #[cfg(feature = "diagnostics")]
+    pub fn diagnostics(&self) -> Diagnostics {
+        Diagnostics {
+            combining_bytes: self.used,
+            combining_capacity: self.record_capacity(),
+            combining_age_us: self
+                .since
+                .map_or(0, |t| t.elapsed().as_micros().min(u64::MAX as u128) as u64),
+            buffers_available: self.pool.available(),
+            buffers_total: self.pool.capacity(),
+            outstanding: self.writer.outstanding(),
+            accepted_bytes: self.writer.accepted_bytes(),
+            completed_bytes: self.writer.written_bytes(),
+            submitted_operations: self.writer.submitted_operations(),
+            completions: self.writer.completion_count(),
+        }
+    }
+    #[cfg(feature = "diagnostics")]
+    pub fn write_events(&self) -> impl Iterator<Item = crate::writer::WriteEvent> + '_ {
+        self.writer.events()
+    }
     pub fn storage_writes(&self) -> u64 {
         self.writes
     }
@@ -285,6 +321,12 @@ impl McapWriter {
     }
     pub fn finish(mut self) -> io::Result<()> {
         self.seal()
+    }
+    /// Seal and sync, returning final counters after the footer write retires.
+    #[cfg(feature = "diagnostics")]
+    pub fn finish_with_diagnostics(mut self) -> io::Result<Diagnostics> {
+        self.seal()?;
+        Ok(self.diagnostics())
     }
     /// Rotate at a message boundary. The application writes its dictionary
     /// checkpoint after this call; schemas/channels are repeated automatically.

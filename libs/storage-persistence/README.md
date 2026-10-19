@@ -26,3 +26,13 @@ deadline while input is idle. See [validation evidence](docs/101826-mcap-writer-
 
 Validation: `cargo test -p storage-persistence` includes real Linux io_uring tests.
 The tests fail explicitly when the host cannot create a ring.
+
+## Optional diagnostics
+
+Enable the `diagnostics` Cargo feature for `McapWriter::diagnostics`,
+`write_events`, `finish_with_diagnostics`, and the underlying writer event/counter
+accessors. It adds a fixed 256-event history and per-write clock reads. The demo
+opts in explicitly. Default builds omit these APIs, event storage and timing work.
+Web transport, Protobuf inputs, percentile windows and demo controls live in
+`apps/storage-demo`. Cargo features unify across dependents in a build; build the
+production application independently to keep diagnostics disabled.
