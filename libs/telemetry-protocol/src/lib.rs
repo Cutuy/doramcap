@@ -6,6 +6,8 @@ pub const MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub const MCAP_SCHEMA_NAME: &str = "doramcap.telemetry.v1.Packet";
 pub const FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/telemetry_descriptor.bin"));
+// Keep generated protobuf messages inline to avoid per-packet heap allocation.
+#[allow(clippy::large_enum_variant)]
 pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.telemetry.v1.rs"));
 }
@@ -179,7 +181,7 @@ pub fn snapshot_packet<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEn
         dictionary_full: frame.dictionary_full,
         dictionary_overflow: frame.dictionary_overflow,
         dictionary: frame.dictionary.as_ref().to_vec(),
-        viewer_ingress: frame.viewer_ingress.clone(),
+        viewer_ingress: frame.viewer_ingress,
     };
     pb::Packet {
         body: Some(pb::packet::Body::Snapshot(value)),

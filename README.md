@@ -30,6 +30,20 @@ cargo test --locked --workspace
 cargo build --locked --workspace --all-features
 ```
 
+## Formatting and linting
+
+VS Code formats Rust on save and runs Clippy through rust-analyzer.
+All workspace crates inherit the default Clippy rules from the root manifest.
+CI checks formatting and treats compiler and Clippy warnings as errors for
+both default and all-feature configurations.
+
+```sh
+cargo fmt --all
+cargo fmt --all -- --check
+cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
+cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
+```
+
 Start with the [live dashboard guide](apps/cpu-viewer/docs/running.md).
 See [repository layout conventions](docs/repository-layout.md), the
 [platform roadmap](docs/roadmap.md), and [CI operations](scripts/ci/README.md).

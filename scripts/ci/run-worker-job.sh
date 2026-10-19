@@ -8,6 +8,10 @@ uname -a
 rustc --version
 cargo --version
 cat SOURCE.json
+rustup component add rustfmt clippy --toolchain 1.99.1
+cargo fmt --all -- --check
+cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
+cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
 cargo test --locked -p storage-persistence --no-default-features
 cargo test --locked --workspace
 cargo test --locked --workspace --all-features
@@ -19,6 +23,3 @@ python3 apps/storage-demo/validate.py --bin-dir "$CARGO_TARGET_DIR/debug"
 if [[ -x "$HOME/.local/bin/dora" ]]; then
     python3 apps/system-monitor/tests/validate_recording_dora.py --dora "$HOME/.local/bin/dora" --bin-dir "$CARGO_TARGET_DIR/debug"
 fi
-
-rustup component add clippy --toolchain 1.99.1
-cargo clippy -p storage-demo -p storage-persistence -p telemetry-mcap -p system-monitor -p system-monitor-dora --no-deps --all-targets --all-features --locked -- -D warnings

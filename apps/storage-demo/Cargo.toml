@@ -16,3 +16,6 @@ libc = "0.2"
 
 [dev-dependencies]
 mcap = { version = "=0.25.0", default-features = false }
+
+[lints]
+workspace = true

@@ -13,3 +13,6 @@ libbpf-rs = { version = "0.26", optional = true }
 
 [build-dependencies]
 libbpf-cargo = { version = "0.26", optional = true }
+
+[lints]
+workspace = true
