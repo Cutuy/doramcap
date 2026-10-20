@@ -1,0 +1,34 @@
+syntax = "proto3";
+package doramcap.provenance_demo.v1;
+import "provenance.proto";
+import "activity.proto";
+message Payload {
+  doramcap.provenance.v1.GenerationRef generation = 1;
+  uint64 produced_ns = 2;
+}
+message Clock {
+  fixed64 session = 1;
+  uint64 unix_origin_ns = 2;
+  string domain = 3;
+}
+message NodeStatus {
+  string node = 1;
+  uint32 pid = 2;
+  string epoch = 3;
+  uint64 activity_queue_drops = 4;
+  uint64 simulated_report_drops = 5;
+}
+message Gap { uint64 envelopes = 1; }
+message Envelope {
+  uint32 version = 1;
+  string stream_id = 9; // Monitor lifetime; distinguishes reconnect from restart.
+  uint64 sequence = 2; // Assigned by the monitor; replay preserves this order.
+  oneof body {
+    doramcap.provenance.v1.StepUpdate step = 3;
+    doramcap.provenance.v1.MeasurementResult result = 4;
+    doramcap.activity.v1.Batch activity = 5;
+    Clock clock = 6;
+    NodeStatus status = 7;
+    Gap gap = 8;
+  }
+}

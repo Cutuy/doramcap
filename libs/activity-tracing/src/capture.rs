@@ -368,7 +368,22 @@ pub struct BufferSnapshot {
 }
 #[derive(Clone)]
 pub struct Handle(pub(crate) Arc<Core>);
+/// Sample in the same clock domain used by activity records.
+#[derive(Clone, Copy, Debug)]
+pub struct ClockSample {
+    pub session: u64,
+    pub elapsed_ns: u64,
+    pub unix_origin_ns: u64,
+}
 impl Handle {
+    /// Read the runtime clock for aligning application timestamps with captured spans.
+    pub fn clock(&self) -> ClockSample {
+        ClockSample {
+            session: self.0.session,
+            elapsed_ns: self.0.origin.elapsed().as_nanos() as u64,
+            unix_origin_ns: self.0.unix_origin,
+        }
+    }
     pub fn subscriber(&self) -> ActivitySubscriber {
         ActivitySubscriber(self.0.clone())
     }

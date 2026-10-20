@@ -1,0 +1,29 @@
+version: 1
+measurements {
+  name: "camera_to_detection"
+  anchor { producer: "detect" name: "detect" }
+  start { step { producer: "camera" name: "camera" } boundary: START selector: CONSUMED_ANCESTOR }
+  end { step { producer: "detect" name: "detect" } boundary: END selector: CONSUMED_ANCESTOR }
+  missing_data: WAIT_UNTIL_EVICTION
+}
+measurements {
+  name: "camera_to_control"
+  anchor { producer: "control" name: "control" }
+  start { step { producer: "camera" name: "camera" } boundary: START selector: CONSUMED_ANCESTOR }
+  end { step { producer: "control" name: "control" } boundary: END selector: CONSUMED_ANCESTOR }
+  missing_data: WAIT_UNTIL_EVICTION
+}
+measurements {
+  name: "lidar_age_at_control"
+  anchor { producer: "control" name: "control" }
+  start { step { producer: "lidar" name: "lidar" } boundary: START selector: CONSUMED_ANCESTOR }
+  end { step { producer: "control" name: "control" } boundary: END selector: CONSUMED_ANCESTOR }
+  missing_data: WAIT_UNTIL_EVICTION
+}
+measurements {
+  name: "detection_duration"
+  anchor { producer: "detect" name: "detect" }
+  start { step { producer: "detect" name: "detect" } boundary: START selector: CONSUMED_ANCESTOR }
+  end { step { producer: "detect" name: "detect" } boundary: END selector: CONSUMED_ANCESTOR }
+  missing_data: WAIT_UNTIL_EVICTION
+}

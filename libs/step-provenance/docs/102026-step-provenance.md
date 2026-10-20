@@ -55,12 +55,12 @@ steps leave the evaluation count unchanged. [Selector contracts](contracts.md#pr
 ## M4 — Dora integration and monitoring
 
 The [demo plan](../../../apps/provenance-demo/docs/102026-provenance-demo.md)
-shares this milestone. Discuss its architecture before implementing the app.
+records the approved architecture and implementation evidence.
 
-- [ ] Carry output references with application Dora messages; publish protobuf step patches to a collector node.
-- [ ] Publish protobuf measurement results through Dora; keep core evaluation transport-independent.
-- [ ] Define queue limits, backpressure/report loss behavior, and result-consumer retention separately from graph retention.
-- [ ] Add a multi-process camera/lidar → detection → control example with independently reported boundaries.
+- [x] Carry output references with application Dora messages; publish protobuf step patches to a collector node.
+- [ ] Add a Dora result-output consumer. The demo currently streams protobuf results from the collector over WebSocket; core evaluation stays transport-independent.
+- [x] Define queue limits, backpressure/report loss behavior, and result-consumer retention separately from graph retention.
+- [x] Add a multi-process camera/lidar → detection → control example with independently reported boundaries.
 - [ ] **Validation gate:** record Dora end-to-end lineage and latency evidence, including delayed/lost reports and process restarts.
 - [x] **Validation gate:** run applicable Rust tests and verify the serial ARM64 CI job (job 72); provenance-specific Dora end-to-end results remain a separate gate.
 

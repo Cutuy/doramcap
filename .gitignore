@@ -18,3 +18,5 @@ apps/activity-demo/frontend/dist/
 /frontend/dist/
 
 apps/storage-demo/frontend/dist/
+
+apps/provenance-demo/frontend/dist/

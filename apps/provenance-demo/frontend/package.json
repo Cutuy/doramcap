@@ -1,0 +1,6 @@
+{
+  "name": "provenance-demo", "private": true, "version": "0.1.0", "type": "module",
+  "scripts": { "dev": "vite --host 127.0.0.1", "build": "tsc --noEmit && vite build", "test": "tsx --test src/*.test.ts", "generate:proto": "node scripts/generate-proto.mjs", "test:live": "tsx ../tests/live.mts" },
+  "dependencies": { "protobufjs": "^8.8.1", "react": "^19.2.0", "react-dom": "^19.2.0" },
+  "devDependencies": { "@types/node": "^22.0.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "protobufjs-cli": "^2.7.1", "tsx": "^4.20.0", "typescript": "^5.9.0", "vite": "^7.1.0" }
+}

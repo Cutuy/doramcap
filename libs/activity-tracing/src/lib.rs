@@ -4,7 +4,9 @@ mod pipeline;
 pub mod sinks;
 mod subscriber;
 pub mod wire;
-pub use capture::{ActivityContext, BufferSnapshot, Config, Handle, Losses, Registration};
+pub use capture::{
+    ActivityContext, BufferSnapshot, ClockSample, Config, Handle, Losses, Registration,
+};
 pub use pipeline::{BatchView, Runtime, ShutdownReport, Sink, SinkReport};
 pub use subscriber::ActivitySubscriber;
 

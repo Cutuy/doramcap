@@ -1,0 +1,27 @@
+[package]
+name = "provenance-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+step-provenance = { path = "../../../libs/step-provenance" }
+activity-tracing = { path = "../../../libs/activity-tracing" }
+dora-node-api = { version = "=1.1.0", default-features = false }
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+tracing = "0.1"
+crossbeam-channel = "0.5"
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
+futures-util = "0.3"
+tower-http = { version = "0.6", features = ["fs"] }
+serde_json = "1"
+eyre = "0.6"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

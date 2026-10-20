@@ -1,78 +1,62 @@
 ![Provenance demo architecture](102026-provenance-demo.svg)
 
+![Pipeline node internals](102026-provenance-node.svg)
+
 # Dora provenance lab
 
-Created: 2026-10-20. Status: proposal for architecture discussion. App implementation awaits that discussion.
+Created: 2026-10-20. Implementation uses the agreed two-process architecture.
 
-## M1 — Agree on architecture
+## M1 — Architecture
 
-- [ ] Agree on separate camera, lidar, detection, control, collector, and web-gateway Dora nodes.
-- [ ] Run camera at 20 Hz and lidar at 10 Hz; detection records the exact reused lidar generation it consumes.
-- [ ] Instrument pipeline nodes with both step records and activity-tracing runtime spans.
-- [ ] Show step and activity timelines side by side, plus latency plots; share chronological filtering, zoom, pan, follow-live, and selection.
-- [ ] Keep activity/provenance types independent; attach generation fields to activity spans for optional selection links.
-- [ ] Start on one Linux host. Carry explicit activity-session → host-monotonic clock mappings with uncertainty; surface unavailable alignment.
-- [ ] **Validation gate:** record the architecture decisions from discussion before app implementation.
+- [x] Four dynamic Dora nodes in one pipeline process; one owner thread per handle.
+- [x] Dedicated collector/monitor process owns the fifth Dora node and HTTP/WebSocket service.
+- [x] Camera 20 Hz; lidar 10 Hz; detection consumes explicit camera/lidar references; control consumes detections.
+- [x] Independent provenance and activity types, correlated by generation fields on spans.
+- [x] One activity runtime provides an exact shared capture clock through additive `Handle::clock()`; clock descriptors carry the session origin to the browser.
+- [x] Validation: approved discussion, then actual registration and traffic confirmed four node identities in one PID and a separate monitor PID.
 
-## M2 — Multi-process reporting and collection
+## M2 — Reporting and collection
 
-- [ ] Define application payloads carrying `GenerationRef`; publish independent start/end protobuf patches over Dora.
-- [ ] Use node-owned Dora publication; activity capture sinks enqueue into bounded per-node queues drained by the node event loop.
-- [ ] Feed fixed definitions into the core evaluator; publish accepted step records and terminal results to the gateway.
-- [ ] Forward activity batches independently; preserve producer/session identities and stream-specific gap counts.
-- [ ] Add per-session clock descriptors or an additive activity protocol extension; verify relative activity timestamps map to the common monotonic timeline.
-- [ ] Inject processing delays, report delays/loss, and node restarts through reproducible scenarios.
-- [ ] **Validation gate:** verify exact cross-process ancestry, reused lidar frames, split timestamps, clock alignment, and incomplete results under loss.
+- [x] Application payloads carry `GenerationRef`; separate start/end patches travel over Dora.
+- [x] Each owner publishes steps; the control owner drains the bounded shared activity queue.
+- [x] Fixed protobuf definitions feed event-driven evaluation; retain 64 generations per stream.
+- [x] Bound replay to 4,096 messages / 8 MiB; detect gaps and disconnect stalled sockets.
+- [x] Reproducible normal, delayed-start, missing-report, and fresh-session runs.
+- [x] Validation: 120-second normal run, 35-second delayed/loss run, and live protobuf checks passed. Live test verified 632 aligned step/activity pairs and reconnect deduplication.
 
-## M3 — Gateway and frontend
+## M3 — Frontend
 
-- [ ] Build typed protobuf WebSocket envelopes for steps, activities, results, clock descriptors, and gap notices.
-- [ ] Bound replay by bytes and event count; define reconnect and slow-client behavior. Preserve ordering for anchor-time selectors.
-- [ ] Maintain separate browser stores for step records, activity sessions, and measurement results.
-- [ ] Drive all views from one viewport model; apply the same chronological filter and zoom anchor to both timelines and latency points.
-- [ ] Link a latency point to its selected probes, a step to its ancestors, and an activity span to its tagged generation.
-- [ ] Retain 64-bit IDs/timestamps exactly; convert only viewport-relative time deltas to plotting numbers.
-- [ ] **Validation gate:** browser tests verify synchronized zoom/filtering, cross-selection, reconnect deduplication, bounded retention, and visible gaps.
+- [x] Separate bounded stores for steps, runtime spans, and measurement results.
+- [x] Side-by-side timelines and latency points share viewport, filter, zoom, pan, follow-live, and selection.
+- [x] Link ancestors, tagged spans, and selected probe references; show incomplete reasons separately.
+- [x] Keep identities/timestamps exact as 64-bit values; plot relative offsets.
+- [x] Validation: six model tests and production build passed; live WebSocket decoding, lineage links, exact clock containment, and reconnect passed.
+- [ ] Visual browser validation of synchronized interactions. CUA inventory returned no browsers; this remains unverified.
 
-## M4 — Predefined measurements and acceptance
+## M4 — Measurements and acceptance
 
-| Measurement | Anchor | Start probe | End probe |
+| Measurement | Anchor | Start | End |
 |---|---|---|---|
-| Capture → detection | Detection generation | Consumed camera start | Anchor end |
-| Capture → control | Control generation | Consumed camera start | Anchor end |
-| Lidar age → control | Control generation | Consumed lidar start | Anchor end |
-| Detection duration | Detection generation | Anchor start | Anchor end |
+| camera_to_detection | Detection | Consumed camera start | Anchor end |
+| camera_to_control | Control | Consumed camera start | Anchor end |
+| lidar_age_at_control | Control | Consumed lidar start | Anchor end |
+| detection_duration | Detection | Anchor start | Anchor end |
 
-- [ ] Load fixed protobuf definitions; display per-sample duration, selected references, and incomplete counts.
-- [ ] Set expected delays in deterministic scenarios and compare measured values with source timestamps.
-- [ ] Exclude incomplete samples from duration statistics; display their reasons separately.
-- [ ] **Validation gate:** record multi-process Dora end-to-end results, frontend tests/build, browser checks, and verified ARM64 CI job results.
+- [x] Load stable definitions from `configs/measurements.pbtxt`.
+- [x] Validate exact timestamp subtraction, reused lidar generations, retention bounds, zero capture losses, and incomplete results after injected report loss.
+- [x] Local Rust tests and strict Clippy passed for the app and both libraries.
+- [x] ARM64 job 78 passed full workspace default/all-feature tests, strict Clippy, and native capability checks. Job 79 passed separate 15-second normal and 15-second delayed/loss Dora scenarios. Worker snapshot: `573e3b69e6ec432ab897a3440a262bfd`; frontend validated locally.
 
-## Reuse candidates for evaluation
+## Boundaries and remaining work
 
-| Existing component | Candidate reuse |
-|---|---|
-| `apps/activity-demo` | React timeline interaction, protobuf activity decoding, bounded replay/gap handling |
-| `apps/cpu-viewer` | Dora subscriber + Axum gateway; uPlot latency-series rendering |
-| `libs/activity-tracing` | Per-process capture and custom sink interface; generation fields on spans |
-| `libs/step-provenance` | Protobuf contracts, bounded graph, fixed pair-measurement engine |
+- Existing dependencies reused: Dora, Axum/Tokio, Prost/prost-reflect, tracing, crossbeam, React, protobufjs. SVG plots use the shared viewport directly.
+- Browser replay may start mid-generation; incomplete historical ancestry stays unavailable. New accepted reports continue filling the store.
+- Pipeline restarts create a new epoch. Collector restarts create a new stream ID and reset browser stores.
+- HTTP binds to loopback. Dora infrastructure is shared; the launcher stops only its own flow.
+- Both architecture SVGs are saved here, rendered with librsvg/Cairo, and visually inspected.
+- Temporary measurements, min/max aggregation, and multi-host clock synchronization remain future work.
 
-Existing crates/packages to evaluate before app adoption: `dora-node-api`, `axum`,
-`tokio`, `prost`, `tracing`, `protobufjs`, React, and uPlot. Prefer small extracted
-viewport/decoder helpers after checking behavior in the existing apps.
+## Pause retention fix
 
-## Discussion points
-
-- Proposed layout: equal-width step and activity timelines, with a latency panel sharing the same time range.
-- Proposed clocks: same-host monotonic measurement domain; explicit per-session mapping for activity-relative time. Current activity batches provide a Unix origin and relative time, so exact monotonic alignment needs additional clock metadata.
-- Proposed correlation: generation identity fields on spans; each activity stream retains its own runtime session ID.
-- Temporary measurements, min/max aggregations, and multi-host clock synchronization remain later work.
-
-## Evidence
-
-Inspected activity-demo's `LiveSink`, browser `TraceStore` and `zoomTimeline`, and
-cpu-viewer's Dora/HTTP gateway and frontend dependencies. The activity decoder
-currently resets on a new session; the demo needs a multi-session store. No app
-code has been implemented; all milestone gates remain unchecked. Both architecture
-SVGs were rendered with the installed librsvg/Cairo libraries and visually inspected;
-local Markdown links resolve.
+- [x] Preserve a separate bounded snapshot for all three panels when pausing, zooming, or panning; resume releases it and displays live history.
+- [x] Regression test verifies paused steps, spans, and latency samples survive new patches, sample-cap eviction, time-window eviction, and collector restart. All six frontend tests and production build pass.
