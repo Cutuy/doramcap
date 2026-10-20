@@ -1,5 +1,12 @@
 # Resource policy validation
 
+## Schema alignment — 2026-10-20
+
+- Restored the `Placement` message and `Policy.placement` field expected by Rust, pbtxt profiles, and documented explicit-goal semantics; reserved the removed inheritance selector's tag/name.
+- Seven local resource-policy tests, eighteen provenance tests, and focused strict Clippy passed.
+- ARM64 job **72** passed the full workspace suite, native policy checks, Python/Rust interoperability, storage/activity smoke tests, and existing Dora recording checks.
+- Snapshot: `/home/doramcap-ci/jobs/a89fe65641e840cea751e4a6ea4f716d`; verified final Pueue success and full log.
+
 ## Shared pbtxt resolver extraction
 
 - `pbtxt-config` owns App/Fragment/Deployment, typed `Any` payloads, includes, provenance, and fingerprints. Resource policy provides the domain adapter; observations use `ThreadResources`.

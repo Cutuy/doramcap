@@ -4483,6 +4483,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "step-provenance"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+]
+
+[[package]]
 name = "storage-demo"
 version = "0.1.0"
 dependencies = [

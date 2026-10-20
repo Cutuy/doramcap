@@ -1,12 +1,15 @@
 syntax = "proto3";
 package resource_policy.v1;
 
+// Explicit desired placement, independent of the caller's current affinity.
+message Placement {
+  string cpus = 1; // Decimal Linux cpulist, e.g. "4,5-7,9-11".
+}
 // Presence is significant during composition. A selection replaces its predecessor.
 message Policy {
-  oneof placement {
-    string cpus = 1; // Decimal Linux cpulist, e.g. "4,5-7,9-11".
-    bool inherit_cpus = 2; // Must be true; resolves against caller's affinity.
-  }
+  reserved 2;
+  reserved "cpus", "inherit_cpus";
+  Placement placement = 1;
   optional uint32 rt_priority = 3; // 0: OTHER; 1..99: RR.
 }
 message App {

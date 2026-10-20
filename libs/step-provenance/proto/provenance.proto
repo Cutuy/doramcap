@@ -1,0 +1,100 @@
+syntax = "proto3";
+package doramcap.provenance.v1;
+
+// Logical producer and conceptual step. A producer may restart with a new epoch.
+message Step {
+  string producer = 1;
+  string name = 2;
+}
+
+// sequence orders generations within (producer, epoch, step); IDs remain opaque.
+// Repeating an ID or sequence with a different counterpart is invalid.
+message GenerationRef {
+  string producer = 1;
+  string epoch = 2;
+  string step = 3;
+  string generation = 4;
+  uint64 sequence = 5;
+}
+message Inputs { repeated GenerationRef refs = 1; }
+
+// Immutable metadata repeats on every patch. Inputs, once supplied, are final.
+// Absent inputs means unknown; an empty Inputs message declares a sensor/root.
+message StepUpdate {
+  uint32 version = 1;
+  GenerationRef generation = 2;
+  string clock_domain = 3;
+  string invocation = 4;
+  optional uint64 start_ns = 5;
+  optional uint64 end_ns = 6;
+  Inputs inputs = 7;
+}
+
+enum Boundary {
+  BOUNDARY_UNSPECIFIED = 0;
+  START = 1;
+  END = 2;
+}
+enum Selector {
+  SELECTOR_UNSPECIFIED = 0;
+  // Unique nearest matching ancestor, including the anchor itself.
+  CONSUMED_ANCESTOR = 1;
+  // Unique target with the anchor's nonempty invocation key.
+  SAME_INVOCATION = 2;
+  // Anchor sequence - 1 in the same producer, epoch and step.
+  PREVIOUS = 3;
+  // Most recently first-observed target generation when the anchor first arrives.
+  LATEST_KNOWN_AT_ANCHOR = 4;
+}
+message Probe {
+  Step step = 1;
+  Boundary boundary = 2;
+  Selector selector = 3;
+}
+enum MissingDataPolicy {
+  MISSING_DATA_POLICY_UNSPECIFIED = 0;
+  WAIT_UNTIL_EVICTION = 1;
+}
+message MeasurementDefinition {
+  string name = 1;
+  Step anchor = 2;
+  Probe start = 3;
+  Probe end = 4;
+  MissingDataPolicy missing_data = 5;
+}
+message Definitions {
+  uint32 version = 1;
+  repeated MeasurementDefinition measurements = 2;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  COMPLETE = 1;
+  INCOMPLETE = 2;
+}
+enum Reason {
+  REASON_UNSPECIFIED = 0;
+  HISTORY_EVICTED = 1;
+  ANCHOR_EVICTED = 2;
+  NO_MATCH = 3;
+  AMBIGUOUS = 4;
+  CLOCK_MISMATCH = 5;
+  INVALID_DURATION = 6;
+  TRAVERSAL_LIMIT = 7;
+}
+message SelectedProbe {
+  GenerationRef generation = 1;
+  Boundary boundary = 2;
+  optional uint64 timestamp_ns = 3;
+  string clock_domain = 4;
+}
+message MeasurementResult {
+  uint32 version = 1;
+  string measurement = 2;
+  GenerationRef anchor = 3;
+  SelectedProbe start = 4;
+  SelectedProbe end = 5;
+  Status status = 6;
+  Reason reason = 7;
+  optional uint64 duration_ns = 8;
+}
