@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         assert receipt['encodeMs'] >= 0
         control('flush')
         wait(lambda s: s.get('probes', 0) == 1 and s.get('heartbeats', 0) >= 16)
-        # Registered managed buffers split into multiple I/O operations.
+        # Managed workloads use the library operation limit, with one message per click.
         for mib in [1, 4, 16]:
             control('managed_large', sizeMiB=mib)
             value = wait(lambda s: any(r.get('action') == 'managed_large' and r.get('bytes', 0) > mib * 1024 * 1024 for r in s.get('exercises', {}).get('receipts', [])))

@@ -119,7 +119,7 @@ impl Exercises {
     pub fn json(&self) -> Value {
         let pool=self.pool.as_ref().map(|p| { let s=p.snapshot();
             json!({"id":s.pool_id.to_string(),"available":s.available,"capacity":s.slabs.len(),"slabs":s.slabs.iter().map(|r|json!({"region":r.region_id.to_string(),"use":r.slab_use_id.to_string(),"phase":format!("{:?}",r.phase),"readers":r.readers,"ioLeases":r.io_leases,"retainedAfterIo":r.retained_after_io(),"ageUs":r.age_us})).collect::<Vec<_>>()}) });
-        json!({"receipts":self.receipts,"heldReaders":self.readers.len(),"pool":pool,"maxWriteBytes":256*1024})
+        json!({"receipts":self.receipts,"heldReaders":self.readers.len(),"pool":pool,"maxWriteBytes":storage_persistence::writer::WriterConfig::default().max_write_bytes})
     }
 }
 fn payload(seq: u32, prefix: &str, size: usize) -> telemetry_protocol::pb::Packet {

@@ -4492,10 +4492,13 @@ dependencies = [
  "libc",
  "mcap",
  "prost",
+ "prost-build",
+ "protoc-bin-vendored",
  "serde_json",
  "storage-persistence",
  "telemetry-protocol",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]

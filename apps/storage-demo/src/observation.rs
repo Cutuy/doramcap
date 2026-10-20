@@ -168,15 +168,17 @@ impl TraceExport {
 
 /// Capture on the writer thread so timestamps describe the operations themselves.
 #[cfg(feature = "activity-tracing")]
-pub fn capture_activity(path: Option<&std::path::Path>, run: impl FnOnce()) -> crate::Result<()> {
-    let Some(path) = path else {
-        run();
-        return Ok(());
-    };
-    let mut runtime = activity_tracing::Runtime::start(
-        activity_tracing::Config::default(),
-        vec![Box::new(activity_tracing::sinks::McapSink::create(path)?)],
-    )?;
+pub fn capture_activity(
+    path: Option<&std::path::Path>,
+    feed: std::sync::Arc<crate::live::Feed>,
+    run: impl FnOnce(),
+) -> crate::Result<()> {
+    let mut sinks: Vec<Box<dyn activity_tracing::Sink>> =
+        vec![Box::new(crate::live::LiveSink(feed))];
+    if let Some(path) = path {
+        sinks.push(Box::new(activity_tracing::sinks::McapSink::create(path)?));
+    }
+    let mut runtime = activity_tracing::Runtime::start(activity_tracing::Config::default(), sinks)?;
     let handle = runtime.handle();
     let registration = handle.register_thread("storage-writer")?;
     tracing::subscriber::with_default(handle.subscriber(), run);

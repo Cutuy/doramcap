@@ -4,6 +4,8 @@ Live MCAP writer dashboard: pipeline stages, active writes, registration reuse,
 correlated events, CPU timing and on-disk record inspection.
 
 ```sh
+npm ci --prefix apps/storage-demo/frontend
+npm run build --prefix apps/storage-demo/frontend
 cargo build -p storage-demo -p system-monitor
 cargo run -p storage-demo
 # http://127.0.0.1:8091
@@ -13,7 +15,7 @@ cargo run -p storage-demo
 - **Collection** selects Off, Summary, Inspect or timed Capture; optional region filter.
 - **Timeline filter** matches a write or region ID. Loss/eviction counts remain visible.
 - **Stop recording** seals and syncs; **Start new session** clears previous capture files.
-- **Large managed buffer** selects 1/4/16 MiB; writes split into 256-KiB operations.
+- **Large managed buffer** selects 1/4/16 MiB; each click submits one message using writer defaults.
 - **Sealed slab** writes two 256-KiB records from a four-slab pool.
 - **Retain slab reader** holds bytes after I/O. **Release readers** enables recycling.
 - **Retire slab registrations** releases idle registrations; the next use registers again.
@@ -21,21 +23,23 @@ cargo run -p storage-demo
 - `--start-paused`, `--seconds N`, `--port N`, `--dir NEW_DIR` configure the session.
 - `--backend bpf --monitor PATH` uses a capability-enabled native monitor.
 
-Snapshots publish at 25 Hz through a latest-value SSE channel. Collection retains
-4,096 events; the dashboard retains 256. IDs use JSON strings. Queue-to-CQE timing
+Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
+runs outside the writer thread; slow viewers skip intermediate frames. Collection retains
+4,096 events; the dashboard retains 256. IDs travel as uint64 and decode to exact strings. Queue-to-CQE timing
 includes owner polling delay. Workloads cover managed buffers and sealed slabs. Hardware DMA is not measured.
 
-## Activity capture
+## Live activity timeline
 
-```sh
-cargo run -p storage-demo --features activity-tracing -- --activity /tmp/storage-activity.mcap
-```
+React/SVG groups instances into combining, combined, large and slab lanes, with
+child I/O beneath each write. Mapped and other paths appear when present. Select a
+bar for IDs, file offsets and completion results; scroll to zoom, pause or filter.
+History, capture loss and transport gaps remain visible. Activity is enabled by
+default; `--no-default-features` disables capture. `--assets PATH` selects a built UI.
 
-Records source-time write/operation spans through `activity-tracing`, including
-combined batches, large writes and sealed slabs. The writer also instruments mmap
-submissions. Ctrl-C drains capture; stderr reports capture losses and sink errors.
-Use a new output path outside the session directory. The existing dashboard event
-list remains separate from this activity recording.
+Add `--activity /tmp/storage-activity.mcap` to save the same source-time activity.
+Ctrl-C drains capture and reports losses. Use a new path outside the session directory.
+
+[Live-feed architecture and validation](docs/102026-live-storage-timeline.md)
 
 ## Optional tracing export
 
@@ -57,7 +61,12 @@ python3 apps/storage-demo/validate.py --bin-dir target/debug
 python3 apps/storage-demo/tests/tracing_export.py --bin-dir target/debug
 python3 apps/storage-demo/tests/activity_capture.py --bin-dir target/debug
 node apps/storage-demo/tests/frontend.cjs
+npm test --prefix apps/storage-demo/frontend
+(cd apps/storage-demo/frontend && npm run test:live)
 ```
 
 [Observability milestones](../../libs/storage-persistence/docs/101926-observability.md)
 · [Demo plan](docs/101826-live-storage-demo.md)
+
+The page uses `/api/snapshots/stream`; `/api/state` and legacy `/events` provide
+on-demand JSON diagnostics. Control requests remain JSON.

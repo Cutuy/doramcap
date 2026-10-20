@@ -1,29 +1,48 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Storage Observatory · doramcap</title><style>
 :root{color-scheme:dark;--bg:#101412;--card:#181e1b;--line:#303b34;--muted:#98a79c;--text:#e7eee8;--green:#b8ef8d;--blue:#8fbeed;--amber:#f0c37a;--pink:#d7a1d9}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}header{padding:25px 32px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:11px;letter-spacing:.2em;color:var(--green);text-transform:uppercase}h1{font-size:25px;font-weight:500;letter-spacing:-.8px;margin:7px 0 0}h2{font-size:16px;font-weight:500;margin:0}.muted,small{color:var(--muted)}small{font-size:11px}.badge{font:11px ui-monospace,monospace;border:1px solid var(--line);padding:7px 10px;border-radius:4px;display:inline-block}.live{color:var(--green)}main{max-width:1700px;margin:auto;padding:24px 32px}.intro{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:16px}.controls{display:flex;gap:7px;flex-wrap:wrap}button,a.button{background:#202a24;color:var(--text);border:1px solid #455449;border-radius:5px;padding:9px 12px;cursor:pointer;font:12px system-ui;text-decoration:none}button:hover,a.button:hover{border-color:var(--green);color:var(--green)}button:disabled{opacity:.4;cursor:default}.primary{background:var(--green);color:#182615;border-color:var(--green)}.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}.metric{padding:17px 19px;background:var(--card);border:1px solid var(--line);border-radius:8px}.metric label{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}.value{font:28px ui-monospace,monospace;margin:8px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:9px;overflow:hidden}.cardhead{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}.content{padding:0 20px 20px}.flow{display:flex;gap:8px;margin-bottom:15px;align-items:center;font:11px ui-monospace,monospace}.flow span{border:1px solid var(--line);padding:9px;border-radius:4px;flex:1;text-align:center}.flow i{color:var(--muted)}.bar{height:30px;border:1px solid #425342;background:#101612;border-radius:4px;overflow:hidden}.fill{height:100%;width:0;background:var(--green);transition:width 70ms linear;min-width:0}.row{display:flex;justify-content:space-between;gap:14px;align-items:center;margin:10px 0}.mono{font-family:ui-monospace,SFMono-Regular,monospace}.pool{display:flex;gap:7px}.pool span{height:13px;flex:1;border:1px solid #596252;border-radius:2px;background:var(--green)}.pool span.busy{background:#53472f;border-color:var(--amber)}canvas{display:block;width:100%;height:75px;margin:12px 0}.legend{display:flex;gap:14px;font-size:11px;color:var(--muted)}.dot{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px;background:var(--green)}.scroll{max-height:220px;overflow:auto}table{width:100%;border-collapse:collapse;font:11px ui-monospace,monospace;text-align:left}th{color:var(--muted);font-weight:400;position:sticky;top:0;background:var(--card)}td,th{padding:8px 6px;border-bottom:1px solid #29322c}td:first-child,th:first-child{padding-left:0}.sq{color:var(--blue)}.cq{color:var(--green)}.heartbeat{color:var(--amber)}.wide{grid-column:1/-1}.filelayout{display:grid;grid-template-columns:1.15fr 1fr;gap:22px}.ribbon{display:flex;height:30px;gap:2px;margin:16px 0 9px;overflow:hidden}.ribbon span{min-width:3px;cursor:help;background:var(--blue);border-radius:2px}.ribbon .padding{background:#4a534b}.ribbon .footer{background:var(--pink)}.ribbon .beat{background:var(--amber)}pre{margin:0;white-space:pre;font:11px/1.8 ui-monospace,monospace;color:#b9c8bc}.hex{background:#111713;padding:14px;border-radius:5px;overflow:auto;min-height:220px}.hex b{color:var(--pink)}.notice{background:#282317;border:1px solid #66502a;color:#f3d8a9;padding:12px;border-radius:5px;margin-bottom:16px;display:none}.footnote{padding-top:16px;font-size:11px;color:var(--muted);line-height:1.7}#fileRecords tr:hover{background:#253129}#fileRecords tr.selected{background:#33412f}#fileRecords tr{cursor:pointer}.tabs{display:flex;gap:5px}.tabs button{padding:5px 9px}.tabs button.active{border-color:var(--green);color:var(--green)}@media(max-width:1000px){.metrics{grid-template-columns:repeat(3,1fr)}.filelayout{grid-template-columns:1fr}.grid{grid-template-columns:1fr}header,main{padding:20px}.intro{align-items:flex-start;flex-direction:column}}@media(max-width:600px){.metrics{grid-template-columns:1fr 1fr}.value{font-size:22px}header{align-items:flex-start;flex-direction:column}.cardhead{flex-wrap:wrap}main{padding:12px}.flow{flex-wrap:wrap}}
+
+.control-panel .controls{align-items:flex-end;gap:12px}
+.field{display:flex;flex-direction:column;gap:7px;color:var(--muted);font-size:11px;letter-spacing:.02em}
+.field input{appearance:none;background:#101713;color:var(--text);border:1px solid #455449;border-radius:5px;min-height:36px;padding:9px 11px;font:12px ui-monospace,monospace;outline:none;width:180px;max-width:100%}
+.field input::placeholder{color:#7f9184}
+.field input:hover{border-color:#748b79}
+.field input:focus-visible,button:focus-visible,.switch input:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+.field input[type=number]{appearance:textfield;width:100px}
+.field input::-webkit-inner-spin-button,.field input::-webkit-outer-spin-button{appearance:none;margin:0}
+.segmented{display:flex;flex-wrap:wrap;gap:3px;padding:3px;border:1px solid #455449;border-radius:6px;background:#101713}
+.segmented button{border-color:transparent;background:transparent;padding:6px 11px;min-height:28px;color:var(--muted)}
+.segmented button[aria-pressed=true]{background:#33462b;color:var(--green);border-color:#627c50}
+.switch{display:flex;align-items:center;gap:9px;min-height:36px;font-size:12px;color:var(--text);cursor:pointer}
+.switch input{appearance:none;position:relative;margin:0;width:32px;height:19px;flex-shrink:0;border:1px solid #56675b;border-radius:12px;background:#101713;cursor:pointer}
+.switch input:before{content:"";position:absolute;top:3px;left:3px;width:11px;height:11px;border-radius:50%;background:var(--muted);transition:transform .12s}
+.switch input:checked{background:#33462b;border-color:#627c50}.switch input:checked:before{transform:translateX(13px);background:var(--green)}
+.control-panel .row{flex-wrap:wrap}.control-panel .controls>button{min-height:36px}
+@media(prefers-reduced-motion:reduce){.switch input:before{transition:none}}
 </style></head><body><header><div><div class="brand">doramcap / live systems</div><h1>Storage Observatory</h1></div><div><span id="source" class="badge">Connecting to writer</span> <span id="status" class="badge live">● CONNECTING</span></div></header><main>
 <div id="notice" class="notice" role="alert"></div><div class="intro"><div><b>Follow the bytes.</b> <span class="muted">From CPU samples to the last record on disk. New sessions clear previous captures.</span></div><div class="controls"><button data-action="restart" title="Resets counters and deletes this session’s previous MCAP files">Start new session</button><button class="primary" data-action="stop" title="Seal the current MCAP and stop collection; keep this page open">Stop recording</button><button id="freeze">Freeze view</button><button data-action="burst">+ 16 heartbeats</button><button data-action="large">+ 96 KiB probe</button><button data-action="flush">Flush now</button><button data-action="rotate" class="primary">Seal & rotate ↗</button></div></div>
-<section class="card" style="margin-bottom:20px">
+<section class="card" style="margin-bottom:20px"><iframe title="Live storage activity timeline" src="/activity/" style="width:100%;height:620px;border:0;display:block"></iframe></section>
+<section class="card control-panel" style="margin-bottom:20px">
 <div class="cardhead"><h2>Writer pipeline</h2><span class="badge" id="observationMode">Inspect</span></div>
 <div class="content">
 <div class="flow"><span id="stageCombining">Combining —</span><i>→</i><span id="stageQueued">Awaiting submission —</span><i>→</i><span id="stageCqe">Awaiting CQE —</span><i>→</i><span id="stageWritten">Written —</span></div>
 <div class="row"><small id="stageDetails">Waiting for snapshots</small><small id="registrationDetails"></small></div>
 <div class="controls">
-<label>Collection <select id="observeMode"><option>Off</option><option>Summary</option><option selected>Inspect</option><option>Capture</option></select></label>
-<label>Capture seconds <input id="captureSeconds" type="number" min="1" max="60" value="10" style="width:65px"></label>
-<label>Region ID <input id="captureRegion" placeholder="All regions" inputmode="numeric" style="width:110px"></label>
+<div class="field"><span id="collectionLabel">Collection</span><input type="hidden" id="observeMode" value="Inspect"><div class="segmented" role="group" aria-labelledby="collectionLabel" data-choice="observeMode"><button type="button" data-value="Off" aria-pressed="false">Off</button><button type="button" data-value="Summary" aria-pressed="false">Summary</button><button type="button" data-value="Inspect" aria-pressed="true">Inspect</button><button type="button" data-value="Capture" aria-pressed="false">Capture</button></div></div>
+<label class="field">Capture seconds <input id="captureSeconds" type="number" min="1" max="60" value="10" inputmode="numeric"></label>
+<label class="field">Region ID <input id="captureRegion" placeholder="All regions" inputmode="numeric" autocomplete="off" spellcheck="false"></label>
 <button id="applyObservation">Apply</button><span id="observationAck" aria-live="polite"></span>
 </div>
-<div class="row"><label>Timeline filter <input id="eventFilter" placeholder="Write or region ID" style="width:160px"></label><small id="eventLoss"></small></div>
+<div class="row"><label class="field">Timeline filter <input id="eventFilter" placeholder="Write or region ID" inputmode="numeric" autocomplete="off" spellcheck="false"></label><small id="eventLoss"></small></div>
 <div class="scroll"><table><thead><tr><th>Active write / region</th><th>State</th><th>Completed / length</th><th>Age</th><th>Attempts / retries</th></tr></thead><tbody id="activeWrites"></tbody></table></div>
 <div class="footnote">Snapshots describe current state. Inspect records lifecycle events; Capture adds reader activity for up to 60 seconds. IDs are scoped to this process. Use the memory-path controls below to populate both managed and slab lifecycles.</div>
 </div></section>
-<section class="card" style="margin-bottom:20px">
-<div class="cardhead"><h2>Exercise memory paths</h2><span class="badge">256 KiB per write operation</span></div>
+<section class="card control-panel" style="margin-bottom:20px">
+<div class="cardhead"><h2>Exercise memory paths</h2><span class="badge">Writer defaults · combining / large / slab</span></div>
 <div class="content"><div class="controls">
-<label>Managed payload <select id="largeSize"><option value="1">1 MiB</option><option value="4" selected>4 MiB</option><option value="16">16 MiB</option></select></label>
+<div class="field"><span id="payloadLabel">Managed payload</span><input type="hidden" id="largeSize" value="4"><div class="segmented" role="group" aria-labelledby="payloadLabel" data-choice="largeSize"><button type="button" data-value="1" aria-pressed="false">1 MiB</button><button type="button" data-value="4" aria-pressed="true">4 MiB</button><button type="button" data-value="16" aria-pressed="false">16 MiB</button></div></div>
 <button data-action="managed_large">Write large managed buffer</button>
 <button data-action="sealed_slab">Write sealed slab · 2 records</button>
-<label><input type="checkbox" id="holdReader" checked> Retain slab reader</label>
+<label class="switch"><input type="checkbox" role="switch" id="holdReader" checked> Retain slab reader</label>
 <button data-action="release_readers">Release readers</button>
 <button data-action="retire_slabs">Retire slab registrations</button>
 </div><div class="row"><span id="slabSummary" class="badge">Slab pool created on first use</span><small>4 × 1 MiB · 2 × 256 KiB payloads per slab</small></div>
@@ -36,7 +55,8 @@
 <section class="card"><div class="cardhead"><h2>02 / io_uring lifecycle</h2><span class="badge">Single owner · SQPOLL off</span></div><div class="content"><div class="row"><span class="mono" id="bytes">—</span><small>Current file: accepted / completed bytes</small></div><canvas id="ringChart"></canvas><div class="scroll"><table><thead><tr><th>Event</th><th>File / write / op</th><th>Offset</th><th>Length</th><th>Result</th><th>Latency</th></tr></thead><tbody id="events"></tbody></table></div><div class="footnote">Latest 256 metadata events retained. Filter by write or region above. Fast writes can complete between snapshots.</div></div></section>
 <section class="card wide"><div class="cardhead"><h2>03 / File tail inspector</h2><div class="tabs"><button id="activeTab" class="active">Active file</button><button id="sealedTab">Last sealed file</button><a id="download" class="button" hidden>Download MCAP ↓</a></div></div><div class="content"><div class="row"><span id="inspectName" class="mono">Waiting for file</span><small id="parsed">Read back from disk</small></div><div class="ribbon" id="ribbon"></div><div class="legend"><span><i class="dot" style="background:var(--blue)"></i>CPU / schema</span><span><i class="dot" style="background:var(--amber)"></i>Heartbeat</span><span><i class="dot" style="background:#4a534b"></i>Alignment padding</span><span><i class="dot" style="background:var(--pink)"></i>Footer / magic</span></div><div class="filelayout" style="margin-top:16px"><div class="scroll" style="max-height:330px"><table><thead><tr><th>Offset</th><th>Record</th><th>Bytes</th><th>Channel / seq</th></tr></thead><tbody id="fileRecords"></tbody></table></div><div><div class="row" style="margin-top:0"><small>Actual last 256 bytes · select a record to highlight</small><small id="hexOffset"></small></div><div class="hex"><pre id="hex">Waiting for completed writes…</pre></div></div></div><div class="footnote" id="fileNote">Live files grow with complete writes. Seal & rotate reveals DataEnd, Footer and final MCAP magic after aligned-tail truncation.</div></div></section>
 <section class="card wide"><div class="cardhead"><h2>Input activity</h2><small id="drops">Bounded input queue: 16 packets</small></div><div class="content"><div class="scroll" style="max-height:150px"><table><thead><tr><th>Time</th><th>Message</th><th>Sequence</th><th>Encoded payload</th></tr></thead><tbody id="messages"></tbody></table></div></div></section></div><div class="footnote">Real io_uring writes and on-disk inspection. CPU input mode is shown above. Web diagnostics and pipe transport have their own allocations and copies. Counters cover this writer session; byte totals reset on rotation.</div></main>
-<script>
+<script type="module">
+import {decodeSnapshot} from "/activity/snapshot.js";
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>n<1024?`${n} B`:`${(n/1024).toFixed(1)} KiB`;let state,showSealed=false,selected=null,history=[],frozen=false;
 function note(text){$('notice').textContent=text;$('notice').style.display=text?'block':'none'}
@@ -76,14 +96,28 @@ function renderObservation(s) {
   const rows=s.events.filter(e=>!filter||e.write===filter||e.region===filter).slice(-80).reverse();
   $('events').innerHTML=rows.map(e=>`<tr title="Region ${esc(e.region)} · slab use ${esc(e.slabUse)} · event ${esc(e.id)}"><td class="${e.kind==='CqeObserved'?'cq':'sq'}">${esc(e.kind)}</td><td>${esc(e.file)} / ${esc(e.write)} / ${esc(e.operation)}</td><td>${e.offset.toLocaleString()}</td><td>${fmt(e.len)}</td><td>${e.result??'—'}</td><td>${e.latencyUs==null?'—':ms(e.latencyUs/1000)}</td></tr>`).join('');
 }
+document.querySelectorAll('[data-choice]').forEach(group=>{
+  group.querySelectorAll('button').forEach(button=>button.onclick=()=>{
+    $(group.dataset.choice).value=button.dataset.value;
+    group.querySelectorAll('button').forEach(option=>option.setAttribute('aria-pressed',String(option===button)));
+  });
+});
 $('eventFilter').oninput=()=>{if(state?.observation)renderObservation(state)};
 $('applyObservation').onclick=async()=>{
-  if(!$('captureSeconds').reportValidity())return;
+  if(!$('captureSeconds').checkValidity()||!$('captureSeconds').value){note('Enter capture duration between 1 and 60 whole seconds.');$('captureSeconds').focus();return;}
   try {
     const r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'observe',mode:$('observeMode').value,seconds:Number($('captureSeconds').value),region:$('captureRegion').value.trim()})});
     if(!r.ok)throw Error(`Collection control rejected: HTTP ${r.status}`);
     $('observationAck').textContent='Requested; current mode shown above';
   }catch(e){note(e.message)}
 };
-const stream=new EventSource('/events');stream.onmessage=e=>{if(!frozen){note('');render(JSON.parse(e.data))}};stream.onerror=()=>{$('status').textContent='● RECONNECTING';note('Live connection interrupted. Retrying…')};
+let stream,retry;
+function connectSnapshots(){
+  stream=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/api/snapshots/stream`);
+  stream.binaryType='arraybuffer';
+  stream.onmessage=e=>{if(!frozen){try{const snapshot=decodeSnapshot(new Uint8Array(e.data));note('');render(snapshot)}catch(error){note(`Snapshot decode failed: ${error.message}`)}}};
+  stream.onclose=()=>{$('status').textContent='● RECONNECTING';note('Live connection interrupted. Retrying…');retry=setTimeout(connectSnapshots,1000)};
+}
+connectSnapshots();
+window.addEventListener('pagehide',()=>{clearTimeout(retry);stream.onclose=null;stream.close()});
 </script></body></html>

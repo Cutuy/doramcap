@@ -1,0 +1,204 @@
+syntax = "proto3";
+package doramcap.storage.v1;
+// Field tags are stable. Preserve scalar presence for unavailable measurements.
+message Snapshot {
+  uint32 version = 1;
+  string status = 2;
+  string session = 3;
+  string error = 4;
+  string backend = 5;
+  bool direct = 6;
+  uint64 elapsed_ms = 7;
+  uint64 cpu = 8;
+  uint64 heartbeats = 9;
+  uint64 probes = 10;
+  uint64 input_drops = 11;
+  LastCpu last_cpu = 12;
+  Combining combining = 13;
+  Pool pool = 14;
+  Ring ring = 15;
+  Exercises exercises = 16;
+  Observation observation = 17;
+  repeated ActiveWrite active_writes = 18;
+  Timing timing = 19;
+  Stats latency = 20;
+  uint64 lost_timing_events = 21;
+  uint64 burst_remaining = 22;
+  repeated Receipt receipts = 23;
+  repeated Input messages = 24;
+  repeated Event events = 25;
+  File file = 26;
+  File last_sealed = 27;
+}
+message LastCpu {
+  uint64 sequence = 1;
+  uint64 rows = 2;
+  uint64 dropped = 3;
+  string source = 4;
+}
+message Combining {
+  uint64 used = 1;
+  uint64 messages = 2;
+  uint64 capacity = 3;
+  optional double age_ms = 4;
+  uint64 deadline_ms = 5;
+}
+message Pool {
+  uint64 free = 1;
+  uint64 total = 2;
+  uint64 allocated_bytes = 3;
+  uint64 free_bytes = 4;
+  uint64 in_flight_bytes = 5;
+  uint64 registered_bytes = 6;
+}
+message Ring {
+  uint64 writer = 1;
+  uint64 file = 2;
+  uint64 pending_capacity = 3;
+  uint64 outstanding = 4;
+  uint64 submitted = 5;
+  uint64 completions = 6;
+  uint64 accepted = 7;
+  uint64 completed = 8;
+  uint64 synced = 9;
+  uint64 awaiting_submission = 10;
+  uint64 awaiting_cqe = 11;
+  uint64 pending_bytes = 12;
+  optional uint64 oldest_us = 13;
+  uint64 registered_regions = 14;
+  uint64 registration_updates = 15;
+  uint64 accepted_writes = 16;
+  uint64 written = 17;
+  uint64 failed = 18;
+  uint64 cancelled = 19;
+  uint64 rejected_capacity = 20;
+  uint64 rejected_invalid = 21;
+  uint64 rejected_closed = 22;
+  uint64 rejected_other = 23;
+  uint64 retries = 24;
+  uint64 registration_hits = 25;
+  uint64 registration_misses = 26;
+  uint64 registration_failures = 27;
+  uint64 sync_failures = 28;
+  uint64 submit_failures = 29;
+}
+message Observation {
+  string mode = 1;
+  uint64 cursor = 2;
+  uint64 missed = 3;
+  uint64 contention_drops = 4;
+  uint64 overwritten = 5;
+  uint64 timeline_evicted = 6;
+  uint64 capacity = 7;
+}
+message ActiveWrite {
+  uint64 write = 1;
+  uint64 operation = 2;
+  uint64 region = 3;
+  uint64 slab_use = 4;
+  string state = 5;
+  uint64 offset = 6;
+  uint64 len = 7;
+  uint64 completed = 8;
+  optional uint64 age_us = 9;
+  uint64 attempts = 10;
+  uint64 retries = 11;
+}
+message Timing {
+  Stats sample = 1;
+  Stats arrival = 2;
+  uint64 gaps = 3;
+  optional double interval_ms = 4;
+}
+message Stats {
+  uint64 count = 1;
+  optional double last_ms = 2;
+  optional double p99_ms = 3;
+  optional double max_ms = 4;
+}
+message Receipt {
+  string kind = 1;
+  uint64 count = 2;
+  uint64 bytes = 3;
+  optional uint64 first = 4;
+  optional uint64 last = 5;
+  double encode_ms = 6;
+}
+message Input {
+  uint64 sequence = 1;
+  string kind = 2;
+  uint64 bytes = 3;
+  uint64 time_ms = 4;
+}
+message Event {
+  uint64 id = 1;
+  string kind = 2;
+  uint64 us = 3;
+  uint64 writer = 4;
+  uint64 file = 5;
+  uint64 write = 6;
+  uint64 operation = 7;
+  uint64 region = 8;
+  uint64 slab_use = 9;
+  uint64 pool = 10;
+  uint64 offset = 11;
+  uint64 len = 12;
+  optional sint64 result = 13;
+  optional uint64 latency_us = 14;
+}
+message File {
+  uint64 index = 1;
+  string name = 2;
+  bool sealed = 3;
+  uint64 size = 4;
+  uint64 parsed_through = 5;
+  repeated Record records = 6;
+  uint64 tail_offset = 7;
+  bytes tail = 8;
+}
+message Record {
+  uint64 offset = 1;
+  uint64 len = 2;
+  string kind = 3;
+  optional uint32 channel = 4;
+  optional uint32 sequence = 5;
+  optional uint64 payload = 6;
+}
+message Exercises {
+  repeated PathReceipt receipts = 1;
+  uint64 held_readers = 2;
+  SlabPool pool = 3;
+  uint64 max_write_bytes = 4;
+}
+message SlabPool {
+  uint64 id = 1;
+  uint64 available = 2;
+  uint64 capacity = 3;
+  repeated Slab slabs = 4;
+}
+message Slab {
+  uint64 region = 1;
+  uint64 use = 2;
+  string phase = 3;
+  uint64 readers = 4;
+  uint64 io_leases = 5;
+  bool retained_after_io = 6;
+  optional uint64 age_us = 7;
+}
+message PathReceipt {
+  string status = 1;
+  string error = 2;
+  uint64 id = 3;
+  string action = 4;
+  uint64 registration_updates = 5;
+  uint64 messages = 6;
+  uint64 retired = 7;
+  uint64 bytes = 8;
+  uint32 first = 9;
+  uint32 last = 10;
+  optional uint64 write = 11;
+  optional uint64 region = 12;
+  optional uint64 slab_use = 13;
+  optional uint64 offset = 14;
+  optional uint64 length = 15;
+}

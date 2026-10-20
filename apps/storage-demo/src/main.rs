@@ -1,7 +1,10 @@
 mod exercises;
 mod inspect;
+#[cfg(feature = "activity-tracing")]
+mod live;
 mod metrics;
 mod observation;
+mod snapshot;
 use axum::{
     Json, Router,
     extract::{Path as RoutePath, State},
@@ -31,6 +34,7 @@ use tokio::sync::watch;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 struct Options {
+    assets: PathBuf,
     activity: Option<PathBuf>,
     monitor: PathBuf,
     backend: String,
@@ -42,6 +46,7 @@ struct Options {
 }
 fn options() -> Result<Options> {
     let mut o = Options {
+        assets: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist"),
         activity: None,
         monitor: std::env::current_exe()?.with_file_name("system-monitor"),
         backend: "synthetic".into(),
@@ -63,7 +68,7 @@ fn options() -> Result<Options> {
         }
         if arg == "--help" {
             println!(
-                "storage-demo [--monitor PATH] [--backend synthetic|bpf] [--dir NEW_DIR] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP]"
+                "storage-demo [--monitor PATH] [--backend synthetic|bpf] [--dir NEW_DIR] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
             );
             std::process::exit(0);
         }
@@ -71,6 +76,7 @@ fn options() -> Result<Options> {
         match arg.as_str() {
             "--activity" if cfg!(feature = "activity-tracing") => o.activity = Some(value.into()),
             "--activity" => return Err("--activity requires the activity-tracing feature".into()),
+            "--assets" => o.assets = value.into(),
             "--monitor" => o.monitor = value.into(),
             "--backend" => o.backend = value,
             "--dir" => o.root = value.into(),
@@ -100,7 +106,9 @@ struct Control {
 }
 #[derive(Clone)]
 struct Web {
-    snapshots: watch::Receiver<String>,
+    snapshots: watch::Receiver<Value>,
+    binary: watch::Receiver<axum::body::Bytes>,
+    stop: Arc<AtomicBool>,
     commands: SyncSender<Control>,
     root: PathBuf,
     sealed: Arc<AtomicU64>,
@@ -112,7 +120,7 @@ async fn events(State(s): State<Web>) -> impl IntoResponse {
         }
         let data = rx.borrow_and_update().clone();
         Some((
-            Ok::<_, Infallible>(Event::default().data(data)),
+            Ok::<_, Infallible>(Event::default().data(data.to_string())),
             (rx, false),
         ))
     });
@@ -141,7 +149,7 @@ async fn control(State(s): State<Web>, Json(body): Json<Value>) -> StatusCode {
     {
         return StatusCode::BAD_REQUEST;
     }
-    let current: Value = serde_json::from_str(&s.snapshots.borrow()).unwrap();
+    let current = s.snapshots.borrow().clone();
     if action != "restart" && current["status"] != "live" {
         return StatusCode::CONFLICT;
     }
@@ -245,7 +253,7 @@ fn record(writer: &mut McapWriter, p: &pb::Packet, channel: u16, seq: u32) -> Re
 }
 fn owner(
     o: &Options,
-    tx: watch::Sender<String>,
+    tx: watch::Sender<Value>,
     commands: &mpsc::Receiver<Control>,
     stop: Arc<AtomicBool>,
     sealed: Arc<AtomicU64>,
@@ -323,10 +331,7 @@ fn owner(
         schema,
         &channels,
         if o.direct { 4096 } else { 1 },
-        storage_persistence::writer::WriterConfig {
-            max_write_bytes: 256 * 1024,
-            ..Default::default()
-        },
+        storage_persistence::writer::WriterConfig::default(),
     )?;
     let mut exercises = exercises::Exercises::default();
     let mut observation = observation::Observation::new()?;
@@ -499,7 +504,7 @@ fn owner(
                 "pool":observation::pool(d),"ring":observation::ring(d),
                 "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&writer),
                 "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":observation.lost,"burstRemaining":burst_remaining,
-                "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}).to_string());
+                "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}));
             publish = Instant::now() + Duration::from_millis(40);
         }
         if burst_remaining > 0 && burst_interval.is_zero() {
@@ -512,7 +517,7 @@ fn owner(
     let final_snapshot = writer.finish_with_snapshot()?;
     observation.poll(&mut latency);
     sealed.store(index + 1, Ordering::Release);
-    let mut final_state: Value = serde_json::from_str(&tx.borrow())?;
+    let mut final_state = tx.borrow().clone();
     final_state["status"] = json!("sealed");
     final_state["burstRemaining"] = json!(0);
     final_state["combining"] = observation::combining(final_snapshot);
@@ -527,7 +532,7 @@ fn owner(
         index,
         true,
     )?;
-    tx.send_replace(final_state.to_string());
+    tx.send_replace(final_state);
     Ok(restart)
 }
 /// The root is exclusively created by this process. Remove only its capture files.
@@ -558,12 +563,14 @@ async fn main() -> Result<()> {
         o.root.display(),
         o.backend
     );
-    let (tx, rx) =
-        watch::channel(json!({"status":if o.start_paused {"idle"} else {"starting"}}).to_string());
+    let (tx, rx) = watch::channel(json!({"status":if o.start_paused {"idle"} else {"starting"}}));
     let (commands, command_rx) = mpsc::sync_channel(16);
     let stop = Arc::new(AtomicBool::new(false));
     let sealed = Arc::new(AtomicU64::new(0));
+    let binary = snapshot::relay(rx.clone(), stop.clone());
     let state = Web {
+        binary,
+        stop: stop.clone(),
         snapshots: rx,
         commands,
         root: o.root.clone(),
@@ -572,6 +579,11 @@ async fn main() -> Result<()> {
     let owner_stop = stop.clone();
     let errors = tx.clone();
     let keepalive = tx.clone();
+    let assets = o.assets.clone();
+    #[cfg(feature = "activity-tracing")]
+    let feed = Arc::new(live::Feed::new());
+    #[cfg(feature = "activity-tracing")]
+    let writer_feed = feed.clone();
     let worker = std::thread::spawn(move || {
         let run = || {
             let mut restart = !o.start_paused;
@@ -585,7 +597,7 @@ async fn main() -> Result<()> {
                 }
                 if restart {
                     sealed.store(0, Ordering::Release);
-                    tx.send_replace(json!({"status":"starting"}).to_string());
+                    tx.send_replace(json!({"status":"starting"}));
                     let result = clear_captures(&o.root).map_err(Into::into).and_then(|()| {
                         owner(
                             &o,
@@ -598,10 +610,10 @@ async fn main() -> Result<()> {
                     match result {
                         Ok(requested) => restart = requested,
                         Err(e) => {
-                            let mut failed: Value = serde_json::from_str(&errors.borrow()).unwrap();
+                            let mut failed = errors.borrow().clone();
                             failed["status"] = json!("error");
                             failed["error"] = json!(e.to_string());
-                            errors.send_replace(failed.to_string());
+                            errors.send_replace(failed);
                             eprintln!("storage demo: {e}");
                             restart = false;
                         }
@@ -610,36 +622,43 @@ async fn main() -> Result<()> {
             }
         };
         #[cfg(feature = "activity-tracing")]
-        if let Err(e) = observation::capture_activity(o.activity.as_deref(), run) {
+        if let Err(e) = observation::capture_activity(o.activity.as_deref(), writer_feed, run) {
             eprintln!("storage activity capture: {e}");
-            let mut failed: Value = serde_json::from_str(&errors.borrow()).unwrap();
+            let mut failed = errors.borrow().clone();
             failed["status"] = json!("error");
             failed["error"] = json!(e.to_string());
-            errors.send_replace(failed.to_string());
+            errors.send_replace(failed);
         }
         #[cfg(not(feature = "activity-tracing"))]
         run();
     });
     let app = Router::new()
+        .nest_service("/activity", tower_http::services::ServeDir::new(assets).fallback(get(|| async { Html("Build the live timeline: npm ci --prefix apps/storage-demo/frontend &amp;&amp; npm run build --prefix apps/storage-demo/frontend") })))
+        .route("/api/activity/status", get(|| async { Json(json!({"enabled": cfg!(feature = "activity-tracing")})) }))
         .route(
             "/",
             get(|| async { Html(include_str!("../web/index.html")) }),
         )
         .route("/events", get(events))
+        .route("/api/snapshots/stream", get(snapshot::stream))
         .route("/api/control", post(control))
         .route("/files/{index}", get(download))
         .route(
             "/api/state",
             get(|State(s): State<Web>| async move {
-                Json(serde_json::from_str::<Value>(&s.snapshots.borrow()).unwrap())
+                Json(s.snapshots.borrow().clone())
             }),
         )
         .with_state(state);
+    #[cfg(feature = "activity-tracing")]
+    let app = app.merge(live::router(feed.clone()));
     let shutdown_stop = stop.clone();
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             let _ = tokio::signal::ctrl_c().await;
             shutdown_stop.store(true, Ordering::Relaxed);
+            #[cfg(feature = "activity-tracing")]
+            feed.shutdown();
             drop(keepalive);
         })
         .await?;

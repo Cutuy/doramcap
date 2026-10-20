@@ -9,9 +9,9 @@ const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id
 }]));
 const context = vm.createContext({
   document: {getElementById: id => {assert(elements.has(id), id); return elements.get(id)}, querySelectorAll: () => []},
-  devicePixelRatio: 1, EventSource: class {},
+  devicePixelRatio: 1, WebSocket: class {}, location:{protocol:'http:',host:'localhost'}, window:{addEventListener(){}},
 });
-vm.runInContext(html.split('<script>')[1].split('</script>')[0], context);
+vm.runInContext(html.split('<script type="module">')[1].split('</script>')[0].replace(/^import .*;$/m,''), context);
 const state = {
   status: 'live', session: 'one', backend: 'synthetic', ring: {writer:'9007199254740993',file:'2',outstanding:1,awaitingSubmission:0,awaitingCqe:1,completions:2,accepted:8192,completed:4096,synced:0,pendingBytes:4096},
   combining: {used:0,capacity:65536,ageMs:null,messages:0}, pool:{free:7,total:8},
