@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="410" viewBox="0 0 1000 410" role="img" aria-labelledby="title desc">
+<title id="title">Planned recording failure handling</title>
+<desc id="desc">CQE and finalization errors feed sticky writer failure. Public calls expose that failure to the recording session. Shutdown drains outstanding I/O before releasing leases and reports finalization results through session status and process exit.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker></defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b;font-size:16px}.title{font-size:25px;font-weight:bold}.h{font-size:18px;font-weight:bold}.edge{fill:none;stroke:#52657a;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1000" height="410" fill="#f8fafc"/>
+<text x="30" y="40" class="title">Planned: failure propagation + explicit shutdown</text>
+<rect x="30" y="80" width="240" height="100" rx="10" fill="#fff0e8" stroke="#c78d73"/>
+<text x="50" y="112" class="h">I/O / finalization</text><text x="50" y="143">CQE · flush · truncate</text><text x="50" y="165">sync errors</text>
+<path d="M270 130H335" class="edge"/>
+<rect x="340" y="80" width="280" height="100" rx="10" fill="#fff0e8" stroke="#c78d73"/>
+<text x="360" y="112" class="h">Writer failure state</text><text x="360" y="143">first error + context</text><text x="360" y="165">poll / commit / finish → Err</text>
+<path d="M620 130H685" class="edge"/>
+<rect x="690" y="80" width="280" height="100" rx="10" fill="#e6eef5" stroke="#91aabf"/>
+<text x="710" y="112" class="h">Recording session</text><text x="710" y="143">stop admission</text><text x="710" y="165">retain failure status</text>
+<path d="M830 180V230H620" class="edge"/>
+<rect x="340" y="230" width="280" height="115" rx="10" fill="#e7f5ee" stroke="#55917a"/>
+<text x="360" y="262" class="h">Explicit shutdown</text><text x="360" y="293">drain outstanding I/O</text><text x="360" y="318">finalize / sync when viable</text>
+<path d="M340 287H275" class="edge"/>
+<rect x="30" y="240" width="240" height="95" rx="10" fill="#e7f5ee" stroke="#55917a"/>
+<text x="50" y="272" class="h">Memory leases</text><text x="50" y="303">release after retirement</text>
+<path d="M620 287H685" class="edge"/>
+<rect x="690" y="240" width="280" height="95" rx="10" fill="#e6eef5" stroke="#91aabf"/>
+<text x="710" y="272" class="h">Application result</text><text x="710" y="303">UI error · failed process exit</text>
+<text x="30" y="385">Optional telemetry records the same transitions. Error results remain part of the recording contract.</text>
+</svg>

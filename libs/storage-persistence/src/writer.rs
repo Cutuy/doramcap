@@ -111,11 +111,16 @@ enum WriteSource {
     Managed(BufferLease),
     Slab(SealedSlab),
     Mapped(ReadLease),
+    Prefixed {
+        prefix: BufferLease,
+        payload: ReadLease,
+        prefix_segments: Option<Rc<[RegistrationSegment]>>,
+    },
 }
 impl WriteSource {
     fn region_offset(&self) -> usize {
         match self {
-            Self::Mapped(a) => a.offset(),
+            Self::Mapped(a) | Self::Prefixed { payload: a, .. } => a.offset(),
             _ => 0,
         }
     }
@@ -126,35 +131,57 @@ impl WriteSource {
                 ..Default::default()
             },
             Self::Slab(a) => a.observation_ids(),
-            Self::Mapped(a) => a.ids(),
+            Self::Mapped(a) | Self::Prefixed { payload: a, .. } => a.ids(),
         }
     }
     fn into_pending(self) -> Self {
         match self {
             Self::Slab(a) => Self::Slab(a.into_io()),
             Self::Mapped(a) => Self::Mapped(a.into_io()),
+            Self::Prefixed {
+                prefix,
+                payload,
+                prefix_segments,
+            } => Self::Prefixed {
+                prefix,
+                payload: payload.into_io(),
+                prefix_segments,
+            },
             managed => managed,
         }
     }
-    fn as_slice(&self) -> &[u8] {
+    // The external payload is validated and registered separately from its prefix.
+    fn primary_bytes(&self) -> &[u8] {
         match self {
             Self::Managed(a) => a.as_slice(),
             Self::Slab(a) => a.as_slice(),
-            Self::Mapped(a) => a.as_slice(),
+            Self::Mapped(a) | Self::Prefixed { payload: a, .. } => a.as_slice(),
         }
+    }
+    fn len(&self) -> usize {
+        self.primary_bytes().len()
+            + match self {
+                Self::Prefixed { prefix, .. } => prefix.as_slice().len(),
+                _ => 0,
+            }
     }
     fn capacity(&self) -> usize {
         match self {
             Self::Managed(a) => a.capacity(),
             Self::Slab(a) => a.capacity(),
             Self::Mapped(a) => a.region().len(),
+            Self::Prefixed {
+                prefix, payload, ..
+            } => prefix.capacity() + payload.region().len(),
         }
     }
     fn owner(&self) -> AllocationOwner {
         match self {
             Self::Managed(a) => AllocationOwner::Managed(a.allocation().clone()),
             Self::Slab(a) => AllocationOwner::Slab(a.allocation().clone()),
-            Self::Mapped(a) => AllocationOwner::Mapped(a.region().clone()),
+            Self::Mapped(a) | Self::Prefixed { payload: a, .. } => {
+                AllocationOwner::Mapped(a.region().clone())
+            }
         }
     }
 }
@@ -270,13 +297,11 @@ impl Pending {
         if result == 0 {
             return Err(io::ErrorKind::WriteZero.into());
         }
-        if result as usize > self.issued
-            || result as usize > self.lease.as_slice().len() - self.done
-        {
+        if result as usize > self.issued || result as usize > self.lease.len() - self.done {
             return Err(io::ErrorKind::InvalidData.into());
         }
         self.done += result as usize;
-        Ok(self.done == self.lease.as_slice().len())
+        Ok(self.done == self.lease.len())
     }
 }
 struct Registered {
@@ -341,6 +366,13 @@ impl Writer {
         )
     }
     pub fn with_config(file: File, config: WriterConfig) -> io::Result<Self> {
+        Self::with_observer(file, config, Observer::default())
+    }
+    pub(crate) fn with_observer(
+        file: File,
+        config: WriterConfig,
+        observer: Observer,
+    ) -> io::Result<Self> {
         if config.queue_depth == 0
             || config.pending_capacity == 0
             || config.registration_capacity == 0
@@ -359,7 +391,7 @@ impl Writer {
         }
         Ok(Self {
             ring: IoUring::new(config.queue_depth)?,
-            observer: Observer::default(),
+            observer,
             observation_writer: observability::next_id(),
             observation_file: observability::next_id(),
             counters: Counters::default(),
@@ -487,6 +519,15 @@ impl Writer {
         alignment: usize,
         config: WriterConfig,
     ) -> io::Result<Self> {
+        Self::direct_with_observer(file, pool, alignment, config, Observer::default())
+    }
+    pub(crate) fn direct_with_observer(
+        file: File,
+        pool: BufferPool,
+        alignment: usize,
+        config: WriterConfig,
+        observer: Observer,
+    ) -> io::Result<Self> {
         if !matches!(alignment, 512 | 4096) || config.max_write_bytes < alignment {
             return Err(io::ErrorKind::InvalidInput.into());
         }
@@ -497,7 +538,7 @@ impl Writer {
         if flags & libc::O_DIRECT == 0 {
             return Err(io::ErrorKind::InvalidInput.into());
         }
-        let mut this = Self::with_config(file, config)?;
+        let mut this = Self::with_observer(file, config, observer)?;
         this.alignment = alignment;
         this.max_write_bytes -= this.max_write_bytes % alignment;
         this.offsets = OffsetAllocator::new(0, alignment as u64).unwrap();
@@ -759,6 +800,30 @@ impl Writer {
                 Rejected { error, value }
             })
     }
+    pub(crate) fn try_append_prefixed(
+        &mut self,
+        prefix: BufferLease,
+        payload: ReadLease,
+    ) -> Result<FileRange, Rejected<ReadLease>> {
+        self.try_append_source(
+            WriteSource::Prefixed {
+                prefix,
+                payload,
+                prefix_segments: None,
+            },
+            "mapped",
+            &Timeline::default(),
+        )
+        .map_err(|(error, source)| {
+            let WriteSource::Prefixed { payload, .. } = source else {
+                unreachable!()
+            };
+            Rejected {
+                error,
+                value: payload,
+            }
+        })
+    }
     /// Retains caller ownership on rejected admission. No file range is consumed.
     pub fn try_append(&mut self, lease: BufferLease) -> Result<FileRange, AppendError> {
         self.try_append_tagged(lease, "managed", &Timeline::default())
@@ -789,15 +854,15 @@ impl Writer {
     }
     fn try_append_source(
         &mut self,
-        lease: WriteSource,
+        mut lease: WriteSource,
         path: &'static str,
         cause: &Timeline,
     ) -> Result<FileRange, (io::Error, WriteSource)> {
         let validation = (|| {
             self.check_capacity(1)?;
-            if lease.as_slice().is_empty()
-                || !(lease.as_slice().as_ptr() as usize).is_multiple_of(self.alignment)
-                || !lease.as_slice().len().is_multiple_of(self.alignment)
+            if lease.primary_bytes().is_empty()
+                || !(lease.primary_bytes().as_ptr() as usize).is_multiple_of(self.alignment)
+                || !lease.primary_bytes().len().is_multiple_of(self.alignment)
             {
                 return Err(io::ErrorKind::InvalidInput.into());
             }
@@ -805,6 +870,29 @@ impl Writer {
                 && !pool.owns(managed)
             {
                 return Err(io::ErrorKind::InvalidInput.into());
+            }
+            if let WriteSource::Prefixed {
+                prefix,
+                payload,
+                prefix_segments,
+            } = &mut lease
+            {
+                if prefix.as_slice().is_empty()
+                    || !(prefix.as_slice().as_ptr() as usize).is_multiple_of(self.alignment)
+                    || !prefix.as_slice().len().is_multiple_of(self.alignment)
+                    || prefix
+                        .as_slice()
+                        .len()
+                        .checked_add(payload.as_slice().len())
+                        .is_none()
+                {
+                    return Err(io::ErrorKind::InvalidInput.into());
+                }
+                if self.registered.is_some() {
+                    *prefix_segments = Some(self.register_allocation(AllocationOwner::Managed(
+                        prefix.allocation().clone(),
+                    ))?);
+                }
             }
             if self.registered.is_some() {
                 self.register_allocation(lease.owner()).map(Some)
@@ -815,18 +903,14 @@ impl Writer {
         let segments = match validation {
             Ok(segments) => segments,
             Err(error) => {
-                self.reject(error.kind(), lease.ids(), lease.as_slice().len() as u64);
+                self.reject(error.kind(), lease.ids(), lease.len() as u64);
                 return Err((error, lease));
             }
         };
-        let reservation = match self.offsets.reserve(lease.as_slice().len() as u64) {
+        let reservation = match self.offsets.reserve(lease.len() as u64) {
             Ok(r) => r,
             Err(_) => {
-                self.reject(
-                    io::ErrorKind::InvalidInput,
-                    lease.ids(),
-                    lease.as_slice().len() as u64,
-                );
+                self.reject(io::ErrorKind::InvalidInput, lease.ids(), lease.len() as u64);
                 return Err((io::ErrorKind::InvalidInput.into(), lease));
             }
         };
@@ -888,10 +972,31 @@ impl Writer {
             if self.next_request >= CANCEL_TAG {
                 return Err(io::ErrorKind::Other.into());
             }
-            let bytes = &p.lease.as_slice()[p.done..];
+            let (bytes, position, segments) = match &p.lease {
+                WriteSource::Prefixed {
+                    prefix,
+                    payload,
+                    prefix_segments,
+                } => {
+                    let n = prefix.as_slice().len();
+                    if p.done < n {
+                        (&prefix.as_slice()[p.done..], p.done, prefix_segments)
+                    } else {
+                        (
+                            &payload.as_slice()[p.done - n..],
+                            payload.offset() + p.done - n,
+                            &p.segments,
+                        )
+                    }
+                }
+                source => (
+                    &source.primary_bytes()[p.done..],
+                    source.region_offset() + p.done,
+                    &p.segments,
+                ),
+            };
             let mut len = bytes.len().min(self.max_write_bytes);
-            let entry = if let Some(segments) = &p.segments {
-                let position = p.lease.region_offset() + p.done;
+            let entry = if let Some(segments) = segments {
                 let r = &segments[position / REGISTRATION_BYTES];
                 len = len.min(r.start + r.len - position);
                 opcode::WriteFixed::new(
@@ -1341,6 +1446,103 @@ mod tests {
     use super::*;
     use crate::managed_buffers::BufferPool;
     #[test]
+    fn prefixed_payload_holds_both_owners_through_short_write_and_failure() {
+        use crate::mapped::MmapRegion;
+        let path = std::env::temp_dir().join(format!("prefixed-failure-{}", std::process::id()));
+        let file = File::options()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        let mut w = Writer::new(file, 1).unwrap();
+        let prefixes = BufferPool::new(1, 4096, 4096).unwrap();
+        let region = MmapRegion::new(
+            memmap2::MmapOptions::new().len(8192).map_anon().unwrap(),
+            Default::default(),
+        );
+        let lease = region.acquire(4096..8192).unwrap().seal(4096).unwrap();
+        let ptr = lease.as_slice().as_ptr();
+        let range = w
+            .try_append_prefixed(prefixes.reserve(4096).unwrap(), lease)
+            .unwrap();
+        assert_eq!(range.len, 8192);
+        let p = w.slots[0].as_mut().unwrap();
+        assert_eq!(p.lease.primary_bytes().as_ptr(), ptr);
+        p.request = Some(1);
+        p.issued = 4096;
+        w.retire_completion(1, 512);
+        assert_eq!(prefixes.available(), 0);
+        assert!(region.acquire(4096..8192).is_err());
+        let p = w.slots[0].as_mut().unwrap();
+        p.request = Some(2);
+        p.issued = 3584;
+        w.retire_completion(2, 3584);
+        assert_eq!(w.slots[0].as_ref().unwrap().done, 4096);
+        assert_eq!(prefixes.available(), 0);
+        assert!(region.acquire(4096..8192).is_err());
+        let p = w.slots[0].as_mut().unwrap();
+        assert_eq!(p.lease.primary_bytes().as_ptr(), ptr);
+        p.request = Some(3);
+        p.issued = 4096;
+        w.retire_completion(3, -libc::EIO);
+        assert_eq!(w.outstanding(), 0);
+        assert_eq!(prefixes.available(), 1);
+        assert!(region.acquire(4096..8192).is_ok());
+        drop(w);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn prefixed_registration_rejection_and_cancellation_keep_leases_safe() {
+        use crate::mapped::MmapRegion;
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = std::env::temp_dir().join(format!("prefixed-cancel-{}", std::process::id()));
+        let file = File::options()
+            .create_new(true)
+            .write(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&path)
+            .unwrap();
+        let mut w = Writer::direct_with_config(
+            file,
+            BufferPool::new(1, 4096, 4096).unwrap(),
+            4096,
+            WriterConfig::default(),
+        )
+        .unwrap();
+        let prefixes = BufferPool::new(1, 4096, 4096).unwrap();
+        let region = MmapRegion::new(
+            memmap2::MmapOptions::new().len(16384).map_anon().unwrap(),
+            Default::default(),
+        );
+        let lease = region.acquire(4096..12288).unwrap().seal(8192).unwrap();
+        let reader = lease.clone();
+        w.fail_registration_after = Some(1);
+        let rejected = w
+            .try_append_prefixed(prefixes.reserve(4096).unwrap(), lease)
+            .unwrap_err();
+        assert_eq!(w.accepted_bytes(), 0);
+        assert_eq!(prefixes.available(), 1);
+        assert_eq!(
+            rejected.value.as_slice().as_ptr(),
+            reader.as_slice().as_ptr()
+        );
+        w.fail_registration_after = None;
+        w.try_append_prefixed(prefixes.reserve(4096).unwrap(), rejected.value)
+            .unwrap();
+        w.fail_submit = true;
+        assert!(w.progress(false).is_err());
+        assert_eq!(prefixes.available(), 0);
+        assert!(region.acquire(4096..12288).is_err());
+        w.fail_submit = false;
+        let _ = w.cancel_and_drain();
+        assert_eq!(prefixes.available(), 1);
+        assert!(region.acquire(4096..12288).is_err());
+        drop(reader);
+        assert!(region.acquire(4096..12288).is_ok());
+        drop(w);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
     fn mapped_segment_offsets_rollback_and_cancellation() {
         use crate::mapped::MmapRegion;
         use memmap2::MmapOptions;
@@ -1562,7 +1764,12 @@ mod tests {
             writer.schedule().unwrap();
             assert!(writer.slots.iter().flatten().any(|p| p.request.is_some()));
             assert_eq!(
-                writer.slots[0].as_ref().unwrap().lease.as_slice().as_ptr(),
+                writer.slots[0]
+                    .as_ref()
+                    .unwrap()
+                    .lease
+                    .primary_bytes()
+                    .as_ptr(),
                 reader.as_slice().as_ptr()
             );
             if fail {

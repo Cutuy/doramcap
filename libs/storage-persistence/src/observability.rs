@@ -1,20 +1,6 @@
-//! Injectable metadata collection. Default observers skip event factories and clocks.
-//! Producers use try_lock; exporters may allocate while copying bounded history.
-//!
-//! ```no_run
-//! use storage_persistence::{mcap::McapWriter, observability::{Collector, Mode}, slabs::SlabPool};
-//! # fn example(writer: &mut McapWriter) -> std::io::Result<()> {
-//! let collector = Collector::new(1024, Mode::Summary)?;
-//! writer.set_observer(collector.observer());
-//! let pool = SlabPool::with_observer(8, 65536, 4096, collector.observer())?;
-//! collector.set_mode(Mode::Inspect)?;
-//! let stages = writer.snapshot();
-//! let slabs = pool.snapshot();
-//! let history = collector.read_after(0, 256);
-//! // Consume metadata outside the writer; retain next_cursor for the next read.
-//! # Ok(())
-//! # }
-//! ```
+//! Injectable bounded event collection and optional MCAP stage metrics.
+mod mcap;
+pub use mcap::{McapMetrics, McapMonitor, McapSnapshot};
 use std::{
     collections::VecDeque,
     io,

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="560" viewBox="0 0 1100 560" role="img" aria-labelledby="title desc">
+<title id="title">MCAP observation dependency injection</title><desc id="desc">The application injects Observer and McapMetrics at construction. Writer emits events to Collector and stage metadata to a bounded metrics channel. A separate McapMonitor supplies snapshots and active writes to the demo. Memory leases remain inside the recording core.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#52778b"/></marker></defs>
+<style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b;font-size:16px}.title{font-size:26px;font-weight:bold}.head{font-size:19px;font-weight:bold}.code{font-family:DejaVu Sans Mono,monospace;font-size:16px}.edge{fill:none;stroke:#52778b;stroke-width:2;marker-end:url(#arrow)}.label{fill:#18334b}</style>
+<rect width="1100" height="560" fill="#f8fafc"/>
+<text x="35" y="45" class="title">MCAP: recording API + injected observation</text>
+<rect x="25" y="80" width="485" height="445" rx="15" fill="#eef4fb" stroke="#b9cddd"/>
+<text x="45" y="112" class="head">Writer owner thread</text>
+<rect x="60" y="140" width="410" height="90" rx="10" fill="white" stroke="#52778b"/>
+<text x="80" y="170" class="code">McapConfig { observer, metrics, … }</text>
+<text x="80" y="203">new(file, schema, channels, config)</text>
+<path d="M265 230 V272" class="edge"/>
+<rect x="60" y="275" width="410" height="200" rx="10" fill="white" stroke="#52778b"/>
+<text x="80" y="307" class="head">McapWriter</text>
+<text x="80" y="336">reserve / append · poll · rotate · finish</text>
+<rect x="80" y="355" width="370" height="95" rx="8" fill="#e6eef5"/>
+<text x="100" y="385" class="code">McapCore → Writer → io_uring</text>
+<text x="100" y="417">framing · leases · registration · CQEs</text>
+<text x="65" y="505">Default: events off · metrics off</text>
+<rect x="610" y="140" width="440" height="115" rx="10" fill="#fff6e5" stroke="#c49647"/>
+<text x="635" y="172" class="head">Collector</text>
+<text x="635" y="205" class="code">read_after(cursor) · runtime modes</text>
+<text x="635" y="235">bounded events · explicit loss counts</text>
+<rect x="610" y="310" width="440" height="115" rx="10" fill="#e7f5ee" stroke="#55917a"/>
+<text x="635" y="342" class="head">McapMonitor</text>
+<text x="635" y="375" class="code">snapshot() · active_writes()</text>
+<text x="635" y="405">bounded metadata · retained final sample</text>
+<path d="M470 295 H550 V195 H606" class="edge"/>
+<text x="483" y="282" class="label code">Observer</text>
+<path d="M470 360 H606" class="edge"/>
+<text x="485" y="348" class="label code">McapMetrics</text>
+<path d="M1050 198 H1080 V478 H1050" class="edge"/>
+<path d="M830 425 V452" class="edge"/>
+<rect x="610" y="455" width="440" height="65" rx="10" fill="white" stroke="#52778b"/>
+<text x="635" y="483" class="head">Demo adapter → relay → React</text>
+<text x="635" y="506">sampling · encoding · transport</text>
+</svg>

@@ -21,9 +21,33 @@ fn writer(file: File, alignment: usize) -> McapWriter {
         encoding: "",
     }];
     if alignment > 1 {
-        McapWriter::direct(file, 3, 8192, schema, &channels, alignment).unwrap()
+        McapWriter::new(
+            file,
+            schema,
+            &channels,
+            storage_persistence::mcap::McapConfig {
+                buffers: 3,
+                buffer_size: 8192,
+                alignment,
+                io: Default::default(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
     } else {
-        McapWriter::new(file, 3, 8192, schema, &channels).unwrap()
+        McapWriter::new(
+            file,
+            schema,
+            &channels,
+            storage_persistence::mcap::McapConfig {
+                buffers: 3,
+                buffer_size: 8192,
+                alignment: 1,
+                io: Default::default(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
     }
 }
 fn meta(sequence: u32) -> Message {

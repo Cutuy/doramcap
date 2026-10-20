@@ -324,18 +324,22 @@ fn owner(
             encoding: "protobuf",
         },
     ];
-    let mut writer = McapWriter::with_config(
+    let mut observation = observation::Observation::new()?;
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+    let mut writer = McapWriter::new(
         open(o, 0)?,
-        8,
-        256 * 1024,
         schema,
         &channels,
-        if o.direct { 4096 } else { 1 },
-        storage_persistence::writer::WriterConfig::default(),
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            observer: observation.collector.observer(),
+            buffers: 8,
+            buffer_size: 256 * 1024,
+            alignment: if o.direct { 4096 } else { 1 },
+            io: storage_persistence::writer::WriterConfig::default(),
+        },
     )?;
-    let mut exercises = exercises::Exercises::default();
-    let mut observation = observation::Observation::new()?;
-    writer.set_observer(observation.collector.observer());
+    let mut exercises = exercises::Exercises::new(monitor.clone());
     #[cfg(feature = "tracing-export")]
     observation::TraceExport::start(observation.collector.clone());
     let session = now_ns().to_string();
@@ -491,7 +495,7 @@ fn owner(
         writer.poll(Instant::now())?;
         observation.poll(&mut latency);
         if Instant::now() >= publish {
-            let d = writer.snapshot();
+            let d = monitor.snapshot().expect("writer initialized");
             if d.writer.pending == 0 {
                 disk = inspector.read(
                     &o.root.join(format!("capture-{index:04}.mcap")),
@@ -502,7 +506,7 @@ fn owner(
             tx.send_replace(json!({"status":"live","session":session,"backend":o.backend,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"cpu":cpu,"heartbeats":beats,"probes":probes,"inputDrops":drops.load(Ordering::Relaxed),"lastCpu":last_cpu,
                 "combining":observation::combining(d),
                 "pool":observation::pool(d),"ring":observation::ring(d),
-                "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&writer),
+                "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&monitor),
                 "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":observation.lost,"burstRemaining":burst_remaining,
                 "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}));
             publish = Instant::now() + Duration::from_millis(40);
@@ -514,7 +518,8 @@ fn owner(
         }
     }
     exercises.release();
-    let final_snapshot = writer.finish_with_snapshot()?;
+    writer.finish()?;
+    let final_snapshot = monitor.snapshot().expect("writer finalized");
     observation.poll(&mut latency);
     sealed.store(index + 1, Ordering::Release);
     let mut final_state = tx.borrow().clone();

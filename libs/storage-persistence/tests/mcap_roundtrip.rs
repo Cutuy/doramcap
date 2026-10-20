@@ -36,8 +36,6 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
             .unwrap();
         let mut writer = McapWriter::new(
             file,
-            2,
-            4096,
             Schema {
                 name: "Payload",
                 encoding: "protobuf",
@@ -48,6 +46,13 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
                 topic: "test",
                 encoding: "protobuf",
             }],
+            storage_persistence::mcap::McapConfig {
+                buffers: 2,
+                buffer_size: 4096,
+                alignment: 1,
+                io: Default::default(),
+                ..Default::default()
+            },
         )
         .unwrap();
         let meta = Message {

@@ -4,19 +4,29 @@ use prost::Message as _;
 use serde_json::{Value, json};
 use storage_persistence::{
     mcap::{McapWriter, Message},
-    observability::Observer,
+    observability::{McapMonitor, Observer},
     slabs::{SealedSlab, SlabPool},
 };
 
 const MIB: usize = 1024 * 1024;
-#[derive(Default)]
 pub struct Exercises {
+    monitor: McapMonitor,
     pool: Option<SlabPool>,
     readers: Vec<SealedSlab>,
     receipts: std::collections::VecDeque<Value>,
     next: u64,
 }
 impl Exercises {
+    pub fn new(monitor: McapMonitor) -> Self {
+        Self {
+            monitor,
+            pool: None,
+            readers: Vec::new(),
+            receipts: std::collections::VecDeque::new(),
+            next: 0,
+        }
+    }
+
     pub fn run(
         &mut self,
         action: &str,
@@ -27,7 +37,12 @@ impl Exercises {
         sequence: &mut u32,
     ) {
         self.next += 1;
-        let before = writer.snapshot().writer.registration_updates;
+        let before = self
+            .monitor
+            .snapshot()
+            .expect("writer initialized")
+            .writer
+            .registration_updates;
         let result = self.perform(action, size_mib, hold, writer, observer, sequence);
         let receipt = match result {
             Ok(mut row) => {
@@ -39,7 +54,14 @@ impl Exercises {
         let mut row = receipt;
         row["id"] = json!(self.next.to_string());
         row["action"] = json!(action);
-        row["registrationUpdates"] = json!(writer.snapshot().writer.registration_updates - before);
+        row["registrationUpdates"] = json!(
+            self.monitor
+                .snapshot()
+                .expect("writer initialized")
+                .writer
+                .registration_updates
+                - before
+        );
         if self.receipts.len() == 16 {
             self.receipts.pop_front();
         }
@@ -61,9 +83,20 @@ impl Exercises {
         writer.flush_written()?;
         if action == "retire_slabs" {
             let retired = if let Some(pool) = &self.pool {
-                let before = writer.snapshot().writer.registered_regions;
+                let before = self
+                    .monitor
+                    .snapshot()
+                    .expect("writer initialized")
+                    .writer
+                    .registered_regions;
                 writer.retire_slabs(pool)?;
-                before - writer.snapshot().writer.registered_regions
+                before
+                    - self
+                        .monitor
+                        .snapshot()
+                        .expect("writer initialized")
+                        .writer
+                        .registered_regions
             } else {
                 0
             };
@@ -108,7 +141,7 @@ impl Exercises {
             *sequence = sequence.wrapping_add(2);
             (2, bytes, Some(range))
         };
-        let active = writer.active_writes().max_by_key(|w| w.len);
+        let active = self.monitor.active_writes().max_by_key(|w| w.len);
         Ok(
             json!({"messages":messages,"bytes":bytes,"first":first,"last":sequence.wrapping_sub(1),"write":active.as_ref().map(|w|w.ids.write.to_string()),"region":active.as_ref().map(|w|w.ids.region.to_string()),"slabUse":active.as_ref().map(|w|w.ids.slab_use.to_string()),"offset":range.map(|r|r.offset),"length":active.map(|w|w.len)}),
         )

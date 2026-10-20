@@ -19,18 +19,20 @@ writer.finish()?;
 
 `writer`, `message` and `encode_into` are application-supplied.
 
-## Mapped batch example
+## External SHM
 
 ```rust
-let region = MmapRegion::new(mapping, observer);
-writer.prepare_region(&region)?;
-let mut records = writer.prepare_mapped_records(region.acquire(block_range)?);
-encode_into(records.reserve(message, encoded_len)?)?;
-writer.append_mapped_records(records.seal()?)?;
+writer.append_external_payload(message, published_payload)?;
+writer.append_external_records(published_mcap_block)?;
 ```
 
-`mapping` is an exclusively owned `memmap2::MmapMut`. External publishers use
-unsafe `MmapRegion::import` / `lease` with mapping and reuse guards.
+Both inputs are caller-owned `ReadLease`s. Payloads receive a separate 4-KiB
+managed prefix page; framed message blocks are validated and written unchanged.
+No writable mmap builder is required or exposed. The prefix and payload advance
+as two registered I/O operations within one logical append (further splitting
+follows writer limits); independent appends retain independent progress.
+
+[Architecture, contracts and validation](docs/101826-external-buffer-leases.md).
 
 ## Contracts
 
@@ -41,23 +43,23 @@ unsafe `MmapRegion::import` / `lease` with mapping and reuse guards.
 - Rejected prepared blocks return intact; drive `flush_written()` before retrying pressure.
 - Slab recycling waits for all readers and I/O. Sealing allocates one `Arc`; recycling uses a mutex.
 - Poll the combining deadline while idle. Call `finish()` to finalize MCAP and observe errors.
-- Inject an `Observer` for bounded events; snapshots are always available. Legacy `diagnostics` remains supported.
+- Inject events and optional stage metrics through `McapConfig`; both default to disabled.
 
-## Activity timeline
+## Observation
 
-Enable `activity-tracing` and install the existing `activity_tracing::Runtime`
-subscriber on each registered writer thread. Spans carry writer/file/write IDs,
-source path, region, byte range and direct-I/O mode.
+```rust
+let (metrics, monitor) = McapMonitor::channel();
+let writer = McapWriter::new(file, schema, &channels, McapConfig {
+    observer: collector.observer(), metrics, ..Default::default()
+})?;
+// Use monitor.snapshot() and monitor.active_writes() from the owner thread.
+writer.finish()?;
+let final_state = monitor.snapshot();
+```
 
-| Span | Lifetime |
-|---|---|
-| `storage.combining` | First committed message → batch admission |
-| `storage.write` | Admission → terminal retirement |
-| `storage.io` | SQE queued → CQE observed; child of its write |
-
-Combining links to its write; completion results, retries and terminal outcomes
-are events. Timing includes queueing and polling delay. The feature defaults off;
-capture is independent of the dashboard collector's mode.
+[`McapConfig` API](src/mcap.rs) · [Injection architecture](docs/architecture/mcap-observation-injection.svg).
+Enable `activity-tracing` for source-time combining/write/I/O spans through the
+application's activity runtime. [Observation milestones](docs/101926-observability.md).
 
 ## Details and validation
 

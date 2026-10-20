@@ -1,4 +1,5 @@
 #![cfg(feature = "activity-tracing")]
+mod support;
 use activity_tracing::{BatchView, Config, Runtime, Sink, wire};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -62,10 +63,9 @@ fn activity_capture_correlates_every_path_and_split_io() {
             .custom_flags(libc::O_DIRECT)
             .open(&path)
             .unwrap();
-        let mut w = McapWriter::with_config(
+        let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+        let mut w = McapWriter::new(
             file,
-            2,
-            8192,
             Schema {
                 name: "raw",
                 encoding: "",
@@ -76,9 +76,15 @@ fn activity_capture_correlates_every_path_and_split_io() {
                 topic: "test",
                 encoding: "",
             }],
-            4096,
-            WriterConfig {
-                max_write_bytes: 4096,
+            storage_persistence::mcap::McapConfig {
+                metrics,
+                buffers: 2,
+                buffer_size: 8192,
+                alignment: 4096,
+                io: WriterConfig {
+                    max_write_bytes: 4096,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )
@@ -103,10 +109,17 @@ fn activity_capture_correlates_every_path_and_split_io() {
             memmap2::MmapOptions::new().len(16384).map_anon().unwrap(),
             Default::default(),
         );
-        let mut mapped = w.prepare_mapped_records(region.acquire(4096..16384).unwrap());
-        mapped.reserve(msg(3), 7000).unwrap().fill(6);
-        w.append_mapped_records(mapped.seal().unwrap()).unwrap();
-        assert_eq!(w.snapshot().combining_messages, 1);
+        let mut mapped = region.acquire(4096..16384).unwrap();
+        let len = support::stamp(mapped.bytes_mut(), msg(3), &vec![6; 7000]);
+        w.append_external_records(mapped.seal(len).unwrap())
+            .unwrap();
+        let mut ready = memmap2::MmapOptions::new().len(4096).map_anon().unwrap();
+        ready.fill(7);
+        let payload = MmapRegion::new(ready, Default::default());
+        // The producer has finished writing; no mutation until this read lease retires.
+        let lease = unsafe { payload.lease(0..4096, 1, ()) }.unwrap();
+        w.append_external_payload(msg(4), lease).unwrap();
+        assert_eq!(monitor.snapshot().unwrap().combining_messages, 1);
         w.finish().unwrap();
     });
     drop(registration);
@@ -195,7 +208,16 @@ fn activity_capture_correlates_every_path_and_split_io() {
 fn failed_and_cancelled_writes_close_their_spans() {
     use storage_persistence::{managed_buffers::BufferPool, writer::Writer};
     let capture = Capture::default();
-    let mut runtime = Runtime::start(Config::default(), vec![Box::new(capture.clone())]).unwrap();
+    // This test checks span closure, not sink backpressure; retain the complete burst.
+    let mut runtime = Runtime::start(
+        Config {
+            encoded_buffers: 64,
+            sink_queue: 32,
+            ..Default::default()
+        },
+        vec![Box::new(capture.clone())],
+    )
+    .unwrap();
     let h = runtime.handle();
     let registration = h.register_thread("failure-test").unwrap();
     let path =

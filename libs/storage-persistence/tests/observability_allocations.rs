@@ -88,4 +88,56 @@ fn warmed_collection_is_bounded_and_allocation_free() {
         writer.close().unwrap();
         std::fs::remove_file(file).unwrap();
     }
+    // The injected stage publisher reuses its bounded active-write buffer.
+    for enabled in [false, true] {
+        use storage_persistence::{
+            mcap::{Channel, McapConfig, McapWriter, Message, Schema},
+            observability::McapMonitor,
+        };
+        let path =
+            std::env::temp_dir().join(format!("mcap-metrics-{}-{enabled}", std::process::id()));
+        let file = File::options()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let (metrics, monitor) = McapMonitor::channel();
+        let mut writer = McapWriter::new(
+            file,
+            Schema {
+                name: "bytes",
+                encoding: "",
+                data: b"",
+            },
+            &[Channel {
+                id: 1,
+                topic: "bytes",
+                encoding: "",
+            }],
+            McapConfig {
+                metrics: if enabled { metrics } else { Default::default() },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let message = Message {
+            channel: 1,
+            sequence: 0,
+            log_time: 0,
+            publish_time: 0,
+        };
+        writer.reserve(message, 4).unwrap().commit().unwrap();
+        writer.flush_written().unwrap();
+        ALLOCATIONS.store(0, Relaxed);
+        ENABLED.store(true, Relaxed);
+        for _ in 0..100 {
+            writer.reserve(message, 4).unwrap().commit().unwrap();
+            writer.flush_written().unwrap();
+        }
+        ENABLED.store(false, Relaxed);
+        assert_eq!(ALLOCATIONS.load(Relaxed), 0, "metrics enabled={enabled}");
+        assert_eq!(monitor.snapshot().is_some(), enabled);
+        writer.finish().unwrap();
+        std::fs::remove_file(path).unwrap();
+    }
 }

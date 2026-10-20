@@ -3,8 +3,8 @@ use crate::metrics::Window;
 use serde_json::{Value, json};
 use std::{collections::VecDeque, io, time::Duration};
 use storage_persistence::{
-    mcap::{McapSnapshot, McapWriter},
     observability::{CaptureFilter, Collector, Event, EventKind, Mode},
+    observability::{McapMonitor, McapSnapshot},
 };
 
 pub struct Setting {
@@ -119,8 +119,8 @@ pub fn ring(d: McapSnapshot) -> Value {
         "awaitingSubmission":w.awaiting_submission,"awaitingCqe":w.awaiting_cqe,"pendingBytes":w.pending_bytes,"oldestUs":w.oldest_age_us,"registeredRegions":w.registered_regions,"registrationUpdates":w.registration_updates,
         "acceptedWrites":c.accepted,"written":c.written,"failed":c.failed,"cancelled":c.cancelled,"rejectedCapacity":c.rejected_capacity,"rejectedInvalid":c.rejected_invalid,"rejectedClosed":c.rejected_closed,"rejectedOther":c.rejected_other,"retries":c.short_retries,"registrationHits":c.registration_hits,"registrationMisses":c.registration_misses,"registrationFailures":c.registration_failures,"syncFailures":c.sync_failures,"submitFailures":c.submit_failures})
 }
-pub fn active(writer: &McapWriter) -> Value {
-    json!(writer.active_writes().map(|w|json!({"write":w.ids.write.to_string(),"operation":w.ids.operation.to_string(),"region":w.ids.region.to_string(),"slabUse":w.ids.slab_use.to_string(),"state":format!("{:?}",w.state),"offset":w.offset,"len":w.len,"completed":w.completed_bytes,"ageUs":w.age_us,"attempts":w.attempts,"retries":w.retries})).collect::<Vec<_>>())
+pub fn active(monitor: &McapMonitor) -> Value {
+    json!(monitor.active_writes().map(|w|json!({"write":w.ids.write.to_string(),"operation":w.ids.operation.to_string(),"region":w.ids.region.to_string(),"slabUse":w.ids.slab_use.to_string(),"state":format!("{:?}",w.state),"offset":w.offset,"len":w.len,"completed":w.completed_bytes,"ageUs":w.age_us,"attempts":w.attempts,"retries":w.retries})).collect::<Vec<_>>())
 }
 
 // One process-wide worker uses an independent stderr subscriber. A stalled sink

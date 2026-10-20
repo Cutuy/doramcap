@@ -1,3 +1,4 @@
+mod support;
 use memmap2::MmapOptions;
 use std::{
     fs::{File, OpenOptions},
@@ -153,10 +154,8 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
                 .open(&p.0)
                 .unwrap()
         };
-        let mut w = McapWriter::with_config(
+        let mut w = McapWriter::new(
             open(&out),
-            2,
-            8192,
             Schema {
                 name: "raw",
                 encoding: "",
@@ -167,55 +166,67 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
                 topic: "mapped",
                 encoding: "",
             }],
-            4096,
-            WriterConfig {
-                max_write_bytes: 4096,
+            storage_persistence::mcap::McapConfig {
+                buffers: 2,
+                buffer_size: 8192,
+                alignment: 4096,
+                io: WriterConfig {
+                    max_write_bytes: 4096,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
         )
         .unwrap();
         let wrong_out = Temp::new(false, "wrong-format");
-        let mut wrong = McapWriter::with_config(
+        let mut wrong = McapWriter::new(
             open(&wrong_out),
-            2,
-            8192,
             Schema {
                 name: "other",
                 encoding: "",
                 data: b"",
             },
             &[Channel {
-                id: 1,
+                id: 2,
                 topic: "other",
                 encoding: "",
             }],
-            4096,
-            WriterConfig::default(),
+            storage_persistence::mcap::McapConfig {
+                buffers: 2,
+                buffer_size: 8192,
+                alignment: 4096,
+                io: WriterConfig::default(),
+                ..Default::default()
+            },
         )
         .unwrap();
         for iteration in 0..2 {
-            let mut b = w.prepare_mapped_records(region.acquire(4096..32768).unwrap());
-            b.reserve(
+            let mut block = region.acquire(4096..32768).unwrap();
+            let len = support::stamp(
+                block.bytes_mut(),
                 Message {
                     channel: 1,
                     sequence: iteration,
                     log_time: 1,
                     publish_time: 1,
                 },
-                12000,
-            )
-            .unwrap()
-            .fill(iteration as u8 + 9);
-            let block = b.seal().unwrap();
-            let reader = block.lease().clone();
-            let rejected = wrong.append_mapped_records(block).unwrap_err();
+                &vec![iteration as u8 + 9; 12000],
+            );
+            let lease = block.seal(len).unwrap();
+            let reader = lease.clone();
+            let rejected = wrong.append_external_records(lease).unwrap_err();
             assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidInput);
             assert_eq!(
-                rejected.value.lease().as_slice().as_ptr(),
+                rejected.value.as_slice().as_ptr(),
                 reader.as_slice().as_ptr()
             );
-            w.append_mapped_records(rejected.value).unwrap();
+            let written = w.append_external_records(rejected.value).unwrap();
             w.flush_written().unwrap();
+            let file_bytes = std::fs::read(if iteration == 0 { &out.0 } else { &next.0 }).unwrap();
+            assert_eq!(
+                &file_bytes[written.offset as usize..(written.offset + written.len) as usize],
+                reader.as_slice()
+            );
             assert!(region.acquire(4096..32768).is_err());
             drop(reader);
             if iteration == 0 {
@@ -392,4 +403,208 @@ fn invalid_ranges_and_alignment_preserve_ownership() {
         drop(rejected);
         assert!(region.acquire(range).is_ok());
     }
+}
+
+#[test]
+fn existing_payload_uses_prefix_page_without_touching_shm() {
+    for private in [true, false] {
+        let backing = Temp::new(!private, "external-payload");
+        let file = backing.file();
+        let size = 4 * 1024 * 1024;
+        file.set_len((size + 4096) as u64).unwrap();
+        // Caller creates and populates the mapping before giving storage a read lease.
+        let mut map = unsafe {
+            if private {
+                MmapOptions::new().map_copy(&file)
+            } else {
+                MmapOptions::new().map_mut(&file)
+            }
+        }
+        .unwrap();
+        for (i, byte) in map[4096..4096 + size].iter_mut().enumerate() {
+            *byte = (i.wrapping_mul(37) % 251) as u8;
+        }
+        let region = MmapRegion::new(map, Observer::default());
+        let releases = Arc::new(AtomicUsize::new(0));
+        // Published bytes already exist. No producer mutates this range until token release.
+        let lease =
+            unsafe { region.lease(4096..4096 + size, 1, Signal(releases.clone())) }.unwrap();
+        let reader = lease.clone();
+        let pointer = reader.as_slice().as_ptr();
+        let expected = reader.as_slice().to_vec();
+        let out = Temp::new(false, "external-payload-output");
+        let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+        let mut w = McapWriter::new(
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .custom_flags(libc::O_DIRECT)
+                .open(&out.0)
+                .unwrap(),
+            Schema {
+                name: "raw",
+                encoding: "",
+                data: b"",
+            },
+            &[Channel {
+                id: 1,
+                topic: "payload",
+                encoding: "",
+            }],
+            storage_persistence::mcap::McapConfig {
+                metrics,
+                buffers: 1,
+                buffer_size: 8192,
+                alignment: 4096,
+                io: Default::default(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        w.flush_written().unwrap();
+        // A small managed message stays buffered while the external write is admitted.
+        let msg = Message {
+            channel: 1,
+            sequence: 0,
+            log_time: 1,
+            publish_time: 1,
+        };
+        w.reserve(msg, 7).unwrap().commit().unwrap();
+        let before = monitor.snapshot().unwrap();
+        let range = w
+            .append_external_payload(Message { sequence: 1, ..msg }, lease)
+            .unwrap();
+        assert_eq!(range.len as usize, 4096 + size);
+        assert_eq!(monitor.active_writes().count(), 1);
+        assert_eq!(
+            monitor.snapshot().unwrap().combining_bytes,
+            before.combining_bytes
+        );
+        assert!(region.acquire(4096..4096 + size).is_err());
+        w.flush_written().unwrap();
+        assert_eq!(reader.as_slice().as_ptr(), pointer);
+        assert_eq!(reader.as_slice(), expected);
+        // Reusing the same mapping and prefix allocation performs no registration updates.
+        let updates = monitor.snapshot().unwrap().writer.registration_updates;
+        let queued = monitor
+            .snapshot()
+            .unwrap()
+            .writer
+            .counters
+            .queued_operations;
+        w.append_external_payload(Message { sequence: 2, ..msg }, reader.clone())
+            .unwrap();
+        w.flush_written().unwrap();
+        assert_eq!(
+            monitor.snapshot().unwrap().writer.registration_updates,
+            updates
+        );
+        assert_eq!(
+            monitor
+                .snapshot()
+                .unwrap()
+                .writer
+                .counters
+                .queued_operations
+                - queued,
+            2
+        );
+        w.finish().unwrap();
+        let bytes = std::fs::read(&out.0).unwrap();
+        let start = range.offset as usize;
+        assert_eq!(bytes[start], 0x80);
+        assert_eq!(bytes[start + 4096 - 31], 5);
+        assert_eq!(&bytes[start + 4096..start + 4096 + size], expected);
+        let messages = mcap::MessageStream::new(&bytes)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let external = messages
+            .iter()
+            .filter(|m| m.sequence > 0)
+            .collect::<Vec<_>>();
+        assert_eq!(external.len(), 2);
+        for m in external {
+            assert_eq!(m.data.as_ref(), expected);
+        }
+        assert!(region.acquire(4096..4096 + size).is_err());
+        assert_eq!(releases.load(Ordering::SeqCst), 0);
+        drop(reader);
+        assert_eq!(releases.load(Ordering::SeqCst), 1);
+        assert!(region.acquire(4096..4096 + size).is_ok());
+    }
+}
+
+#[test]
+fn external_mcap_admission_rejects_bad_layouts_intact() {
+    let region = MmapRegion::new(
+        MmapOptions::new().len(16384).map_anon().unwrap(),
+        Observer::default(),
+    );
+    let out = Temp::new(false, "invalid-external-mcap");
+    let mut w = McapWriter::new(
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&out.0)
+            .unwrap(),
+        Schema {
+            name: "raw",
+            encoding: "",
+            data: b"",
+        },
+        &[Channel {
+            id: 1,
+            topic: "raw",
+            encoding: "",
+        }],
+        storage_persistence::mcap::McapConfig {
+            buffers: 2,
+            buffer_size: 8192,
+            alignment: 4096,
+            io: Default::default(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let msg = Message {
+        channel: 1,
+        sequence: 1,
+        log_time: 1,
+        publish_time: 1,
+    };
+    for (offset, len) in [(1, 4096), (0, 4095)] {
+        let lease = region
+            .acquire(offset..offset + len)
+            .unwrap()
+            .seal(len)
+            .unwrap();
+        let ptr = lease.as_slice().as_ptr();
+        let before = w.file_bytes();
+        let rejected = w.append_external_payload(msg, lease).unwrap_err();
+        assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(rejected.value.as_slice().as_ptr(), ptr);
+        assert_eq!(w.file_bytes(), before);
+        drop(rejected);
+    }
+    for bad in [0, 1, 2, 3] {
+        let mut block = region.acquire(0..8192).unwrap();
+        let len = support::stamp(block.bytes_mut(), msg, &[77; 4096]);
+        match bad {
+            0 => block.bytes_mut()[0] = 2, // externally supplied footer
+            1 => block.bytes_mut()[9..11].copy_from_slice(&99_u16.to_le_bytes()),
+            2 => block.bytes_mut()[1..9].copy_from_slice(&u64::MAX.to_le_bytes()),
+            _ => block.bytes_mut()[1..9].copy_from_slice(&1_u64.to_le_bytes()),
+        }
+        let lease = block.seal(len).unwrap();
+        let ptr = lease.as_slice().as_ptr();
+        let before = w.file_bytes();
+        let rejected = w.append_external_records(lease).unwrap_err();
+        assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(rejected.value.as_slice().as_ptr(), ptr);
+        assert_eq!(w.file_bytes(), before);
+        drop(rejected);
+    }
+    w.finish().unwrap();
 }

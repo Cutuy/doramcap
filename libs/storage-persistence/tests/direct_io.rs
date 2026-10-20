@@ -19,10 +19,8 @@ fn aligned_mcap_padding_and_exact_tail() {
                 .open(&path)
                 .unwrap()
         };
-        let mut writer = McapWriter::direct(
+        let mut writer = McapWriter::new(
             open(),
-            2,
-            alignment * 2,
             Schema {
                 name: "opaque",
                 encoding: "",
@@ -33,7 +31,13 @@ fn aligned_mcap_padding_and_exact_tail() {
                 topic: "test",
                 encoding: "",
             }],
-            alignment,
+            storage_persistence::mcap::McapConfig {
+                buffers: 2,
+                buffer_size: alignment * 2,
+                alignment,
+                io: Default::default(),
+                ..Default::default()
+            },
         )
         .unwrap();
         let meta = Message {

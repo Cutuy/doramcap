@@ -1,41 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="400" viewBox="0 0 1120 400" role="img" aria-labelledby="title desc"><title id="title">External memory · data path</title><desc id="desc">The caller supplies mapped memory and ownership guards. Storage chooses the size-qualified path.</desc><defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#53657b"/></marker></defs><style>text{font-family:Arial,sans-serif;fill:#192e45}.title{font-size:25px;font-weight:700}.label{font-size:16px;font-weight:700}.note{font-size:14px;fill:#52657a}.edge{font-size:13px;fill:#40566e}.step{font-size:17px;font-weight:700}</style><rect width="1120" height="400" fill="#f8fafc"/><text class="title" x="36" y="43">External memory · data path</text>
-<text class="label" x="36" y="89" text-anchor="start">≤256 KiB · COPY INTO MANAGED STORAGE</text>
-<rect x="36" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
-<text class="step" x="149.0" y="137" text-anchor="middle">Caller mapping</text>
-<text class="note" x="149.0" y="161" text-anchor="middle">ready bytes</text>
-<rect x="310" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
-<text class="step" x="423.0" y="137" text-anchor="middle">Combiner</text>
-<text class="note" x="423.0" y="161" text-anchor="middle">one managed allocation</text>
-<rect x="584" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
-<text class="step" x="697.0" y="137" text-anchor="middle">Writer</text>
-<text class="note" x="697.0" y="161" text-anchor="middle">managed-buffer writes</text>
-<rect x="858" y="108" width="226" height="76" rx="10" fill="#e7effa" stroke="#c5d2e0"/>
-<text class="step" x="971.0" y="137" text-anchor="middle">MCAP file</text>
-<text class="note" x="971.0" y="161" text-anchor="middle">combined records</text>
-<path d="M262 146H310" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="286.0" y="134" text-anchor="middle">copy</text>
-<path d="M536 146H584" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="560.0" y="134" text-anchor="middle">lease</text>
-<path d="M810 146H858" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="834.0" y="134" text-anchor="middle">batch</text>
-<text class="label" x="36" y="236" text-anchor="start">&gt;256 KiB · ORIGINAL MEMORY</text>
-<rect x="36" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
-<text class="step" x="149.0" y="284" text-anchor="middle">Caller mapping</text>
-<text class="note" x="149.0" y="308" text-anchor="middle">ready range + guard</text>
-<rect x="310" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
-<text class="step" x="423.0" y="284" text-anchor="middle">Read lease</text>
-<text class="note" x="423.0" y="308" text-anchor="middle">original bytes retained</text>
-<rect x="584" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
-<text class="step" x="697.0" y="284" text-anchor="middle">Writer</text>
-<text class="note" x="697.0" y="308" text-anchor="middle">register + direct writes</text>
-<rect x="858" y="255" width="226" height="76" rx="10" fill="#e6f2eb" stroke="#c5d2e0"/>
-<text class="step" x="971.0" y="284" text-anchor="middle">MCAP file</text>
-<text class="note" x="971.0" y="308" text-anchor="middle">framing + payload</text>
-<path d="M262 293H310" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="286.0" y="281" text-anchor="middle">range</text>
-<path d="M536 293H584" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="560.0" y="281" text-anchor="middle">lease</text>
-<path d="M810 293H858" fill="none" stroke="#53657b" stroke-width="2" marker-end="url(#a)"/>
-<text class="edge" x="834.0" y="281" text-anchor="middle">record</text>
-<text class="note" x="36" y="374" text-anchor="start">Large path: aligned source, length and file layout required. Ineligible input returns an error.</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1050" viewBox="0 0 1440 1050" role="img" aria-labelledby="title desc"><title id="title">External SHM: two immutable inputs</title><desc id="desc">Implemented external ingress. The caller owns and publishes memory. Payload-only input is paired with a managed aligned prefix page; externally framed MCAP blocks pass unchanged. A logical write retains both owners, reserves contiguous offsets and tracks all operations. Registration retains the mapping separately from block reuse.</desc><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker></defs><style>text{font-family:DejaVu Sans,sans-serif;fill:#18334b}.title{font-size:28px;font-weight:700}.head{font-size:19px;font-weight:700}.small{font-size:15px}.tag{font-size:13px;font-weight:700;letter-spacing:1px}.arrow{fill:none;stroke:#52657a;stroke-width:2;marker-end:url(#a)}</style><rect width="1440" height="1050" fill="#f8fafc"/>
+<text x="32" y="43" class="title" text-anchor="start">External SHM · two immutable inputs</text>
+<text x="32" y="70" class="small" text-anchor="start">IMPLEMENTED · prefix + payload operations · immutable source bytes</text>
+<rect x="24" y="94" width="330" height="590" rx="10" fill="#eef5fa" stroke="#b8c8d5" stroke-dasharray="6 5"/>
+<rect x="378" y="94" width="1038" height="590" rx="10" fill="#f5f7f9" stroke="#b8c8d5" stroke-dasharray="6 5"/>
+<text x="42" y="120" class="tag" text-anchor="start">CALLER / TRANSPORT</text>
+<text x="398" y="120" class="tag" text-anchor="start">MCAP WRITER</text>
+<rect x="42" y="142" width="294" height="82" rx="10" fill="#fff0d6" stroke="#b8c8d5"/>
+<text x="189.0" y="171" class="head" text-anchor="middle">MmapRegion owner</text>
+<text x="189.0" y="197" class="small" text-anchor="middle">mapping validity + identity</text>
+<rect x="42" y="260" width="294" height="90" rx="10" fill="#def2e9" stroke="#b8c8d5"/>
+<text x="189.0" y="289" class="head" text-anchor="middle">Published payload</text>
+<text x="189.0" y="315" class="small" text-anchor="middle">ReadLease · immutable bytes</text>
+<rect x="42" y="435" width="294" height="90" rx="10" fill="#def2e9" stroke="#b8c8d5"/>
+<text x="189.0" y="464" class="head" text-anchor="middle">Published MCAP block</text>
+<text x="189.0" y="490" class="small" text-anchor="middle">ReadLease · records + padding</text>
+<text x="42" y="572" class="small" text-anchor="start">Whole mapping / ring block</text>
+<text x="42" y="599" class="small" text-anchor="start">Producer owns publication + reuse</text>
+<text x="42" y="626" class="small" text-anchor="start">Ring blocks are page-aligned</text>
+<rect x="410" y="260" width="410" height="90" rx="10" fill="#e6efff" stroke="#b8c8d5"/>
+<text x="615.0" y="289" class="head" text-anchor="middle">append_external_payload</text>
+<text x="615.0" y="315" class="small" text-anchor="middle">Message metadata + ReadLease</text>
+<rect x="410" y="435" width="410" height="90" rx="10" fill="#e6efff" stroke="#b8c8d5"/>
+<text x="615.0" y="464" class="head" text-anchor="middle">append_external_records</text>
+<text x="615.0" y="490" class="small" text-anchor="middle">MCAP validation + ReadLease</text>
+<rect x="410" y="142" width="410" height="82" rx="10" fill="#fff0d6" stroke="#b8c8d5"/>
+<text x="615.0" y="171" class="head" text-anchor="middle">Managed prefix pool</text>
+<text x="615.0" y="197" class="small" text-anchor="middle">one aligned page · lease</text>
+<path d="M336 305H410" class="arrow"/>
+<path d="M336 480H410" class="arrow"/>
+<path d="M615 224V260" class="arrow"/>
+<rect x="880" y="190" width="500" height="80" rx="10" fill="#fff0d6" stroke="#b8c8d5"/>
+<text x="1130.0" y="219" class="head" text-anchor="middle">Registration cache</text>
+<text x="1130.0" y="245" class="small" text-anchor="middle">region identity → slots + mapping guard</text>
+<path d="M336 183H366V132H1130V190" class="arrow"/>
+<rect x="880" y="330" width="500" height="190" rx="10" fill="#ede9fe" stroke="#b8c8d5"/>
+<text x="1130.0" y="359" class="head" text-anchor="middle">Pending · one logical append</text>
+<text x="1130.0" y="385" class="small" text-anchor="middle">FileRange + retained source leases</text>
+<text x="1130" y="422" class="small" text-anchor="middle">Payload: [BufferLease, ReadLease]</text>
+<text x="1130" y="455" class="small" text-anchor="middle">Framed block: [ReadLease]</text>
+<text x="1130" y="488" class="small" text-anchor="middle">Preflight → reserve whole range → admit</text>
+<path d="M820 305H850V380H880" class="arrow"/>
+<path d="M820 480H880" class="arrow"/>
+<path d="M1130 270V330" class="arrow"/>
+<text x="410" y="578" class="small" text-anchor="start">Checks: source address · length · destination alignment</text>
+<text x="410" y="605" class="small" text-anchor="start">Failure returns the original lease intact</text>
+<text x="410" y="632" class="small" text-anchor="start">Existing combining batches remain independent</text>
+<text x="32" y="718" class="tag" text-anchor="start">FILE LAYOUT · ONE CONTIGUOUS RANGE PER APPEND</text>
+<rect x="42" y="741" width="310" height="76" rx="10" fill="#fff0d6" stroke="#b8c8d5"/>
+<text x="197" y="771" class="head" text-anchor="middle">MCAP padding</text>
+<text x="197" y="798" class="small" text-anchor="middle">valid record</text>
+<rect x="352" y="741" width="170" height="76" rx="10" fill="#f0d6a6" stroke="#b8c8d5"/>
+<text x="437" y="770" class="small" text-anchor="middle">Message header</text>
+<text x="437" y="797" class="small" text-anchor="middle">last 31 bytes</text>
+<rect x="522" y="741" width="858" height="76" rx="10" fill="#def2e9" stroke="#b8c8d5"/>
+<text x="951" y="772" class="head" text-anchor="middle">Original SHM payload · unchanged</text>
+<text x="951" y="798" class="small" text-anchor="middle">aligned address + transfer length</text>
+<text x="282" y="842" class="small" text-anchor="middle">managed prefix page · alignment A</text>
+<text x="951" y="842" class="small" text-anchor="middle">file offset F + A</text>
+<text x="42" y="872" class="small" text-anchor="start">Already-framed input: [existing MCAP records + alignment padding] → unchanged file bytes</text>
+<rect x="42" y="905" width="450" height="105" rx="10" fill="#e6efff" stroke="#b8c8d5"/>
+<text x="267.0" y="934" class="head" text-anchor="middle">io_uring</text>
+<text x="267.0" y="960" class="small" text-anchor="middle">prefix SQE + payload SQE / block SQE</text>
+<text x="267" y="991" class="small" text-anchor="middle">Vectored submission: optional qualification</text>
+<rect x="550" y="905" width="400" height="105" rx="10" fill="#ede9fe" stroke="#b8c8d5"/>
+<text x="750.0" y="934" class="head" text-anchor="middle">Completion tracking</text>
+<text x="750.0" y="960" class="small" text-anchor="middle">Prefix then payload within each append</text>
+<text x="750" y="991" class="small" text-anchor="middle">Logical completion after all pieces retire</text>
+<rect x="1008" y="905" width="372" height="105" rx="10" fill="#def2e9" stroke="#b8c8d5"/>
+<text x="1194.0" y="934" class="head" text-anchor="middle">Ownership release</text>
+<text x="1194.0" y="960" class="small" text-anchor="middle">last reader + I/O hold → reuse</text>
+<text x="1194" y="991" class="small" text-anchor="middle">region guard lives until unregister</text>
+<path d="M492 957H550" class="arrow"/>
+<path d="M950 957H1008" class="arrow"/>
+<path d="M1380 480H1400V890H267V905" class="arrow"/><text x="1350" y="883" class="small" text-anchor="end">source spans → SQEs</text></svg>

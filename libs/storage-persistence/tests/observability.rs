@@ -34,11 +34,14 @@ fn message(sequence: u32) -> Message {
         publish_time: 0,
     }
 }
-fn mcap(file: File, capacity: usize) -> McapWriter {
-    McapWriter::with_config(
+fn mcap(
+    file: File,
+    capacity: usize,
+    observer: storage_persistence::observability::Observer,
+) -> (McapWriter, storage_persistence::observability::McapMonitor) {
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+    let writer = McapWriter::new(
         file,
-        2,
-        8192,
         Schema {
             name: "opaque",
             encoding: "",
@@ -49,23 +52,29 @@ fn mcap(file: File, capacity: usize) -> McapWriter {
             topic: "test",
             encoding: "",
         }],
-        4096,
-        WriterConfig {
-            pending_capacity: capacity,
-            max_write_bytes: 4096,
-            ..Default::default()
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            observer,
+            buffers: 2,
+            buffer_size: 8192,
+            alignment: 4096,
+            io: WriterConfig {
+                pending_capacity: capacity,
+                max_write_bytes: 4096,
+                ..Default::default()
+            },
         },
     )
-    .unwrap()
+    .unwrap();
+    (writer, monitor)
 }
 #[test]
 fn lifecycle_correlation_split_io_and_reader_retention() {
     let file = path("lifecycle");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
     let pool = SlabPool::with_observer(1, 8192, 4096, collector.observer()).unwrap();
-    let mut writer = mcap(open(&file), 8);
+    let (mut writer, monitor) = mcap(open(&file), 8, collector.observer());
     writer.flush_written().unwrap();
-    writer.set_observer(collector.observer());
     writer.prepare_slabs(&pool).unwrap();
     let mut builder = writer.prepare_records(pool.acquire().unwrap());
     assert_eq!(pool.snapshot().slabs[0].phase, SlabPhase::Writable);
@@ -74,8 +83,8 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     let reader = block.slab().clone();
     let slab_use = pool.snapshot().slabs[0].slab_use_id;
     writer.append_prepared_records(block).unwrap();
-    let before = writer.snapshot();
-    let active = writer.active_writes().next().unwrap();
+    let before = monitor.snapshot().unwrap();
+    let active = monitor.active_writes().next().unwrap();
     assert_eq!(active.ids.slab_use, slab_use);
     assert_eq!(active.state, WriteState::AwaitingSubmission);
     assert_eq!(active.ids.operation, 0);
@@ -85,7 +94,7 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     let slab = pool.snapshot().slabs[0];
     assert_eq!((slab.readers, slab.io_leases), (1, 1));
     writer.flush_written().unwrap();
-    let after = writer.snapshot();
+    let after = monitor.snapshot().unwrap();
     assert_eq!(after.writer.pending, 0);
     assert_eq!(
         after.writer.counters.queued_operations - before.writer.counters.queued_operations,
@@ -194,8 +203,7 @@ fn rejection_combining_and_rotation_are_visible() {
     let second = path("rotate-b");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
     let slabs = SlabPool::with_observer(1, 4096, 4096, collector.observer()).unwrap();
-    let mut writer = mcap(open(&first), 1);
-    writer.set_observer(collector.observer());
+    let (mut writer, monitor) = mcap(open(&first), 1, collector.observer());
     writer.reserve(message(1), 5).unwrap().commit().unwrap();
     let mut builder = writer.prepare_records(slabs.acquire().unwrap());
     builder.reserve(message(2), 5).unwrap().fill(2);
@@ -203,16 +211,24 @@ fn rejection_combining_and_rotation_are_visible() {
         .append_prepared_records(builder.seal().unwrap())
         .unwrap_err();
     assert_eq!(rejected.error.kind(), io::ErrorKind::WouldBlock);
-    assert_eq!(writer.snapshot().writer.counters.rejected_capacity, 1);
-    assert_eq!(writer.snapshot().combining_messages, 1);
-    assert_eq!(writer.snapshot().combining_bytes, 36);
+    assert_eq!(
+        monitor
+            .snapshot()
+            .unwrap()
+            .writer
+            .counters
+            .rejected_capacity,
+        1
+    );
+    assert_eq!(monitor.snapshot().unwrap().combining_messages, 1);
+    assert_eq!(monitor.snapshot().unwrap().combining_bytes, 36);
     writer.flush_written().unwrap();
-    assert_eq!(writer.snapshot().combining_messages, 0);
+    assert_eq!(monitor.snapshot().unwrap().combining_messages, 0);
     writer.append_prepared_records(rejected.value).unwrap();
     writer.flush_written().unwrap();
-    let old = writer.snapshot().writer;
+    let old = monitor.snapshot().unwrap().writer;
     writer.rotate(open(&second)).unwrap();
-    let new = writer.snapshot().writer;
+    let new = monitor.snapshot().unwrap().writer;
     assert_eq!(old.writer_id, new.writer_id);
     assert_ne!(old.file_id, new.file_id);
     assert_eq!(new.synced_bytes, 0);
@@ -275,4 +291,42 @@ fn cancellation_and_pool_retirement_preserve_counters_and_memory() {
     drop(writer);
     assert!(!collector.read_after(0, 64).events.is_empty());
     std::fs::remove_file(file).unwrap();
+}
+
+#[test]
+fn injected_monitor_isolated_and_retains_final_state() {
+    let first = path("monitor-a");
+    let second = path("monitor-b");
+    let collector = Collector::new(128, Mode::Inspect).unwrap();
+    let (mut a, a_monitor) = mcap(open(&first), 8, collector.observer());
+    let (b, b_monitor) = mcap(open(&second), 8, Default::default());
+    let b_initial = b_monitor.snapshot().unwrap();
+    assert_ne!(
+        a_monitor.snapshot().unwrap().writer.writer_id,
+        b_initial.writer.writer_id
+    );
+    assert!(
+        collector
+            .read_after(0, 128)
+            .events
+            .iter()
+            .any(|e| e.kind == EventKind::Registered)
+    );
+    a.reserve(message(1), 5).unwrap().commit().unwrap();
+    assert_eq!(a_monitor.snapshot().unwrap().combining_messages, 1);
+    assert_eq!(b_monitor.snapshot().unwrap().combining_messages, 0);
+    a.finish().unwrap();
+    let final_state = a_monitor.snapshot().unwrap();
+    assert_eq!(final_state.combining_messages, 0);
+    assert_eq!(final_state.writer.pending, 0);
+    assert!(final_state.writer.synced_bytes > 0);
+    assert_eq!(final_state.writer.counters.syncs, 1);
+    assert_eq!(a_monitor.active_writes().count(), 0);
+    assert_eq!(
+        b_monitor.snapshot().unwrap().writer.counters.accepted,
+        b_initial.writer.counters.accepted
+    );
+    b.finish().unwrap();
+    std::fs::remove_file(first).unwrap();
+    std::fs::remove_file(second).unwrap();
 }

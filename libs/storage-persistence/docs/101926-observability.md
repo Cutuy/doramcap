@@ -21,7 +21,7 @@ Exporters own formatting, transport and `tracing` integration.
 - [x] Observe admission, registration, SQE queueing, CQE observation, retries, retirement, rotation and sync.
 - [x] Include combining state, capacity, oldest known age, rejection reasons and written/sync coverage.
 - [x] Gate: split/retry/cancel/failure/rotation maintain identities and counters; late inspection works after event loss.
-- [x] Gate: existing diagnostics consumers and default/all-feature tests remain compatible.
+- [x] Initial gate: diagnostics consumers and default/all-feature tests passed; O7 migrates MCAP callers to injected monitoring.
 
 ## O3 — Independent slab lifetime
 
@@ -58,13 +58,37 @@ DORA subscriber with its existing backend.
 - [x] Gate: decoded activity proves all paths, parentage, range coverage, terminal states and zero capture loss.
 - [x] Gate: default/all-feature suites, Clippy, real demo capture and ARM64 full worker pass.
 
+## O7 — Injected MCAP monitoring
+
+![Recording and observation boundaries](architecture/mcap-observation-injection.svg)
+
+- [x] One constructor with `McapConfig`; event observer installed before registration.
+- [x] Remove MCAP observation getters, setter, duplicate diagnostics and specialized finish methods.
+- [x] Inject a single metrics publisher; application-owned monitor retains metadata after finish.
+- [x] Migrate demo, embedded recorder, benchmarks and tests.
+- [x] Local default/all-feature tests and strict Clippy pass for storage, telemetry-mcap and storage-demo.
+- [x] Tests cover isolated monitors, constructor events, rotation/rejection samples, final state, disabled factories and zero warmed publishing allocations.
+- [x] ARM64 Pueue **81: Success**: affected-package default/all-feature tests, strict Clippy and live demo capture; full log inspected.
+- [x] x86 and ARM64 demo captures: 14 closed spans across combined/large/managed/slab paths, zero recorded loss.
+
+`McapConfig::default()` disables events and metrics. `McapMonitor::channel()`
+returns a publisher to move into the config and a cloneable owner-thread reader.
+Samples refresh at API transitions and reservation changes; ages refer to
+`sampled_at`. Active-write storage is preallocated to pending capacity. Reader
+copies allocate outside recording. Existing record/write semantics remain unchanged.
+
+Targeted worker snapshot: `d9a67323b9ec4e61a241d4121156e6e1`.
+Full-workspace validation passed in job 83 after correcting the resource-policy
+schema and restoring the validated MCAP API. The recording audit is tracked in
+the [failure-handling plan](102026-recording-failure-handling.md).
+
 ## Limits
 
 - Observer IDs are process-session scoped; timestamps are monotonic observation times.
 - SQE queue-to-CQE observation includes submission and owner polling delay.
 - Late enabling leaves earlier timestamps unknown. Cross-thread pool snapshots are sampled views.
 - Capture by region to include independent pool events; writer/write filters omit those events.
-- Legacy `diagnostics` remains a compatibility feature during migration.
+- Low-level `Writer` retains its `diagnostics` feature. MCAP consumers use the injected monitor.
 
 ## Evidence
 
@@ -101,4 +125,5 @@ The activity capture uses source-time hooks; the live dashboard retains its exis
 
 - [x] Rebased onto main `47c8a18`; local all-feature storage tests passed.
 - [x] ARM64 **69: Success**: targeted storage/demo default and all-feature tests, strict Clippy, HTTP readback and activity capture passed on snapshot `032bda20ed1a48e18d3367333e9460da`.
-- [ ] Full rebased workspace gate: job 67 failed on main's existing resource-policy schema/Rust placement mismatch; storage changes leave that component unchanged. Job 68's targeted build omitted `CLANG=clang-18`; job 69 corrected the test environment.
+- [x] Full current workspace: ARM64 **83: Success**, snapshot `eec3a64111bc46ba96a5788eab3e0832`; submitted source hashes match the leased checkout. Workspace default/all-feature Clippy and tests, native policy/accounting/allocations, storage benchmarks, demo readback/activity and Dora recording equality passed. Full log inspected.
+- Schema repair: `Placement { cpus }` now matches the Rust/configuration contract; retired `inherit_cpus` field/name are reserved. Earlier jobs 67/73/80 failed on this mismatch. Job 82 exposed the reverted MCAP API; job 83 includes its restoration.

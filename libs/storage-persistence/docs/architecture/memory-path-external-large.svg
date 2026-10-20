@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="490" viewBox="0 0 1300 490" role="img" aria-labelledby="title desc">
-<title id="title">2 · Large external payload — storage assembles the record</title><desc id="desc">PROPOSED · payload &gt;256 KiB: original memory → direct write; alignment or registration failure returns an error</desc>
+<title id="title">2 · Existing external payload — storage assembles the record</title><desc id="desc">TARGET · caller-owned aligned payload + one managed prefix page · no payload copy</desc>
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52657a"/></marker></defs>
 <style>text{font-family:DejaVu Sans,sans-serif;fill:#17324d}.title{font-size:25px;font-weight:700}.sub{font-size:15px;fill:#52657a}.head{font-size:19px;font-weight:700}.small{font-size:14px}.tag{font-size:12px;font-weight:700;fill:#52657a}</style><rect width="1300" height="490" fill="#f8fafc"/>
-<text x="40" y="42" class="title" text-anchor="start">2 · Large external payload — storage assembles the record</text>
-<text x="40" y="69" class="sub" text-anchor="start">PROPOSED · payload &gt;256 KiB: original memory → direct write; alignment or registration failure returns an error</text>
+<text x="40" y="42" class="title" text-anchor="start">2 · Existing external payload — storage assembles the record</text>
+<text x="40" y="69" class="sub" text-anchor="start">TARGET · caller-owned aligned payload + one managed prefix page · no payload copy</text>
 <rect x="40" y="115" width="245" height="100" rx="10" fill="#def2e9" stroke="#c5d2df"/>
 <text x="162.5" y="146" class="head" text-anchor="middle">External producer</text>
 <text x="162.5" y="172" class="small" text-anchor="middle">ready payload + read lease</text>
@@ -12,7 +12,7 @@
 <text x="325" y="144" class="small" text-anchor="middle">payload</text>
 <rect x="365" y="115" width="245" height="100" rx="10" fill="#fff0d6" stroke="#c5d2df"/>
 <text x="487.5" y="146" class="head" text-anchor="middle">MCAP assembler</text>
-<text x="487.5" y="172" class="small" text-anchor="middle">managed framing spans</text>
+<text x="487.5" y="172" class="small" text-anchor="middle">one aligned prefix page</text>
 <text x="487.5" y="195" class="small" text-anchor="middle">external payload stays in place</text>
 <path d="M610 165H690" fill="none" stroke="#52657a" stroke-width="2" marker-end="url(#a)"/>
 <text x="650" y="144" class="small" text-anchor="middle">spans</text>

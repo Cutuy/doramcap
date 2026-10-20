@@ -23,11 +23,14 @@ fn meta(sequence: u32) -> Message {
         publish_time: 2,
     }
 }
-fn mcap(file: File, alignment: usize, config: WriterConfig) -> McapWriter {
-    McapWriter::with_config(
+fn mcap(
+    file: File,
+    alignment: usize,
+    config: WriterConfig,
+) -> (McapWriter, storage_persistence::observability::McapMonitor) {
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+    let writer = McapWriter::new(
         file,
-        8,
-        DEFAULT_BUFFER_SIZE,
         Schema {
             name: "bytes",
             encoding: "",
@@ -38,10 +41,17 @@ fn mcap(file: File, alignment: usize, config: WriterConfig) -> McapWriter {
             topic: "bytes",
             encoding: "",
         }],
-        alignment,
-        config,
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            buffers: 8,
+            buffer_size: DEFAULT_BUFFER_SIZE,
+            alignment,
+            io: config,
+            ..Default::default()
+        },
     )
-    .unwrap()
+    .unwrap();
+    (writer, monitor)
 }
 #[test]
 fn growth_reuse_and_explicit_trim() {
@@ -178,7 +188,7 @@ fn hundred_mib_registered_direct_readback() {
 fn large_readback(alignments: &[usize], huge_size: usize) {
     for &alignment in alignments {
         let path = path(&format!("huge-{alignment}-{huge_size}"));
-        let mut writer = mcap(
+        let (mut writer, monitor) = mcap(
             open(&path, alignment),
             alignment,
             WriterConfig {
@@ -188,7 +198,7 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
             },
         );
         for (seq, size) in [(0, 7 * DEFAULT_BUFFER_SIZE), (1, huge_size)] {
-            let before = writer.pending_writes();
+            let before = monitor.snapshot().unwrap().writer.pending;
             assert!(before > 0);
             let mut reservation = writer.reserve(meta(seq), size).unwrap();
             let ptr = reservation.payload().as_ptr();
@@ -199,9 +209,17 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
             }
             assert_eq!(reservation.payload().as_ptr(), ptr);
             reservation.commit().unwrap();
-            assert_eq!(writer.pending_writes(), before + 1); // every earlier write still pending
+            assert_eq!(monitor.snapshot().unwrap().writer.pending, before + 1); // every earlier write still pending
             #[cfg(feature = "diagnostics")]
-            assert_eq!(writer.diagnostics().completions, 0);
+            assert_eq!(
+                monitor
+                    .snapshot()
+                    .unwrap()
+                    .writer
+                    .counters
+                    .observed_completions,
+                0
+            );
         }
         writer.finish().unwrap();
         let data = std::fs::read(&path).unwrap();
@@ -225,7 +243,7 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
 #[test]
 fn mcap_commit_backpressure_retains_contiguous_bytes() {
     let path = path("retry");
-    let mut writer = mcap(
+    let (mut writer, _monitor) = mcap(
         open(&path, 1),
         1,
         WriterConfig {
@@ -260,7 +278,7 @@ fn mcap_commit_backpressure_retains_contiguous_bytes() {
 #[test]
 fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
     let path = path("active-retry");
-    let mut writer = mcap(
+    let (mut writer, _monitor) = mcap(
         open(&path, 1),
         1,
         WriterConfig {
@@ -297,17 +315,24 @@ fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
 fn framing_boundaries_and_small_batching() {
     for alignment in [1, 512, 4096] {
         let path = path(&format!("boundaries-{alignment}"));
-        let mut writer = mcap(open(&path, alignment), alignment, WriterConfig::default());
+        let (mut writer, monitor) =
+            mcap(open(&path, alignment), alignment, WriterConfig::default());
         writer.flush_written().unwrap();
-        let initial_writes = writer.storage_writes();
+        let initial_writes = monitor.snapshot().unwrap().writer.counters.accepted;
         for seq in 0..10 {
             let mut r = writer.reserve(meta(seq), 7).unwrap();
             r.payload_mut().fill(seq as u8);
             r.commit().unwrap();
         }
-        assert_eq!(writer.storage_writes(), initial_writes);
+        assert_eq!(
+            monitor.snapshot().unwrap().writer.counters.accepted,
+            initial_writes
+        );
         writer.flush_written().unwrap();
-        assert_eq!(writer.storage_writes(), initial_writes + 1);
+        assert_eq!(
+            monitor.snapshot().unwrap().writer.counters.accepted,
+            initial_writes + 1
+        );
         let inline = writer.max_inline_payload();
         let sizes = [
             inline - 1,
@@ -343,7 +368,7 @@ fn framing_boundaries_and_small_batching() {
 #[test]
 fn expired_combiner_poll_drives_a_full_pending_queue() {
     let path = path("poll-pressure");
-    let mut writer = mcap(
+    let (mut writer, monitor) = mcap(
         open(&path, 1),
         1,
         WriterConfig {
@@ -359,13 +384,14 @@ fn expired_combiner_poll_drives_a_full_pending_queue() {
     // Metadata fills admission; the expired batch must stay intact while CQEs progress.
     for _ in 0..10_000 {
         writer.poll(deadline).unwrap();
-        if writer.next_flush_deadline().is_none() && writer.pending_writes() == 0 {
+        if writer.next_flush_deadline().is_none() && monitor.snapshot().unwrap().writer.pending == 0
+        {
             break;
         }
         std::thread::yield_now();
     }
     assert!(writer.next_flush_deadline().is_none());
-    assert_eq!(writer.pending_writes(), 0);
+    assert_eq!(monitor.snapshot().unwrap().writer.pending, 0);
     writer.finish().unwrap();
     let data = std::fs::read(&path).unwrap();
     let messages = mcap::MessageStream::new(&data)

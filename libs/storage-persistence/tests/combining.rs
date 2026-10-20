@@ -7,10 +7,9 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
         .write(true)
         .open(&path)
         .unwrap();
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
     let mut writer = McapWriter::new(
         file,
-        2,
-        512,
         Schema {
             name: "opaque",
             encoding: "",
@@ -21,6 +20,14 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
             topic: "test",
             encoding: "",
         }],
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            buffers: 2,
+            buffer_size: 512,
+            alignment: 1,
+            io: Default::default(),
+            ..Default::default()
+        },
     )
     .unwrap();
     let meta = Message {
@@ -29,7 +36,7 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
         log_time: 0,
         publish_time: 0,
     };
-    let baseline = writer.storage_writes();
+    let baseline = monitor.snapshot().unwrap().writer.counters.accepted;
     let mut first = writer.reserve(meta, 1).unwrap();
     first.payload_mut()[0] = 7;
     let ptr = first.payload().as_ptr() as usize;
@@ -42,14 +49,23 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
     assert_eq!(next.payload().as_ptr() as usize, ptr + 32);
     next.payload_mut()[0] = 8;
     next.commit().unwrap();
-    assert_eq!(writer.storage_writes(), baseline);
+    assert_eq!(
+        monitor.snapshot().unwrap().writer.counters.accepted,
+        baseline
+    );
     writer.poll(writer.next_flush_deadline().unwrap()).unwrap();
-    assert_eq!(writer.storage_writes(), baseline + 1);
+    assert_eq!(
+        monitor.snapshot().unwrap().writer.counters.accepted,
+        baseline + 1
+    );
     for _ in 0..32 {
         writer.reserve(meta, 1).unwrap().commit().unwrap();
     }
     writer.flush_written().unwrap();
-    assert_eq!(writer.storage_writes(), baseline + 3);
+    assert_eq!(
+        monitor.snapshot().unwrap().writer.counters.accepted,
+        baseline + 3
+    );
     writer.finish().unwrap();
     let bytes = std::fs::read(&path).unwrap();
     let messages = mcap::MessageStream::new(&bytes)

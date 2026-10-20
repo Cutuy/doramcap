@@ -2,9 +2,9 @@
 
 ![Three input paths and the shared MCAP writer lifecycle](architecture/three-path-writer-lifecycle.svg)
 
-Discussion · 2026-10-19. Diagrams show direct-mode submission. Managed reservations
-and intra-process prepared blocks are implemented. Large external payloads and
-shared-mapping adapters remain planned.
+Implemented contract · corrected 2026-10-20. Managed reservations, intra-process
+slabs and both immutable external inputs are supported. The writable-mmap MCAP
+builder has been removed.
 
 ## 1 · Managed reservations
 
@@ -13,33 +13,28 @@ managed combining allocation; large records acquire one contiguous allocation.
 The caller encodes directly into that slice. Storage supplies framing, alignment,
 file ranges and allocation reuse.
 
-## 2 · Large external payloads
+## 2 · Existing external payloads
 
-`append_external_payload(message, lease)` would accept existing payload bytes.
-Above 256 KiB, storage builds managed framing spans and submits the original
-external range with no payload copy. Inputs at or below the threshold use the
-ordinary copy-and-combine policy.
+`append_external_payload(message, lease)` accepts caller-owned immutable bytes.
+Storage leases one aligned prefix page containing valid MCAP padding and the
+message header in its last 31 bytes. Original SHM bytes immediately follow it in
+the file. Both sources are retained through I/O; the payload is never copied.
 
-For the aligned single-payload example, MCAP padding precedes the message header
-inside the managed prefix; the header immediately precedes the payload in the
-file. Every transfer must satisfy address, length and file-offset alignment.
-Unsupported layouts fail explicitly. A logical append preflights all its spans
-and reserves their file range before accepting ownership.
+Preflight source addresses, lengths, registration and capacity. Reserve one
+contiguous file range for the whole append. Unsupported layouts return the lease
+intact. External inputs bypass combining regardless of size.
 
-## 3 · Prepared external blocks
+## 3 · Already-framed external blocks
 
-`append_prepared_records(block)` accepts sealed, complete MCAP records plus
-valid alignment padding. The producer chooses block size and batching. A 4-KiB
-aligned block can take this path; no 256-KiB threshold or storage combining applies.
-Storage submits the same bytes and retains the block's read lease through I/O.
+`append_external_records(lease)` validates caller-stamped MCAP message
+records, channel compatibility and alignment padding, then submits the same bytes.
+The producer need not use our builder. File headers, metadata, rotation and
+finalization remain writer responsibilities.
 
-`prepare_records(WritableSlab)` supplies a builder for headers, payloads and
-padding. Sealing produces `PreparedBlock`, bound to the originating writer's
-schema/channel identity across rotation. Other writers reject it intact.
-Storage retains responsibility for file headers, metadata, rotation and finalization.
-Each submitted piece occupies one contiguous file range. Large managed and prepared
-writes leave combining batches buffered; file placement and completion order across
-pieces are unspecified. Queue pressure returns the prepared block intact for retry.
+The existing intra-process `prepare_records(WritableSlab)` helper remains available.
+Its `PreparedBlock` is distinct from the external read-lease entry point.
+Each append occupies contiguous offsets. Cross-append placement and completion
+order remain unspecified; existing combining batches stay buffered.
 
 ## Shared mechanism
 

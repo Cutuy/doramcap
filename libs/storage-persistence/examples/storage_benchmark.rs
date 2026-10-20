@@ -58,11 +58,18 @@ fn main() {
                 topic: "benchmark",
                 encoding: "",
             }];
-            let mut w = if direct {
-                McapWriter::direct(file, 8, buffer_size, schema, &channels, 4096).unwrap()
-            } else {
-                McapWriter::new(file, 8, buffer_size, schema, &channels).unwrap()
-            };
+            let mut w = McapWriter::new(
+                file,
+                schema,
+                &channels,
+                storage_persistence::mcap::McapConfig {
+                    buffers: 8,
+                    buffer_size,
+                    alignment: if direct { 4096 } else { 1 },
+                    ..Default::default()
+                },
+            )
+            .unwrap();
             // Warm a contiguous large allocation and its registration without emitting a record.
             drop(
                 w.reserve(

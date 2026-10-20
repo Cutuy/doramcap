@@ -1,3 +1,4 @@
+mod support;
 use std::{
     fs::File,
     io,
@@ -29,11 +30,13 @@ fn message(sequence: u32) -> Message {
         publish_time: 11,
     }
 }
-fn mcap(file: File, pending_capacity: usize) -> McapWriter {
-    McapWriter::with_config(
+fn mcap(
+    file: File,
+    pending_capacity: usize,
+) -> (McapWriter, storage_persistence::observability::McapMonitor) {
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+    let writer = McapWriter::new(
         file,
-        2,
-        8192,
         Schema {
             name: "opaque",
             encoding: "",
@@ -44,14 +47,21 @@ fn mcap(file: File, pending_capacity: usize) -> McapWriter {
             topic: "slab",
             encoding: "",
         }],
-        4096,
-        WriterConfig {
-            pending_capacity,
-            max_write_bytes: 4096,
-            ..WriterConfig::default()
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            buffers: 2,
+            buffer_size: 8192,
+            alignment: 4096,
+            io: WriterConfig {
+                pending_capacity,
+                max_write_bytes: 4096,
+                ..WriterConfig::default()
+            },
+            ..Default::default()
         },
     )
-    .unwrap()
+    .unwrap();
+    (writer, monitor)
 }
 #[test]
 fn prepared_blocks_share_bytes_across_threads_and_rotation() {
@@ -59,10 +69,10 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
         let first = path(&format!("prepared-{size}-a"));
         let second = path(&format!("prepared-{size}-b"));
         let pool = SlabPool::new(1, size, 4096).unwrap();
-        let mut writer = mcap(open(&first), 8);
+        let (mut writer, monitor) = mcap(open(&first), 8);
         writer.flush_written().unwrap();
         writer.prepare_slabs(&pool).unwrap();
-        let updates = writer.registration_updates();
+        let updates = monitor.snapshot().unwrap().writer.registration_updates;
         for iteration in 0..2 {
             let mut small = writer.reserve(message(0), 3).unwrap();
             small.payload_mut().fill(9);
@@ -90,7 +100,10 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             assert_eq!(reader.as_slice(), expected);
             drop(reader);
             assert_eq!(pool.available(), 1);
-            assert_eq!(writer.registration_updates(), updates);
+            assert_eq!(
+                monitor.snapshot().unwrap().writer.registration_updates,
+                updates
+            );
             let bytes = std::fs::read(if iteration == 0 { &first } else { &second }).unwrap();
             assert_eq!(&bytes[range.offset as usize..][..size], expected);
             if iteration == 0 {
@@ -160,8 +173,8 @@ fn rejected_block_preserves_address_and_stream_binding() {
     let a = path("pressure-a");
     let b = path("pressure-b");
     let pool = SlabPool::new(1, 4096, 4096).unwrap();
-    let mut writer = mcap(open(&a), 1);
-    let mut foreign = mcap(open(&b), 2);
+    let (mut writer, _monitor) = mcap(open(&a), 1);
+    let (mut foreign, _foreign_monitor) = mcap(open(&b), 2);
     // Pending metadata occupies the sole slot; the combining message stays buffered.
     writer.reserve(message(0), 0).unwrap().commit().unwrap();
     let mut builder = writer.prepare_records(pool.acquire().unwrap());
@@ -242,11 +255,11 @@ fn standalone_paths_do_not_flush_or_reserve_capacity_for_combining() {
     for kind in ["large", "slab", "mapped"] {
         let file = path(kind);
         // Metadata occupies one slot; exactly one slot remains for the new write.
-        let mut writer = mcap(open(&file), 2);
+        let (mut writer, monitor) = mcap(open(&file), 2);
         let mut small = writer.reserve(message(0), 3).unwrap();
         small.payload_mut().fill(7);
         small.commit().unwrap();
-        let before = writer.snapshot();
+        let before = monitor.snapshot().unwrap();
         let start = writer.file_bytes() - before.combining_bytes as u64;
         let expected: Vec<u8> = (0..12000)
             .map(|i| ((i * 31 + i / 4096) % 251) as u8)
@@ -272,24 +285,24 @@ fn standalone_paths_do_not_flush_or_reserve_capacity_for_combining() {
                     memmap2::MmapOptions::new().len(20480).map_anon().unwrap(),
                     Default::default(),
                 );
-                let mut b = writer.prepare_mapped_records(region.acquire(4096..20480).unwrap());
-                b.reserve(message(1), expected.len())
-                    .unwrap()
-                    .copy_from_slice(&expected);
-                let range = writer.append_mapped_records(b.seal().unwrap()).unwrap();
+                let mut block = region.acquire(4096..20480).unwrap();
+                let len = support::stamp(block.bytes_mut(), message(1), &expected);
+                let range = writer
+                    .append_external_records(block.seal(len).unwrap())
+                    .unwrap();
                 assert_eq!(range.offset, start);
                 assert_eq!(range.len, 12288);
             }
             _ => unreachable!(),
         }
-        let after = writer.snapshot();
+        let after = monitor.snapshot().unwrap();
         assert_eq!(after.combining_bytes, before.combining_bytes);
         assert_eq!(after.combining_messages, 1);
         assert_eq!(
             writer.file_bytes() - after.combining_bytes as u64 - start,
             12288
         );
-        assert_eq!(writer.pending_writes(), 2);
+        assert_eq!(monitor.snapshot().unwrap().writer.pending, 2);
         writer.finish().unwrap();
         let bytes = std::fs::read(&file).unwrap();
         let msgs = mcap::MessageStream::new(&bytes)

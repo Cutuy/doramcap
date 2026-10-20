@@ -69,11 +69,17 @@ impl Recorder {
                 encoding: "protobuf",
             },
         ];
-        let writer = if direct {
-            McapWriter::direct(file, 8, 256 * 1024, schema, &channels, 4096)?
-        } else {
-            McapWriter::new(file, 8, 256 * 1024, schema, &channels)?
-        };
+        let writer = McapWriter::new(
+            file,
+            schema,
+            &channels,
+            storage_persistence::mcap::McapConfig {
+                buffers: 8,
+                buffer_size: 256 * 1024,
+                alignment: if direct { 4096 } else { 1 },
+                ..Default::default()
+            },
+        )?;
         Ok(Self {
             writer,
             base: path.to_path_buf(),

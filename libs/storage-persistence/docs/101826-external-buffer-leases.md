@@ -1,11 +1,24 @@
 # External-memory persistence
 
-![Three input paths and the shared writer lifecycle](architecture/three-path-writer-lifecycle.svg)
+![Corrected external SHM ingress](architecture/external-memory.svg)
 
-Status: intra-process slabs qualified; mmap qualified on x86_64/ARM64; transport adapters planned · revised 2026-10-19. Builds on the implemented [managed pool](101926-growable-buffer-pool.md).
-Two distinct APIs share external ownership and I/O: large payloads need storage framing;
-prepared blocks supply complete file records and bypass combining at any aligned size.
-[Input contracts](101926-memory-ingress-cases.md) · [Ownership lifetimes](architecture/external-memory-lifecycle.svg).
+Implemented correction · 2026-10-20. x86 and ARM64 default/all-feature tests and strict
+Clippy pass (ARM64 job 77). Historical E1 evidence applies to
+mapping ownership; the new ingress evidence is recorded below.
+
+- Existing payload: `append_external_payload(message, ReadLease)` adds one 4-KiB managed prefix.
+- Existing MCAP messages: `append_external_records(ReadLease)` validates and submits unchanged bytes.
+- Removed `MappedRecordsBuilder`, `PreparedMappedBlock` and writable-mmap MCAP entry points.
+- External inputs bypass combining; invalid layouts return ownership intact.
+- Initial submission advances prefix then payload. Vectored submission remains optional work.
+
+[Input contracts](101926-memory-ingress-cases.md) · [Region lifetimes](architecture/mmap-slab-ownership.svg).
+
+## Correction gates
+
+- [x] Remove writable-mmap MCAP framing and its example/tests; retain ownership/registration machinery and intra-process slab support.
+- [x] Accept externally stamped records through a validated read-lease entry point, independent of our builder.
+- [x] Qualify both external APIs against the diagram with pointer identity, exact file bytes and guard-lifetime tests (evidence below).
 
 ## E0 — Intra-process sealed slabs first
 
@@ -34,7 +47,7 @@ pre-register another pool to add capacity. Mapped ranges use E1's separate regis
 - [x] Adopt `memmap2`: `MmapRegion` owns mapping validity; `WritableRange → ReadLease` controls disjoint bytes.
 - [x] Add unsafe provider import/publication with a separate reuse token and generation; retain mapping guards through registration retirement.
 - [x] Cache registration by region identity; handle nonzero offsets and segment boundaries; return rejected leases intact.
-- [x] Frame owned mapped ranges with `MappedRecordsBuilder → PreparedMappedBlock`; preserve writer binding and rotation.
+- Historical implementation: `MappedRecordsBuilder → PreparedMappedBlock`; superseded by the correction gates above.
 - [x] Use pinned Zenoh POSIX SHM blocks as the test fixture. Its buffer owner retains the allocation until registration retirement.
 - [x] Gate: `MAP_PRIVATE` and `/dev/shm` shared mappings pass x86_64 and ARM64 qualification.
 - [x] Gate: split writes, stable registration counts, readers, rejection, rollback and cancellation pass on both architectures.
@@ -46,24 +59,22 @@ The core checks range overlap and I/O alignment. Ring headers and synchronizatio
 belong to the provider. The Zenoh fixture retains immutable allocations; independent
 transport-block recycling under a retained segment registration remains E3 work.
 
-## E2 — Large external payload API
+## E2 — Existing external payload API
 
-- [ ] Validate source address, transfer length and destination offset; discover alignment where supported and validate configured fallback requirements.
-- [ ] Add `append_external_payload(message, lease)`; copy inputs ≤256 KiB into managed combining storage and release their reuse guards after copying.
-- [ ] Assemble managed framing spans around borrowed payloads >256 KiB; preflight all spans and their file range before acceptance.
-- [ ] Validation: small-copy and threshold-boundary paths reproduce exact payloads without leaked guards.
-- [ ] Persist serialized messages or adapter-provided Protobuf prefixes/blobs/suffixes with decoding metadata.
-- [ ] Reject layouts requiring payload edge copies, full copies, buffered fallback or serialization staging above 256 KiB.
-- [ ] Bound registration entries/bytes and pending requests; split supported large ranges without copying payloads.
-- [ ] Release reuse guards after all writes/retries retire; retire registrations before releasing region guards.
-- [ ] Validation: independently decode aligned and rejected-misaligned cases, multiple spans and 100-MiB payloads.
-- [ ] Validation: delayed/out-of-order completions, short writes, cancellation, failure and shutdown never permit premature reuse.
-- [ ] Validation: large-payload copy count is zero; repeated uses retain one registration per registered subrange.
-- [ ] Validation: explicit region retirement releases pins/guards safely; written completion and durability remain distinct.
+- [x] `append_external_payload(message, lease)`: accept existing aligned bytes at any supported size.
+- [x] Lease one managed prefix page: valid MCAP padding followed by the 31-byte message header.
+- [x] Preflight both sources, registration and capacity; reserve one contiguous file range before admission.
+- [x] Retain both owners in one logical write; advance prefix then payload without flushing independent combining batches.
+- [ ] Optional vectored submission: qualify backend/registration support before adoption.
+- [ ] Discover device/filesystem alignment where supported; validate configured fallback, addresses, transfer lengths and file offsets.
+- [x] Reject unsupported layouts intact; payload bytes remain unchanged throughout.
+- [ ] Validate exact MCAP decoding, pointer identity, small/large aligned payloads, misalignment and 100-MiB payloads.
+- [ ] Validate out-of-order/short completions, cancellation, failed admission, rotation and shutdown; no premature reuse.
+- [ ] Confirm warmed registration reuse, bounded prefix storage and zero payload copies on x86 and ARM64.
 
-## E2P — Prepared external block API
+## E2P — Prepared blocks and external as-is ingress
 
-- [x] Add `append_prepared_records(block)` independently of E2's payload-size policy; accept any supported aligned block size.
+- [x] Builder-produced intra-process slabs: add `append_prepared_records(block)` independently of E2's payload-size policy; accept any supported aligned block size.
 - [x] Provide a framing helper for producer-reserved MCAP header/padding space and a sealed prepared-block type.
 - [x] Admit existing bytes unchanged; bypass combining, serialization and framing writes after sealing.
 - [x] Preserve channel/schema compatibility, per-piece contiguous ranges, rotation and finalization; return rejected blocks intact.
@@ -147,3 +158,18 @@ Subsequent local edits change comments/documentation only. The existing opt-in
 
 Regression: `tests/sealed_slabs.rs::standalone_paths_do_not_flush_or_reserve_capacity_for_combining`.
 Each piece occupies contiguous offsets; cross-piece placement and completion order are unspecified.
+
+## Corrected ingress evidence · 2026-10-20
+
+- [x] x86 default/all-feature suites and strict Clippy pass.
+- [x] `MAP_PRIVATE` and `/dev/shm`: pre-populated 4-MiB payload, exact independent MCAP decoding, two operations, unchanged bytes, registration reuse and reader/reuse-token lifetime.
+- [x] Caller-stamped records: exact whole-range file comparison, channel validation, malformed-record rejection and rotation.
+- [x] Unit fault injection: original payload pointer retained through prefix short writes and payload failure; registration rejection, failed submission and cancellation preserve owners.
+- [x] Activity traces: prefix/payload operations share one logical write and contiguous offsets; all spans close.
+- [x] ARM64 Pueue **77: Success**, full log inspected: default/all-feature storage tests, strict Clippy and all-feature demo build check. Snapshot `a033752d82ba4140aecb0fa69be148a8`.
+- Full ARM64 workspace **83: Success** after repairing the resource-policy `Placement` schema; snapshot `eec3a64111bc46ba96a5788eab3e0832`, full log inspected. Job 75 exposed the small trace-test sink queue; the fixture now retains its finite burst.
+
+Commands: `cargo test -p storage-persistence [--all-features]`;
+`cargo clippy -p storage-persistence --all-features --all-targets -- -D warnings`.
+Tests: `tests/mapped.rs`, `tests/activity_timeline.rs`, `writer::tests::prefixed_*`.
+Device-alignment discovery, the 100-MiB gate and optional vectored I/O remain open.
