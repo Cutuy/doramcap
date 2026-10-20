@@ -390,7 +390,11 @@ impl Writer {
             return Err(io::ErrorKind::InvalidInput.into());
         }
         Ok(Self {
-            ring: IoUring::new(config.queue_depth)?,
+            ring: IoUring::builder()
+                .setup_single_issuer()
+                .setup_defer_taskrun()
+                .setup_taskrun_flag()
+                .build(config.queue_depth)?,
             observer,
             observation_writer: observability::next_id(),
             observation_file: observability::next_id(),
@@ -1046,6 +1050,17 @@ impl Writer {
         Ok(())
     }
     pub fn progress(&mut self, wait: bool) -> io::Result<()> {
+        self.drain_progress(wait)?;
+        self.error.map_or(Ok(()), |e| Err(e.into()))
+    }
+    /// Ownership has already transferred. Report submission failures on the next
+    /// admission or barrier, rather than falsely returning rejected ownership.
+    pub(crate) fn kick_accepted(&mut self) {
+        if let Err(error) = self.progress(false) {
+            self.error.get_or_insert(error.kind());
+        }
+    }
+    fn drain_progress(&mut self, wait: bool) -> io::Result<()> {
         #[cfg(test)]
         if self.fail_submit {
             self.counters.submit_failures += 1;
@@ -1196,7 +1211,7 @@ impl Writer {
     }
     pub fn flush_written(&mut self) -> io::Result<()> {
         while self.outstanding + self.cancellations > 0 {
-            self.progress(true)?;
+            self.drain_progress(true)?;
         }
         self.error.map_or(Ok(()), |e| Err(e.into()))
     }
@@ -1485,6 +1500,10 @@ mod tests {
         p.request = Some(3);
         p.issued = 4096;
         w.retire_completion(3, -libc::EIO);
+        assert_eq!(
+            w.progress(false).unwrap_err().kind(),
+            io::Error::from_raw_os_error(libc::EIO).kind()
+        );
         assert_eq!(w.outstanding(), 0);
         assert_eq!(prefixes.available(), 1);
         assert!(region.acquire(4096..8192).is_ok());

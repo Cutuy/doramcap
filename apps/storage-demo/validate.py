@@ -74,6 +74,14 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
             control('managed_large', sizeMiB=mib)
             value = wait(lambda s: any(r.get('action') == 'managed_large' and r.get('bytes', 0) > mib * 1024 * 1024 for r in s.get('exercises', {}).get('receipts', [])))
             assert value['exercises']['receipts'][-1]['status'] == 'accepted'
+        # Default slab writes recycle beyond the four-buffer pool capacity.
+        for _ in range(12):
+            previous = int(state()['exercises']['receipts'][-1]['id'])
+            control('sealed_slab', sizeMiB=16)
+            value = wait(lambda s: int(s['exercises']['receipts'][-1]['id']) > previous)
+            assert value['exercises']['receipts'][-1]['status'] == 'accepted'
+            assert value['exercises']['heldReaders'] == 0
+        wait(lambda s: s['exercises']['pool']['available'] == 4)
         # Four held readers exhaust the pool even after CQEs; a fifth is rejected intact.
         for held in range(1, 5):
             control('sealed_slab', holdReader=True)
@@ -81,7 +89,8 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
             wait(lambda s: sum(r['retainedAfterIo'] for r in s['exercises']['pool']['slabs']) == held)
         assert value['exercises']['pool']['available'] == 0
         control('sealed_slab')
-        wait(lambda s: s['exercises']['receipts'][-1]['status'] == 'rejected')
+        rejected = wait(lambda s: s['exercises']['receipts'][-1]['status'] == 'rejected')
+        assert 'Release readers' in rejected['exercises']['receipts'][-1]['error']
         control('release_readers')
         wait(lambda s: s['exercises']['pool']['available'] == 4)
         control('sealed_slab', holdReader=False)

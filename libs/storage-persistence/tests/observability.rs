@@ -10,7 +10,7 @@ use storage_persistence::{
     mcap::{Channel, McapWriter, Message, Schema},
     observability::{CaptureFilter, Collector, EventKind, Mode},
     slabs::{SlabPhase, SlabPool},
-    writer::{WriteState, Writer, WriterConfig},
+    writer::{Writer, WriterConfig},
 };
 fn path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
@@ -82,17 +82,16 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     let block = builder.seal().unwrap();
     let reader = block.slab().clone();
     let slab_use = pool.snapshot().slabs[0].slab_use_id;
-    writer.append_prepared_records(block).unwrap();
     let before = monitor.snapshot().unwrap();
-    let active = monitor.active_writes().next().unwrap();
-    assert_eq!(active.ids.slab_use, slab_use);
-    assert_eq!(active.state, WriteState::AwaitingSubmission);
-    assert_eq!(active.ids.operation, 0);
-    assert_eq!(before.writer.pending, 1);
-    assert_eq!(before.writer.pending_bytes, 8192);
-    assert!(active.age_us.is_some());
-    let slab = pool.snapshot().slabs[0];
-    assert_eq!((slab.readers, slab.io_leases), (1, 1));
+    writer.append_prepared_records(block).unwrap();
+    // Submission can already retire I/O; correlate through retained history.
+    let accepted = collector
+        .read_after(0, 128)
+        .events
+        .into_iter()
+        .find(|e| e.kind == EventKind::Accepted && e.data.ids.slab_use == slab_use)
+        .unwrap();
+    assert_eq!(pool.snapshot().slabs[0].readers, 1);
     writer.flush_written().unwrap();
     let after = monitor.snapshot().unwrap();
     assert_eq!(after.writer.pending, 0);
@@ -110,7 +109,7 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     let events: Vec<_> = history
         .events
         .iter()
-        .filter(|e| e.data.ids.write == active.ids.write)
+        .filter(|e| e.data.ids.write == accepted.data.ids.write)
         .collect();
     assert_eq!(
         events
@@ -130,7 +129,7 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     assert_eq!(queued.len(), 2);
     for (q, c) in queued.iter().zip(&completed) {
         assert_eq!(q.data.ids.operation, c.data.ids.operation);
-        assert_eq!(q.data.ids.region, active.ids.region);
+        assert_eq!(q.data.ids.region, accepted.data.ids.region);
         assert!(c.data.duration_us.is_some());
     }
     assert_ne!(queued[0].data.ids.operation, queued[1].data.ids.operation);
@@ -139,8 +138,8 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     assert_eq!(pool.available(), 1); // collector/history owns no lease
     let new = pool.acquire().unwrap();
     let reused = pool.snapshot().slabs[0];
-    assert_eq!(reused.region_id, active.ids.region);
-    assert_ne!(reused.slab_use_id, active.ids.slab_use);
+    assert_eq!(reused.region_id, accepted.data.ids.region);
+    assert_ne!(reused.slab_use_id, accepted.data.ids.slab_use);
     drop(new);
     writer.finish().unwrap();
     assert!(

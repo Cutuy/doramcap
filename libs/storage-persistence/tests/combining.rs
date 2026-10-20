@@ -77,3 +77,74 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
     assert_eq!(messages[1].data.as_ref(), &[8]);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn submissions_flush_aged_batches_and_reclaim_without_polling() {
+    use std::time::{Duration, Instant};
+    let path = std::env::temp_dir().join(format!("doramcap-submission-{}", std::process::id()));
+    let file = std::fs::File::options()
+        .create_new(true)
+        .write(true)
+        .open(&path)
+        .unwrap();
+    let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
+    let mut writer = McapWriter::new(
+        file,
+        Schema {
+            name: "opaque",
+            encoding: "",
+            data: b"",
+        },
+        &[Channel {
+            id: 1,
+            topic: "test",
+            encoding: "",
+        }],
+        storage_persistence::mcap::McapConfig {
+            metrics,
+            buffers: 2,
+            buffer_size: 512,
+            alignment: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let meta = Message {
+        channel: 1,
+        sequence: 0,
+        log_time: 0,
+        publish_time: 0,
+    };
+    writer.reserve(meta, 1).unwrap().commit().unwrap();
+    let baseline = monitor.snapshot().unwrap().writer.counters.accepted;
+    std::thread::sleep(Duration::from_millis(110));
+    // A new reservation flushes the expired batch without an explicit poll.
+    writer.reserve(meta, 1).unwrap().commit().unwrap();
+    assert!(monitor.snapshot().unwrap().writer.counters.accepted > baseline);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut count = 2;
+    while count < 200 {
+        match writer.reserve(meta, 1) {
+            Ok(reservation) => {
+                reservation.commit().unwrap();
+                count += 1;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => panic!("{error}"),
+        }
+        assert!(
+            Instant::now() < deadline,
+            "submissions failed to reclaim capacity"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(monitor.snapshot().unwrap().writer.counters.accepted > baseline + 2);
+    writer.finish().unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    let messages = mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(messages.len(), count);
+    std::fs::remove_file(path).unwrap();
+}

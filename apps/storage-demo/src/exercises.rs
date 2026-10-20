@@ -114,7 +114,17 @@ impl Exercises {
             }
             let pool = self.pool.as_ref().unwrap();
             writer.prepare_slabs(pool)?;
-            let mut builder = writer.prepare_records(pool.acquire()?);
+            let slab = pool.acquire().map_err(|error| {
+                if error.kind() == std::io::ErrorKind::WouldBlock && !self.readers.is_empty() {
+                    std::io::Error::new(error.kind(), format!(
+                        "Slab pool full: {} retained readers. Click Release readers to reuse the buffers.",
+                        self.readers.len()
+                    ))
+                } else {
+                    error
+                }
+            })?;
+            let mut builder = writer.prepare_records(slab);
             let mut bytes = 0;
             for i in 0..2 {
                 let seq = sequence.wrapping_add(i);

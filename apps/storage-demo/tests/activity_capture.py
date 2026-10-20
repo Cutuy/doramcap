@@ -1,5 +1,5 @@
 """Exercise source-time activity capture; build with the activity-tracing feature."""
-import argparse, json, select, signal, subprocess, tempfile, time, urllib.request
+import argparse, json, re, select, signal, subprocess, tempfile, time, urllib.request
 from pathlib import Path
 p = argparse.ArgumentParser()
 p.add_argument('--bin-dir', type=Path, required=True)
@@ -35,4 +35,5 @@ with tempfile.TemporaryDirectory(prefix='storage-activity-') as directory:
         _, err=proc.communicate(timeout=15)
         assert proc.returncode==0, err
     assert 'storage activity capture:' in err, err
+    assert not re.search(r'(?:records|fields|spans|unregistered|encoded_batches|dropped): [1-9]', err), err
     subprocess.run([str(bins/'examples'/'validate_activity'), capture], check=True)

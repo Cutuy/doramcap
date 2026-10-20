@@ -178,7 +178,15 @@ pub fn capture_activity(
     if let Some(path) = path {
         sinks.push(Box::new(activity_tracing::sinks::McapSink::create(path)?));
     }
-    let mut runtime = activity_tracing::Runtime::start(activity_tracing::Config::default(), sinks)?;
+    // Span boundaries flush individual batches. Cover a full capture-block burst
+    // while sink workers are descheduled, preserving bounded nonblocking capture.
+    let sink_queue = 64;
+    let config = activity_tracing::Config {
+        sink_queue,
+        encoded_buffers: sinks.len() * (sink_queue + 1) + 1,
+        ..Default::default()
+    };
+    let mut runtime = activity_tracing::Runtime::start(config, sinks)?;
     let handle = runtime.handle();
     let registration = handle.register_thread("storage-writer")?;
     tracing::subscriber::with_default(handle.subscriber(), run);

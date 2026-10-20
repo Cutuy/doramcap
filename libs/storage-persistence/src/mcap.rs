@@ -65,6 +65,11 @@ impl Default for McapConfig {
 }
 
 /// MCAP recording and lifecycle. Observation is injected through `McapConfig`.
+///
+/// Submissions drive I/O on the calling thread; periodic polling is optional.
+/// Successful commits/appends mean acceptance. Failures discovered after acceptance
+/// are retained for the next submission or explicit flush/finish barrier.
+/// Idle batches remain buffered until another writer call. Rings require Linux 6.1+.
 pub struct McapWriter {
     core: McapCore,
 }
@@ -138,6 +143,9 @@ impl McapWriter {
     pub fn next_flush_deadline(&self) -> Option<Instant> {
         self.core.next_flush_deadline()
     }
+    /// Optionally refresh completions and flush an aged batch while idle.
+    /// Submissions perform this work automatically. Without calls, an idle batch
+    /// remains buffered until the next submission, flush, or finish.
     pub fn poll(&mut self, now: Instant) -> io::Result<()> {
         self.update(|c| c.poll(now))
     }

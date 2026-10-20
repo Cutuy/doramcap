@@ -17,7 +17,9 @@ cargo run -p storage-demo
 - **Stop recording** seals and syncs; **Start new session** clears previous capture files.
 - **Large managed buffer** selects 1/4/16 MiB; each click submits one message using writer defaults.
 - **Sealed slab** writes two 256-KiB records from a four-slab pool.
-- **Retain slab reader** holds bytes after I/O. **Release readers** enables recycling.
+- Slab writes recycle by default. **Retain slab reader** holds bytes after I/O;
+  four retained readers fill the pool. **Release readers** enables recycling.
+- The 1/4/16 MiB selector controls managed payloads. Slabs always hold two 256-KiB payloads.
 - **Retire slab registrations** releases idle registrations; the next use registers again.
 - **Probe burst**, **Flush now** and **Seal & rotate** exercise the pipeline.
 - `--start-paused`, `--seconds N`, `--port N`, `--dir NEW_DIR` configure the session.
@@ -26,7 +28,9 @@ cargo run -p storage-demo
 Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
 runs outside the writer thread; slow viewers skip intermediate frames. Collection retains
 4,096 events; the dashboard retains 256. IDs travel as uint64 and decode to exact strings. Queue-to-CQE timing
-includes owner polling delay. Workloads cover managed buffers and sealed slabs. Hardware DMA is not measured.
+includes time until the next submission. The owner submits heartbeats roughly every
+5 ms; record submissions drive completions without explicit writer polling.
+**Flush now** waits for accepted writes; **Seal & rotate** also finalizes and syncs. Workloads cover managed buffers and sealed slabs. Hardware DMA is not measured.
 
 ## Live activity timeline
 

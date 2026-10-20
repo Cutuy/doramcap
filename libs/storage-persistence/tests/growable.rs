@@ -198,8 +198,7 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
             },
         );
         for (seq, size) in [(0, 7 * DEFAULT_BUFFER_SIZE), (1, huge_size)] {
-            let before = monitor.snapshot().unwrap().writer.pending;
-            assert!(before > 0);
+            let before = monitor.snapshot().unwrap().writer.counters.accepted;
             let mut reservation = writer.reserve(meta(seq), size).unwrap();
             let ptr = reservation.payload().as_ptr();
             let slice = reservation.payload_mut();
@@ -209,16 +208,9 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
             }
             assert_eq!(reservation.payload().as_ptr(), ptr);
             reservation.commit().unwrap();
-            assert_eq!(monitor.snapshot().unwrap().writer.pending, before + 1); // every earlier write still pending
-            #[cfg(feature = "diagnostics")]
             assert_eq!(
-                monitor
-                    .snapshot()
-                    .unwrap()
-                    .writer
-                    .counters
-                    .observed_completions,
-                0
+                monitor.snapshot().unwrap().writer.counters.accepted,
+                before + 1
             );
         }
         writer.finish().unwrap();
@@ -252,17 +244,15 @@ fn mcap_commit_backpressure_retains_contiguous_bytes() {
             ..WriterConfig::default()
         },
     );
-    // Metadata occupies the only pending slot. Reservation must still succeed.
+    // Admission itself can reclaim the metadata slot; retry only if still busy.
     let mut reservation = writer.reserve(meta(0), DEFAULT_BUFFER_SIZE * 7).unwrap();
     reservation.payload_mut().fill(9);
     let ptr = reservation.payload().as_ptr();
-    assert_eq!(
-        reservation.try_commit().unwrap_err().kind(),
-        io::ErrorKind::WouldBlock
-    );
-    assert_eq!(reservation.payload().as_ptr(), ptr);
-    reservation.progress(true).unwrap();
-    reservation.try_commit().unwrap();
+    while let Err(error) = reservation.try_commit() {
+        assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(reservation.payload().as_ptr(), ptr);
+        std::thread::yield_now();
+    }
     drop(reservation);
     writer.finish().unwrap();
     let bytes = std::fs::read(&path).unwrap();
@@ -287,16 +277,13 @@ fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
             ..WriterConfig::default()
         },
     );
-    writer.reserve(meta(0), 1).unwrap().commit().unwrap(); // active small record, metadata still pending
+    writer.reserve(meta(0), 1).unwrap().commit().unwrap(); // active small record
     let mut large = writer.reserve(meta(1), 7 * DEFAULT_BUFFER_SIZE).unwrap();
     large.payload_mut().fill(42);
-    assert_eq!(
-        large.try_commit().unwrap_err().kind(),
-        io::ErrorKind::WouldBlock
-    );
-    large.progress(true).unwrap();
-    // The large write uses the freed slot while the small batch stays buffered.
-    large.try_commit().unwrap();
+    while let Err(error) = large.try_commit() {
+        assert_eq!(error.kind(), io::ErrorKind::WouldBlock);
+        std::thread::yield_now();
+    }
     drop(large);
     writer.finish().unwrap();
     let bytes = std::fs::read(&path).unwrap();

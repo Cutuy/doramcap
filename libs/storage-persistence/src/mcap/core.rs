@@ -172,6 +172,7 @@ impl McapCore {
     }
     fn submit(&mut self, lease: BufferLease) -> io::Result<()> {
         self.writer.append(lease)?;
+        self.writer.kick_accepted();
         Ok(())
     }
     /// Retire registrations and release retained memory only while fully idle.
@@ -218,6 +219,7 @@ impl McapCore {
         lease: crate::mapped::ReadLease,
     ) -> Result<crate::file_offsets::FileRange, Rejected<crate::mapped::ReadLease>> {
         let prepare = (|| {
+            self.poll(Instant::now())?;
             if !self.channels.contains(&message.channel) {
                 return Err(invalid());
             }
@@ -248,6 +250,7 @@ impl McapCore {
             }
         };
         let range = self.writer.try_append_prefixed(prefix, lease)?;
+        self.writer.kick_accepted();
         Ok(range)
     }
     /// Accept caller-stamped message records and optional alignment padding unchanged.
@@ -257,7 +260,10 @@ impl McapCore {
         &mut self,
         lease: crate::mapped::ReadLease,
     ) -> Result<crate::file_offsets::FileRange, Rejected<crate::mapped::ReadLease>> {
-        if let Err(error) = self.validate_external_records(lease.as_slice()) {
+        if let Err(error) = self
+            .poll(Instant::now())
+            .and_then(|()| self.validate_external_records(lease.as_slice()))
+        {
             self.writer
                 .reject(error.kind(), lease.ids(), lease.as_slice().len() as u64);
             return Err(Rejected {
@@ -266,6 +272,7 @@ impl McapCore {
             });
         }
         let range = self.writer.try_append_mapped(lease)?;
+        self.writer.kick_accepted();
         Ok(range)
     }
     fn validate_external_records(&self, bytes: &[u8]) -> io::Result<()> {
@@ -316,6 +323,7 @@ impl McapCore {
         block: PreparedBlock,
     ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
         let validation = (|| {
+            self.poll(Instant::now())?;
             if !Arc::ptr_eq(&block.format, &self.prepared_format) {
                 return Err(invalid());
             }
@@ -335,7 +343,10 @@ impl McapCore {
         }
         let PreparedBlock { slab, format } = block;
         match self.writer.try_append_slab(slab) {
-            Ok(range) => Ok(range),
+            Ok(range) => {
+                self.writer.kick_accepted();
+                Ok(range)
+            }
             Err(e) => Err(Rejected {
                 error: e.error,
                 value: PreparedBlock {
@@ -368,6 +379,7 @@ impl McapCore {
         message: Message,
         payload_len: usize,
     ) -> io::Result<(usize, usize, Option<BufferLease>)> {
+        self.poll(Instant::now())?;
         if payload_len > self.max_large_payload() || !self.channels.contains(&message.channel) {
             return Err(invalid());
         }
@@ -410,8 +422,9 @@ impl McapCore {
     pub(super) fn next_flush_deadline(&self) -> Option<Instant> {
         self.since.and_then(|t| t.checked_add(self.max_age))
     }
-    /// The owner event loop calls this on its timer, including when inputs are idle.
+    /// Optional refresh; submissions also drive completions and aged batches.
     pub(super) fn poll(&mut self, now: Instant) -> io::Result<()> {
+        self.writer.progress(false)?;
         if self
             .next_flush_deadline()
             .is_some_and(|deadline| now >= deadline)
@@ -458,6 +471,7 @@ impl McapCore {
                     self.combining_messages = 0;
                     self.used = 0;
                     self.since = None;
+                    self.writer.kick_accepted();
                 }
                 Err(mut e) => {
                     e.lease.restore_len(self.buffer_size);
@@ -650,6 +664,7 @@ impl MessageReservation<'_> {
         if self.committed {
             return Err(invalid());
         }
+        self.writer.writer.progress(false)?;
         if let Some(lease) = self.standalone.take() {
             match self
                 .writer
@@ -674,6 +689,7 @@ impl MessageReservation<'_> {
             self.writer.since.get_or_insert_with(Instant::now);
         }
         self.committed = true;
+        self.writer.writer.kick_accepted();
         Ok(())
     }
     /// Drive pending writes while retaining a reservation rejected by backpressure.

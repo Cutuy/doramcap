@@ -159,7 +159,7 @@ async fn control(State(s): State<Web>, Json(body): Json<Value>) -> StatusCode {
         return StatusCode::BAD_REQUEST;
     }
     let size_mib = body.get("sizeMiB").map_or(Some(1), Value::as_u64);
-    let hold_reader = body.get("holdReader").map_or(Some(true), Value::as_bool);
+    let hold_reader = body.get("holdReader").map_or(Some(false), Value::as_bool);
     let (Some(size_mib @ (1 | 4 | 16)), Some(hold_reader)) = (size_mib, hold_reader) else {
         return StatusCode::BAD_REQUEST;
     };
@@ -347,7 +347,6 @@ fn owner(
     let start = Instant::now();
     let mut heartbeat = Instant::now();
     let mut publish = Instant::now();
-    let mut rng = now_ns();
     let (mut seq, mut cpu, mut beats, mut probes, mut index) = (0u32, 0u64, 0u64, 0u64, 0u64);
     let mut inspector = inspect::Inspector::new();
     let mut disk = json!(null);
@@ -441,10 +440,7 @@ fn owner(
         if Instant::now() >= heartbeat {
             pending.push((packet(seq, false), 2, "Heartbeat"));
             beats += 1;
-            rng ^= rng << 13;
-            rng ^= rng >> 7;
-            rng ^= rng << 17;
-            heartbeat = Instant::now() + Duration::from_millis(17 + rng % 380);
+            heartbeat = Instant::now() + Duration::from_millis(5);
         }
         for (p, channel, kind) in pending {
             let encode_start = Instant::now();
@@ -492,7 +488,6 @@ fn owner(
                 disk = json!(null);
             }
         }
-        writer.poll(Instant::now())?;
         observation.poll(&mut latency);
         if Instant::now() >= publish {
             let d = monitor.snapshot().expect("writer initialized");
