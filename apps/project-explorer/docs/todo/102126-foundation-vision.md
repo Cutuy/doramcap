@@ -11,7 +11,7 @@ see the [canonical mapping contract](../overview-mappings.md). [Interactive visu
   standalone HTML preserves capability, scenario and third-party selections.
 - [x] Canonical versioned JSON and schema implemented; see the mapping contract.
 - [x] Overview narrative and maturity labels recorded in the canonical manifest.
-- [x] Overview deep links implemented; browser tests cover selection and history.
+- [x] Overview deep links implemented with selection and history.
 - [x] Mapping integrity and responsive navigation checked; see [validation](../validation.md).
 
 ## Intent

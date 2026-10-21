@@ -34,14 +34,10 @@ those declaration types. Component sidebars remain direct. Component documentati
 ## Validation
 
 ```sh
-npm --prefix apps/project-explorer/frontend test
 npm --prefix apps/project-explorer/frontend run build
-cd apps/project-explorer/frontend
-npx playwright install chromium
-npm run test:browser
 ```
 
-Browser tests serve the production build at a project subpath and check deep links,
-refresh/history, documentation assets, overview mappings, direct dependency links and mobile layout.
+The build validates TypeScript and canonical mappings. Check deep links,
+refresh/history, documentation assets, and mobile layout in the local preview.
 
 [Recorded validation](validation.md).

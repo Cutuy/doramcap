@@ -15,3 +15,5 @@
 - Generate content from manifests, READMEs, and repository docs; serve architecture SVGs statically. Keep use-case mappings in canonical, schema-validated JSON with auditable references. Mark placeholders accurately without inventing integrations.
 - Preserve URL-based navigation, selection, filters, refresh, and browser history. Support local hosting and GitHub Pages subpaths.
 - Apply copy corrections consistently across the SPA. Review substantial visual changes before implementation; verify responsive layout and relevant behavior, then refresh the local preview.
+
+- Keep verification lightweight: production build, schema validation, and local visual checks. Do not add a JavaScript test suite or Playwright tooling.

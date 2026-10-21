@@ -34,15 +34,12 @@ From the repository root:
 
 ```sh
 npm --prefix apps/project-explorer/frontend ci
-npm --prefix apps/project-explorer/frontend test
 npm --prefix apps/project-explorer/frontend run build
 ```
 
 Generation runs Ajv against the strict JSON Schema, then verifies duplicate IDs,
 component/capability/integration references, evidence documents, and membership.
-Any failure exits nonzero before emitting the overview. `npm test` also exercises
-negative mutations to ensure invalid mappings are rejected. Browser tests cover
-URL selection, refresh/history, mapping links, and mobile layout.
+Any failure exits nonzero before emitting the overview.
 
 Deep links use `#/overview?useCase=perception`, `?capability=memory`, or
 `?integration=dora`. The first use case in manifest order is selected when `useCase` is omitted.

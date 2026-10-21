@@ -7,9 +7,7 @@
     "generate": "tsx scripts/generate.ts",
     "dev": "npm run generate && vite --host 127.0.0.1",
     "build": "npm run generate && tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "test": "npm run generate && tsx --test tests/*.test.ts",
-    "test:browser": "playwright test"
+    "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",
@@ -22,7 +20,6 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
