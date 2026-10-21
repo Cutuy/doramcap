@@ -1,69 +1,44 @@
-![Architecture](fault-reporting.svg)
+![Architecture](../../fault-watchdog/docs/production-watchdog.svg)
 
 # Fault reporting roadmap
 
-Created 2026-10-20. Core crates implemented; app integration remains planned. Detailed implementation plans now live with their library crates.
+Created 2026-10-20. Detailed app milestones and evidence live in the
+[production watchdog plan](../../fault-watchdog/docs/102026-production-watchdog.md).
 
 ## Milestones
 
-- [x] Agree on core observation semantics, bounds and Crossbeam; defer transport/schema selection to app integration.
-- [x] Implement `libs/fault/reporter`: caller API, separate queues, local state and Rust publication handoff. Transport adapters deferred.
-- [x] Implement `libs/fault/aggregation`: deterministic state machine, freshness and snapshots.
-- [ ] Add `apps/fault-watchdog`: Dora ingress, scheduling and bounded output routing.
-- [ ] Add `apps/fault-demo`: synthetic producers and live fault display.
-- [ ] Add demo MCAP recording through a recorder consumer; choose existing recorder extension versus separate app during integration.
-
-## Validation
-
-- [ ] Record library tests and overload benchmarks in the detailed plans.
-- [ ] Verify Dora delivery, reconnect and aggregator restart behavior end to end.
-- [ ] Verify frontend snapshot/update reconciliation and stale-source display.
-- [ ] Verify MCAP schema, timestamps, event identity, finalization and injected write errors.
-- [ ] Run repository checks and ARM64 CI; record job IDs/results. Run Dora end-to-end tests separately.
+- [x] Reporter: separate bounded outcome queues, optional deadlines, immediate failure and one-second recovery.
+- [x] Aggregation: deterministic health/freshness, deduplication, revisioned updates and snapshots.
+- [x] Shared Protobuf IPC/storage contracts and checked translation.
+- [x] Production watchdog: configured Dora host, bounded fan-out and optional MCAP/OTel adapters.
+- [x] Demo producers and dashboard: controls, independent freshness and snapshot reconciliation.
+- [x] Complete real-Dora integration and ARM64 validation of the app composition.
 
 ## Ownership
 
-| Component | Owns |
+| Component | Responsibility |
 |---|---|
-| Reporter library | Nonblocking observations, bounded success/failure queues, sequencing and loss visibility |
-| Aggregation crate | Fault lifecycle, deduplication, freshness, bounded state and output records |
-| Watchdog app | Dora subscriptions, clocks/timers, process lifecycle and output queues |
-| Demo frontend | Current state, history and loss/staleness indicators |
-| Recorder consumer | Batching, MCAP schemas/channels, rotation and storage error reporting |
-
-Implemented scope includes reporter, aggregation and Protobuf protocol crates. Apps and recording remain follow-up work.
-
-## Decisions proposed
-
-- Stateful checks report success or failure. Duplicate observations update evidence without repeating state transitions.
-- Periodic checks may declare a deadline. Silence becomes stale/unknown; it never proves recovery.
-- Event-only failures remain available for one-off diagnostics and do not automatically create latched conditions.
-- Use Dora for initial transport, with transport-independent library APIs.
-- Persist transitions and repetition/loss summaries. Frontends also receive snapshots.
-- A recorder failure uses the reporting path; recurring errors from persisting that failure are suppressed and counted.
-- External supervision owns Dora/process/host failure detection.
-
-## Dependency evaluation gate
-
-Before implementation, present maintained candidates and measured tradeoffs for user evaluation: existing `crossbeam-queue`/`crossbeam-channel` for bounded handoff, `prost` for the shared Protobuf contract, and the existing `dora-node-api` adapter. Check current maintenance and repository versions then. Evaluate standard OTel LogRecords versus a dedicated fault envelope before selecting the wire schema; OTel export is optional.
+| Reporter | Capture outcomes; host event loop publishes |
+| Aggregation | State transitions and domain output |
+| Watchdog | Config, Dora lifecycle, queues and optional sinks |
+| MCAP adapter | Existing storage writer, schema, rotation and finalization |
+| Demo | Synthetic operations, controls and browser display |
 
 ## Detailed plans
 
-- [Reporter library](../../../libs/fault/reporter/docs/102026-fault-reporter.md)
-- [Aggregation crate](../../../libs/fault/aggregation/docs/102026-fault-aggregation.md)
+- [Reporter](../../../libs/fault/reporter/docs/102026-fault-reporter.md)
+- [Aggregation](../../../libs/fault/aggregation/docs/102026-fault-aggregation.md)
+- [Wire contract](../../../libs/fault/protocol/docs/102026-fault-publications.md)
+- [State transitions](../../../libs/fault/protocol/docs/102026-event-driven-faults.md)
+- [Production app](../../fault-watchdog/docs/102026-production-watchdog.md)
 
 ## Evidence
 
-2026-10-20: repository layout and activity schema/exporter inspected. No implementation or runtime validation completed.
+Core library validation and ARM64 jobs 88–93 are recorded in the library plans.
+The app's ten focused tests, individual/combined feature tests, strict Clippy and
+rustdoc pass locally. The production plan tracks final ARM64/Dora results.
 
-## Scope decision
+Dependencies were approved before implementation: existing Crossbeam, Dora, Prost,
+Tokio/Axum and official OTel 0.33 SDK/OTLP HTTP export. MCAP uses `storage-persistence`.
 
-2026-10-20: user approved Crossbeam and transport-independent Rust records, deferring Protobuf/Dora adapters and demo apps. Use separate queues, optional deadlines, immediate failure activation and one-second recovery hysteresis. The core supports snapshots and batches; host apps own scheduling and transport flush.
-
-Core evidence: 26 local tests, allocation validation, strict Clippy, formatting and lifecycle example passed. ARM64 CI job 88 passed the submitted runtime sources. Detailed plans record test scope and measurement limits.
-
-## Publication schemas
-
-The [fault-protocol crate](../../../libs/fault/protocol/README.md) now defines reporter IPC and aggregation storage/publication envelopes with checked bidirectional translations. See its [wire contract](../../../libs/fault/protocol/docs/102026-fault-publications.md). Actual Dora and MCAP adapters remain follow-up work.
-
-[Proposed event-driven architecture and state transitions](../../../libs/fault/protocol/docs/102026-event-driven-faults.md).
+ARM64 workspace/native job 95 and Dora/MCAP/OTLP job 100 passed. Final-source job 101 also passed ten focused tests and Dora/MCAP/OTLP validation, including the shutdown-isolation fix.

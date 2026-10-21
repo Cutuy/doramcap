@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1080" viewBox="0 0 1440 1080"><defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="none" stroke="#a5bad3" stroke-width="1.7"/></marker><style>text{font-family:Arial,sans-serif;fill:#eaf2fc;font-size:20px}.title{font-size:30px;font-weight:bold}.h{font-size:23px;font-weight:bold}.s{font-size:16px;fill:#bdd0e6}.panel{fill:#13253b;stroke:#3c5675;stroke-width:1.5}.box{fill:#203b58;stroke:#809ebf;stroke-width:1.5}.optional{fill:#343125;stroke:#d8bd75;stroke-width:1.5}.external{fill:#17413c;stroke:#74cfb5;stroke-width:1.5}.edge{fill:none;stroke:#a5bad3;stroke-width:2;marker-end:url(#arrow)}.dash{stroke-dasharray:6 5}</style></defs><rect width="1440" height="1080" rx="18" fill="#0b1727"/>
+<text x="30" y="45" class="title" text-anchor="start">Production watchdog · optional outputs</text>
+<text x="30" y="79" class="s" text-anchor="start">IMPLEMENTED     default = aggregation + Dora     |     + mcap     |     + otel     |     both supported</text>
+<rect x="300" y="110" width="1110" height="720" rx="18" class="panel"/>
+<text x="330" y="148" class="h" text-anchor="start">apps/fault-watchdog</text>
+<text x="1375" y="148" class="s" text-anchor="end">Production app</text>
+<rect x="340" y="177" width="1020" height="72" rx="12" class="box"/>
+<text x="850.0" y="211" class="" text-anchor="middle">watchdog.proto → pbtxt-config → validation</text>
+<text x="850.0" y="239" class="s" text-anchor="middle">inputs · bounds · sink enablement · paths / endpoints · shutdown</text>
+<path d="M800 249V314" class="edge"/>
+<text x="815" y="287" class="s" text-anchor="start">runtime config</text>
+<rect x="25" y="315" width="240" height="185" rx="12" class="box"/>
+<text x="145.0" y="349" class="" text-anchor="middle">Reporting apps</text>
+<text x="145.0" y="377" class="s" text-anchor="middle">production services</text>
+<text x="145.0" y="403" class="s" text-anchor="middle">+ synthetic demo sources</text>
+<text x="145.0" y="429" class="s" text-anchor="middle">fault-reporter</text>
+<text x="145.0" y="455" class="s" text-anchor="middle">existing event loops</text>
+<rect x="340" y="315" width="240" height="110" rx="12" class="box"/>
+<text x="460.0" y="349" class="" text-anchor="middle">Dora ingress</text>
+<text x="460.0" y="377" class="s" text-anchor="middle">ReporterPublication</text>
+<text x="460.0" y="403" class="s" text-anchor="middle">fault-protocol decode</text>
+<path d="M265 370H340" class="edge"/>
+<text x="301" y="355" class="s" text-anchor="middle">IPC</text>
+<rect x="650" y="315" width="300" height="110" rx="12" class="box"/>
+<text x="800.0" y="349" class="" text-anchor="middle">fault-aggregation</text>
+<text x="800.0" y="377" class="s" text-anchor="middle">health · freshness · revisions</text>
+<text x="800.0" y="403" class="s" text-anchor="middle">host event loop + deadlines</text>
+<path d="M580 370H650" class="edge"/>
+<rect x="1050" y="315" width="310" height="110" rx="12" class="box"/>
+<text x="1205.0" y="349" class="" text-anchor="middle">FaultObservability</text>
+<text x="1205.0" y="377" class="s" text-anchor="middle">host-owned diagnostics</text>
+<text x="1205.0" y="403" class="s" text-anchor="middle">injected Arc</text>
+<path d="M1050 370H950" class="edge dash"/>
+<rect x="650" y="470" width="300" height="70" rx="12" class="box"/>
+<text x="800.0" y="504" class="" text-anchor="middle">Bounded fan-out</text>
+<text x="800.0" y="532" class="s" text-anchor="middle">AggregationPublication</text>
+<path d="M800 425V470" class="edge"/>
+<path d="M800 540V575H470V610" class="edge"/>
+<path d="M800 575H850V610" class="edge"/>
+<path d="M800 575H1215V610" class="edge"/>
+<rect x="340" y="610" width="260" height="160" rx="12" class="box"/>
+<text x="470.0" y="644" class="" text-anchor="middle">Live publisher</text>
+<text x="470.0" y="672" class="s" text-anchor="middle">BASE</text>
+<text x="470.0" y="698" class="s" text-anchor="middle">bounded queue</text>
+<text x="470.0" y="724" class="s" text-anchor="middle">Dora updates + snapshots</text>
+<rect x="720" y="610" width="260" height="160" rx="12" class="optional"/>
+<text x="850.0" y="644" class="" text-anchor="middle">MCAP sink</text>
+<text x="850.0" y="672" class="s" text-anchor="middle">FEATURE: mcap</text>
+<text x="850.0" y="698" class="s" text-anchor="middle">bounded queue / isolated I/O</text>
+<text x="850.0" y="724" class="s" text-anchor="middle">storage-persistence</text>
+<rect x="1080" y="610" width="270" height="160" rx="12" class="optional"/>
+<text x="1215.0" y="644" class="" text-anchor="middle">OTel sink</text>
+<text x="1215.0" y="672" class="s" text-anchor="middle">FEATURE: otel</text>
+<text x="1215.0" y="698" class="s" text-anchor="middle">bounded queue / isolated I/O</text>
+<text x="1215.0" y="724" class="s" text-anchor="middle">fault events → OTLP</text>
+<rect x="340" y="890" width="260" height="105" rx="12" class="external"/>
+<text x="470.0" y="924" class="" text-anchor="middle">Demo dashboard</text>
+<text x="470.0" y="952" class="s" text-anchor="middle">separate consumer</text>
+<text x="470.0" y="978" class="s" text-anchor="middle">health · freshness · timeline</text>
+<rect x="720" y="890" width="260" height="105" rx="12" class="external"/>
+<text x="850.0" y="924" class="" text-anchor="middle">MCAP files</text>
+<text x="850.0" y="952" class="s" text-anchor="middle">fault-schema descriptor</text>
+<text x="850.0" y="978" class="s" text-anchor="middle">updates + snapshots</text>
+<rect x="1080" y="890" width="270" height="105" rx="12" class="external"/>
+<text x="1215.0" y="924" class="" text-anchor="middle">OTel Collector</text>
+<text x="1215.0" y="952" class="s" text-anchor="middle">external backends</text>
+<path d="M470 770V890" class="edge"/>
+<text x="485" y="863" class="s" text-anchor="start">IPC</text>
+<path d="M850 770V890" class="edge"/>
+<path d="M1215 770V890" class="edge"/>
+<text x="30" y="1043" class="s" text-anchor="start">Sink failures → local reporter → aggregation    •    suppress feedback to the failing sink</text>
+</svg>

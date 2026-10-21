@@ -1,0 +1,25 @@
+nodes:
+  - id: source_a
+    path: ../../../target/debug/fault-demo-source
+    args: a
+    inputs:
+      controls: dashboard/controls
+    outputs: [reports]
+  - id: source_b
+    path: ../../../target/debug/fault-demo-source
+    args: b
+    inputs:
+      controls: dashboard/controls
+    outputs: [reports]
+  - id: watchdog
+    path: ../../../target/debug/fault-watchdog
+    args: ../../fault-watchdog/config/default.pbtxt
+    inputs:
+      source_a: source_a/reports
+      source_b: source_b/reports
+    outputs: [faults]
+  - id: dashboard
+    path: ../../../target/debug/fault-demo-dashboard
+    inputs:
+      faults: watchdog/faults
+    outputs: [controls]

@@ -1,0 +1,35 @@
+syntax = "proto3";
+package doramcap.watchdog.v1;
+// Runtime capabilities are validated against the compiled Cargo features.
+message WatchdogConfig {
+  repeated string inputs = 1; // One source incarnation per Dora input.
+  optional uint32 max_sources = 2;
+  optional uint32 max_conditions_per_source = 3;
+  optional uint32 max_batch_records = 4;
+  optional uint32 output_capacity = 5;
+  optional uint32 dedup_window = 6;
+  optional uint32 transport_allowance_ms = 7;
+  optional uint32 source_timeout_ms = 8;
+  optional uint32 snapshot_interval_ms = 9;
+  optional uint32 maintenance_ms = 10;
+  optional uint32 max_frame_bytes = 11;
+  optional uint32 queue_capacity = 12;
+  optional uint32 shutdown_ms = 13;
+  optional uint32 retry_count = 14;
+  optional uint32 retry_delay_ms = 15;
+  optional string live_output = 16;
+  McapConfig mcap = 17;
+  OtelConfig otel = 18;
+}
+message McapConfig {
+  bool enabled = 1;
+  string path = 2; // create_new; never overwrite.
+  uint64 rotation_bytes = 3; // Zero disables rotation.
+  uint32 flush_ms = 4; // Explicit idle flush deadline.
+}
+message OtelConfig {
+  bool enabled = 1;
+  string endpoint = 2; // Full http(s) OTLP logs URL, e.g. .../v1/logs.
+  uint32 timeout_ms = 3;
+  string service_name = 4;
+}
