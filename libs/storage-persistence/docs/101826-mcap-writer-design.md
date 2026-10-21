@@ -150,7 +150,7 @@ Do not expand scope to work around a failed gate.
 
 ## References
 
-- [Original idea](../../../docs/todo/101826-io-uring-dma-buffer-freelist.md)
+- [Original idea](101826-io-uring-dma-buffer-freelist.md)
 - [MCAP specification](https://mcap.dev/spec)
 - [io_uring setup](https://man7.org/linux/man-pages/man2/io_uring_setup.2.html)
 

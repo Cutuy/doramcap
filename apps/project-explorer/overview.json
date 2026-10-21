@@ -1,0 +1,343 @@
+{
+  "$schema": "./overview.schema.json",
+  "version": 1,
+  "title": "Your runtime foundation for Physical AI.",
+  "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
+  "workloads": [
+    "Perception",
+    "Learned policies",
+    "Planning & control",
+    "Robotics workloads"
+  ],
+  "platforms": [
+    "NVIDIA Jetson / DRIVE",
+    "Orin / Thor",
+    "Other SoCs"
+  ],
+  "capabilities": [
+    {
+      "id": "resources",
+      "title": "Resource policy",
+      "category": "Resources",
+      "summary": "Make placement, budgets, and resource accounting explicit.",
+      "status": "building-blocks",
+      "limits": "CPU building blocks are available; GPU execution policy remains roadmap scope.",
+      "components": [
+        "crates/resource-policy",
+        "crates/cgroup-bpf",
+        "crates/task-accounting",
+        "crates/monitor-core",
+        "apps/system-monitor"
+      ],
+      "integrations": [
+        "linux"
+      ],
+      "evidence": [
+        "libs/resources/README.md"
+      ]
+    },
+    {
+      "id": "memory",
+      "title": "Memory & IPC",
+      "category": "Memory",
+      "summary": "Coordinate shared buffers, ownership, and CPU/GPU completion across processes.",
+      "status": "building-blocks",
+      "limits": "Existing shared-memory integrations require platform-specific qualification.",
+      "components": [
+        "crates/cuda-host-memory",
+        "crates/cuda-dora-shm",
+        "apps/cuda-shm-demo"
+      ],
+      "integrations": [
+        "dora",
+        "linux",
+        "cuda"
+      ],
+      "evidence": [
+        "libs/memory/README.md"
+      ]
+    },
+    {
+      "id": "observability",
+      "title": "Observability",
+      "category": "Observability",
+      "summary": "Connect runtime activities to output ancestry and measured latency.",
+      "status": "building-blocks",
+      "limits": "Capture and retention bounds are defined by each component.",
+      "components": [
+        "crates/activity-tracing",
+        "crates/step-provenance",
+        "crates/telemetry-protocol",
+        "apps/activity-demo",
+        "apps/provenance-demo",
+        "apps/cpu-viewer"
+      ],
+      "integrations": [
+        "otel"
+      ],
+      "evidence": [
+        "libs/activity-tracing/README.md",
+        "libs/step-provenance/README.md"
+      ]
+    },
+    {
+      "id": "recording",
+      "title": "Recording",
+      "category": "Storage",
+      "summary": "Preserve timestamped data and runtime evidence with bounded buffering and explicit loss reporting.",
+      "status": "building-blocks",
+      "limits": "Durability and supported capture paths follow the selected recorder's contract.",
+      "components": [
+        "crates/storage-persistence",
+        "crates/telemetry-mcap",
+        "apps/storage-demo",
+        "apps/mcap-recorder"
+      ],
+      "integrations": [
+        "mcap",
+        "linux"
+      ],
+      "evidence": [
+        "libs/storage-persistence/README.md",
+        "libs/telemetry/mcap/README.md"
+      ]
+    },
+    {
+      "id": "faults",
+      "title": "Fault handling",
+      "category": "Faults",
+      "summary": "Collect reports, aggregate health and freshness, and supervise liveness.",
+      "status": "building-blocks",
+      "limits": "Application policy owns the response. Broader lifecycle integration remains roadmap scope.",
+      "components": [
+        "crates/fault-reporter",
+        "crates/fault-aggregation",
+        "crates/fault-protocol",
+        "apps/fault-watchdog",
+        "apps/fault-demo"
+      ],
+      "integrations": [
+        "dora"
+      ],
+      "evidence": [
+        "libs/fault/README.md",
+        "apps/fault-watchdog/README.md"
+      ]
+    },
+    {
+      "id": "configuration",
+      "title": "Configuration",
+      "category": "Configuration",
+      "summary": "Compose typed configuration and retain provenance and deployment fingerprints.",
+      "status": "building-blocks",
+      "limits": "Configuration composition is available; a unified platform lifecycle is future work.",
+      "components": [
+        "crates/pbtxt-config"
+      ],
+      "integrations": [],
+      "evidence": [
+        "libs/pbtxt-config/README.md"
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "id": "linux",
+      "title": "Linux",
+      "group": "execution",
+      "summary": "Processes, scheduling, memory, resource accounting and I/O.",
+      "url": "https://www.kernel.org/",
+      "status": "integrated",
+      "components": [
+        "crates/resource-policy",
+        "crates/cgroup-bpf",
+        "crates/storage-persistence",
+        "apps/system-monitor"
+      ],
+      "evidence": [
+        "docs/roadmap.md",
+        "libs/resources/README.md"
+      ]
+    },
+    {
+      "id": "cuda",
+      "title": "CUDA",
+      "group": "execution",
+      "summary": "NVIDIA compute and memory APIs.",
+      "url": "https://developer.nvidia.com/cuda-zone",
+      "status": "platform-dependent",
+      "components": [
+        "crates/cuda-host-memory",
+        "crates/cuda-dora-shm",
+        "apps/cuda-shm-demo"
+      ],
+      "evidence": [
+        "libs/memory/cuda-host-memory/README.md",
+        "libs/memory/cuda-dora-shm/README.md"
+      ]
+    },
+    {
+      "id": "nvsci-nvmedia",
+      "title": "NvSci / NvMedia",
+      "group": "execution",
+      "summary": "Planned integration.",
+      "url": "https://developer.nvidia.com/docs/drive/drive-os/7.0.3/public/drive-os-linux-sdk-api-ref/nvmedia__2d__sci_8h.html",
+      "status": "platform-dependent",
+      "components": [],
+      "evidence": [
+        "docs/roadmap.md"
+      ]
+    },
+    {
+      "id": "dora",
+      "title": "Dora IPC",
+      "summary": "Node communication and dataflow.",
+      "url": "https://dora-rs.ai/",
+      "status": "integrated",
+      "components": [
+        "crates/cuda-dora-shm",
+        "apps/system-monitor",
+        "apps/provenance-demo",
+        "apps/mcap-recorder"
+      ],
+      "evidence": [
+        "docs/vision.md",
+        "libs/memory/cuda-dora-shm/README.md"
+      ],
+      "group": "communication"
+    },
+    {
+      "id": "mcap",
+      "title": "MCAP",
+      "summary": "Timestamped messages, schemas and indexes.",
+      "url": "https://mcap.dev/",
+      "status": "integrated",
+      "components": [
+        "crates/storage-persistence",
+        "crates/telemetry-mcap",
+        "apps/mcap-recorder"
+      ],
+      "evidence": [
+        "libs/telemetry/mcap/README.md",
+        "libs/storage-persistence/README.md"
+      ],
+      "group": "communication"
+    },
+    {
+      "id": "otel",
+      "title": "OpenTelemetry",
+      "summary": "Activity trace export.",
+      "url": "https://opentelemetry.io/",
+      "status": "optional",
+      "components": [
+        "crates/activity-tracing"
+      ],
+      "evidence": [
+        "libs/activity-tracing/README.md"
+      ],
+      "group": "communication"
+    }
+  ],
+  "useCases": [
+    {
+      "id": "perception",
+      "title": "Run a perception pipeline",
+      "summary": "Move a payload through a dataflow, retain its buffer until processing completes, trace the work, and capture evidence for inspection.",
+      "outcome": "Follow data from shared buffers to observable application output.",
+      "status": "illustrative",
+      "capabilities": [
+        "memory",
+        "observability",
+        "recording",
+        "configuration"
+      ],
+      "integrations": [
+        "dora",
+        "mcap",
+        "linux",
+        "cuda"
+      ],
+      "components": [
+        "apps/cuda-shm-demo",
+        "apps/provenance-demo",
+        "apps/mcap-recorder",
+        "crates/cuda-dora-shm",
+        "crates/activity-tracing",
+        "crates/step-provenance",
+        "crates/storage-persistence"
+      ],
+      "evidence": [
+        "apps/cuda-shm-demo/README.md",
+        "apps/provenance-demo/README.md",
+        "apps/mcap-recorder/README.md"
+      ]
+    },
+    {
+      "id": "latency",
+      "title": "Explain a missed deadline",
+      "summary": "Inspect activity timing and output ancestry, relate a delay to resource accounting, and retain evidence for the next experiment.",
+      "outcome": "Bring resource accounting, timing, and recorded evidence into the investigation.",
+      "status": "illustrative",
+      "capabilities": [
+        "resources",
+        "observability",
+        "recording"
+      ],
+      "integrations": [
+        "mcap",
+        "otel",
+        "linux"
+      ],
+      "components": [
+        "apps/system-monitor",
+        "apps/cpu-viewer",
+        "apps/activity-demo",
+        "apps/provenance-demo",
+        "crates/cgroup-bpf",
+        "crates/step-provenance",
+        "crates/activity-tracing",
+        "crates/storage-persistence"
+      ],
+      "evidence": [
+        "apps/cpu-viewer/README.md",
+        "apps/provenance-demo/README.md",
+        "libs/activity-tracing/README.md"
+      ]
+    },
+    {
+      "id": "fault",
+      "title": "Respond to a fault",
+      "summary": "Observe liveness and fault reports, inspect the surrounding activity, and supply health context to the application's declared response policy.",
+      "outcome": "Connect fault signals to health context and application response.",
+      "status": "illustrative",
+      "capabilities": [
+        "faults",
+        "observability",
+        "recording"
+      ],
+      "integrations": [
+        "dora",
+        "mcap",
+        "linux"
+      ],
+      "components": [
+        "apps/fault-demo",
+        "apps/fault-watchdog",
+        "crates/fault-reporter",
+        "crates/fault-aggregation",
+        "crates/activity-tracing",
+        "crates/storage-persistence"
+      ],
+      "evidence": [
+        "apps/fault-demo/README.md",
+        "apps/fault-watchdog/README.md"
+      ]
+    }
+  ],
+  "embodiments": [
+    "Autonomous vehicles",
+    "Humanoid robots",
+    "Industrial robots",
+    "Drones"
+  ]
+}

@@ -3,6 +3,9 @@
 A workspace of reusable telemetry libraries and independently runnable applications.
 Each component owns its documentation, tests, examples, and benchmarks.
 
+Browse apps, crates, documentation and dependencies with the
+[project explorer](apps/project-explorer/).
+
 | Component | Purpose |
 |---|---|
 | [pbtxt-config](libs/pbtxt-config/) | Typed pbtxt composition, app registry, provenance, and deployment fingerprints |

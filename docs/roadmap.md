@@ -8,7 +8,7 @@
 **Primary applications:** Robotics, autonomous-vehicle, long-running distributed agent workloads  
 **Delivery model:** Device-local operation, with optional off-device analysis and artifact transfer
 
-**Project context:** doramcap is a personal research project. This roadmap records exploratory technical requirements and possible future milestones. Commercial work authorization is pending; delivery phases describe research progression, with commercial commitments reserved for a separately authorized future scope.
+**Project context:** doramcap is a personal research project. This roadmap records exploratory technical requirements and possible future milestones.
 
 ## 1. Project objective
 
@@ -475,6 +475,11 @@ Numerical targets must be agreed for the actual hardware and workload before the
 | Agent permission and artifact-sharing policy | Determines operational trust boundaries | P4 |
 
 The working module labels **Scheduling, SMM, LMM, Blackbox, Watchdog, and CommsRelay** should map to the requirements above. Expand and agree the meanings of SMM and LMM before turning those labels into public interfaces.
+
+## Platform integration placeholders
+
+NvSci / NvMedia is a platform-dependent execution-substrate placeholder.
+SDK selection and qualification remain future work; no doramcap app or crate is mapped yet.
 
 ## 10. Reference material
 
