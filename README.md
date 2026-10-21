@@ -10,6 +10,10 @@ Each component owns its documentation, tests, examples, and benchmarks.
 | [cgroup-bpf](libs/cgroup-bpf/) | Native per-CPU cgroup accounting |
 | [task-accounting](libs/task-accounting/) | Experimental kernel-thread runtime accounting |
 | [activity-tracing](libs/activity-tracing/) | Bounded activity capture and embedded MCAP/live/OTel outputs |
+| [fault-reporter](libs/fault-reporter/) | Bounded success/failure observations and recovery evidence |
+| [fault-schema](libs/fault-schema/) | Generated fault Protobuf contracts, enums and compatibility baseline |
+| [fault-protocol](libs/fault-protocol/) | Protobuf reporter IPC and aggregation storage/publication contracts |
+| [fault-aggregation](libs/fault-aggregation/) | Fault lifecycle, recovery hysteresis and freshness aggregation |
 | [monitor-core](libs/monitor-core/) | Bounded snapshot buffers and collection handoff |
 | [telemetry-protocol](libs/telemetry-protocol/) | Protobuf schemas, codecs, and descriptors |
 | [telemetry-mcap](libs/telemetry-mcap/) | Reusable MCAP recording sink |

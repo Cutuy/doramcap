@@ -1,0 +1,31 @@
+syntax = "proto3";
+package doramcap.fault.v1;
+import "common.proto";
+
+// Reporter -> watchdog IPC. One encoded message per transport payload.
+// Publish a snapshot before batches, and periodically/on reconnect.
+message ReporterPublication {
+  uint32 version = 1; // Must be 1.
+  optional uint64 published_unix_ns = 2; // Host-supplied wall clock; never used for freshness.
+  oneof payload {
+    ReporterBatch batch = 3;
+    ReporterSnapshot snapshot = 4;
+  }
+}
+message ReporterBatch {
+  bytes source = 1;
+  uint64 emitted_at_ns = 2; // Same monotonic epoch as its observations.
+  repeated Observation observations = 3;
+  Losses losses = 4;
+}
+message ConditionSnapshot {
+  Key key = 1;
+  Definition definition = 2;
+  Observation latest = 3; // Absent means registered but not yet observed.
+}
+message ReporterSnapshot {
+  bytes source = 1;
+  uint64 emitted_at_ns = 2;
+  repeated ConditionSnapshot conditions = 3; // Consistent per condition; not an atomic global cut.
+  Losses losses = 4;
+}

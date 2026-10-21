@@ -1,0 +1,45 @@
+syntax = "proto3";
+package doramcap.fault.v1;
+
+// IDs are exactly 16 bytes, unsigned big-endian; zero source/epoch IDs are invalid.
+message Key {
+  bytes source = 1;
+  uint32 condition = 2; // Zero is a valid source-local condition ID.
+}
+enum Mode { MODE_UNSPECIFIED = 0; MODE_STATEFUL = 1; MODE_EVENT_ONLY = 2; }
+enum Severity { SEVERITY_UNSPECIFIED = 0; SEVERITY_WARNING = 1; SEVERITY_ERROR = 2; SEVERITY_CRITICAL = 3; }
+enum Outcome { OUTCOME_UNSPECIFIED = 0; OUTCOME_SUCCESS = 1; OUTCOME_FAILURE = 2; }
+message Policy {
+  Mode mode = 1;
+  optional uint64 deadline_ns = 2; // Absent disables deadlines; present zero is invalid.
+  optional uint64 recovery_ns = 3; // Required presence. Zero disables recovery hysteresis.
+  optional uint64 success_interval_ns = 4; // Absent publishes every success.
+}
+message Definition {
+  string component = 1; // Nonempty; all text fields limited to 192 UTF-8 bytes.
+  string resource = 2;
+  string code = 3; // Nonempty; stable fault code.
+  Severity severity = 4;
+  Policy policy = 5;
+}
+message TraceContext { bytes trace_id = 1; bytes span_id = 2; } // Exactly 16 and 8 bytes.
+message Observation {
+  Key key = 1;
+  uint64 sequence = 2; // Starts at one; strictly increasing per condition.
+  uint64 observed_at_ns = 3; // Source-local monotonic offset, NOT Unix time.
+  Outcome outcome = 4;
+  uint64 successes = 5; // Lifetime cumulative counts within this source instance.
+  uint64 failures = 6;
+  optional uint64 first_failure_at_ns = 7;
+  optional uint64 last_failure_at_ns = 8;
+  optional uint64 success_since_ns = 9;
+  uint64 consecutive_successes = 10;
+  uint64 max_success_span_ns = 11; // Longest observed success run since latest failure.
+  string detail = 12;
+  TraceContext trace = 13;
+}
+message Losses {
+  uint64 failures = 1;
+  uint64 successes = 2;
+  uint64 coalesced_successes = 3; // Intentional coalescing, separately counted from drops.
+}

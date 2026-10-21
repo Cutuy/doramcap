@@ -1477,6 +1477,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "fault-aggregation"
+version = "0.1.0"
+dependencies = [
+ "fault-reporter",
+ "fault-schema",
+]
+
+[[package]]
+name = "fault-protocol"
+version = "0.1.0"
+dependencies = [
+ "fault-aggregation",
+ "fault-reporter",
+ "fault-schema",
+ "prost",
+ "prost-types",
+]
+
+[[package]]
+name = "fault-reporter"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "crossbeam-queue",
+ "fault-schema",
+]
+
+[[package]]
+name = "fault-schema"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+ "prost-types",
+ "protoc-bin-vendored",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

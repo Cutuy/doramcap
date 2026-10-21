@@ -1,0 +1,12 @@
+[package]
+name = "fault-aggregation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fault-schema = { path = "../fault-schema" }
+fault-reporter = { path = "../fault-reporter" }
+
+[lints]
+workspace = true

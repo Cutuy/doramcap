@@ -1,0 +1,17 @@
+[package]
+name = "fault-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fault-schema = { path = "../fault-schema" }
+fault-reporter = { path = "../fault-reporter" }
+fault-aggregation = { path = "../fault-aggregation" }
+prost = "0.14"
+
+[dev-dependencies]
+prost-types = "0.14"
+
+[lints]
+workspace = true

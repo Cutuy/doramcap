@@ -1,0 +1,18 @@
+[package]
+name = "fault-schema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prost = "0.14"
+
+[dev-dependencies]
+prost-types = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

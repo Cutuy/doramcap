@@ -1,0 +1,65 @@
+syntax = "proto3";
+package doramcap.fault.v1;
+import "common.proto";
+
+// Watchdog -> storage/live consumers. Store the same bytes in MCAP.
+message AggregationPublication {
+  uint32 version = 1; // Must be 1.
+  optional uint64 published_unix_ns = 2; // Host-supplied MCAP publish/display timestamp.
+  uint64 emitted_at_ns = 3; // Aggregator-local monotonic offset, scoped by epoch.
+  oneof payload {
+    UpdateBatch updates = 4;
+    AggregationSnapshot snapshot = 5;
+  }
+}
+enum Health { HEALTH_UNSPECIFIED = 0; HEALTH_UNKNOWN = 1; HEALTH_HEALTHY = 2; HEALTH_ACTIVE = 3; HEALTH_RECOVERING = 4; }
+enum Freshness { FRESHNESS_UNSPECIFIED = 0; FRESHNESS_UNKNOWN = 1; FRESHNESS_FRESH = 2; FRESHNESS_STALE = 3; }
+enum UpdateKind {
+  UPDATE_KIND_UNSPECIFIED = 0;
+  UPDATE_KIND_REGISTERED = 1;
+  UPDATE_KIND_OBSERVATION = 2;
+  UPDATE_KIND_TRANSITION = 3;
+  UPDATE_KIND_RECONCILED = 4;
+  UPDATE_KIND_LATE = 5;
+  UPDATE_KIND_EVENT = 6;
+  UPDATE_KIND_FRESHNESS = 7;
+  UPDATE_KIND_SOURCE = 8;
+  UPDATE_KIND_RETIRED = 9;
+}
+message State {
+  Key key = 1;
+  Definition definition = 2;
+  Health health = 3;
+  Freshness freshness = 4;
+  Observation latest = 5;
+  uint64 revision = 6;
+}
+message Update {
+  bytes epoch = 1; // Changes when aggregator restarts.
+  uint64 revision = 2; // Strictly increasing within epoch; gaps expose lost updates.
+  UpdateKind kind = 3;
+  Key key = 4; // Absent for source-wide updates.
+  State state = 5; // Present exactly when key is present.
+  Observation observation = 6; // May be older than state.latest for a LATE update.
+  bytes source = 7;
+  bool connected = 8;
+  Losses losses = 9;
+}
+message Stats { uint64 dropped_updates = 1; uint64 rejected_inputs = 2; uint64 too_old = 3; }
+message UpdateBatch {
+  bytes epoch = 1;
+  repeated Update updates = 2; // Same epoch, strictly increasing revisions; gaps are allowed.
+  Stats stats = 3; // Cumulative aggregation loss/rejection counters as of publication.
+}
+message SourceView {
+  bytes source = 1;
+  bool connected = 2;
+  Losses losses = 3;
+  repeated State conditions = 4;
+}
+message AggregationSnapshot {
+  bytes epoch = 1;
+  uint64 revision = 2; // Last applied aggregation revision; zero is valid for empty state.
+  Stats stats = 3;
+  repeated SourceView sources = 4;
+}
