@@ -1,6 +1,17 @@
 {
-  "name": "cuda-shm-viewer", "private": true, "type": "module",
-  "scripts": {"build":"vite build", "test":"node --test ../tests/model.mjs ../tests/protocol.mjs", "generate:proto":"node scripts/generate-proto.mjs"},
-  "dependencies": {"protobufjs":"^8.8.1"},
-  "devDependencies": {"protobufjs-cli":"^2.7.1", "vite":"^7.1.0"}
+  "name": "cuda-shm-viewer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm run generate:proto && vite build",
+    "test": "npm run generate:proto && node --test ../tests/model.mjs ../tests/protocol.mjs",
+    "generate:proto": "node scripts/generate-proto.mjs"
+  },
+  "dependencies": {
+    "protobufjs": "^8.8.1"
+  },
+  "devDependencies": {
+    "protobufjs-cli": "^2.7.1",
+    "vite": "^7.1.0"
+  }
 }

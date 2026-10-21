@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
-    "test": "tsx --test src/*.test.ts",
+    "dev": "npm run generate:proto && vite --host 127.0.0.1",
+    "build": "npm run generate:proto && tsc --noEmit && vite build",
+    "test": "npm run generate:proto && tsx --test src/*.test.ts",
     "generate:proto": "node scripts/generate-proto.mjs",
-    "test:live": "tsx ../tests/check-live.mts",
-    "test:gaussian": "tsx ../tests/check-gaussian.mts",
-    "test:resources": "tsx ../tests/check-resources.mts",
-    "test:frequency": "tsx ../tests/check-frequency.mts"
+    "test:live": "npm run generate:proto && tsx ../tests/check-live.mts",
+    "test:gaussian": "npm run generate:proto && tsx ../tests/check-gaussian.mts",
+    "test:resources": "npm run generate:proto && tsx ../tests/check-resources.mts",
+    "test:frequency": "npm run generate:proto && tsx ../tests/check-frequency.mts"
   },
   "dependencies": {
     "protobufjs": "^8.8.1",

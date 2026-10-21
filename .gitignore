@@ -6,23 +6,20 @@ target/
 /.sudo-password
 
 node_modules/
-apps/cpu-viewer/frontend/dist/
 apps/cpu-viewer/dataflows/out/
 
 __pycache__/
 *.pyc
 
-apps/activity-demo/frontend/dist/
-
 # Generated assets at the legacy frontend location.
 /frontend/dist/
 
-apps/storage-demo/frontend/dist/
-
-apps/provenance-demo/frontend/dist/
-
-apps/project-explorer/frontend/dist/
 apps/project-explorer/frontend/public/content/
-apps/project-explorer/frontend/src/.generated/
-apps/project-explorer/frontend/test-results/
-apps/project-explorer/frontend/playwright-report/
+
+# Reproducible frontend build outputs and protocol bindings.
+/apps/*/frontend/dist/
+/apps/*/frontend/generated/
+/apps/*/frontend/src/generated/
+/apps/*/frontend/src/.generated/
+/apps/*/frontend/test-results/
+/apps/*/frontend/playwright-report/
