@@ -6,6 +6,7 @@ license.workspace = true
 description = "Fixed-slot CUDA host-memory IPC adapter for Dora"
 
 [dependencies]
+tracing = "0.1"
 cuda-host-memory = { path = "../cuda-host-memory" }
 cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "runtime", "dynamic-loading", "cuda-12090"] }
 dora-node-api = { version = "=1.1.0", default-features = false }

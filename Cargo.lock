@@ -1075,6 +1075,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -1089,12 +1090,14 @@ dependencies = [
 name = "cuda-shm-demo"
 version = "0.1.0"
 dependencies = [
+ "activity-tracing",
  "cuda-dora-shm",
  "cuda-host-memory",
  "cudarc",
  "dora-node-api",
  "eyre",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]

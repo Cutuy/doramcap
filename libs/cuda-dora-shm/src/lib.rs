@@ -286,6 +286,7 @@ impl Producer {
                     "foreign/closing pool"
                 );
                 self.ledger.returned(*slot, *generation, peer)?;
+                tracing::info!(target: "activity", event = "returned_received", slot = *slot as u64, generation = *generation, peer = peer.as_str());
             }
             Message::Closed { pool, peer } => {
                 ensure!(
@@ -321,6 +322,7 @@ impl Producer {
                 if let Some(writer) = self.slots[index].writer.take() {
                     writer.wait()?;
                 }
+                tracing::info!(target: "activity", event = "reclaimed", slot = index as u64, generation = self.ledger.generation(index));
                 self.ledger.reclaim(index);
                 count += 1;
                 self.stats.reclaimed += 1;
@@ -341,6 +343,7 @@ impl Producer {
         let Some((slot, generation)) = self.ledger.reserve()? else {
             return Ok(None);
         };
+        tracing::info!(target: "activity", event = "reserved", slot = slot as u64, generation);
         Ok(Some(WriteFrame {
             pool: self,
             slot,
@@ -423,6 +426,7 @@ impl WriteFrame<'_> {
             "frame exceeds slot capacity"
         );
         self.pool.slots[self.slot].ready.record(&self.stream)?;
+        tracing::info!(target: "activity", event = "ready_record_queued", slot = self.slot as u64, generation = self.generation, sequence);
         self.pool.stats.published += 1;
         if !self.pool.slots[self.slot].ready.complete()? {
             self.pool.stats.published_pending += 1;
@@ -575,6 +579,7 @@ impl Consumer {
             previous.wait()?;
         }
         local.ready.wait(&stream)?;
+        tracing::info!(target: "activity", event = "ready_wait_queued", slot = *slot as u64, generation = *generation, sequence = *sequence);
         let gpu = local.memory.gpu(stream.clone(), Access::Read)?;
         local.generation = *generation;
         local.abandoned = true;
@@ -658,6 +663,7 @@ impl ReadFrame<'_> {
     pub fn finish(mut self) -> Result<Message> {
         let slot = &mut self.consumer.slots[self.slot];
         slot.done.record(&self.stream)?;
+        tracing::info!(target: "activity", event = "done_record_queued", slot = self.slot as u64, generation = self.generation, sequence = self.sequence);
         slot.previous = self.gpu.take();
         slot.abandoned = false;
         Ok(Message::Returned {

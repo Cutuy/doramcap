@@ -1,0 +1,28 @@
+syntax = "proto3";
+package doramcap.cuda_viewer.v1;
+message RunConfig {
+  uint32 frames = 1;
+  uint32 slots = 2;
+  uint32 consumers = 3;
+  uint32 bytes = 4;
+  string failure = 5;
+  bool checksum = 6;
+}
+// Payload is the original doramcap.activity.v1.Batch, also recorded in MCAP.
+message ActivityBatch {
+  uint64 id = 1;
+  string role = 2;
+  bytes payload = 3;
+}
+message Snapshot {
+  uint32 version = 1;
+  string run = 2;
+  string state = 3;
+  RunConfig config = 4;
+  uint64 cursor = 5;
+  uint64 oldest = 6;
+  repeated ActivityBatch batches = 7;
+  optional string log = 8;
+  repeated string artifacts = 9;
+}
+message Reply { string error = 1; }

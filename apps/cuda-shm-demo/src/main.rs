@@ -1,7 +1,9 @@
+mod content;
+mod telemetry;
 use cuda_dora_shm::{Consumer, Message, PoolConfig, Producer, send};
 use cuda_host_memory::{AllocationMode, CudaContext, CudaStream};
 use cudarc::{
-    driver::{CudaFunction, LaunchConfig, PushKernelArg},
+    driver::{CudaFunction, CudaSlice, LaunchConfig, PushKernelArg},
     nvrtc::compile_ptx,
 };
 use dora_node_api::{DoraNode, Event, EventStream, TryRecvError};
@@ -12,17 +14,24 @@ use std::{
 };
 
 const SOURCE: &str = r#"
-extern "C" __global__ void fill(unsigned char* p, unsigned int n, unsigned int seq, unsigned long long delay) {
-    unsigned long long start = clock64();
-    while (clock64() - start < delay) {}
-    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) p[i] = (unsigned char)((seq % 251) + (i % 13));
+__device__ unsigned char pattern(unsigned int i, unsigned int seq, unsigned int seed) {
+    unsigned int x = i ^ seed ^ (seq * 0x9e3779b9u);
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return (unsigned char)x;
 }
-extern "C" __global__ void verify(const unsigned char* p, unsigned int n, unsigned int seq, unsigned long long delay) {
+extern "C" __global__ void fill(unsigned char* p, unsigned int n, unsigned int seq, unsigned long long delay, unsigned int seed, unsigned int corrupt) {
     unsigned long long start = clock64();
     while (clock64() - start < delay) {}
     unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n && p[i] != (unsigned char)((seq % 251) + (i % 13))) asm("trap;");
+    if (i < n) p[i] = pattern(i, seq, seed) ^ ((corrupt && i == n - 1) ? 1 : 0);
+}
+extern "C" __global__ void verify(const unsigned char* p, unsigned int n, unsigned int seq, unsigned long long delay, unsigned int seed, unsigned int* failed) {
+    unsigned long long start = clock64();
+    while (clock64() - start < delay) {}
+    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n && p[i] != pattern(i, seq, seed)) atomicExch(failed, 1u);
 }
 "#;
 fn option(args: &[String], name: &str, default: usize) -> Result<usize> {
@@ -53,11 +62,14 @@ fn producer(
     mut node: DoraNode,
     mut events: EventStream,
     kernel: CudaFunction,
+    registration: Option<&activity_tracing::Registration>,
 ) -> Result<()> {
     let peers = option(args, "--consumers", 2)?;
     let frames = option(args, "--frames", 12)?;
     let slots = option(args, "--slots", 2)?;
     let size = option(args, "--bytes", 4096)?;
+    let seed = u32::try_from(option(args, "--seed", content::DEFAULT_SEED as usize)?)?;
+    let corrupt = u32::from(args.iter().any(|a| a == "--corrupt"));
     let timeout = Duration::from_secs(option(args, "--timeout", 30)? as u64);
     ensure!(
         frames > 0 && frames <= u32::MAX as usize,
@@ -90,7 +102,10 @@ fn producer(
     let mut sequence = 0;
     let mut full = 0u64;
     let mut shutdown = false;
+    let mut last_stats = Instant::now();
+    let mut last_flush = Instant::now();
     loop {
+        telemetry::flush_due(registration, &mut last_flush);
         if Instant::now() >= deadline {
             bail!(
                 "TIMEOUT: no unsafe reuse; published={sequence}, full={full}, stats={:?}",
@@ -132,12 +147,15 @@ fn producer(
                                 .arg(&n)
                                 .arg(&seq)
                                 .arg(&delay)
+                                .arg(&seed)
+                                .arg(&corrupt)
                                 .launch(LaunchConfig::for_num_elems(n))?;
                             Ok(())
                         })?;
                     }
                     let descriptor = writer.publish(size, sequence as u64)?;
                     send(&mut node, "frames", &descriptor)?;
+                    tracing::info!(target: "activity", event = "frame_sent", sequence = sequence as u64);
                     sequence += 1;
                 } else {
                     full += 1;
@@ -147,6 +165,11 @@ fn producer(
                 send(&mut node, "frames", &stop)?;
                 shutdown = true;
             }
+        }
+        if last_stats.elapsed() >= Duration::from_millis(100) || pool.all_closed() {
+            let stats = pool.stats();
+            tracing::info!(target: "activity", event = "stats", published = stats.published, pending = stats.published_pending, reclaimed = stats.reclaimed, completion_blocks = stats.completion_blocks, full);
+            last_stats = Instant::now();
         }
         if pool.all_closed() {
             println!(
@@ -165,19 +188,24 @@ fn consumer(
     mut node: DoraNode,
     mut events: EventStream,
     kernel: CudaFunction,
+    registration: Option<&activity_tracing::Registration>,
 ) -> Result<()> {
     let index = option(args, "--id", 0)?;
     let peer = format!("consumer{index}");
     let delay = option(args, "--delay-cycles", 40_000_000)? as u64;
+    let seed = u32::try_from(option(args, "--seed", content::DEFAULT_SEED as usize)?)?;
     let stall = args.iter().any(|a| a == "--stall");
     let duplicate = args.iter().any(|a| a == "--duplicate");
     let mut consumer: Option<Consumer> = None;
     let mut streams: Vec<Arc<CudaStream>> = Vec::new();
+    let mut failures: Vec<CudaSlice<u32>> = Vec::new();
     let mut seen = 0u64;
     let mut max_generation = 0;
     let mut expected_manifest = None;
     let deadline = Instant::now() + Duration::from_secs(60);
+    let mut last_flush = Instant::now();
     loop {
+        telemetry::flush_due(registration, &mut last_flush);
         ensure!(Instant::now() < deadline, "consumer timeout");
         if let Some((_, message)) = event_message(&mut events)? {
             match &message {
@@ -188,6 +216,10 @@ fn consumer(
                     if consumer.is_none() {
                         streams = (0..manifest.slots)
                             .map(|_| ctx.new_stream())
+                            .collect::<Result<_, _>>()?;
+                        failures = streams
+                            .iter()
+                            .map(|s| s.alloc_zeros::<u32>(1))
                             .collect::<Result<_, _>>()?;
                         // SAFETY: this demo uses its trusted local producer and
                         // consumes/returns generations only through the adapter.
@@ -221,6 +253,18 @@ fn consumer(
                     let mut frame = unsafe { reader.begin(&message, stream)? };
                     let n = frame.len() as u32;
                     let seq = frame.sequence() as u32;
+                    if std::env::var_os("CUDA_SHM_CHECKSUM").is_some() {
+                        let (checksum, mismatch) =
+                            frame.with_cpu_read(|bytes| content::inspect(bytes, seq, seed))?;
+                        ensure!(
+                            mismatch.is_none(),
+                            "CPU_CONTENT_MISMATCH: sequence={seq}, offset={mismatch:?}, seed={seed}"
+                        );
+                        let expected = (0..n)
+                            .map(|i| u64::from(content::byte(i, seq, seed)))
+                            .sum::<u64>();
+                        tracing::info!(target: "activity", event = "cpu_checksum", slot = *slot as u64, generation = *generation, sequence = *sequence, checksum, expected, matches = checksum == expected);
+                    }
                     // SAFETY: bounded read-only verification, Ready wait is
                     // already in this consumer-chosen non-default stream.
                     unsafe {
@@ -231,6 +275,8 @@ fn consumer(
                                 .arg(&n)
                                 .arg(&seq)
                                 .arg(&delay)
+                                .arg(&seed)
+                                .arg(&mut failures[*slot])
                                 .launch(LaunchConfig::for_num_elems(n))?;
                             Ok(())
                         })?;
@@ -238,6 +284,7 @@ fn consumer(
                     let returned = frame.finish()?; // Done record queued; no CPU wait.
                     if !stall {
                         send(&mut node, "returns", &returned)?;
+                        tracing::info!(target: "activity", event = "return_sent", slot = *slot as u64, generation = *generation);
                         if duplicate && seen == 0 {
                             send(&mut node, "returns", &returned)?;
                         }
@@ -252,10 +299,23 @@ fn consumer(
                     // SAFETY: our producer sends Shutdown only after draining and
                     // destroying its imported Done events.
                     let closed = unsafe { reader.shutdown(&message)? };
+                    let gpu_verified =
+                        streams
+                            .iter()
+                            .zip(&failures)
+                            .try_fold(true, |ok, (stream, failed)| {
+                                Ok::<_, cudarc::driver::DriverError>(
+                                    ok && stream.clone_dtoh(failed)?[0] == 0,
+                                )
+                            })?;
                     send(&mut node, "returns", &closed)?;
+                    ensure!(
+                        gpu_verified,
+                        "GPU_CONTENT_MISMATCH: consumer={peer}, seed={seed}"
+                    );
                     println!(
                         "CONSUMER_SUMMARY {}",
-                        serde_json::json!({"peer":peer,"frames":seen,"max_generation":max_generation,"gpu_verified":true})
+                        serde_json::json!({"peer":peer,"frames":seen,"max_generation":max_generation,"gpu_verified":gpu_verified,"seed":seed,"cpu_verified":std::env::var_os("CUDA_SHM_CHECKSUM").is_some()})
                     );
                     return Ok(());
                 }
@@ -265,7 +325,7 @@ fn consumer(
         std::thread::sleep(Duration::from_millis(1));
     }
 }
-fn main() -> Result<()> {
+fn run(registration: Option<&activity_tracing::Registration>) -> Result<()> {
     let args: Vec<_> = std::env::args().collect();
     let ctx = CudaContext::new(0)?;
     let module = ctx.load_module(compile_ptx(SOURCE)?)?;
@@ -273,8 +333,35 @@ fn main() -> Result<()> {
     let kernel = module.load_function(if role == "producer" { "fill" } else { "verify" })?;
     let (node, events) = DoraNode::init_from_env_force()?;
     match role {
-        "producer" => producer(&args, ctx, node, events, kernel),
-        "consumer" => consumer(&args, ctx, node, events, kernel),
+        "producer" => producer(&args, ctx, node, events, kernel, registration),
+        "consumer" => consumer(&args, ctx, node, events, kernel, registration),
         _ => bail!("expected producer or consumer role"),
     }
+}
+
+fn main() -> Result<()> {
+    let Some(dir) = std::env::var_os("CUDA_SHM_TRACE_DIR") else {
+        return run(None);
+    };
+    let role = std::env::args().nth(1).unwrap_or_default();
+    let mut runtime =
+        telemetry::start(std::path::Path::new(&dir), &role).map_err(|e| eyre::eyre!("{e}"))?;
+    let handle = runtime.handle();
+    let registration = handle
+        .register_thread("cuda-demo")
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    let result = tracing::subscriber::with_default(handle.subscriber(), || {
+        tracing::info!(target: "activity", event = "process_started", role = role.as_str());
+        let result = run(Some(&registration));
+        tracing::info!(target: "activity", event = "process_finished", success = result.is_ok());
+        result
+    });
+    drop(registration);
+    let report = runtime.shutdown().map_err(|e| eyre::eyre!("{e}"))?;
+    eprintln!("TRACE_REPORT {report:?}");
+    ensure!(
+        report.sinks.iter().all(|s| s.error.is_none()),
+        "trace sink failed"
+    );
+    result
 }

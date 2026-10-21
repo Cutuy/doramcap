@@ -74,6 +74,9 @@ impl Ledger {
             .map(|(i, _)| i)
             .collect()
     }
+    pub fn generation(&self, index: usize) -> u64 {
+        self.slots[index].generation
+    }
     pub fn reclaim(&mut self, index: usize) {
         self.slots[index].phase = Phase::Free;
     }
