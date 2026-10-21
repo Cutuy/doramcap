@@ -1,21 +1,5 @@
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
-struct CountAlloc;
-static COUNTING: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-unsafe impl GlobalAlloc for CountAlloc {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        if COUNTING.load(Relaxed) {
-            ALLOCS.fetch_add(1, Relaxed);
-        }
-        unsafe { System.alloc(l) }
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        unsafe { System.dealloc(p, l) }
-    }
-}
-#[global_allocator]
-static GLOBAL: CountAlloc = CountAlloc;
+#[path = "support/allocations.rs"]
+mod allocations;
 
 use prost::Message as _;
 use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
@@ -74,14 +58,14 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
                     data: vec![42; size],
                 };
                 writer.flush_written().unwrap();
-                COUNTING.store(true, Relaxed);
+                allocations::start();
                 let mut reservation = writer.reserve(meta, p.encoded_len()).unwrap();
                 let original = reservation.payload().as_ptr();
                 p.encode(&mut reservation.payload_mut()).unwrap();
                 assert_eq!(reservation.payload().as_ptr(), original);
                 reservation.commit().unwrap();
-                COUNTING.store(false, Relaxed);
-                assert_eq!(ALLOCS.load(Relaxed), 0);
+                let allocations = allocations::finish();
+                assert_eq!(allocations, 0);
             }
         }
         writer.finish().unwrap();
