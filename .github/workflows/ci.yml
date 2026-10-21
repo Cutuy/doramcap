@@ -27,6 +27,10 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: always
+      # Fresh hosted VMs need compact artifacts across multiple feature builds.
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
       CLANG: clang-18
     steps:
       - name: Check out source
