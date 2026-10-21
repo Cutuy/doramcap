@@ -1,4 +1,16 @@
-# ARM64 test worker
+# CI
+
+[GitHub Actions](../../.github/workflows/ci.yml) runs on standard
+`ubuntu-24.04-arm` runners for pushes, pull requests, and manual dispatch.
+It checks formatting, default/all-feature Clippy and Rust tests, storage without
+default features, example/binary builds, and snapshot synchronization tests.
+Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Runs have a
+45-minute timeout and superseded runs on the same ref are cancelled.
+Private repositories use the owner's included Actions minutes and billing policy.
+
+Privileged native validation and Dora end-to-end checks use the worker below.
+
+## ARM64 test worker
 
 Worker: `doramcap-ci@100.64.0.20`, ARM64 Ubuntu 24.04 / WSL2 Linux 6.18.
 [Pueue 4.0.4](https://github.com/Nukesor/pueue/releases/tag/v4.0.4) runs as a
@@ -20,7 +32,7 @@ ssh doramcap-ci@100.64.0.20 pueue kill 0
 
 Replace `0` with the returned job ID. Inspect `pueue status --json` for
 automated success/failure handling. Use `pueue restart ID` to rerun the same
-snapshot. Git pushes do not submit jobs. Keep native test jobs in the serial
+snapshot. Git pushes run Actions; they do not submit Pueue jobs. Keep native test jobs in the serial
 default group.
 
 Submission copies an allowlisted snapshot of Cargo files, libraries and applications,

@@ -1,0 +1,74 @@
+name: Rust CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (Ubuntu ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      CLANG: clang-18
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config \
+            libelf-dev zlib1g-dev python3 rsync
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup show
+          rustc --version
+          cargo --version
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features)
+        run: cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
+
+      - name: Clippy (all features)
+        run: cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
+
+      - name: Test storage without default features
+        run: cargo test --locked -p storage-persistence --no-default-features
+
+      - name: Test workspace (default features)
+        run: cargo test --locked --workspace
+
+      - name: Test workspace (all features)
+        run: cargo test --locked --workspace --all-features
+
+      - name: Build examples and binaries
+        run: cargo build --locked --workspace --all-features --examples --bins
+
+      - name: Test CI snapshot synchronization
+        run: python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
