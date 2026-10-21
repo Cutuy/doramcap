@@ -6,9 +6,10 @@ manual dispatch. ARM64 and x86_64 jobs report independently; both consume runner
 minutes for private repositories.
 It checks formatting, default/all-feature Clippy and Rust tests, storage without
 default features, example/binary builds, and snapshot synchronization tests.
-Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds
-disable incremental compilation and retain line-table debug information to fit
-the runner disk; debug assertions remain enabled. Runs have a
+Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds use the
+`ci` Cargo profile: no optimization or incremental compilation, line-table debug
+information, debug assertions and overflow checks. Reproduce checks locally with
+`cargo test --profile ci --locked --workspace --all-features`. Runs have a
 45-minute timeout and superseded runs on the same ref are cancelled.
 Test shells receive a 256 MiB locked-memory limit for registered I/O buffers;
 Cargo and test binaries run as the unprivileged runner user.
