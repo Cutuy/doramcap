@@ -1,6 +1,6 @@
 # Fault schema
 
-Owns the `doramcap.fault.v1` Protobuf files, generated `pb` types and `FILE_DESCRIPTOR_SET`. Reporter and aggregation import these enums directly. [fault-protocol](../fault-protocol/) handles checked conversion between bounded records and wire messages.
+Owns the `doramcap.fault.v1` Protobuf files, generated `pb` types and `FILE_DESCRIPTOR_SET`. Reporter and aggregation import these enums directly. [fault-protocol](../protocol/) handles checked conversion between bounded records and wire messages.
 
 - [Reporter IPC](proto/reporter.proto)
 - [Aggregation storage/live publication](proto/aggregation.proto)

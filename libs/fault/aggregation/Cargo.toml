@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-fault-schema = { path = "../fault-schema" }
-fault-reporter = { path = "../fault-reporter" }
+fault-schema = { path = "../schema" }
+fault-reporter = { path = "../reporter" }
 
 [lints]
 workspace = true

@@ -7,8 +7,8 @@ Created 2026-10-20. Core crates implemented; app integration remains planned. De
 ## Milestones
 
 - [x] Agree on core observation semantics, bounds and Crossbeam; defer transport/schema selection to app integration.
-- [x] Implement `libs/fault-reporter`: caller API, separate queues, local state and Rust publication handoff. Transport adapters deferred.
-- [x] Implement `libs/fault-aggregation`: deterministic state machine, freshness and snapshots.
+- [x] Implement `libs/fault/reporter`: caller API, separate queues, local state and Rust publication handoff. Transport adapters deferred.
+- [x] Implement `libs/fault/aggregation`: deterministic state machine, freshness and snapshots.
 - [ ] Add `apps/fault-watchdog`: Dora ingress, scheduling and bounded output routing.
 - [ ] Add `apps/fault-demo`: synthetic producers and live fault display.
 - [ ] Add demo MCAP recording through a recorder consumer; choose existing recorder extension versus separate app during integration.
@@ -49,8 +49,8 @@ Before implementation, present maintained candidates and measured tradeoffs for 
 
 ## Detailed plans
 
-- [Reporter library](../../../libs/fault-reporter/docs/102026-fault-reporter.md)
-- [Aggregation crate](../../../libs/fault-aggregation/docs/102026-fault-aggregation.md)
+- [Reporter library](../../../libs/fault/reporter/docs/102026-fault-reporter.md)
+- [Aggregation crate](../../../libs/fault/aggregation/docs/102026-fault-aggregation.md)
 
 ## Evidence
 
@@ -64,6 +64,6 @@ Core evidence: 26 local tests, allocation validation, strict Clippy, formatting 
 
 ## Publication schemas
 
-The [fault-protocol crate](../../../libs/fault-protocol/README.md) now defines reporter IPC and aggregation storage/publication envelopes with checked bidirectional translations. See its [wire contract](../../../libs/fault-protocol/docs/102026-fault-publications.md). Actual Dora and MCAP adapters remain follow-up work.
+The [fault-protocol crate](../../../libs/fault/protocol/README.md) now defines reporter IPC and aggregation storage/publication envelopes with checked bidirectional translations. See its [wire contract](../../../libs/fault/protocol/docs/102026-fault-publications.md). Actual Dora and MCAP adapters remain follow-up work.
 
-[Proposed event-driven architecture and state transitions](../../../libs/fault-protocol/docs/102026-event-driven-faults.md).
+[Proposed event-driven architecture and state transitions](../../../libs/fault/protocol/docs/102026-event-driven-faults.md).

@@ -4,9 +4,9 @@ Versioned Protobuf publications and bidirectional translation for the reporter a
 
 | Boundary | Schema | Payloads |
 |---|---|---|
-| Reporter → watchdog IPC | [reporter.proto](../fault-schema/proto/reporter.proto) | Observation batch or definition/latest-state snapshot |
-| Watchdog → storage / viewer | [aggregation.proto](../fault-schema/proto/aggregation.proto) | Revisioned update batch or full aggregation snapshot |
-| Shared records | [common.proto](../fault-schema/proto/common.proto) | Identity, policy, observations, counters and trace context |
+| Reporter → watchdog IPC | [reporter.proto](../schema/proto/reporter.proto) | Observation batch or definition/latest-state snapshot |
+| Watchdog → storage / viewer | [aggregation.proto](../schema/proto/aggregation.proto) | Revisioned update batch or full aggregation snapshot |
+| Shared records | [common.proto](../schema/proto/common.proto) | Identity, policy, observations, counters and trace context |
 
 ## Translation
 

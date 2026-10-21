@@ -11,6 +11,6 @@ agg.reconcile(&producer_snapshot, now)?;
 let counters = diagnostics.stats();
 ```
 
-[API and clock contracts](src/lib.rs) · [Observability](src/observability.rs) · [Design and evidence](docs/102026-fault-aggregation.md) · [State transitions](../fault-protocol/docs/102026-event-driven-faults.md) · [Wire contracts](../fault-protocol/README.md)
+[API and clock contracts](src/lib.rs) · [Observability](src/observability.rs) · [Design and evidence](docs/102026-fault-aggregation.md) · [State transitions](../protocol/docs/102026-event-driven-faults.md) · [Wire contracts](../protocol/README.md)
 
 Build the API reference: `cargo doc --no-deps -p fault-aggregation --open`.

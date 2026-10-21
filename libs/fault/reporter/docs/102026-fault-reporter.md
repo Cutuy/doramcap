@@ -2,7 +2,7 @@
 
 # Fault reporter library
 
-Created 2026-10-20. Implementation: `libs/fault-reporter`. Transport-independent core; Dora adapter runs outside caller callbacks.
+Created 2026-10-20. Implementation: `libs/fault/reporter`. Transport-independent core; Dora adapter runs outside caller callbacks.
 
 ## Milestones
 
@@ -62,7 +62,7 @@ Disabled by default. Configure success refresh limiting per condition; account e
 
 ## Publication contract
 
-Batches carry source instance, sequence/watermark, observation timestamps, condition identities, observations and cumulative loss counters. Preserve optional trace correlation and bounded diagnostic context. The [reporter Protobuf contract](../../fault-schema/proto/reporter.proto) supplies the wire representation.
+Batches carry source instance, sequence/watermark, observation timestamps, condition identities, observations and cumulative loss counters. Preserve optional trace correlation and bounded diagnostic context. The [reporter Protobuf contract](../../schema/proto/reporter.proto) supplies the wire representation.
 
 Caller threads perform no disk/network I/O. Adapter workers drain ready records immediately, report transport health locally, and retain only bounded pending data. Retrying uses stable identities; consumers deduplicate. Shutdown has a deadline and returns unsent/lost counts; queue admission does not promise persistence.
 
@@ -93,7 +93,7 @@ Release smoke benchmark (100,000 calls per case, local x86_64; scheduling and cl
 
 ARM64 CI job **88** succeeded on 2026-10-20. Snapshot: `/home/doramcap-ci/jobs/5a6e4601ccb2492dbb129969463b355a`. It exercised the implemented core with 25 new tests, workspace default/all-feature tests and native validation. The subsequent independent-source restart regression passed locally (26 total), as did the runnable lifecycle example, final formatting and strict Clippy. Runtime source was unchanged after submission.
 
-2026-10-20 follow-up: [fault-protocol](../../fault-protocol/README.md) now provides the requested Protobuf definitions and checked bidirectional translation. Dora transport and storage host adapters remain deferred.
+2026-10-20 follow-up: [fault-protocol](../../protocol/README.md) now provides the requested Protobuf definitions and checked bidirectional translation. Dora transport and storage host adapters remain deferred.
 
 ## Event-driven follow-up
 
@@ -102,7 +102,7 @@ ARM64 CI job **88** succeeded on 2026-10-20. Snapshot: `/home/doramcap-ci/jobs/5
 - [x] Share the recovery predicate with aggregation; bypass limiting on confirmation.
 - [x] Expose reconciliation snapshots and deadline-aware `wait`.
 
-Evidence: [event-driven implementation and measurements](../../fault-protocol/docs/102026-event-driven-faults.md). Current defaults reserve 1,024 total record slots (376,832 payload bytes on x86_64), plus queue metadata and condition storage. Failure repeats remain unthrottled; success summaries are optional.
+Evidence: [event-driven implementation and measurements](../../protocol/docs/102026-event-driven-faults.md). Current defaults reserve 1,024 total record slots (376,832 payload bytes on x86_64), plus queue metadata and condition storage. Failure repeats remain unthrottled; success summaries are optional.
 
 ## API documentation
 

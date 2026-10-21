@@ -1,5 +1,27 @@
 [workspace]
-members = ["libs/*", "apps/system-monitor", "apps/system-monitor/dora", "apps/cpu-viewer/server", "apps/mcap-recorder", "apps/storage-demo", "apps/activity-demo/server", "apps/provenance-demo/server"]
+members = [
+    "libs/activity-tracing",
+    "libs/cgroup-bpf",
+    "libs/monitor-core",
+    "libs/pbtxt-config",
+    "libs/resource-policy",
+    "libs/step-provenance",
+    "libs/storage-persistence",
+    "libs/task-accounting",
+    "libs/telemetry-mcap",
+    "libs/telemetry-protocol",
+    "libs/fault/reporter",
+    "libs/fault/aggregation",
+    "libs/fault/protocol",
+    "libs/fault/schema",
+    "apps/system-monitor",
+    "apps/system-monitor/dora",
+    "apps/cpu-viewer/server",
+    "apps/mcap-recorder",
+    "apps/storage-demo",
+    "apps/activity-demo/server",
+    "apps/provenance-demo/server",
+]
 resolver = "2"
 
 [workspace.package]

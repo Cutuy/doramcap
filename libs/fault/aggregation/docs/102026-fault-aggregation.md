@@ -2,7 +2,7 @@
 
 # Fault aggregation crate
 
-Created 2026-10-20. Implementation: `libs/fault-aggregation`. A deterministic library hosted by `apps/fault-watchdog`; Dora, sockets and MCAP remain app/adapter responsibilities.
+Created 2026-10-20. Implementation: `libs/fault/aggregation`. A deterministic library hosted by `apps/fault-watchdog`; Dora, sockets and MCAP remain app/adapter responsibilities.
 
 ## Milestones
 
@@ -85,7 +85,7 @@ Output retention is a bounded oldest-drop queue with revision gaps and cumulativ
 
 ARM64 CI job **88** succeeded on 2026-10-20. Snapshot: `/home/doramcap-ci/jobs/5a6e4601ccb2492dbb129969463b355a`. It exercised the implemented core with 25 new tests, workspace default/all-feature tests and native validation. The subsequent independent-source restart regression passed locally (26 total), as did the runnable lifecycle example, final formatting and strict Clippy. Runtime source was unchanged after submission.
 
-2026-10-20 follow-up: [fault-protocol](../../fault-protocol/README.md) now provides the requested Protobuf definitions and checked bidirectional translation. Dora transport and storage host adapters remain deferred.
+2026-10-20 follow-up: [fault-protocol](../../protocol/README.md) now provides the requested Protobuf definitions and checked bidirectional translation. Dora transport and storage host adapters remain deferred.
 
 ## Event-driven follow-up
 
@@ -93,7 +93,7 @@ ARM64 CI job **88** succeeded on 2026-10-20. Snapshot: `/home/doramcap-ci/jobs/5
 - [x] Signal ready output; expose `next_deadline` for idle freshness expiry.
 - [x] Request full output reconciliation after bounded history overflow.
 
-Evidence: [event-driven implementation and measurements](../../fault-protocol/docs/102026-event-driven-faults.md). The host keeps live publication independent of recorder buffering.
+Evidence: [event-driven implementation and measurements](../../protocol/docs/102026-event-driven-faults.md). The host keeps live publication independent of recorder buffering.
 
 ## Injected observability
 

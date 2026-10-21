@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 crossbeam-channel = "0.5"
-fault-schema = { path = "../fault-schema" }
+fault-schema = { path = "../schema" }
 crossbeam-queue = "0.3.12"
 
 [lints]

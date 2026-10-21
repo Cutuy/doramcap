@@ -5,9 +5,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-fault-schema = { path = "../fault-schema" }
-fault-reporter = { path = "../fault-reporter" }
-fault-aggregation = { path = "../fault-aggregation" }
+fault-schema = { path = "../schema" }
+fault-reporter = { path = "../reporter" }
+fault-aggregation = { path = "../aggregation" }
 prost = "0.14"
 
 [dev-dependencies]
