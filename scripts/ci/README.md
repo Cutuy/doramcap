@@ -9,7 +9,9 @@ default features, example/binary builds, and snapshot synchronization tests.
 Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds use the
 `ci` Cargo profile: no optimization or incremental compilation, line-table debug
 information, debug assertions and overflow checks. Reproduce checks locally with
-`cargo test --profile ci --locked --workspace --all-features`. Runs have a
+`cargo test --profile ci --locked --workspace --all-features`.
+CI removes generated test artifacts before the standalone example/binary build
+to bound peak disk usage; that final build recompiles dependencies. Runs have a
 45-minute timeout and superseded runs on the same ref are cancelled.
 Test shells receive a 256 MiB locked-memory limit for registered I/O buffers;
 Cargo and test binaries run as the unprivileged runner user.
