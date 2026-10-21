@@ -197,36 +197,94 @@ fn snapshots_survive_loss_late_attachment_and_runtime_modes() {
     std::fs::remove_file(file).unwrap();
 }
 #[test]
-fn rejection_combining_and_rotation_are_visible() {
+fn capacity_rejection_and_retry_are_visible() {
+    // Arrange
+    let file = path("capacity");
+    let collector = Collector::new(128, Mode::Inspect).unwrap();
+    let slabs = SlabPool::with_observer(2, 4096, 4096, collector.observer()).unwrap();
+    let managed = BufferPool::new(1, 4096, 4096).unwrap();
+    let mut writer = Writer::direct_with_config(
+        open(&file),
+        managed,
+        4096,
+        WriterConfig {
+            pending_capacity: 1,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    writer.set_observer(collector.observer());
+    // Admission leaves the first write unsubmitted, so kernel completion cannot
+    // release its slot before the second admission checks capacity.
+    writer
+        .try_append_slab(slabs.acquire().unwrap().seal(4096).unwrap())
+        .unwrap();
+
+    // Act
+    let rejected = writer
+        .try_append_slab(slabs.acquire().unwrap().seal(4096).unwrap())
+        .unwrap_err();
+
+    // Assert
+    assert_eq!(rejected.error.kind(), io::ErrorKind::WouldBlock);
+    assert_eq!(writer.snapshot().counters.rejected_capacity, 1);
+    assert_eq!(writer.snapshot().pending, 1);
+    assert!(
+        collector
+            .read_after(0, 128)
+            .events
+            .iter()
+            .any(|event| { event.kind == EventKind::Rejected(io::ErrorKind::WouldBlock) })
+    );
+
+    // Act
+    writer.flush_written().unwrap();
+    writer.try_append_slab(rejected.value).unwrap();
+    writer.flush_written().unwrap();
+
+    // Assert
+    let snapshot = writer.snapshot();
+    assert_eq!(snapshot.pending, 0);
+    assert_eq!(snapshot.counters.accepted, 2);
+    assert_eq!(snapshot.counters.written, 2);
+    writer.close().unwrap();
+    std::fs::remove_file(file).unwrap();
+}
+
+#[test]
+fn combining_and_rotation_are_visible() {
+    // Arrange
     let first = path("rotate-a");
     let second = path("rotate-b");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
     let slabs = SlabPool::with_observer(1, 4096, 4096, collector.observer()).unwrap();
     let (mut writer, monitor) = mcap(open(&first), 1, collector.observer());
+    writer.flush_written().unwrap();
+
+    // Act
     writer.reserve(message(1), 5).unwrap().commit().unwrap();
-    let mut builder = writer.prepare_records(slabs.acquire().unwrap());
-    builder.reserve(message(2), 5).unwrap().fill(2);
-    let rejected = writer
-        .append_prepared_records(builder.seal().unwrap())
-        .unwrap_err();
-    assert_eq!(rejected.error.kind(), io::ErrorKind::WouldBlock);
-    assert_eq!(
-        monitor
-            .snapshot()
-            .unwrap()
-            .writer
-            .counters
-            .rejected_capacity,
-        1
-    );
+
+    // Assert
     assert_eq!(monitor.snapshot().unwrap().combining_messages, 1);
     assert_eq!(monitor.snapshot().unwrap().combining_bytes, 36);
+
+    // Act
     writer.flush_written().unwrap();
+
+    // Assert
     assert_eq!(monitor.snapshot().unwrap().combining_messages, 0);
-    writer.append_prepared_records(rejected.value).unwrap();
+
+    // Act
+    let mut builder = writer.prepare_records(slabs.acquire().unwrap());
+    builder.reserve(message(2), 5).unwrap().fill(2);
+    writer
+        .append_prepared_records(builder.seal().unwrap())
+        .unwrap();
     writer.flush_written().unwrap();
     let old = monitor.snapshot().unwrap().writer;
     writer.rotate(open(&second)).unwrap();
+
+    // Assert
     let new = monitor.snapshot().unwrap().writer;
     assert_eq!(old.writer_id, new.writer_id);
     assert_ne!(old.file_id, new.file_id);
@@ -234,7 +292,6 @@ fn rejection_combining_and_rotation_are_visible() {
     let h = collector.read_after(0, 128);
     for kind in [
         EventKind::CombiningFlushed,
-        EventKind::Rejected(io::ErrorKind::WouldBlock),
         EventKind::FileRotated,
         EventKind::SyncCompleted,
     ] {
