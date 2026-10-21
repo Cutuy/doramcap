@@ -317,6 +317,39 @@ fn scan_cgroups(path: &Path, paths: &mut HashMap<u64, String>, capacity: usize, 
         }
     }
 }
+// Keep collecting into the preallocated discard buffer when the handoff is full.
+// The next accepted snapshot reports the cumulative number of discarded samples.
+fn collect_sample(
+    producer: &monitor_core::Producer,
+    discard: &mut Snapshot,
+    sequence: u64,
+    dropped: &mut u64,
+    origin: Instant,
+    collect: impl FnOnce(&mut Snapshot) -> Result<(), String>,
+) -> Result<bool, String> {
+    let mut lease = producer.try_acquire();
+    let snapshot = match lease.as_mut() {
+        Some(lease) => lease.snapshot_mut(),
+        None => {
+            discard.reset();
+            discard
+        }
+    };
+    snapshot.sequence = sequence;
+    snapshot.capture_unix_ns = unix_ns();
+    snapshot.monotonic_start_ns = elapsed_ns(origin);
+    snapshot.dropped_batches = *dropped;
+    collect(snapshot)?;
+    snapshot.monotonic_end_ns = elapsed_ns(origin);
+    if let Some(lease) = lease {
+        lease.publish();
+        Ok(true)
+    } else {
+        *dropped += 1;
+        Ok(false)
+    }
+}
+
 fn run(opts: Options) -> Result<()> {
     if opts.check {
         println!("{}", serde_json::to_string_pretty(&capabilities()?)?);
@@ -392,31 +425,23 @@ fn run(opts: Options) -> Result<()> {
                     if worker_stop.load(Ordering::Acquire) {
                         break;
                     }
-                    let mut lease = producer.try_acquire();
-                    let snapshot = match lease.as_mut() {
-                        Some(lease) => lease.snapshot_mut(),
-                        None => {
-                            discard.reset();
-                            &mut discard
-                        }
-                    };
-                    snapshot.sequence = sequence;
-                    snapshot.capture_unix_ns = unix_ns();
-                    snapshot.monotonic_start_ns = elapsed_ns(origin);
-                    snapshot.dropped_batches = dropped;
-                    backend.collect(snapshot)?;
-                    #[cfg(feature = "task-bpf")]
-                    if let Some(tasks) = tasks.as_mut() {
-                        snapshot.task_losses = tasks
-                            .collect_into(&mut snapshot.task_records)
-                            .map_err(|e| e.to_string())?;
-                    }
-                    snapshot.monotonic_end_ns = elapsed_ns(origin);
-                    if let Some(lease) = lease {
-                        lease.publish();
-                    } else {
-                        dropped += 1;
-                    }
+                    collect_sample(
+                        &producer,
+                        &mut discard,
+                        sequence,
+                        &mut dropped,
+                        origin,
+                        |snapshot| {
+                            backend.collect(snapshot)?;
+                            #[cfg(feature = "task-bpf")]
+                            if let Some(tasks) = tasks.as_mut() {
+                                snapshot.task_losses = tasks
+                                    .collect_into(&mut snapshot.task_records)
+                                    .map_err(|e| e.to_string())?;
+                            }
+                            Ok(())
+                        },
+                    )?;
                     sequence += 1;
                     deadline += PERIOD;
                     // Avoid a catch-up storm after a slow collection. Keep future deadlines on the grid.
@@ -591,4 +616,80 @@ fn run(opts: Options) -> Result<()> {
 }
 fn main() -> Result<()> {
     run(Options::parse()?).wrap_err("system monitor failed")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn bounded_overload_counts_drops_and_recovers_after_drain() {
+        // Arrange: the consumer cannot dequeue until explicitly released.
+        let (producer, consumer) = monitor_core::handoff(2, 1).unwrap();
+        let (release, commands) = mpsc::channel::<usize>();
+        let (drained, batches) = mpsc::channel();
+        let timeout = Duration::from_secs(30); // Hang guard only.
+        let reader = std::thread::spawn(move || {
+            for count in commands {
+                let mut batch = Vec::new();
+                for _ in 0..count {
+                    let lease = consumer.try_recv().expect("published sample");
+                    batch.push((lease.snapshot().sequence, lease.snapshot().dropped_batches));
+                }
+                assert!(consumer.try_recv().is_none());
+                drained.send(batch).unwrap();
+            }
+        });
+        let mut discard = Snapshot::with_capacity(1);
+        let mut dropped = 0;
+        let mut collected = Vec::new();
+        let origin = Instant::now();
+
+        // Act: fill both slots, then submit exactly three excess samples.
+        let accepted: Vec<_> = (0..5)
+            .map(|sequence| {
+                collect_sample(
+                    &producer,
+                    &mut discard,
+                    sequence,
+                    &mut dropped,
+                    origin,
+                    |s| {
+                        collected.push(s.sequence);
+                        assert!(s.push(CpuRecord::default()));
+                        Ok(())
+                    },
+                )
+                .unwrap()
+            })
+            .collect();
+
+        // Assert: collection continues even when publication is rejected.
+        assert_eq!(accepted, [true, true, false, false, false]);
+        assert_eq!(collected, [0, 1, 2, 3, 4]);
+        assert_eq!(dropped, 3);
+        assert_eq!(discard.records.len(), 1);
+        assert_eq!(discard.capacity_overflow, 0);
+
+        // Act: allow the consumer to drain the retained samples.
+        release.send(2).unwrap();
+        let retained = batches.recv_timeout(timeout).unwrap();
+
+        // Assert
+        assert_eq!(retained, [(0, 0), (1, 0)]);
+
+        // Act: publish again after receiving the drain acknowledgement.
+        let accepted =
+            collect_sample(&producer, &mut discard, 5, &mut dropped, origin, |_| Ok(())).unwrap();
+        release.send(1).unwrap();
+        let recovered = batches.recv_timeout(timeout).unwrap();
+
+        // Assert: the next accepted sample carries the exact cumulative loss.
+        assert!(accepted);
+        assert_eq!(recovered, [(5, 3)]);
+        assert_eq!(dropped, 3);
+        drop(release);
+        reader.join().unwrap();
+    }
 }
