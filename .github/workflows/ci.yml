@@ -27,10 +27,6 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: always
-      # Fresh hosted VMs need compact artifacts across multiple feature builds.
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: line-tables-only
-      CARGO_PROFILE_TEST_DEBUG: line-tables-only
       CLANG: clang-18
     steps:
       - name: Check out source
@@ -65,34 +61,34 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (default features)
-        run: cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
+        run: cargo clippy --profile ci --workspace --no-deps --all-targets --locked -- -D warnings
 
       - name: Clippy (all features)
-        run: cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
+        run: cargo clippy --profile ci --workspace --no-deps --all-targets --all-features --locked -- -D warnings
 
       - name: Test storage without default features
         run: |
           # Registered I/O buffers need more than the hosted runner default.
           sudo prlimit --pid "$$" --memlock=268435456:268435456
           ulimit -l
-          cargo test --locked -p storage-persistence --no-default-features
+          cargo test --profile ci --locked -p storage-persistence --no-default-features
 
       - name: Test workspace (default features)
         run: |
           # Registered I/O buffers need more than the hosted runner default.
           sudo prlimit --pid "$$" --memlock=268435456:268435456
           ulimit -l
-          cargo test --locked --workspace
+          cargo test --profile ci --locked --workspace
 
       - name: Test workspace (all features)
         run: |
           # Registered I/O buffers need more than the hosted runner default.
           sudo prlimit --pid "$$" --memlock=268435456:268435456
           ulimit -l
-          cargo test --locked --workspace --all-features
+          cargo test --profile ci --locked --workspace --all-features
 
       - name: Build examples and binaries
-        run: cargo build --locked --workspace --all-features --examples --bins
+        run: cargo build --profile ci --locked --workspace --all-features --examples --bins
 
       - name: Test CI snapshot synchronization
         run: python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
