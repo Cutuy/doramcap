@@ -59,13 +59,25 @@ jobs:
         run: cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
 
       - name: Test storage without default features
-        run: cargo test --locked -p storage-persistence --no-default-features
+        run: |
+          # Registered I/O buffers need more than the hosted runner default.
+          sudo prlimit --pid "$$" --memlock=268435456:268435456
+          ulimit -l
+          cargo test --locked -p storage-persistence --no-default-features
 
       - name: Test workspace (default features)
-        run: cargo test --locked --workspace
+        run: |
+          # Registered I/O buffers need more than the hosted runner default.
+          sudo prlimit --pid "$$" --memlock=268435456:268435456
+          ulimit -l
+          cargo test --locked --workspace
 
       - name: Test workspace (all features)
-        run: cargo test --locked --workspace --all-features
+        run: |
+          # Registered I/O buffers need more than the hosted runner default.
+          sudo prlimit --pid "$$" --memlock=268435456:268435456
+          ulimit -l
+          cargo test --locked --workspace --all-features
 
       - name: Build examples and binaries
         run: cargo build --locked --workspace --all-features --examples --bins
