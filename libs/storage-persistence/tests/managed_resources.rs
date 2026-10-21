@@ -1,27 +1,10 @@
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 use storage_persistence::{
     file_offsets::{OffsetAllocator, OffsetError},
     managed_buffers::{BufferPool, PoolError},
 };
-struct CountAlloc;
-static COUNTING: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-unsafe impl GlobalAlloc for CountAlloc {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        if COUNTING.load(Relaxed) {
-            ALLOCS.fetch_add(1, Relaxed);
-        }
-        unsafe { System.alloc(l) }
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        unsafe { System.dealloc(p, l) }
-    }
-}
-#[global_allocator]
-static GLOBAL: CountAlloc = CountAlloc;
+#[path = "support/allocations.rs"]
+mod allocations;
 
-// One test keeps the allocation measurement isolated from parallel test cases.
 #[test]
 fn managed_resources_gate() {
     for alignment in [512, 4096] {
@@ -44,15 +27,15 @@ fn managed_resources_gate() {
         drop(second);
         assert_eq!(pool.available(), pool.capacity());
         let mut offsets = OffsetAllocator::new(0, alignment as u64).unwrap();
-        COUNTING.store(true, Relaxed);
+        allocations::start();
         for _ in 0..10000 {
             let mut lease = pool.reserve(alignment).unwrap();
             lease.as_mut_slice().fill(1);
             let reservation = offsets.reserve(alignment as u64).unwrap();
             reservation.commit();
         }
-        COUNTING.store(false, Relaxed);
-        assert_eq!(ALLOCS.load(Relaxed), 0);
+        let allocations = allocations::finish();
+        assert_eq!(allocations, 0);
         assert_eq!(offsets.next_offset(), 10000 * alignment as u64);
         let lease = pool.reserve(1).unwrap();
         drop(pool);
@@ -84,4 +67,36 @@ fn managed_resources_gate() {
     let mut end = OffsetAllocator::new(u64::MAX - 511, 512).unwrap();
     assert!(matches!(end.reserve(512), Err(OffsetError::Overflow)));
     assert_eq!(end.next_offset(), u64::MAX - 511);
+}
+
+#[test]
+fn allocation_counter_is_thread_local() {
+    // Arrange
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let other_barrier = barrier.clone();
+    let other = std::thread::spawn(move || {
+        other_barrier.wait();
+        let allocation = std::hint::black_box(Box::new(42_u64));
+        drop(std::hint::black_box(allocation));
+        other_barrier.wait();
+    });
+
+    // Act
+    allocations::start();
+    barrier.wait();
+    barrier.wait();
+    let other_thread_allocations = allocations::finish();
+    other.join().unwrap();
+
+    // Assert
+    assert_eq!(other_thread_allocations, 0);
+
+    // Act
+    allocations::start();
+    let allocation = std::hint::black_box(Box::new(42_u64));
+    let local_allocations = allocations::finish();
+    drop(allocation);
+
+    // Assert
+    assert_eq!(local_allocations, 1);
 }

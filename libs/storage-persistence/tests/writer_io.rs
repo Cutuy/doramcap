@@ -1,21 +1,5 @@
-use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
-struct CountAlloc;
-static COUNTING: AtomicBool = AtomicBool::new(false);
-static ALLOCS: AtomicUsize = AtomicUsize::new(0);
-unsafe impl GlobalAlloc for CountAlloc {
-    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
-        if COUNTING.load(Relaxed) {
-            ALLOCS.fetch_add(1, Relaxed);
-        }
-        unsafe { System.alloc(l) }
-    }
-    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
-        unsafe { System.dealloc(p, l) }
-    }
-}
-#[global_allocator]
-static GLOBAL: CountAlloc = CountAlloc;
+#[path = "support/allocations.rs"]
+mod allocations;
 
 use std::{
     fs::File,
@@ -70,13 +54,13 @@ fn real_ring_readback_errors_cancellation_and_drop() {
     for (i, part) in bytes.as_chunks::<4096>().0.iter().enumerate() {
         assert!(part.iter().all(|b| *b == i as u8));
     }
-    COUNTING.store(true, Relaxed);
+    allocations::start();
     for _ in 0..1000 {
         writer.append(pool.reserve(4096).unwrap()).unwrap();
         writer.flush_written().unwrap();
     }
-    COUNTING.store(false, Relaxed);
-    assert_eq!(ALLOCS.load(Relaxed), 0);
+    let allocations = allocations::finish();
+    assert_eq!(allocations, 0);
     #[cfg(feature = "diagnostics")]
     {
         assert_eq!(writer.events().count(), 256);
