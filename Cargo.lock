@@ -1070,6 +1070,7 @@ dependencies = [
  "cudarc",
  "dora-node-api",
  "eyre",
+ "libc",
  "memmap2",
  "serde",
  "serde_json",

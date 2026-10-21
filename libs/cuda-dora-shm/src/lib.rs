@@ -1,6 +1,6 @@
 //! Same-host SPMC fixed-slot adapter over Dora control messages.
 //!
-//! Payloads live in bounded `/dev/shm` files. Every process mmaps and registers
+//! Payloads live in one bounded `/dev/shm` ring file. Every process mmaps, mlocks and registers
 //! its own view with CUDA. Ready/Done event handles are exchanged once; frames
 //! carry only pool/slot/generation/length. No CUDA IPC memory handles are used.
 //! Dora/Zenoh owns control-message storage; this adapter owns payload lifetimes.
@@ -22,6 +22,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::OpenOptions,
     io::Write,
+    os::fd::AsRawFd,
     path::Path,
     sync::Arc,
 };
@@ -71,14 +72,30 @@ fn gpu_id(ctx: &CudaContext) -> Result<Vec<u8>> {
     }
     Ok(uuid.bytes.iter().flat_map(|x| x.to_ne_bytes()).collect())
 }
-fn map_slot(
+fn map_pool(
     ctx: Arc<CudaContext>,
     directory: &Path,
-    index: usize,
-    capacity: usize,
+    count: usize,
+    stride: usize,
     create: bool,
-) -> Result<HostMappedMemory> {
-    let path = directory.join(format!("slot-{index}"));
+) -> Result<Vec<HostMappedMemory>> {
+    let capacity = count
+        .checked_mul(stride)
+        .ok_or_else(|| eyre::eyre!("pool size overflow"))?;
+    let directory_fd = std::fs::File::open(directory)?;
+    let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: valid open descriptor and writable statfs output.
+    ensure!(
+        unsafe { libc::fstatfs(directory_fd.as_raw_fd(), stat.as_mut_ptr()) } == 0,
+        "fstatfs: {}",
+        std::io::Error::last_os_error()
+    );
+    // SAFETY: successful fstatfs initialized the structure.
+    ensure!(
+        unsafe { stat.assume_init() }.f_type == libc::TMPFS_MAGIC,
+        "pool backing must be tmpfs"
+    );
+    let path = directory.join("ring");
     let file = if create {
         let mut f = OpenOptions::new()
             .read(true)
@@ -105,8 +122,13 @@ fn map_slot(
     // SAFETY: trusted pool owner never truncates files; protocol excludes writes
     // while remote readers hold a generation. File inode stays alive via mmap.
     let mapping = unsafe { MmapOptions::new().len(capacity).map_mut(&file)? };
+    // Eager mlock: CUDA registration alone may not pin pages on ATS systems.
+    // Mmap ownership retains the lock until munmap, including quarantine paths.
+    mapping
+        .lock()
+        .map_err(|e| eyre::eyre!("mlock entire pool (check RLIMIT_MEMLOCK): {e}"))?;
     // SAFETY: all external accesses are governed by the pool's Ready/Done protocol.
-    Ok(unsafe { HostMappedMemory::from_mapping(ctx, mapping)? })
+    Ok(unsafe { HostMappedMemory::from_mapping(ctx, mapping)? }.into_slots(count, stride)?)
 }
 
 struct ProducerSlot {
@@ -146,7 +168,8 @@ pub struct Producer {
     _directory: tempfile::TempDir,
 }
 impl Producer {
-    /// Preallocate, populate and register every slot in private tmpfs storage.
+    /// Preallocate one tmpfs ring, populate and mlock its whole mapping, then register once.
+    /// Lock failure (including RLIMIT_MEMLOCK exhaustion) aborts initialization.
     /// # Safety
     /// Backing files must remain under this protocol's exclusive control until all
     /// mappings close. Never truncate or modify them through other file handles or
@@ -158,9 +181,14 @@ impl Producer {
             .prefix("cuda-dora-")
             .tempdir_in("/dev/shm")?;
         let mut slots = Vec::new();
-        for index in 0..config.slots {
+        let stride = config
+            .capacity
+            .checked_add(63)
+            .ok_or_else(|| eyre::eyre!("stride overflow"))?
+            & !63;
+        for memory in map_pool(ctx.clone(), directory.path(), config.slots, stride, true)? {
             slots.push(ProducerSlot {
-                memory: map_slot(ctx.clone(), directory.path(), index, config.capacity, true)?,
+                memory,
                 ready: Event::new(ctx.clone())?,
                 writer: None,
             });
@@ -178,6 +206,7 @@ impl Producer {
             directory: directory.path().to_string_lossy().into_owned(),
             slots: config.slots,
             capacity: config.capacity,
+            stride,
             peers: config.peers.clone(),
             ready: slots
                 .iter()
@@ -358,7 +387,9 @@ impl WriteFrame<'_> {
     /// CPU access is available before CUDA submission; reference cannot escape.
     pub fn with_cpu_write<R>(&mut self, write: impl FnOnce(&mut [u8]) -> R) -> Result<R> {
         ensure!(self.gpu.is_none(), "GPU write already queued");
-        Ok(write(&mut self.pool.slots[self.slot].memory.write()?))
+        Ok(write(
+            &mut self.pool.slots[self.slot].memory.write()?[..self.pool.manifest.capacity],
+        ))
     }
     /// Enqueue producer work on this frame's stream.
     /// # Safety
@@ -434,7 +465,8 @@ pub struct Consumer {
     ctx: Arc<CudaContext>,
 }
 impl Consumer {
-    /// Map/register the producer's tmpfs slots and import Ready event handles.
+    /// Map, mlock and register the entire producer ring once; import Ready events.
+    /// Each slot has independent local borrow tracking and shares backing ownership.
     ///
     /// # Safety
     /// The manifest and all subsequent control messages must originate from a
@@ -462,9 +494,18 @@ impl Consumer {
             "pool identity mismatch"
         );
         let mut slots = Vec::new();
-        for index in 0..manifest.slots {
+        for (index, memory) in map_pool(
+            ctx.clone(),
+            &directory,
+            manifest.slots,
+            manifest.stride,
+            false,
+        )?
+        .into_iter()
+        .enumerate()
+        {
             slots.push(ConsumerSlot {
-                memory: map_slot(ctx.clone(), &directory, index, manifest.capacity, false)?,
+                memory,
                 ready: Event::open(ctx.clone(), &manifest.ready[index])?,
                 done: Event::new(ctx.clone())?,
                 previous: None,

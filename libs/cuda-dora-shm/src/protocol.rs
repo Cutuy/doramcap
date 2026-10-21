@@ -1,7 +1,7 @@
 use eyre::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const MAX_MESSAGE: usize = 256 * 1024;
 
 /// Fixed membership and bounded storage, negotiated before any publication.
@@ -15,6 +15,8 @@ pub struct Manifest {
     pub directory: String,
     pub slots: usize,
     pub capacity: usize,
+    /// Slot distance in bytes, including alignment padding.
+    pub stride: usize,
     pub peers: Vec<String>,
     pub ready: Vec<Vec<u8>>,
 }
@@ -33,6 +35,10 @@ impl Manifest {
         ensure!(
             !self.peers.is_empty() && self.peers.len() <= 64,
             "peers must be 1..=64"
+        );
+        ensure!(
+            self.stride == (self.capacity + 63) & !63,
+            "invalid slot stride"
         );
         let mut names = std::collections::BTreeSet::new();
         for p in &self.peers {
@@ -106,6 +112,7 @@ mod tests {
             directory: "/dev/shm/pool".into(),
             slots: 2,
             capacity: 4096,
+            stride: 4096,
             peers: vec!["a".into(), "b".into()],
             ready: vec![vec![0; 64]; 2],
         }

@@ -37,8 +37,8 @@ unpublished reservation may be canceled without exposing its generation.
 
 ## Boundaries
 
-- Payloads: ordinary RAM, one private `/dev/shm` file per slot. All processes
-  map/register independently. Pages are materialized before CUDA registration.
+- Payloads: ordinary RAM, one private `/dev/shm` ring file. All processes
+  map, mlock and register the whole ring independently. Pages are materialized and locked before CUDA registration.
 - Fixed slots/capacity/consumer membership. No payload allocation after setup;
   control-message and bookkeeping allocations still occur per frame.
 - Same Linux boot and GPU UUID required. No remote payload fallback, dynamic
@@ -78,3 +78,28 @@ unpublished reservation may be canceled without exposing its generation.
   `rejection_combining_and_rotation_are_visible` at `observability.rs:211`;
   identical-source retry passed. CUDA execution skipped: worker has neither
   `nvcc` nor `nvidia-smi`.
+
+
+## Whole-ring backing and slot borrows
+
+- [x] One tmpfs-verified file; one mapping, eager mlock and CUDA registration per process.
+- [x] Independent disjoint slot leases retain an Arc to the shared registration.
+  Splitting consumes an unaliased owner; existing clones/guards reject splitting.
+- [x] Protocol v2 carries payload capacity and 64-byte-aligned slot stride.
+- [x] `/proc/self/smaps` confirms the entire ring is locked; zero RLIMIT_MEMLOCK
+  in an isolated child rejects setup. Locks remain until backing unmap.
+- [x] Two new region tests plus all 22 existing GPU ownership cases pass.
+- [x] Three mapping/locking tests and 10 CPU unit tests pass; strict Clippy passes.
+- [x] Dora: 3 consumers, 12 frames, 4,097-byte capacity and aligned slot strides;
+  all frames verified, all 12 published pending and reclaimed. Stalled reader
+  holds both slots with zero reclamation. A 2-consumer, 1 MiB/slot run also
+  verifies four frames and two generations through one locked 2 MiB ring.
+- [x] Compute Sanitizer: 2 consumers, 6 frames, zero errors in all 3 processes.
+- [x] ARM64 full worker suite passed, Pueue job 108. CUDA execution remains
+  local because the ARM64 worker has no CUDA installation.
+
+Event exchange remains unchanged: create with `cudaEventInterprocess` and
+`cudaEventDisableTiming`; `cudaIpcGetEventHandle` exports 64 opaque bytes through
+Manifest (Ready) or Attached (Done). Peers use `cudaIpcOpenEventHandle`, then
+`cudaStreamWaitEvent` or `cudaEventQuery`. Shutdown closes imports before exports.
+These are event handles; payload sharing uses the locked tmpfs mapping.

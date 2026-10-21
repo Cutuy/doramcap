@@ -6,9 +6,11 @@
 //! supports opt-in `cudaMallocManaged` storage. CPU and GPU addresses refer to the same
 //! storage; no device allocation or payload copy is performed.
 //!
-//! CPU guards and GPU leases enforce whole-buffer reader/writer exclusion.
+//! CPU guards and GPU leases enforce reader/writer exclusion per region.
+//! `into_slots` consumes an unaliased owner into independently borrowed regions.
 //! GPU leases retain storage and access until stream completion, including on
-//! early drop and unwind. Only arbitrary kernel submission is unsafe.
+//! early drop and unwind. External mapping adoption and arbitrary kernel submission
+//! require explicit unsafe contracts.
 //! This first implementation waits on GPU-lease drop; it uses no host callbacks.
 
 use std::{
@@ -92,7 +94,6 @@ struct Registration {
     context: Arc<CudaContext>,
     device_ptr: u64,
     host_addr: usize,
-    len: usize,
 }
 
 impl Registration {
@@ -127,7 +128,6 @@ impl Registration {
                 context,
                 device_ptr: ptr as u64,
                 host_addr: ptr as usize,
-                len,
             });
         }
         let mapping = MmapMut::map_anon(len).map_err(Error::Mapping)?;
@@ -151,7 +151,6 @@ impl Registration {
             context,
             device_ptr: 0,
             host_addr: host_ptr as usize,
-            len,
         };
         let mut device_ptr = std::ptr::null_mut();
         // SAFETY: host_ptr refers to the registered mapping in the bound context.
@@ -240,7 +239,9 @@ impl AccessState {
 }
 
 struct Inner {
-    registration: Registration,
+    registration: Arc<Registration>,
+    offset: usize,
+    len: usize,
     state: Mutex<AccessState>,
 }
 impl Inner {
@@ -254,7 +255,8 @@ impl Inner {
 /// # Concurrency and ownership
 /// [`Self::read`] and [`Self::write`] return safe CPU slices through guards.
 /// [`Self::gpu`] reserves access before CUDA submission. Multiple readers may
-/// coexist; a writer excludes all readers and writers across CPU and GPU.
+/// coexist; a writer excludes readers and writers of the same region across CPU
+/// and GPU. Disjoint regions returned by `into_slots` have independent leases.
 /// Conflicting acquisitions return [`Error::Busy`] without blocking.
 ///
 /// Each guard owns a reference to the mapping. Dropping this handle never revokes
@@ -294,7 +296,9 @@ impl HostMappedMemory {
         mode: AllocationMode,
     ) -> Result<Self, Error> {
         Ok(Self(Arc::new(Inner {
-            registration: Registration::new(context, len, mode)?,
+            registration: Arc::new(Registration::new(context, len, mode)?),
+            offset: 0,
+            len,
             state: Mutex::new(AccessState::default()),
         })))
     }
@@ -308,15 +312,53 @@ impl HostMappedMemory {
     /// The mapping must be writable ordinary RAM (not MMIO), and not already
     /// CUDA-registered in this process. This owner unregisters before unmapping.
     pub unsafe fn from_mapping(context: Arc<CudaContext>, mapping: MmapMut) -> Result<Self, Error> {
+        let len = mapping.len();
         Ok(Self(Arc::new(Inner {
-            registration: Registration::register_mapping(context, mapping)?,
+            registration: Arc::new(Registration::register_mapping(context, mapping)?),
+            offset: 0,
+            len,
             state: Mutex::new(AccessState::default()),
         })))
     }
 
+    /// Consume an unaliased owner into equal, disjoint regions sharing its registration.
+    ///
+    /// Each region has independent CPU/GPU borrow tracking. Clones of a region
+    /// share its tracking. Returns Busy if this owner has clones or live leases;
+    /// rejects zero, overflow, or layouts that do not exactly cover the owner.
+    /// Errors consume this handle; existing aliases and guards remain valid.
+    /// Final region/lease destruction releases the backing registration.
+    pub fn into_slots(self, count: usize, stride: usize) -> Result<Vec<Self>, Error> {
+        if count == 0 || stride == 0 || count.checked_mul(stride) != Some(self.len()) {
+            return Err(Error::Mapping(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid slot layout",
+            )));
+        }
+        let inner = Arc::try_unwrap(self.0).map_err(|_| Error::Busy)?;
+        if inner
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .poisoned
+        {
+            return Err(Error::Poisoned);
+        }
+        Ok((0..count)
+            .map(|i| {
+                Self(Arc::new(Inner {
+                    registration: inner.registration.clone(),
+                    offset: inner.offset + i * stride,
+                    len: stride,
+                    state: Mutex::new(AccessState::default()),
+                }))
+            })
+            .collect())
+    }
+
     /// Logical size in bytes.
     pub fn len(&self) -> usize {
-        self.0.registration.len
+        self.0.len
     }
     /// Always false; zero-sized registrations are rejected.
     pub fn is_empty(&self) -> bool {
@@ -370,7 +412,12 @@ impl Permit {
         let reg = &self.inner.registration;
         // SAFETY: permit keeps mapping alive and excludes writers. With a write
         // permit, borrowing self also excludes mutable CPU access through it.
-        unsafe { std::slice::from_raw_parts(reg.host_addr as *const u8, reg.len) }
+        unsafe {
+            std::slice::from_raw_parts(
+                (reg.host_addr + self.inner.offset) as *const u8,
+                self.inner.len,
+            )
+        }
     }
 }
 
@@ -408,7 +455,12 @@ impl DerefMut for CpuWriteGuard {
         let reg = &self.0.inner.registration;
         // SAFETY: write permit excludes every other CPU/GPU lease; &mut self
         // excludes simultaneous references created through this same guard.
-        unsafe { std::slice::from_raw_parts_mut(reg.host_addr as *mut u8, reg.len) }
+        unsafe {
+            std::slice::from_raw_parts_mut(
+                (reg.host_addr + self.0.inner.offset) as *mut u8,
+                self.0.inner.len,
+            )
+        }
     }
 }
 
@@ -444,7 +496,7 @@ impl GpuLease {
     ///
     /// # Safety
     /// The closure may use the supplied address only to enqueue bounded accesses
-    /// to this allocation on the supplied stream. It must not retain the pointer,
+    /// within the leased region (the originating handle's `len()`) on the supplied stream. It must not retain the pointer,
     /// submit its use from another thread/stream, free/unregister it, or arrange
     /// later submissions after the closure returns. `Access::Read` forbids writes.
     /// All kernel arguments, launch dimensions and accesses to other allocations
@@ -455,13 +507,9 @@ impl GpuLease {
         submit: impl FnOnce(u64, &CudaStream) -> Result<(), DriverError>,
     ) -> Result<(), DriverError> {
         self.submitted = true; // before the closure: errors/panics may follow a launch.
+        let inner = &self.permit.as_ref().expect("live lease").inner;
         submit(
-            self.permit
-                .as_ref()
-                .expect("live lease")
-                .inner
-                .registration
-                .device_ptr,
+            inner.registration.device_ptr + inner.offset as u64,
             &self.stream,
         )
     }
