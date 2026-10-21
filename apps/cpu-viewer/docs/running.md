@@ -2,7 +2,7 @@
 
 ![Live CPU dataflow and wire formats](architecture.svg)
 
-See [exact binary field definitions](../../../libs/telemetry-protocol/docs/wire-protocol.md). The dashed MCAP
+See [exact binary field definitions](../../../libs/telemetry/protocol/docs/wire-protocol.md). The dashed MCAP
 branch is optional: the live viewer YAML does not launch the recorder.
 
 Use Dora CLI 1.1.0, matching the pinned `dora-node-api`. Build as your regular
@@ -26,7 +26,7 @@ Open <http://127.0.0.1:8080>. Stop with Ctrl+C. The dataflow uses real eBPF
 counters and enables experimental PF_KTHREAD-only accounting with capacity 32768.
 `live-cpu-native-dataflow.yml` is an explicit alias. Native requirements are
 Linux >=6.8, cgroup v2, kernel BTF, build dependencies and privileged BPF access;
-see `libs/cgroup-bpf/README.md` for kernel qualification details.
+see `libs/resources/cgroup-bpf/README.md` for kernel qualification details.
 
 ```text
 system-monitor → Dora snapshots (10 Hz) + dictionary (~0.5 Hz) → cpu-viewer
@@ -50,14 +50,14 @@ application syscalls and separate IRQ/idle accounting are outside it. Task-map
 capacity and losses are visible; records persist until restart and the bounded
 map can fill. Remove `--task-capacity 32768` to disable this experimental
 diagnostic. See [accounting
-nuances](../../../libs/task-accounting/CPU-ACCOUNTING.md).
+nuances](../../../libs/resources/task-accounting/CPU-ACCOUNTING.md).
 
 The server keeps one latest frame shared across browser clients; slow clients
 skip intermediate frames to keep buffering bounded. Browser reconnects are
 automatic. Names arrive as separate full dictionary checkpoints about every 2
 seconds, with session/revision matching; reconnects receive the cached
 checkpoint first. Snapshot payloads are binary on both hops; see
-`libs/telemetry-protocol/docs/wire-protocol.md` for the versioned Protobuf schema, 64-bit precision, MCAP
+`libs/telemetry/protocol/docs/wire-protocol.md` for the versioned Protobuf schema, 64-bit precision, MCAP
 encoding, and standalone output framing.
 
 Ingress metrics count original Dora snapshot plus dictionary bytes; the message
@@ -114,6 +114,6 @@ npm run test:live --prefix apps/cpu-viewer/frontend
 The live check exercises actual binary messages, the shared frontend decoder,
 CPU rates, 30-second eviction, and full name context on browser reconnect.
 
-Protobuf schema: [`telemetry.proto`](../../../libs/telemetry-protocol/proto/telemetry.proto).
+Protobuf schema: [`telemetry.proto`](../../../libs/telemetry/protocol/proto/telemetry.proto).
 MCAP embeds its FileDescriptorSet on both channels. Install validation dependencies
-with `python3 -m pip install -r libs/telemetry-protocol/python/requirements.txt` (prefer a virtual environment).
+with `python3 -m pip install -r libs/telemetry/protocol/python/requirements.txt` (prefer a virtual environment).

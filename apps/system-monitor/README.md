@@ -22,7 +22,7 @@ procedure in the repository's AGENTS.md.
 - [Original implementation history](docs/history/101826-phase0-cgroup-monitor.md)
 - [Live dashboard launch](../cpu-viewer/docs/running.md)
 
-Install `libs/telemetry-protocol/python/requirements.txt` into a virtual environment
+Install `libs/telemetry/protocol/python/requirements.txt` into a virtual environment
 before running Python validation. Native validation needs BPF privileges:
 
 ```sh

@@ -2,7 +2,7 @@
 
 # Resource policy: implementation plan
 
-Crate: `libs/resource-policy` (`resource_policy` in Rust). It owns resource goals, validation, reconciliation APIs, and backend contracts. `libs/pbtxt-config` owns shared App/Fragment/Deployment schemas and composition. Initial enforcement covers Linux CPU placement and real-time scheduling. Future adapters generate orchestration configurations; future policies cover GPU, memory bandwidth, and budgets.
+Crate: `libs/resources/resource-policy` (`resource_policy` in Rust). It owns resource goals, validation, reconciliation APIs, and backend contracts. `libs/pbtxt-config` owns shared App/Fragment/Deployment schemas and composition. Initial enforcement covers Linux CPU placement and real-time scheduling. Future adapters generate orchestration configurations; future policies cover GPU, memory bandwidth, and budgets.
 
 Initial CPU/RT implementation is available. Existing applications and Dora dataflows retain their current launch behavior. Completed items link to [validation evidence](validation.md); unchecked items identify remaining qualification or future integration scope.
 

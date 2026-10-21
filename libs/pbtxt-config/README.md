@@ -14,7 +14,7 @@ Implement `Payload` for a protobuf type to define validation, overrides, and nor
   Adapters must provide deterministic normalized payload encoding, including map ordering.
 - Each resolution uses one payload type. Mixed-type registries remain future work.
 
-[Schema](proto/config.proto) · [Resource-policy adapter](../resource-policy/src/config.rs)
+[Schema](proto/config.proto) · [Resource-policy adapter](../resources/resource-policy/src/config.rs)
 
 ```sh
 cargo test --locked -p pbtxt-config

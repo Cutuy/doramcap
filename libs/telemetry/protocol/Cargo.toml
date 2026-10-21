@@ -4,9 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 [dependencies]
-monitor-core = { path = "../monitor-core" }
+monitor-core = { path = "../../resources/monitor-core" }
 prost = "0.14"
-task-accounting = { path = "../task-accounting" }
+task-accounting = { path = "../../resources/task-accounting" }
 eyre = "0.6"
 [dev-dependencies]
 prost-types = "0.14"

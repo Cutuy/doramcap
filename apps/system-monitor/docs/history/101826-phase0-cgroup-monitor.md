@@ -155,6 +155,6 @@ The previous EPERM and missing-function blockers are resolved for local Linux
 7.0 and ARM64 WSL2 Linux 6.18. Both pass controlled native parent/child per-core
 accounting against cpu.stat, 65-sample 10 Hz collection, overflow, warmed-up
 allocation probes, all-feature tests, and ten native Dora/MCAP sessions each.
-See [the validation plan and evidence](../../../../libs/cgroup-bpf/docs/101826-native-kernel-validation.md).
+See [the validation plan and evidence](../../../../libs/resources/cgroup-bpf/docs/101826-native-kernel-validation.md).
 NVIDIA BSP, Linux 6.8 and experimental task-backend qualification remain open.
 Root CPU accounting remains explicitly unavailable.

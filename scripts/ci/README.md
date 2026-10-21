@@ -27,8 +27,31 @@ Submission copies an allowlisted snapshot of Cargo files, libraries and applicat
 including uncommitted source changes, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,
-`.git`, and local build directories are not copied. Each job has a separate
-snapshot writable by the trusted CI account.
+`.git`, and local build directories are not copied. Each job retains a separate
+submitted snapshot writable by the trusted CI account.
+
+When the serial job starts, it locks `~/jobs/.build-cache/worker.lock` and verifies
+snapshot hashes, file inventory, and permissions. `prepare-build.py` uses
+`rsync -rcp --delete-excluded` to synchronize into `~/jobs/.build-cache/source`,
+excluding the archive. Content-identical files retain their destination mtimes;
+changed files get fresh mtimes, and stale source/generated files are removed.
+The resulting inventory, hashes, and permissions are verified before Cargo runs.
+Python bytecode directories are created unprivileged so native tests can leave
+bytecode that the next synchronization can remove. The lock stays held through
+all builds and tests, including native/Dora checks.
+
+Builds run from the stable source path with the existing shared Cargo target.
+The log identifies the submitted snapshot and prints its `SOURCE.json`, which
+records source hashes/modes, Git HEAD/dirty status, and runner/helper hashes.
+Subsequent jobs replace the source cache; saved snapshots retain their inputs.
+Failed synchronization or verification aborts before building. Cargo's toolchain
+and feature/configuration checks still determine which artifacts can be reused.
+
+Validate synchronization locally with installed rsync:
+
+```sh
+python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
+```
 
 Each job runs default and all-feature Rust tests, builds native binaries/examples,
 then runs privileged cgroup accounting integration and allocation validation.
@@ -40,6 +63,7 @@ approved root launcher; synthetic validation runs unprivileged.
 Persistent locations on the worker:
 
 - `/home/doramcap-ci/jobs/`: source snapshots and manifests.
+- `/home/doramcap-ci/jobs/.build-cache/`: locked, disposable stable source cache.
 - `/home/doramcap-ci/target/`: shared incremental build artifacts.
 - `/home/doramcap-ci/.cargo/`, `.rustup/`: downloads and pinned Rust 1.99.1.
 - `/home/doramcap-ci/.local/share/pueue/`: queue state, logs and socket.
@@ -56,8 +80,8 @@ Cancellation can interrupt cleanup in native tests; inspect leftover
 ## Provisioning another worker
 
 Requirements: ARM64 Ubuntu, systemd, SSH, a Rust-compatible kernel with BTF and
-cgroup v2, and outbound package/GitHub/Rust download access. Existing `.20` has
-these platform prerequisites. Protobuf validation also requires `python3-protobuf`
+cgroup v2, rsync, flock (util-linux), and outbound package/GitHub/Rust download
+access. Existing `.20` has these platform prerequisites. Protobuf validation also requires `python3-protobuf`
 (`sudo apt-get install python3-protobuf` on an existing worker). As an administrator, copy `install-worker.sh` and the intended SSH
 **public** key, then run:
 
@@ -92,10 +116,11 @@ at `apps/system-monitor/tests/validate_native.py`; new privileged launchers use
 that path. Submission adds a small forwarding script at the legacy path inside
 the worker archive so previously installed launchers continue to work. This shim
 exists only in the submitted snapshot. Python validation requires the protobuf
-runtime described in `libs/telemetry-protocol/python/requirements.txt`.
+runtime described in `libs/telemetry/protocol/python/requirements.txt`.
 
-Source archives carry the snapshot creation timestamp on every entry so Cargo
-invalidates workspace artifacts in the shared target when a snapshot changes.
+Source archives carry the snapshot creation timestamp. The rsync content check
+prevents those timestamps from invalidating unchanged cached source files.
+Do not add `--times`/`-t`: it would copy fresh timestamps onto unchanged files.
 
 SSH/SCP submissions use connection and keepalive timeouts. The installed ARM64
 Dora CLI is version 1.1.0, release archive SHA256
@@ -109,7 +134,7 @@ rotation, tail inspection and independent payload readback on ARM64.
 
 ## Resource policy native coverage
 
-The aggregate native suite also invokes `libs/resource-policy/tests/validate_native.py`
+The aggregate native suite also invokes `libs/resources/resource-policy/tests/validate_native.py`
 against the unprivileged-built `native_policy` example. It checks cpuset placement,
 RR scheduling, inheritance, denial, contention, cleanup, and Python/Rust Protobuf
 compatibility. Its `--enable-root-cpuset` test option temporarily enables root

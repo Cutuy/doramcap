@@ -88,11 +88,11 @@ After schema edits, regenerate checked-in artifacts:
 
 ```sh
 npm run generate:proto --prefix apps/cpu-viewer/frontend
-cargo run -p telemetry-protocol --example schema -- libs/telemetry-protocol/proto/telemetry_descriptor.bin
+cargo run -p telemetry-protocol --example schema -- libs/telemetry/protocol/proto/telemetry_descriptor.bin
 cargo run -p telemetry-protocol --example fixture -- apps/cpu-viewer/frontend/src/fixtures/snapshot-v2.pb
 ```
 
 Cargo generates Rust bindings and the embedded descriptor automatically using a
 vendored protoc. Python validators use the official protobuf runtime (install
-`libs/telemetry-protocol/python/requirements.txt`); the MCAP validator builds its decoder from the
+`libs/telemetry/protocol/python/requirements.txt`); the MCAP validator builds its decoder from the
 recording's schema. `--check` remains a human-readable JSON capability report.

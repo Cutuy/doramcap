@@ -4,6 +4,15 @@ export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 export CARGO_TARGET_DIR="$HOME/target"
 export CLANG=clang-18
 export RUSTUP_TOOLCHAIN=1.99.1
+# Hold the lock until all consumers of this source/target pair have finished.
+worker_snapshot=$(pwd -P)
+worker_cache="$HOME/jobs/.build-cache"
+mkdir -p "$worker_cache"
+exec 9>"$worker_cache/worker.lock"
+flock 9
+printf 'Submitted snapshot: %s\n' "$worker_snapshot"
+python3 "$worker_snapshot/prepare-build.py" "$worker_snapshot" "$worker_cache/source"
+cd "$worker_cache/source"
 uname -a
 rustc --version
 cargo --version

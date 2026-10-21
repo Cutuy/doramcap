@@ -1,7 +1,7 @@
 # Resource policy
 
 CPU affinity, RT scheduling, and cgroup bootstrap for Linux app entrypoints.
-[`pbtxt-config`](../pbtxt-config/) composes pbtxt goal state; APIs apply and verify it. systemd resource
+[`pbtxt-config`](../../pbtxt-config/) composes pbtxt goal state; APIs apply and verify it. systemd resource
 directives can be generated from the same policy.
 
 ```protobuf
@@ -21,7 +21,7 @@ app {
 
 ```sh
 cargo run -p resource-policy --example resolve -- \
-  libs/resource-policy/configs/lab.pbtxt perception recorder
+  libs/resources/resource-policy/configs/lab.pbtxt perception recorder
 cargo test --locked -p resource-policy
 ```
 

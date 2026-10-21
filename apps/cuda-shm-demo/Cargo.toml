@@ -7,8 +7,8 @@ license.workspace = true
 [dependencies]
 tracing = "0.1"
 activity-tracing = { path = "../../libs/activity-tracing" }
-cuda-dora-shm = { path = "../../libs/cuda-dora-shm" }
-cuda-host-memory = { path = "../../libs/cuda-host-memory" }
+cuda-dora-shm = { path = "../../libs/memory/cuda-dora-shm" }
+cuda-host-memory = { path = "../../libs/memory/cuda-host-memory" }
 cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "runtime", "nvrtc", "dynamic-loading", "cuda-12090"] }
 dora-node-api = { version = "=1.1.0", default-features = false }
 eyre = "0.6"

@@ -1,7 +1,7 @@
 # MCAP recorder
 
 An independent DORA subscriber that records snapshot and dictionary topics using
-[`telemetry-mcap`](../../libs/telemetry-mcap/). Each recording embeds the Protobuf
+[`telemetry-mcap`](../../libs/telemetry/mcap/). Each recording embeds the Protobuf
 schema and preserves original payloads, sequence and capture timestamps. The
 process refuses to overwrite an existing recording and drains normal input
 closure before finalization.
@@ -13,7 +13,7 @@ dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 
 The demo configuration records ten synthetic samples. See the
 [viewer guide](../cpu-viewer/docs/running.md) for composing live consumers.
-Install `libs/telemetry-protocol/python/requirements.txt`, then validate transport,
+Install `libs/telemetry/protocol/python/requirements.txt`, then validate transport,
 embedded schemas, recording contents and finite-session shutdown:
 
 ```sh

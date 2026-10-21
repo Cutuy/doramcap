@@ -6,14 +6,14 @@ Each component owns its documentation, tests, examples, and benchmarks.
 | Component | Purpose |
 |---|---|
 | [pbtxt-config](libs/pbtxt-config/) | Typed pbtxt composition, app registry, provenance, and deployment fingerprints |
-| [resource-policy](libs/resource-policy/) | Composable Protobuf CPU/RT goals and caller enforcement |
-| [cgroup-bpf](libs/cgroup-bpf/) | Native per-CPU cgroup accounting |
-| [task-accounting](libs/task-accounting/) | Experimental kernel-thread runtime accounting |
+| [resource-policy](libs/resources/resource-policy/) | Composable Protobuf CPU/RT goals and caller enforcement |
+| [cgroup-bpf](libs/resources/cgroup-bpf/) | Native per-CPU cgroup accounting |
+| [task-accounting](libs/resources/task-accounting/) | Experimental kernel-thread runtime accounting |
 | [activity-tracing](libs/activity-tracing/) | Bounded activity capture and embedded MCAP/live/OTel outputs |
 | [fault](libs/fault/) | Reporting, aggregation, shared schema and wire translation crates |
-| [monitor-core](libs/monitor-core/) | Bounded snapshot buffers and collection handoff |
-| [telemetry-protocol](libs/telemetry-protocol/) | Protobuf schemas, codecs, and descriptors |
-| [telemetry-mcap](libs/telemetry-mcap/) | Reusable MCAP recording sink |
+| [monitor-core](libs/resources/monitor-core/) | Bounded snapshot buffers and collection handoff |
+| [telemetry-protocol](libs/telemetry/protocol/) | Protobuf schemas, codecs, and descriptors |
+| [telemetry-mcap](libs/telemetry/mcap/) | Reusable MCAP recording sink |
 | [storage-persistence](libs/storage-persistence/) | Bounded io_uring MCAP writer, aligned buffer pool, combining and rotation |
 | [system-monitor](apps/system-monitor/) | Standalone collector with an optional DORA publisher |
 | [provenance-demo](apps/provenance-demo/) | Four-node Dora pipeline, linked provenance/activity timelines, and measured latency |
@@ -51,3 +51,5 @@ cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D w
 Start with the [live dashboard guide](apps/cpu-viewer/docs/running.md).
 See [repository layout conventions](docs/repository-layout.md), the
 [platform roadmap](docs/roadmap.md), and [CI operations](scripts/ci/README.md).
+
+[Library groups and responsibilities](libs/README.md).

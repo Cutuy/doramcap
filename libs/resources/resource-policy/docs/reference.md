@@ -2,7 +2,7 @@
 
 ## Composition
 
-[`pbtxt-config`](../../pbtxt-config/README.md) owns includes, App/Fragment/Deployment,
+[`pbtxt-config`](../../../pbtxt-config/README.md) owns includes, App/Fragment/Deployment,
 provenance, and hashing. Resource policy supplies validation and overlay semantics.
 
 | Setting | Behavior |

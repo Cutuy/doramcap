@@ -1,6 +1,6 @@
 """Protobuf validation reader; schema shared with Rust and TypeScript.
 
-Install libs/telemetry-protocol/python/requirements.txt. MCAP readers can supply the embedded schema.
+Install libs/telemetry/protocol/python/requirements.txt. MCAP readers can supply the embedded schema.
 """
 import struct
 from pathlib import Path

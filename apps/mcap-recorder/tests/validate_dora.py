@@ -2,7 +2,7 @@
 """Run real Dora nodes and verify finite-session shutdown preserves every sample.
 
 Requires prebuilt --features dora binaries and Dora CLI 1.1.0.
-Install libs/telemetry-protocol/python/requirements.txt. MCAP checks support uncompressed chunks,
+Install libs/telemetry/protocol/python/requirements.txt. MCAP checks support uncompressed chunks,
 which is the recorder's configured format.
 """
 import argparse
@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'libs/telemetry-protocol/python'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'libs/telemetry/protocol/python'))
 from wire import unpack, snapshot, packet_type
 
 

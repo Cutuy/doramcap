@@ -19,8 +19,8 @@ Availability flags and losses accompany the counters. Cgroup hierarchy values
 can overlap; keep ancestor totals and kernel diagnostics separate when plotting.
 
 Native cgroup collection has been qualified on x86_64 Linux 7.0 and ARM64 WSL2
-Linux 6.18. See the [native validation report](../../../libs/cgroup-bpf/docs/101826-native-kernel-validation.md),
-[cgroup backend](../../../libs/cgroup-bpf/), and [task accounting semantics](../../../libs/task-accounting/CPU-ACCOUNTING.md).
+Linux 6.18. See the [native validation report](../../../libs/resources/cgroup-bpf/docs/101826-native-kernel-validation.md),
+[cgroup backend](../../../libs/resources/cgroup-bpf/), and [task accounting semantics](../../../libs/resources/task-accounting/CPU-ACCOUNTING.md).
 Linux 6.8, vendor kernels and long-duration overhead qualification remain open.
 
-For message definitions, see the [wire contract](../../../libs/telemetry-protocol/docs/wire-protocol.md).
+For message definitions, see the [wire contract](../../../libs/telemetry/protocol/docs/wire-protocol.md).

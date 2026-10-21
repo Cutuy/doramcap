@@ -6,7 +6,10 @@ Domain directories own a short architecture/index README; each crate keeps its
 Cargo package name and API documentation. `apps/<name>/` contains an
 independently runnable application and its supporting components. Each owner
 keeps its docs, tests, examples and benchmarks alongside its code. Add these
-subdirectories as needed. The root README is the component index.
+subdirectories as needed. The root README is the component index; [libs/README.md](../libs/README.md)
+indexes library groups and standalone crates. Groups cover resources, telemetry,
+memory, and faults. Each group has a README and each leaf crate has a
+`Cargo.toml`; group directories need no manifest or placeholder Rust source.
 
 Applications can contain nested crates: `system-monitor/dora` owns publication
 and direct-buffer Protobuf encoding; `cpu-viewer/server` owns HTTP/WebSocket

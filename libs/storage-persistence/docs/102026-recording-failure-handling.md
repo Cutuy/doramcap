@@ -30,7 +30,7 @@ storage demo can skip explicit finalization.
 
 ## F3 — Durable sink completion
 
-Finding: the [telemetry MCAP sink](../../telemetry-mcap/src/lib.rs) and
+Finding: the [telemetry MCAP sink](../../telemetry/mcap/src/lib.rs) and
 [activity MCAP sink](../../activity-tracing/src/sinks/mod.rs) finish and flush
 buffered output without syncing the underlying file.
 

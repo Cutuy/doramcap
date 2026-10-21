@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-telemetry-mcap = { path = "../../libs/telemetry-mcap" }
+telemetry-mcap = { path = "../../libs/telemetry/mcap" }
 dora-node-api = { version = "=1.1.0", default-features = false }
 eyre = "0.6"
 

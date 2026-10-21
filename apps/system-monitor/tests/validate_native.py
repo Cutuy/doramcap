@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'libs/telemetry-protocol/python'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'libs/telemetry/protocol/python'))
 from wire import framed
 
 
@@ -29,7 +29,7 @@ def main():
     args = parser.parse_args()
     assert os.geteuid() == 0, 'native validation requires privilege'
     # The approved worker launcher runs this aggregate native suite. Build remains unprivileged.
-    policy_suite = Path(__file__).resolve().parents[3] / 'libs/resource-policy/tests/validate_native.py'
+    policy_suite = Path(__file__).resolve().parents[3] / 'libs/resources/resource-policy/tests/validate_native.py'
     if policy_suite.exists():
         policy_binary = args.monitor.resolve().parent / 'examples/native_policy'
         subprocess.run([sys.executable, str(policy_suite), '--binary', str(policy_binary), '--enable-root-cpuset'], check=True, timeout=90)

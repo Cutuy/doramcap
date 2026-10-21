@@ -12,11 +12,11 @@ dora = ["dep:system-monitor-dora"]
 task-bpf = ["task-accounting/bpf"]
 
 [dependencies]
-telemetry-mcap = { path = "../../libs/telemetry-mcap" }
-task-accounting = { path = "../../libs/task-accounting" }
-telemetry-protocol = { path = "../../libs/telemetry-protocol" }
-monitor-core = { path = "../../libs/monitor-core" }
-cgroup-bpf = { path = "../../libs/cgroup-bpf" }
+telemetry-mcap = { path = "../../libs/telemetry/mcap" }
+task-accounting = { path = "../../libs/resources/task-accounting" }
+telemetry-protocol = { path = "../../libs/telemetry/protocol" }
+monitor-core = { path = "../../libs/resources/monitor-core" }
+cgroup-bpf = { path = "../../libs/resources/cgroup-bpf" }
 system-monitor-dora = { path = "dora", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

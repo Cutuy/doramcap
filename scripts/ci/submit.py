@@ -17,7 +17,7 @@ parser.add_argument('--source', type=Path, default=Path.cwd())
 parser.add_argument('--host', default='doramcap-ci@100.64.0.20')
 args = parser.parse_args()
 source = args.source.resolve()
-for required in ('apps/system-monitor/tests/validate_native.py', 'libs/cgroup-bpf/examples/native_allocations.rs'):
+for required in ('apps/system-monitor/tests/validate_native.py', 'libs/resources/cgroup-bpf/examples/native_allocations.rs'):
     if not (source / required).is_file():
         parser.error(f'Source lacks {required}; use a checkout containing the native validation suite')
 job = '/home/doramcap-ci/jobs/' + uuid.uuid4().hex
@@ -33,7 +33,7 @@ paths = sorted(set(git('ls-files', '-z', '--cached', '--others', '--exclude-stan
 paths = [p for p in paths if p in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml')
          or p.startswith(('libs/', 'apps/'))]
 manifest = {'head': git('rev-parse', 'HEAD').decode().strip(),
-            'dirty': bool(git('status', '--porcelain')), 'files_sha256': {}}
+            'dirty': bool(git('status', '--porcelain')), 'files_sha256': {}, 'files_mode': {}}
 with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
     archive = Path(tmp) / 'source.tar.gz'
     with tarfile.open(archive, 'w:gz') as tar:
@@ -45,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
                 raise SystemExit(f'Refusing non-regular source file: {relative}')
             data = path.read_bytes()
             manifest['files_sha256'][relative] = hashlib.sha256(data).hexdigest()
+            manifest['files_mode'][relative] = path.stat().st_mode & 0o777
             info = tarfile.TarInfo(relative)
             info.mtime = snapshot_mtime
             info.size = len(data)
@@ -59,9 +60,12 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
         info.mode = 0o644
         tar.addfile(info, io.BytesIO(compatibility))
         manifest['files_sha256'][info.name] = hashlib.sha256(compatibility).hexdigest()
+        manifest['files_mode'][info.name] = info.mode
         runner = Path(__file__).with_name('run-worker-job.sh').read_bytes()
         manifest['runner_sha256'] = hashlib.sha256(runner).hexdigest()
-        for name, data in [('run-worker-job.sh', runner),
+        prepare = Path(__file__).with_name('prepare-build.py').read_bytes()
+        manifest['prepare_sha256'] = hashlib.sha256(prepare).hexdigest()
+        for name, data in [('run-worker-job.sh', runner), ('prepare-build.py', prepare),
                            ('SOURCE.json', json.dumps(manifest, indent=2).encode())]:
             info = tarfile.TarInfo(name)
             info.mtime = snapshot_mtime
@@ -73,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
     subprocess.run(['scp', *ssh_options, str(archive), f'{args.host}:{job}/source.tar.gz'], check=True)
     command = (f'cd {shlex.quote(job)} && '
                f'echo "{digest}  source.tar.gz" | sha256sum -c - && '
-               'tar -xzf source.tar.gz && '
+               'tar -xzpf source.tar.gz && '
                'pueue add --label doramcap-native -- bash run-worker-job.sh')
     subprocess.run(['ssh', *ssh_options, args.host, command], check=True)
     print(f'Worker snapshot: {args.host}:{job}')

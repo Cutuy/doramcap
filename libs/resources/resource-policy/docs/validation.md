@@ -48,7 +48,7 @@ cargo test --locked --workspace --all-features
 cargo build --locked -p resource-policy --examples
 cargo run --locked -p resource-policy --example policy_overhead
 # Elevate only the prebuilt native suite using the repository credential workflow.
-python3 libs/resource-policy/tests/validate_native.py --binary target/debug/examples/native_policy
+python3 libs/resources/resource-policy/tests/validate_native.py --binary target/debug/examples/native_policy
 python3 scripts/ci/submit.py --source /absolute/path/to/checkout
 ```
 

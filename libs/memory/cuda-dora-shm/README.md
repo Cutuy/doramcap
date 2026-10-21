@@ -23,6 +23,6 @@ cuda_dora_shm::send(&mut node, "frames", &descriptor)?;
 - This is an application adapter. Dora/Zenoh owns message storage; the adapter
   tracks shared payload lifetime. Remote payload copying is not implemented.
 
-[SPMC demo](../../apps/cuda-shm-demo/README.md) ·
+[SPMC demo](../../../apps/cuda-shm-demo/README.md) ·
 [Design and validation](docs/102126-fixed-slot-ipc.md) ·
 [API and safety contracts](src/lib.rs)

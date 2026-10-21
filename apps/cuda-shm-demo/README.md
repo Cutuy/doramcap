@@ -4,7 +4,7 @@ One process produces GPU-written frames; N consumer processes verify them on
 independent non-default CUDA streams. Two fixed host-memory slots are reused.
 The runner defaults to 4 KiB slot alignment; `--slot-alignment 64` selects a compact layout.
 
-![Architecture](../../libs/cuda-dora-shm/docs/fixed-slot-ipc.svg)
+![Architecture](../../libs/memory/cuda-dora-shm/docs/fixed-slot-ipc.svg)
 
 ## Interactive viewer
 
@@ -40,7 +40,7 @@ Requires Linux, CUDA runtime/NVRTC, mapped-host-memory + IPC-event support,
 The runner checks process summaries, GPU verification, asynchronous publication,
 and slot reuse. Failure modes must fail for the expected reason.
 
-[Adapter contracts and limitations](../../libs/cuda-dora-shm/docs/102126-fixed-slot-ipc.md).
+[Adapter contracts and limitations](../../libs/memory/cuda-dora-shm/docs/102126-fixed-slot-ipc.md).
 
 ## Content regression tests
 
