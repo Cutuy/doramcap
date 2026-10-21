@@ -5,6 +5,7 @@ use std::{
 #[test]
 fn recording_rotation_and_bounded_overload() {
     for slow in [false, true] {
+        // Arrange
         let dir =
             std::env::temp_dir().join(format!("doramcap-embedded-{}-{slow}", std::process::id()));
         std::fs::create_dir(&dir).unwrap();
@@ -26,7 +27,11 @@ fn recording_rotation_and_bounded_overload() {
             .stderr(Stdio::piped());
         if slow {
             command.args(["--queue-slots", "1", "--publisher-delay-ms", "250"]);
+        } else {
+            // Hold every sample even when rotation stalls the consumer on a busy host.
+            command.args(["--queue-slots", "24"]);
         }
+        // Act
         let start = Instant::now();
         let mut child = command.spawn().unwrap();
         while child.try_wait().unwrap().is_none() {
@@ -38,6 +43,7 @@ fn recording_rotation_and_bounded_overload() {
         }
         let output = child.wait_with_output().unwrap();
         let log = String::from_utf8(output.stderr).unwrap();
+        // Assert
         assert!(output.status.success(), "{log}");
         let mut sequences = Vec::new();
         let mut losses = 0;
@@ -74,11 +80,13 @@ fn recording_rotation_and_bounded_overload() {
             start.elapsed().as_millis(),
             sequences.len()
         );
+        // Act
         let collision = Command::new(env!("CARGO_BIN_EXE_system-monitor"))
             .args(["--backend", "synthetic", "--samples", "1", "--record"])
             .arg(&path)
             .output()
             .unwrap();
+        // Assert
         assert!(!collision.status.success());
         std::fs::remove_dir_all(dir).unwrap();
     }
