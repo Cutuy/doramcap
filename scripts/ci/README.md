@@ -1,7 +1,9 @@
 # CI
 
 [GitHub Actions](../../.github/workflows/ci.yml) runs on standard
-`ubuntu-24.04-arm` runners for pushes, pull requests, and manual dispatch.
+`ubuntu-24.04-arm` and `ubuntu-24.04` runners for pushes, pull requests, and
+manual dispatch. ARM64 and x86_64 jobs report independently; both consume runner
+minutes for private repositories.
 It checks formatting, default/all-feature Clippy and Rust tests, storage without
 default features, example/binary builds, and snapshot synchronization tests.
 Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Runs have a
