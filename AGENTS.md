@@ -8,6 +8,12 @@ Keep main linear: rebase onto current main, then cherry-pick. Never integrate wi
 
 Always present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adopting a dependency or implementing a custom solution.
 
+## Test structure
+
+Test cases should generally use explicit `// Arrange`, `// Act`, and `// Assert`
+sections to separate setup, the operation under test, and verification. For
+stateful scenarios, repeat Act/Assert sections for distinct transitions.
+
 ## Capability-required tests
 
 Sudo is authorized for tests requiring Linux capabilities. Build unprivileged; elevate only the test executable. System administration and persistent configuration changes require separate approval.

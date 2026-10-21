@@ -2,6 +2,7 @@
 members = [
     "libs/activity-tracing",
     "libs/cgroup-bpf",
+    "libs/cuda-host-memory",
     "libs/monitor-core",
     "libs/pbtxt-config",
     "libs/resource-policy",
