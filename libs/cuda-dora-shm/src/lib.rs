@@ -6,7 +6,10 @@
 //! Dora/Zenoh owns control-message storage; this adapter owns payload lifetimes.
 //! Consumers and transport peers are trusted and must preserve the protocol.
 mod event;
+mod layout;
 mod ledger;
+pub use layout::DEFAULT_SLOT_ALIGNMENT;
+use layout::slot_stride;
 mod protocol;
 
 use cuda_host_memory::{
@@ -31,6 +34,9 @@ use std::{
 pub struct PoolConfig {
     pub slots: usize,
     pub capacity: usize,
+    /// Slot address alignment, a power of two no larger than the OS page size.
+    /// Use DEFAULT_SLOT_ALIGNMENT for 4 KiB alignment; payload length is unchanged.
+    pub slot_alignment: usize,
     pub peers: Vec<String>,
     pub allocation: AllocationMode,
 }
@@ -49,6 +55,7 @@ impl PoolConfig {
             !self.peers.is_empty() && self.peers.len() <= 64,
             "peers must be 1..=64"
         );
+        slot_stride(self.capacity, self.slot_alignment)?;
         let unique: BTreeSet<_> = self.peers.iter().collect();
         ensure!(
             unique.len() == self.peers.len()
@@ -181,11 +188,7 @@ impl Producer {
             .prefix("cuda-dora-")
             .tempdir_in("/dev/shm")?;
         let mut slots = Vec::new();
-        let stride = config
-            .capacity
-            .checked_add(63)
-            .ok_or_else(|| eyre::eyre!("stride overflow"))?
-            & !63;
+        let stride = slot_stride(config.capacity, config.slot_alignment)?;
         for memory in map_pool(ctx.clone(), directory.path(), config.slots, stride, true)? {
             slots.push(ProducerSlot {
                 memory,
@@ -207,6 +210,7 @@ impl Producer {
             slots: config.slots,
             capacity: config.capacity,
             stride,
+            slot_alignment: config.slot_alignment,
             peers: config.peers.clone(),
             ready: slots
                 .iter()
@@ -683,6 +687,7 @@ mod tests {
         let mut config = PoolConfig {
             slots: 2,
             capacity: 4096,
+            slot_alignment: DEFAULT_SLOT_ALIGNMENT,
             peers: vec!["a".into()],
             allocation: AllocationMode::Managed,
         };

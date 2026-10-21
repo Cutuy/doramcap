@@ -44,6 +44,7 @@ fn one_ring_file_is_locked_in_ram() -> eyre::Result<()> {
             cuda_dora_shm::PoolConfig {
                 slots: 3,
                 capacity: 4097,
+                slot_alignment: cuda_dora_shm::DEFAULT_SLOT_ALIGNMENT,
                 peers: vec!["reader".into()],
                 allocation: cuda_host_memory::AllocationMode::Registered,
             },
@@ -64,7 +65,7 @@ fn one_ring_file_is_locked_in_ram() -> eyre::Result<()> {
         .parse()?;
     // Assert
     assert_eq!(files.len(), 1);
-    assert_eq!(manifest.stride, 4160);
+    assert_eq!(manifest.stride, 8192);
     assert_eq!(
         std::fs::metadata(&path)?.len(),
         (3 * manifest.stride) as u64
@@ -97,6 +98,7 @@ fn lock_failure_rejects_pool_without_fallback() -> eyre::Result<()> {
                 cuda_dora_shm::PoolConfig {
                     slots: 1,
                     capacity: 4096,
+                    slot_alignment: cuda_dora_shm::DEFAULT_SLOT_ALIGNMENT,
                     peers: vec!["reader".into()],
                     allocation: cuda_host_memory::AllocationMode::Registered,
                 },

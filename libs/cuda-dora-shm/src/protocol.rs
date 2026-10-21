@@ -1,7 +1,7 @@
 use eyre::{Result, ensure};
 use serde::{Deserialize, Serialize};
 
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 pub const MAX_MESSAGE: usize = 256 * 1024;
 
 /// Fixed membership and bounded storage, negotiated before any publication.
@@ -17,6 +17,7 @@ pub struct Manifest {
     pub capacity: usize,
     /// Slot distance in bytes, including alignment padding.
     pub stride: usize,
+    pub slot_alignment: usize,
     pub peers: Vec<String>,
     pub ready: Vec<Vec<u8>>,
 }
@@ -37,7 +38,7 @@ impl Manifest {
             "peers must be 1..=64"
         );
         ensure!(
-            self.stride == (self.capacity + 63) & !63,
+            self.stride == crate::layout::slot_stride(self.capacity, self.slot_alignment)?,
             "invalid slot stride"
         );
         let mut names = std::collections::BTreeSet::new();
@@ -113,6 +114,7 @@ mod tests {
             slots: 2,
             capacity: 4096,
             stride: 4096,
+            slot_alignment: crate::DEFAULT_SLOT_ALIGNMENT,
             peers: vec!["a".into(), "b".into()],
             ready: vec![vec![0; 64]; 2],
         }
@@ -122,8 +124,10 @@ mod tests {
     fn manifest_rejects_invalid_resources_and_version() {
         // Arrange
         let valid = manifest();
-        let mutations: [fn(&mut Manifest); 8] = [
+        let mutations: [fn(&mut Manifest); 10] = [
             |m| m.version += 1,
+            |m| m.slot_alignment = 0,
+            |m| m.stride += 1,
             |m| m.slots = 0,
             |m| m.capacity = 0,
             |m| m.capacity = 64 * 1024 * 1024 + 1,

@@ -71,6 +71,11 @@ fn producer(
             PoolConfig {
                 slots,
                 capacity: size,
+                slot_alignment: option(
+                    args,
+                    "--slot-alignment",
+                    cuda_dora_shm::DEFAULT_SLOT_ALIGNMENT,
+                )?,
                 peers: (0..peers).map(|i| format!("consumer{i}")).collect(),
                 allocation: AllocationMode::Registered,
             },

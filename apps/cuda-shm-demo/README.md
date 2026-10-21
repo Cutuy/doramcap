@@ -2,6 +2,7 @@
 
 One process produces GPU-written frames; N consumer processes verify them on
 independent non-default CUDA streams. Two fixed host-memory slots are reused.
+The runner defaults to 4 KiB slot alignment; `--slot-alignment 64` selects a compact layout.
 
 ![Architecture](../../libs/cuda-dora-shm/docs/fixed-slot-ipc.svg)
 

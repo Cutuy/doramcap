@@ -14,6 +14,8 @@ cuda_dora_shm::send(&mut node, "frames", &descriptor)?;
 ```
 
 - Same host/GPU, fixed consumer membership; managed memory is rejected.
+- Set `PoolConfig::slot_alignment` explicitly; `DEFAULT_SLOT_ALIGNMENT` is 4096.
+  Slot padding preserves the logical payload length.
 - Each process needs memlock allowance for the entire page-rounded ring.
 - Full pool returns `None`. Call `reclaim_completed` while processing returns.
 - Metadata publication is asynchronous; slot retirement queries completion.

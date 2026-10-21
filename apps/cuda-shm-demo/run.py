@@ -16,6 +16,7 @@ p.add_argument('--consumers', type=int, default=3)
 p.add_argument('--frames', type=int, default=12)
 p.add_argument('--slots', type=int, default=2)
 p.add_argument('--bytes', type=int, default=4096)
+p.add_argument('--slot-alignment', type=int, default=4096)
 p.add_argument('--failure', choices=['stall', 'duplicate'])
 p.add_argument('--sanitizer')
 a = p.parse_args()
@@ -29,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='cuda-dora-flow-') as tmp:
         wrapper.chmod(0o700)
         executable = str(wrapper)
     nodes = [{'id': 'producer', 'path': executable,
-              'args': f'producer --consumers {a.consumers} --frames {a.frames} --slots {a.slots} --bytes {a.bytes} --timeout {5 if a.failure else 40}',
+              'args': f'producer --consumers {a.consumers} --frames {a.frames} --slots {a.slots} --bytes {a.bytes} --slot-alignment {a.slot_alignment} --timeout {5 if a.failure else 40}',
               'inputs': {f'consumer{i}': {'source': f'consumer{i}/returns', 'queue_size': 128} for i in range(a.consumers)},
               'outputs': ['frames']}]
     for i in range(a.consumers):

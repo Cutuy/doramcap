@@ -103,3 +103,28 @@ Event exchange remains unchanged: create with `cudaEventInterprocess` and
 Manifest (Ready) or Attached (Done). Peers use `cudaIpcOpenEventHandle`, then
 `cudaStreamWaitEvent` or `cudaEventQuery`. Shutdown closes imports before exports.
 These are event handles; payload sharing uses the locked tmpfs mapping.
+
+
+## Explicit slot alignment
+
+- [x] Protocol v3 carries `slot_alignment`; allocation and validation share one
+  checked stride calculation. Alignment must be a power of two within the OS
+  page size, which bounds the base alignment supplied by mmap.
+- [x] `DEFAULT_SLOT_ALIGNMENT` is 4096; the demo uses it by default. Compact layouts
+  can explicitly select 64. Capacity 4097 occupies stride 8192 or 4160 respectively;
+  published payload length remains 4097.
+- [x] Eight unit tests and three local CUDA mapping/locking tests pass; strict Clippy passes.
+- [x] Both 64-byte and 4096-byte alignment pass the local GPU/Dora SPMC demo:
+  3 consumers, 12 frames, 4097-byte payloads; all frames verified and reclaimed.
+- [x] ARM64 build/CPU/workspace suite passed as job 110; CUDA tests ignored.
+  Identical-source retry followed job 109's pre-existing storage observability
+  timing failure (`rejection_combining_and_rotation_are_visible`, line 211).
+
+CUDA borrowing requires disjoint ranges, not page-sized slots. mmap registration
+and mlock cover the whole ring. For McapWriter direct I/O, source address and
+transfer length must both meet the writer's configured alignment (512 or 4096).
+Slot padding does not make an arbitrary payload length directly writable.
+`append_external_payload` currently takes storage's `mapped::ReadLease`; connecting
+CUDA slots still requires a lease adapter that waits Ready and retains ownership
+until disk completion. This change does not implement that adapter or change the
+logical MCAP message length.
