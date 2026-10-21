@@ -1,0 +1,16 @@
+[package]
+name = "cuda-shm-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cuda-dora-shm = { path = "../../libs/cuda-dora-shm" }
+cuda-host-memory = { path = "../../libs/cuda-host-memory" }
+cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "runtime", "nvrtc", "dynamic-loading", "cuda-12090"] }
+dora-node-api = { version = "=1.1.0", default-features = false }
+eyre = "0.6"
+serde_json = "1"
+
+[lints]
+workspace = true

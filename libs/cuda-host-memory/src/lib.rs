@@ -130,7 +130,14 @@ impl Registration {
                 len,
             });
         }
-        let mut mapping = MmapMut::map_anon(len).map_err(Error::Mapping)?;
+        let mapping = MmapMut::map_anon(len).map_err(Error::Mapping)?;
+        Self::register_mapping(context, mapping)
+    }
+
+    fn register_mapping(context: Arc<CudaContext>, mut mapping: MmapMut) -> Result<Self, Error> {
+        let len = mapping.len();
+        validate_len(len)?;
+        context.bind_to_thread()?;
         let host_ptr = mapping.as_mut_ptr().cast::<c_void>();
         // SAFETY: the owned mmap is valid, writable and remains mapped until
         // successful unregister. No pointer has escaped to another user.
@@ -288,6 +295,21 @@ impl HostMappedMemory {
     ) -> Result<Self, Error> {
         Ok(Self(Arc::new(Inner {
             registration: Registration::new(context, len, mode)?,
+            state: Mutex::new(AccessState::default()),
+        })))
+    }
+
+    /// Register an existing owned mmap, preserving its contents.
+    ///
+    /// # Safety
+    /// External mappings/processes must not truncate the backing file, alter its
+    /// registration, or access bytes in conflict with this owner's guards. The
+    /// caller must enforce cross-process lifetimes and read/write synchronization.
+    /// The mapping must be writable ordinary RAM (not MMIO), and not already
+    /// CUDA-registered in this process. This owner unregisters before unmapping.
+    pub unsafe fn from_mapping(context: Arc<CudaContext>, mapping: MmapMut) -> Result<Self, Error> {
+        Ok(Self(Arc::new(Inner {
+            registration: Registration::register_mapping(context, mapping)?,
             state: Mutex::new(AccessState::default()),
         })))
     }
