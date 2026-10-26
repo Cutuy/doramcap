@@ -1,0 +1,9 @@
+[package]
+name = "session"
+description = "Session identity and experiment evidence contracts for doramcap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

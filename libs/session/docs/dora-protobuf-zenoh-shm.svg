@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="850" viewBox="0 0 1280 850">
+<defs>
+ <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#50657b"/></marker>
+ <style>text{font-family:Inter,Arial,sans-serif;fill:#18324b} .title{font-size:26px;font-weight:700}.sub{font-size:15px;fill:#567087}.head{font-size:18px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#486177}.edge{fill:none;stroke:#50657b;stroke-width:2;marker-end:url(#arrow)}.dash{stroke-dasharray:7 5}.box{fill:#fff;stroke:#b5c8d9;stroke-width:1.5}</style>
+</defs>
+<rect width="1280" height="850" fill="#f5f8fc"/>
+<text x="40" y="45" class="title">Dora + Protobuf + Zenoh shared memory</text>
+<text x="40" y="73" class="sub">Component architecture · native local SHM fast path · Dora v1.1.0</text>
+
+<rect x="35" y="105" width="365" height="450" rx="16" fill="#eaf2ff" stroke="#9bb8da"/>
+<text x="55" y="137" class="head">Producer process</text>
+<rect x="55" y="160" width="325" height="100" rx="10" class="box"/>
+<text x="75" y="190" class="head">Application + Protobuf codec</text>
+<text x="75" y="217" class="body">Telemetry fields → Protobuf bytes</text>
+<text x="75" y="242" class="small">One Protobuf encoding</text>
+<path d="M217 260V315" class="edge"/>
+<text x="230" y="291" class="small">opaque byte array</text>
+<rect x="55" y="315" width="325" height="95" rx="10" class="box"/>
+<text x="75" y="345" class="head">Dora node API / Arrow IPC</text>
+<text x="75" y="372" class="body">Frames bytes; does not interpret</text>
+<text x="75" y="394" class="body">the Protobuf fields</text>
+<rect x="55" y="465" width="325" height="65" rx="10" class="box"/>
+<text x="75" y="494" class="head">Zenoh publisher + SHM provider</text>
+<text x="75" y="517" class="small">Allocation, publication, buffer lifetime</text>
+<path d="M217 410V465" class="edge"/>
+
+<rect x="880" y="105" width="365" height="450" rx="16" fill="#eaf2ff" stroke="#9bb8da"/>
+<text x="900" y="137" class="head">Consumer process</text>
+<rect x="900" y="160" width="325" height="100" rx="10" class="box"/>
+<text x="920" y="190" class="head">Application + Protobuf codec</text>
+<text x="920" y="217" class="body">Protobuf bytes → telemetry fields</text>
+<text x="920" y="242" class="small">One Protobuf decoding</text>
+<path d="M1062 315V260" class="edge"/>
+<text x="1075" y="291" class="small">original byte slice</text>
+<rect x="900" y="315" width="325" height="95" rx="10" class="box"/>
+<text x="920" y="345" class="head">Dora node API / Arrow IPC</text>
+<text x="920" y="372" class="body">Parses framing; exposes array</text>
+<text x="920" y="394" class="body">view over the shared buffer</text>
+<rect x="900" y="465" width="325" height="65" rx="10" class="box"/>
+<text x="920" y="494" class="head">Zenoh subscriber</text>
+<text x="920" y="517" class="small">Receives reference; retains buffer lifetime</text>
+<path d="M1062 465V410" class="edge"/>
+
+<rect x="445" y="160" width="390" height="175" rx="12" fill="#e6f6ee" stroke="#68ab89" stroke-width="2"/>
+<text x="465" y="190" class="head">OS-backed shared-memory region</text>
+<text x="465" y="216" class="small">Allocated and managed by Zenoh</text>
+<rect x="465" y="235" width="350" height="38" rx="5" fill="#c9e8da"/>
+<text x="480" y="260" class="body">Arrow IPC headers / schema</text>
+<rect x="465" y="280" width="350" height="38" rx="5" fill="#fff" stroke="#99c8b1"/>
+<text x="480" y="305" class="body">Payload: unchanged Protobuf bytes</text>
+<path d="M380 350H415V248H445" class="edge"/>
+<text x="449" y="365" class="small">Producer writes framing + copies payload here</text>
+<path d="M835 248H860V350H900" class="edge"/>
+<text x="449" y="391" class="small">Consumer maps the same backing memory</text>
+
+<path d="M380 495H900" class="edge dash"/>
+<rect x="438" y="432" width="404" height="48" rx="6" fill="#f5f8fc"/>
+<text x="450" y="451" class="body">Zenoh SHM reference / delivery notification</text>
+<text x="450" y="473" class="small">+ Dora metadata attachment (Postcard encoding)</text>
+<text x="455" y="524" class="small">Full payload is not copied along this arrow</text>
+
+<rect x="35" y="585" width="1210" height="90" rx="12" fill="#fff6e6" stroke="#d6b16e"/>
+<text x="55" y="616" class="head">When this path applies</text>
+<text x="55" y="643" class="body">Large, eligible local messages with SHM capacity available. Small messages, pool fallback, or daemon routing use other paths.</text>
+
+<rect x="35" y="700" width="1210" height="110" rx="12" fill="#fff" stroke="#b5c8d9"/>
+<text x="55" y="730" class="head">Our custom CUDA SHM is a separate architecture</text>
+<text x="55" y="757" class="body">Frame bytes reside in our CUDA-registered pool. Dora carries the small slot / generation / length descriptor.</text>
+<text x="55" y="784" class="body">That descriptor can use Dora’s Arrow framing; the actual frame bytes do not enter the Arrow buffer shown above.</text>
+<text x="40" y="835" class="small">Solid arrows: buffer access / API exchange. Dashed arrow: transport reference and metadata. Source: Dora v1.1.0 node API implementation.</text>
+</svg>

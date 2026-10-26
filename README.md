@@ -8,6 +8,7 @@ Browse apps, crates, documentation and dependencies with the
 
 | Component | Purpose |
 |---|---|
+| [session](libs/session/) | Session identity and experiment evidence contracts (concept scaffold) |
 | [pbtxt-config](libs/pbtxt-config/) | Typed pbtxt composition, app registry, provenance, and deployment fingerprints |
 | [resource-policy](libs/resources/resource-policy/) | Composable Protobuf CPU/RT goals and caller enforcement |
 | [cgroup-bpf](libs/resources/cgroup-bpf/) | Native per-CPU cgroup accounting |

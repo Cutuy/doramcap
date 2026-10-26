@@ -9,6 +9,7 @@ members = [
     "libs/pbtxt-config",
     "libs/resources/resource-policy",
     "libs/step-provenance",
+    "libs/session",
     "libs/storage-persistence",
     "libs/resources/task-accounting",
     "libs/telemetry/mcap",

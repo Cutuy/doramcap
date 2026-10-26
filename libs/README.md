@@ -6,6 +6,7 @@ provide an index; Cargo package names stay independent of directory names.
 
 | Group or crate | Scope |
 |---|---|
+| [session](session/) | Session identity and experiment evidence contracts (concept scaffold) |
 | [resources](resources/) | Resource measurement, accounting, placement, and scheduling policy |
 | [telemetry](telemetry/) | Publication contracts, codecs, and telemetry recording |
 | [memory](memory/) | Memory allocation, mapping, sharing, and access lifetimes across devices |

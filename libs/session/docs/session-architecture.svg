@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="540" viewBox="0 0 1040 540" role="img" aria-labelledby="title desc">
+<title id="title">Session identity and evidence architecture</title>
+<desc id="desc">An optional experiment groups a field capture, cloud replay and target replay. Each has its own session identity. Session manifests join participants, recipes, recordings and results. Adapters expose evidence in Foxglove and Rerun.</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker></defs>
+<rect width="1040" height="540" rx="16" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif;fill:#0f172a} .title{font-size:17px;font-weight:700} .label{font-size:14px} .small{font-size:13px;fill:#475569} .edge{fill:none;stroke:#475569;stroke-width:1.6;marker-end:url(#arrow)}</style>
+<rect x="340" y="18" width="360" height="62" rx="10" fill="#e0e7ff" stroke="#818cf8"/>
+<text class="title" x="520.0" y="44" text-anchor="middle">Experiment (optional)</text>
+<text class="small" x="520.0" y="66" text-anchor="middle">Comparison group / question</text>
+<rect x="40" y="120" width="280" height="64" rx="10" fill="#dbeafe" stroke="#60a5fa"/>
+<text class="title" x="180.0" y="146" text-anchor="middle">Field capture</text>
+<text class="small" x="180.0" y="168" text-anchor="middle">Session A / original observations</text>
+<rect x="380" y="120" width="280" height="64" rx="10" fill="#dbeafe" stroke="#60a5fa"/>
+<text class="title" x="520.0" y="146" text-anchor="middle">Cloud replay</text>
+<text class="small" x="520.0" y="168" text-anchor="middle">Session B / functional comparison</text>
+<rect x="720" y="120" width="280" height="64" rx="10" fill="#dbeafe" stroke="#60a5fa"/>
+<text class="title" x="860.0" y="146" text-anchor="middle">Target replay</text>
+<text class="small" x="860.0" y="168" text-anchor="middle">Session C / execution qualification</text>
+<path class="edge" d="M 520 80 V 100 H 180 V 120"/>
+<path class="edge" d="M 520 80 V 120"/>
+<path class="edge" d="M 520 80 V 100 H 860 V 120"/>
+
+<rect x="300" y="245" width="440" height="66" rx="10" fill="#dcfce7" stroke="#4ade80"/>
+<text class="title" x="520.0" y="271" text-anchor="middle">Session manifest</text>
+<text class="small" x="520.0" y="293" text-anchor="middle">Identity / membership / recipe / evidence status</text>
+<rect x="35" y="354" width="280" height="64" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+<text class="title" x="175.0" y="380" text-anchor="middle">Participants + platform</text>
+<text class="small" x="175.0" y="402" text-anchor="middle">Instances / clocks / effective policy</text>
+<rect x="380" y="354" width="280" height="64" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+<text class="title" x="520.0" y="380" text-anchor="middle">Recordings + state</text>
+<text class="small" x="520.0" y="402" text-anchor="middle">Rotated MCAP / inputs / checkpoints</text>
+<rect x="725" y="354" width="280" height="64" rx="10" fill="#ffffff" stroke="#94a3b8"/>
+<text class="title" x="865.0" y="380" text-anchor="middle">Results + ancestry</text>
+<text class="small" x="865.0" y="402" text-anchor="middle">Metrics / faults / consumed inputs</text>
+<path class="edge" d="M 180 184 V 216 H 520 V 245"/>
+<path class="edge" d="M 520 184 V 245"/>
+<path class="edge" d="M 860 184 V 216 H 520 V 245"/>
+<path class="edge" d="M 410 311 V 333 H 175 V 354"/>
+<path class="edge" d="M 520 311 V 354"/>
+<path class="edge" d="M 630 311 V 333 H 865 V 354"/>
+<rect x="300" y="459" width="440" height="62" rx="10" fill="#ffedd5" stroke="#fb923c"/>
+<text class="title" x="520.0" y="485" text-anchor="middle">Foxglove / Rerun adapters</text>
+<text class="small" x="520.0" y="507" text-anchor="middle">Catalog mapping / semantic views / artifact links</text>
+<path class="edge" d="M 175 418 V 440 H 410 V 459"/>
+<path class="edge" d="M 520 418 V 459"/>
+<path class="edge" d="M 865 418 V 440 H 630 V 459"/>
+</svg>
