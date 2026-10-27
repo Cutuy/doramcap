@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Layers, ArrowUpRight, Search, ArrowLeft, type LucideIcon } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, type LucideIcon } from 'lucide-react';
 import generated from './.generated/catalog.json';
 import { componentHref, displayName, parseRoute, resolveLink, routeHref,  type Catalog, type Component, type Kind, type Route } from './model';
 import Dependencies from './Dependencies';
@@ -13,7 +13,7 @@ import './style.css';
 const catalog = generated as Catalog;
 const DependencyGraph = lazy(() => import('./DependencyGraph'));
 
-const icons: Record<string, LucideIcon> = { Observability: Activity, Resources: Cpu, Storage: Database, Telemetry: Radio, Configuration: SlidersHorizontal, Memory: MemoryStick, Faults: ShieldAlert, Tooling: Wrench };
+const icons: Record<string, LucideIcon> = { Observability: Activity, Resources: Cpu, Storage: Database, Telemetry: Radio, Configuration: SlidersHorizontal, Memory: MemoryStick, Faults: ShieldAlert, Tooling: Wrench, Runtime: Workflow };
 function Category({ name }: { name: string }) { const Icon = icons[name] ?? Layers; return <span className="category"><Icon size={13} strokeWidth={1.6} aria-hidden="true" />{name}</span>; }
 function useRoute(): Route {
   const [hash, setHash] = useState(window.location.hash);

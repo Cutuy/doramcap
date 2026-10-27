@@ -2,7 +2,7 @@
   "$schema": "./overview.schema.json",
   "version": 1,
   "title": "Your runtime foundation for Physical AI.",
-  "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
+  "summary": "Run perception, learned policies, and control on a shared SoC—with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
   "workloads": [
     "Perception",
     "Learned policies",
@@ -138,6 +138,29 @@
       "evidence": [
         "libs/pbtxt-config/README.md"
       ]
+    },
+    {
+      "id": "orchestration",
+      "title": "Workflow execution",
+      "category": "Runtime",
+      "summary": "Run observable Rust steps, supervise Compose workloads and collect filesystem changes before cleanup.",
+      "status": "building-blocks",
+      "limits": "Docker Compose execution is implemented. Mechanism-neutral lifecycle contracts and OverlayFS mounting remain design work.",
+      "components": [
+        "apps/orchestrator-demo",
+        "crates/orchestrator",
+        "crates/workload-docker",
+        "crates/workload-lifecycle"
+      ],
+      "integrations": [
+        "linux"
+      ],
+      "evidence": [
+        "libs/orchestrator/README.md",
+        "libs/workload-docker/README.md",
+        "libs/workload-lifecycle/README.md",
+        "apps/orchestrator-demo/README.md"
+      ]
     }
   ],
   "integrations": [
@@ -240,6 +263,33 @@
   ],
   "useCases": [
     {
+      "id": "repeat",
+      "title": "Run and repeat an experiment",
+      "summary": "Run your workloads, inspect the results, and run again. doramcap captures recordings and execution evidence for each run and verifies workload cleanup before the next.",
+      "outcome": "Repeat experiments with recording and provenance handled by the workflow.",
+      "status": "illustrative",
+      "capabilities": [
+        "orchestration",
+        "resources",
+        "recording"
+      ],
+      "integrations": [
+        "linux",
+        "mcap"
+      ],
+      "components": [
+        "apps/orchestrator-demo",
+        "apps/system-monitor",
+        "crates/orchestrator",
+        "crates/workload-docker"
+      ],
+      "evidence": [
+        "apps/orchestrator-demo/README.md",
+        "libs/workload-docker/docs/102626-compose-workflow.md",
+        "libs/workload-docker/docs/102626-filesystem-metadata.md"
+      ]
+    },
+    {
       "id": "perception",
       "title": "Run a perception pipeline",
       "summary": "Move a payload through a dataflow, retain its buffer until processing completes, trace the work, and capture evidence for inspection.",
@@ -331,6 +381,33 @@
       "evidence": [
         "apps/fault-demo/README.md",
         "apps/fault-watchdog/README.md"
+      ]
+    },
+    {
+      "id": "compose-run",
+      "title": "Run a Compose experiment",
+      "summary": "Launch prepared Compose projects with a fresh CPU monitor and MCAP recording, observe step execution, then collect categorized filesystem metadata and verify cleanup.",
+      "outcome": "Inspect workload execution and storage changes for each serial run.",
+      "status": "illustrative",
+      "capabilities": [
+        "orchestration",
+        "resources",
+        "recording"
+      ],
+      "integrations": [
+        "linux",
+        "mcap"
+      ],
+      "components": [
+        "apps/orchestrator-demo",
+        "apps/system-monitor",
+        "crates/orchestrator",
+        "crates/workload-docker"
+      ],
+      "evidence": [
+        "apps/orchestrator-demo/README.md",
+        "libs/workload-docker/docs/102626-filesystem-metadata.md",
+        "libs/workload-docker/docs/102626-compose-workflow.md"
       ]
     }
   ],

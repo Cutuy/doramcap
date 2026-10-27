@@ -1,12 +1,26 @@
 {
   "categories": {
-    "apps/activity-demo": "Observability", "apps/provenance-demo": "Observability",
-    "apps/cpu-viewer": "Resources", "apps/system-monitor": "Resources",
-    "apps/storage-demo": "Storage", "apps/mcap-recorder": "Telemetry",
-    "apps/fault-demo": "Faults", "apps/fault-watchdog": "Faults",
-    "apps/cuda-shm-demo": "Memory", "apps/project-explorer": "Tooling",
-    "libs/activity-tracing": "Observability", "libs/step-provenance": "Observability",
-    "libs/storage-persistence": "Storage", "libs/pbtxt-config": "Configuration",
-    "libs/resources": "Resources", "libs/memory": "Memory", "libs/fault": "Faults", "libs/telemetry": "Telemetry"
+    "apps/activity-demo": "Observability",
+    "apps/provenance-demo": "Observability",
+    "apps/cpu-viewer": "Resources",
+    "apps/system-monitor": "Resources",
+    "apps/storage-demo": "Storage",
+    "apps/mcap-recorder": "Telemetry",
+    "apps/fault-demo": "Faults",
+    "apps/fault-watchdog": "Faults",
+    "apps/cuda-shm-demo": "Memory",
+    "apps/project-explorer": "Tooling",
+    "libs/activity-tracing": "Observability",
+    "libs/step-provenance": "Observability",
+    "libs/storage-persistence": "Storage",
+    "libs/pbtxt-config": "Configuration",
+    "libs/resources": "Resources",
+    "libs/memory": "Memory",
+    "libs/fault": "Faults",
+    "libs/telemetry": "Telemetry",
+    "apps/orchestrator-demo": "Runtime",
+    "libs/orchestrator": "Runtime",
+    "libs/workload-docker": "Runtime",
+    "libs/workload-lifecycle": "Runtime"
   }
 }
