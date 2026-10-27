@@ -23,3 +23,8 @@ apps/project-explorer/frontend/public/content/
 /apps/*/frontend/src/.generated/
 /apps/*/frontend/test-results/
 /apps/*/frontend/playwright-report/
+
+# TypeScript incremental state and Vite development caches.
+*.tsbuildinfo
+/apps/*/frontend/.vite/
+/apps/*/frontend/.vite-temp/
