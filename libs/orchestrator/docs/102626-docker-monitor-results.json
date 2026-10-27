@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-26",
+  "architecture": "x86_64",
+  "kernel": "7.0.0-38-generic",
+  "docker_engine": "29.9.1",
+  "image_id": "sha256:dc7907b7b46eeeed302f2a293be08eb99358683f0aee7d9f2d0005cbad97af3c",
+  "artifact_directory": "/tmp/doramcap-docker-e2e-102626-4",
+  "seccomp": "unconfined (trusted local test; io_uring required)",
+  "runs": [
+    {
+      "cleanup_errors": [],
+      "execution_error": null,
+      "injected_failure": false,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1733105,
+        "container": "4fd8ba765f8c763060287e51a510c34bf5d60573f7635c398fa47e06e3527392",
+        "finalized": true,
+        "monitor_session": "1793054237287673857-1",
+        "snapshots": 24
+      },
+      "session": "doramcap-e2e-2244779-1793054236497-0",
+      "step_events": 20,
+      "failed_steps": [],
+      "monitor_log": "session complete: collected=24 published=24 dropped=0"
+    },
+    {
+      "cleanup_errors": [],
+      "execution_error": null,
+      "injected_failure": false,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1732897,
+        "container": "eff758cf60bb8abe33c58aa830ba30174443cc9ec0d8e9e041ef9fd5880fb7ca",
+        "finalized": true,
+        "monitor_session": "1793054241105277622-1",
+        "snapshots": 24
+      },
+      "session": "doramcap-e2e-2244779-1793054236497-1",
+      "step_events": 20,
+      "failed_steps": [],
+      "monitor_log": "session complete: collected=24 published=24 dropped=0"
+    },
+    {
+      "cleanup_errors": [],
+      "execution_error": "injected audit failure after readiness",
+      "injected_failure": true,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1732354,
+        "container": "6dd3d06a61ad1edc5f24c55d05a0c16432ebf81026c57a685ce3e1e3f3312f3a",
+        "finalized": true,
+        "monitor_session": "1793054244790572426-1",
+        "snapshots": 24
+      },
+      "session": "doramcap-e2e-2244779-1793054236497-2",
+      "step_events": 20,
+      "failed_steps": [
+        "docker_monitor::AuditRunning"
+      ],
+      "monitor_log": "session complete: collected=24 published=24 dropped=0"
+    }
+  ]
+}

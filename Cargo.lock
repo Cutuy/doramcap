@@ -3221,6 +3221,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
+name = "orchestrator"
+version = "0.1.0"
+dependencies = [
+ "mcap",
+ "serde",
+ "serde_json",
+ "telemetry-protocol",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "orchestrator-demo"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "mcap",
+ "orchestrator",
+ "serde",
+ "serde_json",
+ "telemetry-protocol",
+ "tokio",
+ "tower-http",
+]
+
+[[package]]
 name = "owned-alloc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5905,6 +5933,10 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workload-lifecycle"
+version = "0.1.0"
 
 [[package]]
 name = "writeable"

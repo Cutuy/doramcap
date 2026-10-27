@@ -10,6 +10,8 @@ members = [
     "libs/resources/resource-policy",
     "libs/step-provenance",
     "libs/session",
+    "libs/workload-lifecycle",
+    "libs/orchestrator",
     "libs/storage-persistence",
     "libs/resources/task-accounting",
     "libs/telemetry/mcap",
@@ -26,6 +28,7 @@ members = [
     "apps/fault-demo",
     "apps/storage-demo",
     "apps/activity-demo/server",
+    "apps/orchestrator-demo/server",
     "apps/provenance-demo/server",
 ]
 resolver = "2"

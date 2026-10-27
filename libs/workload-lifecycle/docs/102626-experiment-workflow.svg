@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1110" viewBox="0 0 1000 1110" role="img"><title>Experiment workflow</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#53667c"/></marker></defs><rect width="100%" height="100%" fill="#f5f7fb"/><g font-family="sans-serif" fill="#162d48">
+<text x="28" y="36" font-size="22" font-weight="bold">Experiment workflow</text><text x="28" y="61" font-size="14">Only orchestration, lifecycle management and manager self-monitoring persist.</text>
+<rect x="180" y="85" width="640" height="72" rx="9" fill="#e8f1ff" stroke="#adc0d5"/>
+<text x="196" y="112" font-size="16" font-weight="bold">Global manager</text>
+<text x="196" y="134" font-size="13">Step history · admission · self-monitor</text>
+<rect x="180" y="175" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="202" font-size="16" font-weight="bold">Create experiment session</text>
+<text x="196" y="224" font-size="13">Fresh identity, workspace and ownership</text>
+<path d="M500 157V175" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="265" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="292" font-size="16" font-weight="bold">Pre-launch system configuration</text>
+<text x="196" y="314" font-size="13">Capture baseline → apply changes → verify</text>
+<path d="M500 247V265" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="355" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="382" font-size="16" font-weight="bold">Start fresh native system services</text>
+<text x="196" y="404" font-size="13">Resource / latency monitoring · MCAP writers</text>
+<path d="M500 337V355" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="445" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="472" font-size="16" font-weight="bold">Arm recording and launch Compose</text>
+<text x="196" y="494" font-size="13">Wait for service readiness, then workload readiness</text>
+<path d="M500 427V445" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="535" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="562" font-size="16" font-weight="bold">Run experiment</text>
+<text x="196" y="584" font-size="13">Mediated commands · health · bounded recovery</text>
+<path d="M500 517V535" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="625" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="652" font-size="16" font-weight="bold">Quiesce and stop foreign workloads</text>
+<text x="196" y="674" font-size="13">Close launch admission · finalize in-app recorders · verify exit</text>
+<path d="M500 607V625" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="715" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="742" font-size="16" font-weight="bold">Drain and stop native system services</text>
+<text x="196" y="764" font-size="13">Finalize evidence · stop monitors/writers · verify exit</text>
+<path d="M500 697V715" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="805" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="832" font-size="16" font-weight="bold">Post-experiment system configuration</text>
+<text x="196" y="854" font-size="13">Restore / reset → verify declared conditions</text>
+<path d="M500 787V805" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="895" width="640" height="72" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="196" y="922" font-size="16" font-weight="bold">Seal evidence and boundary report</text>
+<text x="196" y="944" font-size="13">Execution outcome · evidence completeness · cleanup status</text>
+<path d="M500 877V895" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M500 967V995" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<rect x="180" y="995" width="285" height="72" rx="9" fill="#e8f6ed" stroke="#adc0d5"/>
+<text x="196" y="1022" font-size="16" font-weight="bold">Boundary verified</text>
+<text x="196" y="1044" font-size="13">Next experiment ready</text>
+<rect x="535" y="995" width="285" height="72" rx="9" fill="#fff0e7" stroke="#adc0d5"/>
+<text x="551" y="1022" font-size="16" font-weight="bold">Failed / unknown boundary</text>
+<text x="551" y="1044" font-size="13">Hold resources; reconcile</text>
+<path d="M500 995H465" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M500 995H535" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M180 1031H100V211H180" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<text x="15" y="600" font-size="13">Next session</text>
+<text x="195" y="1095" font-size="13">Any failure enters applicable cleanup; partial startup and cleanup failures remain recorded.</text>
+</g></svg>

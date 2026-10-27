@@ -6,6 +6,8 @@ provide an index; Cargo package names stay independent of directory names.
 
 | Group or crate | Scope |
 |---|---|
+| [orchestrator](orchestrator/) | Observable local async Rust steps and external-script adapter |
+| [workload-lifecycle](workload-lifecycle/) | Foreign launch adoption and execution boundaries (design scaffold) |
 | [session](session/) | Session identity and experiment evidence contracts (concept scaffold) |
 | [resources](resources/) | Resource measurement, accounting, placement, and scheduling policy |
 | [telemetry](telemetry/) | Publication contracts, codecs, and telemetry recording |

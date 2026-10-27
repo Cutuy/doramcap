@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="760" viewBox="0 0 1060 760">
+<title>Orchestrator invocation internals</title>
+<desc>LocalExecutor resolves a typed factory, validates dependencies, round-trips input, creates and awaits a fresh step, validates output, and returns value plus producer identity. Factories inject shared services into typed step fields. An invocation guard emits start and terminal events; dropping an unfinished invocation emits cancellation or panic. The observer can encode shared Protobuf telemetry.</desc>
+<defs>
+<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#486581"/></marker>
+<marker id="event" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#8c6cc2"/></marker>
+</defs>
+<style>
+text{font:16px Arial,sans-serif;fill:#18334b;text-anchor:middle}.title{font-size:23px;font-weight:700;text-anchor:start}.code{font-family:monospace;font-size:15px}.small{font-size:13px;fill:#65788e}.label{font-size:13px;fill:#7c5da8}.box{fill:white;stroke:#9bb0c4;stroke-width:1.5}.flow{fill:none;stroke:#486581;stroke-width:1.8;marker-end:url(#arrow)}.ref{fill:none;stroke:#708ca8;stroke-width:1.5;stroke-dasharray:5 4;marker-end:url(#arrow)}.event{fill:none;stroke:#8c6cc2;stroke-width:1.6;marker-end:url(#event)}
+</style>
+<rect width="1060" height="760" fill="#f8fafc"/>
+<text x="28" y="36" class="title">Inside one invocation</text>
+<rect x="320" y="62" width="340" height="48" rx="9" class="box"/>
+<text x="490" y="91" class="code">executor.run&lt;S&gt;(input).await</text>
+<rect x="280" y="140" width="420" height="520" rx="16" fill="#edf4fb" stroke="#bdcfe1"/>
+<text x="390" y="165" class="code">LocalExecutor::run</text>
+<path d="M490 110V187" class="flow"/>
+<rect x="350" y="188" width="280" height="50" rx="8" class="box"/>
+<text x="490" y="218">Factory lookup · deps · ID</text>
+<path d="M490 238V267" class="flow"/>
+<rect x="350" y="268" width="280" height="48" rx="8" class="box"/>
+<text x="490" y="297">JSON input round-trip</text>
+<path d="M490 316V370" class="flow"/>
+<text x="527" y="346" class="small">valid</text>
+<rect x="320" y="371" width="340" height="112" rx="10" fill="#fff" stroke="#518fbd" stroke-width="2"/>
+<text x="490" y="398" class="code">factory() → fresh S</text>
+<text x="490" y="431" class="code">step.run(input).await</text>
+<text x="490" y="459" class="small">coroutine-local parent scope</text>
+<path d="M490 483V516" class="flow"/>
+<rect x="350" y="517" width="280" height="48" rx="8" class="box"/>
+<text x="490" y="546">JSON output round-trip</text>
+<path d="M490 565V600" class="flow"/>
+<rect x="350" y="601" width="280" height="40" rx="8" class="box"/>
+<text x="490" y="626">Drop step</text>
+<path d="M490 641V695" class="flow"/>
+<rect x="335" y="696" width="310" height="44" rx="8" fill="#e8f5ef" stroke="#8eb7a6"/>
+<text x="490" y="724">Output { value, producer }</text>
+
+<rect x="25" y="350" width="220" height="147" rx="12" fill="#fff" stroke="#9bb0c4"/>
+<text x="135" y="380" class="code">Typed factory</text>
+<text x="135" y="412">captured Rc / Arc</text>
+<text x="135" y="441">shared services</text>
+<text x="135" y="470">→ step fields</text>
+<path d="M245 427H319" class="ref"/>
+
+
+
+<rect x="770" y="188" width="260" height="410" rx="14" fill="#f5f0fb" stroke="#b9a5d3"/>
+<text x="900" y="218" class="code">Invocation guard</text>
+<path d="M630 213H769" class="event"/>
+<text x="699" y="201" class="label">arm</text>
+<rect x="798" y="267" width="204" height="48" rx="8" class="box"/>
+<text x="900" y="297">Started</text>
+<path d="M630 291H797" class="event"/>
+<text x="900" y="365">Failed</text>
+<path d="M660 427H737V359H797" class="event"/>
+<path d="M630 309H721V359H797" class="event"/>
+<path d="M630 541H721V359" class="event"/>
+<text x="701" y="416" class="label">error</text>
+<rect x="798" y="460" width="204" height="48" rx="8" class="box"/>
+<text x="900" y="490">Succeeded</text>
+<path d="M630 621H748V484H797" class="event"/>
+<text x="900" y="552" class="small">unfinished guard drop</text>
+<text x="900" y="577">Cancelled / Panicked</text>
+<path d="M900 598V640" class="event"/>
+<rect x="790" y="641" width="220" height="44" rx="8" class="box"/>
+<text x="900" y="669">Injected observer</text>
+<path d="M900 685V709" class="event"/>
+<text x="900" y="731" class="label">optional Protobuf sink</text>
+<text x="135" y="710" class="small">Same caller task</text>
+<text x="135" y="732" class="small">Dashed = shared reference</text>
+</svg>

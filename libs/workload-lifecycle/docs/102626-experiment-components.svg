@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="650" viewBox="0 0 1060 650" role="img"><title>Experiment component interactions</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#53667c"/></marker></defs><rect width="100%" height="100%" fill="#f5f7fb"/><g font-family="sans-serif" fill="#162d48">
+<text x="28" y="36" font-size="22" font-weight="bold">Experiment component interactions</text><text x="28" y="61" font-size="14">Native and foreign participants share one session lifetime.</text>
+<rect x="325" y="90" width="410" height="76" rx="9" fill="#e8f1ff" stroke="#adc0d5"/>
+<text x="341" y="117" font-size="16" font-weight="bold">Global doramcap manager</text>
+<text x="341" y="139" font-size="13">Orchestration · step history · self-monitor</text>
+<rect x="50" y="210" width="960" height="310" rx="14" fill="#eef5fc" stroke="#8da8c4" stroke-dasharray="6 4"/>
+<text x="70" y="234" font-size="13">ONE EXPERIMENT: fresh processes, queues, buffers and runtime state</text>
+<rect x="325" y="255" width="410" height="70" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="341" y="282" font-size="16" font-weight="bold">Session supervisor</text>
+<text x="341" y="304" font-size="13">Runs the experiment workflow</text>
+<rect x="90" y="380" width="360" height="95" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="106" y="407" font-size="16" font-weight="bold">Native system services</text>
+<text x="106" y="429" font-size="13">Resource / latency monitors · MCAP writers</text>
+<text x="106" y="448" font-size="13">Readiness · drain · completion reports</text>
+<rect x="610" y="380" width="360" height="95" rx="9" fill="#fff" stroke="#adc0d5"/>
+<text x="626" y="407" font-size="16" font-weight="bold">Foreign Compose workloads</text>
+<text x="626" y="429" font-size="13">Application processes and their children</text>
+<text x="626" y="448" font-size="13">Existing or generated integration hooks</text>
+<path d="M530 166V255" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M400 325V350H270V380" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M660 325V350H790V380" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M610 410H450" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M450 448H610" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<text x="460" y="398" font-size="13">Data / health / timing</text>
+<text x="465" y="470" font-size="13">Optional feedback</text>
+<rect x="325" y="560" width="410" height="65" rx="9" fill="#e8f6ed" stroke="#adc0d5"/>
+<text x="341" y="587" font-size="16" font-weight="bold">Durable experiment artifacts</text>
+<text x="341" y="609" font-size="13">Recordings · manifests · boundary reports</text>
+<path d="M270 475V590H325" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+<path d="M790 475V590H735" fill="none" stroke="#53667c" stroke-width="2" marker-end="url(#a)"/>
+</g></svg>

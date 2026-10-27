@@ -96,3 +96,19 @@ Cargo generates Rust bindings and the embedded descriptor automatically using a
 vendored protoc. Python validators use the official protobuf runtime (install
 `libs/telemetry/protocol/python/requirements.txt`); the MCAP validator builds its decoder from the
 recording's schema. `--check` remains a human-readable JSON capability report.
+
+## Workflow telemetry
+
+`proto/workflow.proto` defines `doramcap.workflow.v1.Event` separately from the CPU
+packet schema. `telemetry_protocol::workflow` supplies the codec and descriptor.
+Transport provides framing and must bound frame size before decode.
+
+Events carry schema version, observer sequence, session/invocation, derived Rust
+step name, step contract revision, executor, parent/dependencies, state, monotonic
+elapsed/duration nanoseconds, and optional JSON payload/error. Sequence is scoped
+to one observer instance; clones share it. Failed admission/delivery consumes a
+sequence number. Consumers detect gaps and consult publisher loss counters.
+IDs and times are uint64; JavaScript consumers must preserve IDs as strings/Long.
+Elapsed time is relative to context creation, not a synchronized cross-host clock.
+Payload capture is opt-in and consumers must treat it as potentially sensitive.
+Unknown schema versions must not be silently interpreted as the current contract.

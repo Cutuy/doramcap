@@ -1,0 +1,27 @@
+syntax = "proto3";
+package doramcap.workflow.v1;
+// Transport-independent step event. Sequence gaps indicate missing observations.
+message Event {
+  uint32 version = 1;
+  uint64 sequence = 2;
+  string session = 3;
+  uint64 invocation = 4;
+  string step = 5;
+  uint32 step_version = 6;
+  string executor = 7;
+  optional uint64 parent = 8;
+  repeated uint64 dependencies = 9;
+  enum State {
+    UNSPECIFIED = 0;
+    STARTED = 1;
+    SUCCEEDED = 2;
+    FAILED = 3;
+    CANCELLED = 4;
+    PANICKED = 5;
+  }
+  State state = 10;
+  uint64 elapsed_ns = 11;
+  uint64 duration_ns = 12;
+  optional string payload_json = 13;
+  optional string error = 14;
+}

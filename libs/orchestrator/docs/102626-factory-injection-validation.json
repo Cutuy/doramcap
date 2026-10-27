@@ -1,0 +1,113 @@
+{
+  "revision": "factory injection",
+  "docker_artifacts": "/tmp/doramcap-factory-e2e-102626",
+  "docker": [
+    {
+      "cleanup_errors": [],
+      "execution_error": null,
+      "injected_failure": false,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1662397,
+        "container": "c37edea8b3dfb858461e4b361263d2bd649d1287de7625d986d1779094f8cfef",
+        "finalized": true,
+        "monitor_session": "1793057888820243383-1",
+        "snapshots": 23
+      },
+      "session": "doramcap-e2e-2271060-1793057888081-0"
+    },
+    {
+      "cleanup_errors": [],
+      "execution_error": null,
+      "injected_failure": false,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1733688,
+        "container": "4a382a174914b3953a35a24202d31ffe5244443716f027363574d1a9e11af0d5",
+        "finalized": true,
+        "monitor_session": "1793057892585701956-1",
+        "snapshots": 24
+      },
+      "session": "doramcap-e2e-2271060-1793057888081-1"
+    },
+    {
+      "cleanup_errors": [],
+      "execution_error": "injected audit failure after readiness",
+      "injected_failure": true,
+      "recording": {
+        "backend": "bpf",
+        "bytes": 1733902,
+        "container": "f05095eb57ef865fa22fa11e5fa55c6f96eaa94eb4172d1dbcc1986eda46d138",
+        "finalized": true,
+        "monitor_session": "1793057896331053740-1",
+        "snapshots": 24
+      },
+      "session": "doramcap-e2e-2271060-1793057888081-2"
+    }
+  ],
+  "live": {
+    "events": 40,
+    "sessions": 2,
+    "live_before_completion": true,
+    "reconnect_replay": true,
+    "disconnect_cleanup": true,
+    "reports": [
+      {
+        "dropped_events": 0,
+        "error": null,
+        "report": {
+          "cleanup_errors": [],
+          "execution_error": null,
+          "injected_failure": false,
+          "recording": {
+            "backend": "bpf",
+            "bytes": 1734110,
+            "container": "a79a89d7c5ce5a2323b1c81bc46d1cd481e3626271d7dd73a09eee1dc2d033b0",
+            "finalized": true,
+            "monitor_session": "1793057967458219437-1",
+            "snapshots": 24
+          },
+          "session": "doramcap-live-2273943-1793057966686-1"
+        },
+        "session": "doramcap-live-2273943-1793057966686-1",
+        "type": "finished"
+      },
+      {
+        "dropped_events": 0,
+        "error": null,
+        "report": {
+          "cleanup_errors": [],
+          "execution_error": "injected audit failure after readiness",
+          "injected_failure": true,
+          "recording": {
+            "backend": "bpf",
+            "bytes": 1734538,
+            "container": "83d1fb4173f8826256bac0d6a67b1b257eb4b9b73aa1943cec90c41b0c42ca11",
+            "finalized": true,
+            "monitor_session": "1793057971248551116-1",
+            "snapshots": 24
+          },
+          "session": "doramcap-live-2273943-1793057970630-2"
+        },
+        "session": "doramcap-live-2273943-1793057970630-2",
+        "type": "finished"
+      }
+    ]
+  },
+  "local": {
+    "orchestrator_tests": 16,
+    "demo_tests": 1,
+    "telemetry_protocol_tests": 3,
+    "frontend_tests": 2,
+    "clippy": "passed",
+    "rustdoc": "passed",
+    "example": "passed",
+    "frontend_build": "passed"
+  },
+  "arm64": {
+    "job": 136,
+    "snapshot": "5151eb912c03454e874f94bfecbfde84",
+    "status": "Success",
+    "completed_at": "2026-10-26T16:40:15-07:00"
+  }
+}

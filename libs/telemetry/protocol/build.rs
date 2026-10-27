@@ -5,5 +5,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .file_descriptor_set_path(out.join("telemetry_descriptor.bin"))
         .compile_protos(&["proto/telemetry.proto"], &["proto"])?;
     println!("cargo:rerun-if-changed=proto/telemetry.proto");
+    prost_build::Config::new()
+        .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
+        .file_descriptor_set_path(out.join("workflow_descriptor.bin"))
+        .compile_protos(&["proto/workflow.proto"], &["proto"])?;
+    println!("cargo:rerun-if-changed=proto/workflow.proto");
     Ok(())
 }

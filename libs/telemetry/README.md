@@ -1,8 +1,8 @@
 # Telemetry
 
 Publication contracts, codecs, and recording adapters for measured data.
-Current contracts describe CPU snapshots and dictionary checkpoints; the group
-can accommodate additional telemetry domains as their contracts are introduced.
+Current contracts describe CPU snapshots, dictionary checkpoints and versioned
+workflow events. Applications supply live transports and bounded replay.
 
 | Crate | Responsibility |
 |---|---|

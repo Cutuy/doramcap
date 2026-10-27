@@ -1,0 +1,153 @@
+{
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+  "node": "v22.23.3",
+  "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "tokio": "1.53.3",
+  "method": "5 fresh processes per case; sample smaps_rollup 250 ms after readiness; no forced GC; idle coroutine timers; excludes children/build tooling",
+  "results": [
+    {
+      "runtime": "rust",
+      "waiting_coroutines": 1,
+      "samples_KiB": [
+        {
+          "Rss": 2156,
+          "Pss": 585,
+          "threads": 1
+        },
+        {
+          "Rss": 2128,
+          "Pss": 561,
+          "threads": 1
+        },
+        {
+          "Rss": 2104,
+          "Pss": 537,
+          "threads": 1
+        },
+        {
+          "Rss": 2116,
+          "Pss": 549,
+          "threads": 1
+        },
+        {
+          "Rss": 2128,
+          "Pss": 561,
+          "threads": 1
+        }
+      ],
+      "median_RSS_MiB": 2.08,
+      "median_PSS_MiB": 0.55,
+      "threads": [
+        1
+      ]
+    },
+    {
+      "runtime": "node",
+      "waiting_coroutines": 1,
+      "samples_KiB": [
+        {
+          "Rss": 43932,
+          "Pss": 29261,
+          "threads": 7
+        },
+        {
+          "Rss": 43932,
+          "Pss": 29261,
+          "threads": 7
+        },
+        {
+          "Rss": 43932,
+          "Pss": 29261,
+          "threads": 7
+        },
+        {
+          "Rss": 43884,
+          "Pss": 29260,
+          "threads": 7
+        },
+        {
+          "Rss": 43876,
+          "Pss": 29256,
+          "threads": 7
+        }
+      ],
+      "median_RSS_MiB": 42.9,
+      "median_PSS_MiB": 28.58,
+      "threads": [
+        7
+      ]
+    },
+    {
+      "runtime": "rust",
+      "waiting_coroutines": 1000,
+      "samples_KiB": [
+        {
+          "Rss": 2492,
+          "Pss": 925,
+          "threads": 1
+        },
+        {
+          "Rss": 2488,
+          "Pss": 921,
+          "threads": 1
+        },
+        {
+          "Rss": 2536,
+          "Pss": 969,
+          "threads": 1
+        },
+        {
+          "Rss": 2516,
+          "Pss": 953,
+          "threads": 1
+        },
+        {
+          "Rss": 2496,
+          "Pss": 929,
+          "threads": 1
+        }
+      ],
+      "median_RSS_MiB": 2.44,
+      "median_PSS_MiB": 0.91,
+      "threads": [
+        1
+      ]
+    },
+    {
+      "runtime": "node",
+      "waiting_coroutines": 1000,
+      "samples_KiB": [
+        {
+          "Rss": 46340,
+          "Pss": 31634,
+          "threads": 7
+        },
+        {
+          "Rss": 46324,
+          "Pss": 31634,
+          "threads": 7
+        },
+        {
+          "Rss": 46340,
+          "Pss": 31634,
+          "threads": 7
+        },
+        {
+          "Rss": 46284,
+          "Pss": 31633,
+          "threads": 7
+        },
+        {
+          "Rss": 46308,
+          "Pss": 31642,
+          "threads": 7
+        }
+      ],
+      "median_RSS_MiB": 45.24,
+      "median_PSS_MiB": 30.89,
+      "threads": [
+        7
+      ]
+    }
+  ]
+}

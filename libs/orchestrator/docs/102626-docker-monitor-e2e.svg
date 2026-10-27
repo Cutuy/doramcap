@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="270" viewBox="0 0 900 270">
+<rect width="900" height="270" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif;font-size:15px;fill:#102a43}rect.box{fill:white;stroke:#486581;stroke-width:2}path{stroke:#486581;stroke-width:2;fill:none;marker-end:url(#a)}</style>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#486581"/></marker></defs>
+<text x="25" y="35" style="font-size:23px;font-weight:bold">Real Docker CPU monitor · procedural Rust workflow</text>
+<rect class="box" x="25" y="65" width="180" height="65" rx="8"/><text x="40" y="93">Create → Start</text><text x="40" y="115">owned container ID</text>
+<rect class="box" x="245" y="65" width="180" height="65" rx="8"/><text x="260" y="93">Audit running</text><text x="260" y="115">PID + growing telemetry</text>
+<rect class="box" x="465" y="65" width="180" height="65" rx="8"/><text x="480" y="93">Stop → Audit recording</text><text x="480" y="115">exit + MCAP readback</text>
+<rect class="box" x="685" y="65" width="190" height="65" rx="8"/><text x="700" y="93">Remove → Audit absent</text><text x="700" y="115">next experiment ready</text>
+<path d="M205 98 H245"/><path d="M425 98 H465"/><path d="M645 98 H685"/>
+<path d="M335 130 V169 H555 V130"/><text x="345" y="160">also on audit failure</text>
+<rect class="box" x="245" y="200" width="400" height="45" rx="8"/><text x="260" y="228">Artifacts: events · inspect · logs · MCAP · report</text>
+<path d="M780 130 V222 H645"/>
+</svg>

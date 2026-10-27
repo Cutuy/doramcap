@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="560" viewBox="0 0 1080 560" role="img" aria-labelledby="title desc">
+<title id="title">Foreign workload adoption and session evidence</title>
+<desc id="desc">Compose sources and experiment policy feed a frozen plan. The lifecycle coordinator uses host executors and boundary checks, and records evidence under the session contract. Native launch adapters are future inputs.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52647c"/></marker></defs>
+<rect width="1080" height="560" rx="16" fill="#f5f7fb"/>
+<g font-family="sans-serif" fill="#172b45">
+<text x="32" y="38" font-size="22" font-weight="bold">Foreign launch adoption</text>
+<text x="32" y="62" font-size="14">Fresh native monitors/writers and foreign workloads for every session</text>
+<g stroke="#b6c5d7" stroke-width="1.5" fill="#fff">
+<rect x="30" y="100" width="210" height="88" rx="9"/>
+<rect x="30" y="238" width="210" height="88" rx="9"/>
+<rect x="30" y="396" width="210" height="90" rx="9" stroke-dasharray="5 4"/>
+<rect x="306" y="100" width="230" height="88" rx="9"/>
+<rect x="306" y="238" width="230" height="88" rx="9" fill="#e8f1ff"/>
+<rect x="610" y="100" width="205" height="88" rx="9"/>
+<rect x="610" y="238" width="205" height="88" rx="9"/>
+<rect x="866" y="238" width="184" height="88" rx="9"/>
+<rect x="306" y="396" width="509" height="90" rx="9" fill="#eaf6ef"/>
+</g>
+<g font-size="17" font-weight="bold">
+<text x="46" y="128">Compose sources</text><text x="46" y="266">Experiment policy</text>
+<text x="46" y="425">Native launch input</text>
+<text x="322" y="128">Import + plan</text><text x="322" y="266">Lifecycle coordinator</text>
+<text x="626" y="128">Boundary manager</text><text x="626" y="266">Host executor</text>
+<text x="882" y="266">Workloads</text><text x="322" y="425">Session evidence</text>
+</g>
+<g font-size="14">
+<text x="46" y="153">Files · profiles · inputs</text><text x="46" y="174">Preserved project scopes</text>
+<text x="46" y="291">Readiness · resources</text><text x="46" y="312">Recording · cleanup</text>
+<text x="46" y="452">systemd / Docker / process</text><text x="46" y="473">Future adapters</text>
+<text x="322" y="153">Upstream resolution</text><text x="322" y="174">Frozen recipe + policy diff</text>
+<text x="322" y="291">Admission · steps · outcomes</text><text x="322" y="312">Start · quiesce · finalize</text>
+<text x="626" y="153">Leases · snapshots</text><text x="626" y="174">Apply · restore · verify</text>
+<text x="626" y="291">Compose / Engine</text><text x="626" y="312">Exec · inspect · events</text>
+<text x="882" y="291">Native + foreign</text><text x="882" y="312">Session-owned processes</text>
+<text x="322" y="451">Identity · membership · versions · machine state · artifacts</text>
+<text x="322" y="473">Execution outcome / evidence completeness / cleanup status</text>
+</g>
+<g fill="none" stroke="#52647c" stroke-width="2" marker-end="url(#arrow)">
+<path d="M240 144H306"/><path d="M240 282H270V170H306"/>
+<path d="M421 188V238"/><path d="M536 282H610"/>
+<path d="M536 260H570V144H610"/><path d="M815 282H866"/>
+<path d="M421 326V396"/><path d="M712 326V396"/>
+<path d="M240 441H270V214H385V238" stroke-dasharray="5 4"/>
+</g>
+<g font-size="12" fill="#52647c">
+<text x="434" y="216">plan</text><text x="545" y="303">actions</text>
+<text x="434" y="369">transitions</text><text x="724" y="369">observations</text>
+</g>
+<text x="32" y="530" font-size="14">Only orchestration and its self-monitor persist. Finalize evidence and verify all session processes have exited.</text>
+</g></svg>
