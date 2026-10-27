@@ -1,6 +1,6 @@
 [package]
 name = "workload-lifecycle"
-description = "Workload launch adoption and lifecycle contracts for doramcap"
+description = "Mechanism-neutral workload lifecycle design and contracts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

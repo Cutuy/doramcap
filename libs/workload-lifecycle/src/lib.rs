@@ -1,9 +1,9 @@
-//! Workload launch adoption and lifecycle contracts for doramcap.
+//! Mechanism-neutral workload lifecycle design.
 //!
-//! This concept scaffold documents importing foreign launch definitions,
-//! coordinating execution, and verifying session boundaries. The `session`
-//! component owns shared identity and evidence contracts; resource policy owns
-//! resource goals. Runtime APIs, serialization, supervision, and backend adapters
-//! remain proposed. This crate has no dependencies or runtime implementation.
+//! Lifecycle concerns include launch ownership, readiness, orderly shutdown,
+//! recording completion and admission of the next run. Shared runtime contracts
+//! will be extracted when multiple backends require the same semantics.
 //!
-//! See `README.md` and `docs/102626-foreign-workload-adoption.md`.
+//! Concrete Docker project configuration, steps and workflows live in the
+//! `workload-docker` crate. Generic step execution lives in `orchestrator`.
+//! This crate currently contains design documentation and no runtime API.

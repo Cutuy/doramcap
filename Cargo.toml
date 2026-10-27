@@ -11,6 +11,7 @@ members = [
     "libs/step-provenance",
     "libs/session",
     "libs/workload-lifecycle",
+    "libs/workload-docker",
     "libs/orchestrator",
     "libs/storage-persistence",
     "libs/resources/task-accounting",

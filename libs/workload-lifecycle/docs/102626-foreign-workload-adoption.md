@@ -2,8 +2,13 @@
 
 # Foreign workload adoption
 
-Created: 2026-10-26. Status: design proposal; no execution implementation.
-Owner: `workload-lifecycle`. Initial backend: Docker Compose on one host.
+Created: 2026-10-26. Status: architecture and qualification roadmap; initial local Compose workflow implemented.
+Design owner: `workload-lifecycle`. Docker implementation: `workload-docker`.
+See [component boundaries](102626-component-boundaries.md).
+
+The implementation and current coverage are documented in
+[Compose workflow milestones](../../workload-docker/docs/102626-compose-workflow.md). Robotics qualification
+milestones below remain open until those upstream workloads have actually run.
 
 ## Milestones and validation
 
@@ -23,7 +28,9 @@ Owner: `workload-lifecycle`. Initial backend: Docker Compose on one host.
   Gate: readiness failure, normal stop, drain timeout, and readable final artifacts.
 - [ ] M5: Add OpenTeach child observation and recorder completion contracts.
   Gate: parent failure, surviving children, missing child health, and partial files.
-- [ ] Select dependencies with the user before implementation. Run applicable
+- [x] Select dependencies with the user before implementation.
+  Evidence: user approved Compose CLI plus Bollard on 2026-10-26.
+- [ ] Run applicable
   Rust/native tests and serial ARM64 CI; qualify real robotics runs separately.
 
 ## Scope and identities
@@ -205,7 +212,7 @@ contract. Fresh output directories avoid silently reusing an earlier episode.
 
 Use the [simple orchestrator](../../orchestrator/docs/102626-function-steps.md):
 serializable coroutine steps, one local event loop and ordinary error cleanup.
-Procedural Rust workflows call transient Rust step structs through shared context.
+Procedural Rust workflows call transient Rust step structs built by typed factories.
 Python/Node steps can use the bounded JSON stdio adapter.
 Setup ensures desired state; stop tolerates already-absent owned resources. Use
 stable session/workload names and verify ownership before changing existing state.
@@ -231,7 +238,7 @@ no remote execution or distributed coordination now.
 | Existing `prost`, `sha2`, `pbtxt-config` | Typed policy/records and deterministic digests where contracts fit |
 | Existing resource/telemetry/session components | Reuse domain ownership; record adapter coverage explicitly |
 
-No dependency is adopted by this scaffold. GPU device selection and SM partitioning
+The [local Compose workflow](../../workload-docker/docs/102626-compose-workflow.md) adopts the approved Bollard client and Compose CLI. GPU device selection and SM partitioning
 are separate capabilities; opaque containers cannot promise green-context or exact
 SM placement from a generic Docker resource request.
 
@@ -262,7 +269,7 @@ sequence, pilot gates and feasibility criteria. Persistent external daemons are
 compatibility exceptions; only orchestration/lifecycle management and its own
 self-monitoring persist by design. Runtime validation remains pending.
 
-## Scaffold validation
+## Initial scaffold validation (historical)
 
 2026-10-26: `cargo check -p workload-lifecycle --offline` passed. The crate has
 no dependencies or executable behavior. Local Markdown links resolved, the SVG

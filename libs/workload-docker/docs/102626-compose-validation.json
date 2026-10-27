@@ -1,0 +1,272 @@
+{
+  "date": "2026-10-26",
+  "artifacts": "/tmp/doramcap-compose-e2e-102626-8",
+  "compose_version": "5.6.0",
+  "bollard_version": "0.21.1",
+  "native_docker_scenarios": 6,
+  "scenarios": [
+    "two foreign projects",
+    "dynamic service addition",
+    "extra first-party project",
+    "prepared environment precedence and literal dollar preservation",
+    "volume retention and removal",
+    "idempotent teardown",
+    "partial launch failure",
+    "unhealthy service",
+    "CLI timeout with created resources",
+    "outsider preservation and admission blocking"
+  ],
+  "recordings": "full MCAP readback; native BPF, contiguous sequences and zero dropped batches in all six scenarios",
+  "reports": [
+    {
+      "boundary_clean": true,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal0-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal0-alpha",
+          "remaining": [],
+          "retained_volumes": [
+            "dc-cmp-2353691-1793063010-normal0-alpha_scratch"
+          ],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal0-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [],
+      "event_stream_healthy": true,
+      "execution_error": null,
+      "id": "cmp-2353691-1793063010-normal0",
+      "recording_finalized": true
+    },
+    {
+      "boundary_clean": true,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal1-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal1-alpha",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal1-auxiliary",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-normal1-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [],
+      "event_stream_healthy": true,
+      "execution_error": null,
+      "id": "cmp-2353691-1793063010-normal1",
+      "recording_finalized": true
+    },
+    {
+      "boundary_clean": true,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-partial-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-partial-alpha",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-partial-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [
+        {
+          "kind": "compose",
+          "message": "compose --env-file /dev/null --project-name dc-cmp-2353691-1793063010-partial-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-partial/beta.compose.json up --detach --no-build --pull never exited Some(1):  Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Container dc-cmp-2353691-1793063010-partial-beta-broken-1 Creating \n service:broken:1 Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010 \nError response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010\n",
+          "operation": "--env-file /dev/null --project-name dc-cmp-2353691-1793063010-partial-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-partial/beta.compose.json up --detach --no-build --pull never",
+          "status": 1,
+          "stderr": " Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Container dc-cmp-2353691-1793063010-partial-beta-broken-1 Creating \n service:broken:1 Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010 \nError response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010\n",
+          "stdout": ""
+        }
+      ],
+      "event_stream_healthy": true,
+      "execution_error": "compose --env-file /dev/null --project-name dc-cmp-2353691-1793063010-partial-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-partial/beta.compose.json up --detach --no-build --pull never exited Some(1):  Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Creating \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Network dc-cmp-2353691-1793063010-partial-beta_default Created \n Container dc-cmp-2353691-1793063010-partial-beta-broken-1 Creating \n service:broken:1 Error response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010 \nError response from daemon: invalid mount config for type \"bind\": bind source path does not exist: /does-not-exist-cmp-2353691-1793063010\n",
+      "id": "cmp-2353691-1793063010-partial",
+      "recording_finalized": true
+    },
+    {
+      "boundary_clean": true,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-unhealthy-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-unhealthy-alpha",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-unhealthy-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [
+        {
+          "kind": "validation",
+          "message": "unhealthy: running / Some(\"unhealthy\")",
+          "operation": "StartCompose",
+          "status": null,
+          "stderr": null,
+          "stdout": null
+        }
+      ],
+      "event_stream_healthy": true,
+      "execution_error": "unhealthy: running / Some(\"unhealthy\")",
+      "id": "cmp-2353691-1793063010-unhealthy",
+      "recording_finalized": true
+    },
+    {
+      "boundary_clean": true,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-timeout-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-timeout-alpha",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-timeout-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [
+        {
+          "kind": "timeout",
+          "message": "Compose --env-file /dev/null --project-name dc-cmp-2353691-1793063010-timeout-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-timeout/beta.compose.json up --detach --no-build --pull never deadline exceeded after 2s; capture incomplete; Engine cleanup required",
+          "operation": "--env-file /dev/null --project-name dc-cmp-2353691-1793063010-timeout-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-timeout/beta.compose.json up --detach --no-build --pull never",
+          "status": null,
+          "stderr": null,
+          "stdout": null
+        }
+      ],
+      "event_stream_healthy": true,
+      "execution_error": "Compose --env-file /dev/null --project-name dc-cmp-2353691-1793063010-timeout-beta -f /tmp/doramcap-compose-e2e-102626-8/cmp-2353691-1793063010-timeout/beta.compose.json up --detach --no-build --pull never deadline exceeded after 2s; capture incomplete; Engine cleanup required",
+      "id": "cmp-2353691-1793063010-timeout",
+      "recording_finalized": true
+    },
+    {
+      "boundary_clean": false,
+      "cleanup": [
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-outsider-beta",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        },
+        {
+          "diagnostics": [
+            {
+              "kind": "validation",
+              "message": "manifest or project ownership changed; restricted to owned Engine objects",
+              "operation": "stop",
+              "status": null,
+              "stderr": null,
+              "stdout": null
+            }
+          ],
+          "project": "dc-cmp-2353691-1793063010-outsider-alpha",
+          "remaining": [
+            "container:638e11a128be751d285360c93f5ee5897b82863b062235ab3fa0584a5e0ac578"
+          ],
+          "retained_volumes": [],
+          "verified": false
+        },
+        {
+          "diagnostics": [],
+          "project": "dc-cmp-2353691-1793063010-outsider-system",
+          "remaining": [],
+          "retained_volumes": [],
+          "verified": true
+        }
+      ],
+      "diagnostics": [],
+      "event_stream_healthy": true,
+      "execution_error": null,
+      "id": "cmp-2353691-1793063010-outsider",
+      "recording_finalized": true
+    }
+  ],
+  "local_checks": {
+    "unit_tests": 2,
+    "orchestrator_regressions": 16,
+    "clippy": "passed",
+    "rustdoc": "passed",
+    "formatting": "passed"
+  },
+  "arm64": {
+    "job": 138,
+    "snapshot": "e8168b4966ce4a9f949360e9388fa68f",
+    "status": "Success",
+    "previous_job": {
+      "job": 137,
+      "result": "Killed"
+    },
+    "completed_at": "2026-10-26T18:05:40-07:00"
+  }
+}
