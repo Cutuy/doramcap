@@ -24,10 +24,17 @@ for(const inject of [false,true]){
  await waitFor(async()=>{const s=await status();return !s.busy&&s.last?.session===session});
  const result=await status();
  assert.equal(result.last.error,null);assert.equal(result.last.dropped_events,0);
- assert.equal(result.last.report.cleanup_errors.length,0);
- assert.equal(result.last.report.recording.finalized,true);
- assert.ok(result.last.report.recording.snapshots>=5);
- assert.equal(result.last.report.execution_error,inject?'injected audit failure after readiness':null);
+ assert.equal(result.last.report.boundary_clean,true);
+ assert.equal(result.last.report.recording_finalized,true);
+ if(inject)assert.match(result.last.report.execution_error,/unhealthy/);else assert.equal(result.last.report.execution_error,null);
+ for(const key of ['host_binds','container_layers','named_volumes']) {
+  assert.ok(result.last.report.filesystem_changes[key].counts.added>0);
+  assert.ok(result.last.filesystem_preview[key].rows.some((r:any)=>r.kind==='added'));
+ }
+ const host=result.last.filesystem_preview.host_binds.rows;
+ assert.ok(host.some((r:any)=>r.kind==='modified'&&r.path==='settings.txt'));
+ assert.ok(host.some((r:any)=>r.kind==='deleted'&&r.path==='obsolete.txt'));
+ assert.equal(result.reports.at(-1).session,session);
  reports.push(result.last);
 }
 // Act: reconnect and recover bounded replay, including failed and cleanup steps.
@@ -35,7 +42,7 @@ packets.length=0;ws=connect();await waitFor(()=>packets.length>=40);
 // Assert
 assert.equal(new Set(packets.map(p=>p.sequence)).size,packets.length);
 assert.ok(packets.some(p=>p.state==='FAILED'));
-assert.ok(packets.some(p=>p.step.endsWith('AuditAbsent')&&p.state==='SUCCEEDED'));
+assert.ok(packets.some(p=>p.step.endsWith('CollectFilesystemChanges')&&p.state==='SUCCEEDED'));
 assert.ok(packets.some(p=>p.dependencies?.length));
 ws.close();
 const evidence={events:packets.length,sessions:new Set(packets.map(p=>p.session)).size,live_before_completion:true,reconnect_replay:true,disconnect_cleanup:true,reports};

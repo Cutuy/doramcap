@@ -10,8 +10,8 @@ telemetry; the demo owns transport and presentation.
 python3 libs/orchestrator/scripts/docker-monitor-e2e.py --sudo --live-demo --output /tmp/orchestrator-live
 ```
 
-Open http://127.0.0.1:8092. **Run experiment** executes the monitor workflow;
-**Test failure & cleanup** fails its readiness audit after native telemetry starts.
+Open http://127.0.0.1:8092. **Run experiment** executes the Compose workflow and filesystem fixture;
+**Test failure & cleanup** uses an unhealthy service to exercise cleanup.
 Select a timeline row to inspect its evidence. Closing a browser leaves cleanup
 running; reconnect recovers bounded history. Ctrl-C stops the launcher after cleanup.
 
@@ -21,5 +21,10 @@ optionally elevated. Node is needed for building static assets. No development
 server or Node process remains resident. `--port` changes the HTTP port.
 
 [Milestones and validation](docs/102626-live-workflow.md) ·
-[Shared workflow fixture](../../libs/orchestrator/examples/support/docker_workflow.rs) ·
+[Filesystem tracking](docs/102626-filesystem-tracking.md) ·
+[Compose workflow](../../libs/workload-docker/src/workflows/recorded_compose.rs) ·
 [Telemetry observer](../../libs/orchestrator/src/telemetry.rs)
+
+The filesystem panel separates host binds, container layers and named volumes,
+with change filters, metadata and coverage warnings. OverlayFS mounting is pending;
+the demo currently observes direct bind writes into fresh per-run directories.

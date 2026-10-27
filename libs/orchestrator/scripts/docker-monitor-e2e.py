@@ -108,6 +108,17 @@ def main():
                     destination = rootfs / source.relative_to('/')
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, destination)
+        if args.live_demo:
+            for tool in ['/bin/sh','/bin/sleep','/bin/rm','/bin/true','/bin/false']:
+                source=Path(tool); destination=rootfs/source.relative_to('/')
+                destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,destination)
+                for line in subprocess.check_output(['ldd',tool],text=True).splitlines():
+                    match=re.search(r'(?:=>\s+)?(/\S+)',line)
+                    if match:
+                        lib=Path(match.group(1)); dest=rootfs/lib.relative_to('/') if 'ld-linux' in lib.name else rootfs/'lib'/lib.name
+                        dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(lib,dest)
+            (rootfs/'seed-mod').write_text('original')
+            (rootfs/'seed-delete').write_text('original')
         (rootfs / 'recordings').mkdir()
         (staging / 'Dockerfile').write_text('FROM scratch\nCOPY rootfs /\nENTRYPOINT ["/system-monitor"]\n')
         built = False

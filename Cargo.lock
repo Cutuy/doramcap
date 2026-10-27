@@ -3323,6 +3323,7 @@ dependencies = [
  "tokio",
  "tower-http",
  "workflow-protocol",
+ "workload-docker",
 ]
 
 [[package]]

@@ -31,11 +31,12 @@ struct Feed {
     command: Option<mpsc::Sender<bool>>,
     busy: bool,
     last: Value,
+    reports: VecDeque<Value>,
 }
 impl Feed {
     fn status(&self) -> Value {
         json!({"type":"status", "ready": self.command.is_some(), "busy":self.busy,
-        "events":self.history.len(), "bytes":self.bytes, "evicted":self.evicted, "last":self.last})
+        "events":self.history.len(), "bytes":self.bytes, "evicted":self.evicted, "last":self.last, "reports":self.reports})
     }
     fn announce(&self) {
         let _ = self
@@ -165,7 +166,7 @@ async fn worker(
                     feed.lock().unwrap().push(bytes);
                 } else if kind == 2 {
                     let result: Value = serde_json::from_slice(&bytes)?;
-                    let mut feed = feed.lock().unwrap(); feed.busy = false; feed.last = result; feed.announce();
+                    let mut feed = feed.lock().unwrap(); feed.busy = false; feed.last = result.clone(); feed.reports.push_back(result); while feed.reports.len()>8 {feed.reports.pop_front();} feed.announce();
                 } else { return Err("unknown frame kind".into()); }
             }
         }
@@ -191,6 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         command: None,
         busy: false,
         last: Value::Null,
+        reports: VecDeque::new(),
     }));
     let local_feed = feed.clone();
     tokio::spawn(async move {
@@ -233,6 +235,7 @@ mod tests {
             command: None,
             busy: false,
             last: Value::Null,
+            reports: VecDeque::new(),
         };
         // Act
         for _ in 0..600 {
