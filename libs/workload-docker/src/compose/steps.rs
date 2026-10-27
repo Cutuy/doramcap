@@ -1,6 +1,6 @@
 use super::{
     Cleanup, ComposeProjectState, Diagnostic, DockerAdapter, ResolveInput, ResolvedComposeProject,
-    StartInput, StopInput,
+    Shutdown, StartInput, StopInput,
 };
 use orchestrator::{Result, Step};
 use std::{cell::RefCell, rc::Rc};
@@ -68,3 +68,18 @@ impl Step for InspectCompose {
         })
     }
 }
+
+step!(
+    QuiesceCompose,
+    StopInput,
+    Shutdown,
+    quiesce,
+    "Stop writers while preserving containers and volumes for filesystem evidence."
+);
+step!(
+    RemoveCompose,
+    StopInput,
+    Cleanup,
+    remove,
+    "Remove stopped project resources after evidence collection."
+);

@@ -1,6 +1,6 @@
 use super::{
     Cleanup, ComposeProjectState, ComposeService, Container, ResolveInput, ResolvedComposeProject,
-    Result, StartInput, StopInput,
+    Result, Shutdown, StartInput, StopInput,
     command::compose,
     error::{absent, engine, invalid},
 };
@@ -581,13 +581,27 @@ impl DockerAdapter {
     /// Cancellation can leave partial cleanup; retain the plan and retry teardown.
     /// Final evidence files remain in the caller-owned artifact directory.
     pub async fn stop(&self, input: StopInput) -> Result<Cleanup> {
+        let stopped = self.quiesce(input.clone()).await?;
+        if !stopped.stopped {
+            return Err(invalid("project failed to quiesce"));
+        }
+        let mut result = self.remove(input).await?;
+        result.diagnostics.extend(stopped.diagnostics);
+        Ok(result)
+    }
+
+    /// Stop project writers and preserve containers and volumes for inspection.
+    ///
+    /// Returns shutdown diagnostics and a fresh stopped-state check. `stopped`
+    /// establishes process termination, not successful exit or resource removal.
+    /// No filesystem contents are exported. Caller must collect evidence and remove
+    /// resources explicitly; cancellation cannot complete that sequence.
+    pub async fn quiesce(&self, input: StopInput) -> Result<Shutdown> {
         let plan = &input.plan;
-        let mut result = Cleanup {
+        let mut result = Shutdown {
             project: plan.name.clone(),
             diagnostics: Vec::new(),
-            remaining: Vec::new(),
-            retained_volumes: Vec::new(),
-            verified: false,
+            stopped: false,
         };
         let before = self.project_containers(plan).await?;
         let all_owned = before.iter().all(|c| Self::owned(c, plan));
@@ -684,6 +698,37 @@ impl DockerAdapter {
                     .push(engine(format!("inspect {id}"), e).diagnostic("stop")),
             }
         }
+        result.stopped = self
+            .inspect(plan)
+            .await?
+            .containers
+            .iter()
+            .all(|c| c.pid == 0 && matches!(c.status.as_str(), "exited" | "created"));
+        Ok(result)
+    }
+
+    /// Remove an already stopped project after its evidence has been collected.
+    ///
+    /// Refuses live or unowned containers. Returns independent cleanup diagnostics;
+    /// inspect `verified` even on success. Retains volumes unless explicitly selected
+    /// for deletion. Cancellation leaves the caller responsible for reconciliation.
+    pub async fn remove(&self, input: StopInput) -> Result<Cleanup> {
+        let plan = &input.plan;
+        let state = self.inspect(plan).await?;
+        if state
+            .containers
+            .iter()
+            .any(|c| c.pid != 0 || !matches!(c.status.as_str(), "exited" | "created"))
+        {
+            return Err(invalid("refusing to remove a project with live containers"));
+        }
+        let mut result = Cleanup {
+            project: plan.name.clone(),
+            diagnostics: vec![],
+            remaining: vec![],
+            retained_volumes: vec![],
+            verified: false,
+        };
         let current = self.project_containers(plan).await?;
         if current.iter().all(|c| Self::owned(c, plan))
             && self.verify_manifest(plan).await.is_ok()
@@ -720,7 +765,7 @@ impl DockerAdapter {
                     .remove_container(
                         &id,
                         Some(RemoveContainerOptions {
-                            force: true,
+                            force: false,
                             v: true,
                             ..Default::default()
                         }),

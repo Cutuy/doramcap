@@ -2,6 +2,10 @@
 //!
 //! This concrete workflow selects startup/shutdown order and recording policy.
 //! Individual Compose lifecycle steps can also be used independently.
+use crate::compose::filesystem::{
+    BaselineInput, CaptureFilesystemBaseline, CollectFilesystemChanges, CollectInput,
+    FilesystemChanges,
+};
 use crate::{
     compose::adapter::{RUN_LABEL, private_write, validate_name},
     compose::error::invalid,
@@ -106,7 +110,16 @@ impl ComposeRunner {
         register!(ResolveCompose);
         register!(StartCompose);
         register!(InspectCompose);
-        register!(StopCompose);
+        register!(QuiesceCompose);
+        register!(RemoveCompose);
+        let adapter = self.adapter.clone();
+        executor.register::<CaptureFilesystemBaseline>(move || CaptureFilesystemBaseline {
+            adapter: adapter.clone(),
+        });
+        let adapter = self.adapter.clone();
+        executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
+            adapter: adapter.clone(),
+        });
         // Resolve all projects before the first workload is launched.
         let mut plans = Vec::new();
         let system_file = artifacts.join("system-services.yaml");
@@ -150,6 +163,13 @@ impl ComposeRunner {
                 .map_err(|e| invalid(e.to_string()))?;
             plans.push(plan);
         }
+        let baseline = executor
+            .run::<CaptureFilesystemBaseline>(BaselineInput {
+                projects: plans.iter().map(|p| p.value().clone()).collect(),
+                artifacts: artifacts.clone(),
+            })
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
         self.blocked = true;
         let (finish, finished) = watch::channel(false);
         let (fault_tx, mut fault) = watch::channel(None::<String>);
@@ -206,28 +226,95 @@ impl ComposeRunner {
             _ = &mut stop => Ok(()),
             changed = fault.changed() => Err(if changed.is_err() { "Docker event stream ended".into() } else { fault.borrow().clone().unwrap_or_else(|| "Docker event stream ended".into()) }),
         };
-        // Cleanup remains independent of stop requests and individual failures.
-        let mut cleanup = Vec::new();
+        // Stop every writer before observing shared filesystem state. Preserve
+        // runtime objects until evidence collection succeeds.
+        let mut shutdowns = Vec::new();
+        let mut stopped_dependencies = Vec::new();
+        let mut all_stopped = true;
         for plan in attempted.iter().rev() {
-            match executor
-                .run::<StopCompose>(
+            let stopped = executor
+                .run::<QuiesceCompose>(
                     Input::new(StopInput {
                         plan: plan.value().clone(),
                         stop_seconds: spec.stop_seconds,
                     })
                     .after(plan),
                 )
+                .await;
+            match stopped {
+                Ok(s) => {
+                    all_stopped &= s.value().stopped;
+                    stopped_dependencies.push(s.clone());
+                    shutdowns.push((plan.clone(), s.into_value().diagnostics));
+                }
+                Err(e) => {
+                    all_stopped = false;
+                    shutdowns.push((
+                        plan.clone(),
+                        vec![invalid(e.to_string()).diagnostic("quiesce")],
+                    ));
+                }
+            }
+        }
+        let mut collect_input = Input::new(CollectInput {
+            baseline: baseline.value().clone(),
+            projects: attempted.iter().map(|p| p.value().clone()).collect(),
+        })
+        .after(&baseline);
+        for stopped in &stopped_dependencies {
+            collect_input = collect_input.after(stopped);
+        }
+        let filesystem_output = if all_stopped {
+            match executor
+                .run::<CollectFilesystemChanges>(collect_input)
                 .await
             {
-                Ok(result) => cleanup.push(result.into_value()),
-                Err(e) => cleanup.push(Cleanup {
+                Ok(changes) => Some(changes),
+                Err(e) => {
+                    diagnostics
+                        .borrow_mut()
+                        .push(invalid(e.to_string()).diagnostic("filesystem changes"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let filesystem_changes = filesystem_output.as_ref().map(|o| o.value().clone());
+        let mut cleanup = Vec::new();
+        for (plan, stop_diagnostics) in shutdowns {
+            let mut result = if all_stopped && filesystem_changes.is_some() {
+                match executor
+                    .run::<RemoveCompose>(
+                        Input::new(StopInput {
+                            plan: plan.value().clone(),
+                            stop_seconds: spec.stop_seconds,
+                        })
+                        .after(&plan)
+                        .after(filesystem_output.as_ref().expect("collection succeeded")),
+                    )
+                    .await
+                {
+                    Ok(c) => c.into_value(),
+                    Err(e) => Cleanup {
+                        project: plan.value().name.clone(),
+                        diagnostics: vec![invalid(e.to_string()).diagnostic("remove")],
+                        remaining: vec!["unknown".into()],
+                        retained_volumes: vec![],
+                        verified: false,
+                    },
+                }
+            } else {
+                Cleanup {
                     project: plan.value().name.clone(),
-                    diagnostics: vec![invalid(e.to_string()).diagnostic("StopCompose")],
-                    remaining: vec!["unknown".into()],
+                    diagnostics: vec![],
+                    remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
                     retained_volumes: vec![],
                     verified: false,
-                }),
-            }
+                }
+            };
+            result.diagnostics.extend(stop_diagnostics);
+            cleanup.push(result);
         }
         // Producer has stopped; check a bounded terminal MCAP footer and stable size.
         let recording = finalized_recording(&artifacts.join("cpu.mcap")).await;
@@ -263,6 +350,7 @@ impl ComposeRunner {
             boundary_clean,
             recording_finalized: recording.is_ok(),
             event_stream_healthy,
+            filesystem_changes,
         };
         private_write(
             &artifacts.join("report.json"),
@@ -485,6 +573,10 @@ pub struct ComposeRunReport {
     pub recording_finalized: bool,
     /// Whether event capture completed without a detected error; not a losslessness guarantee.
     pub event_stream_healthy: bool,
+    /// Category-specific metadata manifests. Expected changes/coverage warnings
+    /// are informational; unavailable required collection prevents removal.
+    #[serde(default)]
+    pub filesystem_changes: Option<FilesystemChanges>,
 }
 impl ComposeRunReport {
     pub fn successful(&self) -> bool {

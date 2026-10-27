@@ -26,6 +26,7 @@ assert!(report.successful());
 [First-party Compose](compose/system-services.yaml) ·
 [Runnable example](examples/compose_experiment.rs) ·
 [Robotics qualification](../workload-lifecycle/docs/102626-adoption-candidates.md) ·
+[Filesystem metadata steps](docs/102626-filesystem-metadata.md) ·
 [Experiment isolation design](docs/102626-docker-experiment-isolation.md)
 
 API details: `cargo doc -p workload-docker --no-deps`.

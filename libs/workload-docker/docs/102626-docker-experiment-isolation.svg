@@ -1,20 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="380" viewBox="0 0 1080 380">
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="360" viewBox="0 0 1100 360">
 <style>text{font:16px sans-serif;fill:#17324d;text-anchor:middle}.small{font-size:14px}rect{fill:#f0f6fa;stroke:#8aa4ba}path{fill:none;stroke:#486581;stroke-width:2;marker-end:url(#a)}</style>
 <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#486581"/></marker></defs>
-<rect width="1080" height="380" style="fill:white;stroke:none"/>
-<text x="540" y="29">Serial experiment · filesystem boundary</text>
-<rect x="20" y="65" width="165" height="65" rx="8"/><text x="102" y="93">Resolve Compose</text><text x="102" y="116" class="small">Mount inventory</text>
-<rect x="230" y="65" width="165" height="65" rx="8"/><text x="312" y="93">Prepare overlays</text><text x="312" y="116" class="small">Rewritten mounts</text>
-<rect x="440" y="65" width="185" height="65" rx="8"/><text x="532" y="93">Launch · run · stop</text><text x="532" y="116" class="small">Services + workloads</text>
-<rect x="670" y="65" width="165" height="65" rx="8"/><text x="752" y="93">Harvest changes</text><text x="752" y="116" class="small">After verified stop</text>
-<rect x="880" y="65" width="180" height="65" rx="8"/><text x="970" y="93">Unmount · verify</text><text x="970" y="116" class="small">Next run admission</text>
-<path d="M185 97H230"/><path d="M395 97H440"/><path d="M625 97H670"/><path d="M835 97H880"/>
-<rect x="230" y="210" width="165" height="65" rx="8"/><text x="312" y="238">Original directory</text><text x="312" y="261" class="small">Stable lower tree</text>
-<rect x="440" y="210" width="185" height="65" rx="8"/><text x="532" y="238">Fresh upper + work</text><text x="532" y="261" class="small">Experiment-local writes</text>
-<path d="M312 210V130"/><path d="M532 210V165H365V130"/>
-<rect x="670" y="210" width="165" height="65" rx="8"/><text x="752" y="238">Write back</text><text x="752" y="261" class="small">Default · original path</text>
-<rect x="880" y="210" width="180" height="65" rx="8"/><text x="970" y="238">Retain per run</text><text x="970" y="261" class="small">Optional · artifacts</text>
-<path d="M735 130V210"/><path d="M780 130V175H970V210"/>
-<text x="540" y="325">Intentional write-back persists · unresolved cleanup blocks the next run</text>
-<text x="540" y="351" class="small">Devices, sockets, host writers and external services need explicit contracts</text>
+<rect width="1100" height="360" style="fill:white;stroke:none"/>
+<text x="550" y="28">Serial run · record storage disposition before removal</text>
+<rect x="20" y="65" width="185" height="65" rx="8"/><text x="112" y="93">Resolve + prepare</text><text x="112" y="116" class="small">Writable directory overlays</text>
+<rect x="240" y="65" width="180" height="65" rx="8"/><text x="330" y="93">Launch → run → stop</text><text x="330" y="116" class="small">Drain · verify writers ended</text>
+<rect x="455" y="65" width="180" height="65" rx="8"/><text x="545" y="93">Capture results</text><text x="545" y="116" class="small">Host deltas · container diff</text>
+<rect x="670" y="65" width="185" height="65" rx="8"/><text x="762" y="93">Unmount → finalize</text><text x="762" y="116" class="small">Write back or retain</text>
+<rect x="890" y="65" width="190" height="65" rx="8"/><text x="985" y="93">Remove → verify</text><text x="985" y="116" class="small">Next run ready</text>
+<path d="M205 97H240"/><path d="M420 97H455"/><path d="M635 97H670"/><path d="M855 97H890"/>
+<rect x="240" y="205" width="180" height="65" rx="8"/><text x="330" y="233">Host overlay delta</text><text x="330" y="256" class="small">Original paths by default</text>
+<rect x="455" y="205" width="180" height="65" rx="8"/><text x="545" y="233">Container diff</text><text x="545" y="256" class="small">Paths only · no file export</text>
+<rect x="670" y="205" width="185" height="65" rx="8"/><text x="762" y="233">Volumes / outputs</text><text x="762" y="256" class="small">Identity · carryover warning</text>
+<path d="M330 205V170H510V130"/><path d="M545 205V130"/><path d="M762 205V170H580V130"/>
+<text x="550" y="312">One artifact index · bounded streaming · no default hashing or full-tree copy</text>
+<text x="550" y="338" class="small">Failed harvest preserves storage · tmpfs persistence requires a pre-stop hook</text>
 </svg>

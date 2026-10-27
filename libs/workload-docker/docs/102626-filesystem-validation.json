@@ -1,0 +1,258 @@
+{
+  "docker_artifacts": "/tmp/doramcap-filesystem-e2e-102626-3",
+  "docker_scenarios": 7,
+  "elapsed_seconds": 36.56,
+  "checks": [
+    "storage categories preserved",
+    "added/modified/deleted preserved",
+    "fresh serial-run baselines",
+    "read-only binds unchanged",
+    "shared bind scanned once",
+    "no container file export",
+    "failure retains stopped containers",
+    "collection/removal dependency telemetry",
+    "native MCAP readback"
+  ],
+  "runs": [
+    {
+      "id": "cmp-2446049-1793068457-normal0",
+      "boundary_clean": true,
+      "recording_finalized": true,
+      "filesystem_changes": {
+        "container_layers": {
+          "category": "container_layer",
+          "counts": {
+            "added": 5,
+            "deleted": 1,
+            "modified": 1
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal0/filesystem/container-layers.jsonl",
+          "warnings": []
+        },
+        "host_binds": {
+          "category": "host_bind",
+          "counts": {
+            "added": 1,
+            "deleted": 1,
+            "modified": 2
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal0/filesystem/host-binds.jsonl",
+          "warnings": [
+            "/sys/fs/cgroup: read-only input; no scan",
+            "/sys/kernel/btf: read-only input; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal0: pseudo-filesystem or managed artifact path; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/read-only-files: read-only input; no scan"
+          ]
+        },
+        "named_volumes": {
+          "category": "named_volume",
+          "counts": {
+            "added": 2,
+            "deleted": 0,
+            "modified": 0
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal0/filesystem/named-volumes.jsonl",
+          "warnings": [
+            "dc-cmp-2446049-1793068457-normal0-alpha_scratch: new or unavailable volume; metadata observation does not reset persistent state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cmp-2446049-1793068457-normal1",
+      "boundary_clean": true,
+      "recording_finalized": true,
+      "filesystem_changes": {
+        "container_layers": {
+          "category": "container_layer",
+          "counts": {
+            "added": 4,
+            "deleted": 1,
+            "modified": 1
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal1/filesystem/container-layers.jsonl",
+          "warnings": []
+        },
+        "host_binds": {
+          "category": "host_bind",
+          "counts": {
+            "added": 0,
+            "deleted": 0,
+            "modified": 2
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal1/filesystem/host-binds.jsonl",
+          "warnings": [
+            "/sys/fs/cgroup: read-only input; no scan",
+            "/sys/kernel/btf: read-only input; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal1: pseudo-filesystem or managed artifact path; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/read-only-files: read-only input; no scan"
+          ]
+        },
+        "named_volumes": {
+          "category": "named_volume",
+          "counts": {
+            "added": 2,
+            "deleted": 0,
+            "modified": 0
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-normal1/filesystem/named-volumes.jsonl",
+          "warnings": [
+            "dc-cmp-2446049-1793068457-normal1-alpha_scratch: new or unavailable volume; metadata observation does not reset persistent state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cmp-2446049-1793068457-partial",
+      "boundary_clean": true,
+      "recording_finalized": true,
+      "filesystem_changes": {
+        "container_layers": {
+          "category": "container_layer",
+          "counts": {
+            "added": 4,
+            "deleted": 1,
+            "modified": 1
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-partial/filesystem/container-layers.jsonl",
+          "warnings": []
+        },
+        "host_binds": {
+          "category": "host_bind",
+          "counts": {
+            "added": 0,
+            "deleted": 0,
+            "modified": 2
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-partial/filesystem/host-binds.jsonl",
+          "warnings": [
+            "/does-not-exist-cmp-2446049-1793068457: metadata scan: No such file or directory (os error 2)",
+            "/sys/fs/cgroup: read-only input; no scan",
+            "/sys/kernel/btf: read-only input; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-partial: pseudo-filesystem or managed artifact path; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/read-only-files: read-only input; no scan"
+          ]
+        },
+        "named_volumes": {
+          "category": "named_volume",
+          "counts": {
+            "added": 2,
+            "deleted": 0,
+            "modified": 0
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-partial/filesystem/named-volumes.jsonl",
+          "warnings": [
+            "dc-cmp-2446049-1793068457-partial-alpha_scratch: new or unavailable volume; metadata observation does not reset persistent state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cmp-2446049-1793068457-unhealthy",
+      "boundary_clean": true,
+      "recording_finalized": true,
+      "filesystem_changes": {
+        "container_layers": {
+          "category": "container_layer",
+          "counts": {
+            "added": 4,
+            "deleted": 1,
+            "modified": 1
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-unhealthy/filesystem/container-layers.jsonl",
+          "warnings": []
+        },
+        "host_binds": {
+          "category": "host_bind",
+          "counts": {
+            "added": 0,
+            "deleted": 0,
+            "modified": 2
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-unhealthy/filesystem/host-binds.jsonl",
+          "warnings": [
+            "/sys/fs/cgroup: read-only input; no scan",
+            "/sys/kernel/btf: read-only input; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-unhealthy: pseudo-filesystem or managed artifact path; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/read-only-files: read-only input; no scan"
+          ]
+        },
+        "named_volumes": {
+          "category": "named_volume",
+          "counts": {
+            "added": 2,
+            "deleted": 0,
+            "modified": 0
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-unhealthy/filesystem/named-volumes.jsonl",
+          "warnings": [
+            "dc-cmp-2446049-1793068457-unhealthy-alpha_scratch: new or unavailable volume; metadata observation does not reset persistent state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cmp-2446049-1793068457-timeout",
+      "boundary_clean": true,
+      "recording_finalized": true,
+      "filesystem_changes": {
+        "container_layers": {
+          "category": "container_layer",
+          "counts": {
+            "added": 4,
+            "deleted": 1,
+            "modified": 1
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-timeout/filesystem/container-layers.jsonl",
+          "warnings": []
+        },
+        "host_binds": {
+          "category": "host_bind",
+          "counts": {
+            "added": 0,
+            "deleted": 0,
+            "modified": 2
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-timeout/filesystem/host-binds.jsonl",
+          "warnings": [
+            "/sys/fs/cgroup: read-only input; no scan",
+            "/sys/kernel/btf: read-only input; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-timeout: pseudo-filesystem or managed artifact path; no scan",
+            "/tmp/doramcap-filesystem-e2e-102626-3/read-only-files: read-only input; no scan"
+          ]
+        },
+        "named_volumes": {
+          "category": "named_volume",
+          "counts": {
+            "added": 2,
+            "deleted": 0,
+            "modified": 0
+          },
+          "manifest": "/tmp/doramcap-filesystem-e2e-102626-3/cmp-2446049-1793068457-timeout/filesystem/named-volumes.jsonl",
+          "warnings": [
+            "dc-cmp-2446049-1793068457-timeout-alpha_scratch: new or unavailable volume; metadata observation does not reset persistent state"
+          ]
+        }
+      }
+    },
+    {
+      "id": "cmp-2446049-1793068457-outsider",
+      "boundary_clean": false,
+      "recording_finalized": true,
+      "filesystem_changes": null
+    },
+    {
+      "id": "cmp-2446049-1793068457-diff-failure",
+      "boundary_clean": false,
+      "recording_finalized": true,
+      "filesystem_changes": null
+    }
+  ],
+  "local": "19 tests; strict Clippy, Rustdoc and formatting passed",
+  "arm64": {
+    "job": 144,
+    "snapshot": "3caac51201a34617a8a0b5921e3fcccd",
+    "status": "Success",
+    "log": "/tmp/doramcap-filesystem-arm64-144.log"
+  }
+}

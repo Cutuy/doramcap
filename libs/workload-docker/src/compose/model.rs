@@ -148,3 +148,14 @@ pub struct Cleanup {
     /// Whether the final resource checks establish a clean boundary.
     pub verified: bool,
 }
+
+/// Quiescence evidence while runtime objects remain available for diff collection.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Shutdown {
+    /// Compose runtime project name.
+    pub project: String,
+    /// Stop failures, including forced termination, retained for reporting.
+    pub diagnostics: Vec<Diagnostic>,
+    /// All inspected owned containers are stopped; containers have not been removed.
+    pub stopped: bool,
+}

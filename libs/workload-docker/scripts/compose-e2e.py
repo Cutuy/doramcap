@@ -21,20 +21,21 @@ def main():
     with tempfile.TemporaryDirectory(prefix='compose-image-') as tmp:
         stage=Path(tmp);fs=stage/'rootfs';fs.mkdir()
         # Include a tiny local shell toolset for foreign test services; no registry pull.
-        for source,dest in [(target/'system-monitor','system-monitor'),(Path('/bin/sh'),'bin/sh'),(Path('/bin/sleep'),'bin/sleep'),(Path('/bin/true'),'bin/true'),(Path('/bin/false'),'bin/false')]:
+        for source,dest in [(target/'system-monitor','system-monitor'),(Path('/bin/sh'),'bin/sh'),(Path('/bin/sleep'),'bin/sleep'),(Path('/bin/true'),'bin/true'),(Path('/bin/false'),'bin/false'),(Path('/bin/rm'),'bin/rm')]:
             destination=fs/dest;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,destination)
             for line in subprocess.check_output(['ldd',str(source)],text=True).splitlines():
                 match=re.search(r'(?:=>\s+)?(/\S+)',line)
                 if match:
                     lib=Path(match.group(1));out=fs/lib.relative_to('/') if 'ld-linux' in lib.name else fs/'lib'/lib.name
                     out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(lib,out)
+        (fs/'seed-mod').write_text('original');(fs/'seed-delete').write_text('original')
         (fs/'recordings').mkdir();(stage/'Dockerfile').write_text('FROM scratch\nCOPY rootfs /\nENTRYPOINT ["/system-monitor"]\n')
         elevated(['docker','build','--network=none','-t',image,str(stage)])
     try:
         elevated(['env',f'DORAMCAP_TEST_IMAGE={image}',f'DORAMCAP_TEST_PREFIX={prefix}',f'DORAMCAP_TEST_OUTPUT={output}',executable,'--ignored','--nocapture'])
     finally:
         # Test panic cleanup is scoped to this harness's exact generated run IDs.
-        for suffix in ['normal0','normal1','partial','unhealthy','timeout','outsider']:
+        for suffix in ['normal0','normal1','partial','unhealthy','timeout','outsider','diff-failure']:
             run=f'{prefix}-{suffix}'
             ids=elevated(['docker','ps','-aq','--filter',f'label=io.doramcap.run={run}'],capture_output=True,text=True).stdout.split()
             if ids:elevated(['docker','rm','-fv',*ids])

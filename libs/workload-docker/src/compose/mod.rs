@@ -6,12 +6,16 @@
 pub(crate) mod adapter;
 mod command;
 pub(crate) mod error;
+pub mod filesystem;
 mod model;
 mod steps;
 pub use adapter::DockerAdapter;
 pub use error::{Error, Result};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
-    ResolveInput, ResolvedComposeProject, StartInput, StopInput,
+    ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
 };
-pub use steps::{Diagnostics, InspectCompose, ResolveCompose, StartCompose, StopCompose};
+pub use steps::{
+    Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,
+    StopCompose,
+};

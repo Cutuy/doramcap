@@ -83,9 +83,23 @@ async fn multi_project_lifecycle() {
     );
     let mut manager = ComposeRunner::new(adapter.clone());
     let mut reports = Vec::new();
+    let host = root.join("host-files");
+    let readonly = root.join("read-only-files");
+    std::fs::create_dir(&host).unwrap();
+    std::fs::create_dir(&readonly).unwrap();
+    std::fs::write(host.join("modified"), "original").unwrap();
+    std::fs::write(host.join("deleted"), "original").unwrap();
+    std::fs::write(readonly.join("input"), "unchanged").unwrap();
     let mut alpha = service(&image);
+    alpha["command"] = serde_json::json!([
+        "printf layer > /layer-added; printf modified > /seed-mod; /bin/rm -f /seed-delete; printf host > /host/added; printf modified > /host/modified; /bin/rm -f /host/deleted; printf volume > /scratch/volume-added; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
+    ]);
     alpha["healthcheck"] = serde_json::json!({"test":["CMD","/bin/true"],"interval":"100ms","timeout":"1s","retries":3});
-    alpha["volumes"] = serde_json::json!(["scratch:/scratch"]);
+    alpha["volumes"] = serde_json::json!([
+        "scratch:/scratch",
+        format!("{}:/host", host.display()),
+        format!("{}:/inputs:ro", readonly.display())
+    ]);
     alpha["environment"] =
         serde_json::json!({"LITERAL":"value$$not_interpolated", "PREPARED":"${EXPLICIT_VALUE}"});
     std::fs::write(root.join("inputs.env"), "EXPLICIT_VALUE=from-file\n").unwrap();
@@ -97,6 +111,13 @@ async fn multi_project_lifecycle() {
     write(
         &root.join("beta.json"),
         serde_json::json!({"services":{"worker":service(&image)}}),
+    );
+    // Shared bind identity is observed once with both consumers attached.
+    let mut beta_service = service(&image);
+    beta_service["volumes"] = serde_json::json!([format!("{}:/shared", host.display())]);
+    write(
+        &root.join("beta.json"),
+        serde_json::json!({"services":{"worker":beta_service}}),
     );
     let mut monitor_sessions = Vec::new();
     for index in 0..2 {
@@ -131,6 +152,85 @@ async fn multi_project_lifecycle() {
         // Assert: each instance and its recording are fresh, all owned objects are gone.
         assert!(report.successful(), "{report:#?}");
         assert!(!manager.blocked());
+        let evidence = report
+            .filesystem_changes
+            .as_ref()
+            .expect("filesystem collection");
+        let rows = |path: &Path| -> Vec<workload_docker::compose::filesystem::FileChange> {
+            std::fs::read_to_string(path)
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str(l).unwrap())
+                .collect()
+        };
+        use workload_docker::compose::filesystem::{ChangeKind, StorageCategory};
+        let host_rows = rows(&evidence.host_binds.manifest);
+        assert!(
+            host_rows
+                .iter()
+                .all(|r| r.category == StorageCategory::HostBind)
+        );
+        if index == 0 {
+            for (name, kind) in [
+                ("added", ChangeKind::Added),
+                ("modified", ChangeKind::Modified),
+                ("deleted", ChangeKind::Deleted),
+            ] {
+                let row = host_rows
+                    .iter()
+                    .find(|r| r.path == Path::new(name))
+                    .expect("host transition");
+                assert_eq!(row.kind, kind);
+                assert_eq!(row.consumers.len(), 2);
+            }
+        } else {
+            // Fresh baseline: prior run's additions/deletions are not replayed.
+            assert!(
+                !host_rows
+                    .iter()
+                    .any(|r| r.kind == ChangeKind::Added || r.kind == ChangeKind::Deleted)
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(readonly.join("input")).unwrap(),
+            "unchanged"
+        );
+        let layer_rows = rows(&evidence.container_layers.manifest);
+        assert!(
+            layer_rows
+                .iter()
+                .all(|r| r.category == StorageCategory::ContainerLayer
+                    && r.before.is_none()
+                    && r.after.is_none())
+        );
+        for (name, kind) in [
+            ("/layer-added", ChangeKind::Added),
+            ("/seed-mod", ChangeKind::Modified),
+            ("/seed-delete", ChangeKind::Deleted),
+        ] {
+            assert!(
+                layer_rows
+                    .iter()
+                    .any(|r| r.path == Path::new(name) && r.kind == kind),
+                "missing {name}: {layer_rows:?}"
+            );
+        }
+        let volume_rows = rows(&evidence.named_volumes.manifest);
+        assert!(
+            volume_rows
+                .iter()
+                .all(|r| r.category == StorageCategory::NamedVolume)
+        );
+        assert!(
+            volume_rows
+                .iter()
+                .any(|r| r.path == Path::new("volume-added") && r.kind == ChangeKind::Added)
+        );
+        assert!(!evidence.named_volumes.warnings.is_empty());
+        assert!(
+            !request.artifacts.join("layer-added").exists(),
+            "no content export"
+        );
         if index == 0 {
             let retained: Vec<_> = report
                 .cleanup
@@ -184,8 +284,40 @@ async fn multi_project_lifecycle() {
             events
                 .borrow()
                 .iter()
-                .any(|e| e.invocation.step.ends_with("StopCompose"))
+                .any(|e| e.invocation.step.ends_with("QuiesceCompose"))
         );
+        {
+            let events = events.borrow();
+            let collected = events
+                .iter()
+                .find(|e| {
+                    e.invocation.step.ends_with("CollectFilesystemChanges")
+                        && matches!(e.state, orchestrator::State::Succeeded)
+                })
+                .unwrap();
+            for stopped in events.iter().filter(|e| {
+                e.invocation.step.ends_with("QuiesceCompose")
+                    && matches!(e.state, orchestrator::State::Succeeded)
+            }) {
+                assert!(
+                    collected
+                        .invocation
+                        .dependencies
+                        .contains(&stopped.invocation.id)
+                );
+            }
+            for removed in events
+                .iter()
+                .filter(|e| e.invocation.step.ends_with("RemoveCompose"))
+            {
+                assert!(
+                    removed
+                        .invocation
+                        .dependencies
+                        .contains(&collected.invocation.id)
+                );
+            }
+        }
         assert!(
             std::fs::metadata(request.artifacts.join("docker-events.jsonl"))
                 .unwrap()
@@ -348,7 +480,7 @@ async fn multi_project_lifecycle() {
         .run(request, stop, |_: &orchestrator::Event| {})
         .await
         .unwrap();
-    // Assert: owned workloads are cleaned; the outsider remains and admission blocks.
+    // Assert: ambiguous ownership preserves stopped resources; the outsider remains and admission blocks.
     assert!(!report.boundary_clean && manager.blocked(), "{report:#?}");
     let id = outsider_id.borrow().clone();
     let inspection = tokio::process::Command::new("docker")
@@ -378,6 +510,50 @@ async fn multi_project_lifecycle() {
             .unwrap()
             .success()
     );
+    reports.push(report);
+    // Arrange: make metadata collection fail after successful quiescence.
+    let mut fresh_manager = ComposeRunner::new(adapter.clone());
+    let request = spec(&root, format!("{prefix}-diff-failure"), &image);
+    let collision = request.artifacts.join("filesystem/host-binds.jsonl");
+    // Act
+    let report = fresh_manager
+        .run(
+            request,
+            tokio::time::sleep(Duration::from_secs(4)),
+            move |event: &orchestrator::Event| {
+                if event.invocation.step.ends_with("CaptureFilesystemBaseline")
+                    && matches!(event.state, orchestrator::State::Succeeded)
+                {
+                    std::fs::write(&collision, "owned test collision").unwrap();
+                }
+            },
+        )
+        .await
+        .unwrap();
+    // Assert: no removal after missing evidence; writers still stopped.
+    assert!(
+        fresh_manager.blocked() && !report.boundary_clean && report.filesystem_changes.is_none()
+    );
+    let ids = tokio::process::Command::new("docker")
+        .args([
+            "ps",
+            "-aq",
+            "--filter",
+            &format!("label=io.doramcap.run={}", report.id),
+        ])
+        .output()
+        .await
+        .unwrap();
+    let ids = String::from_utf8(ids.stdout).unwrap();
+    assert!(!ids.trim().is_empty());
+    for id in ids.split_whitespace() {
+        let state = tokio::process::Command::new("docker")
+            .args(["inspect", "--format", "{{.State.Running}}", id])
+            .output()
+            .await
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&state.stdout).trim(), "false");
+    }
     reports.push(report);
     for report in &reports {
         audit_recording(&root.join(&report.id));
