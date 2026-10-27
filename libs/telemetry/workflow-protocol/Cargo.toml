@@ -1,0 +1,16 @@
+[package]
+name = "workflow-protocol"
+description = "Transport-independent workflow event schema and codec"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

@@ -4,6 +4,9 @@
 
 Created: 2026-10-26. Scope: reusable workflow telemetry and a real Docker demo.
 
+Current workflow contract owner: [workflow-protocol](../../../libs/telemetry/workflow-protocol/).
+See [contract ownership and compatibility](../../../libs/telemetry/docs/102626-contract-ownership.md).
+
 ## Milestones and validation
 
 - [x] Add a separate workflow Protobuf contract to `telemetry-protocol` and an

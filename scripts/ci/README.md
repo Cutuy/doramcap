@@ -4,7 +4,7 @@
 `ubuntu-24.04-arm` and `ubuntu-24.04` runners for pushes, pull requests, and
 manual dispatch. ARM64 and x86_64 jobs report independently; both consume runner
 minutes for private repositories.
-It checks formatting, default/all-feature Clippy and Rust tests, storage without
+It checks [library dependency boundaries](boundaries.json), formatting, default/all-feature Clippy and Rust tests, storage without
 default features, example/binary builds, and snapshot synchronization tests.
 Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds use the
 `ci` Cargo profile: no optimization or incremental compilation, line-table debug
@@ -45,7 +45,8 @@ snapshot. Git pushes run Actions; they do not submit Pueue jobs. Keep native tes
 default group.
 
 Submission copies an allowlisted snapshot of Cargo files, libraries and applications,
-including uncommitted source changes, excluding Git-ignored files. It adds a
+including uncommitted source changes and the three boundary checker/rules/test
+files from `scripts/ci`, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,
 `.git`, and local build directories are not copied. Each job retains a separate

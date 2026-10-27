@@ -18,6 +18,8 @@ rustc --version
 cargo --version
 cat SOURCE.json
 rustup component add rustfmt clippy --toolchain 1.99.1
+python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
+python3 scripts/ci/test_boundaries.py
 cargo fmt --all -- --check
 cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
 cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings

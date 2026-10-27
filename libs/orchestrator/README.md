@@ -48,5 +48,5 @@ See [milestones, privileges and evidence](docs/102626-docker-monitor-e2e.md).
 
 For live workflow telemetry, pass `telemetry::TelemetryObserver` to
 `LocalExecutor::new`. Its nonblocking sink receives Protobuf events from
-`telemetry_protocol::workflow`; clones expose delivery-loss counters.
+`workflow_protocol`; clones expose delivery-loss counters.
 [Orchestrator lab](../../apps/orchestrator-demo/) visualizes real Docker experiments.

@@ -12,7 +12,7 @@ bindings. The application uses DORA pub/sub and binary WebSocket transport.
 | eBPF → collector | Native BPF records / task map entries |
 | Collector → DORA | Protobuf Packet bytes in a UInt8 array |
 | DORA → viewer / recorder | Original Protobuf Packet bytes |
-| Viewer → browser `/stream` | Binary WebSocket Packet; snapshots gain ingress metrics |
+| Viewer → browser `/stream` | Viewer-owned, wire-compatible Packet with ingress metrics |
 | Recorder → MCAP | Original Packet bytes on two channels, with embedded schema |
 | Standalone file / stdout | Repeated u32 little-endian byte length + Packet bytes |
 
@@ -61,9 +61,12 @@ counters remain on the wire.
 `capture_unix_ns` is captured at collection; monotonic start/end timestamps
 measure collection duration. Viewer ingress latency measures capture to backend
 receipt. Browser capture latency uses a calibrated server-clock mapping from
-`/clock`, with uncertainty and freshness checks. `viewer_ingress` is absent on
-DORA snapshots and populated in browser packets. Byte rates include both DORA
-topics; message rates and latency refer to numeric snapshots.
+`/clock`, with uncertainty and freshness checks. The viewer's
+[delivery schema](../../../../apps/cpu-viewer/server/proto/delivery.proto) owns
+`viewer_ingress`. Its Packet and SnapshotFrame preserve the legacy browser field
+layout, with shared measurement messages imported from this crate. Producer
+SnapshotFrame reserves former field 11 and its name. Byte rates include both
+DORA topics; message rates and latency refer to numeric snapshots.
 
 ## MCAP and compatibility
 
@@ -89,7 +92,7 @@ After schema edits, regenerate checked-in artifacts:
 ```sh
 npm run generate:proto --prefix apps/cpu-viewer/frontend
 cargo run -p telemetry-protocol --example schema -- libs/telemetry/protocol/proto/telemetry_descriptor.bin
-cargo run -p telemetry-protocol --example fixture -- apps/cpu-viewer/frontend/src/fixtures/snapshot-v2.pb
+cargo run -p cpu-viewer --example fixture -- apps/cpu-viewer/frontend/src/fixtures/snapshot-v2.pb
 ```
 
 Cargo generates Rust bindings and the embedded descriptor automatically using a
@@ -99,16 +102,5 @@ recording's schema. `--check` remains a human-readable JSON capability report.
 
 ## Workflow telemetry
 
-`proto/workflow.proto` defines `doramcap.workflow.v1.Event` separately from the CPU
-packet schema. `telemetry_protocol::workflow` supplies the codec and descriptor.
-Transport provides framing and must bound frame size before decode.
-
-Events carry schema version, observer sequence, session/invocation, derived Rust
-step name, step contract revision, executor, parent/dependencies, state, monotonic
-elapsed/duration nanoseconds, and optional JSON payload/error. Sequence is scoped
-to one observer instance; clones share it. Failed admission/delivery consumes a
-sequence number. Consumers detect gaps and consult publisher loss counters.
-IDs and times are uint64; JavaScript consumers must preserve IDs as strings/Long.
-Elapsed time is relative to context creation, not a synchronized cross-host clock.
-Payload capture is opt-in and consumers must treat it as potentially sensitive.
-Unknown schema versions must not be silently interpreted as the current contract.
+[workflow-protocol](../../workflow-protocol/) owns workflow events and their
+codec independently of CPU measurement. See its [wire contract](../../workflow-protocol/docs/wire-protocol.md).

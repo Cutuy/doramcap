@@ -19,9 +19,9 @@ Add each new crate path to the root `Cargo.toml`.
 
 `cpu-viewer/dataflows` owns demo compositions of the monitor, viewer and optional
 recorder. Recording lifecycle tests belong to `mcap-recorder/tests`; native
-collector integration tests belong to `system-monitor/tests`. Protocol bindings
-and descriptors belong to `telemetry-protocol`, with browser-generated bindings
-kept in the consuming frontend.
+collector integration tests belong to `system-monitor/tests`. CPU protocol bindings and descriptors belong to `telemetry-protocol`; workflow
+events belong to `workflow-protocol`. The CPU viewer owns its delivery schema
+and ingress annotations. Browser-generated bindings stay in the consuming frontend.
 
 Root `docs/` covers repository-wide conventions and platform plans. Root
 `scripts/` covers workspace tooling such as CI. Library API examples stay in

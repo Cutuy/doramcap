@@ -6,7 +6,7 @@
 //! threads or retained history are created. Payload capture follows executor payload-capture setting.
 use crate::{Event, Observer, State};
 use std::{cell::Cell, rc::Rc};
-use telemetry_protocol::workflow as wire;
+use workflow_protocol as wire;
 
 type Sink = dyn Fn(&[u8]) -> std::io::Result<()>;
 struct Inner {

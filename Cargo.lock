@@ -979,6 +979,9 @@ dependencies = [
  "dora-node-api",
  "eyre",
  "futures-util",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
  "telemetry-protocol",
  "tokio",
  "tower-http",
@@ -3303,6 +3306,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "workflow-protocol",
 ]
 
 [[package]]
@@ -3318,6 +3322,7 @@ dependencies = [
  "telemetry-protocol",
  "tokio",
  "tower-http",
+ "workflow-protocol",
 ]
 
 [[package]]
@@ -6017,6 +6022,15 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workflow-protocol"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+]
 
 [[package]]
 name = "workload-docker"

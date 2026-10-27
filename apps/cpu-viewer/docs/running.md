@@ -60,6 +60,11 @@ checkpoint first. Snapshot payloads are binary on both hops; see
 `libs/telemetry/protocol/docs/wire-protocol.md` for the versioned Protobuf schema, 64-bit precision, MCAP
 encoding, and standalone output framing.
 
+The viewer owns the [browser delivery schema](../server/proto/delivery.proto).
+Its field layout preserves existing browser packets; the shared CPU schema reserves
+the former annotation field. Regenerate its unchanged cross-language fixture with
+`cargo run -p cpu-viewer --example fixture -- apps/cpu-viewer/frontend/src/fixtures/snapshot-v2.pb`.
+
 Ingress metrics count original Dora snapshot plus dictionary bytes; the message
 count/rate counts snapshots only, independent of browser count, before
 dictionary expansion or WebSocket framing. Rates use completed intervals of at

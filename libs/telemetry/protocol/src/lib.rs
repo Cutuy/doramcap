@@ -11,7 +11,7 @@ pub const FILE_DESCRIPTOR_SET: &[u8] =
 pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.telemetry.v1.rs"));
 }
-pub use pb::{DictionaryEntry, Ingress};
+pub use pb::DictionaryEntry;
 #[derive(Debug)]
 pub struct Frame<S = monitor_core::Snapshot, D = Vec<DictionaryEntry>> {
     pub version: u32,
@@ -24,7 +24,6 @@ pub struct Frame<S = monitor_core::Snapshot, D = Vec<DictionaryEntry>> {
     pub dictionary_full: bool,
     pub dictionary_overflow: u64,
     pub dictionary: D,
-    pub viewer_ingress: Option<Ingress>,
 }
 #[derive(Debug)]
 pub struct DictionaryFrame<D = Vec<DictionaryEntry>> {
@@ -181,7 +180,6 @@ pub fn snapshot_packet<S: Borrow<monitor_core::Snapshot>, D: AsRef<[DictionaryEn
         dictionary_full: frame.dictionary_full,
         dictionary_overflow: frame.dictionary_overflow,
         dictionary: frame.dictionary.as_ref().to_vec(),
-        viewer_ingress: frame.viewer_ingress,
     };
     pb::Packet {
         body: Some(pb::packet::Body::Snapshot(value)),
@@ -218,7 +216,6 @@ pub fn decode(bytes: &[u8]) -> eyre::Result<Frame> {
         dictionary_full: f.dictionary_full,
         dictionary_overflow: f.dictionary_overflow,
         dictionary: f.dictionary,
-        viewer_ingress: f.viewer_ingress,
     })
 }
 pub fn dictionary_packet<D: AsRef<[DictionaryEntry]>>(f: &DictionaryFrame<D>) -> pb::Packet {
@@ -296,7 +293,6 @@ mod tests {
             dictionary_full: true,
             dictionary_overflow: 0,
             dictionary: Vec::<DictionaryEntry>::new(),
-            viewer_ingress: None,
         };
         let mut bytes = Vec::new();
         encode(&frame, &mut bytes).unwrap();
@@ -337,25 +333,5 @@ mod dictionary_tests {
         assert!(decode_dictionary(&bytes[..bytes.len() - 1]).is_err());
         bytes.push(0);
         assert!(decode_dictionary(&bytes).is_err());
-    }
-}
-
-/// Versioned workflow telemetry, separate from CPU packets.
-pub mod workflow {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.workflow.v1.rs"));
-    pub const VERSION: u32 = 1;
-    pub const FILE_DESCRIPTOR_SET: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/workflow_descriptor.bin"));
-    /// Encode one event. Transports supply framing.
-    pub fn encode(event: &Event) -> Vec<u8> {
-        prost::Message::encode_to_vec(event)
-    }
-    /// Decode one event. The consumer enforces frame limits before calling.
-    pub fn decode(bytes: &[u8]) -> Result<Event, prost::DecodeError> {
-        <Event as prost::Message>::decode(bytes)
-    }
-    /// Encoded size, for admission before allocation.
-    pub fn encoded_len(event: &Event) -> usize {
-        prost::Message::encoded_len(event)
     }
 }

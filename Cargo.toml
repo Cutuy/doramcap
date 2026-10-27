@@ -17,6 +17,7 @@ members = [
     "libs/resources/task-accounting",
     "libs/telemetry/mcap",
     "libs/telemetry/protocol",
+    "libs/telemetry/workflow-protocol",
     "libs/fault/reporter",
     "libs/fault/aggregation",
     "libs/fault/protocol",

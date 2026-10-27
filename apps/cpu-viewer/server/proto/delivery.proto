@@ -1,0 +1,33 @@
+syntax = "proto3";
+package doramcap.viewer.v1;
+import "telemetry.proto";
+// Wire-compatible with the legacy browser Packet; producer packets remain valid.
+message Packet {
+  oneof body {
+    SnapshotFrame snapshot = 1;
+    doramcap.telemetry.v1.DictionaryFrame dictionary = 2;
+  }
+}
+message Ingress {
+  uint64 total_bytes = 1;
+  uint64 total_messages = 2;
+  optional double bytes_per_second = 3;
+  optional double messages_per_second = 4;
+  optional double capture_to_receive_ms = 5;
+  optional double mean_capture_to_receive_ms = 6;
+  uint64 invalid_timestamps = 7;
+}
+// Fields 1-10 preserve the CPU envelope layout. Field 11 belongs to this viewer.
+message SnapshotFrame {
+  uint32 version = 1;
+  doramcap.telemetry.v1.Snapshot snapshot = 2;
+  string source = 3;
+  bool task_collection_enabled = 4;
+  uint64 task_capacity = 5;
+  string session_id = 6;
+  uint64 dictionary_revision = 7;
+  bool dictionary_full = 8;
+  uint64 dictionary_overflow = 9;
+  repeated doramcap.telemetry.v1.DictionaryEntry dictionary = 10;
+  Ingress viewer_ingress = 11;
+}

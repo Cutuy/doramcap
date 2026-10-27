@@ -98,7 +98,6 @@ mod tests {
             dictionary_full: true,
             dictionary_overflow: 0,
             dictionary: Vec::<telemetry_protocol::DictionaryEntry>::new(),
-            viewer_ingress: None,
         };
         let mut bytes = Vec::new();
         telemetry_protocol::encode(&frame, &mut bytes)?;

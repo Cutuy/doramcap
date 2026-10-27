@@ -57,6 +57,11 @@ jobs:
           key: cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-${{ runner.arch }}-
 
+      - name: Check library boundaries
+        run: |
+          python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
+          python3 scripts/ci/test_boundaries.py
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

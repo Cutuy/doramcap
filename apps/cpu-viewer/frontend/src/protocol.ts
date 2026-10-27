@@ -1,8 +1,8 @@
 import { doramcap } from './generated/telemetry.js';
 import { KERNEL_SERIES, type Snapshot } from './stream';
-export const wire = doramcap.telemetry.v1;
+export const wire = doramcap.viewer.v1;
 export const WIRE_VERSION = 2;
-type Frame = doramcap.telemetry.v1.ISnapshotFrame;
+type Frame = doramcap.viewer.v1.ISnapshotFrame;
 type Entry = doramcap.telemetry.v1.IDictionaryEntry;
 function integer(value: number | { toString(): string } | null | undefined): string {
   if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0)) throw new Error('Invalid integer');

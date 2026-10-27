@@ -51,15 +51,6 @@ message DictionaryEntry {
   uint64 parent_id = 2;
   optional string path = 3;
 }
-message Ingress {
-  uint64 total_bytes = 1;
-  uint64 total_messages = 2;
-  optional double bytes_per_second = 3;
-  optional double messages_per_second = 4;
-  optional double capture_to_receive_ms = 5;
-  optional double mean_capture_to_receive_ms = 6;
-  uint64 invalid_timestamps = 7;
-}
 message SnapshotFrame {
   uint32 version = 1;
   Snapshot snapshot = 2;
@@ -71,7 +62,9 @@ message SnapshotFrame {
   bool dictionary_full = 8;
   uint64 dictionary_overflow = 9;
   repeated DictionaryEntry dictionary = 10;
-  Ingress viewer_ingress = 11;
+  // Viewer delivery owns this legacy annotation slot.
+  reserved 11;
+  reserved "viewer_ingress";
 }
 message DictionaryFrame {
   uint32 version = 1;

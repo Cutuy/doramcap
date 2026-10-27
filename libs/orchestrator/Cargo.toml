@@ -6,7 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-telemetry-protocol = { path = "../telemetry/protocol" }
+workflow-protocol = { path = "../telemetry/workflow-protocol" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -14,6 +14,7 @@ tracing = "0.1"
 tokio = { version = "1", features = ["io-util", "macros", "process", "rt", "time"] }
 
 [dev-dependencies]
+telemetry-protocol = { path = "../telemetry/protocol" }
 tokio = { version = "1", features = ["macros", "test-util", "fs"] }
 
 mcap = { version = "=0.25.0", default-features = false }

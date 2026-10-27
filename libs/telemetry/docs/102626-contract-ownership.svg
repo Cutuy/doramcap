@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="280" viewBox="0 0 800 280" role="img" aria-labelledby="title">
+<title id="title">Workflow and CPU telemetry contract ownership</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#475569"/></marker></defs>
+<rect width="800" height="280" fill="#f8fafc"/>
+<g fill="#fff" stroke="#94a3b8" stroke-width="1.5"><rect x="20" y="25" width="190" height="55" rx="8"/><rect x="305" y="25" width="190" height="55" rx="8"/><rect x="590" y="25" width="190" height="55" rx="8"/><rect x="20" y="185" width="190" height="55" rx="8"/><rect x="305" y="185" width="190" height="55" rx="8"/><rect x="590" y="185" width="190" height="55" rx="8"/></g>
+<g font-family="sans-serif" font-size="16" fill="#0f172a" text-anchor="middle"><text x="115" y="58">orchestrator</text><text x="400" y="58">workflow-protocol</text><text x="685" y="58">workflow viewers</text><text x="115" y="218">CPU monitor</text><text x="400" y="218">telemetry-protocol</text><text x="685" y="211">cpu-viewer</text><text x="685" y="231" font-size="13">delivery + ingress</text></g>
+<g fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"><path d="M210 52H305"/><path d="M495 52H590"/><path d="M210 212H305"/><path d="M495 212H590"/></g>
+<g font-family="sans-serif" font-size="12" fill="#334155" text-anchor="middle"><text x="257" y="40">Event</text><text x="542" y="40">event bytes</text><text x="257" y="200">Snapshot</text><text x="542" y="200">Packet bytes</text><text x="400" y="135">Applications own transports and lifetimes</text></g>
+</svg>

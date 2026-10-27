@@ -1,4 +1,6 @@
 //! Dora subscriber and loopback HTTP server. Browser clients never block collection.
+mod delivery;
+
 use axum::{
     Router,
     extract::{
@@ -51,7 +53,7 @@ impl IngressMetrics {
         elapsed: f64,
         received_ns: Option<u64>,
         capture_ns: Option<u64>,
-    ) -> telemetry_protocol::Ingress {
+    ) -> delivery::Ingress {
         self.total_bytes += bytes as u64;
         self.total_messages += 1;
         self.interval_bytes += bytes as u64;
@@ -78,7 +80,7 @@ impl IngressMetrics {
             self.latency_sum_ms = 0.0;
             self.latency_count = 0;
         }
-        telemetry_protocol::Ingress {
+        delivery::Ingress {
             total_bytes: self.total_bytes,
             total_messages: self.total_messages,
             bytes_per_second: self.bytes_per_second,
@@ -218,15 +220,14 @@ fn receive(sender: watch::Sender<Latest>) -> Result<()> {
                     bail!("snapshot contains null bytes");
                 }
                 let bytes: &[u8] = (&data).try_into()?;
-                let mut frame = telemetry_protocol::decode(bytes)?;
-                frame.viewer_ingress = Some(ingress.observe(
+                let frame = telemetry_protocol::decode(bytes)?;
+                let metrics = ingress.observe(
                     bytes.len(),
                     elapsed,
                     received_ns,
                     Some(frame.snapshot.capture_unix_ns),
-                ));
-                let mut encoded = Vec::new();
-                telemetry_protocol::encode(&frame, &mut encoded)?;
+                );
+                let encoded = delivery::encode_snapshot(frame, metrics)?;
                 sender.send_modify(|latest| latest.snapshot = Some(Arc::new(encoded)));
             }
             Event::Input { id, data, .. } if id.as_str() == "dictionary" => {

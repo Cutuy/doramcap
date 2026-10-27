@@ -6,9 +6,11 @@ workflow events. Applications supply live transports and bounded replay.
 
 | Crate | Responsibility |
 |---|---|
+| [workflow-protocol](workflow-protocol/) | Resource-independent workflow event schema, codec and descriptor |
 | [telemetry-protocol](protocol/) | Protobuf schema, wire codec, descriptors, and Python reader |
 | [telemetry-mcap](mcap/) | Schema/channel registration, packet validation, and MCAP recording |
 
 [Resources](../resources/) supplies the current measurement types.
 [Storage persistence](../storage-persistence/) supplies the underlying writer.
-Applications own transport subscriptions and recording lifecycle.
+Applications own transport subscriptions and recording lifecycle. The CPU viewer
+owns its browser delivery annotations. See [contract ownership](docs/102626-contract-ownership.md).

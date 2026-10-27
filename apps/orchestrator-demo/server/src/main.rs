@@ -160,7 +160,7 @@ async fn worker(
                 if size > 1024 * 1024 { return Err("worker frame exceeds 1 MiB".into()); }
                 let mut bytes = vec![0; size]; read.read_exact(&mut bytes).await?;
                 if kind == 1 {
-                    let event = telemetry_protocol::workflow::decode(&bytes)?;
+                    let event = workflow_protocol::decode(&bytes)?;
                     if event.version != 1 { return Err("unknown workflow schema version".into()); }
                     feed.lock().unwrap().push(bytes);
                 } else if kind == 2 {

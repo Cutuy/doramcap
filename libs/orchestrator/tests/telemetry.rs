@@ -2,7 +2,7 @@ use orchestrator::{
     Event, Invocation, LocalExecutor, Observer, State, telemetry::TelemetryObserver,
 };
 use std::{cell::RefCell, rc::Rc};
-use telemetry_protocol::workflow;
+use workflow_protocol as workflow;
 fn event(state: State) -> Event {
     Event {
         invocation: Invocation {

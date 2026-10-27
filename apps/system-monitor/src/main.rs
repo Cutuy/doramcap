@@ -529,7 +529,6 @@ fn run(opts: Options) -> Result<()> {
                 let snapshot = report.as_ref().unwrap_or(snapshot);
                 let mut envelope = Envelope {
                     version: VERSION,
-                    viewer_ingress: None,
                     snapshot,
                     source: opts.backend.clone(),
                     task_collection_enabled: opts.tasks != 0,
