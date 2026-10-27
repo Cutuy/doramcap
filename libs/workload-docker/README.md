@@ -25,7 +25,8 @@ assert!(report.successful());
 [Prepared input and validation](docs/102626-compose-workflow.md) ·
 [First-party Compose](compose/system-services.yaml) ·
 [Runnable example](examples/compose_experiment.rs) ·
-[Robotics qualification](../workload-lifecycle/docs/102626-adoption-candidates.md)
+[Robotics qualification](../workload-lifecycle/docs/102626-adoption-candidates.md) ·
+[Experiment isolation design](docs/102626-docker-experiment-isolation.md)
 
 API details: `cargo doc -p workload-docker --no-deps`.
 Real native Docker tests: `python3 libs/workload-docker/scripts/compose-e2e.py --output /tmp/compose-test`.

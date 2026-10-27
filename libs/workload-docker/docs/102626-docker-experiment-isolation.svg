@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="380" viewBox="0 0 1080 380">
+<style>text{font:16px sans-serif;fill:#17324d;text-anchor:middle}.small{font-size:14px}rect{fill:#f0f6fa;stroke:#8aa4ba}path{fill:none;stroke:#486581;stroke-width:2;marker-end:url(#a)}</style>
+<defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><polygon points="0,0 8,4 0,8" fill="#486581"/></marker></defs>
+<rect width="1080" height="380" style="fill:white;stroke:none"/>
+<text x="540" y="29">Serial experiment · filesystem boundary</text>
+<rect x="20" y="65" width="165" height="65" rx="8"/><text x="102" y="93">Resolve Compose</text><text x="102" y="116" class="small">Mount inventory</text>
+<rect x="230" y="65" width="165" height="65" rx="8"/><text x="312" y="93">Prepare overlays</text><text x="312" y="116" class="small">Rewritten mounts</text>
+<rect x="440" y="65" width="185" height="65" rx="8"/><text x="532" y="93">Launch · run · stop</text><text x="532" y="116" class="small">Services + workloads</text>
+<rect x="670" y="65" width="165" height="65" rx="8"/><text x="752" y="93">Harvest changes</text><text x="752" y="116" class="small">After verified stop</text>
+<rect x="880" y="65" width="180" height="65" rx="8"/><text x="970" y="93">Unmount · verify</text><text x="970" y="116" class="small">Next run admission</text>
+<path d="M185 97H230"/><path d="M395 97H440"/><path d="M625 97H670"/><path d="M835 97H880"/>
+<rect x="230" y="210" width="165" height="65" rx="8"/><text x="312" y="238">Original directory</text><text x="312" y="261" class="small">Stable lower tree</text>
+<rect x="440" y="210" width="185" height="65" rx="8"/><text x="532" y="238">Fresh upper + work</text><text x="532" y="261" class="small">Experiment-local writes</text>
+<path d="M312 210V130"/><path d="M532 210V165H365V130"/>
+<rect x="670" y="210" width="165" height="65" rx="8"/><text x="752" y="238">Write back</text><text x="752" y="261" class="small">Default · original path</text>
+<rect x="880" y="210" width="180" height="65" rx="8"/><text x="970" y="238">Retain per run</text><text x="970" y="261" class="small">Optional · artifacts</text>
+<path d="M735 130V210"/><path d="M780 130V175H970V210"/>
+<text x="540" y="325">Intentional write-back persists · unresolved cleanup blocks the next run</text>
+<text x="540" y="351" class="small">Devices, sockets, host writers and external services need explicit contracts</text>
+</svg>
