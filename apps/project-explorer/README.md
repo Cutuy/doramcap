@@ -17,3 +17,5 @@ npm --prefix apps/project-explorer/frontend run dev
 
 Open the local URL printed by Vite. See [build and hosting](docs/hosting.md)
 [content conventions](docs/content.md), and [use-case mapping contract](docs/overview-mappings.md).
+
+Planned: [experiment preparation and onboarding](server/docs/102726-experiment-preparation.md).
