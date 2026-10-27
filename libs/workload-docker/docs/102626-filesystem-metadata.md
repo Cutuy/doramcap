@@ -37,14 +37,14 @@ telemetry depends on collection; collection depends on baseline and quiescence.
 - Traversal is sequential async I/O with no entry, path-byte, depth or time cutoff.
   `MetadataWalk::next_entry` yields entries incrementally, with directory handles
   proportional to depth. Special entries are stat'ed without opening their contents.
-  Nested filesystems, JSON-incompatible paths and I/O failures are explicit gaps;
+  Nested filesystems and I/O failures are explicit gaps;
   incomplete scans produce no inferred deletions or empty successful diffs.
 - Diff indexing uses dynamically allocated metadata maps for one source's before/after
-  state. Memory grows with tree size; baseline JSON encoding also allocates. This is
+  state. Memory grows with tree size; baseline records are streamed to protobuf. This is
   not a bounded-memory full-tree comparison. Docker/Bollard materializes its complete
   Engine diff response without an additional application cutoff.
 - Change artifacts are written incrementally. `FileChanges::next_change` reads one
-  JSONL record at a time without a row/byte cap. Logging shows the first ten changes
+  length-delimited protobuf record at a time without a row/byte cap. Logging shows the first ten changes
   per category, then full counts and the manifest path. Frontend previews remain
   explicitly labeled previews; full artifacts retain all collected changes.
 - Metadata comparison is approximate; it can miss restored timestamps/content and

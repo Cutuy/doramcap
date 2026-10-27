@@ -2,23 +2,89 @@
 
 # Docker experiment isolation
 
-Created: 2026-10-26. Design proposal; overlay support is not implemented.
+Created: 2026-10-26. Implementation updated: 2026-10-27.
+Local Linux directory-bind overlays are implemented; qualification is recorded below.
 Scope: preventing unintended state carryover between serial experiments.
 
-## Milestones and validation
+[Direct upper write-back](102726-direct-overlay-writeback.md) uses rsync after
+strict unmount. Advanced metadata is unqualified and ambiguous hardlinks fail.
 
-- [x] M1: Document filesystem policy, workflow changes and remaining isolation domains.
-- [ ] M2: Qualify OverlayFS on supported x86_64 and ARM64 hosts; evaluate dependencies before implementation.
-- [ ] M3: Implement mount planning, preparation, harvesting and verified unmount steps.
-- [x] M3a: Split stop from removal; log container-layer changes and index storage outcomes.
-- [x] M3b: Collect normalized metadata change lists and emit bounded warning summaries.
-- [ ] M4: Validate two consecutive experiments with write-back and retained-output policies.
-- [ ] M5: Qualify failure cleanup, shared/overlapping mounts and metadata preservation.
+## Completion audit — 2026-10-27
 
-M1 evidence: this proposal and its companion SVG describe the selected defaults,
-exceptions, failure handling and qualification cases. Local Markdown links and SVG
-XML were validated; `git diff --check` passed. Implementation milestones
-remain open; existing Compose validation does not establish overlay correctness.
+The original design (9acf3fa) was followed by metadata collection (dc31060), not
+mount preparation. M3a/M3b evidence was mistakenly treated as sufficient progress
+while M2/M3/M4/M5 remained open. Subsequent demo and scan-limit work exercised
+passthrough binds only. This completion keeps isolation acceptance separate from
+diff/observability acceptance; no milestone is complete without its native tests.
+
+## M1 — Mount planning and preparation
+
+### Work items
+
+- [x] Inventory writable directory binds across projects; share overlapping trees.
+- [x] Create fresh upper/work/merged paths and rewrite generated execution manifests.
+- [x] Verify Docker mount-namespace compatibility; reject unsupported sources before launch.
+- [x] Persist original/effective mount mappings and unwind partial preparation.
+
+### Validation
+
+- [x] Real Docker writes affect merged views while original host bytes remain unchanged.
+- [x] Shared/overlapping paths preserve aliases and read-only access; source files stay unchanged.
+- [x] Preparation failure leaves no workload running and never falls back to passthrough.
+
+Evidence: x86_64 native `overlay` tests (3 passed); Docker suite run
+`/tmp/doramcap-overlay-e2e-102727-6` (8 scenarios passed). Docker writes are audited
+before harvest; nested read-only binds reject writes. Generated manifests are
+validated before launching any service. Native failures verify preparation rollback.
+
+## M2 — Harvest and teardown
+
+### Work items
+
+- [x] Stage changed contents after writers stop; unmount before original-tree write-back.
+- [x] Preserve deletions, directory replacement and supported metadata; offer retained output.
+- [x] Block further admission on incomplete harvest/unmount and preserve recovery evidence.
+
+### Validation
+
+- [x] Two serial runs verify default write-back and retained-output isolation.
+- [x] Whiteouts, opaque directories, renames, symlinks, hardlinks and sparse files are qualified.
+- [x] Busy unmount, source conflict and partial preparation failure preserve evidence and block reuse.
+
+Historical staged-backend evidence: native tests covered retained/write-back/retained serial runs, deletions,
+opaque replacement, rename, modes, user xattrs, symlinks, hardlinks and sparse files.
+Busy-unmount and lower-conflict tests preserve original data; Docker busy-unmount
+kept staged results and blocked admission. Current direct-backend evidence is in
+the [MVP plan](102726-direct-overlay-writeback.md). Partial-apply recovery is
+manual and is not claimed atomic.
+
+## M3 — Workflow and observability
+
+### Work items
+
+- [x] Wire preparation/finalization steps around launch and stop/collect/remove.
+- [x] Keep host-bind/container-layer/volume categories and original source identities.
+- [x] Show original/effective launch changes, isolation state and harvest outcome.
+
+### Validation
+
+- [x] Native MCAP and existing failure cleanup tests pass with enforced overlays.
+- [ ] ARM64 native overlay tests pass: blocked by the worker sudo allowlist.
+- [ ] Standard ARM64 suite completes on final source: job 162 outcome unverified
+  after SSH became unreachable.
+- [x] Local strict Clippy, core tests and frontend production build pass.
+
+Evidence: all 8 local Docker scenarios retain readable native BPF MCAP recordings.
+Live demo validation also passed normal/failure runs, streaming, reconnect and
+disconnected-viewer cleanup with both overlay steps visible. Three storage
+categories retain separate manifests. `PrepareOverlays` and
+`FinalizeOverlays` emit ordinary step telemetry; the demo reports finalization.
+Resolution JSON records restart-policy overrides; `overlays/prepared.json` records
+original/effective bind sources. Source Compose files are untouched.
+
+Existing evidence: category-preserving metadata, quiesce/remove split and streaming
+readers are implemented. Overlay validation is recorded separately above and in the
+[portable validation record](102726-overlay-validation.json).
 
 ## Policy
 
@@ -31,12 +97,12 @@ deletions to the original host directory after writers stop. The next experiment
 intentionally inherits these changes. This preserves final persistent-file behavior;
 host processes see writes only at harvest time.
 
-Optional **retain per experiment** keeps the original unchanged and preserves the
-experiment view/delta under its artifact directory. A retained delta depends on its
-lower tree; portable results require materializing selected outputs or preserving
-an immutable lower snapshot. OverlayFS alone does not freeze that lower tree.
+Optional **retain per experiment** keeps the original unchanged and materializes
+the full merged view under its artifact directory before unmount. This deliberately
+copies unchanged files too, so retained results remain independent of later source
+changes. OverlayFS alone does not freeze its lower tree.
 
-Callers can supply mount-policy exceptions. The procedural Rust workflow consumes
+Explicit per-mount exceptions remain future work; unsupported writable sources fail closed. The procedural Rust workflow consumes
 prepared inputs and resolved Compose mounts; service additions require no new steps.
 
 ## Cooperation and compatibility
@@ -58,9 +124,9 @@ Do not silently switch them to delayed visibility or advertise full transparency
 
 | Write location | Default result handling | Lifetime / exception |
 | --- | --- | --- |
-| Writable host directory behind our overlay | Apply additions, changes and deletions back to its original path; index that path | Stage changes before unmount/write-back; subsequent runs can change those results |
+| Writable host directory behind our overlay | Apply additions, changes and deletions back to its original path; index that path | Unmount, validate upper and write back directly; subsequent runs can change results |
 | Explicit host passthrough | Writes already reach the original path; index it without copying | No filesystem isolation for this path |
-| Read-only bind | Preserve mount; record source identity; no overlay or automatic copy | Contents are inputs, not harvested output |
+| Read-only bind | Preserve access flags; redirect only when sharing a writable tree | An ancestor/child alias sees the same managed view |
 | Container writable layer | Record Docker filesystem diff (added/changed/deleted paths); no content export by default | Collect before removal; removal discards layer contents, matching ordinary disposable-container behavior |
 | Named volume | Preserve existing lifecycle/removal policy; collect metadata changes where accessible and warn about persistent state/coverage | No automatic content snapshot, export, reset or new deletion policy; external volumes remain external |
 | Existing per-run output directory | Index in place; avoid duplicate copies | Native MCAP output already uses this pattern |
@@ -102,7 +168,7 @@ The metadata collection supplies evidence and does not change storage dispositio
 | --- | --- |
 | Host-directory overlay | Overlay delta interpreted with deletion/opaque-directory semantics; available file metadata |
 | Container writable layer | Engine filesystem diff before removal; added/changed/deleted paths, without file content |
-| Named volume | Bounded before/after metadata traversal through supported read-only volume access; no Engine file-diff API |
+| Named volume | Incremental before/after metadata traversal through supported read-only volume access; no Engine file-diff API |
 
 For each entry record project/service associations, storage identity, relative
 path, change kind, and available before/after metadata (type, size, timestamps,
@@ -113,7 +179,7 @@ Shared storage is scanned once, with all consuming workloads referenced.
 
 Named volumes require a baseline before workloads start. Read them through a
 qualified volume-access mechanism rather than assuming a host mountpoint is
-available. Unsupported drivers, inaccessible paths, scan limits and incomplete
+available. Unsupported drivers, inaccessible paths and incomplete
 baselines produce explicit coverage warnings; absence of evidence is not an empty
 diff. External writers remain subject to the cooperative-access assumption.
 
@@ -139,15 +205,14 @@ specified before resource removal. No hook framework is required for this milest
   a measured cost, not a promise of block-level copy-on-write.
 - Harvest host-overlay changes and metadata. Container layers incur a diff query
   and manifest write only; do not recursively export changed directories or copy
-  large files from the container. Preserve supported host-file hardlinks and
-  deduplicate overlapping selections.
-- Stream host inventories and staged files, bound traversal/concurrency, and avoid holding
-  payloads or whole trees in memory. Blocking filesystem work must not stall the
-  async orchestration loop. Target hosts include 4 GB machines.
+  large files from the container. Reject ambiguous hardlink write-back and deduplicate overlapping selections.
+- Stream host inventories and file payloads with sequential async traversal. Metadata
+  indexes use dynamic memory proportional to tree size; there are no entry cutoffs.
+  Blocking filesystem work must not stall the async orchestration loop. Target hosts include 4 GB machines.
 - Keep original host output locations by default. Dedicated fresh host output
   directories are an opt-in policy, except for our own first-party artifacts.
-- Write-back may need temporary staging of changed data; record bytes staged,
-  harvested and written, elapsed time and available disk space. Sparse files and
+- Write-back copies selected upper data directly; rsync logs transfer statistics and operations.
+  Dedicated timing, disk-space and peak-memory measurements remain a qualification task. Sparse files and
   large changed files need qualification. No silent success on disk exhaustion.
 - Container contents are disposable under the default policy; retain their diff
   evidence only. If diff collection itself fails, report incomplete evidence and
@@ -158,7 +223,9 @@ specified before resource removal. No hook framework is required for this milest
 
 ## Filesystem mechanism
 
-For each eligible directory tree, prepare a read-only lower reference, a fresh upper
+![Host overlay mounts](102726-overlay-mounts.svg)
+
+For each eligible directory tree, use the original as an unchanged lower source, a fresh upper
 and work directory, and a merged mount. Bind the merged path into containers at the
 original destination. Upper and work reside on the same supported filesystem;
 work starts empty. Keep all experiment artifacts outside the lower tree.
@@ -190,9 +257,9 @@ layers: these are separately managed host overlays exposed through bind mounts.
 
 ## Workflow and step boundaries
 
-Keep the workflow ordinary async Rust. Step instances receive injected mount and
-filesystem services; inputs/outputs remain serializable references to plan/artifact
-files. No pipeline declaration format or orchestration context is introduced.
+Keep the workflow ordinary async Rust. The preparation step receives the Docker adapter for validation. Linux mount
+operations use the existing libc dependency; installed rsync handles file transfer.
+Inputs/outputs remain serializable paths, policies and resolved project records. No pipeline declaration format or orchestration context is introduced.
 
 1. Resolve Compose and inventory all projects' mounts together.
 2. **Prepare overlays:** validate policies, prepare mounts, persist ownership records,
@@ -201,32 +268,29 @@ files. No pipeline declaration format or orchestration context is introduced.
 3. Start fresh first-party services, then foreign projects; observe the experiment.
 4. Stop foreign projects, then first-party services; verify all writers have exited.
 5. **Collect filesystem changes:** persist normalized metadata diffs and emit warning
-   summaries. Stage host-overlay data needed for write-back separately. Keep stopped
-   containers until required diff logging succeeds.
+   summaries. Keep stopped containers until required diff logging succeeds.
 6. **Finalize filesystem results:** unmount overlays and verify absence before changing
-   their lower trees; apply staged write-back or finalize retained per-run artifacts.
+   their lower trees; validate upper and apply direct write-back or finalize retained artifacts.
 7. **Remove runtime resources:** remove stopped containers (discarding their writable layers)
    and apply existing volume/scratch cleanup policy after disposition is recorded.
 8. Admit the next experiment only when cleanup and harvest disposition are resolved.
 
 First-party MCAP/artifact output paths use dedicated experiment directories.
 Harvest runs after the recorders finalize; lifecycle telemetry covers these steps.
-The existing combined stop/down implementation must be split before this workflow
-can safely harvest. Compose down can delete containers and selected volumes; it
-belongs after diff logging and host-overlay staging. tmpfs export, when requested,
+Quiesce and removal are separate steps around collection/finalization. Compose down can delete containers and selected volumes; it
+belongs after diff logging and filesystem finalization. tmpfs export, when requested,
 must occur before stop.
 
-Do not copy a mounted merged tree directly back into its lower tree. OverlayFS
-requires stable underlying trees while mounted. Stage the required changes first,
-unmount all views using that lower tree, then apply. An upper delta contains
-OverlayFS metadata and is not an ordinary directory ready for recursive copying.
+Do not modify lower while any overlay view is mounted. Strictly unmount, validate
+all upper trees, interpret whiteouts and opaque directories, then apply selected
+upper entries. An upper delta is not an ordinary directory for recursive copying.
 
 ## Harvest semantics and failure handling
 
-- Enumerate upper-layer additions/changes and interpret whiteouts, opaque directories
-  and metadata correctly. A raw recursive copy of upper is insufficient.
-- Apply deletions as well as writes. Preserve supported ownership, modes, symlinks,
-  hardlinks and extended attributes; report unsupported semantics explicitly.
+- Inspect upper after unmount. Interpret whiteouts and opaque directories and reject
+  unsupported redirect/metacopy and ambiguous hardlinks before modifying lower.
+- Apply deletions as well as writes. Rsync archive mode preserves basic attributes
+  and symlinks; ACL, xattr, capability and hardlink fidelity are unqualified.
 - Use incremental traversal with bounded concurrency and full metadata manifests; no default content hashing or arbitrary scan cutoffs.
   Record unreadable paths, exclusions and incomplete scans. Metadata checks cannot
   prove content identity or eliminate concurrent-write races.
@@ -292,30 +356,21 @@ contracts; container shutdown alone cannot establish it.
 Suggested sequence: filesystem overlays → process/IPC/recording qualification →
 host configuration restoration → device/external-service hooks → measurement baselines.
 
-## Qualification cases
+## M4 — Further filesystem and hardware qualification
 
-- [ ] Two non-overlapping runs: write-back preserves intended carryover; retention
-  prevents run A mutations/deletions from reaching run B's baseline.
-- [ ] Writable Compose binds are overlaid; read-only and unrelated host directories are untouched.
-- [ ] Container diff records additions/changes/deletions before removal; no content
-  export occurs and the default removal discards container-layer-only files.
-- [ ] Named volumes, explicit passthrough and volatile tmpfs report their actual coverage.
-- [ ] Normalized diffs cover available host/container/volume changes; metadata gaps
-  are explicit and expected changes emit warnings without failing the run.
-- [ ] Large change lists remain artifact-backed and logging stays bounded; document size-dependent diff-index memory.
-- [ ] Named-volume warnings distinguish fresh owned and external/reused state;
-  no automatic export/reset or changed deletion semantics.
-- [ ] Mixed storage locations are accounted for once; container files are not exported.
-- [ ] Harvest failure retains stopped containers/storage; removal cannot race capture.
-- [ ] Measure preparation/harvest time, peak memory, copy-up and staging bytes on large-file fixtures.
-- [ ] Add/edit/delete/rename, opaque directories, symlinks, modes, xattrs and hardlinks.
-- [ ] Two projects sharing a source; parent/child mounts and mixed read-only targets.
-- [ ] Large untouched model incurs no eager copy; modification copy-up cost is measured.
-- [ ] Source changes, permission failures, full disk and partial write-back preserve evidence.
-- [ ] Partial preparation/launch, failed writer shutdown and busy unmount block unsafe reuse.
-- [ ] Retained artifacts remain usable after unmount; delta dependency is recorded.
-- [ ] Linux capability tests on x86_64 and ARM64; build unprivileged, elevate only tests.
-- [ ] Real Compose adoption fixtures plus native CPU/MCAP services across consecutive runs.
+### Work items
+
+- [ ] Measure large-model copy-up, staging cost, peak metadata memory and disk usage.
+- [ ] Qualify additional backing filesystems and rootless/private-namespace daemons.
+- [ ] Add explicit policies for single-file/device binds and live host readers.
+- [ ] Qualify vEDGAR/AnywhereVLA workloads on their required GPU/robot hardware.
+
+### Validation
+
+- [ ] Exercise disk exhaustion and partial write-back; verify retained data and journals.
+- [ ] Record large-model benchmark evidence without conflating metadata scans with copying.
+- [ ] Prove unsupported semantics fail visibly on each additional host configuration.
+- [ ] Repeat real robotics runs with documented readiness/reset contracts.
 
 ## References
 
@@ -347,5 +402,38 @@ content delivery remain future work; no new runtime implementation is claimed.
 
 M3a/M3b implementation evidence: [metadata collection milestones](102626-filesystem-metadata.md)
 and [validation record](102626-filesystem-validation.json). Seven Docker scenarios
-pass; actual OverlayFS preparation/write-back remains pending and is not implied
-by metadata collection on existing host binds.
+pass; that historical evidence covered passthrough metadata only. The 2026-10-27
+completion evidence above covers actual mounting and post-unmount write-back.
+
+## Supported host contract
+
+The manager and local Docker socket peer must share a mount namespace. Mounts
+require CAP_SYS_ADMIN and an OverlayFS-compatible upper/work filesystem. Host
+source trees remain stable under the cooperative-access assumption. Rootless,
+private-namespace and proxied daemons require further qualification.
+
+Preparation rejects writable single files, sockets/devices, pseudo-filesystems,
+nested mounts, cross-root hardlinks, overlapping artifact directories and
+unqualified propagation/SELinux settings. Upper/work directories are fresh.
+Sources must already exist. Ordinary read-only inputs stay direct; shared read-only
+aliases retain their flags. With `redirect_dir=off`, renaming lower directories may
+return EXDEV; applications need their usual copy/delete fallback. Whole-file
+copy-up can affect large mutable models.
+No failure falls back to a writable host bind.
+
+`overlays/plan.json` and `prepared.json` identify ownership. Per-tree `baseline.pb`,
+`changed.paths0`, `apply-plan.pb`, rsync logs and `apply.pb` retain evidence.
+`unmounted.json` precedes lower modification; `results.json` records successful
+disposition. Failed/cancelled calls leave evidence for manual resolution; no crash
+recovery or automatic retry is implied. Upper and staging data are retained.
+
+ARM validation, 2026-10-27: jobs 157/158 passed compilation, strict lint,
+default/all-feature tests and the existing native suite, then failed when direct
+sudo execution of the new overlay test required a password. Further attempts
+stopped. The unsupported CI invocation was removed. Worker provisioning must
+extend its approved root-owned native-test launcher before ARM mount validation;
+no sudo policy or persistent worker configuration was changed.
+
+Standard-suite job 162 used snapshot `542d8a0bb6914550b423e531a190ef1d`. It was
+last observed running; subsequent SSH connections timed out. Its final result
+remains unverified. Local native tests were rerun after the final behavior change.

@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-27",
+  "native_x86_64": {
+    "tests": 3,
+    "result": "passed",
+    "coverage": [
+      "serial retain/write-back",
+      "pre-harvest lower unchanged",
+      "shared aliases",
+      "read-only parent",
+      "delete/opaque/rename",
+      "mode/xattr/symlink/hardlink/sparse",
+      "busy unmount",
+      "lower conflict",
+      "partial preparation rollback",
+      "nested-mount/cross-root-hardlink rejection"
+    ]
+  },
+  "docker_x86_64": {
+    "scenarios": 8,
+    "result": "passed",
+    "artifacts": "/tmp/doramcap-overlay-e2e-102727-6",
+    "coverage": [
+      "two serial runs",
+      "unchanged source during writes",
+      "read-only alias enforcement",
+      "service addition",
+      "partial start",
+      "unhealthy",
+      "timeout",
+      "outsider ownership",
+      "diff failure",
+      "busy overlay blocks admission"
+    ]
+  },
+  "live_demo": {
+    "events": 74,
+    "sessions": 2,
+    "live_before_completion": true,
+    "reconnect_replay": true,
+    "disconnect_cleanup": true
+  },
+  "local_checks": [
+    "workload-docker/orchestrator tests",
+    "strict Clippy",
+    "orchestrator frontend build",
+    "gallery build/schema",
+    "SVG XML",
+    "preparation doc links"
+  ],
+  "arm64_native_overlay": "blocked: current root-owned launcher does not authorize direct sudo test executable",
+  "arm64_standard_suite": {
+    "job": 162,
+    "snapshot": "542d8a0bb6914550b423e531a190ef1d",
+    "status": "unverified: last running, subsequent SSH timed out"
+  }
+}

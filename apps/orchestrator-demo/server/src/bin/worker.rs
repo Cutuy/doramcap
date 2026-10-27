@@ -9,7 +9,10 @@ use tokio::{
     sync::mpsc,
 };
 use workload_docker::{
-    compose::{ComposeProject, DockerAdapter},
+    compose::{
+        ComposeProject, DockerAdapter,
+        filesystem::{FileChanges, FileMetadata},
+    },
     workflows::recorded_compose::{ComposeRun, ComposeRunReport, ComposeRunner, CpuMonitor},
 };
 
@@ -109,6 +112,7 @@ async fn recorded_demo(
     Ok(runner
         .run(
             ComposeRun {
+                filesystem: Default::default(),
                 id: session.into(),
                 artifacts: root.join(session),
                 projects: vec![ComposeProject {
@@ -151,21 +155,24 @@ async fn filesystem_preview(report: &ComposeRunReport) -> serde_json::Value {
         let mut rows = Vec::new();
         let mut bytes = 0;
         let read = async {
-            let mut lines =
-                BufReader::new(tokio::fs::File::open(&category.manifest).await?).lines();
+            let mut reader = FileChanges::open(&category.manifest).await?;
             while rows.len() < 100 {
-                let Some(line) = lines.next_line().await? else {
+                let Some(row) = reader.next_change().await? else {
                     break;
                 };
-                bytes += line.len();
+                let value = json!({
+                    "category": row.category, "source": row.source, "consumers": row.consumers,
+                    "path": preview_path(&row.path), "kind": row.kind,
+                    "before": row.before.as_ref().map(preview_metadata),
+                    "after": row.after.as_ref().map(preview_metadata),
+                });
+                bytes += serde_json::to_vec(&value).map_err(io::Error::other)?.len();
                 if bytes > 32 * 1024 {
                     break;
                 }
-                rows.push(
-                    serde_json::from_str::<serde_json::Value>(&line).map_err(io::Error::other)?,
-                );
+                rows.push(value);
             }
-            Ok::<(), io::Error>(())
+            Ok::<(), workload_docker::compose::Error>(())
         }
         .await;
         result.insert(
@@ -174,4 +181,17 @@ async fn filesystem_preview(report: &ComposeRunReport) -> serde_json::Value {
         );
     }
     serde_json::Value::Object(result)
+}
+
+// JSON is a display-only preview; the underlying protobuf retains exact Unix bytes.
+fn preview_metadata(m: &FileMetadata) -> serde_json::Value {
+    json!({"mode":m.mode,"size":m.size,"uid":m.uid,"gid":m.gid,
+        "mtime":m.mtime,"ctime":m.ctime,
+        "symlink":m.symlink.as_ref().map(|p|preview_path(p))})
+}
+
+fn preview_path(path: &Path) -> String {
+    path.to_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("{:?}", path.as_os_str()))
 }

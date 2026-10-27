@@ -50,8 +50,9 @@ stop failure remains visible even when forced removal clears a container.
 Initial scope is cooperative local Engine access. No remote execution, recovery
 journal, application-specific machine reconfiguration, interactive PTY frontend,
 or inferred robot readiness. Container healthchecks are honored; running without
-one is reported as process-level readiness. External mounts/devices/networks are
-retained and reported; they are not claimed to reset with container teardown.
+one is reported as process-level readiness. Writable host-directory binds use per-run overlays with post-stop write-back.
+Named volumes, devices and networks retain their explicit policies. See the
+[isolation contract and current qualification](102626-docker-experiment-isolation.md).
 
 ## Prepared request
 
@@ -84,6 +85,10 @@ and supplied settings; the workflow remains procedural Rust.
   "stop_seconds": 15
 }
 ```
+
+Optional `filesystem.disposition` selects `write_back` (default) or `retain`.
+Mount preparation precedes every launch; collection and strict unmount precede
+write-back and container removal.
 
 Optional `first_party` contains additional prepared project objects. They start
 after the CPU collector and before foreign projects; teardown reverses that order.

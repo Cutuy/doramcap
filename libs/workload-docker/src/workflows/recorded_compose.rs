@@ -6,6 +6,9 @@ use crate::compose::filesystem::{
     BaselineInput, CaptureFilesystemBaseline, CollectFilesystemChanges, CollectInput,
     FilesystemChanges,
 };
+use crate::compose::overlay::{
+    FinalizeOverlays, OverlayPolicy, OverlayResults, PrepareInput, PrepareOverlays,
+};
 use crate::{
     compose::adapter::{RUN_LABEL, private_write, validate_name},
     compose::error::invalid,
@@ -120,6 +123,12 @@ impl ComposeRunner {
         executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
             adapter: adapter.clone(),
         });
+        let adapter = self.adapter.clone();
+        executor.register::<PrepareOverlays>(move || PrepareOverlays {
+            adapter: adapter.clone(),
+        });
+        executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
+        self.adapter.verify_overlay_namespace().await?;
         // Resolve all projects before the first workload is launched.
         let mut plans = Vec::new();
         let system_file = artifacts.join("system-services.yaml");
@@ -171,6 +180,20 @@ impl ComposeRunner {
             .await
             .map_err(|e| invalid(e.to_string()))?;
         self.blocked = true;
+        let mut preparation = Input::new(PrepareInput {
+            artifacts: artifacts.clone(),
+            projects: plans.iter().map(|p| p.value().clone()).collect(),
+            policy: spec.filesystem.clone(),
+        })
+        .after(&baseline);
+        for plan in &plans {
+            preparation = preparation.after(plan);
+        }
+        let overlays = executor
+            .run::<PrepareOverlays>(preparation)
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        let plans = overlays.value().projects.clone();
         let (finish, finished) = watch::channel(false);
         let (fault_tx, mut fault) = watch::channel(None::<String>);
         let docker = self.adapter.docker.clone();
@@ -192,13 +215,13 @@ impl ComposeRunner {
                 executor
                     .run::<StartCompose>(
                         Input::new(StartInput {
-                            plan: plan.value().clone(),
+                            plan: plan.clone(),
                             readiness_seconds: spec.readiness_seconds,
                         })
-                        .after(plan),
+                        .after(&overlays),
                     )
                     .await?;
-                if plan.value().key == "system" {
+                if plan.key == "system" {
                     monitor_ready(&artifacts, spec.readiness_seconds)
                         .await
                         .map_err(|e| orchestrator::Error::message(e.to_string()))?;
@@ -206,13 +229,15 @@ impl ComposeRunner {
             }
             loop {
                 for plan in &plans {
-                    let state = executor.run::<InspectCompose>(plan.clone()).await?;
+                    let state = executor
+                        .run::<InspectCompose>(Input::new(plan.clone()).after(&overlays))
+                        .await?;
                     if !DockerAdapter::ready(state.value())
                         .map_err(|e| orchestrator::Error::message(e.to_string()))?
                     {
                         return Err(orchestrator::Error::message(format!(
                             "{} lost readiness or containers",
-                            plan.value().key
+                            plan.key
                         )));
                     }
                 }
@@ -235,10 +260,10 @@ impl ComposeRunner {
             let stopped = executor
                 .run::<QuiesceCompose>(
                     Input::new(StopInput {
-                        plan: plan.value().clone(),
+                        plan: plan.clone(),
                         stop_seconds: spec.stop_seconds,
                     })
-                    .after(plan),
+                    .after(&overlays),
                 )
                 .await;
             match stopped {
@@ -256,9 +281,22 @@ impl ComposeRunner {
                 }
             }
         }
+        // Producer has stopped; check a bounded terminal MCAP footer and stable size.
+        let recording = finalized_recording(&artifacts.join("cpu.mcap")).await;
+        if let Err(e) = &recording {
+            diagnostics
+                .borrow_mut()
+                .push(e.diagnostic("finalize recording"));
+        }
         let mut collect_input = Input::new(CollectInput {
             baseline: baseline.value().clone(),
-            projects: attempted.iter().map(|p| p.value().clone()).collect(),
+            host_views: overlays
+                .value()
+                .trees
+                .iter()
+                .map(|t| (t.source.clone(), t.merged.clone()))
+                .collect(),
+            projects: attempted.clone(),
         })
         .after(&baseline);
         for stopped in &stopped_dependencies {
@@ -281,23 +319,46 @@ impl ComposeRunner {
             None
         };
         let filesystem_changes = filesystem_output.as_ref().map(|o| o.value().clone());
+        let overlay_output = if let Some(changes) = &filesystem_output {
+            match executor
+                .run::<FinalizeOverlays>(
+                    Input::new(overlays.value().clone())
+                        .after(&overlays)
+                        .after(changes),
+                )
+                .await
+            {
+                Ok(result) => Some(result),
+                Err(e) => {
+                    diagnostics
+                        .borrow_mut()
+                        .push(invalid(e.to_string()).diagnostic("finalize overlays"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let mut cleanup = Vec::new();
         for (plan, stop_diagnostics) in shutdowns {
-            let mut result = if all_stopped && filesystem_changes.is_some() {
+            let mut result = if all_stopped
+                && let (Some(changes), Some(finalized)) = (&filesystem_output, &overlay_output)
+            {
                 match executor
                     .run::<RemoveCompose>(
                         Input::new(StopInput {
-                            plan: plan.value().clone(),
+                            plan: plan.clone(),
                             stop_seconds: spec.stop_seconds,
                         })
-                        .after(&plan)
-                        .after(filesystem_output.as_ref().expect("collection succeeded")),
+                        .after(&overlays)
+                        .after(changes)
+                        .after(finalized),
                     )
                     .await
                 {
                     Ok(c) => c.into_value(),
                     Err(e) => Cleanup {
-                        project: plan.value().name.clone(),
+                        project: plan.name.clone(),
                         diagnostics: vec![invalid(e.to_string()).diagnostic("remove")],
                         remaining: vec!["unknown".into()],
                         retained_volumes: vec![],
@@ -306,7 +367,7 @@ impl ComposeRunner {
                 }
             } else {
                 Cleanup {
-                    project: plan.value().name.clone(),
+                    project: plan.name.clone(),
                     diagnostics: vec![],
                     remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
                     retained_volumes: vec![],
@@ -315,13 +376,6 @@ impl ComposeRunner {
             };
             result.diagnostics.extend(stop_diagnostics);
             cleanup.push(result);
-        }
-        // Producer has stopped; check a bounded terminal MCAP footer and stable size.
-        let recording = finalized_recording(&artifacts.join("cpu.mcap")).await;
-        if let Err(e) = &recording {
-            diagnostics
-                .borrow_mut()
-                .push(e.diagnostic("finalize recording"));
         }
         let _ = finish.send(true);
         let event_result = (&mut event_task.0).await;
@@ -339,9 +393,10 @@ impl ComposeRunner {
         if let Err(e) = snapshot(&artifacts, "after").await {
             diagnostics.borrow_mut().push(e.diagnostic("post-state"));
         }
-        let boundary_clean = cleanup
-            .iter()
-            .all(|x| x.verified && x.diagnostics.is_empty());
+        let boundary_clean = overlay_output.is_some()
+            && cleanup
+                .iter()
+                .all(|x| x.verified && x.diagnostics.is_empty());
         let report = ComposeRunReport {
             id: spec.id,
             execution_error: outcome.err(),
@@ -351,6 +406,7 @@ impl ComposeRunner {
             recording_finalized: recording.is_ok(),
             event_stream_healthy,
             filesystem_changes,
+            filesystem_results: overlay_output.map(|o| o.into_value()),
         };
         private_write(
             &artifacts.join("report.json"),
@@ -512,6 +568,9 @@ async fn record_events(
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComposeRun {
+    /// Writable directory binds use OverlayFS; default final disposition writes back.
+    #[serde(default)]
+    pub filesystem: OverlayPolicy,
     /// Caller-selected run identifier used in Docker ownership labels and project names.
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
@@ -559,6 +618,9 @@ fn native_backend() -> String {
 /// before treating evidence as complete or admitting another experiment.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ComposeRunReport {
+    /// Successful overlay disposition, absent on preparation/harvest failure.
+    #[serde(default)]
+    pub filesystem_results: Option<OverlayResults>,
     /// Run identifier.
     pub id: String,
     /// Startup/observation failure, independently of cleanup results.

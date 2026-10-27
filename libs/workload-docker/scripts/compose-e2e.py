@@ -35,7 +35,7 @@ def main():
         elevated(['env',f'DORAMCAP_TEST_IMAGE={image}',f'DORAMCAP_TEST_PREFIX={prefix}',f'DORAMCAP_TEST_OUTPUT={output}',executable,'--ignored','--nocapture'])
     finally:
         # Test panic cleanup is scoped to this harness's exact generated run IDs.
-        for suffix in ['normal0','normal1','partial','unhealthy','timeout','outsider','diff-failure']:
+        for suffix in ['normal0','normal1','partial','unhealthy','timeout','outsider','diff-failure','busy-overlay']:
             run=f'{prefix}-{suffix}'
             ids=elevated(['docker','ps','-aq','--filter',f'label=io.doramcap.run={run}'],capture_output=True,text=True).stdout.split()
             if ids:elevated(['docker','rm','-fv',*ids])
@@ -44,6 +44,13 @@ def main():
                 if ids:elevated(['docker',kind,'rm',*ids])
         outsider=elevated(['docker','ps','-aq','--filter',f'name=^/{prefix}-outsider-container$'],capture_output=True,text=True).stdout.split()
         if outsider:elevated(['docker','rm','-f',*outsider])
+        # Failed evidence tests intentionally retain mounts; release only this
+        # harness's overlay mountpoints after its containers have been removed.
+        mountpoints = [line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines()]
+        for mountpoint in reversed(mountpoints):
+            path = Path(mountpoint)
+            if path.is_relative_to(output) and path.name == 'merged' and 'overlays' in path.parts:
+                elevated(['umount', str(path)])
         elevated(['docker','image','rm',image])
     print(f'PASS: multi-project native Compose workflow; evidence {output}')
 if __name__=='__main__':main()

@@ -26,5 +26,5 @@ server or Node process remains resident. `--port` changes the HTTP port.
 [Telemetry observer](../../libs/orchestrator/src/telemetry.rs)
 
 The filesystem panel separates host binds, container layers and named volumes,
-with change filters, metadata and coverage warnings. OverlayFS mounting is pending;
-the demo currently observes direct bind writes into fresh per-run directories.
+with change filters, metadata and coverage warnings. Writable host directories use per-run OverlayFS views; after writers stop, views are unmounted and selected upper files are written
+back directly to the host by default. The panel reports metadata coverage limitations.

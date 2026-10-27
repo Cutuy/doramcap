@@ -10,7 +10,7 @@ use tokio::{
 
 // Compose may launch its CLI plugin as a child. Kill the owned process group on
 // timeout, I/O failure or cancellation; Engine cleanup remains a separate action.
-struct ProcessGroup(u32);
+pub(crate) struct ProcessGroup(pub(crate) u32);
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
         // SAFETY: this PGID was assigned to our child at spawn, never the caller's.

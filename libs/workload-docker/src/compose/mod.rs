@@ -8,6 +8,7 @@ mod command;
 pub(crate) mod error;
 pub mod filesystem;
 mod model;
+pub mod overlay;
 mod steps;
 pub use adapter::DockerAdapter;
 pub use error::{Error, Result};

@@ -7,3 +7,8 @@
 //! Generic step execution is supplied by the independent `orchestrator` crate.
 pub mod compose;
 pub mod workflows;
+
+/// Binary filesystem record schema; files contain length-delimited messages.
+pub mod filesystem_proto {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
+}

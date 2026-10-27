@@ -51,6 +51,42 @@ impl DockerAdapter {
         Ok(Self { docker, socket })
     }
 
+    /// Require a local socket peer sharing the caller's mount namespace.
+    /// Overlay binds must resolve in the daemon's namespace. Different namespaces
+    /// fail here. This requires a direct local socket; peer namespace comparison
+    /// does not establish the destination behind a proxy.
+    pub async fn verify_overlay_namespace(&self) -> Result<()> {
+        use std::os::fd::AsRawFd;
+        let stream = tokio::net::UnixStream::connect(&self.socket).await?;
+        let mut cred = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        // SAFETY: destination and length point to correctly sized live storage.
+        if unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&mut cred as *mut libc::ucred).cast(),
+                &mut len,
+            )
+        } != 0
+        {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let ours = tokio::fs::read_link("/proc/self/ns/mnt").await?;
+        let theirs = tokio::fs::read_link(format!("/proc/{}/ns/mnt", cred.pid)).await?;
+        if ours != theirs {
+            return Err(invalid(
+                "Docker peer and manager mount namespaces differ; host overlay visibility is unqualified",
+            ));
+        }
+        Ok(())
+    }
+
     /// Resolve supplied files, freeze local image IDs, and write a private launch
     /// manifest. No Docker resources are created. Host mounts remain live inputs.
     ///
@@ -129,6 +165,7 @@ impl DockerAdapter {
         )
         .await?;
         let mut diagnostics = Vec::new();
+        let mut policy_changes = Vec::new();
         if !stderr.trim().is_empty() {
             diagnostics.push(stderr);
         }
@@ -265,10 +302,15 @@ impl DockerAdapter {
                     "{service_name}: restart policy overridden to no for experiment ownership"
                 ));
             }
+            policy_changes.push(json!({"service":service_name,"field":"restart",
+                "original":object.get("restart"),"effective":"no",
+                "reason":"experiment owns restart and termination"}));
             object.insert("restart".into(), json!("no"));
             if let Some(deploy) = object.get_mut("deploy").and_then(Value::as_object_mut)
-                && deploy.remove("restart_policy").is_some()
+                && let Some(original) = deploy.remove("restart_policy")
             {
+                policy_changes.push(json!({"service":service_name,"field":"deploy.restart_policy",
+                    "original":original,"effective":null,"reason":"experiment owns restart and termination"}));
                 diagnostics.push(format!(
                     "{service_name}: deploy restart policy removed for experiment ownership"
                 ));
@@ -349,11 +391,31 @@ impl DockerAdapter {
         private_write(
             &artifacts.join(format!("{}.resolution.json", project.key)),
             &serde_json::to_vec_pretty(
-                &json!({"compose_version":version.trim(),"sources":sources,"request":project,"plan":plan}),
+                &json!({"compose_version":version.trim(),"sources":sources,"request":project,"plan":plan,"policy_changes":policy_changes}),
             )?,
         )
         .await?;
         Ok(plan)
+    }
+
+    /// Validate a generated execution manifest with Compose before any launch.
+    /// Checks its frozen digest and returns CLI diagnostics on schema failure.
+    /// Creates no Engine resources; requires the artifact parent to exist.
+    pub(crate) async fn validate_execution(&self, plan: &ResolvedComposeProject) -> Result<()> {
+        self.verify_manifest(plan).await?;
+        let mut args = Self::args(plan);
+        args.extend(["config".into(), "--quiet".into()]);
+        compose(
+            &self.socket,
+            plan.manifest
+                .parent()
+                .ok_or_else(|| invalid("manifest parent missing"))?,
+            &BTreeMap::new(),
+            &args,
+            Duration::from_secs(30),
+        )
+        .await?;
+        Ok(())
     }
 
     async fn verify_manifest(&self, plan: &ResolvedComposeProject) -> Result<()> {

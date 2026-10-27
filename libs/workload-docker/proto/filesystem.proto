@@ -1,0 +1,32 @@
+syntax = "proto3";
+package doramcap.filesystem.v1;
+
+message FileMetadata {
+  uint32 mode = 1;
+  uint64 size = 2;
+  uint32 uid = 3;
+  uint32 gid = 4;
+  sint64 mtime_seconds = 5;
+  sint64 mtime_nanoseconds = 6;
+  sint64 ctime_seconds = 7;
+  sint64 ctime_nanoseconds = 8;
+  optional bytes symlink = 9;
+}
+message SnapshotHeader { bool complete = 1; optional string reason = 2; uint64 entries = 3; }
+message SnapshotEntry { bytes path = 1; FileMetadata metadata = 2; }
+message SnapshotRecord {
+  oneof body { SnapshotHeader header = 1; SnapshotEntry entry = 2; }
+}
+enum StorageCategory { STORAGE_CATEGORY_UNSPECIFIED = 0; HOST_BIND = 1; CONTAINER_LAYER = 2; NAMED_VOLUME = 3; }
+enum ChangeKind { CHANGE_KIND_UNSPECIFIED = 0; ADDED = 1; MODIFIED = 2; DELETED = 3; }
+message FileChange {
+  StorageCategory category = 1;
+  string source = 2;
+  repeated string consumers = 3;
+  bytes path = 4;
+  ChangeKind kind = 5;
+  FileMetadata before = 6;
+  FileMetadata after = 7;
+}
+enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }
+message FileAction { ActionKind kind = 1; bytes path = 2; }

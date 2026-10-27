@@ -26,6 +26,8 @@ for(const inject of [false,true]){
  assert.equal(result.last.error,null);assert.equal(result.last.dropped_events,0);
  assert.equal(result.last.report.boundary_clean,true);
  assert.equal(result.last.report.recording_finalized,true);
+ assert.equal(result.last.report.filesystem_results.unmounted,true);
+ assert.equal(result.last.report.filesystem_results.disposition,"write_back");
  if(inject)assert.match(result.last.report.execution_error,/unhealthy/);else assert.equal(result.last.report.execution_error,null);
  for(const key of ['host_binds','container_layers','named_volumes']) {
   assert.ok(result.last.report.filesystem_changes[key].counts.added>0);
@@ -43,6 +45,8 @@ packets.length=0;ws=connect();await waitFor(()=>packets.length>=40);
 assert.equal(new Set(packets.map(p=>p.sequence)).size,packets.length);
 assert.ok(packets.some(p=>p.state==='FAILED'));
 assert.ok(packets.some(p=>p.step.endsWith('CollectFilesystemChanges')&&p.state==='SUCCEEDED'));
+assert.ok(packets.some(p=>p.step.endsWith('PrepareOverlays')&&p.state==='SUCCEEDED'));
+assert.ok(packets.some(p=>p.step.endsWith('FinalizeOverlays')&&p.state==='SUCCEEDED'));
 assert.ok(packets.some(p=>p.dependencies?.length));
 ws.close();
 const evidence={events:packets.length,sessions:new Set(packets.map(p=>p.session)).size,live_before_completion:true,reconnect_replay:true,disconnect_cleanup:true,reports};

@@ -145,7 +145,7 @@
       "category": "Runtime",
       "summary": "Run observable Rust steps, supervise Compose workloads and collect filesystem changes before cleanup.",
       "status": "building-blocks",
-      "limits": "Docker Compose execution is implemented. Mechanism-neutral lifecycle contracts and OverlayFS mounting remain design work.",
+      "limits": "Docker Compose execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
       "components": [
         "apps/orchestrator-demo",
         "crates/orchestrator",

@@ -3,6 +3,9 @@
 //! Host binds and supported local volumes use complete metadata scans; container
 //! layers use the Engine changes API. No file contents are read or exported.
 //! Scans require cooperative host access and are not atomic filesystem snapshots.
+mod wire;
+pub(crate) use wire::{read_snapshot, write_record, write_snapshot};
+
 use super::{
     DockerAdapter, ResolvedComposeProject, Result,
     adapter::{digest, private_write},
@@ -17,7 +20,7 @@ use std::{
     path::{Path, PathBuf},
     rc::Rc,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
+use tokio::io::{AsyncWriteExt, BufReader};
 
 /// Storage category is retained on every record and in separate artifact files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,10 +70,10 @@ pub struct FileChange {
     pub after: Option<FileMetadata>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Snapshot {
-    entries: BTreeMap<PathBuf, FileMetadata>,
-    complete: bool,
-    reason: Option<String>,
+pub(crate) struct Snapshot {
+    pub(crate) entries: BTreeMap<PathBuf, FileMetadata>,
+    pub(crate) complete: bool,
+    pub(crate) reason: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Source {
@@ -97,6 +100,9 @@ pub struct BaselineInput {
 /// Input to collection after all project writers have stopped.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectInput {
+    /// Original host roots mapped to active isolated views for post-run observation.
+    #[serde(default)]
+    pub host_views: BTreeMap<PathBuf, PathBuf>,
     pub baseline: FilesystemBaseline,
     /// Attempted projects, including partially started ones.
     pub projects: Vec<ResolvedComposeProject>,
@@ -173,7 +179,7 @@ fn incomplete(reason: impl Into<String>) -> Snapshot {
 /// traversal is not an atomic snapshot.
 ///
 /// Owns one directory handle per active depth. Memory and handles grow with
-/// depth; no task fanout. I/O and JSON-incompatible path errors are returned to
+/// depth; no task fanout. Filesystem I/O errors are returned to
 /// the caller. On error, abandon this traversal; already yielded entries remain
 /// partial evidence. Dropping closes directory handles. Call sequentially.
 pub struct MetadataWalk {
@@ -220,19 +226,11 @@ impl MetadataWalk {
             .strip_prefix(&self.root)
             .map_err(|_| invalid("scan path escaped root"))?
             .to_path_buf();
-        if relative.to_str().is_none() {
-            return Err(invalid(format!(
-                "non-UTF8 path cannot be represented in JSON: {relative:?}"
-            )));
-        }
         let symlink = if m.file_type().is_symlink() {
             Some(tokio::fs::read_link(&path).await?)
         } else {
             None
         };
-        if symlink.as_ref().is_some_and(|p| p.to_str().is_none()) {
-            return Err(invalid(format!("non-UTF8 symlink target at {relative:?}")));
-        }
         if m.is_dir() {
             self.stack.push(tokio::fs::read_dir(&path).await?);
         }
@@ -251,27 +249,26 @@ impl MetadataWalk {
     }
 }
 
-/// Sequential JSONL change reader. Owns its file and buffers one record at a time.
+/// Sequential length-delimited protobuf change reader.
 ///
-/// Use after collection completes. No row/byte cap; memory grows to accommodate
-/// an individual record. I/O and malformed-record errors are returned explicitly.
-/// Dropping closes the file; each reader has an independent cursor.
+/// Each call reads one record. Paths and symlink targets retain Unix bytes.
+/// Malformed or truncated records return errors; dropping closes the file.
 pub struct FileChanges {
-    lines: Lines<BufReader<tokio::fs::File>>,
+    input: BufReader<tokio::fs::File>,
 }
 impl FileChanges {
-    /// Open a category's metadata manifest. Does not load the whole file.
+    /// Open a category manifest without loading the whole file.
     pub async fn open(manifest: impl AsRef<Path>) -> Result<Self> {
         Ok(Self {
-            lines: BufReader::new(tokio::fs::File::open(manifest).await?).lines(),
+            input: BufReader::new(tokio::fs::File::open(manifest).await?),
         })
     }
-    /// Return the next change, or `None` at EOF. Preserves category and change kind.
+    /// Return the next change, or None at a clean record boundary.
     pub async fn next_change(&mut self) -> Result<Option<FileChange>> {
-        match self.lines.next_line().await? {
-            Some(line) => Ok(Some(serde_json::from_str(&line)?)),
-            None => Ok(None),
-        }
+        wire::read_record::<_, crate::filesystem_proto::FileChange>(&mut self.input)
+            .await?
+            .map(wire::decode_change)
+            .transpose()
     }
 }
 
@@ -369,7 +366,7 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
                     _ => continue,
                 };
                 let key = format!("{category:?}:{identity}");
-                let baseline = directory.join(format!("{}.baseline.json", digest(key.as_bytes())));
+                let baseline = directory.join(format!("{}.baseline.pb", digest(key.as_bytes())));
                 let source = sources.entry(key).or_insert(Source {
                     category,
                     identity,
@@ -404,7 +401,7 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
                 ),
             }
         };
-        private_write(&source.baseline, &serde_json::to_vec(&snapshot)?).await?;
+        wire::write_snapshot(&source.baseline, &snapshot).await?;
     }
     let baseline = FilesystemBaseline {
         sources: sources.into_values().collect(),
@@ -421,7 +418,7 @@ async fn writer(
     directory: &Path,
     category: StorageCategory,
     name: &str,
-) -> Result<(CategoryChanges, tokio::fs::File)> {
+) -> Result<(CategoryChanges, tokio::io::BufWriter<tokio::fs::File>)> {
     let path = directory.join(name);
     let file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -436,18 +433,19 @@ async fn writer(
             counts: ChangeCounts::default(),
             warnings: vec![],
         },
-        file,
+        tokio::io::BufWriter::new(file),
     ))
 }
-async fn emit(out: &mut (CategoryChanges, tokio::fs::File), row: FileChange) -> Result<()> {
+async fn emit(
+    out: &mut (CategoryChanges, tokio::io::BufWriter<tokio::fs::File>),
+    row: FileChange,
+) -> Result<()> {
     match row.kind {
         ChangeKind::Added => out.0.counts.added += 1,
         ChangeKind::Modified => out.0.counts.modified += 1,
         ChangeKind::Deleted => out.0.counts.deleted += 1,
     }
-    let mut bytes = serde_json::to_vec(&row)?;
-    bytes.push(b'\n');
-    out.1.write_all(&bytes).await?;
+    wire::write_record(&mut out.1, &wire::change(&row)).await?;
     let counts = &out.0.counts;
     if counts.added + counts.modified + counts.deleted <= 10 {
         eprintln!(
@@ -461,19 +459,19 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
     let mut host = writer(
         &input.baseline.directory,
         StorageCategory::HostBind,
-        "host-binds.jsonl",
+        "host-binds.pb",
     )
     .await?;
     let mut volumes = writer(
         &input.baseline.directory,
         StorageCategory::NamedVolume,
-        "named-volumes.jsonl",
+        "named-volumes.pb",
     )
     .await?;
     let mut containers = writer(
         &input.baseline.directory,
         StorageCategory::ContainerLayer,
-        "container-layers.jsonl",
+        "container-layers.pb",
     )
     .await?;
     // Verify every attempted project before scanning shared storage.
@@ -536,7 +534,7 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
                 }
             ));
         }
-        let before: Snapshot = serde_json::from_slice(&tokio::fs::read(&source.baseline).await?)?;
+        let before = wire::read_snapshot(&source.baseline).await?;
         if !before.complete {
             out.0.warnings.push(format!(
                 "{}: {}",
@@ -554,7 +552,14 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
                 }
             }
         } else {
-            source.path.clone()
+            source.path.as_ref().map(|path| {
+                input
+                    .host_views
+                    .iter()
+                    .find(|(root, _)| path.starts_with(root))
+                    .map(|(root, view)| view.join(path.strip_prefix(root).unwrap()))
+                    .unwrap_or_else(|| path.clone())
+            })
         };
         let after = if let Some(path) = path {
             scan(&path).await
@@ -693,7 +698,7 @@ mod tests {
                 > 4 * 1024 * 1024
         );
         // Act: persist every row, then consume incrementally through the public API.
-        let mut out = writer(&root, StorageCategory::HostBind, "changes.jsonl")
+        let mut out = writer(&root, StorageCategory::HostBind, "changes.pb")
             .await
             .unwrap();
         for (i, (path, metadata)) in snapshot.entries.into_iter().enumerate() {
@@ -730,10 +735,88 @@ mod tests {
         // Assert: log preview truncation does not truncate the manifest or stream.
         assert_eq!(counts, [3381, 3381, 3380]);
         // Act: a malformed next record must surface as an error, not EOF.
-        out.1.write_all(b"invalid json\n").await.unwrap();
+        out.1.write_all(&[0x80]).await.unwrap();
         out.1.flush().await.unwrap();
         // Assert
         assert!(reader.next_change().await.is_err());
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+    #[tokio::test]
+    async fn protobuf_snapshot_and_change_stream_preserve_unix_bytes() {
+        use std::os::unix::ffi::OsStringExt;
+        // Arrange: real non-UTF-8 filename and symlink target.
+        let root = std::env::temp_dir().join(format!("metadata-protobuf-{}", std::process::id()));
+        tokio::fs::create_dir(&root).await.unwrap();
+        let name = std::ffi::OsString::from_vec(b"file-\xff".to_vec());
+        let target = std::ffi::OsString::from_vec(b"target-\xfe".to_vec());
+        tokio::fs::write(root.join(&name), b"data").await.unwrap();
+        std::os::unix::fs::symlink(&target, root.join("link")).unwrap();
+        let snapshot = scan(&root).await;
+        assert!(snapshot.complete, "{:?}", snapshot.reason);
+        let snapshot_file = root.join("snapshot.pb");
+        // Act: persist and read the complete baseline as delimited protobuf records.
+        wire::write_snapshot(&snapshot_file, &snapshot)
+            .await
+            .unwrap();
+        let decoded = wire::read_snapshot(&snapshot_file).await.unwrap();
+        // Assert: both names and targets retain exact bytes.
+        assert_eq!(snapshot.entries, decoded.entries);
+        assert!(decoded.entries.contains_key(Path::new(&name)));
+        assert_eq!(
+            decoded.entries[Path::new("link")]
+                .symlink
+                .as_ref()
+                .unwrap()
+                .as_os_str(),
+            target
+        );
+        let mut output = writer(&root, StorageCategory::HostBind, "changes.pb")
+            .await
+            .unwrap();
+        let mut empty = FileChanges::open(&output.0.manifest).await.unwrap();
+        assert!(empty.next_change().await.unwrap().is_none());
+        let expected = FileChange {
+            category: StorageCategory::HostBind,
+            source: "fixture".into(),
+            consumers: vec!["test".into()],
+            path: PathBuf::from(&name),
+            kind: ChangeKind::Added,
+            before: None,
+            after: Some(decoded.entries[Path::new("link")].clone()),
+        };
+        // Act: write and consume one record, then EOF.
+        emit(&mut output, expected.clone()).await.unwrap();
+        output.1.flush().await.unwrap();
+        let mut reader = FileChanges::open(&output.0.manifest).await.unwrap();
+        let actual = reader.next_change().await.unwrap().unwrap();
+        assert_eq!(actual.path, expected.path);
+        assert_eq!(actual.after, expected.after);
+        assert_eq!(actual.category, expected.category);
+        assert!(reader.next_change().await.unwrap().is_none());
+        // Act: an incomplete frame is an error, not EOF.
+        output.1.write_all(&[0x03, 0x01]).await.unwrap();
+        output.1.flush().await.unwrap();
+        assert!(reader.next_change().await.is_err());
+        // Act: drop a complete final snapshot record at its boundary.
+        use prost::Message;
+        let mut bytes = tokio::fs::read(&snapshot_file).await.unwrap();
+        let mut input = bytes.as_slice();
+        let mut last_offset = 0;
+        while !input.is_empty() {
+            last_offset = bytes.len() - input.len();
+            crate::filesystem_proto::SnapshotRecord::decode_length_delimited(&mut input).unwrap();
+        }
+        // Remove an entire record: the header count still detects the truncation.
+        bytes.truncate(last_offset);
+        tokio::fs::write(root.join("truncated.pb"), bytes)
+            .await
+            .unwrap();
+        // Assert
+        assert!(
+            wire::read_snapshot(&root.join("truncated.pb"))
+                .await
+                .is_err()
+        );
         tokio::fs::remove_dir_all(root).await.unwrap();
     }
 }
