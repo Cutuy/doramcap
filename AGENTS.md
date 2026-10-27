@@ -40,4 +40,6 @@ Use the serial default queue and verify the job result. Build unprivileged; nati
 - State what things do directly; avoid contrastive “A, not B” phrasing.
 - Architecture: SVGs with short labels showing components and exchanged artifacts.
 - Plans: use `component/docs/mmddyy-feature-name.md` with the creation date; keep updates in that file and supporting SVGs alongside it.
-- Plans: lead with an embedded architecture SVG, then milestone and validation checkboxes. Check items only after recording evidence.
+- Plans: lead with an embedded architecture SVG. A short high-level plan may precede the detailed milestones.
+- Plans: give each milestone its own clearly labeled section containing both **Work items** and **Validation** checklists. Keep acceptance checks beside the work they verify; a separate global validation list does not replace per-milestone validation.
+- Plans: record evidence in the relevant milestone before checking an item. Mark a milestone complete only when its work items and validations are complete.

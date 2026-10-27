@@ -4,30 +4,103 @@
 
 Created: 2026-10-27. Status: design proposal; implementation deferred.
 
-## Milestones
+## High-level plan
 
-- [ ] M1: Add the gallery server, registered app definitions and per-app instance state.
-- [ ] M2: Wrap Activity Lab in Compose; implement readiness and graceful shutdown.
-- [ ] M3: Add Launch/Open, the viewer shell, heartbeats and HTTP/WebSocket proxying.
-- [ ] M4: Expire unused instances, finalize recordings and verify cleanup.
-- [ ] M5: Package additional apps individually; record their required capabilities and adaptations.
+1. Establish the server-owned app registry and singleton lifecycle.
+2. Package Activity Lab as the first Compose app.
+3. Connect gallery launch, shared viewing and streaming.
+4. Close the idle-shutdown, recording and cleanup loop.
+5. Qualify additional apps through reusable wrappers.
 
-## Validation
+## M1 — Gallery server and instance ownership
 
-- [ ] Two concurrent launches create one instance and return the same app generation.
-- [ ] Two browsers receive live results; disconnecting one preserves the other's instance.
-- [ ] Reconnect during the grace period preserves the instance; last-session expiry stops it.
-- [ ] Late heartbeats cannot revive a stopped generation; launch during stopping waits for cleanup.
+### Work items
+
+- [ ] Add server-owned registrations for Compose definitions, readiness, endpoints and result paths.
+- [ ] Implement per-app generation/state transitions and join concurrent launch requests.
+- [ ] Return startup status promptly; expose failures and block replacement after unverified cleanup.
+- [ ] Detect existing manager-owned resources at startup and require cleanup before replacement.
+
+### Validation
+
+- [ ] Concurrent launches for one app share one startup operation and generation.
+- [ ] Different apps can start independently; unknown app IDs and client-supplied launch settings are rejected.
+- [ ] Existing owned resources prevent duplicate launch after manager restart.
+- [ ] State-transition tests cover startup failure and cleanup-blocked replacement.
+
+## M2 — Activity Lab Compose wrapper
+
+### Work items
+
+- [ ] Package prebuilt assets/binaries and a trusted Compose definition for Activity Lab.
+- [ ] Configure readiness, SIGINT shutdown, owned network and fresh per-generation writable paths.
+- [ ] Qualify bind/base-path support and make only required app adaptations; keep sessions in shared hosting code.
+- [ ] Retain recording output outside disposable storage with an explicit volume policy.
+
+### Validation
+
+- [ ] The packaged app becomes ready and serves its frontend and live stream.
+- [ ] Graceful container stop produces a readable MCAP recording.
+- [ ] Two sequential launches use distinct writable paths and preserve the earlier recording.
+- [ ] Wrapper launch works without adding app-specific branches to core orchestration.
+
+## M3 — Launch, shared viewers and proxy
+
+### Work items
+
+- [ ] Add Launch/Open and a shared viewer shell with startup/error status and session heartbeats.
+- [ ] Proxy generation-scoped HTTP, downloads, WebSocket and SSE traffic incrementally.
+- [ ] Support base-relative assets/API URLs and required redirect/cookie path handling.
+- [ ] Keep static gallery browsing available and expose launch only with a hosting backend.
+
+### Validation
+
+- [ ] Two browsers receive live results from the same instance and have independent sessions.
+- [ ] Launch opens the shell from the user click; refresh, deep links and prefix hosting work.
+- [ ] Assets, downloads, WebSockets and SSE work through the proxy; upstream errors remain visible.
+- [ ] Large responses continue across buffer boundaries without total-result truncation.
+- [ ] Gallery production build/schema checks and manual desktop/mobile browser checks pass.
+
+## M4 — Idle shutdown and verified cleanup
+
+### Work items
+
+- [ ] Apply the documented heartbeat/expiry policy using monotonic time and generation IDs.
+- [ ] Serialize expiry, launch and stop transitions; wait for cleanup before replacement.
+- [ ] Stop writers, finalize recordings, collect categorized metadata and remove owned resources.
+- [ ] Handle browser closure during startup, unexpected app exit and manager shutdown.
+- [ ] Preserve artifacts and report failure when finalization or cleanup cannot be verified.
+
+### Validation
+
+- [ ] Disconnecting one viewer preserves another viewer's instance; last-session expiry stops it.
+- [ ] Reconnect within the grace period preserves the generation; late heartbeats cannot revive it.
+- [ ] Launch during stopping waits for verified cleanup before creating a new generation.
+- [ ] Background tabs, refresh, suspension and network loss follow the documented timeout policy.
 - [ ] Startup failure, browser closure during startup and app exit release owned resources.
-- [ ] Graceful stop produces readable MCAP; failed finalization is visible and preserves artifacts.
-- [ ] Sequential launches use distinct writable paths; no app containers/networks remain after cleanup.
-- [ ] Prefix hosting, assets, downloads, WebSockets, SSE and deep links work through the proxy.
-- [ ] Background tabs, refresh, suspended clients and network loss exercise the documented timeout policy.
-- [ ] Gallery build/schema checks, manual browser checks and Rust/native integration tests pass.
-- [ ] Required ARM64 CI passes; app-specific capability tests run on suitable hardware.
+- [ ] Failed finalization is visible and preserves evidence; successful cleanup leaves no owned containers/networks.
+- [ ] End-to-end serial runs retain readable recordings and separate storage-change categories.
 
-Record evidence beside each completed milestone. Use Arrange/Act/Assert in Rust tests;
-keep frontend verification to builds, schema validation and manual checks per SPA instructions.
+## M5 — Additional apps and release qualification
+
+### Work items
+
+- [ ] Inventory remaining apps and record hosting gaps, readiness and shutdown behavior for each.
+- [ ] Add Compose wrappers individually, reusing launch/session/proxy machinery.
+- [ ] Document BPF/GPU/device needs, host-resource conflicts and allowed concurrent app combinations.
+- [ ] Document launch, result access, idle expiry and recovery from failed cleanup.
+
+### Validation
+
+- [ ] Each enabled app passes launch, two-viewer streaming, expiry and sequential-relaunch checks.
+- [ ] Each wrapper preserves required results and removes its disposable resources.
+- [ ] Compatible apps run together; declared host-resource conflicts surface before launch.
+- [ ] Required Rust/native tests and ARM64 CI pass; capability-specific tests run on suitable hardware.
+- [ ] Final gallery build/schema validation and manual launch/status/result-access checks pass.
+
+Record evidence under the relevant milestone before checking its items. Use
+Arrange/Act/Assert in Rust tests; keep frontend verification to builds, schema
+validation and manual checks per SPA instructions.
 
 ## Contract and ownership
 
