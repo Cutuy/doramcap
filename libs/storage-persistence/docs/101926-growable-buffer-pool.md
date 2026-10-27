@@ -1,6 +1,6 @@
-# Growable managed buffers
-
 ![Managed buffer architecture](architecture/growable-buffer-pool.svg)
+
+# Growable managed buffers
 
 ![Managed allocation lifecycle](architecture/growable-buffer-lifecycle.svg)
 
@@ -13,15 +13,26 @@ The existing aligned wrapper was retained after evaluating `aligned-vec`; no dep
 
 ## G1 — Growable free list
 
+Evidence: [Managed-pool tests](../src/managed_buffers.rs) and [recorded functional evidence](#validation-evidence--2026-10-19) cover growth, reuse, abandonment and allocation failure.
+
+### Work items
+
 - [x] Evaluate [aligned-vec](https://docs.rs/aligned-vec/latest/aligned_vec/) against the existing aligned allocation wrapper before choosing an implementation.
 - [x] Keep a best-fit free list of independently owned, contiguous aligned allocations.
 - [x] Default to eight 256-KiB allocations; grow when no free allocation fits.
 - [x] Preserve allocation addresses and retained capacity; reserve metadata for allocation-free returns.
-- [x] Validation: reserve `256 KiB × 7` and 100 MiB while all eight initial buffers remain leased.
-- [x] Validation: verify contiguous slices, disjoint ranges, stable addresses, best-fit reuse and abandonment.
-- [x] Validation: inject allocation failure and test checked arithmetic; existing leases remain valid.
+
+### Validation
+
+- [x] Reserve `256 KiB × 7` and 100 MiB while all eight initial buffers remain leased.
+- [x] Verify contiguous slices, disjoint ranges, stable addresses, best-fit reuse and abandonment.
+- [x] Inject allocation failure and test checked arithmetic; existing leases remain valid.
 
 ## G2 — Contiguous reservations and persistent registration
+
+Evidence: [Writer tests](../src/writer.rs), [MCAP readback tests](../tests/growable.rs) and [recorded functional evidence](#validation-evidence--2026-10-19) cover admission, registration, failure and exact readback.
+
+### Work items
 
 - [x] Make `reserve(message, size)` expose one writable payload slice for every supported size; migrate the segmented API and callers.
 - [x] Populate sparse registration slots incrementally; retain registrations through reuse and rotation.
@@ -29,12 +40,19 @@ The existing aligned wrapper was retained after evaluating `aligned-vec`; no dep
 - [x] Separate pending-write limits, ring depth, registration limits and pool capacity.
 - [x] Preflight commit admission; return ownership on retryable backpressure without consuming file ranges.
 - [x] Split large writes/registrations as kernel limits require; retain one lease through every referencing request.
-- [x] Validation: delay CQEs and prove a new large reservation completes before any delayed CQE arrives.
-- [x] Validation: independently decode a 100-MiB record with exact payload equality.
-- [x] Validation: exercise full registration/pending queues, partial writes, retries, cancellation and submission errors.
-- [x] Validation: verify registration rollback, completion identity, ownership retention and checked transfer lengths.
+
+### Validation
+
+- [x] Delay CQEs and prove a new large reservation completes before any delayed CQE arrives.
+- [x] Independently decode a 100-MiB record with exact payload equality.
+- [x] Exercise full registration/pending queues, partial writes, retries, cancellation and submission errors.
+- [x] Verify registration rollback, completion identity, ownership retention and checked transfer lengths.
 
 ## G3 — Combining, defaults and explicit trim
+
+Evidence: [Combining tests](../tests/combining.rs), [growth/readback tests](../tests/growable.rs) and [recorded functional evidence](#validation-evidence--2026-10-19) cover mixed sizes, alignment, reuse, trim and rotation.
+
+### Work items
 
 - [x] Copy small existing payloads into one managed combining allocation; keep direct encoding available.
 - [x] Use 256-KiB initial allocations; framing/alignment reduce the combining cutoff, and larger reservations grow independently.
@@ -42,23 +60,33 @@ The existing aligned wrapper was retained after evaluating `aligned-vec`; no dep
 - [x] Pad between MCAP records and retain exact logical EOF; keep each returned payload contiguous.
 - [x] Add explicit idle-only trim: retire registrations before freeing eligible allocations; return Busy while leases/writes remain.
 - [x] Report allocated, free, in-flight and registered bytes separately from queue depth.
-- [x] Validation: mixed sizes decode exactly in buffered mode and configured 512-B/4-KiB direct modes.
-- [x] Validation: warmed reuse allocates nothing; capacity persists until trim; rotation and shutdown preserve ownership.
-- [x] Validation: threshold boundaries and framing overhead fit; small-message batching avoids per-message alignment gaps.
+
+### Validation
+
+- [x] Mixed sizes decode exactly in buffered mode and configured 512-B/4-KiB direct modes.
+- [x] Warmed reuse allocates nothing; capacity persists until trim; rotation and shutdown preserve ownership.
+- [x] Threshold boundaries and framing overhead fit; small-message batching avoids per-message alignment gaps.
 
 ## G4 — Qualification
 
-- [x] Run affected tests, formatting and Clippy on x86 and ARM64; verify the serial Pueue job result.
-- [x] Run applicable Dora end-to-end comparisons separately.
+Evidence: [Recorded commands, platforms and worker job 46](#validation-evidence--2026-10-19) establish functional validation. Unchecked benchmark and target-device qualification items remain open.
+
+### Work items
+
 - [ ] Add a plain stdio baseline using `fwrite`, with ordinary stdio buffering and no managed pool or io_uring.
 - [x] Keep the warmed direct path: pool-owned memory already registered with io_uring.
 - [ ] Benchmark external-memory direct writes: intra-process prepared slabs are implemented in E0/E2P; large payloads remain E1–E2 work.
 - [ ] Set workload budgets; compare the three paths below on target storage.
-- [ ] Validation: use identical logical records, payload sizes and sync policy; include final `fflush`/`fsync` or direct drain/`fsync` in end-to-end throughput.
-- [ ] Validation: report call/admission, write-completion and durable-completion latency separately; collect enough samples for percentiles and report cold registration separately.
-- [x] Validation: bounded queue pressure, injected failures and rotation preserve exact readback and explicit backpressure.
-- [ ] Validation: record throughput, CPU, p99 latency, copies, allocations and retained/registered memory against budgets.
-- [x] Validation: attach commands, source manifest, platform/filesystem, worker job and counters; distinguish WSL functional results from target DMA evidence.
+
+### Validation
+
+- [x] Run affected tests, formatting and Clippy on x86 and ARM64; verify the serial Pueue job result.
+- [x] Run applicable Dora end-to-end comparisons separately.
+- [ ] Use identical logical records, payload sizes and sync policy; include final `fflush`/`fsync` or direct drain/`fsync` in end-to-end throughput.
+- [ ] Report call/admission, write-completion and durable-completion latency separately; collect enough samples for percentiles and report cold registration separately.
+- [x] Bounded queue pressure, injected failures and rotation preserve exact readback and explicit backpressure.
+- [ ] Record throughput, CPU, p99 latency, copies, allocations and retained/registered memory against budgets.
+- [x] Attach commands, source manifest, platform/filesystem, worker job and counters; distinguish WSL functional results from target DMA evidence.
 
 References: [registration updates](https://man7.org/linux/man-pages/man3/io_uring_register_buffers_update_tag.3.html),
 [resource retirement](https://man7.org/linux/man-pages/man2/io_uring_register.2.html),
@@ -74,8 +102,8 @@ References: [registration updates](https://man7.org/linux/man-pages/man3/io_urin
 
 ## Validation evidence · 2026-10-19
 
-- [x] x86_64 Linux 7.0.0-38, ext4: storage tests with all features and `--include-ignored` (23 passed); no-default-feature tests; affected application tests; formatting and Clippy.
-- [x] x86 demo: independent MCAP readback, SSE/CQEs, rotation, sealing and restart.
+- [x] X86_64 Linux 7.0.0-38, ext4: storage tests with all features and `--include-ignored` (23 passed); no-default-feature tests; affected application tests; formatting and Clippy.
+- [x] X86 demo: independent MCAP readback, SSE/CQEs, rotation, sealing and restart.
 - [x] Functional budgets: zero warmed storage allocations; zero payload relocation during managed reservation/commit; zero CQE waits during large reserve; exact readback under bounded admission.
 - [ ] Target-device throughput/latency budgets and physical DMA qualification remain open. WSL results establish functional behavior.
 
@@ -103,7 +131,6 @@ The recorded “p99” selects the maximum of 64 samples; the plots label it max
 All cases recorded **zero warmed allocations**. Axes use the same scales across platforms.
 [Raw measurements](benchmarks/20261019.csv) · [Plot generator](benchmarks/plot.py).
 Plain `fwrite` and external direct I/O remain unmeasured.
-
 
 The pool test retains 103.75 MiB with all ten allocations free after the initial
 eight leases plus 1.75-MiB and 100-MiB growth. Explicit trim reduces retained bytes

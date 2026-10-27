@@ -89,6 +89,12 @@ impl McapWriter {
         self.core.publish_metrics();
         result
     }
+    /// Reserve one contiguous writable payload for `message`.
+    ///
+    /// Borrows this writer until the reservation is committed or dropped. Dropping
+    /// an uncommitted reservation abandons its bytes. Invalid channels/sizes,
+    /// allocation/registration failures, backpressure and pending I/O errors return
+    /// errors. Commit establishes acceptance; use [`Self::finish`] for durability.
     pub fn reserve(
         &mut self,
         message: Message,
@@ -96,6 +102,10 @@ impl McapWriter {
     ) -> io::Result<MessageReservation<'_>> {
         self.core.reserve(message, payload_len)
     }
+    /// Reserve a contiguous payload through the compatibility `BufMut` adapter.
+    /// Uses the same placement, ownership and errors as [`Self::reserve`]; small
+    /// payloads may share a combining buffer. The initial pool size does not cap
+    /// payload length.
     pub fn reserve_large(
         &mut self,
         message: Message,
@@ -103,15 +113,36 @@ impl McapWriter {
     ) -> io::Result<LargeReservation<'_>> {
         self.core.reserve_large(message, payload_len)
     }
+    /// Consume a writable slab into a framing builder bound to this writer.
+    /// The builder may move to a producer thread and remains valid across rotation.
+    /// Seal it before passing its immutable block to [`Self::append_prepared_records`].
     pub fn prepare_records(&self, slab: WritableSlab) -> PreparedRecordsBuilder {
         self.core.prepare_records(slab)
     }
+    /// Accept an immutable prepared block as one contiguous file range.
+    ///
+    /// The block must originate from this writer, including across rotation. On
+    /// rejection, [`Rejected`] returns the complete block and error; no file range
+    /// is consumed for it. `WouldBlock` permits retry after driving pending I/O.
+    /// Other errors include incompatible framing, registration and pending I/O
+    /// failures. Earlier accepted writes may progress during a rejected attempt.
+    ///
+    /// On success, storage retains the backing through completion. Success means
+    /// acceptance; [`Self::flush_written`] and [`Self::finish`] expose later failures.
     pub fn append_prepared_records(
         &mut self,
         block: PreparedBlock,
     ) -> Result<crate::file_offsets::FileRange, Rejected<PreparedBlock>> {
         self.update(|c| c.append_prepared_records(block))
     }
+    /// Frame and accept an immutable external payload without copying its bytes.
+    ///
+    /// `message.channel` must be declared; direct-I/O addresses and lengths must
+    /// satisfy the writer alignment. Storage adds a managed prefix and retains the
+    /// read lease through completion. Rejection returns the intact lease and error
+    /// without accepting its file range; earlier writes may still progress. Errors
+    /// include invalid metadata/alignment, backpressure, registration and I/O failure.
+    /// Drive pending I/O before retrying `WouldBlock`; success means acceptance.
     pub fn append_external_payload(
         &mut self,
         message: Message,
@@ -119,6 +150,13 @@ impl McapWriter {
     ) -> Result<crate::file_offsets::FileRange, Rejected<crate::mapped::ReadLease>> {
         self.update(|c| c.append_external_payload(message, lease))
     }
+    /// Accept complete external message records and padding with their bytes intact.
+    ///
+    /// Records must use declared channels; file-level records belong to the writer.
+    /// Storage retains the read lease through completion. Malformed framing, invalid
+    /// alignment, backpressure, registration or I/O errors return the intact lease
+    /// in [`Rejected`] without accepting its range. Earlier writes may progress.
+    /// Success means acceptance; explicit flush/finish reports later failures.
     pub fn append_external_records(
         &mut self,
         lease: crate::mapped::ReadLease,
@@ -149,12 +187,22 @@ impl McapWriter {
     pub fn poll(&mut self, now: Instant) -> io::Result<()> {
         self.update(|c| c.poll(now))
     }
+    /// Flush buffered messages and wait for accepted writes to complete.
+    /// Returns retained write/submission errors. File synchronization and terminal
+    /// MCAP records are performed by [`Self::finish`].
     pub fn flush_written(&mut self) -> io::Result<()> {
         self.update(McapCore::flush_written)
     }
+    /// Consume this writer, drain writes, append the terminal MCAP records and sync.
+    /// Returns write, footer, logical-length truncation or sync errors. On failure
+    /// the writer is consumed and the recording may be incomplete.
     pub fn finish(mut self) -> io::Result<()> {
         self.update(McapCore::seal)
     }
+    /// Finalize the current recording and take ownership of `file` for the next one.
+    /// Repeats schema/channel records and preserves producer registration caches.
+    /// The caller supplies dictionary checkpoints. Errors may occur after the old
+    /// file is finalized or the new file is installed; there is no rollback.
     pub fn rotate(&mut self, file: File) -> io::Result<()> {
         self.update(|c| c.rotate(file))
     }

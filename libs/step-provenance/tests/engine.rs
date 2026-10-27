@@ -140,19 +140,27 @@ fn ambiguity_waits_for_unknown_branch_before_resolving() {
 
 #[test]
 fn late_edges_cannot_form_a_cycle_and_rejected_patches_are_atomic() {
+    // Arrange
     let mut e = engine(vec![], 10);
     let a = reference("a", 1);
     let b = reference("b", 1);
     e.ingest(patch(&a, Some(1), None, Some(vec![b.clone()])))
         .unwrap();
     let before = e.stats();
-    assert!(
-        e.ingest(patch(&b, Some(2), None, Some(vec![a.clone()])))
-            .is_err()
-    );
+
+    // Act: the late parent would close a dependency cycle.
+    let cycle = e.ingest(patch(&b, Some(2), None, Some(vec![a.clone()])));
+
+    // Assert: rejection preserves the graph and counters.
+    assert!(cycle.is_err());
     assert_eq!(e.stats(), before);
     assert!(e.record(&b).is_none());
-    assert!(e.ingest(patch(&a, Some(99), Some(100), None)).is_err());
+
+    // Act: a conflicting timestamp must also leave the existing record intact.
+    let conflict = e.ingest(patch(&a, Some(99), Some(100), None));
+
+    // Assert
+    assert!(conflict.is_err());
     assert_eq!(e.record(&a).unwrap().start_ns, Some(1));
     assert_eq!(e.record(&a).unwrap().end_ns, None);
 }

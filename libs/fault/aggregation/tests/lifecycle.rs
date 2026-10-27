@@ -62,21 +62,44 @@ impl Harness {
 }
 #[test]
 fn immediate_failure_one_second_recovery_and_timer_never_clears() {
+    // Arrange
     let mut h = Harness::new(Policy::default());
+
+    // Act: a failure activates the condition immediately.
     let o = h.report(0, Outcome::Failure);
     h.deliver(o, 0);
+
+    // Assert
     assert_eq!(h.health(), Health::Active);
+
+    // Act: successful evidence begins recovery.
     let o = h.report(10, Outcome::Success);
     h.deliver(o, 10);
+
+    // Assert
     assert_eq!(h.health(), Health::Recovering);
+
+    // Act: time passing alone cannot clear the condition.
     h.agg.advance(ms(1000)).unwrap();
+
+    // Assert
     assert_eq!(h.health(), Health::Recovering);
+
+    // Act: evidence before the recovery interval keeps recovery pending.
     let o = h.report(1009, Outcome::Success);
     h.deliver(o, 1009);
+
+    // Assert
     assert_eq!(h.health(), Health::Recovering);
+
+    // Act: evidence at the interval boundary clears the condition.
     let o = h.report(1010, Outcome::Success);
     h.deliver(o, 1010);
+
+    // Assert
     assert_eq!(h.health(), Health::Healthy);
+
+    // Arrange
     let count = h
         .agg
         .state(h.check.key())
@@ -84,10 +107,12 @@ fn immediate_failure_one_second_recovery_and_timer_never_clears() {
         .latest
         .unwrap()
         .successes;
-    assert_eq!(
-        h.agg.ingest(o, o.observed_at, ms(1010)).unwrap(),
-        Ingest::Duplicate
-    );
+
+    // Act: redelivering that evidence is idempotent.
+    let duplicate = h.agg.ingest(o, o.observed_at, ms(1010)).unwrap();
+
+    // Assert
+    assert_eq!(duplicate, Ingest::Duplicate);
     assert_eq!(
         h.agg
             .state(h.check.key())
@@ -98,6 +123,7 @@ fn immediate_failure_one_second_recovery_and_timer_never_clears() {
         count
     );
 }
+
 #[test]
 fn intervening_failure_resets_recovery_even_when_not_delivered() {
     let mut h = Harness::new(Policy::default());

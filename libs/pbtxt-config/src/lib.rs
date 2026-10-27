@@ -144,6 +144,11 @@ impl<P: Payload> Fragment<P> {
 }
 /// `registry` is authoritative; every registered app receives a normalized payload.
 /// Repeated includes reapply a cached source at their declared precedence position.
+/// Loading rejects more than 32 active include levels, 256 total visits, 1 MiB per
+/// file or 8 MiB across unique sources. Limit errors name the failing path and limit;
+/// oversized-file diagnostics report a lower bound from the bounded read. Cycles,
+/// invalid fragments, unknown app IDs and payload validation failures also return
+/// errors. Resolution performs no writes and returns no partial deployment.
 pub fn resolve<P: Payload>(path: &Path, registry: &[&str]) -> Result<Resolved<P>> {
     let mut loader = Loader::<P> {
         payloads: BTreeMap::new(),
@@ -197,8 +202,19 @@ struct Loader<P: Payload> {
 impl<P: Payload> Loader<P> {
     fn visit(&mut self, path: &Path) -> Result<()> {
         self.visits += 1;
-        if self.stack.len() >= 32 || self.visits > 256 {
-            return Err(Error::Invalid("include depth/visit limit exceeded".into()));
+        if self.stack.len() >= 32 {
+            return Err(Error::Invalid(format!(
+                "{}: include depth limit exceeded (limit: 32, observed: {})",
+                path.display(),
+                self.stack.len() + 1
+            )));
+        }
+        if self.visits > 256 {
+            return Err(Error::Invalid(format!(
+                "{}: include visit limit exceeded (limit: 256, observed: {})",
+                path.display(),
+                self.visits
+            )));
         }
         let path = fs::canonicalize(path).map_err(|e| io(path.display().to_string(), e))?;
         if self.stack.contains(&path) {
@@ -216,8 +232,19 @@ impl<P: Payload> Loader<P> {
                 .read_to_end(&mut data)
                 .map_err(|e| io(path.display().to_string(), e))?;
             self.bytes += data.len();
-            if data.len() > 1_048_576 || self.bytes > 8_388_608 {
-                return Err(Error::Invalid("configuration byte limit exceeded".into()));
+            if data.len() > 1_048_576 {
+                return Err(Error::Invalid(format!(
+                    "{}: configuration byte limit exceeded for file (limit: 1048576, observed at least: {})",
+                    path.display(),
+                    data.len()
+                )));
+            }
+            if self.bytes > 8_388_608 {
+                return Err(Error::Invalid(format!(
+                    "{}: configuration byte limit exceeded for all sources (limit: 8388608, observed: {})",
+                    path.display(),
+                    self.bytes
+                )));
             }
             self.sources.insert(path.clone(), data);
         }
@@ -325,16 +352,23 @@ mod tests {
     }
     #[test]
     fn independent_payload_composition_and_fingerprint() {
+        // Arrange
         let tmp = Temp::new();
         tmp.put("base", &entry("a", "base"));
         tmp.put("override", &entry("a", "lab"));
         let path = tmp.put("main", "include:'base' include:'override' include:'base'");
+        // Act
         let resolved = resolve::<proto::App>(&path, &["a"]).unwrap();
+
+        // Assert
         assert_eq!(resolved.config("a").unwrap().id, "base");
         assert_eq!(resolved.provenance.len(), 3);
         assert_eq!(resolved.sources.len(), 3);
         assert!(resolved.config("absent").is_err());
+        // Arrange
         let single = tmp.put("single", &entry("a", "base"));
+
+        // Act / Assert: equivalent resolved payloads have the same fingerprint.
         assert_eq!(
             resolved.digest(),
             resolve::<proto::App>(&single, &["a"]).unwrap().digest()
@@ -348,6 +382,7 @@ mod tests {
     }
     #[test]
     fn rejects_wrong_types_and_hidden_invalid_inputs() {
+        // Arrange
         let tmp = Temp::new();
         for bad in [
             entry("a", "invalid"),
@@ -357,46 +392,164 @@ mod tests {
         ] {
             tmp.put("bad", &bad);
             let path = tmp.put("main", &format!("include:'bad' {}", entry("a", "good")));
-            assert!(
-                resolve::<proto::App>(&path, &["a"])
-                    .unwrap_err()
-                    .to_string()
-                    .contains("bad")
-            );
+            // Act
+            let error = resolve::<proto::App>(&path, &["a"]).unwrap_err();
+
+            // Assert
+            assert!(error.to_string().contains("bad"));
         }
     }
     #[test]
-    fn bounds_cycles_and_registry_validation() {
+    fn cycles_and_registry_validation() {
+        // Arrange
         let tmp = Temp::new();
         let path = tmp.put("a", "include:'b'");
         tmp.put("b", "include:'a'");
-        assert!(
-            resolve::<proto::App>(&path, &[])
-                .unwrap_err()
-                .to_string()
-                .contains("cycle")
-        );
+
+        // Act
+        let error = resolve::<proto::App>(&path, &[]).unwrap_err();
+
+        // Assert
+        assert!(error.to_string().contains("cycle"));
+
+        // Arrange
         tmp.put("a", "include:''");
+
+        // Act / Assert: empty includes are invalid before deployment normalization.
         assert!(resolve::<proto::App>(&path, &[]).is_err());
-        tmp.put("a", &" ".repeat(1_048_577));
-        assert!(
-            resolve::<proto::App>(&path, &[])
-                .unwrap_err()
-                .to_string()
-                .contains("byte limit")
-        );
+
+        // Arrange
         tmp.put("a", "");
+
+        // Act / Assert: missing payloads and invalid registry IDs are rejected.
         assert!(resolve::<proto::App>(&path, &["a"]).is_err());
         assert!(resolve::<proto::App>(&path, &["a", "a"]).is_err());
         assert!(resolve::<proto::App>(&path, &[""]).is_err());
-        for i in 0..33 {
+    }
+
+    #[test]
+    fn include_depth_boundary_reports_path_and_limit() {
+        // Arrange: 32 active levels are supported, counting the root file.
+        let tmp = Temp::new();
+        for i in 0..31 {
             tmp.put(&format!("level{i}"), &format!("include:'level{}'", i + 1));
         }
-        assert!(
-            resolve::<proto::App>(&tmp.0.join("level0"), &[])
-                .unwrap_err()
-                .to_string()
-                .contains("depth")
+        tmp.put("level31", "");
+        let root = tmp.0.join("level0");
+
+        // Act
+        let result = resolve::<proto::App>(&root, &[]);
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Arrange: adding one more include crosses the depth boundary.
+        tmp.put("level31", "include:'level32'");
+        let offending = tmp.put("level32", "");
+
+        // Act
+        let error = resolve::<proto::App>(&root, &[]).unwrap_err();
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{}: include depth limit exceeded (limit: 32, observed: 33)",
+                offending.display()
+            )
+        );
+    }
+
+    #[test]
+    fn include_visit_boundary_counts_cached_reapplications() {
+        // Arrange: the root plus 255 cached includes uses all 256 visits.
+        let tmp = Temp::new();
+        let included = tmp.put("base", "");
+        let root = tmp.put("main", &"include:'base'\n".repeat(255));
+
+        // Act
+        let result = resolve::<proto::App>(&root, &[]).unwrap();
+
+        // Assert: cached source bytes do not erase include visits.
+        assert_eq!(result.sources.len(), 2);
+
+        // Arrange
+        tmp.put("main", &"include:'base'\n".repeat(256));
+
+        // Act
+        let error = resolve::<proto::App>(&root, &[]).unwrap_err();
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{}: include visit limit exceeded (limit: 256, observed: 257)",
+                included.display()
+            )
+        );
+    }
+
+    #[test]
+    fn file_byte_boundary_reports_a_bounded_read_lower_bound() {
+        // Arrange: whitespace is a valid empty fragment at exactly 1 MiB.
+        let tmp = Temp::new();
+        let path = tmp.put("main", &" ".repeat(1_048_576));
+
+        // Act
+        let result = resolve::<proto::App>(&path, &[]);
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Arrange: the bounded reader observes only the first excess byte.
+        tmp.put("main", &" ".repeat(1_048_580));
+
+        // Act
+        let error = resolve::<proto::App>(&path, &[]).unwrap_err();
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{}: configuration byte limit exceeded for file (limit: 1048576, observed at least: 1048577)",
+                path.display()
+            )
+        );
+    }
+
+    #[test]
+    fn aggregate_byte_boundary_identifies_the_last_source() {
+        // Arrange: the root and eight unique fragments total exactly 8 MiB.
+        let tmp = Temp::new();
+        let includes = (0..8)
+            .map(|i| format!("include:'part{i}'\n"))
+            .collect::<String>();
+        let root = tmp.put("main", &includes);
+        for i in 0..7 {
+            tmp.put(&format!("part{i}"), &" ".repeat(1_048_576));
+        }
+        let last_size = 1_048_576 - includes.len();
+        let last = tmp.put("part7", &" ".repeat(last_size));
+
+        // Act
+        let result = resolve::<proto::App>(&root, &[]);
+
+        // Assert
+        assert!(result.is_ok());
+
+        // Arrange: the last file stays below 1 MiB but exceeds the total by one byte.
+        tmp.put("part7", &" ".repeat(last_size + 1));
+
+        // Act
+        let error = resolve::<proto::App>(&root, &[]).unwrap_err();
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "{}: configuration byte limit exceeded for all sources (limit: 8388608, observed: 8388609)",
+                last.display()
+            )
         );
     }
 }
