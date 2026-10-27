@@ -36,7 +36,8 @@ pub trait Step {
     /// Serializable result; use identifiers rather than OS handles.
     type Output: Serialize + DeserializeOwned;
 
-    /// Stable schema revision for this implementation; type name supplies its name.
+    /// Caller-declared telemetry revision; currently not used for decoding, dispatch,
+    /// or compatibility checks. The Rust type name supplies the step name.
     const VERSION: u32 = 1;
 
     /// Perform one invocation using injected fields and owned inputs.

@@ -90,15 +90,31 @@ impl<T> From<Output<T>> for Input<T> {
     }
 }
 
-/// Local coroutine executor with caller-supplied step factories.
+/// Execute registered steps as local coroutines.
 ///
-/// Register factories before executing workflows. Each call constructs and drops a
-/// fresh step; factories capture typed shared dependencies (`Rc` or `Arc`). The
-/// executor retains factories and its injected observer until dropped. No service
-/// locator, application config, history, retries or remote transport is provided.
-/// Futures and services may be non-Send. Calls execute in the caller's task;
-/// concurrent calls can use `tokio::join!`. Nested calls through the same executor
-/// inherit a parent ID; newly spawned tasks do not inherit that scope.
+/// # Synopsis
+///
+/// Create with [`Self::new`], register typed factories with [`Self::register`],
+/// then await [`Self::run`] from ordinary procedural Rust.
+///
+/// # Ownership
+///
+/// Owns factories and the observer until dropped. Each invocation creates and
+/// drops a fresh step. Factories own captured dependencies; `Rc`/`Arc` services
+/// can outlive the executor when another owner retains them.
+///
+/// # Concurrency
+///
+/// Calls execute in the caller's task; futures and services may be non-`Send`.
+/// Use `tokio::join!` for cooperative concurrent calls. Nested calls through this
+/// executor inherit the active parent ID; spawned tasks do not inherit that scope.
+/// Factory registration requires exclusive access. Callers coordinate side effects.
+///
+/// # Failure semantics
+///
+/// Calls report validation, serialization and step errors. Factory/body panics
+/// unwind. Observer panics are counted and suppressed. Cancellation drops the step
+/// future; callers retain responsibility for asynchronous cleanup. No retry occurs.
 pub struct LocalExecutor {
     factories: HashMap<TypeId, Box<dyn Any>>,
     session: String,
@@ -121,8 +137,11 @@ impl Default for LocalExecutor {
 }
 
 impl LocalExecutor {
-    /// Inject the lifecycle observer. Its synchronous callback must not block.
-    /// Observer panics are counted and suppressed; steps are never retried.
+    /// Construct an executor owning `observer`, with no registered factories.
+    ///
+    /// The observer receives synchronous lifecycle callbacks and must not block.
+    /// Callback panics are suppressed and counted by [`Self::observer_failures`].
+    /// The initial telemetry label is `local`; payload capture is disabled.
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
@@ -165,13 +184,29 @@ impl LocalExecutor {
         self.observer_failures.get()
     }
 
-    /// Create, use and drop a fresh factory-created step instance, awaiting it in the current task.
+    /// Invoke a registered step and return its result with producer metadata.
+    ///
+    /// # Parameters and return value
+    ///
+    /// `input` supplies owned arguments and optional producer dependencies. The
+    /// returned [`Output`] owns the decoded result and this invocation's identity.
+    ///
+    /// # Behavior
     ///
     /// Input and output are JSON-round-tripped. Invalid input prevents body
     /// entry; output errors occur after the body and do not undo its effects.
     /// Metadata includes the automatically derived Rust type name and declared
     /// producers. Passing outputs from another executor fails before invocation.
     /// Nested calls on this executor receive this invocation as their parent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::UnregisteredStep`], [`Error::InvalidDependency`] or
+    /// [`Error::IdExhausted`] before invocation events. JSON failures return
+    /// [`Error::Serialization`]; body errors propagate unchanged. Output failures
+    /// occur after side effects and do not roll them back.
+    ///
+    /// # Cancellation and panics
     ///
     /// Dropping an unpolled future performs no work. Dropping a polled, pending call
     /// emits `Cancelled` (or `Panicked` during unwinding). It does not imply OS-level
