@@ -174,8 +174,6 @@ resume workloads. Disk exhaustion and persistence errors remain visible failures
 - [ ] Validate declared Linux packages, including serial ARM64 CI where supported; record
   host, commands and results. Qualify GPU prerequisites separately if later claimed.
 
-MVP is complete when all three milestones pass. Broader mockups remain follow-up scope.
+MVP is complete when all three milestones pass. Broader product capabilities remain follow-up scope.
 
-[Product direction](../../apps/project-explorer/docs/102926-compose-adoption-experience.md) ·
-[Mockups](../../apps/project-explorer/docs/102926-workflow-mockups-latest.md) ·
 [Existing execution](../../libs/workload-docker/docs/102626-compose-workflow.md)
