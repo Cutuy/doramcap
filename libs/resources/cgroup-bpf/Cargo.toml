@@ -9,7 +9,7 @@ default = []
 bpf = ["dep:libbpf-rs", "dep:libbpf-cargo"]
 
 [dependencies]
-libbpf-rs = { version = "0.26", optional = true }
+libbpf-rs = { version = "0.27", optional = true }
 
 [build-dependencies]
 libbpf-cargo = { version = "0.26", optional = true }
