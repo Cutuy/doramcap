@@ -2,178 +2,166 @@
 
 # doramcap Console MVP
 
-Created: 2026-10-29. Status: revised implementation plan; implementation pending.
+Created: 2026-10-29. Status: implementation pending.
 
-**Console** lets users adopt an existing Compose project, review its settings,
-run it with observation, and inspect saved evidence. Source and Compose files
-remain unchanged. System apps supply monitoring; workflows supply execution.
+**Console** runs one existing Compose application with CPU capture. The user
+selects a project, reviews it, starts it, watches workflow steps, then stops it
+and downloads the result. One page presents these successive states.
 
-## Deployment and scope
+## Fixed scope
 
-One on-prem Node.js server runs alongside the repository, Docker and artifacts.
-It serves the frontend and API on a configured address/port; a browser opens that
-URL over the local network. The host can be headless. Deployment includes the
-native Rust addon and qualified monitoring assets.
+- One on-prem Linux host, one Node.js server, one user and one active run.
+- One project directory with a default Compose entry point and prebuilt local images.
+- Optional profiles declared by that project. Start the complete selected application.
+- Existing Rust Compose workflow, CPU monitor and artifact/report formats.
+- First acceptance target: a small real Compose fixture. vEDGAR `singlepc` is a
+  subsequent compatibility pilot; its GPU, simulator and interactive requirements
+  are outside MVP acceptance.
 
-| Location | Responsibility |
+The host can be headless; a browser opens the server URL over the local network.
+Startup config supplies the listen address, approved project root, output directory
+and single-user access. Package one declared Linux host target first.
+
+Defer custom Compose/env-file pickers, file ordering, individual service selection,
+project presets, builds/pulls, saved-run browsing, durable event replay, live CPU
+charts, container dashboards, workflow editors, A/B, queues and remote execution.
+
+## One page, four states
+
+| State | User sees and does |
 |---|---|
-| `console/frontend/` | TypeScript, React, Vite; screens and interaction state |
-| `console/server/` | TypeScript, Node.js; HTTP, product state, history, artifact delivery |
-| `console/server/native/` | Rust N-API adapter over existing execution libraries |
-| `console/docs/` | Plans and supporting diagrams |
+| Adopt | Enter a server-side project directory; optionally enable its declared profiles. Click Review. |
+| Review | See services that will run, CPU capture availability and blocking prerequisites. Click Start or return to Adopt. |
+| Run | See workflow step names, status, duration and redacted errors. Click Stop; continue watching finalization. |
+| Inspect | See execution, evidence and cleanup outcomes, and download the current run's CPU MCAP and report. Start another run after verified cleanup. |
 
-MVP supports one host, one selected project and one active experiment. Require
-prebuilt local images and qualified CPU-monitor prerequisites. Validate a small
-real Compose fixture first; vEDGAR is the next compatibility pilot.
+Let Compose resolve its default files, overrides and `.env` in the selected project
+directory. Enumerate profiles with `docker compose config --profiles`; use Compose's
+resolved model for review. Resolve and launch with the same recorded inputs.
+Service-level `env_file` and included files remain project-owned configuration.
+If a project needs a custom invocation or missing settings, explain the unsupported
+requirement. The user prepares that project outside Console.
 
-Defer A/B, queues, builds, recursive browsing, live CPU charts, video/robotics
-viewers, host tuning, remote-device execution and automatic crash recovery.
+Review is read-only: no environment editor, mount editor or per-service toggles.
+Changing the directory or profiles invalidates the review. Start revalidates the
+prepared inputs and requires a fresh review if they changed. Keep the existing
+runner's input identities, coverage diagnostics and admission checks.
 
-## Four screens
-
-| Screen | Minimum behavior |
-|---|---|
-| Adopt | Specify a server-side repository path. Suggest top-level Compose files; select ordered files, env files, profiles and services. |
-| Review | Show resolved services, images, mounts, effective overrides and prerequisite failures. Highlight capture gaps. |
-| Run | Show steps, container status and bounded diagnostics. Stop and reconnect by run ID. |
-| Inspect | Show execution, evidence and cleanup outcomes separately; select saved runs and download CPU MCAP and reports. |
-
-## TypeScript / Rust boundary
+## Existing libraries and the native boundary
 
 ![Native library interop](102926-console-interop.svg)
 
-The Node process loads a native addon through **N-API**. Use existing Rust library
-APIs behind a small adapter. Proposed binding: [napi-rs](https://napi.rs/);
-evaluate and pin it during implementation. No dependency has been added by this plan.
-
-| Owner | Responsibilities |
+| Location | Responsibility |
 |---|---|
-| TypeScript | HTTP validation/access, selections, review records, idempotency, run admission, history and downloads |
-| Rust | Resolve and revalidate inputs, execute Compose, capture evidence, stop/finalize, verify cleanup and produce the authoritative report |
-| Native adapter | Owned input/output conversion, async completion, bounded event transfer and explicit lifetime management |
+| `console/frontend/` | TypeScript, React, Vite; the four page states |
+| `console/server/` | TypeScript, Node.js; HTTP, current-run ownership and downloads |
+| `console/server/native/` | Rust N-API adapter over the existing runner and telemetry |
+| `console/docs/` | This plan and its diagrams |
 
-Rust retains the execution lifecycle and its admission safety checks. TypeScript
-persists the product view of that lifecycle; it cannot mark cleanup successful
-or override a blocked runner. Artifacts stay on disk and cross the boundary as
-registered references. MCAP bytes are streamed by the server on download.
+Use a native addon. Evaluate [napi-rs](https://napi.rs/) before adding a dependency.
+Execute Rust work on a dedicated thread with its own async runtime/local task
+context; construct the existing `Rc`-based runner there. Transfer owned records
+through bounded queues and keep JavaScript values on the Node thread. Reuse
+generated protobuf records and pbtxt settings. Artifacts stay on disk; HTTP streams
+registered downloads. See [Node-API](https://nodejs.org/api/n-api.html).
 
-### Async contract
+The adapter needs only `prepare(directory, profiles)`, `start(preparedId, runId)`,
+`run.status()`, `run.stop()`, `run.completed` and `close()`. Preparation, Start and
+completion are async; Stop accepts an idempotent cooperative request, including
+during startup. `close()` stops admission and awaits finalization. The server owns
+the run until completion; garbage collection never controls shutdown.
 
-Names below describe the intended API; finalize signatures beside the implementation.
+### Run shows workflow telemetry
 
-| Call | Result / guarantee |
-|---|---|
-| `prepare(selection)` | Promise of a redacted review and opaque prepared-input identity |
-| `start(preparedId, runId)` | Promise of a run handle after revalidation and admission; readiness arrives separately |
-| `run.readEvents(after, limit)` | Promise of a bounded batch, next cursor and any gap indicator |
-| `run.stop()` | Idempotent stop acceptance; usable during startup |
-| `run.completed` | Final report after evidence finalization and cleanup attempt, including failures |
-| `close()` | Stop admission, request Stop, await finalization, release native resources |
+Pass the existing [TelemetryObserver](../../libs/orchestrator/src/telemetry.rs)
+into the [Compose runner](../../libs/workload-docker/src/workflows/recorded_compose/mod.rs).
+Reuse the telemetry group's [workflow-protocol](../../libs/telemetry/workflow-protocol/)
+[event schema](../../libs/telemetry/workflow-protocol/proto/workflow.proto).
 
-Run native work on a dedicated Rust thread with its own async runtime/local task
-context. Construct the existing `Rc`-based runner there. Transfer owned records
-through bounded queues; keep JavaScript values on the Node thread. Native work
-must leave HTTP and the Node event loop responsive. Start retains the run in a
-server-owned registry until completion; JavaScript garbage collection is never
-the shutdown mechanism.
+- Keep one row per `(session, executor, invocation)`, with the emitted step name.
+  Repeated invocations get separate rows; child rows follow the emitted parent ID.
+- Map `STARTED` to Running; show `SUCCEEDED`, `FAILED`, `CANCELLED` and `PANICKED`
+  as their corresponding terminal states. Use emitted durations for completed steps.
+- Poll the current status snapshot once per second. Refreshing the page reloads it;
+  the browser does not replay an event log or reconstruct the workflow.
+- The observer sink only admits owned events to a bounded queue. A consumer reduces
+  them into a bounded current-run snapshot; slow browsers never block execution.
+  Expose sequence gaps, dropped-event counts and retention overflow as incomplete
+  progress. Never infer a missing step outcome from a container's state.
+- Strip payloads and redact errors before exposing records. The existing runner can
+  emit sensitive configuration in event payloads. Keep final completion/report
+  available independently of telemetry delivery.
 
-Persist activity with monotonically increasing cursors. Bound queue depth, batch
-size and diagnostic retention; coalesce replaceable status updates. Surface lost
-activity explicitly. Terminal state and the final report remain independently
-readable. Slow or disconnected browsers must not stall capture or cleanup.
+## Minimal server state and lifecycle
 
-See [Node N-API](https://nodejs.org/api/n-api.html) and the
-[thread-safe bridge rules](https://napi.rs/docs/concepts/threadsafe-function).
+Expose prepare, Start, current status, Stop and current-result downloads over HTTP.
+Atomically persist a current-run marker with the run ID and Start idempotency key before launch;
+a repeated Start returns that run, and overlapping Start is rejected. Keep progress
+in memory. Preserve existing run artifacts on disk; Console has no history index.
+Retain the latest result reference in the marker so Inspect survives a restart.
 
-## HTTP and durable state
+Browser disconnect leaves execution running. Stop and server shutdown request
+cooperative finalization and await the report within a documented deadline.
+An unfinished marker after process loss blocks new runs and shows Interrupted /
+cleanup unknown. Document manual reconciliation using the owned-resource evidence;
+require verified cleanup before clearing the marker. Automatic recovery is deferred.
+A failed workload may still produce valid CPU evidence; retain the report's separate
+execution, evidence and cleanup outcomes.
 
-- Typed HTTP: prepare/review, Start, Stop, run status/events, history and downloads.
-  Poll active status/events every second; SSE is deferred. Return structured errors.
-- Validate inputs at both HTTP and native boundaries. Prefer generated protobuf
-  types for records and pbtxt for settings; validate the addon/server schema version.
-- Store preparation records, run metadata, activity and reports outside the repo.
-  Use atomic metadata updates and an index rebuilt from run directories; no database.
-- Persist the run ID and Start idempotency key before launching. Retry returns the
-  same run. Reject overlapping starts; stale review requires a fresh review.
-- Rust rechecks review identity before launch. Record hashes of reviewed Compose
-  inputs and effective settings, available Git revision/dirty state, image IDs,
-  mounts and basic host/runtime identity. Mutable mounts, dirty contents and runtime
-  drift are declared evidence gaps unless captured; MVP does not promise equivalence.
-- Configure single-user access at startup. Protect mutations against cross-origin
-  requests. Restrict repository reads to approved roots and downloads to registered
-  artifacts; reject traversal/symlink escapes. Redact secrets in UI/events and keep
-  raw secret-bearing manifests private. Document trusted-network deployment.
+Validate HTTP/native inputs, protect mutations against cross-origin requests, keep
+project reads within the approved root and downloads within registered artifacts.
+Keep secret-bearing manifests private. Persistence failures block launch or remain
+visible in the result. Reuse the runner's recorded provenance and coverage limits.
 
-### Stop, shutdown and interruption
-
-Browser disconnect leaves the experiment running. Stop requests cooperative
-finalization and stays visible until the report arrives. A failed workload may
-still have valid evidence; report execution, evidence and cleanup independently.
-
-Server shutdown stops admission, requests Stop and awaits finalization within a
-documented deadline. Persist an interrupted/cleanup-unknown outcome if orderly
-completion cannot be established. A native fatal failure shares the Node process
-crash boundary; cleanup cannot be guaranteed after process loss.
-
-At startup, reconcile unfinished records against owned Docker resources and
-persisted reports. Keep new runs blocked while cleanup is unknown. Provide a
-clear manual reconciliation procedure; do not automatically delete resources or
-resume workloads. Disk exhaustion and persistence errors remain visible failures.
-
-## M1 — Adopt and review
+## M1 — Review one project
 
 **Work items**
 
-- [ ] Serve React assets and validated APIs from the on-prem TypeScript server.
-- [ ] Add repository/file selection, redacted resolution preview and prerequisites.
-- [ ] Evaluate the N-API binding; define generated records and the async adapter contract.
-- [ ] Implement native preparation on the dedicated Rust execution thread.
-- [ ] Package matching server/addon builds for the declared Linux host targets.
+- [ ] Serve the single page and API; configure host paths and single-user access.
+- [ ] Resolve the default Compose project and list its declared profiles.
+- [ ] Evaluate the binding and implement async native preparation and read-only review.
+- [ ] Package the server/addon for the first declared Linux host target.
 
 **Validation**
 
-- [ ] A second machine completes review against a headless host using its server URL.
-- [ ] File order, env, profiles and service selection resolve without source edits.
-- [ ] Bad credentials, escaping paths, missing images and unsupported inputs fail clearly.
-- [ ] A packaged clean install loads the addon; incompatible/missing binaries fail at startup.
-- [ ] Preparation leaves the Node event loop responsive; native errors become typed failures.
+- [ ] From a second machine, review a fixture using only its host directory.
+- [ ] Default files, `.env` and an optional profile match the equivalent Compose CLI invocation.
+- [ ] Missing prerequisites, unsupported custom invocation and escaping paths fail clearly.
+- [ ] The packaged addon loads; preparation leaves HTTP responsive and secrets redacted.
 
-## M2 — Run and observe
+## M2 — Run with workflow progress
 
 **Work items**
 
-- [ ] Bind existing Rust Compose execution and CPU capture with explicit run ownership.
-- [ ] Add durable admission/idempotency, input rechecks, Stop and shutdown handling.
-- [ ] Persist bounded activity and render live status with reconnect by run ID.
-- [ ] Implement interruption detection and blocked admission pending reconciliation.
+- [ ] Start the existing Compose/CPU workflow; retain run ownership and a durable marker.
+- [ ] Connect TelemetryObserver and workflow-protocol to the bounded step snapshot.
+- [ ] Render emitted step states, durations and errors; add Stop and awaited shutdown.
 
 **Validation**
 
-- [ ] Real workloads produce advancing CPU evidence and visible lifecycle events.
-- [ ] Stale review, duplicate/concurrent Start and Stop during startup behave correctly.
-- [ ] Browser disconnect and slow event consumers leave execution responsive; gaps are visible.
-- [ ] Stop and graceful shutdown await finalization; handles release after completion.
-- [ ] Process termination leaves an interrupted run; restart blocks until cleanup is verified.
-- [ ] Workload failure, capture failure and disk exhaustion report distinct outcomes.
+- [ ] Real workflow events produce the expected Running and terminal step rows, including child/repeated invocations.
+- [ ] Failure, cancellation and panic events render correctly; gaps/overflow show incomplete progress.
+- [ ] Refresh/disconnect and a slow consumer leave capture and cleanup responsive.
+- [ ] Changed review inputs and overlapping Start are rejected; duplicate Start returns the same run.
+- [ ] Stop during startup and normal Stop await finalization; unfinished restart blocks a new run.
 
-## M3 — Inspect the complete experiment
+## M3 — Finish and download
 
 **Work items**
 
-- [ ] Add saved-run selection, final reports and streamed artifact downloads.
-- [ ] Document startup, supported host/Node versions, prerequisites and reconciliation.
-- [ ] Record end-to-end acceptance evidence beside the checks below.
+- [ ] Show the authoritative report and stream the current run's registered artifacts.
+- [ ] Restore the latest result after restart; allow another run after verified cleanup.
+- [ ] Document startup, prerequisites, supported versions and manual reconciliation.
 
 **Validation**
 
-- [ ] Complete Adopt → Review → Run → Stop → Inspect from a remote browser.
-- [ ] Download readable CPU MCAP; reopen history and reports after server restart.
-- [ ] Run twice with fresh identities; add a Compose service without workflow edits.
-- [ ] Source/Compose files remain unchanged; provenance gaps are visible in the report.
-- [ ] Client/server, native-boundary and relevant Rust checks pass with real Docker coverage.
-- [ ] Validate declared Linux packages, including serial ARM64 CI where supported; record
-  host, commands and results. Qualify GPU prerequisites separately if later claimed.
+- [ ] Complete directory → Review → Start → workflow progress → Stop → downloads from a remote browser.
+- [ ] Download readable CPU MCAP and report; verify separate execution/evidence/cleanup outcomes.
+- [ ] Reopen the latest result after restart, then complete a second run with fresh identity.
+- [ ] Source/Compose files remain unchanged; failed cleanup blocks the next run.
+- [ ] Client/native-boundary tests and relevant Rust/real-Docker checks pass; record commands and evidence here.
 
-MVP is complete when all three milestones pass. Broader product capabilities remain follow-up scope.
+MVP is complete when these checks pass. Record evidence beside each milestone
+before checking its items. Qualify vEDGAR and other repositories in follow-up work.
 
 [Existing execution](../../libs/workload-docker/docs/102626-compose-workflow.md)
