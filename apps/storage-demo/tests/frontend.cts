@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as vm from 'node:vm';
 import assert from 'node:assert/strict';
-const html = fs.readFileSync(`${__dirname}/../web/index.html`, 'utf8');
+const html = fs.readFileSync(`${__dirname}/../frontend/embedded/index.html`, 'utf8');
 const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
   value: '', innerHTML: '', textContent: '', disabled: false,
   style: {} as Record<string, string>, classList: {toggle() {}}, querySelectorAll: () => [],

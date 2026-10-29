@@ -48,20 +48,17 @@ monitor as a foreign container, before general Compose adoption or robotics pilo
 
 ## Run and inspect
 
-From the repository root:
+The original Python launcher has been removed. The Rust example remains available
+for use with a prepared monitor image and an existing output directory; no replacement
+image-preparation launcher is provided.
 
-```sh
-python3 libs/orchestrator/scripts/docker-monitor-e2e.py --sudo --output /tmp/docker-monitor-run
-```
-
-Omit `--sudo` when the account already has Docker access. The output directory must
-be new. Requires a local Linux Docker daemon, Linux >=6.8 with BTF/cgroup v2,
+The historical run required a local Linux Docker daemon, Linux >=6.8 with BTF/cgroup v2,
 BPF-capable Clang, libelf/zlib development files and the repository Rust toolchain.
 `CLANG`, `CFLAGS`, `LIBRARY_PATH` and `LD_LIBRARY_PATH` can select local build tools.
 This machine reused `/tmp/doramcap-native/root`; no system packages were installed.
 
-The launcher builds unprivileged, packages the executable and dynamic libraries,
-records image identity, runs the workflow, and removes its image. Each attempt
+The former launcher built unprivileged, packaged the executable and dynamic libraries,
+recorded image identity, ran the workflow, and removed its image. Each attempt
 retains `events.jsonl`, running/stopped inspections, process listing, monitor logs,
 Protobuf output, MCAP, readback report and execution/cleanup outcomes.
 The three attempts use fresh container and monitor session identities. Stop and

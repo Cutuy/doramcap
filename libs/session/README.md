@@ -2,6 +2,9 @@
 
 One bounded execution attempt, identified across workloads, recordings, and results.
 An optional experiment ID groups original captures and comparative runs.
+This crate will define identity, membership, evidence and outcome contracts. The
+[workload lifecycle coordinator](../workload-lifecycle/) drives transitions and
+manages participants, reporting their outcomes to the session.
 
 ![Session architecture](docs/session-architecture.svg)
 

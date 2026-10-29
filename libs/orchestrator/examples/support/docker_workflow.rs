@@ -1,4 +1,4 @@
-//! Opt-in real Docker validation. See scripts/docker-monitor-e2e.py.
+//! Opt-in real Docker validation; requires a prepared monitor image and output directory.
 //! The procedural workflow always attempts cleanup after ordinary errors.
 use orchestrator::{Error, Event, LocalExecutor, Result, Step};
 use serde::{Deserialize, Serialize};
