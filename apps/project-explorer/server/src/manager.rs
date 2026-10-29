@@ -151,7 +151,7 @@ impl Manager {
         ))
     }
     #[cfg(test)]
-    fn from_resources(
+    pub(crate) fn from_resources(
         registry: Registry,
         idle_timeout: Duration,
         resources: &[OwnedResource],

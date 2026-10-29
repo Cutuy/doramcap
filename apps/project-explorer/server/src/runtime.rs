@@ -5,18 +5,8 @@ use crate::{
     registry::Registration,
     workflow,
 };
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    path::PathBuf,
-    rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Instant,
-};
-use tokio::sync::{RwLock, mpsc, oneshot};
+use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
+use tokio::sync::{RwLock, mpsc, oneshot, watch};
 use workload_docker::compose::DockerAdapter;
 
 enum Command {
@@ -37,7 +27,7 @@ enum Command {
 pub struct Service {
     manager: Manager,
     commands: mpsc::UnboundedSender<Command>,
-    closing: Arc<AtomicBool>,
+    closing: watch::Sender<bool>,
     launch_gate: Arc<RwLock<()>>,
     endpoints: Arc<RwLock<HashMap<(String, Token), std::net::SocketAddr>>>,
     result_root: PathBuf,
@@ -123,7 +113,7 @@ impl Service {
         Self {
             manager,
             commands,
-            closing: Arc::new(AtomicBool::new(false)),
+            closing: watch::channel(false).0,
             launch_gate: Arc::new(RwLock::new(())),
             endpoints,
             result_root: root,
@@ -133,10 +123,15 @@ impl Service {
     /// supervisor. Requests joining a generation never start a second workflow.
     pub async fn launch(&self, id: &str) -> Result<Launch, Error> {
         let _admission = self.launch_gate.read().await;
-        if self.closing.load(Ordering::Acquire) {
+        let mut closing = self.closing.subscribe();
+        if *closing.borrow() {
             return Err(Error::ShuttingDown);
         }
-        let launch = self.manager.launch(id, Instant::now()).await?;
+        let launch = tokio::select! {
+            biased;
+            _ = closing.changed() => return Err(Error::ShuttingDown),
+            launch = self.manager.launch(id, Instant::now()) => launch?,
+        };
         if launch.start {
             let entry = self.manager.get(id).expect("manager accepted this ID");
             if self
@@ -159,7 +154,7 @@ impl Service {
                 return Err(Error::Blocked("startup supervisor unavailable".into()));
             }
         }
-        if self.closing.load(Ordering::Acquire) {
+        if *closing.borrow() {
             let entry = self.manager.get(id).expect("manager accepted this ID");
             self.dispatch_stop(
                 entry.registration.id.clone(),
@@ -179,10 +174,14 @@ impl Service {
         session: Token,
     ) -> Result<bool, Error> {
         let app = self.manager.get(id).ok_or(Error::UnknownApp)?;
-        Ok(app
-            .lifecycle
-            .heartbeat(generation, session, Instant::now())
-            .await)
+        let now = Instant::now();
+        self.dispatch_stop(
+            app.registration.id.clone(),
+            &app.lifecycle,
+            app.lifecycle.expire(now).await,
+        )
+        .await;
+        Ok(app.lifecycle.heartbeat(generation, session, now).await)
     }
     /// Return an internal endpoint only for the current ready generation.
     /// The caller must not expose the returned Docker address to browsers.
@@ -393,9 +392,10 @@ impl Service {
     /// finish before their cleanup. This future waits for each cleanup result;
     /// callers must keep the local executor alive until it resolves.
     pub async fn shutdown(&self) -> Vec<(String, Status)> {
+        self.closing.send_replace(true);
+        // Cancel admission waits, then await accepted startup commands before draining.
         {
             let _admission = self.launch_gate.write().await;
-            self.closing.store(true, Ordering::Release);
         }
         for app in self.manager.iter() {
             self.dispatch_stop(
@@ -477,5 +477,121 @@ impl Worker {
         if let Some(stop) = self.running.borrow_mut().remove(&(id, generation)) {
             let _ = stop.send(());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::Registry;
+    use std::{path::Path, time::Duration};
+
+    fn service(timeout: Duration) -> (Service, mpsc::UnboundedReceiver<Command>) {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .unwrap();
+        let manager = Manager::from_resources(Registry::new(workspace).unwrap(), timeout, &[]);
+        let (commands, receiver) = mpsc::unbounded_channel();
+        let service = Service {
+            manager: manager.clone(),
+            commands,
+            closing: watch::channel(false).0,
+            launch_gate: Arc::new(RwLock::new(())),
+            endpoints: Arc::new(RwLock::new(HashMap::new())),
+            result_root: PathBuf::new(),
+        };
+        (service, receiver)
+    }
+
+    #[tokio::test]
+    async fn late_heartbeat_dispatches_shutdown_before_relaunch() {
+        // Arrange
+        let (service, mut receiver) = service(Duration::from_secs(1));
+        let manager = &service.manager;
+        let earlier = Instant::now() - Duration::from_secs(2);
+        let launch = manager.launch("activity-demo", earlier).await.unwrap();
+        let app = manager.get("activity-demo").unwrap();
+        app.lifecycle.started(launch.generation, earlier).await;
+
+        // Act
+        let renewed = service
+            .heartbeat("activity-demo", launch.generation, launch.session)
+            .await
+            .unwrap();
+
+        // Assert: no periodic expiration tick is needed to request cleanup.
+        assert!(!renewed);
+        assert_eq!(
+            app.lifecycle.status().await,
+            Status::Stopping {
+                generation: launch.generation
+            }
+        );
+        assert!(
+            matches!(receiver.try_recv(), Ok(Command::Stop { generation, .. }) if generation == launch.generation)
+        );
+
+        // Act: a relaunch must wait for verified cleanup.
+        let waiting = tokio::spawn({
+            let manager = service.manager.clone();
+            async move { manager.launch("activity-demo", Instant::now()).await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        app.lifecycle.cleaned(launch.generation, Ok(None)).await;
+        let next = waiting.await.unwrap().unwrap();
+
+        // Assert
+        assert!(next.start);
+        assert_ne!(next.generation, launch.generation);
+    }
+
+    #[tokio::test]
+    async fn shutdown_rejects_a_launch_waiting_for_cleanup() {
+        // Arrange
+        let (service, mut receiver) = service(Duration::from_secs(120));
+        let first = service
+            .manager
+            .launch("activity-demo", Instant::now())
+            .await
+            .unwrap();
+        let app = service.manager.get("activity-demo").unwrap();
+        app.lifecycle
+            .started(first.generation, Instant::now())
+            .await;
+        app.lifecycle.request_stop().await;
+        let waiting = tokio::spawn({
+            let service = service.clone();
+            async move { service.launch("activity-demo").await }
+        });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+
+        // Act: shutdown can close admission while the old generation is stopping.
+        let shutting_down = tokio::spawn({
+            let service = service.clone();
+            async move { service.shutdown().await }
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !*service.closing.borrow() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("shutdown was blocked by a waiting launch");
+        app.lifecycle.cleaned(first.generation, Ok(None)).await;
+
+        // Assert: the waiting request cannot queue a replacement workflow.
+        assert_eq!(waiting.await.unwrap(), Err(Error::ShuttingDown));
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+        shutting_down.await.unwrap();
+        assert_eq!(
+            app.lifecycle.status().await,
+            Status::Stopped { error: None }
+        );
     }
 }
