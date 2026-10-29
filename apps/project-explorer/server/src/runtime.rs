@@ -388,11 +388,16 @@ impl Service {
             .await;
         }
     }
+    /// Refuse new sessions and cancel pending admissions before HTTP requests
+    /// drain. Call `shutdown` afterward to stop and await owned generations.
+    pub fn close_admission(&self) {
+        self.closing.send_replace(true);
+    }
     /// Refuse new sessions and drain all owned generations. Starting operations
     /// finish before their cleanup. This future waits for each cleanup result;
     /// callers must keep the local executor alive until it resolves.
     pub async fn shutdown(&self) -> Vec<(String, Status)> {
-        self.closing.send_replace(true);
+        self.close_admission();
         // Cancel admission waits, then await accepted startup commands before draining.
         {
             let _admission = self.launch_gate.write().await;
@@ -548,7 +553,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn shutdown_rejects_a_launch_waiting_for_cleanup() {
+    async fn closing_admission_cancels_launch_before_http_drain() {
         // Arrange
         let (service, mut receiver) = service(Duration::from_secs(120));
         let first = service
@@ -568,22 +573,36 @@ mod tests {
         tokio::task::yield_now().await;
         assert!(!waiting.is_finished());
 
-        // Act: shutdown can close admission while the old generation is stopping.
+        // Act: signal admission closure before waiting for HTTP requests to drain.
+        service.close_admission();
+        let admission = tokio::time::timeout(Duration::from_secs(1), waiting)
+            .await
+            .expect("HTTP launch did not drain after admission closed")
+            .unwrap();
+
+        // Assert: HTTP drain completes while the old generation still needs cleanup.
+        assert_eq!(admission, Err(Error::ShuttingDown));
+        assert_eq!(
+            app.lifecycle.status().await,
+            Status::Stopping {
+                generation: first.generation
+            }
+        );
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+
+        // Act: the final shutdown still awaits the old generation's cleanup.
         let shutting_down = tokio::spawn({
             let service = service.clone();
             async move { service.shutdown().await }
         });
-        tokio::time::timeout(Duration::from_secs(1), async {
-            while !*service.closing.borrow() {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("shutdown was blocked by a waiting launch");
+        tokio::task::yield_now().await;
+        assert!(!shutting_down.is_finished());
         app.lifecycle.cleaned(first.generation, Ok(None)).await;
 
         // Assert: the waiting request cannot queue a replacement workflow.
-        assert_eq!(waiting.await.unwrap(), Err(Error::ShuttingDown));
         assert!(matches!(
             receiver.try_recv(),
             Err(mpsc::error::TryRecvError::Empty)

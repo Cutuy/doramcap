@@ -225,6 +225,8 @@ impl Manager {
         self.apps.values()
     }
     /// Accept a launch for a known app, or return a visible blocked/unknown error.
+    /// Acceptance returns without yielding again; cancellation before return
+    /// creates no session. The caller must queue startup before its next await.
     pub async fn launch(&self, id: &str, now: Instant) -> Result<Launch, Error> {
         let app = self.get(id).ok_or(Error::UnknownApp)?;
         let mut accepted_at = now;
