@@ -38,7 +38,9 @@ message AppRegistration {
   string compose_file = 2;
   string service = 3;
   string network = 4;
-  optional uint32 port = 5; // 1..65535 for web apps; absent for headless apps.
+  // Container listener port (1..65535), reached through the project's private
+  // Docker network. No host port is published; absent for headless apps.
+  optional uint32 port = 5;
   bool headless = 6;
   uint64 readiness_seconds = 7;
   uint64 stop_seconds = 8;
@@ -56,8 +58,6 @@ message AppRegistration {
   bool nested_runs = 20;
   repeated doramcap.recovery.v1.RecoveryProject nested_projects = 21;
   string env_prefix = 22;
-  reserved 23;
-  reserved "seccomp_file";
   bool requires_explicit_enable = 24;
   doramcap.system_apps.v1.SystemAppsConfig system_apps = 25;
 }

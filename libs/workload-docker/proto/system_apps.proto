@@ -1,17 +1,16 @@
 syntax = "proto3";
 package doramcap.system_apps.v1;
 
-// Optional supporting apps prepared by the system-app adapter.
+// Supporting services for the shared Compose workflow.
 message SystemAppsConfig {
   CpuMonitor cpu_monitor = 1;
   repeated DoraFlow dora_flows = 2;
 }
 
-// One fresh CPU collector with its embedded MCAP writer.
+// A fresh System Monitor service using apps/system-monitor/deploy/recording.yaml.
+// The collector records CPU telemetry through its embedded MCAP writer.
 message CpuMonitor {
-  string image = 1; // Prepared local image reference.
-  reserved 2, 3, 4;
-  reserved "backend", "allow_unconfined_seccomp", "seccomp_profile";
+  string image = 1; // Prebuilt local Docker image, pinned to its ID during resolution.
 }
 
 // A Dora flow managed inside an owned Compose service. The service runs a
@@ -23,7 +22,7 @@ message DoraFlow {
   string name = 4;
   repeated DoraStopStage shutdown = 5; // Workloads, producers, then draining consumers.
   string readiness_url = 6; // Loopback HTTP probe inside the daemon's namespace.
-  string readiness_field = 7; // Optional JSON boolean required by the readiness probe.
+  string readiness_field = 7; // Optional JSON boolean required at startup.
   string snapshot_url = 8;
   string snapshot_file = 9; // Result filename for the pre-stop public snapshot.
   string count_node = 10; // Collector whose Dora summary must report no loss.
