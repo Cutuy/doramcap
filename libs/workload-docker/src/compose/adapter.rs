@@ -933,7 +933,7 @@ pub(crate) fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut file = tokio::fs::OpenOptions::new()
@@ -950,6 +950,20 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn digest_preserves_lowercase_sha256_encoding() {
+        // Arrange
+        let bytes = b"abc";
+        // Act
+        let actual = digest(bytes);
+        // Assert
+        assert_eq!(
+            actual,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
     fn state() -> ComposeProjectState {
         ComposeProjectState {
             plan: ResolvedComposeProject {

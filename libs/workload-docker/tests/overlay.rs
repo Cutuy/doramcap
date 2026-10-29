@@ -16,7 +16,7 @@ fn plan(root: &Path, source: &Path) -> ResolvedComposeProject {
         key: "foreign".into(),
         name: "dc-overlay-test".into(),
         manifest,
-        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        sha256: hex::encode(Sha256::digest(&bytes)),
         services: BTreeMap::new(),
         diagnostics: vec![],
         remove_volumes: false,
@@ -302,7 +302,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
         {"type":"bind","source":source,"target":"/parent","read_only":true}]}}});
     let bytes = serde_json::to_vec(&model).unwrap();
     std::fs::write(&project.manifest, &bytes).unwrap();
-    project.sha256 = format!("{:x}", Sha256::digest(&bytes));
+    project.sha256 = hex::encode(Sha256::digest(&bytes));
     // Act
     let set = prepare(PrepareInput {
         artifacts,
