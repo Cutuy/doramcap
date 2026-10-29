@@ -903,8 +903,10 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
     std::fs::create_dir(&root).unwrap();
     let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
     let mut runner = ComposeRunner::new(adapter.clone());
-    for failure in [false, true] {
-        let shared = root.join(format!("sync-{}", u8::from(failure)));
+    for mode in 0..3 {
+        let failure = mode == 1;
+        let cancel_startup = mode == 2;
+        let shared = root.join(format!("sync-{mode}"));
         std::fs::create_dir(&shared).unwrap();
         let helper = "trap 'test -f /sync/alpha-stopped && test -f /sync/beta-stopped || exit 42; exit 0' TERM INT; touch /sync/system-ready; while :; do sleep 1 & wait $!; done";
         for key in ["helper", "alpha", "beta"] {
@@ -917,7 +919,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             };
             let health = if key == "helper" {
                 "test -f /sync/system-ready"
-            } else if failure && key == "beta" {
+            } else if (failure || cancel_startup) && key == "beta" {
                 "false"
             } else {
                 "test -f /sync/alpha-started && test -f /sync/beta-started"
@@ -931,7 +933,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
                 }}}),
             );
         }
-        let id = format!("parallel-{}-{}", std::process::id(), u8::from(failure));
+        let id = format!("parallel-{}-{mode}", std::process::id());
         let events = Rc::new(RefCell::new(Vec::<orchestrator::Event>::new()));
         let sink = events.clone();
         let spec = ComposeRun {
@@ -951,7 +953,15 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             .run_with_ready(
                 spec,
                 async {
-                    let _ = started.await;
+                    if cancel_startup {
+                        while !shared.join("alpha-started").is_file()
+                            || !shared.join("beta-started").is_file()
+                        {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
+                    } else {
+                        let _ = started.await;
+                    }
                 },
                 move |event: &orchestrator::Event| sink.borrow_mut().push(event.clone()),
                 Some(ready),
@@ -965,6 +975,51 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
         assert!(shared.join("alpha-stopped").is_file() && shared.join("beta-stopped").is_file());
         assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
         let events = events.borrow();
+        // Assert: collection and removal retain their explicit workflow barriers,
+        // including when a parallel workload failed during startup.
+        let completed = |step: &str| {
+            events
+                .iter()
+                .position(|e| {
+                    e.invocation.step.ends_with(step) && e.state == orchestrator::State::Succeeded
+                })
+                .unwrap()
+        };
+        let quiesced = completed("QuiesceProjects");
+        let finalized = completed("FinalizeRun");
+        let removing = events
+            .iter()
+            .position(|e| {
+                e.invocation.step.ends_with("RemoveProjects")
+                    && e.state == orchestrator::State::Started
+            })
+            .unwrap();
+        assert!(quiesced < finalized && finalized < removing);
+        assert!(
+            events[removing]
+                .invocation
+                .dependencies
+                .contains(&events[finalized].invocation.id)
+        );
+        for event in events
+            .iter()
+            .filter(|e| e.state == orchestrator::State::Started)
+        {
+            if event.invocation.step.ends_with("CollectFilesystemChanges") {
+                assert_eq!(
+                    event.invocation.parent,
+                    Some(events[finalized].invocation.id)
+                );
+                assert!(event.elapsed_ns >= events[quiesced].elapsed_ns);
+            }
+            if event.invocation.step.ends_with("RemoveCompose") {
+                assert_eq!(
+                    event.invocation.parent,
+                    Some(events[removing].invocation.id)
+                );
+                assert!(event.elapsed_ns >= events[finalized].elapsed_ns);
+            }
+        }
         let positions = |step: &str, state: orchestrator::State, keys: &[&str]| -> Vec<usize> {
             events
                 .iter()
@@ -979,7 +1034,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
                 .map(|(index, _)| index)
                 .collect()
         };
-        if !failure {
+        if !failure && !cancel_startup {
             let starts = positions(
                 "StartCompose",
                 orchestrator::State::Started,
