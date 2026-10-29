@@ -1,0 +1,27 @@
+id: "fault-watchdog"
+compose_file: "compose.yaml"
+service: "coordinator"
+network: "default"
+port: 8088
+readiness_seconds: 90
+stop_seconds: 50
+result_file: "state.json"
+result_format: FILE
+shutdown_marker: "shutdown.complete"
+env_prefix: "FAULT_WATCHDOG"
+requires_explicit_enable: true
+
+system_apps { dora_flows {
+  project: "fault-watchdog"
+  service: "dashboard"
+  descriptor: "/opt/dora-flow/flow.yml"
+  name: "hosted"
+  shutdown { nodes: "source_a" nodes: "source_b" }
+  shutdown { nodes: "dashboard" }
+  shutdown { nodes: "watchdog" drain: true }
+  readiness_url: "http://127.0.0.1:8088/api/state"
+  readiness_field: "complete"
+  snapshot_url: "http://127.0.0.1:8088/api/state"
+  snapshot_file: "state.json"
+  completion_file: "shutdown.complete"
+} }

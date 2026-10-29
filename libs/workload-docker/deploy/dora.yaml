@@ -1,0 +1,31 @@
+# App images supply the Dora binary and their own descriptor. Rust workflow
+# steps start/check/stop nodes; Compose owns only foreground infrastructure.
+services:
+  coordinator:
+    init: true
+    entrypoint: [/usr/local/bin/dora]
+    command: [coordinator, --store, memory]
+    stop_signal: SIGINT
+    stop_grace_period: 10s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    environment: {HOME: /tmp}
+    healthcheck:
+      test: [CMD, /usr/local/bin/dora, list, --format, json]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  daemon:
+    init: true
+    entrypoint: [/usr/local/bin/dora]
+    command: [daemon, --zenoh-no-multicast, --worker-threads, '2']
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    tmpfs: [/tmp, /opt/dora-flow/out]
+    environment: {HOME: /tmp}
+    network_mode: service:coordinator
+    depends_on: {coordinator: {condition: service_healthy}}

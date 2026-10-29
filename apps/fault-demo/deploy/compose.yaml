@@ -1,0 +1,19 @@
+services:
+  coordinator:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: coordinator
+    image: doramcap/fault-demo:local
+    user: ${FAULT_DEMO_UID:?}:${FAULT_DEMO_GID:?}
+  dashboard:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: daemon
+    image: doramcap/fault-demo:local
+    user: ${FAULT_DEMO_UID:?}:${FAULT_DEMO_GID:?}
+    security_opt:
+    - no-new-privileges:true
+    volumes:
+    - type: bind
+      source: ${FAULT_DEMO_RESULTS_DIR:?}
+      target: /results

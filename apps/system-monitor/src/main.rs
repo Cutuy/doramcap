@@ -1,5 +1,5 @@
 use eyre::{Result, WrapErr, bail, eyre};
-use monitor_core::{CpuRecord, Monitor, Snapshot, SyntheticMonitor, handoff_with_tasks};
+use monitor_core::{CpuRecord, Snapshot, handoff_with_tasks};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -68,15 +68,15 @@ impl Options {
                 "--check" => opts.check = true,
                 "--help" | "-h" => {
                     println!(
-                        "system-monitor [--check] [--backend bpf|synthetic] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
+                        "system-monitor [--check] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
                     );
                     std::process::exit(0);
                 }
                 _ => bail!("unknown argument: {arg}"),
             }
         }
-        if !matches!(opts.backend.as_str(), "bpf" | "synthetic") {
-            bail!("backend must be bpf or synthetic");
+        if opts.backend != "bpf" {
+            bail!("only the native bpf backend is supported");
         }
         if opts.records == 0
             || opts.records > 1_048_576
@@ -100,9 +100,6 @@ impl Options {
             .ok_or_else(|| eyre!("capacity overflow"))?;
         if bytes > 512 * 1024 * 1024 {
             bail!("configured acquisition storage exceeds 512 MiB; reduce capacities");
-        }
-        if opts.tasks != 0 && opts.backend == "synthetic" {
-            bail!("experimental task diagnostics require the native bpf backend");
         }
         Ok(opts)
     }
@@ -160,63 +157,52 @@ fn capabilities() -> Result<Capabilities> {
     })
 }
 
-enum Backend {
-    Synthetic(SyntheticMonitor),
-    Native {
-        monitor: cgroup_bpf::Backend,
-        scratch: Vec<cgroup_bpf::CgroupRecord>,
-    },
+struct Backend {
+    monitor: cgroup_bpf::Backend,
+    scratch: Vec<cgroup_bpf::CgroupRecord>,
 }
 impl Backend {
     fn new(opts: &Options) -> Result<Self> {
-        if opts.backend == "synthetic" {
-            return Ok(Self::Synthetic(SyntheticMonitor::new(4)));
-        }
         let cap = capabilities()?;
         if !cap.kernel_version_ok || !cap.cgroup_v2 || !cap.btf_readable {
             bail!(
                 "native backend requires Linux >=6.8, cgroup v2 and readable kernel BTF; run --check"
             );
         }
-        Ok(Self::Native {
+        Ok(Self {
             monitor: cgroup_bpf::Backend::new(opts.records)?,
             scratch: Vec::with_capacity(opts.records),
         })
     }
     fn collect(&mut self, snapshot: &mut Snapshot) -> Result<(), String> {
-        match self {
-            Self::Synthetic(monitor) => {
-                monitor.collect(snapshot).unwrap();
+        let stats = self
+            .monitor
+            .collect_into(&mut self.scratch)
+            .map_err(|e| e.to_string())?;
+        snapshot.capacity_overflow = stats.overflow;
+        for row in &self.scratch {
+            let mut flags = monitor_core::FLAG_INCLUSIVE;
+            if row.flags & cgroup_bpf::VALID != 0 {
+                flags |= monitor_core::FLAG_RUNTIME;
             }
-            Self::Native { monitor, scratch } => {
-                let stats = monitor.collect_into(scratch).map_err(|e| e.to_string())?;
-                snapshot.capacity_overflow = stats.overflow;
-                for row in scratch.iter() {
-                    let mut flags = monitor_core::FLAG_INCLUSIVE;
-                    if row.flags & cgroup_bpf::VALID != 0 {
-                        flags |= monitor_core::FLAG_RUNTIME;
-                    }
-                    if row.flags & cgroup_bpf::RAW_USER_SYSTEM != 0 {
-                        flags |=
-                            monitor_core::FLAG_USER_SYSTEM | monitor_core::FLAG_RAW_USER_SYSTEM;
-                    }
-                    if row.flags & cgroup_bpf::ROOT_UNAVAILABLE != 0 {
-                        flags |= monitor_core::FLAG_ROOT;
-                    }
-                    if row.flags & cgroup_bpf::READ_ERROR != 0 {
-                        flags |= monitor_core::FLAG_READ_ERROR;
-                    }
-                    snapshot.push(CpuRecord {
-                        cgroup_id: row.id,
-                        parent_id: row.parent_id,
-                        cpu: row.cpu,
-                        flags,
-                        runtime_ns: row.runtime_ns,
-                        user_ns: row.user_ns,
-                        system_ns: row.system_ns,
-                    });
-                }
+            if row.flags & cgroup_bpf::RAW_USER_SYSTEM != 0 {
+                flags |= monitor_core::FLAG_USER_SYSTEM | monitor_core::FLAG_RAW_USER_SYSTEM;
             }
+            if row.flags & cgroup_bpf::ROOT_UNAVAILABLE != 0 {
+                flags |= monitor_core::FLAG_ROOT;
+            }
+            if row.flags & cgroup_bpf::READ_ERROR != 0 {
+                flags |= monitor_core::FLAG_READ_ERROR;
+            }
+            snapshot.push(CpuRecord {
+                cgroup_id: row.id,
+                parent_id: row.parent_id,
+                cpu: row.cpu,
+                flags,
+                runtime_ns: row.runtime_ns,
+                user_ns: row.user_ns,
+                system_ns: row.system_ns,
+            });
         }
         Ok(())
     }
@@ -245,13 +231,13 @@ impl Dictionary {
             next_refresh: Instant::now(),
         }
     }
-    fn update(&mut self, snapshot: &Snapshot, synthetic: bool) -> usize {
+    fn update(&mut self, snapshot: &Snapshot) -> usize {
         let mut first_changed = self.entries.len();
         let now = Instant::now();
         // Discovery is rate limited even if unresolved/new IDs appear in every
         // batch. It also revisits names so renames and temporary failures recover.
         let mut paths = HashMap::new();
-        let refresh = !synthetic && now >= self.next_refresh;
+        let refresh = now >= self.next_refresh;
         if refresh {
             scan_cgroups(Path::new("/sys/fs/cgroup"), &mut paths, self.capacity, 0);
             self.next_refresh = now + Duration::from_secs(2);
@@ -274,11 +260,7 @@ impl Dictionary {
                 self.unresolved.insert(record.cgroup_id);
                 continue;
             }
-            let path = if synthetic {
-                Some("/synthetic/cpu-load".into())
-            } else {
-                paths.remove(&record.cgroup_id)
-            };
+            let path = paths.remove(&record.cgroup_id);
             self.index.insert(record.cgroup_id, self.entries.len());
             self.entries.push(DictionaryEntry {
                 id: record.cgroup_id,
@@ -482,7 +464,7 @@ fn run(opts: Options) -> Result<()> {
                     || dictionary_sent_at
                         .is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
                 if dictionary_due {
-                    dictionary.update(snapshot, opts.backend == "synthetic");
+                    dictionary.update(snapshot);
                     let packet = telemetry_protocol::dictionary_packet(
                         &telemetry_protocol::DictionaryFrame {
                             version: VERSION,

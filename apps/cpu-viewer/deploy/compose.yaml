@@ -1,0 +1,34 @@
+services:
+  coordinator:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: coordinator
+    image: doramcap/cpu-viewer:local
+    user: ${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}
+  viewer:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: daemon
+    image: doramcap/cpu-viewer:local
+    user: ${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}
+    cap_add:
+    - BPF
+    - PERFMON
+    - SYSLOG
+    cgroup: host
+    ulimits:
+      memlock:
+        soft: 268435456
+        hard: 268435456
+    volumes:
+    - type: bind
+      source: /sys/fs/cgroup
+      target: /sys/fs/cgroup
+      read_only: true
+    - type: bind
+      source: /sys/kernel/btf
+      target: /sys/kernel/btf
+      read_only: true
+    - type: bind
+      source: ${CPU_VIEWER_RESULTS_DIR:?}
+      target: /results

@@ -14,7 +14,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--bin-dir', type=Path, required=True)
 p.add_argument('--monitor', type=Path)
 p.add_argument('--buffered', action='store_true')
-p.add_argument('--backend', choices=['synthetic', 'bpf'], default='synthetic')
+p.add_argument('--backend', choices=['bpf'], default='bpf')
 a = p.parse_args()
 bins = a.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory:

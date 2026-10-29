@@ -62,9 +62,6 @@ message SnapshotFrame {
   bool dictionary_full = 8;
   uint64 dictionary_overflow = 9;
   repeated DictionaryEntry dictionary = 10;
-  // Viewer delivery owns this legacy annotation slot.
-  reserved 11;
-  reserved "viewer_ingress";
 }
 message DictionaryFrame {
   uint32 version = 1;

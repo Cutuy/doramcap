@@ -19,6 +19,10 @@ Requires the [native Docker fixture prerequisites](../../libs/orchestrator/docs/
 The web server runs unprivileged on loopback; only the fixed Docker worker is
 optionally elevated. Node is needed for building static assets. No development
 server or Node process remains resident. `--port` changes the HTTP port.
+Set `ORCHESTRATOR_ASSETS` to an absolute frontend build directory when relocating
+the server binary. Set `ORCHESTRATOR_BIND` to an IP address for container hosting;
+the default remains `127.0.0.1`. `/health/ready` succeeds while a worker is attached.
+
 
 [Milestones and validation](docs/102626-live-workflow.md) ·
 [Filesystem tracking](docs/102626-filesystem-tracking.md) ·
@@ -28,3 +32,5 @@ server or Node process remains resident. `--port` changes the HTTP port.
 The filesystem panel separates host binds, container layers and named volumes,
 with change filters, metadata and coverage warnings. Writable host directories use per-run OverlayFS views; after writers stop, views are unmounted and selected upper files are written
 back directly to the host by default. The panel reports metadata coverage limitations.
+
+[Docker deployment and gallery registration](deploy/README.md).

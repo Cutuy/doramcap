@@ -6,12 +6,12 @@ correlated events, CPU timing and on-disk record inspection.
 ```sh
 npm ci --prefix apps/storage-demo/frontend
 npm run build --prefix apps/storage-demo/frontend
-cargo build -p storage-demo -p system-monitor
-cargo run -p storage-demo
+cargo build -p storage-demo -p system-monitor --features system-monitor/bpf
+cargo run -p storage-demo -- --monitor "$PWD/apps/system-monitor/scripts/run-native-monitor.sh"
 # http://127.0.0.1:8091
 ```
 
-- Real O_DIRECT writes; synthetic CPU input by default. `--buffered` selects buffered I/O.
+- Real O_DIRECT writes; native BPF CPU input. `--buffered` selects buffered I/O.
 - **Collection** selects Off, Summary, Inspect or timed Capture; optional region filter.
 - **Timeline filter** matches a write or region ID. Loss/eviction counts remain visible.
 - **Stop recording** seals and syncs; **Start new session** clears previous capture files.
@@ -22,8 +22,8 @@ cargo run -p storage-demo
 - The 1/4/16 MiB selector controls managed payloads. Slabs always hold two 256-KiB payloads.
 - **Retire slab registrations** releases idle registrations; the next use registers again.
 - **Probe burst**, **Flush now** and **Seal & rotate** exercise the pipeline.
-- `--start-paused`, `--seconds N`, `--port N`, `--dir NEW_DIR` configure the session.
-- `--backend bpf --monitor PATH` uses a capability-enabled native monitor.
+- `--start-paused`, `--seconds N`, `--port N`, `--bind IP`, `--dir NEW_DIR` configure the session. The default bind is loopback.
+- `--monitor PATH` selects a capability-enabled native monitor.
 
 Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
 runs outside the writer thread; slow viewers skip intermediate frames. Collection retains
@@ -64,7 +64,6 @@ cargo build -p system-monitor
 python3 apps/storage-demo/validate.py --bin-dir target/debug
 python3 apps/storage-demo/tests/tracing_export.py --bin-dir target/debug
 python3 apps/storage-demo/tests/activity_capture.py --bin-dir target/debug
-node apps/storage-demo/tests/frontend.cjs
 npm test --prefix apps/storage-demo/frontend
 (cd apps/storage-demo/frontend && npm run test:live)
 ```
@@ -74,3 +73,5 @@ npm test --prefix apps/storage-demo/frontend
 
 The page uses `/api/snapshots/stream`; `/api/state` and legacy `/events` provide
 on-demand JSON diagnostics. Control requests remain JSON.
+
+[Docker deployment and gallery registration](deploy/README.md).

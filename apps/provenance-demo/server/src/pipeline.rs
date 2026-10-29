@@ -36,18 +36,24 @@ struct Shared {
     control_idle: AtomicBool,
     queue_drops: Arc<AtomicU64>,
     report_drops: AtomicU64,
-    deadline: Instant,
+    deadline: Option<Instant>,
     drop_every: u64,
     report_delay: Duration,
 }
 pub fn run(args: &[String]) -> Result<()> {
-    let mut duration = 3600;
+    let mut duration = Some(3600);
     let mut drop_every = 0;
     let mut report_delay = 0;
     for pair in args.chunks(2) {
         let value = pair.get(1).ok_or_else(|| eyre!("missing option value"))?;
         match pair[0].as_str() {
-            "--duration" => duration = value.parse()?,
+            "--duration" => {
+                duration = if value == "until-stopped" {
+                    None
+                } else {
+                    Some(value.parse()?)
+                }
+            }
             "--drop-every" => drop_every = value.parse()?,
             "--report-delay-ms" => report_delay = value.parse::<u64>()?.min(1000),
             _ => bail!("unknown pipeline option {}", pair[0]),
@@ -75,7 +81,7 @@ pub fn run(args: &[String]) -> Result<()> {
         control_idle: AtomicBool::new(false),
         queue_drops: drops,
         report_drops: AtomicU64::new(0),
-        deadline: Instant::now() + Duration::from_secs(duration),
+        deadline: duration.map(|seconds| Instant::now() + Duration::from_secs(seconds)),
         drop_every,
         report_delay: Duration::from_millis(report_delay),
     });
@@ -167,7 +173,11 @@ fn worker(
         let mut heartbeat = Instant::now();
         let mut delayed = VecDeque::new();
         let mut transport_open = true;
-        while !shared.stop.load(Ordering::Acquire) && Instant::now() < shared.deadline {
+        while !shared.stop.load(Ordering::Acquire)
+            && shared
+                .deadline
+                .is_none_or(|deadline| Instant::now() < deadline)
+        {
             let mut inputs = Vec::new();
             for _ in 0..64 {
                 match events.try_recv() {

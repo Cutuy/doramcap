@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { appUrl } from "./url";
 type Settings = { mu_ms: number; sigma_ms: number; frequency_hz: number };
 export function SleepControls({ initial }: { initial: Settings }) {
   const [settings, setSettings] = useState(initial);
@@ -13,7 +14,7 @@ export function SleepControls({ initial }: { initial: Settings }) {
         if (obsolete) return;
         setState("Applying…");
         try {
-          const response = await fetch("/api/playground", {
+          const response = await fetch(appUrl("api/playground"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(settings),

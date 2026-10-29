@@ -7,18 +7,20 @@ process refuses to overwrite an existing recording and drains normal input
 closure before finalization.
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora
+cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
 dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 ```
 
-The demo configuration records ten synthetic samples. See the
+The demo configuration records ten native CPU samples. See the
 [viewer guide](../cpu-viewer/docs/running.md) for composing live consumers.
 Install `libs/telemetry/protocol/python/requirements.txt`, then validate transport,
 embedded schemas, recording contents and finite-session shutdown:
 
 ```sh
-python3 apps/mcap-recorder/tests/validate_dora.py --dora /path/to/dora --runs 2
+sudo /path/to/venv/bin/python apps/mcap-recorder/tests/validate_dora.py --dora /path/to/dora --runs 2
 ```
 
 Use `--bin-dir` with a custom Cargo target directory. `--backend bpf` requires
 native build features and permission to load BPF programs.
+
+[Docker deployment and gallery registration](deploy/README.md).

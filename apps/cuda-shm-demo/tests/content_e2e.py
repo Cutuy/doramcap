@@ -13,7 +13,7 @@ parser.add_argument('--logs', type=Path)
 args = parser.parse_args()
 logs = args.logs or Path(tempfile.mkdtemp(prefix='cuda-content-e2e-'))
 logs.mkdir(parents=True, exist_ok=True)
-runner = Path(__file__).resolve().parents[1] / 'run.py'
+runner = Path(__file__).resolve().parents[1] / 'build' / 'run.mjs'
 cases = [
     ('one-byte', 1, 1, 0, True, None),
     ('partial-cuda-block', 257, 2, 1, True, None),
@@ -25,7 +25,7 @@ cases = [
 ]
 for name, size, slots, seed, checksum, failure in cases:
     # Arrange: producer and three independent consumer processes share fixed slots.
-    command = [sys.executable, str(runner), '--dora', args.dora, '--frames', '8',
+    command = ['node', str(runner), '--dora', args.dora, '--frames', '8',
                '--consumers', '3', '--slots', str(slots), '--bytes', str(size), '--seed', str(seed)]
     if checksum:
         command.append('--checksum')

@@ -26,3 +26,5 @@ python3 apps/fault-demo/tests/validate_dora.py --dora /path/to/dora --bin-dir ta
 The timeline aligns report evidence, health, freshness and one-off events. Choose
 **Recovery** for a guided hysteresis example; it freezes the view for inspection.
 [Timeline design and semantics](docs/102026-timelines.md).
+
+[Docker deployment and gallery registration](deploy/README.md).

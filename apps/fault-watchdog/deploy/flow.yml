@@ -1,0 +1,27 @@
+nodes:
+  - id: source_a
+    path: /usr/local/bin/fault-demo-source
+    args: a
+    inputs:
+      controls: dashboard/controls
+    outputs: [reports]
+  - id: source_b
+    path: /usr/local/bin/fault-demo-source
+    args: b
+    inputs:
+      controls: dashboard/controls
+    outputs: [reports]
+  - id: watchdog
+    path: /usr/local/bin/fault-watchdog
+    args: /opt/fault-demo/watchdog.pbtxt
+    inputs:
+      source_a: source_a/reports
+      source_b: source_b/reports
+    outputs: [faults]
+  - id: dashboard
+    path: /usr/local/bin/fault-demo-dashboard
+    env:
+      FAULT_DEMO_LISTEN: 0.0.0.0:8088
+    inputs:
+      faults: watchdog/faults
+    outputs: [controls]

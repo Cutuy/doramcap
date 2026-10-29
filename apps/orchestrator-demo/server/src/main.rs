@@ -56,6 +56,13 @@ impl Feed {
 async fn status(State(feed): State<Shared>) -> Json<Value> {
     Json(feed.lock().unwrap().status())
 }
+async fn ready(State(feed): State<Shared>) -> StatusCode {
+    if feed.lock().unwrap().command.is_some() {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+}
 #[derive(serde::Deserialize)]
 struct Run {
     inject_failure: bool,
@@ -179,6 +186,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() != 3 {
         return Err("orchestrator-demo PRIVATE_SOCKET PORT".into());
     }
+    let bind: std::net::IpAddr = std::env::var("ORCHESTRATOR_BIND")
+        .unwrap_or_else(|_| "127.0.0.1".into())
+        .parse()?;
+    let port: u16 = args[2].parse()?;
     let socket = PathBuf::from(&args[1]);
     let listener = UnixListener::bind(&socket)?;
     use std::os::unix::fs::PermissionsExt;
@@ -206,16 +217,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             feed.announce();
         }
     });
-    let assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist");
+    let assets = std::env::var_os("ORCHESTRATOR_ASSETS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist"));
     let app = Router::new()
         .route("/api/status", get(status))
+        .route("/health/ready", get(ready))
         .route("/api/run", post(run))
         .route("/events", get(websocket))
         .fallback_service(ServeDir::new(assets))
         .with_state(feed);
-    let port: u16 = args[2].parse()?;
-    let tcp = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
-    println!("Orchestrator lab: http://127.0.0.1:{port}");
+    let tcp = tokio::net::TcpListener::bind((bind, port)).await?;
+    println!("Orchestrator lab: http://{}", tcp.local_addr()?);
     axum::serve(tcp, app).await?;
     Ok(())
 }

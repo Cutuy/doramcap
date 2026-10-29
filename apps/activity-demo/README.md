@@ -48,7 +48,9 @@ chosen scale. The scale readout replaces the previous dropdown.
 The server prints its recording path under `/tmp`. Ctrl-C stops workers and
 finalizes MCAP. Options: `--port 8088`, `--record /path/new-file.mcap`,
 `--assets /path/frontend/dist`, and `--duration 30` for a bounded run.
-Existing recording files are protected from overwrite.
+Existing recording files are protected from overwrite. Use `--bind 0.0.0.0`
+to listen on container interfaces; the default is loopback. Frontend assets and
+API paths support serving the app under a URL prefix.
 
 For frontend development, run the Rust server, then `npm run dev --prefix
 apps/activity-demo/frontend`; Vite proxies the API and stream to port 8088.
@@ -73,7 +75,7 @@ apps/activity-demo/frontend`; Vite proxies the API and stream to port 8088.
 - The recorder, encoder, web server, and browser may allocate. Producer capture
   has a separate allocation regression test. This demo has no Thor bandwidth claim.
 
-The app binds to loopback. Context tokens support synchronous, same-runtime
+The app binds to loopback by default. Context tokens support synchronous, same-runtime
 handoffs; await points require separate async propagation support. The demo enables
 MCAP and live output; the library's optional OpenTelemetry sink remains available
 for other hosts.
@@ -127,3 +129,5 @@ queued work drains. `DEMO_URL` selects that instance.
 Frequency validation: `npm run test:frequency --prefix apps/activity-demo/frontend`
 checks live rescheduling, limits, pause and manual greetings (prefer a separate
 instance via `DEMO_URL`).
+
+[Docker deployment and gallery registration](deploy/README.md).

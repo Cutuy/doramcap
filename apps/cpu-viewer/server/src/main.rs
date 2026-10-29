@@ -1,4 +1,4 @@
-//! Dora subscriber and loopback HTTP server. Browser clients never block collection.
+//! Dora subscriber and HTTP server. Browser clients never block collection.
 mod delivery;
 
 use axum::{
@@ -7,6 +7,7 @@ use axum::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
+    http::StatusCode,
     response::Response,
     routing::get,
 };
@@ -103,6 +104,15 @@ async fn clock_sample() -> impl axum::response::IntoResponse {
     )
 }
 
+async fn ready(State(feed): State<Feed>) -> StatusCode {
+    let latest = feed.borrow();
+    if latest.snapshot.is_some() && latest.dictionary.is_some() {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
+}
+
 async fn stream(ws: WebSocketUpgrade, State(feed): State<Feed>) -> Response {
     ws.max_message_size(1024)
         .max_frame_size(1024)
@@ -152,9 +162,16 @@ async fn serve_socket(socket: WebSocket, mut feed: Feed) {
 async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let mut port = 8080u16;
+    let mut bind = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
     let mut assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist");
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--bind" => {
+                bind = args
+                    .next()
+                    .ok_or_else(|| eyre::eyre!("--bind requires an IP address"))?
+                    .parse()?
+            }
             "--port" => {
                 port = args
                     .next()
@@ -168,7 +185,9 @@ async fn main() -> Result<()> {
                     .into()
             }
             "--help" | "-h" => {
-                println!("cpu-viewer [--port 8080] [--assets apps/cpu-viewer/frontend/dist]");
+                println!(
+                    "cpu-viewer [--bind 127.0.0.1] [--port 8080] [--assets apps/cpu-viewer/frontend/dist]"
+                );
                 return Ok(());
             }
             _ => bail!("unknown argument: {arg}"),
@@ -179,7 +198,7 @@ async fn main() -> Result<()> {
             "missing frontend assets: run npm ci && npm run build in apps/cpu-viewer/frontend, or set --assets"
         );
     }
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+    let listener = tokio::net::TcpListener::bind((bind, port)).await?;
     let (sender, feed) = watch::channel(Latest::default());
     let (shutdown, stopped) = tokio::sync::oneshot::channel();
     std::thread::Builder::new()
@@ -191,6 +210,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/stream", get(stream))
         .route("/clock", get(clock_sample))
+        .route("/health/ready", get(ready))
         .with_state(feed)
         .fallback_service(ServeDir::new(assets));
     println!("CPU viewer: http://{}", listener.local_addr()?);
@@ -251,6 +271,23 @@ fn receive(sender: watch::Sender<Latest>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn readiness_requires_snapshot_and_dictionary() {
+        // Arrange
+        let (sender, receiver) = watch::channel(Latest::default());
+        // Act / Assert
+        assert_eq!(
+            ready(State(receiver.clone())).await,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        sender.send_modify(|value| value.snapshot = Some(Arc::new(vec![1])));
+        assert_eq!(
+            ready(State(receiver.clone())).await,
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        sender.send_modify(|value| value.dictionary = Some(Arc::new(vec![2])));
+        assert_eq!(ready(State(receiver)).await, StatusCode::OK);
+    }
     #[test]
     fn ingress_counts_original_binary_payload_and_latency() {
         let mut metrics = IngressMetrics::default();

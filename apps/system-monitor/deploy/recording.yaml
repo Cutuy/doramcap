@@ -1,0 +1,26 @@
+# One fresh collector and embedded writer per experiment.
+# The manager supplies explicit variables and verifies output advancement.
+services:
+  cpu-monitor:
+    image: ${DORAMCAP_MONITOR_IMAGE:?prepared monitor image required}
+    command: ["--backend", "bpf", "--records", "32768", "--output", "/recordings/cpu.pb", "--record", "/recordings/cpu.mcap", "--record-buffered"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [BPF, PERFMON, SYSLOG]
+    security_opt: [seccomp=unconfined]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    volumes:
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /sys/kernel/btf
+        target: /sys/kernel/btf
+        read_only: true
+      - type: bind
+        source: ${DORAMCAP_ARTIFACTS:?new artifact directory required}
+        target: /recordings

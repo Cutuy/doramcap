@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run generate:proto && vite --host 127.0.0.1",
     "build": "npm run generate:proto && tsc --noEmit && vite build",
-    "test": "npm run generate:proto && tsx --test src/*.test.ts",
+    "test": "npm run generate:proto && tsx --test src/*.test.ts && tsx ../tests/frontend.cts",
     "generate:proto": "node scripts/generate-proto.mjs",
     "test:live": "npm run generate:proto && tsx tests/live.mts"
   },

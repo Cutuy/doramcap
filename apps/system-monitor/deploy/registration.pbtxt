@@ -1,0 +1,12 @@
+id: "system-monitor"
+compose_file: "compose.yaml"
+service: "monitor"
+network: "default"
+headless: true
+readiness_seconds: 60
+stop_seconds: 30
+result_file: "monitor.pb"
+result_format: FILE
+exclusive_resources: "host-bpf-monitor"
+env_prefix: "SYSTEM_MONITOR"
+requires_explicit_enable: true

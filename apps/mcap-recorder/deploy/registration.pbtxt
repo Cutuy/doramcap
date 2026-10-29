@@ -1,0 +1,28 @@
+id: "mcap-recorder"
+compose_file: "compose.yaml"
+service: "coordinator"
+network: "default"
+headless: true
+readiness_seconds: 90
+stop_seconds: 50
+result_file: "recording.mcap"
+shutdown_marker: "shutdown.complete"
+recording_count {
+  count_file: "published.count"
+  topic: "doramcap/snapshots"
+}
+exclusive_resources: "host-bpf-monitor"
+env_prefix: "MCAP_RECORDER"
+requires_explicit_enable: true
+
+system_apps { dora_flows {
+  project: "mcap-recorder"
+  service: "recorder"
+  descriptor: "/opt/dora-flow/flow.yml"
+  name: "hosted"
+  shutdown { nodes: "system-monitor" }
+  shutdown { nodes: "recorder" drain: true }
+  count_node: "system-monitor"
+  count_file: "published.count"
+  completion_file: "shutdown.complete"
+} }

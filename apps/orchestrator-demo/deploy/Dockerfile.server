@@ -1,0 +1,8 @@
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+COPY orchestrator-demo /usr/local/bin/orchestrator-demo
+COPY dist/ /opt/orchestrator/dist/
+ENV HOME=/tmp ORCHESTRATOR_BIND=0.0.0.0 ORCHESTRATOR_ASSETS=/opt/orchestrator/dist
+WORKDIR /tmp
+ENTRYPOINT ["/usr/local/bin/orchestrator-demo", "/socket/worker.sock", "8080"]

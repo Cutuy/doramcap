@@ -22,6 +22,9 @@ async fn main() -> Result<()> {
     let mut snapshot = Instant::now();
     let mut timer = tokio::time::interval(Duration::from_millis(20));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Keep the subscription alive while processing batches between selects.
+    let shutdown = tokio::signal::ctrl_c();
+    tokio::pin!(shutdown);
     loop {
         tokio::select! {
             input=events.next()=>match input{
@@ -29,7 +32,7 @@ async fn main() -> Result<()> {
                 Some(Event::Stop(_))|None=>break,_=>{},
             },
             _=timer.tick()=>{ticks+=1;match mode.as_str(){"pause"=>{},"fail"=>{check.failure(Text::new("simulated I/O error")?)?;},"flap" if ticks%30<15=>{check.failure(Text::new("intermittent operation")?)?;},"flood"=>{for _ in 0..2000{check.failure(Text::new("burst")?)?;}},_=>{check.success()?;}}},
-            _=tokio::signal::ctrl_c()=>break,
+            _=&mut shutdown=>break,
         }
         if mode == "pause" {
             continue;

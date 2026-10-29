@@ -11,7 +11,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--dora', required=True)
 parser.add_argument('--bin-dir', type=Path, required=True)
-parser.add_argument('--backend', choices=('synthetic', 'bpf'), default='synthetic')
+parser.add_argument('--backend', choices=('bpf',), default='bpf')
 args = parser.parse_args()
 bin_dir = args.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
     # JSON is a YAML-compatible descriptor and safely quotes filesystem paths.
     flow = {'nodes': [
         {'id': 'monitor', 'path': str(bin_dir / 'system-monitor'),
-         'args': f'--backend {args.backend} --samples 24 --records 4096 --dora --record {embedded}',
+         'args': f'--backend bpf --samples 24 --records 4096 --dora --record {embedded}',
          'outputs': ['snapshots', 'dictionary']},
         {'id': 'recorder', 'path': str(bin_dir / 'mcap-recorder'), 'args': str(received),
          'inputs': {'snapshots': {'source': 'monitor/snapshots', 'queue_size': 64},

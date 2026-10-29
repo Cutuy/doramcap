@@ -1,0 +1,27 @@
+nodes:
+  - id: system-monitor
+    path: /usr/local/bin/system-monitor
+    args: --backend bpf --task-capacity 32768 --dora
+    outputs: [snapshots, dictionary]
+  - id: cpu-viewer
+    path: /usr/local/bin/cpu-viewer
+    args: --bind 0.0.0.0 --port 8080 --assets /opt/cpu-viewer/dist
+    inputs:
+      snapshots:
+        source: system-monitor/snapshots
+        queue_size: 4
+      dictionary:
+        source: system-monitor/dictionary
+        queue_size: 4
+  - id: recorder
+    path: /usr/local/bin/mcap-recorder
+    args: /results/cpu.mcap
+    inputs:
+      snapshots:
+        source: system-monitor/snapshots
+        queue_size: 64
+        queue_policy: backpressure
+      dictionary:
+        source: system-monitor/dictionary
+        queue_size: 4
+        queue_policy: backpressure

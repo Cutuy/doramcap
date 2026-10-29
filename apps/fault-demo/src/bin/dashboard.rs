@@ -40,11 +40,14 @@ async fn main() -> Result<()> {
     )
     .await?;
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
+    // Keep the subscription alive while forwarding controls between selects.
+    let shutdown = tokio::signal::ctrl_c();
+    tokio::pin!(shutdown);
     loop {
         tokio::select! {
             event=events.next()=>match event{Some(Event::Input{data,..})=>{if let Ok(bytes)=<&[u8]>::try_from(&data){match fault_protocol::decode_aggregation(bytes,Default::default()){Ok(frame)=>view.lock().unwrap().apply(frame),Err(e)=>eprintln!("invalid publication: {e}")}}},Some(Event::Stop(_))|None=>break,_=>{}},
             Some(bytes)=receiver.recv()=>{node.send_output_raw("controls".into(),Default::default(),bytes.len(),|b|b.copy_from_slice(&bytes))?;},
-            _=tokio::signal::ctrl_c()=>break,
+            _=&mut shutdown=>break,
         }
     }
     server.abort();

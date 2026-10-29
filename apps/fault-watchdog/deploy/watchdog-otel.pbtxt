@@ -1,0 +1,12 @@
+app {
+  id: "watchdog"
+  config { [type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
+    inputs: "source_a"
+    inputs: "source_b"
+    source_timeout_ms: 3000
+    snapshot_interval_ms: 500
+    maintenance_ms: 10
+    shutdown_ms: 5000
+    otel { enabled: true endpoint: "http://127.0.0.1:4318/v1/logs" timeout_ms: 500 service_name: "fault-watchdog" }
+  } }
+}

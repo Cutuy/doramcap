@@ -10,7 +10,7 @@ function App(){
  const [events,setEvents]=useState<Event[]>([]),[status,setStatus]=useState<any>({ready:false,busy:false}),[connected,setConnected]=useState(false),[session,setSession]=useState(''),[selected,setSelected]=useState(''),[error,setError]=useState(''),[gap,setGap]=useState(0),[tick,setTick]=useState(Date.now());
  const [received,setReceived]=useState(Date.now());
  useEffect(()=>{let stopped=false,ws:WebSocket,timer:ReturnType<typeof setTimeout>;let sequence=0n;
-  function connect(){ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/events`);ws.binaryType='arraybuffer';ws.onopen=()=>setConnected(true);
+  function connect(){const url=new URL('events',document.baseURI);url.protocol=url.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(url);ws.binaryType='arraybuffer';ws.onopen=()=>setConnected(true);
    ws.onmessage=message=>{if(typeof message.data==='string'){const data=JSON.parse(message.data);if(data.type==='reset'){setEvents([]);setGap(0);sequence=0n;}if(data.type==='status')setStatus(data);if(data.type==='gap')setGap(v=>v+data.count);return;}
     try{const e=doramcap.workflow.v1.Event.toObject(doramcap.workflow.v1.Event.decode(new Uint8Array(message.data)),{longs:String,enums:String}) as Event;
      if(e.version!==1)throw Error('Unsupported telemetry version');const next=BigInt(e.sequence);if(next<=sequence)return;if(sequence&&next>sequence+1n)setGap(v=>v+Number(next-sequence-1n));sequence=next;
@@ -28,7 +28,7 @@ function App(){
  const x=(seconds:number)=>left+Math.min(seconds/horizon,1)*width;
  const chosen=rows.find(r=>r.id===selected)??rows.find(r=>r.state==='STARTED')??rows.at(-1);
  const failed=rows.filter(r=>['FAILED','PANICKED','CANCELLED'].includes(r.state)).length;
- async function run(inject_failure:boolean){setError('');try{const response=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inject_failure})});if(!response.ok)throw Error((await response.json()).error);}catch(e){setError(String(e))}}
+ async function run(inject_failure:boolean){setError('');try{const response=await fetch(new URL('api/run',document.baseURI),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({inject_failure})});if(!response.ok)throw Error((await response.json()).error);}catch(e){setError(String(e))}}
  const loss=Math.max(gap,status.last?.dropped_events??0);
  const result=(status.reports??[]).find((r:any)=>r.session===session)??(status.last?.session===session?status.last:null);
  const verified=result?.report?.boundary_clean&&result?.report?.recording_finalized;

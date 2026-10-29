@@ -10,6 +10,7 @@ apps/cpu-viewer/dataflows/out/
 
 __pycache__/
 *.pyc
+**/generated/*_pb2.py
 
 # Generated assets at the legacy frontend location.
 /frontend/dist/
@@ -28,3 +29,5 @@ apps/project-explorer/frontend/public/content/
 *.tsbuildinfo
 /apps/*/frontend/.vite/
 /apps/*/frontend/.vite-temp/
+
+/apps/cuda-shm-demo/build/

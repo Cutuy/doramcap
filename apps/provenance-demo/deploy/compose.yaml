@@ -1,0 +1,20 @@
+services:
+  monitor:
+    image: doramcap/provenance-demo:local
+    user: "${PROVENANCE_UID:?}:${PROVENANCE_GID:?}"
+    init: true
+    stop_signal: SIGINT
+    stop_grace_period: 80s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: ${PROVENANCE_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8088/api/summary', {signal: AbortSignal.timeout(1000)}).then(r => r.json()).then(s => { if (Object.keys(s.nodes).length !== 4 || s.complete <= 0 || s.activity_batches <= 0) process.exitCode = 1 }).catch(() => process.exitCode = 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 45

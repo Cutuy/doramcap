@@ -1,7 +1,7 @@
 nodes:
   - id: system-monitor
-    path: ../../../target/debug/system-monitor
-    args: --backend synthetic --samples 10 --dora
+    path: ../../system-monitor/scripts/run-native-monitor.sh
+    args: --backend bpf --samples 10 --dora
     outputs:
       - snapshots
       - dictionary

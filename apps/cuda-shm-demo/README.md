@@ -10,11 +10,10 @@ The runner defaults to 4 KiB slot alignment; `--slot-alignment 64` selects a com
 
 ```sh
 cargo build -p cuda-shm-demo
-python3 -m venv apps/cuda-shm-demo/.venv
-apps/cuda-shm-demo/.venv/bin/pip install -r apps/cuda-shm-demo/requirements.txt
 npm --prefix apps/cuda-shm-demo/frontend ci
 npm --prefix apps/cuda-shm-demo/frontend run build
-apps/cuda-shm-demo/.venv/bin/python apps/cuda-shm-demo/viewer.py --dora /path/to/dora
+npm --prefix apps/cuda-shm-demo/frontend run build:server
+node apps/cuda-shm-demo/build/viewer-cli.mjs --dora /path/to/dora
 ```
 
 Open **http://127.0.0.1:8768**. Run experiments, filter slot generations and processes,
@@ -28,10 +27,10 @@ checksums. Each run saves activity MCAP/Protobuf and logs under
 
 ```sh
 cargo build -p cuda-shm-demo
-python3 apps/cuda-shm-demo/run.py --dora /path/to/dora
-python3 apps/cuda-shm-demo/run.py --dora /path/to/dora --failure stall
-python3 apps/cuda-shm-demo/run.py --dora /path/to/dora --failure duplicate
-python3 apps/cuda-shm-demo/run.py --dora /path/to/dora \
+node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora
+node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --failure stall
+node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --failure duplicate
+node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora \
   --consumers 2 --frames 6 --sanitizer /usr/local/cuda/bin/compute-sanitizer
 ```
 
@@ -47,7 +46,7 @@ and slot reuse. Failure modes must fail for the expected reason.
 ```sh
 cargo test -p cuda-shm-demo
 python3 apps/cuda-shm-demo/tests/content_e2e.py --dora /path/to/dora
-python3 apps/cuda-shm-demo/run.py --dora /path/to/dora --seed 0xdeadbeef --checksum
+node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --seed 0xdeadbeef --checksum
 ```
 
 GPU fill bytes depend on seed, frame sequence and byte offset. Every consumer's
@@ -55,3 +54,5 @@ GPU compares every byte and retains a failure flag, read after completion before
 reporting success. Optional CPU validation checks every byte and its checksum.
 The matrix covers boundary lengths, slot reuse and independent GPU/CPU corruption
 rejection; CUDA absence fails visibly. Seeds reproduce failures.
+
+[Docker deployment and gallery registration](deploy/README.md).

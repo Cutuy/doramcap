@@ -1,0 +1,19 @@
+services:
+  coordinator:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: coordinator
+    image: doramcap/fault-watchdog:local
+    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
+  dashboard:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: daemon
+    image: doramcap/fault-watchdog:local
+    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
+    security_opt:
+    - no-new-privileges:true
+    volumes:
+    - type: bind
+      source: ${FAULT_WATCHDOG_RESULTS_DIR:?}
+      target: /results

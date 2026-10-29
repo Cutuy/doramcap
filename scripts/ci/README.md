@@ -77,10 +77,10 @@ python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
 
 Each job runs default and all-feature Rust tests, builds native binaries/examples,
 then runs privileged cgroup accounting integration and allocation validation.
-The worker also benchmarks storage allocations and runs synthetic/native Dora
+The worker also benchmarks storage allocations and runs native Dora
 recording comparisons when the pinned CLI is installed at
 `/home/doramcap-ci/.local/bin/dora`. Native Dora validation runs through the
-approved root launcher; synthetic validation runs unprivileged.
+approved root launcher.
 
 Persistent locations on the worker:
 
@@ -151,8 +151,9 @@ Dora CLI is version 1.1.0, release archive SHA256
 The storage-enabled runner also runs Clippy on changed storage/monitor components
 with dependency linting excluded; generated protocol code has separate lint policy.
 
-The storage-demo HTTP validation exercises live SSE, commands, aligned MCAP
-rotation, tail inspection and independent payload readback on ARM64.
+App hosting and demo HTTP/end-to-end checks run manually, outside worker
+provisioning and the default job. The [Storage Demo README](../../apps/storage-demo/README.md)
+contains its HTTP and activity-capture validation commands.
 
 ## Resource policy native coverage
 
@@ -163,6 +164,3 @@ compatibility. Its `--enable-root-cpuset` test option temporarily enables root
 cpuset delegation when absent, then restores the previous setting after removing
 its test subtree. This host-level test setup was explicitly approved on 2026-10-19.
 Run only on the trusted serial CI worker or an equivalently authorized test host.
-
-The activity-capture smoke test records combined, large and slab writes, then
-decodes the activity MCAP and checks closed spans and zero recorded loss.

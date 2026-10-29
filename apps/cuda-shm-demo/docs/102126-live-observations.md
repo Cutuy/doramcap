@@ -35,7 +35,7 @@
 - Build and strict Clippy pass for both CUDA adapter and demo.
 
 Run validation with `npm --prefix apps/cuda-shm-demo/frontend test`,
-`apps/cuda-shm-demo/.venv/bin/python apps/cuda-shm-demo/tests/viewer.py`, and (against a running viewer)
+`npm test --prefix apps/cuda-shm-demo/frontend`, and (against a running viewer)
 `apps/cuda-shm-demo/.venv/bin/python apps/cuda-shm-demo/tests/live.py`.
 - Longer checksum run `8f39b3895fed4bfea1fa08f5618c7bef`: 120 frames published
   pending and reclaimed; all 360 consumer checksum samples match.
