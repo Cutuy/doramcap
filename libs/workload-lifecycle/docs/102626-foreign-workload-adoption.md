@@ -76,11 +76,11 @@ Foreign and native inputs can eventually feed the same execution contracts.
 |---|---|
 | Import adapter | Source inventory, normalized Compose model, selected services, unresolved requirements |
 | Plan compiler | Immutable launch plan, policy diff, capability report, artifact/version references |
-| Lifecycle coordinator | Session transitions, step observation, admission and ordinary finalization |
+| Lifecycle coordinator | Drive session transitions, participant admission and management, step observation, and ordinary finalization; report outcomes through session contracts |
 | Host executor | Docker/Compose operations, exec sessions, inspect results and runtime events |
 | Boundary manager | Host/device/port/output leases; declared machine preparation and restoration |
 | Session-owned native services | Fresh monitors, MCAP writers and evidence adapters; snapshots, feeds and finalization reports |
-| `session` | Common identities, membership and manifest contracts, evidence/completion semantics |
+| `session` | Common identity, membership, manifest, evidence and outcome contracts |
 
 These are logical modules initially housed in this crate's design. Split backend
 crates when implementations justify them. A future CLI/service owns user access

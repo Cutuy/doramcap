@@ -21,14 +21,15 @@ for tracking, recording, reproduction, analysis, and queries.
 - Each replay or independent retry receives a new session ID and source-session links.
 - A participant restart can remain in its session; it receives a new instance ID.
 - Resuming an interrupted session requires explicit host reconciliation of ownership and evidence.
-- One actor owns session lifecycle and assigns identity before participants emit evidence.
+- The lifecycle coordinator drives session transitions and assigns identity before participants emit evidence.
 
 ## Architecture and ownership
 
 | Component | Responsibility |
 |---|---|
-| `session` | Identity contracts, membership, manifest, source links, completion and evidence status |
-| Application / launcher | Start and stop participants; apply policy; define experiment acceptance |
+| `session` | Identity contracts, membership, manifest, source links, outcome and evidence status |
+| Lifecycle coordinator | Drive session transitions and participant management; report outcomes to the session |
+| Application / launcher | Apply policy, define experiment acceptance and delegate participant operations |
 | `pbtxt-config` / resource policy | Effective configuration fingerprints and requested/applied policy |
 | Activity, provenance, fault and resource crates | Domain evidence with identities, clocks, gaps, and counters |
 | Recorders / storage | Payload persistence, rotation, finalization, durability reporting |
@@ -76,8 +77,9 @@ Execution outcome, evidence completeness, and persistence guarantees are separat
 fields. Successful computation can have incomplete recordings. A failed workload
 can produce complete diagnostic evidence. An unfinalized capture remains provisional.
 
-The lifecycle owner records participant exit and sink outcomes. It distinguishes
-write completion, file finalization, and the storage adapter's durability contract.
+The lifecycle coordinator records participant exit and sink outcomes using the
+session contracts. It distinguishes write completion, file finalization, and the
+storage adapter's durability contract.
 Timeouts and missing participants remain visible in the final evidence report.
 
 ## Reproduction modes

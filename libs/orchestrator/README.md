@@ -38,14 +38,8 @@ adapter in `orchestrator::process`; they require their interpreter on the host.
 [Input lifetime](docs/102926-refactor-engineer.svg).
 API contracts live in Rust documentation (`cargo doc -p orchestrator --no-deps`).
 
-Real Docker validation (local Linux daemon and native BPF build prerequisites):
-
-```sh
-python3 libs/orchestrator/scripts/docker-monitor-e2e.py --sudo --output /tmp/docker-monitor-run
-```
-
-This opt-in test runs the actual CPU monitor twice plus an injected-failure case.
-See [milestones, privileges and evidence](docs/102626-docker-monitor-e2e.md).
+Historical real-Docker validation and evidence are documented in
+[milestones and findings](docs/102626-docker-monitor-e2e.md).
 
 For live workflow telemetry, pass `telemetry::TelemetryObserver` to
 `LocalExecutor::new`. Its nonblocking sink receives Protobuf events from

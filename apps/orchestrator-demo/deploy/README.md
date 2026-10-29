@@ -1,7 +1,7 @@
 # Orchestrator Lab hosting
 
-The existing native launcher runs the web server unprivileged and a separate,
-optionally elevated Docker worker. See [usage](../README.md).
+The intended native hosting model runs the web server unprivileged and a separate,
+optionally elevated Docker worker. A supported native launcher is not currently provided.
 
 For gallery integration, prefer those two host processes with shared singleton,
 idle-stop and proxy handling. The worker already invokes the shared Compose

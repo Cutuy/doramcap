@@ -640,7 +640,7 @@ async fn main() -> Result<()> {
         .route("/api/activity/status", get(|| async { Json(json!({"enabled": cfg!(feature = "activity-tracing")})) }))
         .route(
             "/",
-            get(|| async { Html(include_str!("../web/index.html")) }),
+            get(|| async { Html(include_str!("../frontend/embedded/index.html")) }),
         )
         .route("/events", get(events))
         .route("/api/snapshots/stream", get(snapshot::stream))

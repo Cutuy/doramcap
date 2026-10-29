@@ -6,19 +6,17 @@ telemetry; the demo owns transport and presentation.
 
 ![Architecture](docs/102626-live-workflow.svg)
 
-```sh
-python3 libs/orchestrator/scripts/docker-monitor-e2e.py --sudo --live-demo --output /tmp/orchestrator-live
-```
+The former native launcher has been removed; a supported local launch path is
+not currently provided. The hosting profile is pending qualification.
 
-Open http://127.0.0.1:8092. **Run experiment** executes the Compose workflow and filesystem fixture;
+**Run experiment** executes the Compose workflow and filesystem fixture;
 **Test failure & cleanup** uses an unhealthy service to exercise cleanup.
 Select a timeline row to inspect its evidence. Closing a browser leaves cleanup
-running; reconnect recovers bounded history. Ctrl-C stops the launcher after cleanup.
+running; reconnect recovers bounded history.
 
 Requires the [native Docker fixture prerequisites](../../libs/orchestrator/docs/102626-docker-monitor-e2e.md#run-and-inspect).
-The web server runs unprivileged on loopback; only the fixed Docker worker is
-optionally elevated. Node is needed for building static assets. No development
-server or Node process remains resident. `--port` changes the HTTP port.
+The web server runs unprivileged; only the fixed Docker worker is
+optionally elevated. Node is needed for building static assets.
 Set `ORCHESTRATOR_ASSETS` to an absolute frontend build directory when relocating
 the server binary. Set `ORCHESTRATOR_BIND` to an IP address for container hosting;
 the default remains `127.0.0.1`. `/health/ready` succeeds while a worker is attached.
