@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="510" viewBox="0 0 940 510" role="img" aria-labelledby="title desc">
+<title id="title">System Monitor lifecycle MVP</title>
+<desc id="desc">One shared recorded-run workflow calls Compose or Supervisor steps to run the same System Monitor app. Both paths share recording readiness, finalization and outcomes.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="940" height="510" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="470" y="34" font-size="22" font-weight="600">System Monitor MVP: shared workflow, two deployments</text>
+<rect x="100" y="56" width="740" height="74" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="470" y="84" font-size="18" font-weight="600">Shared recorded-run driver + orchestrator</text>
+<text x="470" y="110" font-size="15">Prepare · launch · ready · observe · quiesce · finalize · remove</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M265 130 V164"/><path d="M675 130 V164"/></g>
+<rect x="55" y="168" width="420" height="124" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="265" y="196" font-size="18" font-weight="600">Compose steps</text>
+<text x="265" y="222" font-size="15">deploy/recording.yaml</text>
+<text x="265" y="247" font-size="15">Pinned image · owned container/project</text>
+<text x="265" y="273" font-size="15">Docker health, events and cleanup evidence</text>
+<rect x="495" y="168" width="390" height="124" rx="6" fill="#e3f2e7" stroke="#83aa8b"/>
+<text x="690" y="196" font-size="18" font-weight="600">Supervisor steps</text>
+<text x="690" y="222" font-size="15">deploy/supervisor/recording.conf</text>
+<text x="690" y="247" font-size="15">Host binary · owned daemon/cgroup</text>
+<text x="690" y="273" font-size="15">Process inspection and cleanup evidence</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M265 292 V330"/><path d="M690 292 V330"/></g>
+<rect x="100" y="334" width="740" height="77" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="470" y="362" font-size="18" font-weight="600">Shared recording steps</text>
+<text x="470" y="389" font-size="15">Advancing cpu.pb + armed cpu.mcap · stopped writer + MCAP completion</text>
+<path d="M470 411 V439" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="470" y="466" font-size="17" font-weight="600">Execution outcome · valid recording · verified cleanup</text>
+<text x="470" y="493" font-size="14">Scope: one system app; repo adoption and gallery integration deferred</text>
+</g></svg>
