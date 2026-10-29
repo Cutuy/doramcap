@@ -10,10 +10,12 @@ stage=$(mktemp -d)
 cp "$(command -v dora)" "$stage/dora"
 cp target/release/system-monitor target/release/mcap-recorder "$stage/"
 cp apps/mcap-recorder/deploy/flow.yml "$stage/"
-cp libs/workload-docker/deploy/dora-supervise.sh "$stage/"
 docker build -t doramcap/mcap-recorder:local -f apps/mcap-recorder/deploy/Dockerfile "$stage"
 rm -r "$stage"
 ```
 
-Enable with `--enable-app mcap-recorder`. The wrapper drains the recorder and
+Enable with `--enable-app mcap-recorder`. The shared Rust workflow drains the recorder and
 checks published counts before releasing its result. See [remaining work](../../project-explorer/server/docs/102727-remaining-apps.md#m2--mcap-recorder-complete).
+
+Compose runs foreground Dora coordinator/daemon services. The registration declares
+node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.

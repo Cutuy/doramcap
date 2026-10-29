@@ -1,7 +1,7 @@
 # Fault Watchdog wrapper
 
 Runs an independent watchdog, synthetic reporters and the Fault Demo dashboard.
-Each generation retains `state.json`; `dora.log` remains private.
+Each generation retains `state.json`; container diagnostics remain private.
 
 Stage the binaries and files as in the [Fault Demo wrapper](../../fault-demo/deploy/README.md),
 using this directory's `flow.yml` and `Dockerfile`. Tag the image
@@ -15,3 +15,6 @@ For OTLP, build with `--features otel`, configure a container-reachable collecto
 URL in a private copy of `watchdog-otel.pbtxt`, and use `compose.otel.yaml` and
 `registration.otel.pbtxt`. Tag the images `:mcap` or `:otel`, respectively. Install
 one trusted registration as `registration.pbtxt` before starting the manager.
+
+Compose runs foreground Dora coordinator/daemon services. The registration declares
+node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.

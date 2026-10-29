@@ -14,7 +14,6 @@ cp "$(command -v dora)" "$stage/dora"
 cp target/release/cpu-viewer target/release/system-monitor target/release/mcap-recorder "$stage/"
 cp -r apps/cpu-viewer/frontend/dist "$stage/dist"
 cp apps/cpu-viewer/deploy/flow.yml "$stage/"
-cp libs/workload-docker/deploy/dora-supervise.sh "$stage/"
 docker build -t doramcap/cpu-viewer:local -f apps/cpu-viewer/deploy/Dockerfile "$stage"
 rm -r "$stage"
 ```
@@ -22,3 +21,6 @@ rm -r "$stage"
 Enable with `--enable-app cpu-viewer`. Only the collector acquires BPF, PERFMON
 and SYSLOG file capabilities; cgroup/BTF mounts are read-only. The manager checks
 collector losses and recorded counts before publishing. See [native qualification](../../project-explorer/server/docs/102727-remaining-apps.md#m8--native-collection-profiles-planned).
+
+Compose runs foreground Dora coordinator/daemon services. The registration declares
+node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.

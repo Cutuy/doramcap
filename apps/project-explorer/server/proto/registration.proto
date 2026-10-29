@@ -2,6 +2,7 @@ syntax = "proto3";
 package doramcap.hosting.v1;
 
 import "recovery.proto";
+import "system_apps.proto";
 
 // Verification for published results. MCAP is the default.
 enum ResultFormat { MCAP = 0; FILE = 1; }
@@ -58,4 +59,5 @@ message AppRegistration {
   reserved 23;
   reserved "seccomp_file";
   bool requires_explicit_enable = 24;
+  doramcap.system_apps.v1.SystemAppsConfig system_apps = 25;
 }

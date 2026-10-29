@@ -1,20 +1,19 @@
 services:
-  dashboard:
+  coordinator:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: coordinator
     image: doramcap/fault-watchdog:otel
-    user: "${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}"
-    init: true
-    stop_signal: SIGINT
-    stop_grace_period: 50s
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    tmpfs: [/tmp]
+    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
+  dashboard:
+    extends:
+      file: ../../../libs/workload-docker/deploy/dora.yaml
+      service: daemon
+    image: doramcap/fault-watchdog:otel
+    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
+    security_opt:
+    - no-new-privileges:true
     volumes:
-      - type: bind
-        source: ${FAULT_WATCHDOG_RESULTS_DIR:?}
-        target: /results
-    healthcheck:
-      test: ["CMD-SHELL", "pidof fault-demo-source >/dev/null && pidof fault-watchdog >/dev/null && curl --fail --silent --max-time 1 http://127.0.0.1:8088/api/state | grep -q '\"complete\":true'"]
-      interval: 2s
-      timeout: 2s
-      retries: 45
+    - type: bind
+      source: ${FAULT_WATCHDOG_RESULTS_DIR:?}
+      target: /results
