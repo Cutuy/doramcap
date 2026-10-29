@@ -9,7 +9,7 @@ prost = "0.14"
 prost-reflect = { version = "0.16", features = ["text-format"] }
 prost-types = "0.14"
 thiserror = "2"
-sha2 = "0.10"
+sha2 = "0.11"
 
 [build-dependencies]
 prost-build = "0.14"
