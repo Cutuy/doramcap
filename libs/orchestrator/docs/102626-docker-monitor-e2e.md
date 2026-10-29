@@ -11,8 +11,8 @@ procedural Rust steps against a real local Docker daemon.
   Evidence: successful native build and local scratch-image run on 2026-10-26;
   [image identity and results](102626-docker-monitor-results.json).
 - [x] Implement create/start, running/readiness audit, stop, recording audit and removal.
-  Evidence: [workflow implementation](../examples/docker_monitor.rs); retained
-  `events.jsonl`, Docker inspections and process listings for all three attempts.
+  Evidence: retained `events.jsonl`, Docker inspections and process listings for
+  all three attempts. The original fixture has since been retired.
 - [x] Validate two sequential successful experiments and an injected audit failure.
   Evidence: final local run `/tmp/doramcap-docker-e2e-102626-4` passed. Each
   attempt recorded 24 contiguous native snapshots, zero drops, a clean exit and
@@ -48,9 +48,9 @@ monitor as a foreign container, before general Compose adoption or robotics pilo
 
 ## Run and inspect
 
-The original Python launcher has been removed. The Rust example remains available
-for use with a prepared monitor image and an existing output directory; no replacement
-image-preparation launcher is provided.
+The original Python launcher and Rust example have been retired. The maintained
+[Compose integration tests](../../workload-docker/tests/docker.rs) cover recording
+and lifecycle behavior; native monitor and recorder tests cover additional telemetry checks.
 
 The historical run required a local Linux Docker daemon, Linux >=6.8 with BTF/cgroup v2,
 BPF-capable Clang, libelf/zlib development files and the repository Rust toolchain.
@@ -73,8 +73,8 @@ is accepted only when cleanup and recording checks still pass.
   trailing magic and complete message stream; an optional summary is not required.
 - Audit requires advancing native per-cgroup/per-CPU counters, contiguous sequence
   numbers, dictionary metadata, no dropped batches, clean exit and stable file size.
-- This is an opt-in real-Docker test. Ordinary Cargo tests and ARM64 CI compile the
-  example but do not automatically run Docker. Cross-architecture Docker execution,
+- This was an opt-in real-Docker test. Ordinary Cargo tests and ARM64 CI do not
+  automatically run Docker. Cross-architecture Docker execution,
   production seccomp, Compose import and 4 GB memory qualification remain open.
 - Host BPF observation requires broader visibility than an ordinary application
   container. This run does not establish isolation guarantees for untrusted code.

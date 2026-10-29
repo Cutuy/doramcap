@@ -59,10 +59,9 @@ the demo's inspector contains only this fixture's resource metadata.
   explicit; this is observation history rather than a recovery journal.
 - The worker and web server persist as managers. Each experiment's monitor and
   recording process is created fresh and terminated before another run is admitted.
-- The shared Docker fixture lives under `libs/orchestrator/examples/support` and
-  is compiled by both the standalone E2E example and the fixed demo worker.
-- The launcher retains an image while the demo is available, then removes it on
-  exit. Experiment artifacts remain under the chosen output directory.
+- The worker uses the shared `workload-docker` Compose workflow. The original
+  standalone Docker example and native launcher have been retired.
+- Experiment artifacts remain under the chosen output directory.
 
 ## Validation commands
 
