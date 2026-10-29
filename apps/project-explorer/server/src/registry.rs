@@ -589,6 +589,7 @@ mod tests {
             .unwrap();
         // Assert
         assert_eq!(project.services, ["coordinator", "viewer"]);
+        assert_eq!(app.exclusive_resources, ["host-bpf-monitor"]);
         assert_eq!(
             app.system_apps.as_ref().unwrap().dora_flows[0].project,
             app.id
