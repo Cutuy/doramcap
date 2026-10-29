@@ -19,8 +19,11 @@ The refreshed catalog includes workflow-protocol from the rebased telemetry spli
 The preview serves an independent artifact copy in `/tmp/doramcap-gallery-102727`.
 
 The first/default use case is “Run and repeat an experiment”; explicit use-case URLs
-retain their selections. Existing Docker Compose appears alongside existing middleware,
-with vertical desktop labels and horizontal mobile labels.
+retain their selections. Existing middleware retains its vertical desktop label. Docker is shown in two
+horizontal rows: existing containers and Compose above doramcap orchestration.
+The Compose use case highlights adoption without application code changes.
+The production build validated the mappings; desktop and mobile browser renders
+were checked in the live gallery.
 
 Integration validation: rebased Rust unit tests and strict Clippy passed; ARM64
 job 147 succeeded (snapshot `f90af79ae2b0419f997f6092cfe6b5a4`). Subsequent gallery

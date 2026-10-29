@@ -41,3 +41,8 @@ The build validates TypeScript and canonical mappings. Check deep links,
 refresh/history, documentation assets, and mobile layout in the local preview.
 
 [Recorded validation](validation.md).
+
+## On-demand apps
+
+See the [gallery hosting server guide](../server/docs/hosting.md) for local launch,
+sessions, recording retention and recovery.

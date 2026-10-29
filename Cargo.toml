@@ -30,6 +30,7 @@ members = [
     "apps/fault-demo",
     "apps/storage-demo",
     "apps/activity-demo/server",
+    "apps/project-explorer/server",
     "apps/orchestrator-demo/server",
     "apps/provenance-demo/server",
 ]

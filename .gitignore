@@ -30,4 +30,9 @@ apps/project-explorer/frontend/public/content/
 /apps/*/frontend/.vite/
 /apps/*/frontend/.vite-temp/
 
+# Local audit working files.
+requirements-checklist.md
+requirements-checklist.yaml
+requirements-checklist.yml
+
 /apps/cuda-shm-demo/build/

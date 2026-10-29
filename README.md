@@ -53,6 +53,7 @@ cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D w
 ```
 
 Start with the [live dashboard guide](apps/cpu-viewer/docs/running.md).
+For new apps, follow the [Docker-hostable app guide](apps/project-explorer/server/docs/docker-hostable-apps.md).
 See [repository layout conventions](docs/repository-layout.md), the
 [platform roadmap](docs/roadmap.md), and [CI operations](scripts/ci/README.md).
 

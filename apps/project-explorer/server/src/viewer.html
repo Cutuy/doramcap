@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>App viewer · doramcap</title>
+  <style>
+    :root{font:15px system-ui,sans-serif;color:#142b38;background:#f4f7f8}
+    body{margin:0;height:100dvh;display:flex;flex-direction:column} header{display:flex;flex:0 0 auto;align-items:center;gap:16px;padding:12px 18px;background:white;border-bottom:1px solid #d8e1e5}
+    a{color:#116b80} strong{font-size:14px} #status{color:#536b76} #actions{margin-left:auto;display:flex;gap:14px}
+    button{font:inherit;cursor:pointer} iframe{display:block;flex:1 1 auto;min-height:0;width:100%;border:0;background:white}
+    [hidden]{display:none!important} #message{padding:24px;max-width:50rem} @media(max-width:600px){header{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <header><a id="gallery">Gallery</a><strong id="name">App viewer</strong><span id="status" role="status">Connecting…</span><span id="actions"><a id="recording" hidden>Recording</a><span id="captures"></span><button id="relaunch" hidden>Relaunch</button></span></header>
+  <p id="message">Preparing the application…</p>
+  <iframe id="app" title="Running application" hidden></iframe>
+  <script>
+    (() => {
+      const position = location.pathname.lastIndexOf('/running/');
+      const base = location.pathname.slice(0, position + 1);
+      const parts = location.pathname.slice(position + 9).split('/').filter(Boolean);
+      const id = decodeURIComponent(parts[0] || '');
+      let generation = parts[1] || '';
+      let session = '';
+      let heartbeatTimer;
+      let pollTimer;
+      let finalized = false;
+      let ended = false;
+      const key = `doramcap-session:${id}:${generation}`;
+      const status = document.getElementById('status');
+      const message = document.getElementById('message');
+      const frame = document.getElementById('app');
+      const relaunch = document.getElementById('relaunch');
+      const recording = document.getElementById('recording');
+      const captures = document.getElementById('captures');
+      const endpoint = `${base}api/hosting/apps/${encodeURIComponent(id)}`;
+      document.getElementById('name').textContent = id;
+      document.getElementById('gallery').href = `${base}#/apps/${encodeURIComponent(id)}`;
+      function expired(text) {
+        ended = true;
+        clearInterval(heartbeatTimer);
+        status.textContent = 'Session ended'; message.textContent = text;
+        message.hidden = false; frame.hidden = true; frame.removeAttribute('src'); relaunch.hidden = false;
+      }
+      async function loadResults() {
+        const response = await fetch(`${endpoint}/${generation}/results/list`);
+        if (response.status === 404) return;
+        if (!response.ok) throw new Error('Unable to load finalized results');
+        const data = await response.json();
+        recording.href = `${endpoint}/${generation}/results`;
+        recording.hidden = !(data.recording || data.file);
+        captures.replaceChildren();
+        for (const name of data.captures || []) {
+          const link = document.createElement('a');
+          link.href = `${endpoint}/${generation}/results/captures/${encodeURIComponent(name)}`;
+          link.textContent = name; captures.append(' ', link);
+        }
+        for (const name of data.files || []) {
+          const link = document.createElement('a');
+          link.href = `${endpoint}/${generation}/results/files/${encodeURIComponent(name)}`;
+          link.textContent = name; captures.append(' ', link);
+        }
+        for (const collection of data.collections || []) {
+          for (const name of collection.files) {
+            const link = document.createElement('a');
+            link.href = `${endpoint}/${generation}/results/collections/${encodeURIComponent(collection.id)}/${name.split('/').map(encodeURIComponent).join('/')}`;
+            link.textContent = name; captures.append(' ', link);
+          }
+        }
+      }
+      relaunch.onclick = () => { clearTimeout(pollTimer); location.href = `${base}running/${encodeURIComponent(id)}/`; };
+      async function launch() {
+        const response = await fetch(`${endpoint}/launch`, {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Unable to launch app');
+        generation = data.generation; session = data.session;
+        sessionStorage.setItem(`doramcap-session:${id}:${generation}`, session);
+        history.replaceState(null, '', `${base}running/${encodeURIComponent(id)}/${generation}/`);
+      }
+      async function heartbeat() {
+        if (ended) return;
+        try {
+          const response = await fetch(`${endpoint}/${generation}/heartbeat`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session})});
+          if (response.status === 410) expired('Your viewer session expired. Relaunch to open the app again.');
+          else if (!response.ok) status.textContent = 'Connection interrupted';
+        } catch { status.textContent = 'Connection interrupted'; }
+      }
+      async function poll() {
+        try {
+          const response = await fetch(endpoint); const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Unable to read app status');
+          recording.textContent = data.result_format === 'file' ? 'Download' : 'Recording';
+          if (data.state === 'blocked' || data.state === 'stopped' || data.generation !== generation) {
+            expired(data.error || 'This app instance has stopped.');
+            await loadResults();
+            finalized = true;
+            return;
+          }
+          if (data.state === 'stopping') {
+            expired('The app is stopping and finalizing its results.');
+            status.textContent = 'Stopping…';
+            return;
+          }
+          if (ended) return;
+          if (data.state === 'ready') {
+            status.textContent = 'Live';
+            if (data.headless) {
+              frame.hidden = true; message.hidden = false;
+              message.textContent = 'Running. Results will be available when this session ends.';
+            } else {
+              message.hidden = true; frame.hidden = false;
+              if (!frame.getAttribute('src')) frame.src = `${base}app/${encodeURIComponent(id)}/${generation}/`;
+            }
+          } else { status.textContent = 'Starting…'; message.textContent = 'Waiting for the application to become ready.'; }
+        } catch (error) { status.textContent = 'Connection interrupted'; message.hidden = false; message.textContent = String(error); }
+        finally { if (!finalized) pollTimer = setTimeout(poll, 1000); }
+      }
+      async function init() {
+        try {
+          const policyResponse = await fetch(`${base}api/hosting/apps`);
+          if (!policyResponse.ok) throw new Error('Hosting backend is unavailable');
+          const policy = await policyResponse.json();
+          if (!Number.isSafeInteger(policy.heartbeat_seconds) || policy.heartbeat_seconds <= 0) throw new Error('Invalid heartbeat policy');
+          if (generation) session = sessionStorage.getItem(key) || '';
+          if (!session) await launch();
+          await heartbeat();
+          if (!ended) heartbeatTimer = setInterval(heartbeat, policy.heartbeat_seconds * 1000);
+          await poll();
+        } catch (error) { expired(String(error)); }
+      }
+      void init();
+    })();
+  </script>
+</body>
+</html>

@@ -385,9 +385,9 @@
     },
     {
       "id": "compose-run",
-      "title": "Run a Compose experiment",
-      "summary": "Launch prepared Compose projects with a fresh CPU monitor and MCAP recording, observe step execution, then collect categorized filesystem metadata and verify cleanup.",
-      "outcome": "Inspect workload execution and storage changes for each serial run.",
+      "title": "Zero-code adoption with Docker Compose",
+      "summary": "Run existing Docker Compose workloads without changing application code. doramcap orchestrates each run, records CPU activity and collects filesystem changes.",
+      "outcome": "Observe and record your existing containers with doramcap.",
       "status": "illustrative",
       "capabilities": [
         "orchestration",
