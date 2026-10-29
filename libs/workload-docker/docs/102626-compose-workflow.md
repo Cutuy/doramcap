@@ -56,42 +56,36 @@ Named volumes, devices and networks retain their explicit policies. See the
 
 ## Prepared request
 
-This JSON is experiment input, supplied by the caller. It declares workloads
-and supplied settings; the workflow remains procedural Rust.
+`ComposeRun` carries prepared workload projects, supporting projects, filesystem
+policy and stop/readiness budgets. The generated `SystemAppsConfig` comes from
+[system_apps.proto](../proto/system_apps.proto); its protobuf text representation
+can select a fresh collector:
 
-```json
-{
-  "id": "robot-attempt-001",
-  "artifacts": "/absolute/new/output/robot-attempt-001",
-  "monitor": {
-    "image": "doramcap-system-monitor:qualified",
-    "backend": "bpf",
-    "allow_unconfined_seccomp": true
-  },
-  "projects": [
-    {
-      "key": "robot",
-      "directory": "/absolute/robot/repo",
-      "files": ["compose.yaml", "compose.local.yaml"],
-      "env_files": ["robot.env"],
-      "environment": {"ROS_DOMAIN_ID": "7"},
-      "profiles": ["singlepc"],
-      "services": [],
-      "completed_services": [],
-      "remove_volumes": false
-    }
-  ],
-  "readiness_seconds": 60,
-  "stop_seconds": 15
+```protobuf
+cpu_monitor {
+  image: "doramcap-system-monitor:qualified"
 }
 ```
+
+`PrepareSystemApps` snapshots app configuration. `LaunchSystemApps` invokes the
+existing Compose start steps, then `WaitForSystemApps` checks application outputs.
+`FinalizeSystemApps` verifies recordings after writers stop. App templates, output
+names and monitor-specific policy belong to this adapter.
+
+Resolution and independent workload starts run concurrently on `LocalExecutor`.
+System readiness precedes workload startup. Additional `first_party` projects keep
+their declared order; independent workloads stop together before those services.
+All writers stop before filesystem collection; recording verification and collection
+then run concurrently. Resource removal waits for collection and overlay disposition.
+Startup failures await sibling results; cancellation retains every attempted plan
+for cleanup. The executor records dependencies; procedural Rust owns scheduling.
 
 Optional `filesystem.disposition` selects `write_back` (default) or `retain`.
 Mount preparation precedes every launch; collection and strict unmount precede
 write-back and container removal.
 
 Optional `first_party` contains additional prepared project objects. They start
-after the CPU collector and before foreign projects; teardown reverses that order.
+after configured system apps and before foreign projects; teardown reverses that order.
 A configured foreign-message subscriber can live there. Existing
 [`mcap-recorder`](../../../apps/mcap-recorder/) uses DORA; automatic ROS topic
 selection and recorder-specific drain acknowledgments remain integration work.
@@ -145,8 +139,12 @@ observed transport/write failure, not a claim of lossless daemon history.
   experiment lock, remote executor, crash recovery, PTY frontend or arbitrary
   nested-launch mediation is provided by this implementation.
 - The current writer uses io_uring; the supplied first-party template explicitly
-  requires an unconfined-seccomp exception plus BPF/PERFMON/SYSLOG capabilities.
-  This matches the qualified native test setup; tighter seccomp policy remains open.
+  uses `seccomp=unconfined` plus BPF/PERFMON/SYSLOG capabilities.
+
+Dora-backed projects declare `system_apps.dora_flows` with their service, descriptor
+and ordered node groups. Shared launch/inspection/shutdown steps use Dora’s native
+controls before Compose teardown; recovery uses the saved flow UUID. See the
+[CPU Viewer registration](../../../apps/cpu-viewer/deploy/registration.pbtxt).
 
 ## Qualification
 
