@@ -3,8 +3,10 @@
 `libs/<name>/` contains standalone reusable crates. Related crates share
 `libs/<domain>/<crate>/`, such as `libs/fault/{reporter,aggregation,protocol,schema}`.
 Domain directories own a short architecture/index README; each crate keeps its
-Cargo package name and API documentation. `apps/<name>/` contains an
-independently runnable application and its supporting components. Each owner
+Cargo package name and API documentation. `apps/<name>/` contains system apps and their supporting components.
+`console/{frontend,server,docs}` owns the user-facing Console. Workflows describe
+execution behavior and remain with their owning libraries. Existing explorer/demo
+paths stay in place; they do not determine placement of the Console. Each owner
 keeps its docs, tests, examples and benchmarks alongside its code. Add these
 subdirectories as needed. The root README is the component index; [libs/README.md](../libs/README.md)
 indexes library groups and standalone crates. Groups cover resources, telemetry,
