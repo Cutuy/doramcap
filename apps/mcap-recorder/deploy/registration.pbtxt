@@ -11,7 +11,6 @@ recording_count {
   count_file: "published.count"
   topic: "doramcap/snapshots"
 }
-exclusive_resources: "host-bpf-monitor"
 env_prefix: "MCAP_RECORDER"
 requires_explicit_enable: true
 

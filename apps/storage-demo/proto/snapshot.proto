@@ -6,21 +6,18 @@ message Snapshot {
   string status = 2;
   string session = 3;
   string error = 4;
-  string backend = 5;
+  reserved 5, 8, 11, 12, 19;
+  reserved "backend", "cpu", "input_drops", "last_cpu", "timing";
   bool direct = 6;
   uint64 elapsed_ms = 7;
-  uint64 cpu = 8;
   uint64 heartbeats = 9;
   uint64 probes = 10;
-  uint64 input_drops = 11;
-  LastCpu last_cpu = 12;
   Combining combining = 13;
   Pool pool = 14;
   Ring ring = 15;
   Exercises exercises = 16;
   Observation observation = 17;
   repeated ActiveWrite active_writes = 18;
-  Timing timing = 19;
   Stats latency = 20;
   uint64 lost_timing_events = 21;
   uint64 burst_remaining = 22;
@@ -29,12 +26,6 @@ message Snapshot {
   repeated Event events = 25;
   File file = 26;
   File last_sealed = 27;
-}
-message LastCpu {
-  uint64 sequence = 1;
-  uint64 rows = 2;
-  uint64 dropped = 3;
-  string source = 4;
 }
 message Combining {
   uint64 used = 1;
@@ -103,12 +94,6 @@ message ActiveWrite {
   optional uint64 age_us = 9;
   uint64 attempts = 10;
   uint64 retries = 11;
-}
-message Timing {
-  Stats sample = 1;
-  Stats arrival = 2;
-  uint64 gaps = 3;
-  optional double interval_ms = 4;
 }
 message Stats {
   uint64 count = 1;

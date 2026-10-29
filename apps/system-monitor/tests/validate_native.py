@@ -38,6 +38,7 @@ def main():
     root = Path('/sys/fs/cgroup') / f'doramcap-validation-{os.getpid()}'
     workers = []
     monitor = None
+    concurrent_monitor = None
     groups = [root, root / 'a', root / 'b']
     root.mkdir()  # fail if it exists; never adopt another workload's cgroup
     try:
@@ -50,8 +51,15 @@ def main():
             monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
                                         '--records', '16384', '--output', str(output)],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            concurrent_output = Path(directory) / 'concurrent.pb'
+            concurrent_monitor = subprocess.Popen(
+                [str(args.monitor), '--backend', 'bpf', '--samples', '80',
+                 '--records', '16384', '--output', str(concurrent_output)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             time.sleep(0.8)
-            assert monitor.poll() is None, 'monitor failed before workload start: ' + monitor.communicate()[1]
+            for process in (monitor, concurrent_monitor):
+                if process.poll() is not None:
+                    raise AssertionError('monitor failed before workload start: ' + process.communicate()[1])
             for group, cpu in zip(groups[1:], cpus[:2]):
                 worker = subprocess.Popen([sys.executable, '-c',
                     'import os,sys,time; from pathlib import Path; '
@@ -65,6 +73,19 @@ def main():
             expected = [usage(group) - before for group, before in zip(groups, baseline)]
             _, stderr = monitor.communicate(timeout=15)
             assert monitor.returncode == 0, stderr
+            assert concurrent_monitor.poll() is None, 'concurrent monitor stopped when the first monitor exited'
+            _, concurrent_stderr = concurrent_monitor.communicate(timeout=15)
+            assert concurrent_monitor.returncode == 0, concurrent_stderr
+            concurrent_batches = framed(concurrent_output.read_bytes())
+            assert len(concurrent_batches) == 80
+            assert [b['sequence'] for b in concurrent_batches] == list(range(80))
+            assert all(b['source'] == 'bpf' and b['capacity_overflow'] == 0 and b['dropped_batches'] == 0 for b in concurrent_batches)
+            assert all(not (r['flags'] & 64) for b in concurrent_batches for r in b['records']), 'concurrent native read error'
+            for group_id in identities:
+                first = {r['cpu']: r['runtime_ns'] for r in concurrent_batches[0]['records'] if r['cgroup_id'] == group_id}
+                last = {r['cpu']: r['runtime_ns'] for r in concurrent_batches[-1]['records'] if r['cgroup_id'] == group_id}
+                assert first and first.keys() == last.keys(), 'concurrent monitor missing cgroup/core rows'
+                assert sum(last[cpu] - value for cpu, value in first.items()) > 100_000_000
             batches = framed(output.read_bytes())
             assert len(batches) == 65 and [b['sequence'] for b in batches] == list(range(65))
             assert all(b['source'] == 'bpf' and b['capacity_overflow'] == 0 and b['dropped_batches'] == 0 for b in batches)
@@ -104,7 +125,7 @@ def main():
                 'samples':len(batches),'rows_per_snapshot':len(batches[-1]['records']),
                 'collection_ms_median':statistics.median(durations),'collection_ms_max':max(durations),
                 'interval_ms_median':statistics.median(intervals),'interval_ms_max':max(intervals),
-                'native_capacity_overflow_checked':True,'groups':observed},indent=2))
+                'native_capacity_overflow_checked':True,'concurrent_monitor_samples':len(concurrent_batches),'groups':observed},indent=2))
     finally:
         for worker in workers:
             if worker.poll() is None:
@@ -113,6 +134,9 @@ def main():
         if monitor is not None and monitor.poll() is None:
             monitor.terminate()
             monitor.communicate(timeout=5)
+        if concurrent_monitor is not None and concurrent_monitor.poll() is None:
+            concurrent_monitor.terminate()
+            concurrent_monitor.communicate(timeout=5)
         for group in reversed(groups):
             if group.exists():
                 group.rmdir()

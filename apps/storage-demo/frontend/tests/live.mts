@@ -7,7 +7,7 @@ import {TraceStore} from '../src/model.js';
 import {decodeSnapshot} from '../src/snapshot.js';
 const bin=resolve(process.env.BIN_DIR??'../../../target/debug');
 const dir=await mkdtemp(`${tmpdir()}/storage-live-`);
-const child=spawn(`${bin}/storage-demo`,['--port','0','--dir',`${dir}/session`,'--monitor',`${bin}/system-monitor`,'--assets',resolve('dist')]);
+const child=spawn(`${bin}/storage-demo`,['--port','0','--dir',`${dir}/session`,'--assets',resolve('dist')]);
 let output='',errors='';child.stdout.on('data',b=>output+=b);child.stderr.on('data',b=>errors+=b);
 const sockets:WebSocket[]=[];
 async function until(check:()=>boolean|Promise<boolean>){const end=Date.now()+20000;while(Date.now()<end){if(await check())return;await new Promise(r=>setTimeout(r,50));}throw Error(`timeout: ${errors}`);}
@@ -25,7 +25,7 @@ try{
  const ws=connect(store);
  await until(()=>ws.readyState===WebSocket.OPEN);
  const state=async()=>await(await fetch(base+'/api/state')).json();
- await until(async()=>{const s=await state();assert.notEqual(s.status,'error',JSON.stringify(s));return s.status==='live'&&s.cpu>0;});
+ await until(async()=>{const s=await state();assert.notEqual(s.status,'error',JSON.stringify(s));return s.status==='live'&&s.heartbeats>0;});
  const control=async(action:string,extra={})=>assert.equal((await fetch(base+'/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...extra})})).status,202);
  await control('managed_large',{sizeMiB:4});await control('sealed_slab');
  await until(()=>['combined','large','slab'].every(path=>[...store.spans.values()].some(s=>s.name==='storage.write'&&s.fields.path===path&&s.end!==undefined)));

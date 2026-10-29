@@ -14,14 +14,10 @@ pub fn snapshot(v: &Value) -> pb::Snapshot {
         status: v["status"].as_str().unwrap_or_default().to_owned(),
         session: v["session"].as_str().unwrap_or_default().to_owned(),
         error: v["error"].as_str().unwrap_or_default().to_owned(),
-        backend: v["backend"].as_str().unwrap_or_default().to_owned(),
         direct: v["direct"].as_bool().unwrap_or_default(),
         elapsed_ms: unsigned(&v["elapsedMs"]),
-        cpu: unsigned(&v["cpu"]),
         heartbeats: unsigned(&v["heartbeats"]),
         probes: unsigned(&v["probes"]),
-        input_drops: unsigned(&v["inputDrops"]),
-        last_cpu: (!v["lastCpu"].is_null()).then(|| last_cpu(&v["lastCpu"])),
         combining: (!v["combining"].is_null()).then(|| combining(&v["combining"])),
         pool: (!v["pool"].is_null()).then(|| pool(&v["pool"])),
         ring: (!v["ring"].is_null()).then(|| ring(&v["ring"])),
@@ -33,7 +29,6 @@ pub fn snapshot(v: &Value) -> pb::Snapshot {
             .flatten()
             .map(active_write)
             .collect(),
-        timing: (!v["timing"].is_null()).then(|| timing(&v["timing"])),
         latency: (!v["latency"].is_null()).then(|| stats(&v["latency"])),
         lost_timing_events: unsigned(&v["lostTimingEvents"]),
         burst_remaining: unsigned(&v["burstRemaining"]),
@@ -57,14 +52,6 @@ pub fn snapshot(v: &Value) -> pb::Snapshot {
             .collect(),
         file: (!v["file"].is_null()).then(|| file(&v["file"])),
         last_sealed: (!v["lastSealed"].is_null()).then(|| file(&v["lastSealed"])),
-    }
-}
-pub fn last_cpu(v: &Value) -> pb::LastCpu {
-    pb::LastCpu {
-        sequence: unsigned(&v["sequence"]),
-        rows: unsigned(&v["rows"]),
-        dropped: unsigned(&v["dropped"]),
-        source: v["source"].as_str().unwrap_or_default().to_owned(),
     }
 }
 pub fn combining(v: &Value) -> pb::Combining {
@@ -143,15 +130,6 @@ pub fn active_write(v: &Value) -> pb::ActiveWrite {
         age_us: (!v["ageUs"].is_null()).then(|| unsigned(&v["ageUs"])),
         attempts: unsigned(&v["attempts"]),
         retries: unsigned(&v["retries"]),
-    }
-}
-pub fn timing(v: &Value) -> pb::Timing {
-    pb::Timing {
-        sample: (!v["sample"].is_null()).then(|| stats(&v["sample"])),
-        arrival: (!v["arrival"].is_null()).then(|| stats(&v["arrival"])),
-        gaps: unsigned(&v["gaps"]),
-        interval_ms: (!v["intervalMs"].is_null())
-            .then(|| v["intervalMs"].as_f64().unwrap_or_default()),
     }
 }
 pub fn stats(v: &Value) -> pb::Stats {

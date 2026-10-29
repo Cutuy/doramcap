@@ -1,17 +1,17 @@
 # Storage Observatory
 
 Live MCAP writer dashboard: pipeline stages, active writes, registration reuse,
-correlated events, CPU timing and on-disk record inspection.
+correlated events, write timing and on-disk record inspection.
 
 ```sh
 npm ci --prefix apps/storage-demo/frontend
 npm run build --prefix apps/storage-demo/frontend
-cargo build -p storage-demo -p system-monitor --features system-monitor/bpf
-cargo run -p storage-demo -- --monitor "$PWD/apps/system-monitor/scripts/run-native-monitor.sh"
+cargo build -p storage-demo
+cargo run -p storage-demo
 # http://127.0.0.1:8091
 ```
 
-- Real O_DIRECT writes; native BPF CPU input. `--buffered` selects buffered I/O.
+- Real O_DIRECT writes. `--buffered` selects buffered I/O.
 - **Collection** selects Off, Summary, Inspect or timed Capture; optional region filter.
 - **Timeline filter** matches a write or region ID. Loss/eviction counts remain visible.
 - **Stop recording** seals and syncs; **Start new session** clears previous capture files.
@@ -23,7 +23,6 @@ cargo run -p storage-demo -- --monitor "$PWD/apps/system-monitor/scripts/run-nat
 - **Retire slab registrations** releases idle registrations; the next use registers again.
 - **Probe burst**, **Flush now** and **Seal & rotate** exercise the pipeline.
 - `--start-paused`, `--seconds N`, `--port N`, `--bind IP`, `--dir NEW_DIR` configure the session. The default bind is loopback.
-- `--monitor PATH` selects a capability-enabled native monitor.
 
 Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
 runs outside the writer thread; slow viewers skip intermediate frames. Collection retains
@@ -60,7 +59,6 @@ back into the recorded MCAP. Runtime Off stops new event collection.
 ```sh
 cargo test -p storage-demo -p storage-persistence
 cargo build -p storage-demo --bins --examples --features tracing-export,activity-tracing
-cargo build -p system-monitor
 python3 apps/storage-demo/validate.py --bin-dir target/debug
 python3 apps/storage-demo/tests/tracing_export.py --bin-dir target/debug
 python3 apps/storage-demo/tests/activity_capture.py --bin-dir target/debug

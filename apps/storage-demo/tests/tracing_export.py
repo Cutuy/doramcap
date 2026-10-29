@@ -6,7 +6,7 @@ args=argparse.ArgumentParser()
 args.add_argument("--bin-dir",type=Path,required=True)
 bins=args.parse_args().bin_dir.resolve()
 with tempfile.TemporaryDirectory() as d:
- p=subprocess.Popen([str(bins/'storage-demo'),'--port','0','--dir',d+'/session','--monitor',str(bins/'system-monitor')],env={**os.environ,'STORAGE_TRACE_STDERR':'1'},stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+ p=subprocess.Popen([str(bins/'storage-demo'),'--port','0','--dir',d+'/session',],env={**os.environ,'STORAGE_TRACE_STDERR':'1'},stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
  try:
   fcntl.fcntl(p.stderr,fcntl.F_SETPIPE_SZ,4096)
   base='http://'+p.stdout.readline().split('http://')[1].split()[0]
@@ -27,9 +27,9 @@ with tempfile.TemporaryDirectory() as d:
   old=s['session'];control('restart')
   while time.monotonic()<deadline:
    s=state()
-   if s.get('session')!=old and s.get('cpu',0)>0:break
+   if s.get('session')!=old and s.get('heartbeats',0)>0:break
    time.sleep(.05)
-  assert s.get('session')!=old and s.get('cpu',0)>0,s
+  assert s.get('session')!=old and s.get('heartbeats',0)>0,s
   control('stop')
   while time.monotonic()<deadline:
    s=state()

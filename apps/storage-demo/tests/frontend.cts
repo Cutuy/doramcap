@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as vm from 'node:vm';
 import assert from 'node:assert/strict';
 const html = fs.readFileSync(`${__dirname}/../frontend/embedded/index.html`, 'utf8');
+assert.doesNotMatch(html, /CPU stream|CPU sample deviation|CPU arrival deviation/);
 const elements = new Map([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
   value: '', innerHTML: '', textContent: '', disabled: false,
   style: {} as Record<string, string>, classList: {toggle() {}}, querySelectorAll: () => [],
@@ -14,7 +15,7 @@ const context = vm.createContext({
 });
 vm.runInContext(html.split('<script type="module">')[1].split('</script>')[0].replace(/^import .*;$/m,''), context);
 const state = {
-  status: 'live', session: 'one', backend: 'synthetic', ring: {writer:'9007199254740993',file:'2',outstanding:1,awaitingSubmission:0,awaitingCqe:1,completions:2,accepted:8192,completed:4096,synced:0,pendingBytes:4096},
+  status: 'live', session: 'one', ring: {writer:'9007199254740993',file:'2',outstanding:1,awaitingSubmission:0,awaitingCqe:1,completions:2,accepted:8192,completed:4096,synced:0,pendingBytes:4096},
   combining: {used:0,capacity:65536,ageMs:null,messages:0}, pool:{free:7,total:8},
   observation:{mode:'Capture',missed:3,contentionDrops:4,timelineEvicted:5},
   activeWrites:[{write:'9007199254740993',region:'44',state:'AwaitingCqe',completed:0,len:4096,ageUs:null,attempts:1,retries:0}],

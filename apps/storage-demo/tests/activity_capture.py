@@ -7,7 +7,7 @@ bins = p.parse_args().bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='storage-activity-') as directory:
     capture = str(Path(directory) / 'activity.mcap')
     proc = subprocess.Popen([str(bins/'storage-demo'), '--dir', directory+'/session',
-        '--port', '0', '--monitor', str(bins/'system-monitor'), '--activity', capture],
+        '--port', '0', '--activity', capture],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         assert select.select([proc.stdout], [], [], 15)[0], 'startup timeout'
@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='storage-activity-') as directory:
         def control(action, **kwargs):
             request=urllib.request.Request(base+'/api/control', json.dumps(dict(action=action, **kwargs)).encode(), {'Content-Type':'application/json'})
             with urllib.request.urlopen(request, timeout=3) as r: assert r.status==202
-        wait(lambda s:s['status']=='live' and s.get('cpu',0)>0)
+        wait(lambda s:s['status']=='live' and s.get('heartbeats',0)>0)
         control('managed_large', sizeMiB=1)
         wait(lambda s:any(r['action']=='managed_large' and r['status']=='accepted' for r in s['exercises']['receipts']))
         control('sealed_slab')

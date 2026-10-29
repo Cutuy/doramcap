@@ -7,6 +7,5 @@ readiness_seconds: 60
 stop_seconds: 30
 result_file: "activity.mcap"
 capture_directory: "captures"
-exclusive_resources: "host-bpf-monitor"
 env_prefix: "STORAGE"
 requires_explicit_enable: true

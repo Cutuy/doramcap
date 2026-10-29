@@ -589,11 +589,37 @@ mod tests {
             .unwrap();
         // Assert
         assert_eq!(project.services, ["coordinator", "viewer"]);
-        assert_eq!(app.exclusive_resources, ["host-bpf-monitor"]);
+        assert!(app.exclusive_resources.is_empty());
         assert_eq!(
             app.system_apps.as_ref().unwrap().dora_flows[0].project,
             app.id
         );
+    }
+    #[test]
+    fn host_monitor_apps_do_not_claim_an_exclusive_bpf_resource() {
+        // Arrange
+        let ids = [
+            "cpu-viewer",
+            "mcap-recorder",
+            "storage-demo",
+            "system-monitor",
+        ];
+        let enabled = ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>();
+
+        // Act
+        let registry = Registry::load(&workspace(), &enabled).unwrap();
+
+        // Assert
+        for id in ids {
+            assert!(
+                !registry
+                    .get(id)
+                    .unwrap()
+                    .exclusive_resources
+                    .iter()
+                    .any(|resource| resource == "host-bpf-monitor")
+            );
+        }
     }
     #[test]
     fn headless_registration_omits_http_port() {

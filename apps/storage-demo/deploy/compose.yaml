@@ -2,27 +2,17 @@ services:
   storage:
     image: doramcap/storage-observatory:local
     user: "${STORAGE_UID:?}:${STORAGE_GID:?}"
-    command: ["--bind", "0.0.0.0", "--port", "8091", "--backend", "bpf", "--buffered", "--monitor", "/usr/local/bin/system-monitor", "--assets", "/opt/storage-observatory/dist", "--dir", "/results/captures", "--activity", "/results/activity.mcap"]
+    command: ["--bind", "0.0.0.0", "--port", "8091", "--buffered", "--assets", "/opt/storage-observatory/dist", "--dir", "/results/captures", "--activity", "/results/activity.mcap"]
     stop_signal: SIGINT
     stop_grace_period: 30s
     read_only: true
     cap_drop: [ALL]
-    cap_add: [BPF, PERFMON, SYSLOG]
-    cgroup: host
     ulimits:
       memlock: {soft: 268435456, hard: 268435456}
     security_opt:
       - seccomp=unconfined
     tmpfs: [/tmp]
     volumes:
-      - type: bind
-        source: /sys/fs/cgroup
-        target: /sys/fs/cgroup
-        read_only: true
-      - type: bind
-        source: /sys/kernel/btf
-        target: /sys/kernel/btf
-        read_only: true
       - type: bind
         source: ${STORAGE_RESULTS_DIR:?}
         target: /results

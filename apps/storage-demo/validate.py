@@ -12,15 +12,12 @@ import urllib.request
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--bin-dir', type=Path, required=True)
-p.add_argument('--monitor', type=Path)
 p.add_argument('--buffered', action='store_true')
-p.add_argument('--backend', choices=['bpf'], default='bpf')
 a = p.parse_args()
 bins = a.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory:
     root = Path(directory) / 'session'
-    proc = subprocess.Popen([str(bins / 'storage-demo'), '--monitor', str(a.monitor.resolve() if a.monitor else bins / 'system-monitor'),
-                             '--start-paused', '--backend', a.backend, '--seconds', '10', '--port', '0', '--dir', str(root)] + (['--buffered'] if a.buffered else []), stdout=subprocess.PIPE,
+    proc = subprocess.Popen([str(bins / 'storage-demo'), '--start-paused', '--seconds', '10', '--port', '0', '--dir', str(root)] + (['--buffered'] if a.buffered else []), stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True)
     live_stream = None
     try:
@@ -49,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         assert state()['status'] == 'idle'
         assert not list(root.glob('*.mcap'))
         control('restart')
-        wait(lambda s: s.get('cpu', 0) >= 3)
+        wait(lambda s: s.get('heartbeats', 0) >= 3)
         try:
             control('managed_large', sizeMiB=17)
             raise AssertionError('invalid workload size accepted')
@@ -117,9 +114,9 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         unrelated = root / 'keep.txt'
         unrelated.write_text('preserve')
         control('restart')
-        restarted = wait(lambda s: s.get('status') == 'live' and s.get('session') != previous_session and s.get('cpu', 0) >= 1)
+        restarted = wait(lambda s: s.get('status') == 'live' and s.get('session') != previous_session and s.get('heartbeats', 0) >= 1)
         assert restarted['probes'] == 0 and restarted['lastSealed'] is None
-        assert restarted['cpu'] < expired['cpu']
+        assert restarted['heartbeats'] < expired['heartbeats']
         assert not (root / 'capture-0001.mcap').exists()
         assert unrelated.read_text() == 'preserve'
         previous_session = restarted['session']
@@ -127,7 +124,7 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         wait(lambda s: s.get('status') == 'live' and s.get('session') != previous_session)
         initial = state()['probes']
         control('probe_burst', count=4, intervalMs=0)
-        measured = wait(lambda s: s.get('probes', 0) >= initial+4 and s.get('latency', {}).get('count', 0) > 0 and s.get('timing', {}).get('sample', {}).get('count', 0) > 0)
+        measured = wait(lambda s: s.get('probes', 0) >= initial+4 and s.get('latency', {}).get('count', 0) > 0)
         assert measured['observation']['mode'] == 'Inspect'
         assert isinstance(measured['ring']['writer'], str)
         assert measured['ring']['awaitingSubmission'] + measured['ring']['awaitingCqe'] == measured['ring']['outstanding']
@@ -172,7 +169,7 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         print('Restart passed: expired and active sessions, counters reset, old captures removed, unrelated file retained')
         live_stream = urllib.request.urlopen(base + '/events', timeout=3)
         assert live_stream.readline().startswith(b'data:')
-        print('Demo passed: live CPU + heartbeat + large probe, SSE, CQEs, rotation, tail and download')
+        print('Demo passed: heartbeat + large probe, SSE, CQEs, rotation, tail and download')
     finally:
         proc.send_signal(signal.SIGINT)
         try:

@@ -17,10 +17,9 @@ use serde_json::{Value, json};
 use std::{
     convert::Infallible,
     fs::File,
-    io::{self, Read},
+    io,
     os::unix::fs::OpenOptionsExt,
     path::PathBuf,
-    process::{Child, Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -36,8 +35,6 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>
 struct Options {
     assets: PathBuf,
     activity: Option<PathBuf>,
-    monitor: PathBuf,
-    backend: String,
     root: PathBuf,
     port: u16,
     bind: std::net::IpAddr,
@@ -49,8 +46,6 @@ fn options() -> Result<Options> {
     let mut o = Options {
         assets: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist"),
         activity: None,
-        monitor: std::env::current_exe()?.with_file_name("system-monitor"),
-        backend: "bpf".into(),
         root: std::env::temp_dir().join(format!("doramcap-storage-demo-{}", now_ns())),
         port: 8091,
         bind: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
@@ -70,7 +65,7 @@ fn options() -> Result<Options> {
         }
         if arg == "--help" {
             println!(
-                "storage-demo [--monitor PATH] [--backend bpf] [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
+                "storage-demo [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
             );
             std::process::exit(0);
         }
@@ -79,17 +74,12 @@ fn options() -> Result<Options> {
             "--activity" if cfg!(feature = "activity-tracing") => o.activity = Some(value.into()),
             "--activity" => return Err("--activity requires the activity-tracing feature".into()),
             "--assets" => o.assets = value.into(),
-            "--monitor" => o.monitor = value.into(),
-            "--backend" => o.backend = value,
             "--dir" => o.root = value.into(),
             "--port" => o.port = value.parse()?,
             "--bind" => o.bind = value.parse()?,
             "--seconds" => o.seconds = value.parse()?,
             _ => return Err(format!("unknown option {arg}").into()),
         }
-    }
-    if o.backend != "bpf" {
-        return Err("only the native bpf backend is supported".into());
     }
     Ok(o)
 }
@@ -196,24 +186,6 @@ async fn download(State(s): State<Web>, RoutePath(index): RoutePath<u64>) -> imp
         Err(_) => (StatusCode::NOT_FOUND, Vec::new()),
     }
 }
-struct ChildGuard(Child);
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        // SIGTERM lets the monitor and an optional sudo launcher stop their children.
-        // SAFETY: this is the PID of the owned, unreaped child process.
-        unsafe {
-            libc::kill(self.0.id() as i32, libc::SIGTERM);
-        }
-        for _ in 0..100 {
-            if matches!(self.0.try_wait(), Ok(Some(_))) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 fn open(o: &Options, index: u64) -> io::Result<File> {
     File::options()
         .write(true)
@@ -261,51 +233,12 @@ fn owner(
     stop: Arc<AtomicBool>,
     sealed: Arc<AtomicU64>,
 ) -> Result<bool> {
-    let mut child = ChildGuard(
-        Command::new(&o.monitor)
-            .args(["--backend", &o.backend, "--records", "4096"])
-            .stdout(Stdio::piped())
-            .spawn()?,
-    );
-    let mut stdout = child.0.stdout.take().unwrap();
-    let (input_tx, input) = mpsc::sync_channel(16);
-    let drops = Arc::new(AtomicU64::new(0));
-    let input_drops = drops.clone();
-    std::thread::spawn(move || {
-        let result = (|| -> io::Result<()> {
-            loop {
-                let mut prefix = [0; 4];
-                stdout.read_exact(&mut prefix)?;
-                let len = u32::from_le_bytes(prefix) as usize;
-                if len > 1024 * 1024 {
-                    return Err(io::ErrorKind::InvalidData.into());
-                }
-                let mut bytes = vec![0; len];
-                stdout.read_exact(&mut bytes)?;
-                match input_tx.try_send(Ok(bytes)) {
-                    Ok(()) => (),
-                    Err(mpsc::TrySendError::Full(_)) => {
-                        input_drops.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(mpsc::TrySendError::Disconnected(_)) => return Ok(()),
-                }
-            }
-        })();
-        if let Err(e) = result {
-            let _ = input_tx.send(Err(e));
-        }
-    });
     let schema = Schema {
         name: telemetry_protocol::MCAP_SCHEMA_NAME,
         encoding: "protobuf",
         data: telemetry_protocol::FILE_DESCRIPTOR_SET,
     };
     let channels = [
-        Channel {
-            id: 1,
-            topic: "demo/cpu",
-            encoding: "protobuf",
-        },
         Channel {
             id: 2,
             topic: "demo/heartbeat",
@@ -350,14 +283,12 @@ fn owner(
     let start = Instant::now();
     let mut heartbeat = Instant::now();
     let mut publish = Instant::now();
-    let (mut seq, mut cpu, mut beats, mut probes, mut index) = (0u32, 0u64, 0u64, 0u64, 0u64);
+    let (mut seq, mut beats, mut probes, mut index) = (0u32, 0u64, 0u64, 0u64);
     let mut inspector = inspect::Inspector::new();
     let mut disk = json!(null);
     let mut last_sealed = json!(null);
     let mut recent = std::collections::VecDeque::with_capacity(48);
-    let mut last_cpu = json!(null);
     let mut receipts = std::collections::VecDeque::with_capacity(8);
-    let mut timing = metrics::CpuTiming::default();
     let mut latency = metrics::Window::default();
     let mut burst_remaining = 0usize;
     let mut burst_interval = Duration::from_millis(5);
@@ -365,30 +296,6 @@ fn owner(
     while !stop.load(Ordering::Relaxed) && (o.seconds == 0 || start.elapsed().as_secs() < o.seconds)
     {
         let mut pending = Vec::with_capacity(32);
-        for _ in 0..8 {
-            match input.try_recv() {
-                Ok(Ok(bytes)) => {
-                    let p = pb::Packet::decode(bytes.as_slice())?;
-                    if let Some(Body::Snapshot(f)) = &p.body
-                        && let Some(s) = &f.snapshot
-                    {
-                        timing.observe(
-                            s.sequence,
-                            s.monotonic_end_ns,
-                            start.elapsed().as_nanos() as u64,
-                        );
-                        last_cpu = json!({"sequence":s.sequence,"rows":s.records.len(),"dropped":s.dropped_batches,"source":f.source});
-                    }
-                    pending.push((p, 1, "CPU"));
-                    cpu += 1;
-                }
-                Ok(Err(e)) => return Err(format!("CPU monitor input ended: {e}").into()),
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    return Err("CPU monitor disconnected".into());
-                }
-            }
-        }
         let mut action = None;
         let mut manual_kind = None;
         let mut manual_rows = Vec::with_capacity(16);
@@ -501,11 +408,11 @@ fn owner(
                     false,
                 )?;
             }
-            tx.send_replace(json!({"status":"live","session":session,"backend":o.backend,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"cpu":cpu,"heartbeats":beats,"probes":probes,"inputDrops":drops.load(Ordering::Relaxed),"lastCpu":last_cpu,
+            tx.send_replace(json!({"status":"live","session":session,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"heartbeats":beats,"probes":probes,
                 "combining":observation::combining(d),
                 "pool":observation::pool(d),"ring":observation::ring(d),
                 "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&monitor),
-                "timing":timing.json(),"latency":latency.json(),"lostTimingEvents":observation.lost,"burstRemaining":burst_remaining,
+                "latency":latency.json(),"lostTimingEvents":observation.lost,"burstRemaining":burst_remaining,
                 "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}));
             publish = Instant::now() + Duration::from_millis(40);
         }
@@ -561,10 +468,9 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind((o.bind, o.port)).await?;
     std::fs::create_dir(&o.root)?;
     println!(
-        "Storage demo: http://{} · files: {} · CPU: {}",
+        "Storage demo: http://{} · files: {}",
         listener.local_addr()?,
-        o.root.display(),
-        o.backend
+        o.root.display()
     );
     let (tx, rx) = watch::channel(json!({"status":if o.start_paused {"idle"} else {"starting"}}));
     let (commands, command_rx) = mpsc::sync_channel(16);

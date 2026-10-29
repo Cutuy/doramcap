@@ -18,5 +18,5 @@ test('snapshot decoder preserves uint64 IDs, unavailable ages and raw file bytes
 test('snapshot decoder rejects unknown versions, malformed frames and unsafe counters',()=>{
  assert.throws(()=>decodeSnapshot(encode({version:2})),/version/);
  assert.throws(()=>decodeSnapshot(new Uint8Array([255])));
- assert.throws(()=>decodeSnapshot(encode({cpu:'9007199254740993'})),/Unsafe numeric/);
+ assert.throws(()=>decodeSnapshot(encode({heartbeats:'9007199254740993'})),/Unsafe numeric/);
 });
