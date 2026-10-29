@@ -1,6 +1,6 @@
 # Storage Observatory wrapper
 
-Runs a synthetic CPU monitor and buffered storage; retains activity and capture
+Runs a native BPF CPU monitor and buffered storage; retains activity and capture
 MCAP files. Enable with `--enable-app storage-demo`.
 
 The [Moby-derived seccomp profile](https://github.com/moby/profiles/blob/4b8214fc4971e06172938a1f1554ccff6647ee80/seccomp/default.json)
@@ -9,7 +9,7 @@ it only on a trusted host. The upstream [license](../../../libs/workload-docker/
 
 ```sh
 cargo build --release --locked -p storage-demo --bin storage-demo
-cargo build --release --locked -p system-monitor --bin system-monitor
+cargo build --release --locked -p system-monitor --bin system-monitor --features bpf
 npm ci --prefix apps/storage-demo/frontend
 npm run build --prefix apps/storage-demo/frontend
 stage=$(mktemp -d)

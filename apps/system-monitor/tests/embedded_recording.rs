@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 #[test]
+#[ignore = "requires native BPF support, io_uring and Linux capabilities; build with --features bpf"]
 fn recording_rotation_preserves_every_sample() {
     // Arrange
     let dir = std::env::temp_dir().join(format!("doramcap-embedded-{}", std::process::id()));
@@ -12,11 +13,11 @@ fn recording_rotation_preserves_every_sample() {
     command
         .args([
             "--backend",
-            "synthetic",
+            "bpf",
             "--samples",
             "24",
             "--records",
-            "32",
+            "32768",
             "--record",
         ])
         .arg(&path)
@@ -71,7 +72,7 @@ fn recording_rotation_preserves_every_sample() {
     assert!(log.contains("collected=24 published=24 dropped=0"), "{log}");
     // Act
     let collision = Command::new(env!("CARGO_BIN_EXE_system-monitor"))
-        .args(["--backend", "synthetic", "--samples", "1", "--record"])
+        .args(["--backend", "bpf", "--samples", "1", "--record"])
         .arg(&path)
         .output()
         .unwrap();

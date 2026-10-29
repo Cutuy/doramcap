@@ -89,19 +89,13 @@ Assets default to this checkout's `apps/cpu-viewer/frontend/dist`; use `--assets
 when relocating the binary. For frontend development run `npm run dev --prefix
 apps/cpu-viewer/frontend`; Vite proxies WebSocket `/stream` to 8080.
 
-## Synthetic transport test and recording
+## Recording
 
-Select synthetic mode explicitly for transport testing:
-
-```sh
-dora run apps/cpu-viewer/dataflows/live-cpu-synthetic-dataflow.yml
-```
-
-It publishes four CPUs at approximately 50% through the same real Dora and
-binary WebSocket path. To record ten synthetic samples to MCAP:
+To record ten native BPF samples to MCAP, run with the collector's required
+capabilities:
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora
+cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
 dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 ```
 

@@ -7,9 +7,20 @@ services:
     stop_grace_period: 50s
     read_only: true
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    cap_add: [BPF, PERFMON, SYSLOG]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
     tmpfs: [/tmp]
     volumes:
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /sys/kernel/btf
+        target: /sys/kernel/btf
+        read_only: true
       - type: bind
         source: ${MCAP_RECORDER_RESULTS_DIR:?}
         target: /results

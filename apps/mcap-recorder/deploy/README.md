@@ -1,10 +1,10 @@
-# Synthetic MCAP Recorder wrapper
+# MCAP Recorder deployment
 
 Runs independent System Monitor and MCAP Recorder binaries in Dora 1.1.0. Each
-headless generation retains `recording.mcap` without BPF or io_uring.
+headless generation retains `recording.mcap` using native BPF CPU telemetry.
 
 ```sh
-cargo build --release --locked -p mcap-recorder -p system-monitor --features system-monitor/dora
+cargo build --release --locked -p mcap-recorder -p system-monitor --features system-monitor/dora,system-monitor/bpf
 dora --version  # must report dora-cli 1.1.0
 stage=$(mktemp -d)
 cp "$(command -v dora)" "$stage/dora"

@@ -50,7 +50,7 @@ fn options() -> Result<Options> {
         assets: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/dist"),
         activity: None,
         monitor: std::env::current_exe()?.with_file_name("system-monitor"),
-        backend: "synthetic".into(),
+        backend: "bpf".into(),
         root: std::env::temp_dir().join(format!("doramcap-storage-demo-{}", now_ns())),
         port: 8091,
         bind: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
@@ -70,7 +70,7 @@ fn options() -> Result<Options> {
         }
         if arg == "--help" {
             println!(
-                "storage-demo [--monitor PATH] [--backend synthetic|bpf] [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
+                "storage-demo [--monitor PATH] [--backend bpf] [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
             );
             std::process::exit(0);
         }
@@ -88,8 +88,8 @@ fn options() -> Result<Options> {
             _ => return Err(format!("unknown option {arg}").into()),
         }
     }
-    if !matches!(o.backend.as_str(), "synthetic" | "bpf") {
-        return Err("backend must be synthetic or bpf".into());
+    if o.backend != "bpf" {
+        return Err("only the native bpf backend is supported".into());
     }
     Ok(o)
 }

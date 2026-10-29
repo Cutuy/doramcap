@@ -18,7 +18,7 @@ async function main() {
     if (Date.now() >= deadline) throw new Error('orchestrator control socket did not become available');
     await delay(100);
   }
-  const env = { ...process.env, ORCHESTRATOR_DOCKER_SOCKET: '/var/run/docker.sock', ORCHESTRATOR_MONITOR_BACKEND: 'synthetic', ORCHESTRATOR_MONITOR_SECCOMP: '/opt/orchestrator/seccomp.json', ORCHESTRATOR_RUN_PREFIX: prefix, ORCHESTRATOR_RECOVERY_DIRECTORY: '/recovery', ORCHESTRATOR_PRIVATE_TELEMETRY: '1' };
+  const env = { ...process.env, ORCHESTRATOR_DOCKER_SOCKET: '/var/run/docker.sock', ORCHESTRATOR_MONITOR_SECCOMP: '/opt/orchestrator/seccomp.json', ORCHESTRATOR_RUN_PREFIX: prefix, ORCHESTRATOR_RECOVERY_DIRECTORY: '/recovery', ORCHESTRATOR_PRIVATE_TELEMETRY: '1' };
   const log = createWriteStream('/recovery/worker.log', { flags: 'wx', mode: 0o600 });
   await new Promise<void>((res, rej) => { log.once('open', () => res()); log.once('error', rej); });
   worker = spawn('/usr/local/bin/orchestrator-worker', [socket, process.env.ORCHESTRATOR_MONITOR_IMAGE!, runs], { env, stdio: ['ignore', 'pipe', 'pipe'] });

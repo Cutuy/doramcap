@@ -1,15 +1,27 @@
 services:
   monitor:
     image: doramcap/system-monitor:local
-    user: "${SYSTEM_MONITOR_UID:?}:${SYSTEM_MONITOR_GID:?}"
-    command: ["--backend", "synthetic", "--output", "/results/monitor.pb"]
+    user: "0:${SYSTEM_MONITOR_GID:?}"
+    command: ["--backend", "bpf", "--task-capacity", "4096", "--output", "/results/monitor.pb"]
     stop_signal: SIGINT
     stop_grace_period: 30s
     read_only: true
     cap_drop: [ALL]
+    cap_add: [BPF, PERFMON, SYSLOG, DAC_OVERRIDE]
     security_opt: [no-new-privileges:true]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
     tmpfs: [/tmp]
     volumes:
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /sys/kernel/btf
+        target: /sys/kernel/btf
+        read_only: true
       - type: bind
         source: ${SYSTEM_MONITOR_RESULTS_DIR:?}
         target: /results

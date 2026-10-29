@@ -7,7 +7,7 @@ process refuses to overwrite an existing recording and drains normal input
 closure before finalization.
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora
+cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
 dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 ```
 

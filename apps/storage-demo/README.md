@@ -6,12 +6,12 @@ correlated events, CPU timing and on-disk record inspection.
 ```sh
 npm ci --prefix apps/storage-demo/frontend
 npm run build --prefix apps/storage-demo/frontend
-cargo build -p storage-demo -p system-monitor
+cargo build -p storage-demo -p system-monitor --features system-monitor/bpf
 cargo run -p storage-demo
 # http://127.0.0.1:8091
 ```
 
-- Real O_DIRECT writes; synthetic CPU input by default. `--buffered` selects buffered I/O.
+- Real O_DIRECT writes; native BPF CPU input. `--buffered` selects buffered I/O.
 - **Collection** selects Off, Summary, Inspect or timed Capture; optional region filter.
 - **Timeline filter** matches a write or region ID. Loss/eviction counts remain visible.
 - **Stop recording** seals and syncs; **Start new session** clears previous capture files.
@@ -23,7 +23,7 @@ cargo run -p storage-demo
 - **Retire slab registrations** releases idle registrations; the next use registers again.
 - **Probe burst**, **Flush now** and **Seal & rotate** exercise the pipeline.
 - `--start-paused`, `--seconds N`, `--port N`, `--bind IP`, `--dir NEW_DIR` configure the session. The default bind is loopback.
-- `--backend bpf --monitor PATH` uses a capability-enabled native monitor.
+- `--monitor PATH` selects a capability-enabled native monitor.
 
 Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
 runs outside the writer thread; slow viewers skip intermediate frames. Collection retains

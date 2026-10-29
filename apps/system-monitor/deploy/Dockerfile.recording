@@ -1,3 +1,0 @@
-FROM doramcap/system-monitor:local
-COPY recording-entrypoint.sh /usr/local/bin/recording-entrypoint
-ENTRYPOINT ["/bin/sh", "/usr/local/bin/recording-entrypoint"]
