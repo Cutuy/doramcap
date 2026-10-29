@@ -1,5 +1,5 @@
 //! Cooperative project-group launch, observation and best-effort shutdown steps.
-use super::{
+use super::super::{
     dora,
     system_apps::{ReadinessInput, Recording, WaitForSystemApps},
 };

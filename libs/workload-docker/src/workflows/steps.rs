@@ -47,7 +47,8 @@ pub(super) fn executor(
     label: &str,
 ) -> Rc<LocalExecutor> {
     use super::{
-        project_steps::*, run_finalization::*, run_preparation::PrepareRun, system_apps::*,
+        recorded_compose::{finalization::*, preparation::PrepareRun, projects::*},
+        system_apps::*,
     };
     use crate::compose::overlay::{FinalizeOverlays, PrepareOverlays};
     Rc::new_cyclic(|weak: &Weak<LocalExecutor>| {

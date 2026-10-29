@@ -1,10 +1,6 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
-use super::{
-    observation,
-    project_steps::QuiescedProjects,
-    recorded_compose::ComposeRunReport,
-    system_apps::{FinalizeSystemApps, Recording},
-};
+use super::super::system_apps::{FinalizeSystemApps, Recording};
+use super::{ComposeRunReport, observation, projects::QuiescedProjects};
 use crate::compose::{
     Diagnostics,
     adapter::private_write,
@@ -90,7 +86,7 @@ impl Step for FinalizeRun {
         let mut evidence_durable = input.shutdown.writers_stopped && changes.is_some();
         if input.overlays.is_none()
             && let Some(changes) = &changes
-            && let Err(error) = super::compose_lifecycle::save_outer_evidence(
+            && let Err(error) = super::super::compose_lifecycle::save_outer_evidence(
                 &input.artifacts,
                 &input.id,
                 changes.value(),

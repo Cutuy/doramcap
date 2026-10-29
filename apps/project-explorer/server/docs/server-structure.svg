@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">Gallery server central request path</title>
+  <desc id="desc">HTTP handlers call the runtime service. It coordinates admission through the manager and per-app lifecycle, and supervises generation tasks that invoke the shared Docker workflow.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#475569"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #17324d; text-anchor: middle; }
+      .name { font-family: monospace; font-size: 18px; font-weight: 700; }
+      .label { font-size: 15px; }
+      .box { fill: #eff6ff; stroke: #94a3b8; }
+      .arrow { fill: none; stroke: #475569; stroke-width: 1.6; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="960" height="560" fill="white"/>
+  <g class="box">
+    <rect x="300" y="20" width="360" height="70" rx="8"/>
+    <rect x="300" y="130" width="360" height="70" rx="8"/>
+    <rect x="30" y="250" width="360" height="70" rx="8"/>
+    <rect x="30" y="365" width="360" height="70" rx="8"/>
+    <rect x="570" y="250" width="360" height="70" rx="8"/>
+    <rect x="570" y="365" width="360" height="70" rx="8" fill="#f0fdf4"/>
+    <rect x="570" y="480" width="360" height="60" rx="8" fill="#f0fdf4"/>
+  </g>
+  <text x="480" y="48" class="name">api.rs</text>
+  <text x="480" y="73" class="label">HTTP control requests</text>
+  <text x="480" y="158" class="name">runtime.rs</text>
+  <text x="480" y="183" class="label">Service + generation task supervisor</text>
+  <text x="210" y="278" class="name">manager.rs</text>
+  <text x="210" y="303" class="label">Admission + exclusive resources</text>
+  <text x="210" y="393" class="name">lifecycle.rs</text>
+  <text x="210" y="418" class="label">Per-app state + viewer sessions</text>
+  <text x="750" y="278" class="name">workflow.rs</text>
+  <text x="750" y="303" class="label">Generation setup + result publication</text>
+  <text x="750" y="393" class="name">workload-docker</text>
+  <text x="750" y="418" class="label">ComposeRunner + shared workflow steps</text>
+  <text x="750" y="516" class="label">Docker / Compose / Dora</text>
+  <g class="arrow">
+    <path d="M480 90V130"/>
+    <path d="M390 200V225H210V250"/>
+    <path d="M570 200V225H750V250"/>
+    <path d="M210 320V365"/>
+    <path d="M750 320V365"/>
+    <path d="M750 435V480"/>
+  </g>
+  <text x="210" y="470" class="label">lifecycle.rs performs no Docker I/O.</text>
+</svg>

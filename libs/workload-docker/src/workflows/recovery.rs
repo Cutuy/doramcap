@@ -5,6 +5,7 @@ use crate::compose::{
     error::invalid,
     filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
 };
+use crate::evidence::read_regular;
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -185,24 +186,6 @@ pub struct ExpectedProject<'a> {
     pub remove_volumes: bool,
     /// SHA-256 of the original resolution, stored outside workload-writable mounts.
     pub resolution_sha256: &'a str,
-}
-
-pub(super) async fn read_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
-    let file = tokio::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .await?;
-    let metadata = file.metadata().await?;
-    if !metadata.is_file() || metadata.len() > limit {
-        return Err(invalid("recovery metadata is not a bounded regular file"));
-    }
-    let mut bytes = Vec::new();
-    file.take(limit + 1).read_to_end(&mut bytes).await?;
-    if bytes.len() as u64 > limit {
-        return Err(invalid("recovery metadata exceeds its size limit"));
-    }
-    Ok(bytes)
 }
 
 /// Verify frozen ownership records and stop the listed projects in caller order.
@@ -506,11 +489,14 @@ pub struct RecoveryGroup<'a> {
 /// Reconcile child runs through the existing ownership, stop, collect and remove APIs.
 /// Missing/changed anchors, incomplete evidence and unsupported recovery stop the
 /// sequence with an error. Evidence and remaining resources are retained.
+/// Completed collection is checkpointed beneath `anchors/<run>` before removal.
+/// Retries reuse it after partial removal; damaged checkpoints fail closed.
 pub async fn reconcile_group(
     adapter: Rc<DockerAdapter>,
     group: RecoveryGroup<'_>,
 ) -> std::result::Result<(), String> {
-    use std::{collections::BTreeSet, fs, io::Read, os::unix::fs::DirBuilderExt};
+    use super::compose_lifecycle::{read_outer_evidence, save_outer_evidence};
+    use std::{collections::BTreeSet, fs, io::Read, os::unix::fs::{DirBuilderExt, PermissionsExt}};
     let RecoveryGroup {
         artifacts_root,
         anchors,
@@ -601,20 +587,33 @@ pub async fn reconcile_group(
         if preserve_only {
             continue;
         }
-        let output = anchors.join(format!("{run}-attempt-{:032x}", attempt));
-        fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&output)
-            .map_err(|e| e.to_string())?;
-        let changes = collect_crashed_run(adapter.clone(), &artifacts, &anchor, &expected, &output)
-            .await
-            .map_err(|e| e.to_string())?;
+        let evidence = anchors.join(&run);
+        match fs::DirBuilder::new().mode(0o700).create(&evidence) {
+            Ok(()) => {},
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Err(error) => return Err(error.to_string()),
+        }
+        let metadata = fs::symlink_metadata(&evidence).map_err(|e| e.to_string())?;
+        if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0
+            || fs::canonicalize(&evidence).map_err(|e| e.to_string())? != evidence {
+            return Err("nested evidence directory must be canonical and private".into());
+        }
+        let changes = match read_outer_evidence(&evidence, &run)? {
+            Some(changes) => changes,
+            None => {
+                let output = evidence.join(format!("recovery-{attempt:032x}"));
+                fs::DirBuilder::new().mode(0o700).create(&output).map_err(|e| e.to_string())?;
+                collect_crashed_run(adapter.clone(), &artifacts, &anchor, &expected, &output)
+                    .await.map_err(|e| e.to_string())?
+            }
+        };
         if !changes.host_binds.coverage_complete
             || !changes.container_layers.coverage_complete
             || !changes.named_volumes.coverage_complete
         {
             return Err("nested filesystem coverage is incomplete".into());
         }
+        save_outer_evidence(&evidence, &run, &changes)?;
         let removed = remove_crashed_run(
             &adapter,
             &artifacts,

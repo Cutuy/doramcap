@@ -23,3 +23,5 @@ cargo build --locked -p project-explorer-server --bins
 [Remaining apps, ordered by difficulty](docs/102727-remaining-apps.md)
 
 [Designing new Docker-hostable apps](docs/docker-hostable-apps.md)
+
+[Server modules and request path](docs/server-structure.md)

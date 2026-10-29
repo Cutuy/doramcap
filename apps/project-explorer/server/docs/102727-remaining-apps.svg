@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="520" viewBox="0 0 1080 520" role="img" aria-labelledby="title desc">
   <title id="title">Independent app hosting and remaining integration work</title>
-  <desc id="desc">Trusted registrations configure the gallery manager. Caddy routes browser traffic to web apps. Each generation owns separate app binaries and optional Dora processes, with retained artifacts and explicit host capability requirements. Headless apps use the shared shell.</desc>
+  <desc id="desc">Trusted protobuf registrations configure the gallery manager, which invokes the shared Rust Compose workflow. Caddy routes browser traffic to workload containers. Supporting services also run in Docker containers; Dora nodes run inside a daemon container. Each generation retains outputs and declares host requirements.</desc>
   <defs>
     <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto-start-reverse"><path d="M0 0L7 3.5L0 7" fill="#64748b"/></marker>
   </defs>
@@ -20,13 +20,13 @@
     </g>
     <g text-anchor="middle" font-size="17">
       <text x="125" y="116">Browser viewers</text><text x="125" y="143" font-size="13">Shared session shell</text>
-      <text x="125" y="282">Trusted registrations</text><text x="125" y="309" font-size="13">Compose + JSON</text><text x="125" y="330" font-size="13">Prebuilt images per app</text>
+      <text x="125" y="282">Trusted registrations</text><text x="125" y="309" font-size="13">Compose + pbtxt</text><text x="125" y="330" font-size="13">Prebuilt images per app</text>
       <text x="422" y="116">Caddy</text><text x="422" y="143" font-size="13">HTTP · WebSocket · SSE</text>
-      <text x="422" y="283">Gallery manager</text><text x="422" y="309" font-size="13">Sessions · lifecycle · recovery</text><text x="422" y="331" font-size="13">Headless status · results</text>
+      <text x="422" y="283">Gallery manager</text><text x="422" y="309" font-size="13">Sessions · results</text><text x="422" y="331" font-size="13">Shared Rust Compose workflow</text>
       <text x="845" y="93" font-weight="600">One owned generation per app</text>
-      <text x="845" y="143">Web UI or headless workload</text><text x="845" y="169" font-size="13">Separate app executable(s)</text>
-      <text x="845" y="249">Optional app-owned processes</text><text x="845" y="278" font-size="13">Dora nodes + coordinator/daemon</text><text x="845" y="302" font-size="13">Recorder · experiment worker</text>
-      <text x="457" y="451">Retained artifacts</text><text x="457" y="476" font-size="13">MCAP · Protobuf · JSON · logs</text>
+      <text x="845" y="143">Workload containers</text><text x="845" y="169" font-size="13">Web UI or headless app</text>
+      <text x="845" y="249">Supporting service containers</text><text x="845" y="278" font-size="13">Collectors · Dora coordinator / daemon</text><text x="845" y="302" font-size="13">Dora nodes run inside the daemon container</text>
+      <text x="457" y="451">Retained artifacts</text><text x="457" y="476" font-size="13">Declared results · private logs</text>
       <text x="875" y="451">Explicit host requirements</text><text x="875" y="476" font-size="13">Docker worker · BPF · io_uring · GPU/IPC</text>
     </g>
     <g stroke="#64748b" stroke-width="1.5" fill="none" marker-end="url(#arrow)">

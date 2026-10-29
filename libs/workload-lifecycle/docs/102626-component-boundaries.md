@@ -10,7 +10,7 @@ Created: 2026-10-26.
 - [x] Complete post-refactor validation and record evidence here.
 
 Implementation evidence: `workload-docker/src/compose` owns configuration, adapter,
-errors and steps; `workload-docker/src/workflows/recorded_compose.rs` owns the run
+errors and steps; `workload-docker/src/workflows/recorded_compose/mod.rs` owns the run
 request, CPU monitor policy, runner and result. Both compile with all targets.
 
 | Component | Responsibility | Public concepts |
@@ -18,7 +18,8 @@ request, CPU monitor policy, runner and result. Both compile with all targets.
 | `orchestrator` | Invoke transient typed steps, serialize boundaries, emit events | `Step`, `LocalExecutor`, `Input`, `Output`, `Observer` |
 | `workload-lifecycle` | Mechanism-neutral lifecycle design and eventual shared contracts | No runtime API yet |
 | `workload-docker::compose` | Compose resolution, resource ownership, Docker inspection and teardown | `ComposeProject`, `ResolvedComposeProject`, lifecycle steps |
-| `workload-docker::workflows::recorded_compose` | Procedural run with CPU recording and ordered project shutdown | `ComposeRun`, `CpuMonitor`, `ComposeRunner`, `ComposeRunReport` |
+| `workload-docker::workflows::recorded_compose` | Procedural run with recording and ordered project shutdown | `ComposeRun`, `ComposeRunner`, `ComposeRunReport` |
+| `workload-docker::workflows::system_apps` | Supporting-service configuration and recording probes | `SystemAppsConfig`, `CpuMonitor`, `DoraFlow` |
 
 A workflow is ordinary Rust code that calls steps. Concrete policy belongs to its
 own implementation; there is no generic workflow object or experiment type.
