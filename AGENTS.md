@@ -28,6 +28,12 @@ Sudo is authorized for tests requiring Linux capabilities. Build unprivileged; e
 
 Use `.sudo-password` from the main checkout (first entry in `git worktree list --porcelain`) through sudo's stdin. Keep it gitignored and mode `0600`; never print, log, commit, copy, or pass its contents as arguments. Request local provisioning if missing or unreadable; stop and report authentication failures.
 
+## Local CI
+
+Before declaring a PR ready, run the checks in [.github/workflows/ci.yml](.github/workflows/ci.yml) on the local host: library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Use the CI Cargo profile and locked dependencies. Build unprivileged; follow the capability-required test rules above when elevation is needed.
+
+Run local CI and ARM64 worker validation on the final source revision unless the user explicitly waives either. Report each result separately, including skipped or blocked checks; targeted tests alone do not constitute a full CI pass.
+
 ## ARM64 CI
 
 Submit trusted source to the Pueue worker at `doramcap-ci@100.64.0.20` (ARM64 WSL2, Linux 6.18):
