@@ -32,7 +32,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 
 Before declaring a PR ready, run the checks in [.github/workflows/ci.yml](.github/workflows/ci.yml) on the local host: library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Use the CI Cargo profile and locked dependencies. Build unprivileged; follow the capability-required test rules above when elevation is needed.
 
-Run local CI and ARM64 worker validation on the final source revision unless the user explicitly waives either. Report each result separately, including skipped or blocked checks; targeted tests alone do not constitute a full CI pass.
+Prefer local CI and run it on the final source revision unless the user explicitly waives it. Run ARM64 worker validation on the final source revision when the user explicitly asks for it, when a high-risk change cannot be adequately validated on x86, or when preparing a PR, unless the user explicitly waives it. Report each applicable result separately, including skipped or blocked checks; targeted tests alone do not constitute a full CI pass.
 
 ## ARM64 CI
 
