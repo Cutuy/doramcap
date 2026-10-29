@@ -112,6 +112,7 @@ async fn run(options: Options) -> Result<()> {
         }
     });
     println!("Gallery hosting API listening on http://{addr}");
+    let closing = service.clone();
     let result = axum::serve(
         listener,
         api::router(
@@ -121,7 +122,10 @@ async fn run(options: Options) -> Result<()> {
             options.heartbeat.as_secs(),
         ),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        closing.close_admission();
+    })
     .await;
     maintenance.abort();
     let outcomes = service.shutdown().await;
