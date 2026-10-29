@@ -128,7 +128,7 @@ async fn hash_regular(path: &Path) -> Result<String> {
         }
         hasher.update(&buffer[..size]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Authenticate the pre-launch filesystem baseline against a trusted anchor.
@@ -496,7 +496,12 @@ pub async fn reconcile_group(
     group: RecoveryGroup<'_>,
 ) -> std::result::Result<(), String> {
     use super::compose_lifecycle::{read_outer_evidence, save_outer_evidence};
-    use std::{collections::BTreeSet, fs, io::Read, os::unix::fs::{DirBuilderExt, PermissionsExt}};
+    use std::{
+        collections::BTreeSet,
+        fs,
+        io::Read,
+        os::unix::fs::{DirBuilderExt, PermissionsExt},
+    };
     let RecoveryGroup {
         artifacts_root,
         anchors,
@@ -589,22 +594,28 @@ pub async fn reconcile_group(
         }
         let evidence = anchors.join(&run);
         match fs::DirBuilder::new().mode(0o700).create(&evidence) {
-            Ok(()) => {},
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error.to_string()),
         }
         let metadata = fs::symlink_metadata(&evidence).map_err(|e| e.to_string())?;
-        if !metadata.is_dir() || metadata.permissions().mode() & 0o077 != 0
-            || fs::canonicalize(&evidence).map_err(|e| e.to_string())? != evidence {
+        if !metadata.is_dir()
+            || metadata.permissions().mode() & 0o077 != 0
+            || fs::canonicalize(&evidence).map_err(|e| e.to_string())? != evidence
+        {
             return Err("nested evidence directory must be canonical and private".into());
         }
         let changes = match read_outer_evidence(&evidence, &run)? {
             Some(changes) => changes,
             None => {
                 let output = evidence.join(format!("recovery-{attempt:032x}"));
-                fs::DirBuilder::new().mode(0o700).create(&output).map_err(|e| e.to_string())?;
+                fs::DirBuilder::new()
+                    .mode(0o700)
+                    .create(&output)
+                    .map_err(|e| e.to_string())?;
                 collect_crashed_run(adapter.clone(), &artifacts, &anchor, &expected, &output)
-                    .await.map_err(|e| e.to_string())?
+                    .await
+                    .map_err(|e| e.to_string())?
             }
         };
         if !changes.host_binds.coverage_complete
