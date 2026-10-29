@@ -1,0 +1,23 @@
+@internal path /internal/*
+respond @internal 404
+
+@running path_regexp app ^/app/([^/]+)/([0-9a-f]{32})/(.*)$
+handle @running {
+    route {
+        request_header -X-Gallery-Upstream
+        forward_auth {$GALLERY_API:127.0.0.1:8095} {
+            uri /internal/authorize
+            copy_headers X-Gallery-Upstream
+        }
+        uri strip_prefix /app/{re.app.1}/{re.app.2}
+        reverse_proxy {http.request.header.X-Gallery-Upstream} {
+            header_up -X-Gallery-Upstream
+            header_down Location ^/(.*)$ {$GALLERY_PREFIX}/app/{re.app.1}/{re.app.2}/$1
+            header_down Set-Cookie "(?i);[[:space:]]*path=/" "; Path={$GALLERY_PREFIX}/app/{re.app.1}/{re.app.2}/"
+            flush_interval 100ms
+        }
+    }
+}
+handle {
+    reverse_proxy {$GALLERY_API:127.0.0.1:8095}
+}
