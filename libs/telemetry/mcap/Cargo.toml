@@ -10,7 +10,7 @@ prost = "0.14"
 libc = "0.2"
 telemetry-protocol = { path = "../protocol" }
 eyre = "0.6"
-mcap = { version = "=0.25.0", default-features = false }
+mcap = { version = "=0.26.0", default-features = false }
 
 [dev-dependencies]
 monitor-core = { path = "../../resources/monitor-core" }

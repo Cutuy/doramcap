@@ -24,7 +24,7 @@ futures-util = "0.3"
 libc = "0.2"
 
 [dev-dependencies]
-mcap = { version = "=0.25.0", default-features = false }
+mcap = { version = "=0.26.0", default-features = false }
 
 [lints]
 workspace = true
