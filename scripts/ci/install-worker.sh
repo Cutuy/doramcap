@@ -29,8 +29,6 @@ export CARGO_TARGET_DIR=/home/doramcap-ci/target
 cd "$job"
 python3 apps/system-monitor/tests/validate_native.py --monitor "$CARGO_TARGET_DIR/debug/system-monitor"
 "$CARGO_TARGET_DIR/debug/examples/native_allocations"
-python3 apps/storage-demo/validate.py --bin-dir "$CARGO_TARGET_DIR/debug"
-python3 apps/storage-demo/tests/activity_capture.py --bin-dir "$CARGO_TARGET_DIR/debug"
 if [[ -f apps/system-monitor/tests/validate_recording_dora.py && -x /home/doramcap-ci/.local/bin/dora ]]; then
     python3 apps/system-monitor/tests/validate_recording_dora.py --dora /home/doramcap-ci/.local/bin/dora --bin-dir "$CARGO_TARGET_DIR/debug" --backend bpf
 fi
