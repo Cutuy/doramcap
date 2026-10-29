@@ -112,8 +112,8 @@ impl<T> From<Output<T>> for Input<T> {
 ///
 /// # Failure semantics
 ///
-/// Calls report validation, serialization and step errors. Factory/body panics
-/// unwind. Observer panics are counted and suppressed. Cancellation drops the step
+/// Calls report validation, serialization and step errors. Factory, body and codec
+/// panics unwind. Observer panics are counted and suppressed. Cancellation drops the step
 /// future; callers retain responsibility for asynchronous cleanup. No retry occurs.
 pub struct LocalExecutor {
     factories: HashMap<TypeId, Box<dyn Any>>,
@@ -142,6 +142,7 @@ impl LocalExecutor {
     /// The observer receives synchronous lifecycle callbacks and must not block.
     /// Callback panics are suppressed and counted by [`Self::observer_failures`].
     /// The initial telemetry label is `local`; payload capture is disabled.
+    /// Assign a distinct [`Self::with_label`] to each executor sharing an event stream.
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
@@ -157,6 +158,11 @@ impl LocalExecutor {
 
     /// Attach a caller-defined telemetry grouping label (wire field `session`).
     /// Labels do not determine dependency ownership or service lifetimes.
+    ///
+    /// Callers combining executors in one retained event stream must assign a
+    /// distinct label to each executor, including replacements. Each executor
+    /// starts invocation IDs at one, emits executor identity `local`, and owns a
+    /// separate elapsed-time origin. The label supplies the stream namespace.
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.session = label.into();
         self
@@ -195,6 +201,8 @@ impl LocalExecutor {
     ///
     /// Input and output are JSON-round-tripped. Invalid input prevents body
     /// entry; output errors occur after the body and do not undo its effects.
+    /// The original input is dropped after the input round-trip attempt, before
+    /// the `Started` callback and factory construction. The step owns decoded input.
     /// Metadata includes the automatically derived Rust type name and declared
     /// producers. Passing outputs from another executor fails before invocation.
     /// Nested calls on this executor receive this invocation as their parent.
@@ -211,6 +219,9 @@ impl LocalExecutor {
     /// Dropping an unpolled future performs no work. Dropping a polled, pending call
     /// emits `Cancelled` (or `Panicked` during unwinding). It does not imply OS-level
     /// effects ended; the caller and step retain explicit cleanup obligations.
+    /// After admission, input codec or original-input destructor panics emit
+    /// `Panicked` without `Started`. Factory, body and output codec panics emit
+    /// `Panicked` after `Started`. These panics continue unwinding to the caller.
     pub async fn run<S: Step + 'static>(
         &self,
         input: impl Into<Input<S::Input>>,
@@ -253,6 +264,8 @@ impl LocalExecutor {
             finished: false,
         };
         let prepared = roundtrip(&input.value, "input");
+        // Only decoded input needs to survive observation and step execution.
+        drop(input.value);
         let payload = if self.capture_payloads {
             prepared
                 .as_ref()

@@ -113,3 +113,48 @@ fn delivery_failure_leaves_a_sequence_gap() {
     assert_eq!(workflow::decode(&packets.borrow()[0]).unwrap().sequence, 2);
     assert_eq!(observer.dropped_events(), 1);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn distinct_executor_labels_namespace_invocations_in_a_shared_stream() {
+    // Arrange
+    let packets = Rc::new(RefCell::new(Vec::new()));
+    let sink = packets.clone();
+    let observer = TelemetryObserver::new(4096, move |bytes| {
+        sink.borrow_mut().push(bytes.to_vec());
+        Ok(())
+    });
+    let mut first = LocalExecutor::new(observer.clone()).with_label("first-run");
+    let mut second = LocalExecutor::new(observer.clone()).with_label("second-run");
+    first.register::<Noop>(|| Noop);
+    second.register::<Noop>(|| Noop);
+
+    // Act
+    first.run::<Noop>(()).await.unwrap();
+    second.run::<Noop>(()).await.unwrap();
+
+    // Assert
+    let decoded: Vec<_> = packets
+        .borrow()
+        .iter()
+        .map(|bytes| workflow::decode(bytes).unwrap())
+        .collect();
+    assert_eq!(decoded.len(), 4);
+    assert_eq!(
+        decoded
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        [1, 2, 3, 4]
+    );
+    let (invocations, _) = decoded.as_chunks::<2>();
+    for (events, session) in invocations.iter().zip(["first-run", "second-run"]) {
+        assert!(events.iter().all(|event| {
+            event.session == session && event.executor == "local" && event.invocation == 1
+        }));
+        assert_eq!(events[0].state, workflow::event::State::Started as i32);
+        assert_eq!(events[1].state, workflow::event::State::Succeeded as i32);
+    }
+    assert_eq!(observer.dropped_events(), 0);
+    assert_eq!(first.observer_failures(), 0);
+    assert_eq!(second.observer_failures(), 0);
+}
