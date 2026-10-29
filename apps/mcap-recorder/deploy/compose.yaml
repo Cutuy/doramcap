@@ -1,0 +1,20 @@
+services:
+  recorder:
+    image: doramcap/mcap-recorder:local
+    user: "${MCAP_RECORDER_UID:?}:${MCAP_RECORDER_GID:?}"
+    init: true
+    stop_signal: SIGINT
+    stop_grace_period: 50s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: ${MCAP_RECORDER_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD-SHELL", "pidof system-monitor >/dev/null && pidof mcap-recorder >/dev/null && test -s /results/recording.mcap"]
+      interval: 2s
+      timeout: 2s
+      retries: 45

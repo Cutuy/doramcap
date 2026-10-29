@@ -1,0 +1,22 @@
+id: "fault-watchdog"
+compose_file: "compose.mcap.yaml"
+service: "dashboard"
+network: "default"
+port: 8088
+readiness_seconds: 90
+stop_seconds: 50
+result_file: "state.json"
+result_format: FILE
+artifact_collections {
+  id: "recordings"
+  base_file: "faults.mcap"
+  prefix: "faults.mcap."
+  suffix: ""
+  digits: 6
+  max_files: 512
+  required: true
+}
+shutdown_marker: "shutdown.complete"
+env_prefix: "FAULT_WATCHDOG"
+seccomp_file: "seccomp.json"
+requires_explicit_enable: true

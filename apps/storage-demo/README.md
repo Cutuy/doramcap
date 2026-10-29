@@ -22,7 +22,7 @@ cargo run -p storage-demo
 - The 1/4/16 MiB selector controls managed payloads. Slabs always hold two 256-KiB payloads.
 - **Retire slab registrations** releases idle registrations; the next use registers again.
 - **Probe burst**, **Flush now** and **Seal & rotate** exercise the pipeline.
-- `--start-paused`, `--seconds N`, `--port N`, `--dir NEW_DIR` configure the session.
+- `--start-paused`, `--seconds N`, `--port N`, `--bind IP`, `--dir NEW_DIR` configure the session. The default bind is loopback.
 - `--backend bpf --monitor PATH` uses a capability-enabled native monitor.
 
 Snapshots publish at 25 Hz through a latest-value Protobuf WebSocket. Encoding
@@ -64,7 +64,6 @@ cargo build -p system-monitor
 python3 apps/storage-demo/validate.py --bin-dir target/debug
 python3 apps/storage-demo/tests/tracing_export.py --bin-dir target/debug
 python3 apps/storage-demo/tests/activity_capture.py --bin-dir target/debug
-node apps/storage-demo/tests/frontend.cjs
 npm test --prefix apps/storage-demo/frontend
 (cd apps/storage-demo/frontend && npm run test:live)
 ```
@@ -74,3 +73,5 @@ npm test --prefix apps/storage-demo/frontend
 
 The page uses `/api/snapshots/stream`; `/api/state` and legacy `/events` provide
 on-demand JSON diagnostics. Control requests remain JSON.
+
+[Docker deployment and gallery registration](deploy/README.md).

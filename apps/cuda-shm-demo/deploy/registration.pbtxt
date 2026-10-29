@@ -1,0 +1,56 @@
+id: "cuda-shm-demo"
+compose_file: "compose.yaml"
+service: "viewer"
+network: "default"
+port: 8080
+readiness_seconds: 90
+stop_seconds: 95
+result_file: "summary.json"
+result_optional: true
+result_format: FILE
+artifact_collections {
+  id: "producer-mcap"
+  prefix: "producer-"
+  suffix: ".mcap"
+  digits: 10
+  variable_digits: true
+  max_files: 512
+  directory: "runs"
+  run_directories: true
+}
+artifact_collections {
+  id: "consumer-mcap"
+  prefix: "consumer-"
+  suffix: ".mcap"
+  digits: 10
+  variable_digits: true
+  max_files: 512
+  directory: "runs"
+  run_directories: true
+}
+artifact_collections {
+  id: "producer-activity"
+  prefix: "producer-"
+  suffix: ".activity.pb"
+  digits: 10
+  variable_digits: true
+  max_files: 512
+  directory: "runs"
+  run_directories: true
+  format: FILE
+}
+artifact_collections {
+  id: "consumer-activity"
+  prefix: "consumer-"
+  suffix: ".activity.pb"
+  digits: 10
+  variable_digits: true
+  max_files: 512
+  directory: "runs"
+  run_directories: true
+  format: FILE
+}
+shutdown_marker: "shutdown.complete"
+exclusive_resources: "nvidia-gpu"
+env_prefix: "CUDA"
+requires_explicit_enable: true

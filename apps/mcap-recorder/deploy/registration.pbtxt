@@ -1,0 +1,15 @@
+id: "mcap-recorder"
+compose_file: "compose.yaml"
+service: "recorder"
+network: "default"
+headless: true
+readiness_seconds: 90
+stop_seconds: 50
+result_file: "recording.mcap"
+shutdown_marker: "shutdown.complete"
+recording_count {
+  count_file: "published.count"
+  topic: "doramcap/snapshots"
+}
+env_prefix: "MCAP_RECORDER"
+requires_explicit_enable: true

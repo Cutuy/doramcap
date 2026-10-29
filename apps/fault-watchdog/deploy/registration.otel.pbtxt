@@ -1,0 +1,12 @@
+id: "fault-watchdog"
+compose_file: "compose.otel.yaml"
+service: "dashboard"
+network: "default"
+port: 8088
+readiness_seconds: 90
+stop_seconds: 50
+result_file: "state.json"
+result_format: FILE
+shutdown_marker: "shutdown.complete"
+env_prefix: "FAULT_WATCHDOG"
+requires_explicit_enable: true

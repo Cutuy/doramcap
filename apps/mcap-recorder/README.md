@@ -22,3 +22,5 @@ python3 apps/mcap-recorder/tests/validate_dora.py --dora /path/to/dora --runs 2
 
 Use `--bin-dir` with a custom Cargo target directory. `--backend bpf` requires
 native build features and permission to load BPF programs.
+
+[Docker deployment and gallery registration](deploy/README.md).

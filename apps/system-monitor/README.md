@@ -31,6 +31,11 @@ sudo /path/to/venv/bin/python apps/system-monitor/tests/validate_native.py --mon
 
 ## Embedded MCAP recording
 
+Compose templates: [native BPF](deploy/recording.yaml) and
+[synthetic](deploy/recording-synthetic.yaml). The shared Docker workflow supplies
+the image, output directory and seccomp policy, then snapshots the selected
+template into each run’s private artifacts.
+
 ```sh
 system-monitor --backend synthetic --samples 100 --record capture.mcap
 system-monitor --backend bpf --dora --record capture.mcap --record-rotate-bytes 67108864

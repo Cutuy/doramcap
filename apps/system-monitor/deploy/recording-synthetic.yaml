@@ -1,0 +1,14 @@
+# Synthetic collection needs no host namespaces or BPF capabilities.
+services:
+  cpu-monitor:
+    image: ${DORAMCAP_MONITOR_IMAGE:?prepared monitor image required}
+    user: "${DORAMCAP_MONITOR_UID:?}:${DORAMCAP_MONITOR_GID:?}"
+    command: ["--backend", "synthetic", "--records", "32768", "--output", "/recordings/cpu.pb", "--record", "/recordings/cpu.mcap", "--record-buffered"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true", "${DORAMCAP_MONITOR_SECCOMP:?explicit seccomp policy required}"]
+    volumes:
+      - type: bind
+        source: ${DORAMCAP_ARTIFACTS:?new artifact directory required}
+        target: /recordings

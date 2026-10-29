@@ -1,0 +1,22 @@
+services:
+  monitor:
+    image: doramcap/system-monitor:recording
+    user: "${SYSTEM_MONITOR_UID:?}:${SYSTEM_MONITOR_GID:?}"
+    command: ["--backend", "synthetic", "--output", "/results/monitor.pb", "--record", "/results/capture.mcap", "--record-buffered", "--record-rotate-bytes", "16777216"]
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=${SYSTEM_MONITOR_SECCOMP:?}
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: ${SYSTEM_MONITOR_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD-SHELL", "size=$$(wc -c < /results/monitor.pb) && test \"$$size\" -ge 4 && length=$$(od -An -N4 -tu4 /results/monitor.pb | tr -d '[:space:]') && test -n \"$$length\" && test \"$$length\" -gt 0 && test \"$$size\" -ge \"$$((length + 4))\" && test -s /results/capture.mcap"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

@@ -1,0 +1,28 @@
+services:
+  viewer:
+    image: doramcap/cuda-shm-demo:local
+    user: "${CUDA_UID:?}:${CUDA_GID:?}"
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 95s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    shm_size: 64mb
+    tmpfs: [/tmp]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - type: bind
+        source: ${CUDA_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/state', {signal: AbortSignal.timeout(1000)}).then(r => { if (!r.ok) process.exitCode = 1 }).catch(() => process.exitCode = 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 45

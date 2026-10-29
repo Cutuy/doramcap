@@ -18,3 +18,5 @@ queued; optional adapters run only when enabled in configuration.
 - [Runtime contract](docs/102026-runtime.md) · [Live demo](../fault-demo/README.md)
 
 Rust API documentation covers host clocks, queue loss, retries and finalization.
+
+[Docker deployment and gallery registration](deploy/README.md).

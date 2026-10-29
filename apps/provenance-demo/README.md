@@ -28,6 +28,9 @@ Ctrl-C stops this demo's flow; shared Dora infrastructure stays running.
 - `--port 8091`: choose another HTTP port.
 - `--output /tmp/demo.json`: save final diagnostic evidence.
 
+The `provenance-demo pipeline` executable also accepts `--duration until-stopped`
+for a long-running host that sends the shutdown signal.
+
 Dora 1.1.0 may print “failed to receive finished signal” while starting dynamic
 nodes before the launcher attaches them. The launcher checks actual registrations
 and traffic; startup and runtime failures still fail the check.
@@ -51,3 +54,5 @@ The evaluator retains 64 generations per stream. WebSocket replay retains at mos
 4,096 messages / 8 MiB, signals gaps, and disconnects stalled clients. Browser history
 is bounded independently; old ancestry can be unavailable after replay or eviction.
 Multi-host clock synchronization and temporary measurements remain future work.
+
+[Docker deployment and gallery registration](deploy/README.md).

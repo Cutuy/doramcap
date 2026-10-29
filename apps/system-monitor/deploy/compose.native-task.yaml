@@ -1,0 +1,32 @@
+services:
+  monitor:
+    image: doramcap/system-monitor:native-task
+    user: "0:${SYSTEM_MONITOR_GID:?}"
+    command: ["--backend", "bpf", "--task-capacity", "4096", "--output", "/results/monitor.pb"]
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [BPF, PERFMON, SYSLOG, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /sys/kernel/btf
+        target: /sys/kernel/btf
+        read_only: true
+      - type: bind
+        source: ${SYSTEM_MONITOR_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD-SHELL", "size=$$(wc -c < /results/monitor.pb) && test \"$$size\" -ge 4 && length=$$(od -An -N4 -tu4 /results/monitor.pb | tr -d '[:space:]') && test -n \"$$length\" && test \"$$length\" -gt 0 && test \"$$size\" -ge \"$$((length + 4))\""]
+      interval: 2s
+      timeout: 2s
+      retries: 30

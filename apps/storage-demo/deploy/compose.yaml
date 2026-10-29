@@ -1,0 +1,22 @@
+services:
+  storage:
+    image: doramcap/storage-observatory:local
+    user: "${STORAGE_UID:?}:${STORAGE_GID:?}"
+    command: ["--bind", "0.0.0.0", "--port", "8091", "--backend", "synthetic", "--buffered", "--monitor", "/usr/local/bin/system-monitor", "--assets", "/opt/storage-observatory/dist", "--dir", "/results/captures", "--activity", "/results/activity.mcap"]
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=${STORAGE_SECCOMP:?}
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: ${STORAGE_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8091/api/state | grep -q '\"status\":\"live\"'"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

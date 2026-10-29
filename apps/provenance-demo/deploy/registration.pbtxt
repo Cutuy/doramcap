@@ -1,0 +1,12 @@
+id: "provenance-demo"
+compose_file: "compose.yaml"
+service: "monitor"
+network: "default"
+port: 8088
+readiness_seconds: 90
+stop_seconds: 80
+result_file: "summary.json"
+result_format: FILE
+shutdown_marker: "shutdown.complete"
+env_prefix: "PROVENANCE"
+requires_explicit_enable: true

@@ -20,3 +20,5 @@ npm run build --prefix apps/cpu-viewer/frontend
 npm run test:live --prefix apps/cpu-viewer/frontend
 apps/cpu-viewer/frontend/node_modules/.bin/tsx apps/cpu-viewer/tests/check-latency.mts
 ```
+
+[Docker deployment and gallery registration](deploy/README.md).

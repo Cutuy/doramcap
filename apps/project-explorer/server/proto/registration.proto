@@ -1,0 +1,60 @@
+syntax = "proto3";
+package doramcap.hosting.v1;
+
+import "recovery.proto";
+
+// Verification for published results. MCAP is the default.
+enum ResultFormat { MCAP = 0; FILE = 1; }
+
+// Producer count used to verify complete delivery to a recorded MCAP topic.
+message RecordingCount {
+  string count_file = 1; // Decimal file in the generation's results directory.
+  string topic = 2;
+}
+
+// Bounded numeric filename pattern within the generation's results directory.
+message ArtifactCollection {
+  string id = 1;
+  optional string base_file = 2;
+  string prefix = 3;
+  string suffix = 4;
+  uint32 digits = 5; // Exact width, or maximum width when variable_digits is true.
+  bool variable_digits = 6;
+  uint32 max_files = 7; // 1..512; exceeding this limit prevents publication.
+  bool required = 8;
+  optional string directory = 9;
+  bool run_directories = 10; // Search one level of validated run directories.
+  optional string run_prefix = 11;
+  bool generation_runs = 12; // Select gal-<32 lowercase hex>-<1..999> runs.
+  ResultFormat format = 13;
+}
+
+// Operator-controlled registration loaded from apps/<app>/deploy/registration.pbtxt.
+// Paths are relative to that deployment directory. Browser requests select only id.
+// Semantic validation rejects unsafe paths and inconsistent result/runtime policies.
+message AppRegistration {
+  string id = 1;
+  string compose_file = 2;
+  string service = 3;
+  string network = 4;
+  optional uint32 port = 5; // 1..65535 for web apps; absent for headless apps.
+  bool headless = 6;
+  uint64 readiness_seconds = 7;
+  uint64 stop_seconds = 8;
+  string result_file = 9;
+  bool result_optional = 10;
+  ResultFormat result_format = 11;
+  optional string capture_directory = 12;
+  repeated string additional_files = 13;
+  repeated ArtifactCollection artifact_collections = 14;
+  optional string shutdown_marker = 15;
+  RecordingCount recording_count = 16;
+  repeated string exclusive_resources = 17;
+  repeated string private_directories = 18;
+  bool docker_socket = 19;
+  bool nested_runs = 20;
+  repeated doramcap.recovery.v1.RecoveryProject nested_projects = 21;
+  string env_prefix = 22;
+  optional string seccomp_file = 23;
+  bool requires_explicit_enable = 24;
+}

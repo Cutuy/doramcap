@@ -1,0 +1,33 @@
+services:
+  viewer:
+    image: doramcap/cpu-viewer:local
+    user: "${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}"
+    init: true
+    stop_signal: SIGINT
+    stop_grace_period: 50s
+    read_only: true
+    cap_drop: [ALL]
+    # Only system-monitor carries file capabilities; Dora/viewer/recorder stay unprivileged.
+    # no-new-privileges would prevent the collector acquiring those capabilities.
+    cap_add: [BPF, PERFMON, SYSLOG]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    tmpfs: [/tmp]
+    volumes:
+      - type: bind
+        source: /sys/fs/cgroup
+        target: /sys/fs/cgroup
+        read_only: true
+      - type: bind
+        source: /sys/kernel/btf
+        target: /sys/kernel/btf
+        read_only: true
+      - type: bind
+        source: ${CPU_VIEWER_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD-SHELL", "pidof system-monitor >/dev/null && pidof mcap-recorder >/dev/null && curl --fail --silent --max-time 1 http://127.0.0.1:8080/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 45
