@@ -14,7 +14,7 @@ pub use adapter::DockerAdapter;
 pub use error::{Error, Result};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
-    ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
+    OwnedResource, ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,

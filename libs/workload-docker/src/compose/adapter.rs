@@ -1,6 +1,6 @@
 use super::{
-    Cleanup, ComposeProjectState, ComposeService, Container, ResolveInput, ResolvedComposeProject,
-    Result, Shutdown, StartInput, StopInput,
+    Cleanup, ComposeProjectState, ComposeService, Container, OwnedResource, ResolveInput,
+    ResolvedComposeProject, Result, Shutdown, StartInput, StopInput,
     command::compose,
     error::{absent, engine, invalid},
 };
@@ -33,6 +33,11 @@ pub struct DockerAdapter {
     socket: String,
 }
 impl DockerAdapter {
+    /// Return the configured Unix socket path for trusted deployment wiring.
+    pub fn socket_path(&self) -> &Path {
+        Path::new(&self.socket)
+    }
+
     /// Connect to `socket` and negotiate the Engine API version.
     ///
     /// Returns an adapter using the absolute Unix socket for both Engine and CLI
@@ -85,6 +90,78 @@ impl DockerAdapter {
             ));
         }
         Ok(())
+    }
+
+    /// List containers, networks and volumes bearing a run label with `prefix`.
+    ///
+    /// Docker list failures or missing resource identities return an error. The
+    /// three Engine calls are not an atomic snapshot: callers must prevent other
+    /// managers from creating resources concurrently. No resources are modified.
+    pub async fn discover_runs(&self, prefix: &str) -> Result<Vec<OwnedResource>> {
+        validate_name(prefix)?;
+        let filters = Some(HashMap::from([(
+            "label".to_owned(),
+            vec![RUN_LABEL.to_owned()],
+        )]));
+        let mut found = Vec::new();
+        let containers = self
+            .docker
+            .list_containers(Some(ListContainersOptions {
+                all: true,
+                filters: filters.clone(),
+                ..Default::default()
+            }))
+            .await
+            .map_err(|e| engine("discover containers", e))?;
+        for item in containers {
+            let labels = item.labels.unwrap_or_default();
+            if let Some(run) = labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
+                found.push(OwnedResource {
+                    run: run.clone(),
+                    project: labels.get(PROJECT_LABEL).cloned(),
+                    kind: "container",
+                    id: item
+                        .id
+                        .ok_or_else(|| invalid("discovered container has no ID"))?,
+                });
+            }
+        }
+        let networks = self
+            .docker
+            .list_networks(Some(ListNetworksOptions {
+                filters: filters.clone(),
+            }))
+            .await
+            .map_err(|e| engine("discover networks", e))?;
+        for item in networks {
+            let labels = item.labels.unwrap_or_default();
+            if let Some(run) = labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
+                found.push(OwnedResource {
+                    run: run.clone(),
+                    project: labels.get(PROJECT_LABEL).cloned(),
+                    kind: "network",
+                    id: item
+                        .id
+                        .ok_or_else(|| invalid("discovered network has no ID"))?,
+                });
+            }
+        }
+        let volumes = self
+            .docker
+            .list_volumes(Some(ListVolumesOptions { filters }))
+            .await
+            .map_err(|e| engine("discover volumes", e))?;
+        for item in volumes.volumes.unwrap_or_default() {
+            if let Some(run) = item.labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
+                found.push(OwnedResource {
+                    run: run.clone(),
+                    project: item.labels.get(PROJECT_LABEL).cloned(),
+                    kind: "volume",
+                    id: item.name,
+                });
+            }
+        }
+        Ok(found)
     }
 
     /// Resolve supplied files, freeze local image IDs, and write a private launch
@@ -509,7 +586,10 @@ impl DockerAdapter {
             containers,
         })
     }
-    pub(crate) fn ready(state: &ComposeProjectState) -> Result<bool> {
+    /// Evaluate expected replicas, image identity, process state and health.
+    /// Returns `false` while readiness is incomplete; unexpected exits, image
+    /// changes and restarts return errors with diagnostic context.
+    pub fn ready(state: &ComposeProjectState) -> Result<bool> {
         for (name, service) in &state.plan.services {
             let containers: Vec<_> = state
                 .containers
@@ -599,7 +679,7 @@ impl DockerAdapter {
         }
     }
 
-    async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
+    pub(crate) async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
         let filters = Some(HashMap::from([(
             "label".into(),
             vec![format!("{PROJECT_LABEL}={}", plan.name)],
@@ -624,6 +704,114 @@ impl DockerAdapter {
                 .unwrap_or_default()
                 .iter()
                 .all(|v| v.labels.get(RUN_LABEL) == Some(&plan.run)))
+    }
+
+    /// Execute a trusted argument vector in one owned, running service replica.
+    /// Verifies the frozen manifest, ownership and pinned image before delegating
+    /// to Compose. Uses no shell; output limits and cancellation follow `compose`.
+    /// A cancelled exec can continue until its container is quiesced by the caller.
+    pub(crate) async fn exec_service(
+        &self,
+        plan: &ResolvedComposeProject,
+        service: &str,
+        command: &[String],
+        timeout: Duration,
+    ) -> Result<String> {
+        self.verify_manifest(plan).await?;
+        let state = self.inspect(plan).await?;
+        let replicas: Vec<_> = state
+            .containers
+            .iter()
+            .filter(|c| c.service == service)
+            .collect();
+        let expected = plan
+            .services
+            .get(service)
+            .ok_or_else(|| invalid("exec service absent from plan"))?;
+        if replicas.len() != 1
+            || replicas[0].status != "running"
+            || replicas[0].image_id != expected.image_id
+        {
+            return Err(invalid("exec requires one running, pinned service replica"));
+        }
+        let mut args = Self::args(plan);
+        args.extend(["exec".into(), "-T".into(), service.into()]);
+        args.extend_from_slice(command);
+        let (stdout, _) = compose(
+            &self.socket,
+            plan.manifest.parent().unwrap(),
+            &BTreeMap::new(),
+            &args,
+            timeout,
+        )
+        .await?;
+        Ok(stdout)
+    }
+
+    /// Resolve the single ready service's IPv4 endpoint on one project-owned
+    /// network. `network` is the Compose network key and `port` is server-owned
+    /// registration data. Missing, ambiguous, unhealthy or unowned resources fail
+    /// closed. The returned address is only valid while this generation remains
+    /// running; callers must prevent routing after its state changes.
+    pub async fn endpoint(
+        &self,
+        plan: &ResolvedComposeProject,
+        service: &str,
+        network: &str,
+        port: u16,
+    ) -> Result<std::net::SocketAddr> {
+        validate_name(network)?;
+        if port == 0 {
+            return Err(invalid("endpoint port must be positive"));
+        }
+        let state = self.inspect(plan).await?;
+        if !Self::ready(&state)? {
+            return Err(invalid("project is not ready"));
+        }
+        let mut containers = state.containers.iter().filter(|c| c.service == service);
+        let container = containers
+            .next()
+            .ok_or_else(|| invalid("endpoint service absent"))?;
+        if containers.next().is_some() {
+            return Err(invalid("endpoint service has multiple containers"));
+        }
+        let info = self
+            .docker
+            .inspect_container(&container.id, None)
+            .await
+            .map_err(|e| engine("inspect endpoint container", e))?;
+        let network_name = format!("{}_{}", plan.name, network);
+        let networks = info
+            .network_settings
+            .and_then(|n| n.networks)
+            .ok_or_else(|| invalid("container has no networks"))?;
+        let endpoint = networks
+            .get(&network_name)
+            .ok_or_else(|| invalid("owned endpoint network missing"))?;
+        let network_id = endpoint
+            .network_id
+            .as_deref()
+            .ok_or_else(|| invalid("endpoint has no network ID"))?;
+        let network_info = self
+            .docker
+            .inspect_network(network_id, None::<InspectNetworkOptions>)
+            .await
+            .map_err(|e| engine("inspect endpoint network", e))?;
+        let labels = network_info.labels.unwrap_or_default();
+        if labels.get(RUN_LABEL) != Some(&plan.run) || labels.get(PROJECT_LABEL) != Some(&plan.name)
+        {
+            return Err(invalid("endpoint network is not owned by the project"));
+        }
+        let ip: std::net::Ipv4Addr = endpoint
+            .ip_address
+            .as_deref()
+            .ok_or_else(|| invalid("endpoint has no IPv4 address"))?
+            .parse()
+            .map_err(|_| invalid("invalid endpoint IPv4 address"))?;
+        if ip.is_unspecified() || ip.is_loopback() {
+            return Err(invalid("invalid endpoint network address"));
+        }
+        Ok(std::net::SocketAddr::new(ip.into(), port))
     }
 
     /// Attempt graceful project shutdown, retain exit evidence, then remove owned
@@ -737,13 +925,13 @@ impl DockerAdapter {
                                         .diagnostic("stop"),
                                 );
                             }
-                            let path = plan
-                                .manifest
-                                .parent()
-                                .unwrap()
-                                .join(format!("{}-{id}.stopped.json", plan.key));
-                            if let Err(e) =
-                                private_write(&path, &serde_json::to_vec_pretty(&stopped)?).await
+                            if let Err(e) = save_stopped_inspection(
+                                plan.manifest.parent().unwrap(),
+                                &plan.key,
+                                &id,
+                                &serde_json::to_vec_pretty(&stopped)?,
+                            )
+                            .await
                             {
                                 result.diagnostics.push(e.diagnostic("save inspection"));
                             }
@@ -931,6 +1119,27 @@ pub(crate) fn validate_name(name: &str) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+async fn save_stopped_inspection(
+    directory: &Path,
+    key: &str,
+    id: &str,
+    bytes: &[u8],
+) -> Result<()> {
+    for attempt in 0..1024 {
+        let name = if attempt == 0 {
+            format!("{key}-{id}.stopped.json")
+        } else {
+            format!("{key}-{id}.stopped.{attempt}.json")
+        };
+        match private_write(&directory.join(name), bytes).await {
+            Ok(()) => return Ok(()),
+            Err(super::Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Err(invalid("too many stopped inspection attempts"))
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))

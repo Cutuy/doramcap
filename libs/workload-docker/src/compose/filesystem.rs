@@ -90,6 +90,14 @@ pub struct FilesystemBaseline {
     sources: Vec<Source>,
     pub directory: PathBuf,
 }
+impl FilesystemBaseline {
+    /// Baseline metadata files to authenticate before workload launch.
+    pub(crate) fn recovery_files(&self) -> Vec<PathBuf> {
+        std::iter::once(self.directory.join("baseline.json"))
+            .chain(self.sources.iter().map(|source| source.baseline.clone()))
+            .collect()
+    }
+}
 /// Explicit inputs to pre-launch metadata capture.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaselineInput {
@@ -120,6 +128,10 @@ pub struct CategoryChanges {
     pub category: StorageCategory,
     pub manifest: PathBuf,
     pub counts: ChangeCounts,
+    /// Whether every in-scope source was scanned completely. Missing in older
+    /// reports defaults to false, so recovery does not infer complete coverage.
+    #[serde(default)]
+    pub coverage_complete: bool,
     /// Source exceptions and incomplete scans, distinct from file changes.
     pub warnings: Vec<String>,
 }
@@ -431,6 +443,7 @@ async fn writer(
             category,
             manifest: path,
             counts: ChangeCounts::default(),
+            coverage_complete: true,
             warnings: vec![],
         },
         tokio::io::BufWriter::new(file),
@@ -536,6 +549,9 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         }
         let before = wire::read_snapshot(&source.baseline).await?;
         if !before.complete {
+            if source.category == StorageCategory::NamedVolume || source.reason.is_none() {
+                out.0.coverage_complete = false;
+            }
             out.0.warnings.push(format!(
                 "{}: {}",
                 source.identity,
@@ -547,6 +563,7 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
             match volume_path(adapter, &source.identity).await {
                 Ok(p) => p,
                 Err(e) => {
+                    out.0.coverage_complete = false;
                     out.0.warnings.push(format!("{}: {e}", source.identity));
                     continue;
                 }
@@ -567,6 +584,7 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
             incomplete("volume absent after launch; no diff available")
         };
         if !after.complete {
+            out.0.coverage_complete = false;
             out.0.warnings.push(format!(
                 "{}: {}",
                 source.identity,
@@ -645,6 +663,18 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn older_category_reports_do_not_claim_complete_coverage() {
+        // Arrange
+        let old = serde_json::json!({"category":"named_volume", "manifest":"/tmp/old",
+            "counts":{"added":0,"modified":0,"deleted":0}, "warnings":[]});
+
+        // Act
+        let report: CategoryChanges = serde_json::from_value(old).unwrap();
+
+        // Assert
+        assert!(!report.coverage_complete);
+    }
     #[tokio::test]
     async fn metadata_scan_does_not_follow_symlinks_and_stats_special_entries() {
         // Arrange
