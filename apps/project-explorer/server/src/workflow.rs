@@ -90,7 +90,7 @@ pub async fn run(
             plans = receiver => {
                 match plans {
                     Ok(plans) => {
-                        let endpoint = match (app.port, plans.first()) {
+                        let endpoint = match (app.port, plans.iter().find(|plan| plan.key == app.id)) {
                             (Some(port), Some(plan)) => adapter.endpoint(plan, &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
                             (None, _) => Ok(None),
                             _ => Err("ready workflow has no app project".into()),
