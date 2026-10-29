@@ -67,10 +67,17 @@ cpu_monitor {
 }
 ```
 
-`PrepareSystemApps` snapshots app configuration. `LaunchSystemApps` invokes the
-existing Compose start steps, then `WaitForSystemApps` checks application outputs.
-`FinalizeSystemApps` verifies recordings after writers stop. App templates, output
-names and monitor-specific policy belong to this adapter.
+`PrepareRun` validates inputs, resolves every project, captures a baseline and
+freezes recovery identities. `PrepareOverlays` supplies optional execution mounts.
+`LaunchProjects` starts each independent group and checks configured system-app
+outputs; `LaunchDoraFlows` starts declared flows. `ObserveProjects` checks health.
+
+`QuiesceProjects` stops Dora roles and project groups in shutdown order.
+`FinalizeRun` verifies recordings and collects filesystem metadata concurrently,
+then checkpoints evidence or invokes `FinalizeOverlays`. `RemoveProjects` removes
+resources only when finalization permits it. `WriteRunReport` persists the outcome.
+App templates and recording probes remain in `system_apps`. Docker event capture
+has an explicit owner that drains on completion and aborts when its owner drops.
 
 Resolution and independent workload starts run concurrently on `LocalExecutor`.
 System readiness precedes workload startup. Additional `first_party` projects keep

@@ -52,3 +52,16 @@ including native CPU MCAP readback: `/tmp/doramcap-compose-split-102626`.
 ARM64 job 139 succeeded at 18:52 PDT, snapshot
 `5df73e3952a940dd82f292d96f2576a0`; full log:
 `/tmp/doramcap-compose-arm64-139.log`. Only documentation changed afterward.
+
+## Recorded-run refactor
+
+RF-001: `run_with_ready` mixed scheduling with preparation, health checks and
+cleanup bookkeeping. Reusable steps now own those operations; the workflow keeps
+startup order, parallel groups, cancellation and finalization barriers explicit.
+Docker events have a cancellation-owned capture handle. App configuration,
+OverlayFS mechanics and recovery formats retain their existing contracts.
+
+Component and caller review covered the gallery, system apps and explicit
+recovery. Validation covered parallel readiness, failed siblings, startup
+cancellation, abandoned-session recovery, native BPF/MCAP and four hosted apps.
+No further scope is queued for this refactor; OverlayFS hardening remains separate.

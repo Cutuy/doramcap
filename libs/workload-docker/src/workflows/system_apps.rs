@@ -2,12 +2,11 @@
 //! Application-specific templates and policy stay behind these observable steps.
 use crate::compose::{adapter::private_write, error::invalid, *};
 use futures_util::future::join_all;
-use orchestrator::{LocalExecutor, Step};
+use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    rc::Weak,
     time::Duration,
 };
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -79,46 +78,6 @@ async fn prepare(input: PrepareInput) -> Result<PreparedSystemApps> {
     })
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LaunchInput {
-    pub projects: Vec<ResolvedComposeProject>,
-    pub recordings: Vec<Recording>,
-    pub readiness_seconds: u64,
-}
-
-/// Launch independent supporting projects, then verify their output readiness.
-/// All starts are awaited even after a sibling fails. Cancellation drops pending
-/// CLI futures; the caller must retain every attempted plan for Docker cleanup.
-/// Uses the same executor for child events and dependency/parent lineage.
-pub struct LaunchSystemApps {
-    pub executor: Weak<LocalExecutor>,
-}
-impl Step for LaunchSystemApps {
-    type Input = LaunchInput;
-    type Output = ();
-    async fn run(&mut self, input: LaunchInput) -> orchestrator::Result<()> {
-        let executor = self
-            .executor
-            .upgrade()
-            .ok_or_else(|| orchestrator::Error::message("system-app executor dropped"))?;
-        let started = join_all(input.projects.into_iter().map(|plan| {
-            executor.run::<StartCompose>(StartInput {
-                plan,
-                readiness_seconds: input.readiness_seconds,
-            })
-        }))
-        .await;
-        let mut readiness = orchestrator::Input::new(ReadinessInput {
-            recordings: input.recordings,
-            timeout_seconds: input.readiness_seconds,
-        });
-        for result in started {
-            readiness = readiness.after(&result?);
-        }
-        executor.run::<WaitForSystemApps>(readiness).await?;
-        Ok(())
-    }
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReadinessInput {
     pub recordings: Vec<Recording>,

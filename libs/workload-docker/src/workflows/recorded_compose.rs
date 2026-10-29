@@ -1,39 +1,25 @@
-//! Compose lifecycle policy with supporting-app steps and verified teardown.
-//!
-//! This concrete workflow selects startup/shutdown order and recording policy.
-//! Individual Compose lifecycle steps can also be used independently.
-use super::system_apps::{
-    self, FinalizeSystemApps, LaunchSystemApps, PrepareSystemApps, SystemAppsConfig,
-    WaitForSystemApps,
+//! Compose startup, observation and teardown policy expressed through shared steps.
+use super::{
+    dora,
+    observation::EventCapture,
+    project_steps::{
+        LaunchDoraFlows, LaunchFlowsInput, LaunchProjects, ObserveInput, ObserveProjects,
+        QuiesceInput, QuiesceProjects, RemoveInput, RemoveProjects,
+    },
+    run_finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
+    run_preparation::PrepareRun,
+    system_apps::SystemAppsConfig,
 };
-use crate::compose::filesystem::{
-    BaselineInput, CaptureFilesystemBaseline, CollectFilesystemChanges, CollectInput,
-    FilesystemChanges,
+use crate::compose::{
+    error::invalid,
+    filesystem::FilesystemChanges,
+    overlay::{OverlayPolicy, OverlayResults, PrepareInput, PrepareOverlays},
+    *,
 };
-use crate::compose::overlay::{
-    FinalizeOverlays, OverlayPolicy, OverlayResults, PrepareInput, PrepareOverlays,
-};
-use crate::{
-    compose::adapter::{RUN_LABEL, private_write, validate_name},
-    compose::error::invalid,
-    compose::*,
-};
-use futures_util::{StreamExt, future::join_all};
-use orchestrator::{Input, LocalExecutor, Observer};
+use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap, HashSet},
-    future::Future,
-    path::Path,
-    rc::Rc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
-use tokio::{
-    io::AsyncWriteExt,
-    sync::{oneshot, watch},
-};
+use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc, time::Duration};
+use tokio::sync::oneshot;
 
 /// Single-session runner with concurrent independent Compose operations.
 ///
@@ -107,279 +93,94 @@ impl ComposeRunner {
                 "manager blocked by an unfinished or unverified experiment",
             ));
         }
-        validate(&spec)?;
-        let artifacts = spec.artifacts.clone();
-        let mut builder = tokio::fs::DirBuilder::new();
-        builder.mode(0o700);
-        builder.create(&artifacts).await?;
-        let artifacts = tokio::fs::canonicalize(artifacts).await?;
-        snapshot(&artifacts, "before").await?;
         let diagnostics = Rc::new(RefCell::new(Vec::new()));
-        let executor = Rc::new_cyclic(|weak| {
-            let mut executor = LocalExecutor::new(observer)
-                .with_label(&spec.id)
-                .capture_payloads(true);
-            super::steps::register(&mut executor, self.adapter.clone(), diagnostics.clone());
-            super::dora::register(&mut executor, self.adapter.clone());
-            let adapter = self.adapter.clone();
-            executor.register::<PrepareOverlays>(move || PrepareOverlays {
-                adapter: adapter.clone(),
-            });
-            executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
-            executor.register::<PrepareSystemApps>(|| PrepareSystemApps);
-            executor.register::<WaitForSystemApps>(|| WaitForSystemApps);
-            executor.register::<FinalizeSystemApps>(|| FinalizeSystemApps);
-            let weak = weak.clone();
-            executor.register::<LaunchSystemApps>(move || LaunchSystemApps {
-                executor: weak.clone(),
-            });
-            executor
-        });
-        if spec.filesystem.is_some() {
-            self.adapter.verify_overlay_namespace().await?;
-        }
-        let system_apps = executor
-            .run::<PrepareSystemApps>(system_apps::PrepareInput {
-                config: spec.system_apps.clone(),
-                artifacts: artifacts.clone(),
-            })
+        let executor = super::steps::executor(
+            self.adapter.clone(),
+            diagnostics.clone(),
+            observer,
+            &spec.id,
+        );
+        let prepared = executor
+            .run::<PrepareRun>(spec.clone())
             .await
-            .map_err(|e| invalid(e.to_string()))?;
-        let system_count = system_apps.value().projects.len();
-        let projects: Vec<_> = system_apps
-            .value()
-            .projects
-            .iter()
-            .cloned()
-            .chain(spec.first_party.clone())
-            .chain(spec.projects.clone())
-            .collect();
-        let mut keys = HashSet::new();
-        if projects.iter().any(|project| !keys.insert(&project.key)) {
-            return Err(invalid("system and workload project keys must be unique"));
-        }
-        // Resolution has no launch side effects. Independent projects share this task.
-        let resolved = join_all(projects.into_iter().map(|project| {
-            executor.run::<ResolveCompose>(
-                Input::new(ResolveInput {
-                    run: spec.id.clone(),
-                    artifacts: artifacts.clone(),
-                    project,
-                })
-                .after(&system_apps),
-            )
-        }))
-        .await;
-        let mut plans = Vec::new();
-        for plan in resolved {
-            plans.push(plan.map_err(|e| invalid(e.to_string()))?);
-        }
-        let mut dora_projects = HashSet::new();
-        for config in &spec.system_apps.dora_flows {
-            super::dora::validate(config)?;
-            if !dora_projects.insert(&config.project)
-                || !plans.iter().any(|p| {
-                    p.value().key == config.project
-                        && p.value().services.contains_key(&config.service)
-                })
-            {
-                return Err(invalid(
-                    "Dora requires one binding to an existing project and service",
-                ));
-            }
-        }
-        let mut input = Input::new(BaselineInput {
-            projects: plans.iter().map(|p| p.value().clone()).collect(),
-            artifacts: artifacts.clone(),
-        });
-        for plan in &plans {
-            input = input.after(plan);
-        }
-        let baseline = executor
-            .run::<CaptureFilesystemBaseline>(input)
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
-        if let Some(directory) = &spec.recovery_anchor_dir {
-            super::recovery::write_anchor(
-                directory,
-                &artifacts,
-                &spec.id,
-                &plans
-                    .iter()
-                    .map(|plan| plan.value().clone())
-                    .collect::<Vec<_>>(),
-                &baseline.value().recovery_files(),
-            )
-            .await?;
-        }
+            .map_err(step_error)?;
+        let artifacts = prepared.value().artifacts.clone();
+
+        // Mounts cross the side-effect boundary; dropping this run now blocks admission.
         self.blocked = true;
         let overlays = if let Some(policy) = &spec.filesystem {
-            let mut preparation = Input::new(PrepareInput {
-                artifacts: artifacts.clone(),
-                projects: plans.iter().map(|p| p.value().clone()).collect(),
-                policy: policy.clone(),
-            })
-            .after(&baseline);
-            for plan in &plans {
-                preparation = preparation.after(plan);
-            }
             Some(
                 executor
-                    .run::<PrepareOverlays>(preparation)
+                    .run::<PrepareOverlays>(
+                        Input::new(PrepareInput {
+                            artifacts: artifacts.clone(),
+                            projects: prepared.value().projects(),
+                            policy: policy.clone(),
+                        })
+                        .after(&prepared),
+                    )
                     .await
-                    .map_err(|e| invalid(e.to_string()))?,
+                    .map_err(step_error)?,
             )
         } else {
             None
         };
-        let plans: Vec<_> = overlays
-            .as_ref()
-            .map(|o| o.value().projects.clone())
-            .unwrap_or_else(|| plans.iter().map(|p| p.value().clone()).collect());
-        let mut dora_flows = spec
-            .system_apps
-            .dora_flows
-            .iter()
-            .map(|config| super::dora::Flow {
-                plan: plans
-                    .iter()
-                    .find(|p| p.key == config.project)
-                    .expect("validated Dora project")
-                    .clone(),
-                config: config.clone(),
-                id: String::new(),
-            })
-            .collect::<Vec<_>>();
-        let (finish, finished) = watch::channel(false);
-        let (fault_tx, mut fault) = watch::channel(None::<String>);
-        let docker = self.adapter.docker.clone();
-        let run = spec.id.clone();
-        let events_path = artifacts.join("docker-events.jsonl");
-        let event_task = tokio::spawn(async move {
-            let result = record_events(docker, run, &events_path, finished).await;
-            if let Err(e) = &result {
-                let _ = fault_tx.send(Some(e.to_string()));
-            }
-            result
-        });
-        let mut event_task = AbortOnDrop(event_task);
-        let mut attempted_groups = Vec::new();
+        let groups = prepared
+            .value()
+            .launch_groups(overlays.as_ref().map(|o| o.value()));
+        let plans: Vec<_> = groups.iter().flat_map(|g| g.projects.clone()).collect();
+        let mut flows = dora::bind(&spec.system_apps.dora_flows, &plans)?;
+        let mut events = EventCapture::start(
+            self.adapter.docker.clone(),
+            spec.id.clone(),
+            artifacts.join("docker-events.jsonl"),
+        );
+        let mut attempted = Vec::new();
+        let mut launches = Vec::new();
+        let mut flow_start = None;
         tokio::pin!(stop);
         let execute = async {
-            let mut groups = Vec::new();
-            if system_count != 0 {
-                groups.push(plans[..system_count].to_vec());
-            }
-            // Preserve the declared order of additional supporting projects.
-            for plan in &plans[system_count..system_count + spec.first_party.len()] {
-                groups.push(vec![plan.clone()]);
-            }
-            groups.push(plans[system_count + spec.first_party.len()..].to_vec());
-            let mut previous = None;
-            let mut workload_starts = HashMap::new();
-            for (index, group) in groups.iter().enumerate() {
-                attempted_groups.push(group.clone()); // retain every possible partial launch
-                if index + 1 == groups.len() {
-                    let started = join_all(group.iter().map(|plan| {
-                        let mut input = Input::new(StartInput {
-                            plan: plan.clone(),
-                            readiness_seconds: spec.readiness_seconds,
-                        })
-                        .after(&baseline);
-                        if let Some(overlays) = &overlays {
-                            input = input.after(overlays);
-                        }
-                        if let Some(previous) = &previous {
-                            input = input.after(previous);
-                        }
-                        executor.run::<StartCompose>(input)
-                    }))
-                    .await;
-                    // Observe all outcomes before propagating failure; never abandon siblings.
-                    for (plan, result) in group.iter().zip(started) {
-                        workload_starts.insert(plan.key.clone(), result?);
-                    }
-                } else {
-                    let recordings = if index == 0 && system_count != 0 {
-                        system_apps.value().recordings.clone()
-                    } else {
-                        vec![]
-                    };
-                    let mut input = Input::new(system_apps::LaunchInput {
-                        projects: group.clone(),
-                        recordings,
-                        readiness_seconds: spec.readiness_seconds,
-                    })
-                    .after(&baseline);
-                    if let Some(overlays) = &overlays {
-                        input = input.after(overlays);
-                    }
-                    if let Some(previous) = &previous {
-                        input = input.after(previous);
-                    }
-                    previous = Some(executor.run::<LaunchSystemApps>(input).await?);
+            // Supporting groups precede workloads. Siblings within a group run concurrently.
+            for group in &groups {
+                attempted.push(group.projects.clone());
+                let mut input = Input::new(group.clone()).after(&prepared);
+                if let Some(overlays) = &overlays {
+                    input = input.after(overlays);
                 }
-            }
-            let starts = join_all(dora_flows.iter().map(|flow| {
-                let mut input = Input::new(super::dora::StartInput {
-                    flow: flow.clone(),
-                    timeout_seconds: spec.readiness_seconds,
-                })
-                .after(&baseline);
-                if let Some(started) = workload_starts.get(&flow.plan.key) {
-                    input = input.after(started);
+                if let Some(previous) = launches.last() {
+                    input = input.after(previous);
                 }
-                executor.run::<super::dora::StartDoraFlow>(input)
-            }))
-            .await;
-            let mut failure = None;
-            for (flow, result) in dora_flows.iter_mut().zip(starts) {
-                match result {
-                    Ok(started) => *flow = started.into_value(),
-                    Err(error) => {
-                        failure = Some(error);
-                    }
-                }
+                launches.push(executor.run::<LaunchProjects>(input).await?);
             }
-            if let Some(error) = failure {
-                return Err(error);
+            let mut input = Input::new(LaunchFlowsInput {
+                flows: flows.clone(),
+                readiness_seconds: spec.readiness_seconds,
+            })
+            .after(&prepared);
+            if let Some(launched) = launches.last() {
+                input = input.after(launched);
             }
+            let started = executor.run::<LaunchDoraFlows>(input).await?;
+            flows = started.value().clone();
+            flow_start = Some(started);
             if let Some(ready) = ready {
                 ready
                     .send(plans.clone())
                     .map_err(|_| orchestrator::Error::message("readiness receiver dropped"))?;
             }
             loop {
-                let states = join_all(plans.iter().map(|plan| {
-                    let mut input = Input::new(plan.clone()).after(&baseline);
-                    if let Some(started) = workload_starts.get(&plan.key) {
-                        input = input.after(started);
-                    } else if let Some(previous) = &previous {
-                        input = input.after(previous);
-                    }
-                    executor.run::<InspectCompose>(input)
-                }))
-                .await;
-                for (plan, state) in plans.iter().zip(states) {
-                    if !DockerAdapter::ready(state?.value())
-                        .map_err(|e| orchestrator::Error::message(e.to_string()))?
-                    {
-                        return Err(orchestrator::Error::message(format!(
-                            "{} lost readiness or containers",
-                            plan.key
-                        )));
-                    }
+                let mut input = Input::new(ObserveInput {
+                    projects: plans.clone(),
+                    flows: flows.clone(),
+                })
+                .after(&prepared);
+                if let Some(launched) = launches.last() {
+                    input = input.after(launched);
                 }
-                let inspections = join_all(
-                    dora_flows
-                        .iter()
-                        .cloned()
-                        .map(|flow| executor.run::<super::dora::InspectDoraFlow>(flow)),
-                )
-                .await;
-                for result in inspections {
-                    result?;
+                if let Some(started) = &flow_start {
+                    input = input.after(started);
                 }
+                executor.run::<ObserveProjects>(input).await?;
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
             #[allow(unreachable_code)]
@@ -388,349 +189,101 @@ impl ComposeRunner {
         let outcome = tokio::select! {
             result = execute => result.map_err(|e| e.to_string()),
             _ = &mut stop => Ok(()),
-            changed = fault.changed() => Err(if changed.is_err() { "Docker event stream ended".into() } else { fault.borrow().clone().unwrap_or_else(|| "Docker event stream ended".into()) }),
+            error = events.failure() => Err(error),
         };
-        // Workload nodes stop before producers; consumers drain before Compose
-        // stops infrastructure or the enclosing workflow observes filesystems.
-        let dora_stops = join_all(dora_flows.into_iter().map(|flow| async {
-            tokio::time::timeout(
-                Duration::from_secs(spec.stop_seconds),
-                executor.run::<super::dora::StopDoraFlow>(Input::new(flow).after(&baseline)),
+
+        // Stop all writer roles before collecting filesystems or removing infrastructure.
+        let mut input = Input::new(QuiesceInput {
+            groups: attempted,
+            flows,
+            stop_seconds: spec.stop_seconds,
+        })
+        .after(&prepared);
+        for launched in &launches {
+            input = input.after(launched);
+        }
+        if let Some(started) = &flow_start {
+            input = input.after(started);
+        }
+        let shutdown = executor
+            .run::<QuiesceProjects>(input)
+            .await
+            .map_err(step_error)?;
+        let finalized = executor
+            .run::<FinalizeRun>(
+                Input::new(FinalizeInput {
+                    id: spec.id.clone(),
+                    artifacts: artifacts.clone(),
+                    baseline: prepared.value().baseline.clone(),
+                    overlays: overlays.as_ref().map(|o| o.value().clone()),
+                    shutdown: shutdown.value().clone(),
+                    recordings: groups.iter().flat_map(|g| g.recordings.clone()).collect(),
+                    require_volume_evidence: spec.recovery_anchor_dir.is_some(),
+                })
+                .after(&prepared)
+                .after(&shutdown),
             )
             .await
-            .map_err(|_| orchestrator::Error::message("Dora shutdown deadline exceeded"))?
-        }))
-        .await;
-        let dora_finalized = dora_stops.iter().all(|result| result.is_ok());
-        let mut dora_dependencies = Vec::new();
-        for result in dora_stops {
-            if let Ok(stopped) = &result {
-                dora_dependencies.push(stopped.clone());
-            }
-            if let Err(error) = result {
-                diagnostics
-                    .borrow_mut()
-                    .push(invalid(error.to_string()).diagnostic("Dora shutdown"));
-            }
-        }
-        // Stop every writer before observing shared filesystem state. Preserve
-        // runtime objects until evidence collection succeeds.
-        let mut shutdowns = Vec::new();
-        let mut stopped_dependencies = Vec::new();
-        let mut all_stopped = true;
-        for group in attempted_groups.iter().rev() {
-            let stopped = join_all(group.iter().map(|plan| {
-                let mut input = Input::new(StopInput {
-                    plan: plan.clone(),
+            .map_err(step_error)?;
+        let cleanup = executor
+            .run::<RemoveProjects>(
+                Input::new(RemoveInput {
+                    projects: shutdown.value().projects.clone(),
                     stop_seconds: spec.stop_seconds,
+                    can_remove: finalized.value().can_remove,
+                    preserve_volumes: finalized.value().preserve_volumes,
                 })
-                .after(&baseline);
-                for stopped in &dora_dependencies {
-                    input = input.after(stopped);
-                }
-                executor.run::<QuiesceCompose>(input)
-            }))
-            .await;
-            for (plan, stopped) in group.iter().zip(stopped) {
-                match stopped {
-                    Ok(s) => {
-                        all_stopped &= s.value().stopped;
-                        stopped_dependencies.push(s.clone());
-                        shutdowns.push((plan.clone(), s.into_value().diagnostics));
-                    }
-                    Err(e) => {
-                        all_stopped = false;
-                        shutdowns.push((
-                            plan.clone(),
-                            vec![invalid(e.to_string()).diagnostic("quiesce")],
-                        ));
-                    }
-                }
-            }
-        }
-        let mut collect_input = Input::new(CollectInput {
-            baseline: baseline.value().clone(),
-            host_views: overlays
-                .as_ref()
-                .into_iter()
-                .flat_map(|o| &o.value().trees)
-                .map(|t| (t.source.clone(), t.merged.clone()))
-                .collect(),
-            projects: attempted_groups.iter().flatten().cloned().collect(),
-        })
-        .after(&baseline);
-        for stopped in &stopped_dependencies {
-            collect_input = collect_input.after(stopped);
-        }
-        let mut finalize_input =
-            Input::new(system_apps.value().recordings.clone()).after(&system_apps);
-        for stopped in &stopped_dependencies {
-            finalize_input = finalize_input.after(stopped);
-        }
-        // Writers are stopped; read-only recording checks and metadata collection are independent.
-        let (recording, filesystem_output) =
-            tokio::join!(executor.run::<FinalizeSystemApps>(finalize_input), async {
-                if !all_stopped {
-                    return None;
-                }
-                match executor
-                    .run::<CollectFilesystemChanges>(collect_input)
-                    .await
-                {
-                    Ok(changes) => Some(changes),
-                    Err(e) => {
-                        diagnostics
-                            .borrow_mut()
-                            .push(invalid(e.to_string()).diagnostic("filesystem changes"));
-                        None
-                    }
-                }
-            },);
-        if let Err(error) = &recording {
+                .after(&shutdown)
+                .after(&finalized),
+            )
+            .await
+            .map_err(step_error)?;
+
+        let event_result = events.finish().await;
+        if let Err(error) = &event_result {
             diagnostics
                 .borrow_mut()
-                .push(invalid(error.to_string()).diagnostic("finalize recording"));
-        }
-        let writers_stopped = all_stopped;
-        let filesystem_changes = filesystem_output.as_ref().map(|o| o.value().clone());
-        if overlays.is_none()
-            && let Some(changes) = &filesystem_changes
-            && let Err(error) =
-                super::compose_lifecycle::save_outer_evidence(&artifacts, &spec.id, changes)
-        {
-            diagnostics
-                .borrow_mut()
-                .push(invalid(error).diagnostic("filesystem checkpoint"));
-            all_stopped = false; // Retain resources until their evidence is durable.
-        }
-        let overlay_output =
-            if let (Some(changes), Some(overlays)) = (&filesystem_output, &overlays) {
-                match executor
-                    .run::<FinalizeOverlays>(
-                        Input::new(overlays.value().clone())
-                            .after(overlays)
-                            .after(changes),
-                    )
-                    .await
-                {
-                    Ok(result) => Some(result),
-                    Err(e) => {
-                        diagnostics
-                            .borrow_mut()
-                            .push(invalid(e.to_string()).diagnostic("finalize overlays"));
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-        // Hosted recovery anchors require retaining experiment volumes whenever
-        // their metadata coverage is incomplete. Standalone runs keep their
-        // existing caller-selected volume policy.
-        let preserve_volumes = spec.recovery_anchor_dir.is_some()
-            && filesystem_changes
-                .as_ref()
-                .is_some_and(|changes| !changes.named_volumes.coverage_complete);
-        let cleanup = join_all(shutdowns.into_iter().map(|(plan, stop_diagnostics)| {
-            let executor = &executor;
-            let baseline = &baseline;
-            let filesystem_output = &filesystem_output;
-            let overlay_output = &overlay_output;
-            let overlays = &overlays;
-            async move {
-                let mut result = if all_stopped
-                    && (overlays.is_none() || overlay_output.is_some())
-                    && let Some(changes) = &filesystem_output
-                {
-                    let mut removal_plan = plan.clone();
-                    if preserve_volumes {
-                        removal_plan.remove_volumes = false;
-                    }
-                    let mut input = Input::new(StopInput {
-                        plan: removal_plan,
-                        stop_seconds: spec.stop_seconds,
-                    })
-                    .after(baseline)
-                    .after(changes);
-                    if let Some(finalized) = &overlay_output {
-                        input = input.after(finalized);
-                    }
-                    match executor.run::<RemoveCompose>(input).await {
-                        Ok(c) => c.into_value(),
-                        Err(e) => Cleanup {
-                            project: plan.name.clone(),
-                            diagnostics: vec![invalid(e.to_string()).diagnostic("remove")],
-                            remaining: vec!["unknown".into()],
-                            retained_volumes: vec![],
-                            verified: false,
-                        },
-                    }
-                } else {
-                    Cleanup {
-                        project: plan.name.clone(),
-                        diagnostics: vec![],
-                        remaining: vec![
-                            "preserved: shutdown or filesystem evidence incomplete".into(),
-                        ],
-                        retained_volumes: vec![],
-                        verified: false,
-                    }
-                };
-                result.diagnostics.extend(stop_diagnostics);
-                result
-            }
-        }))
-        .await;
-        let _ = finish.send(true);
-        let event_result = (&mut event_task.0).await;
-        let event_stream_healthy = matches!(event_result, Ok(Ok(())));
-        if !event_stream_healthy {
-            diagnostics.borrow_mut().push(
-                invalid(format!("event capture: {event_result:?}")).diagnostic("Docker events"),
-            );
+                .push(error.diagnostic("Docker events"));
         }
         if executor.observer_failures() != 0 {
             diagnostics
                 .borrow_mut()
                 .push(invalid("workflow observer lost events").diagnostic("observer"));
         }
-        if preserve_volumes {
-            diagnostics.borrow_mut().push(
-                invalid("named-volume evidence incomplete; volumes retained")
-                    .diagnostic("filesystem changes"),
-            );
-        }
-        if let Err(e) = snapshot(&artifacts, "after").await {
-            diagnostics.borrow_mut().push(e.diagnostic("post-state"));
-        }
-        let boundary_clean = all_stopped
-            && filesystem_output.is_some()
-            && (overlays.is_none() || overlay_output.is_some())
-            && cleanup.iter().all(|x| {
-                x.verified
-                    && x.diagnostics.is_empty()
-                    && (!preserve_volumes || x.retained_volumes.is_empty())
+        let finalized = finalized.value();
+        let boundary_clean = finalized.can_remove
+            && cleanup.value().iter().all(|c| {
+                c.verified
+                    && c.diagnostics.is_empty()
+                    && (!finalized.preserve_volumes || c.retained_volumes.is_empty())
             });
-        let report = ComposeRunReport {
-            id: spec.id,
-            execution_error: outcome.err(),
-            diagnostics: diagnostics.borrow().clone(),
-            cleanup,
-            boundary_clean,
-            writers_stopped,
-            recording_finalized: recording.is_ok() && dora_finalized,
-            event_stream_healthy,
-            filesystem_changes,
-            filesystem_results: overlay_output.map(|o| o.into_value()),
-        };
-        private_write(
-            &artifacts.join("report.json"),
-            &serde_json::to_vec_pretty(&report)?,
-        )
-        .await?;
+        let report = executor
+            .run::<WriteRunReport>(
+                Input::new(ReportInput {
+                    artifacts,
+                    report: ComposeRunReport {
+                        id: spec.id,
+                        execution_error: outcome.err(),
+                        diagnostics: Vec::new(),
+                        cleanup: cleanup.value().clone(),
+                        boundary_clean,
+                        writers_stopped: shutdown.value().writers_stopped,
+                        recording_finalized: finalized.recording_finalized,
+                        event_stream_healthy: event_result.is_ok(),
+                        filesystem_changes: finalized.filesystem_changes.clone(),
+                        filesystem_results: finalized.filesystem_results.clone(),
+                    },
+                })
+                .after(&cleanup),
+            )
+            .await
+            .map_err(step_error)?;
         self.blocked = !boundary_clean;
-        Ok(report)
+        Ok(report.into_value())
     }
 }
-struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
-impl<T> Drop for AbortOnDrop<T> {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-fn validate(spec: &ComposeRun) -> Result<()> {
-    validate_name(&spec.id)?;
-    if !spec.artifacts.is_absolute()
-        || spec.projects.is_empty()
-        || spec.readiness_seconds == 0
-        || !(1..=300).contains(&spec.stop_seconds)
-    {
-        return Err(invalid(
-            "require absolute new artifact directory, foreign projects, positive readiness and stop_seconds 1..300",
-        ));
-    }
-    if spec
-        .recovery_anchor_dir
-        .as_ref()
-        .is_some_and(|path| !path.is_absolute())
-    {
-        return Err(invalid("recovery anchor directory must be absolute"));
-    }
-    let mut keys = HashSet::new();
-    for project in spec.first_party.iter().chain(&spec.projects) {
-        validate_name(&project.key)?;
-        if !project.directory.is_absolute() || !keys.insert(project.key.clone()) {
-            return Err(invalid(
-                "require absolute project directories and unique keys; system is reserved",
-            ));
-        }
-    }
-    Ok(())
-}
-
-async fn snapshot(root: &Path, phase: &str) -> Result<()> {
-    let mut state = BTreeMap::new();
-    for name in ["meminfo", "loadavg", "uptime", "sys/kernel/random/boot_id"] {
-        state.insert(
-            name,
-            tokio::fs::read_to_string(format!("/proc/{name}")).await?,
-        );
-    }
-    private_write(
-        &root.join(format!("machine-{phase}.json")),
-        &serde_json::to_vec_pretty(&state)?,
-    )
-    .await
-}
-async fn record_events(
-    docker: bollard::Docker,
-    run: String,
-    path: &Path,
-    mut finish: watch::Receiver<bool>,
-) -> Result<()> {
-    let mut file = tokio::fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .open(path)
-        .await?;
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| invalid(e.to_string()))?
-        .as_secs()
-        .to_string();
-    let stream = docker.events(Some(bollard::query_parameters::EventsOptions {
-        since: Some(since),
-        filters: Some(HashMap::from([(
-            "label".into(),
-            vec![format!("{RUN_LABEL}={run}")],
-        )])),
-        ..Default::default()
-    }));
-    tokio::pin!(stream);
-    let mut draining = false;
-    let quiet = tokio::time::sleep(Duration::from_millis(200));
-    let deadline = tokio::time::sleep(Duration::from_secs(5));
-    tokio::pin!(quiet, deadline);
-    loop {
-        tokio::select! {
-            changed = finish.changed(), if !draining => {
-                if changed.is_err() || *finish.borrow() {
-                    draining = true;
-                    quiet.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(200));
-                    deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_secs(5));
-                }
-            }
-            event = stream.next() => {
-                let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| crate::compose::error::engine("Docker events", e))?;
-                let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');
-                file.write_all(&bytes).await?;
-                if draining { quiet.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(200)); }
-            }
-            _ = &mut quiet, if draining => { file.flush().await?; return Ok(()); }
-            _ = &mut deadline, if draining => { return Err(invalid("Docker event stream did not become quiet after teardown")); }
-        }
-    }
+fn step_error(error: impl std::fmt::Display) -> Error {
+    invalid(error.to_string())
 }
 
 /// Inputs to the Compose workflow: workloads and supporting apps sharing one
@@ -829,10 +382,10 @@ mod tests {
         // Act / Assert
         let defaulted: ComposeRun = serde_json::from_value(config.clone()).unwrap();
         assert!(defaulted.filesystem.is_some());
-        assert!(validate(&defaulted).is_ok());
+        assert!(super::super::run_preparation::validate(&defaulted).is_ok());
         config["filesystem"] = serde_json::Value::Null;
         let direct: ComposeRun = serde_json::from_value(config).unwrap();
         assert!(direct.filesystem.is_none());
-        assert!(validate(&direct).is_ok());
+        assert!(super::super::run_preparation::validate(&direct).is_ok());
     }
 }

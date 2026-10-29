@@ -192,6 +192,32 @@ impl Step for StartDoraFlow {
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
 }
+/// Bind each declared flow to exactly one resolved project and service before launch.
+pub(super) fn bind(
+    configs: &[super::system_apps::DoraFlow],
+    plans: &[ResolvedComposeProject],
+) -> Result<Vec<Flow>> {
+    let mut projects = HashSet::new();
+    configs
+        .iter()
+        .map(|config| {
+            validate(config)?;
+            let plan = plans
+                .iter()
+                .find(|p| p.key == config.project && p.services.contains_key(&config.service))
+                .filter(|_| projects.insert(&config.project))
+                .ok_or_else(|| {
+                    invalid("Dora requires one binding to an existing project and service")
+                })?;
+            Ok(Flow {
+                plan: plan.clone(),
+                config: config.clone(),
+                id: String::new(),
+            })
+        })
+        .collect()
+}
+
 async fn start(adapter: &DockerAdapter, input: StartInput) -> Result<Flow> {
     let mut flow = input.flow;
     validate(&flow.config)?;
