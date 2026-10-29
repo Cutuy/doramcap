@@ -1,0 +1,31 @@
+[package]
+name = "project-explorer-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros", "net", "signal", "fs", "io-util"] }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+libc = "0.2"
+rustix = { version = "1.1.5", features = ["fs"] }
+mcap = { version = "=0.25.0", default-features = false, features = ["tokio"] }
+axum = "0.8"
+serde_json = "1"
+tower-http = { version = "0.6", features = ["fs"] }
+tokio-util = { version = "0.7", features = ["io"] }
+workload-docker = { path = "../../../libs/workload-docker" }
+orchestrator = { path = "../../../libs/orchestrator" }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+
+[lints]
+workspace = true

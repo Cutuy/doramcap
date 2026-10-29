@@ -1,0 +1,13 @@
+{
+    admin off
+    auto_https off
+}
+
+http://{$GALLERY_BIND:127.0.0.1:8096} {
+    bind {$GALLERY_LISTEN:127.0.0.1}
+    handle_path {$GALLERY_PREFIX}/* {
+        route {
+            import /etc/caddy/routes.caddy
+        }
+    }
+}

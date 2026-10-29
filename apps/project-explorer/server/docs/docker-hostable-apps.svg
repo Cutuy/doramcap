@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="360" viewBox="0 0 980 360" role="img" aria-labelledby="title desc">
+  <title id="title">Independent app build and Docker hosting boundaries</title>
+  <desc id="desc">App source produces its own binary, assets and image. Trusted Compose and registration files let the gallery host manage a generation. Caddy routes traffic to the app while results remain outside the container.</desc>
+  <defs><marker id="a" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto-start-reverse"><path d="M0 0L7 3.5L0 7" fill="#64748b"/></marker></defs>
+  <rect width="980" height="360" fill="#fff"/>
+  <g font-family="sans-serif" fill="#18344d" text-anchor="middle">
+    <g fill="#edf4fb" stroke="#94a3b8" stroke-width="1.3">
+      <rect x="25" y="25" width="210" height="75" rx="8"/>
+      <rect x="330" y="25" width="245" height="75" rx="8"/>
+      <rect x="675" y="25" width="280" height="75" rx="8"/>
+      <rect x="25" y="180" width="210" height="95" rx="8"/>
+      <rect x="330" y="180" width="245" height="95" rx="8"/>
+      <rect x="675" y="170" width="280" height="115" rx="8"/>
+      <rect x="675" y="310" width="280" height="35" rx="7" fill="#f0fdf4"/>
+    </g>
+    <g font-size="17">
+      <text x="130" y="56">App source</text><text x="130" y="81" font-size="13">Own target and tests</text>
+      <text x="452" y="56">Prebuilt binary + assets</text><text x="452" y="81" font-size="13">Independent image</text>
+      <text x="815" y="56">Compose + registration</text><text x="815" y="81" font-size="13">Trusted deployment settings</text>
+      <text x="130" y="214">Browser viewers</text><text x="130" y="242" font-size="13">Shared session shell</text>
+      <text x="452" y="214">Gallery host + Caddy</text><text x="452" y="242" font-size="13">Lifecycle · sessions · proxy</text>
+      <text x="815" y="202">App generation</text><text x="815" y="230" font-size="13">App + owned child processes</text><text x="815" y="256" font-size="13">Private network · scratch space</text>
+      <text x="815" y="333" font-size="14">Retained results</text>
+    </g>
+    <g fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)">
+      <path d="M235 62H330"/><path d="M575 62H675"/>
+      <path d="M700 100V127H452V180"/>
+      <path d="M815 100V170"/>
+      <path d="M235 226H330" marker-start="url(#a)"/>
+      <path d="M575 226H675" marker-start="url(#a)"/>
+      <path d="M815 285V310"/>
+    </g>
+    <g font-size="12">
+      <text x="282" y="49">Build</text><text x="625" y="49">Image ref</text>
+      <text x="522" y="150">Load settings</text><text x="885" y="143">Configure</text>
+      <text x="282" y="211">Open</text><text x="625" y="197">Start / stop</text><text x="625" y="252">HTTP / streams</text>
+    </g>
+  </g>
+</svg>

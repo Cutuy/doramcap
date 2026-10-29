@@ -22,6 +22,8 @@ Privileged native validation and Dora end-to-end checks use the worker below.
 ## ARM64 test worker
 
 Worker: `doramcap-ci@100.64.0.20`, ARM64 Ubuntu 24.04 / WSL2 Linux 6.18.
+The host is a Qualcomm laptop without CUDA capability. Use a separate
+CUDA-capable host for GPU execution and CUDA IPC qualification.
 [Pueue 4.0.4](https://github.com/Nukesor/pueue/releases/tag/v4.0.4) runs as a
 systemd service, with one job at a time and a private Unix socket. SSH provides
 remote access; no Pueue TCP service is exposed.

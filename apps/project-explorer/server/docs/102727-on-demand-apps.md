@@ -2,7 +2,7 @@
 
 # On-demand app hosting
 
-Created: 2026-10-27. Status: design proposal; implementation deferred.
+Created: 2026-10-27. Status: complete for the enabled apps.
 
 ## High-level plan
 
@@ -12,95 +12,206 @@ Created: 2026-10-27. Status: design proposal; implementation deferred.
 4. Close the idle-shutdown, recording and cleanup loop.
 5. Qualify additional apps through reusable wrappers.
 
-## M1 — Gallery server and instance ownership
+## M1 — Gallery server and instance ownership (complete)
 
 ### Work items
 
-- [ ] Add server-owned registrations for Compose definitions, readiness, endpoints and result paths.
-- [ ] Implement per-app generation/state transitions and join concurrent launch requests.
-- [ ] Return startup status promptly; expose failures and block replacement after unverified cleanup.
-- [ ] Detect existing manager-owned resources at startup and require cleanup before replacement.
+- [x] Add server-owned registrations for Compose definitions, readiness, endpoints and result paths.
+- [x] Implement per-app generation/state transitions and join concurrent launch requests.
+- [x] Return startup status promptly; expose failures and block replacement after unverified cleanup.
+- [x] Detect existing manager-owned resources at startup and require cleanup before replacement.
+
+### Evidence
+
+- The per-app coordinator has Rust tests for concurrent launch joining,
+  independent sessions, expiry, launch waiting for cleanup, blocked replacement,
+  abandoned startup and stale generations.
+- A trusted registration and reusable procedural workflow now use the existing
+  orchestrator/Compose steps. Two local Docker runs retained readable MCAPs,
+  verified cleanup and captured host-bind/container-layer metadata. Discovery and a local HTTP integration test also passed.
+- Engine discovery finds labeled containers and networks. A real-Engine test
+  verified a restarted manager blocks duplicate launch; explicit recovery collected
+  evidence, removed the owned resources and allowed a new generation.
+- The supervisor joined concurrent launches, expired their sessions, retained a
+  readable recording and verified cleanup in a local Docker run.
+- The hosting API test passed origin and launch-setting rejection, single-manager
+  locking, joined launch, readiness, two heartbeats and shutdown cleanup. The
+  multi-app test launched Activity Lab and Storage Observatory independently.
 
 ### Validation
 
-- [ ] Concurrent launches for one app share one startup operation and generation.
-- [ ] Different apps can start independently; unknown app IDs and client-supplied launch settings are rejected.
-- [ ] Existing owned resources prevent duplicate launch after manager restart.
-- [ ] State-transition tests cover startup failure and cleanup-blocked replacement.
+- [x] Concurrent launches for one app share one startup operation and generation.
+- [x] Different apps can start independently; unknown app IDs and client-supplied launch settings are rejected.
+- [x] Existing owned resources prevent duplicate launch after manager restart.
+- [x] State-transition tests cover startup failure and cleanup-blocked replacement.
 
-## M2 — Activity Lab Compose wrapper
+## M2 — Activity Lab Compose wrapper (complete)
 
 ### Work items
 
-- [ ] Package prebuilt assets/binaries and a trusted Compose definition for Activity Lab.
-- [ ] Configure readiness, SIGINT shutdown, owned network and fresh per-generation writable paths.
-- [ ] Qualify bind/base-path support and make only required app adaptations; keep sessions in shared hosting code.
-- [ ] Retain recording output outside disposable storage with an explicit volume policy.
+- [x] Package prebuilt assets/binaries and a trusted Compose definition for Activity Lab.
+- [x] Configure readiness, SIGINT shutdown, owned network and fresh per-generation writable paths.
+- [x] Qualify bind/base-path support and make only required app adaptations; keep sessions in shared hosting code.
+- [x] Retain recording output outside disposable storage with an explicit volume policy.
+
+### Evidence
+
+- Activity Lab supports an explicit bind address and prefix-relative frontend URLs.
+- Compose configuration passes `docker compose config --quiet`. On the local Docker Engine, the image served its frontend and two live WebSocket clients. Two sequential Compose launches used separate bind mounts; SIGINT produced 184 and 174 readable MCAP messages. Both projects left no containers or networks. The gallery manager now uses the same wrapper.
+- Activity Lab Rust tests, frontend build/tests and a local live-stream smoke test pass.
+- A local test proxy served prefix-relative assets and status and streamed to two WebSocket clients. Caddy integration was subsequently verified in M3.
+- The generic workflow launched the registered wrapper twice, retained both recordings and captured distinct host-bind/container-layer change categories with verified teardown.
 
 ### Validation
 
-- [ ] The packaged app becomes ready and serves its frontend and live stream.
-- [ ] Graceful container stop produces a readable MCAP recording.
-- [ ] Two sequential launches use distinct writable paths and preserve the earlier recording.
-- [ ] Wrapper launch works without adding app-specific branches to core orchestration.
+- [x] The packaged app becomes ready and serves its frontend and live stream.
+- [x] Graceful container stop produces a readable MCAP recording.
+- [x] Two sequential launches use distinct writable paths and preserve the earlier recording.
+- [x] Wrapper launch works without adding app-specific branches to core orchestration.
 
-## M3 — Launch, shared viewers and proxy
+## M3 — Launch, shared viewers and proxy (complete)
 
 ### Work items
 
-- [ ] Add Launch/Open and a shared viewer shell with startup/error status and session heartbeats.
-- [ ] Proxy generation-scoped HTTP, downloads, WebSocket and SSE traffic incrementally.
-- [ ] Support base-relative assets/API URLs and required redirect/cookie path handling.
-- [ ] Keep static gallery browsing available and expose launch only with a hosting backend.
+- [x] Add Launch/Open and a shared viewer shell with startup/error status and session heartbeats.
+- [x] Proxy generation-scoped HTTP, downloads, WebSocket and SSE traffic incrementally.
+- [x] Support base-relative assets/API URLs and required redirect/cookie path handling.
+- [x] Keep static gallery browsing available and expose launch only with a hosting backend.
+
+### Evidence
+
+- Caddy routed the registered app's frontend, assets, status and two WebSocket
+  clients; a spoofed upstream header was ignored. Idle expiry produced a 34,833-byte
+  verified MCAP download, and the old generation route returned 404.
+- Prefix-hosted Caddy tests passed redirect/cookie rewriting, SSE, a 3,145,984-byte
+  response and upstream failure handling. The viewer shell and conditional Launch
+  control build successfully. The production gallery build, TypeScript check and
+  schema-backed content generation passed on 2026-10-27.
+- Two independent headless Chromium instances shared a live Activity Lab
+  generation with distinct sessions. Desktop (1440×900) and mobile (390×844)
+  visual checks passed for root and `/gallery` hosting, launch, refresh, return
+  navigation and recording access. A static-only gallery remained browsable
+  and hid Launch. A mobile viewport gap found during review was fixed and
+  checked again.
+- Caddy now explicitly binds its configured interface. A Tailscale-only listener
+  was reached from the ARM64 worker; Chromium launched Activity Lab through it.
 
 ### Validation
 
-- [ ] Two browsers receive live results from the same instance and have independent sessions.
-- [ ] Launch opens the shell from the user click; refresh, deep links and prefix hosting work.
-- [ ] Assets, downloads, WebSockets and SSE work through the proxy; upstream errors remain visible.
-- [ ] Large responses continue across buffer boundaries without total-result truncation.
-- [ ] Gallery production build/schema checks and manual desktop/mobile browser checks pass.
+- [x] Two browsers receive live results from the same instance and have independent sessions.
+- [x] Launch opens the shell from the user click; refresh, deep links and prefix hosting work.
+- [x] Assets, downloads, WebSockets and SSE work through the proxy; upstream errors remain visible.
+- [x] Large responses continue across buffer boundaries without total-result truncation.
+- [x] Gallery production build/schema checks and manual desktop/mobile browser checks pass.
 
-## M4 — Idle shutdown and verified cleanup
+## M4 — Idle shutdown and verified cleanup (complete)
+
+### Evidence
+
+- Local Docker tests exercised session expiry and manager shutdown during startup;
+  recordings and categorized filesystem metadata were retained after cleanup.
+  The HTTP test also killed an app, observed the runtime and recording errors,
+  verified cleanup and relaunched it. Lifecycle tests cover reconnect before expiry,
+  late heartbeat rejection and launch waiting for cleanup. The two-app Docker test
+  verified one viewer expiry leaves the other active, then stopped both instances,
+  retained their recordings and removed their containers and networks. An isolated
+  Docker startup-failure test reported the failure and verified owned container
+  and network removal.
+- Chromium background tabs renewed sessions, while a frozen or offline viewer
+  expired and exposed its recording after reconnect. Closing a browser during
+  deliberately delayed startup led to verified cleanup and an accessible recording.
 
 ### Work items
 
-- [ ] Apply the documented heartbeat/expiry policy using monotonic time and generation IDs.
-- [ ] Serialize expiry, launch and stop transitions; wait for cleanup before replacement.
-- [ ] Stop writers, finalize recordings, collect categorized metadata and remove owned resources.
-- [ ] Handle browser closure during startup, unexpected app exit and manager shutdown.
-- [ ] Preserve artifacts and report failure when finalization or cleanup cannot be verified.
+- [x] Apply the documented heartbeat/expiry policy using monotonic time and generation IDs.
+- [x] Serialize expiry, launch and stop transitions; wait for cleanup before replacement.
+- [x] Stop writers, finalize recordings, collect categorized metadata and remove owned resources.
+- [x] Handle browser closure during startup, unexpected app exit and manager shutdown.
+- [x] Preserve artifacts and report failure when finalization or cleanup cannot be verified.
 
 ### Validation
 
-- [ ] Disconnecting one viewer preserves another viewer's instance; last-session expiry stops it.
-- [ ] Reconnect within the grace period preserves the generation; late heartbeats cannot revive it.
-- [ ] Launch during stopping waits for verified cleanup before creating a new generation.
-- [ ] Background tabs, refresh, suspension and network loss follow the documented timeout policy.
-- [ ] Startup failure, browser closure during startup and app exit release owned resources.
-- [ ] Failed finalization is visible and preserves evidence; successful cleanup leaves no owned containers/networks.
-- [ ] End-to-end serial runs retain readable recordings and separate storage-change categories.
+- [x] Disconnecting one viewer preserves another viewer's instance; last-session expiry stops it.
+- [x] Reconnect within the grace period preserves the generation; late heartbeats cannot revive it.
+- [x] Launch during stopping waits for verified cleanup before creating a new generation.
+- [x] Background tabs, refresh, suspension and network loss follow the documented timeout policy.
+- [x] Startup failure, browser closure during startup and app exit release owned resources.
+- [x] Failed finalization is visible and preserves evidence; successful cleanup leaves no owned containers/networks.
+- [x] End-to-end serial runs retain readable recordings and separate storage-change categories.
 
-## M5 — Additional apps and release qualification
+Viewer follow-up: one polling loop now observes shutdown through finalization.
+A focused check covers late errors, successful downloads, expiry while another
+viewer remains active, and transient result-request failure. Terminal 404s stop
+retrying. This closes the audit's hidden-finalization-error finding.
+
+## M5 — Additional apps and release qualification (complete)
+
+### Evidence
+
+- ARM64 worker jobs 159, 160 and 164 passed the workspace and native suites.
+  Job 161 passed Docker launch, recovery, expiry, Caddy streaming, results
+  and concurrent two-app checks with correctly staged frontend assets.
+  Job 165 failed while resolving Docker Hub before qualification began. After
+  DNS recovered, job 166 passed the latest Rust source and startup-failure test,
+  plus recovery, Caddy streaming, recordings and concurrent two-app checks.
+  Job 167 passed the workspace and native suites after the viewer layout fix.
+- Local multi-app tests ran Activity Lab and opt-in Storage Observatory together,
+  with two viewers each, expiry, retained MCAPs and sequential readiness.
+- Registry admission tests cover simultaneous conflicting launches, resource release
+  after verified cleanup and unrelated launches while a generation stops. The two
+  enabled synthetic apps declare no exclusive hardware resources.
+
+### Remaining-app inventory
+
+This milestone qualified the original Activity/Storage pair. The
+[remaining-app plan](102727-remaining-apps.md) tracks the expanded implementation
+and release checks; the [hosting guide](hosting.md#app-registrations) lists current
+selectable and pending profiles.
 
 ### Work items
 
-- [ ] Inventory remaining apps and record hosting gaps, readiness and shutdown behavior for each.
-- [ ] Add Compose wrappers individually, reusing launch/session/proxy machinery.
-- [ ] Document BPF/GPU/device needs, host-resource conflicts and allowed concurrent app combinations.
-- [ ] Document launch, result access, idle expiry and recovery from failed cleanup.
+- [x] Inventory remaining apps and record hosting gaps, readiness and shutdown behavior for each.
+- [x] Add Compose wrappers individually, reusing launch/session/proxy machinery.
+- [x] Document BPF/GPU/device needs, host-resource conflicts and allowed concurrent app combinations.
+- [x] Document launch, result access, idle expiry and recovery from failed cleanup.
 
 ### Validation
 
-- [ ] Each enabled app passes launch, two-viewer streaming, expiry and sequential-relaunch checks.
-- [ ] Each wrapper preserves required results and removes its disposable resources.
-- [ ] Compatible apps run together; declared host-resource conflicts surface before launch.
-- [ ] Required Rust/native tests and ARM64 CI pass; capability-specific tests run on suitable hardware.
-- [ ] Final gallery build/schema validation and manual launch/status/result-access checks pass.
+- [x] Each enabled app passes launch, two-viewer streaming, expiry and sequential-relaunch checks.
+- [x] Each wrapper preserves required results and removes its disposable resources.
+- [x] Compatible apps run together; declared host-resource conflicts surface before launch.
+- [x] Required Rust/native tests and ARM64 CI pass; capability-specific tests run on suitable hardware.
+- [x] Final gallery build/schema validation and manual launch/status/result-access checks pass.
 
 Record evidence under the relevant milestone before checking its items. Use
 Arrange/Act/Assert in Rust tests; keep frontend verification to builds, schema
 validation and manual checks per SPA instructions.
+
+## M6 — Declarative, independent app registration (complete)
+
+### Work items
+
+- [x] Load validated app registrations from files beside their Compose wrappers.
+- [x] Keep app images and binaries separately built; allow explicit opt-in without app-specific manager branches.
+- [x] Preserve recovery, lifecycle, result handling and existing app behavior.
+
+### Evidence
+
+- The manager loads protobuf text registrations from each app’s `deploy/`
+  directory using the shared protobuf toolchain. Unit tests cover discovery, explicit enablement, unknown
+  IDs, duplicate IDs, unsafe paths and lifecycle coordination.
+- The manager dependency tree contains no Activity Demo, Storage Demo or
+  System Monitor app binary. App images remain separately built.
+- ARM64 job 168 passed the workspace/native suite. Job 169 passed recovery,
+  proxying, two-app lifecycle and a newly added opt-in manifest launched without
+  rebuilding the manager.
+
+### Validation
+
+- [x] Tests cover discovery, opt-in, invalid registrations and lifecycle coordination.
+- [x] Both apps launch, stream, retain results and clean up using declarative registrations.
+- [x] Required Rust checks and ARM64 CI pass.
+
 
 ## Contract and ownership
 
@@ -162,7 +273,7 @@ transitions are serialized so cleanup cannot race a newly accepted session.
 
 ## Minimal app adaptations
 
-Keep launch mechanics in `server/compose/<app>/` and trusted app registrations.
+Keep launch mechanics in `apps/<app>/deploy/` and trusted app registrations.
 Build images ahead of launch; avoid compiling Rust/Node on each browser request.
 Each registration identifies Compose files, service/port, readiness, stop policy,
 result paths and required capabilities. Browser input selects an app ID only.
@@ -207,16 +318,16 @@ origins and keep Docker control and upstream ports inaccessible to browser reque
   simultaneous launch; container isolation alone cannot make conflicting hardware use safe.
 - Keep the manager and its self-observation persistent. App services and their monitors stop together.
 
-## Implementation choices to evaluate
+## Implementation choices
 
-Reuse existing Tokio, Axum, tower-http and Bollard dependencies. Evaluate Hyper/
-Hyper-util for streaming HTTP and Tokio-tungstenite for WebSocket forwarding against
-an established reverse proxy such as Caddy. Present dependency choices before adoption;
-this proposal adds no dependencies. Keep routing/proxy mechanics out of core orchestration.
+Reuse existing Tokio, Axum, tower-http and Bollard dependencies. The user selected
+Caddy for reverse proxying after comparing it with Hyper/Hyper-util and
+Tokio-tungstenite. Caddy integration and generation routing remain to be implemented.
+Keep routing/proxy mechanics out of core orchestration.
 
 ## Evidence and scope
 
 Inspected Activity Lab's README, server routes/bind/shutdown and frontend URL handling;
 reviewed the gallery hosting contract and `workload-docker` step interfaces. These
 support the proposed first integration but do not establish container/proxy compatibility.
-Implementation checkboxes remain open. No app packaging or launch code changes in this milestone.
+Implementation checkboxes remain open until their complete work and validation pass.

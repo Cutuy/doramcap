@@ -4,6 +4,14 @@ Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire
 
 Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
 
+## Implementation languages
+
+Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, benchmarks, and development tooling. Do not use Python in the application serving stack. Avoid Python, Bash, and other scripting languages in production environments and workflows unless absolutely necessary.
+
+## Configuration
+
+Prefer protobuf schemas and protobuf text format (pbtxt) for application configuration. Avoid JSON configuration when a protobuf schema can express it. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
+
 ## Third-party crates
 
 Always present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adopting a dependency or implementing a custom solution.
@@ -31,6 +39,8 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ```
 
 Use the serial default queue and verify the job result. Build unprivileged; native tests have passwordless sudo. Never copy credentials. WSL must be running; Git pushes do not trigger CI. The suite covers default/all-feature Rust tests and native cgroup accounting/allocations; run Dora end-to-end tests separately. See [worker documentation](scripts/ci/README.md).
+
+The worker is a Qualcomm laptop without CUDA capability. Run CUDA execution and GPU/IPC qualification on a separate CUDA-capable host.
 
 ## Documentation style
 

@@ -17,6 +17,10 @@ serving. These nested crates support their owning app. Cargo workspace membershi
 is explicit for all crates, including nested library and application crates.
 Add each new crate path to the root `Cargo.toml`.
 
+Design new apps using the [Docker-hostable app guide](../apps/project-explorer/server/docs/docker-hostable-apps.md).
+Apps own their runtime interfaces; declarative gallery wrappers live under
+`apps/<app>/deploy/`.
+
 `cpu-viewer/dataflows` owns demo compositions of the monitor, viewer and optional
 recorder. Recording lifecycle tests belong to `mcap-recorder/tests`; native
 collector integration tests belong to `system-monitor/tests`. CPU protocol bindings and descriptors belong to `telemetry-protocol`; workflow

@@ -48,14 +48,58 @@ function Gallery({ kind, route }: { kind: Kind; route: Route }) {
   return <>
     <div className="intro"><h1>Explore the {kind === 'apps' ? 'applications' : 'crates'}.</h1><p>{kind === 'apps' ? 'Runnable tools and demos built on the workspace’s telemetry, resource, and storage libraries.' : 'Reusable building blocks for telemetry, resource management, memory, and persistence.'}</p></div>
     <div className="toolbar"><div className="catalog-count">{visible.length} {kind === 'apps' ? 'applications' : 'crates'}</div><div className="filters"><label><span className="sr-only">Category</span><select aria-label="Category" value={category} onChange={e => updateParams(route, { category: e.target.value })}><option value="">All categories</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="search"><Search size={15} aria-hidden="true" /><input aria-label="Search components" type="search" value={query} placeholder={`Search ${kind}…`} onChange={e => updateParams(route, { q: e.target.value })} /></label></div></div>
-    <div className="gallery">{visible.map(c => <a className="tile" href={componentHref(c)} key={c.id}><Category name={c.category} /><h2>{displayName(c.name)}</h2><p>{c.summary}</p></a>)}</div>
+    <div className="gallery">{visible.map(c => <article className="tile" key={c.id}><a className="tile-main" href={componentHref(c)}><Category name={c.category} /><h2>{displayName(c.name)}</h2><p>{c.summary}</p></a>{kind === 'apps' && <div className="tile-actions"><Launch component={c} /></div>}</article>)}</div>
     {!visible.length && <div className="empty"><h2>No matching components</h2><p>Try another search or category.</p><a href={`#/${kind}`}>Clear filters</a></div>}
   </>;
+}
+function Launch({ component }: { component: Component }) {
+  const [availability, setAvailability] = useState<'loading' | 'enabled' | 'disabled' | 'error'>('loading');
+  const [ready, setReady] = useState(false);
+  const [headless, setHeadless] = useState(false);
+  const base = new URL(import.meta.env.BASE_URL, document.baseURI);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    setAvailability('loading');
+    setReady(false);
+    setHeadless(false);
+    if (component.kind !== 'apps' || component.name === 'project-explorer') return;
+    async function refresh() {
+      try {
+        const response = await fetch(new URL('api/hosting/apps', base), { signal: AbortSignal.timeout(5000) });
+        if (!response.ok) throw new Error('Hosting unavailable');
+        const data = await response.json();
+        if (!Array.isArray(data.apps)) throw new Error('Invalid hosting response');
+        const enabled = data.apps.includes(component.name);
+        if (enabled) {
+          const status = await fetch(new URL(`api/hosting/apps/${encodeURIComponent(component.name)}`, base), { signal: AbortSignal.timeout(5000) });
+          if (!status.ok) throw new Error('Unable to read hosting status');
+          const value = await status.json();
+          if (active) {
+            setReady(value.state === 'ready');
+            setHeadless(value.headless === true);
+          }
+        }
+        if (active) setAvailability(enabled ? 'enabled' : 'disabled');
+      } catch {
+        if (active) setAvailability(previous => previous === 'enabled' ? previous : 'error');
+      } finally {
+        if (active) timer = setTimeout(refresh, 5000);
+      }
+    }
+    void refresh();
+    return () => { active = false; clearTimeout(timer); };
+  }, [component.kind, component.name, base.href]);
+  if (component.kind !== 'apps') return null;
+  if (component.name === 'project-explorer') return <span className="launch-status">Current app</span>;
+  if (headless) return <span className="launch-status">Headless</span>;
+  if (availability !== 'enabled') return <span className="launch-unavailable"><button className="launch-link" disabled>Start</button><span>{availability === 'loading' ? 'Checking availability…' : availability === 'error' ? 'Hosting unavailable; retrying…' : 'Not enabled on this host'}</span></span>;
+  return <a className="launch-link" href={new URL(`running/${encodeURIComponent(component.name)}/`, base).href}>{ready ? 'Open' : 'Start'} <ArrowUpRight size={14} /></a>;
 }
 function Detail({ component, route }: { component: Component; route: Route }) {
   return <>
     <a className="back" href={`#/${component.kind}`}><ArrowLeft size={14} />All {component.kind === 'apps' ? 'applications' : 'crates'}</a>
-    <div className="detail-heading"><div className="intro"><Category name={component.category} /><h1>{displayName(component.name)}</h1><p>{component.summary}</p><code className="identifier">{component.name}</code></div><a className="source-link" href={`${catalog.repository}/tree/${catalog.revision}/${component.directory}`} target="_blank" rel="noreferrer">Source <ArrowUpRight size={14} /></a></div>
+    <div className="detail-heading"><div className="intro"><Category name={component.category} /><h1>{displayName(component.name)}</h1><p>{component.summary}</p><code className="identifier">{component.name}</code><Launch component={component} /></div><a className="source-link" href={`${catalog.repository}/tree/${catalog.revision}/${component.directory}`} target="_blank" rel="noreferrer">Source <ArrowUpRight size={14} /></a></div>
     <div className="detail-grid"><div><DocumentView path={component.readme} route={route} /></div><aside><section className="dependency-panel"><div className="panel-title"><h2>Direct dependencies</h2><a href={`#/dependencies?focus=${encodeURIComponent(component.id)}`}>Explore <ArrowUpRight size={13} /></a></div><Dependencies catalog={catalog} focus={component.id} /></section>
       {component.packages.length > 0 && <section className="related"><h2>Cargo packages</h2>{component.packages.map(p => <a key={p} href={`#/dependencies?focus=${encodeURIComponent(p)}`}>{p} <span>→</span></a>)}</section>}
     </aside></div>
