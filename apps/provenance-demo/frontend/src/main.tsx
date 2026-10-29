@@ -19,13 +19,13 @@ function App(){
  const [hover,setHover]=useState<string>();const drag=useRef<{x:number,right:number,width:number}|undefined>(undefined);
  useEffect(()=>{
   let stopped=false,ws:WebSocket,timer:ReturnType<typeof setTimeout>;
-  const connect=()=>{ws=new WebSocket(location.origin.replace('http','ws')+'/stream');ws.binaryType='arraybuffer';
+  const connect=()=>{const url=new URL('stream',document.baseURI);url.protocol=url.protocol==='https:'?'wss:':'ws:';ws=new WebSocket(url);ws.binaryType='arraybuffer';
    ws.onopen=()=>setConnection('Live');ws.onerror=()=>setConnection('Reconnecting');
    ws.onmessage=e=>{try{if(e.data instanceof ArrayBuffer)liveStore.ingest(new Uint8Array(e.data));}catch(err){setConnection('Decode error');console.error(err);}};
    ws.onclose=()=>{if(!stopped){setConnection('Reconnecting');timer=setTimeout(connect,1000);}};
   };connect();
   const tick=setInterval(()=>refresh(n=>n+1),100);
-  const status=setInterval(()=>fetch('/api/summary').then(r=>r.json()).then(setSummary).catch(()=>{}),1000);
+  const status=setInterval(()=>fetch(new URL('api/summary',document.baseURI)).then(r=>r.json()).then(setSummary).catch(()=>{}),1000);
   return()=>{stopped=true;clearInterval(tick);clearInterval(status);clearTimeout(timer);ws.close();};
  },[]);
  const right=view.live?Math.max(view.seconds,store.latest+.05):view.right,left=right-view.seconds;

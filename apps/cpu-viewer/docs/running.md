@@ -37,6 +37,8 @@ system-monitor → Dora snapshots (10 Hz) + dictionary (~0.5 Hz) → cpu-viewer
 One chart per CPU automatically shows its eight busiest active cgroups, ranked
 by time-weighted activity over five seconds and refreshed once per second.
 Charts refresh at 10 Hz and retain 30 seconds, expiring even during silence.
+The compact overview shows kernel threads and the two busiest current cgroups;
+each card expands to the full path tree for the selected cgroups. Stream and collector metrics are shown above the plots.
 100% means one occupied core. Cgroup counters include descendants, so lines are
 not stacked or summed. Root cgroup runtime, first samples and resets show as
 gaps. History is bounded by 600 points, 64 CPUs and 8192 cgroup records per
@@ -80,7 +82,9 @@ estimate: half the probe round trip is shown as timing uncertainty, and network
 asymmetry/drift can affect it. It ends at WebSocket callback entry, before
 decode/render. Calibration expires after 90 s.
 
-The server binds IPv4 loopback only. Change `--port 8080` in the YAML if needed.
+The server defaults to IPv4 loopback; use `--bind` to select another IP address.
+Change `--port 8080` in the YAML if needed. `/health/ready` returns success after
+the first snapshot and dictionary have arrived.
 Assets default to this checkout's `apps/cpu-viewer/frontend/dist`; use `--assets /absolute/path`
 when relocating the binary. For frontend development run `npm run dev --prefix
 apps/cpu-viewer/frontend`; Vite proxies WebSocket `/stream` to 8080.

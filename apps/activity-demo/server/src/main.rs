@@ -376,6 +376,7 @@ async fn serve_socket(socket: WebSocket, feed: Arc<Feed>) {
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut port = 8088u16;
+    let mut bind = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
     let mut assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist");
     let mut duration = None;
     let mut record = std::env::temp_dir().join(format!(
@@ -387,12 +388,13 @@ async fn main() -> Result<()> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--port" => port = args.next().ok_or("missing port")?.parse()?,
+            "--bind" => bind = args.next().ok_or("missing bind address")?.parse()?,
             "--assets" => assets = args.next().ok_or("missing assets")?.into(),
             "--record" => record = args.next().ok_or("missing record path")?.into(),
             "--duration" => duration = Some(args.next().ok_or("missing duration")?.parse::<u64>()?),
             "--help" => {
                 println!(
-                    "activity-demo [--port 8088] [--assets PATH] [--record PATH] [--duration SECONDS]"
+                    "activity-demo [--bind IP] [--port 8088] [--assets PATH] [--record PATH] [--duration SECONDS]"
                 );
                 return Ok(());
             }
@@ -405,7 +407,7 @@ async fn main() -> Result<()> {
                 .into(),
         );
     }
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
+    let listener = tokio::net::TcpListener::bind((bind, port)).await?;
     let feed = Arc::new(Feed::new());
     let mut runtime = Runtime::start(
         Config {

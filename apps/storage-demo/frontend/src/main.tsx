@@ -19,7 +19,9 @@ function App() {
             if (closed)
                 return;
             setConnection("Connecting");
-            socket = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api/activity/stream`);
+            const url = new URL('../api/activity/stream', document.baseURI);
+            url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+            socket = new WebSocket(url);
             socket.binaryType = "arraybuffer";
             socket.onopen = () => { setConnection("Live"); setError(""); };
             socket.onmessage = e => { try {
@@ -40,7 +42,7 @@ function App() {
                 retry = setTimeout(connect, 1000);
             } };
         }
-        fetch('/api/activity/status').then(r => r.json()).then(s => { if (closed)
+        fetch(new URL('../api/activity/status', document.baseURI)).then(r => r.json()).then(s => { if (closed)
             return; if (s.enabled)
             connect();
         else

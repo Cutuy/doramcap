@@ -5,6 +5,7 @@ import "./style.css";
 import { zoomTimeline } from "./timeline";
 import { ResourcePanel } from "./Resources";
 import { SleepControls } from "./SleepControls";
+import { appUrl } from "./url";
 const WORKERS = ["Aster", "Birch", "Cedar", "Dune"];
 const COLORS = ["#64d9b2", "#74a9e8", "#b59bfa", "#f8c76a"];
 function App() {
@@ -62,9 +63,9 @@ function App() {
     function connect() {
       if (closed) return;
       setConnection("Connecting");
-      socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/stream`,
-      );
+      const url = appUrl("stream");
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(url);
       socket.binaryType = "arraybuffer";
       socket.onopen = () => {
         setConnection("Live");
@@ -102,7 +103,7 @@ function App() {
     let alive = true;
     async function poll() {
       try {
-        const r = await fetch("/api/status");
+        const r = await fetch(appUrl("api/status"));
         if (!r.ok) throw new Error("Server unavailable");
         const s = await r.json();
         if (alive) setStatus(s);
@@ -135,7 +136,7 @@ function App() {
   async function action(path: string, body?: object) {
     setBusy(true);
     try {
-      const r = await fetch(path, {
+      const r = await fetch(appUrl(path), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: body ? JSON.stringify(body) : undefined,
@@ -182,14 +183,14 @@ function App() {
           </span>
           <button
             disabled={busy || !status}
-            onClick={() => action("/api/control", { paused: !status?.paused })}
+            onClick={() => action("api/control", { paused: !status?.paused })}
           >
             {status?.paused ? "▶ Resume publishing" : "Ⅱ Pause publishing"}
           </button>
           <button
             className="primary"
             disabled={busy || !status}
-            onClick={() => action("/api/greet")}
+            onClick={() => action("api/greet")}
           >
             Send hello <span>↗</span>
           </button>

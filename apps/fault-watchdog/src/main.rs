@@ -50,6 +50,9 @@ async fn main() -> Result<()> {
         )?);
     }
     let start = Instant::now();
+    // Keep the subscription alive while draining publications between selects.
+    let shutdown = tokio::signal::ctrl_c();
+    tokio::pin!(shutdown);
     let run: Result<()> = async {
         loop {
             let now = start.elapsed();
@@ -93,7 +96,7 @@ async fn main() -> Result<()> {
                     _ => {}
                 },
                 _ = tokio::time::sleep(engine.wait(now)) => {},
-                _ = tokio::signal::ctrl_c() => break,
+                _ = &mut shutdown => break,
             }
         }
         for id in &config.inputs {

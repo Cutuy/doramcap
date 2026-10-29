@@ -3,15 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run generate:proto && vite build",
-    "test": "npm run generate:proto && node --test ../tests/model.mjs ../tests/protocol.mjs",
-    "generate:proto": "node scripts/generate-proto.mjs"
+    "build": "npm run generate:proto && vite build --base ./",
+    "test": "npm run build:server && node --test ../tests/model.mjs ../tests/protocol.mjs ../build/tests/viewer.test.mjs",
+    "generate:proto": "node scripts/generate-proto.mjs",
+    "build:server": "npm run generate:proto && tsc --noEmit && esbuild ../run.ts ../viewer-cli.ts ../tests/viewer.test.ts --bundle --platform=node --format=esm --out-extension:.js=.mjs --outdir=../build"
   },
   "dependencies": {
     "protobufjs": "^8.8.1"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
     "protobufjs-cli": "^2.7.1",
+    "typescript": "^5.9.3",
     "vite": "^7.1.0"
   }
 }

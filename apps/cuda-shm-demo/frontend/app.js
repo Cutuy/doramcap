@@ -52,10 +52,10 @@ function render() {
     $('details').innerHTML=g?'<p>Choose an individual event below or a timeline circle.</p><table>'+g.rows.map(r=>`<tr data-event-id="${esc(r.id)}" tabindex="0" role="button"><td>${(r.time_ms-origin).toFixed(3)} ms</td><td>${r.pid}</td><td>${esc(eventInfo(r).label)}</td></tr>`).join('')+'</table>':selectedEvent?'Selected event is no longer retained.':'Click a circle to inspect that event instance. Overlapping marks use separate vertical tracks at the same time coordinate.';
   }
   $('records').innerHTML=rows.slice(-200).toReversed().map(r=>`<tr data-event-id="${esc(r.id)}" tabindex="0" role="button" class="${String(r.id)===selectedEvent?'selected':''}"><td>${(r.time_ms-origin).toFixed(2)} ms</td><td>${esc(r.role)} ${r.pid}</td><td>${esc(r.fields.event||r.name)}</td><td>${esc(JSON.stringify(r.fields))}</td></tr>`).join('');
-  $('artifacts').innerHTML=view.artifacts.map(name=>`<a href="/artifact/${encodeURIComponent(name)}" download>${esc(name)}</a>`).join('');
+  $('artifacts').innerHTML=view.artifacts.map(name=>`<a href="./artifact/${encodeURIComponent(name)}" download>${esc(name)}</a>`).join('');
   $('log').textContent=view.log || 'Waiting for process summaries; activity records stream live above.';
 }
-$('controls').onsubmit=async e=>{e.preventDefault();$('error').textContent='';const data=new FormData(e.target);const config=Object.fromEntries(['frames','slots','consumers','bytes'].map(k=>[k,Number(data.get(k))]));config.failure=data.get('failure');config.checksum=data.has('checksum');try{const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/x-protobuf'},body:encodeConfig(config)});if(!r.ok)throw Error(decodeReply(new Uint8Array(await r.arrayBuffer())).error);paused=false;frozen=null;selected='';selectedEvent='';$('pause').textContent='Pause view';}catch(e){$('error').textContent=e.message;}};
+$('controls').onsubmit=async e=>{e.preventDefault();$('error').textContent='';const data=new FormData(e.target);const config=Object.fromEntries(['frames','slots','consumers','bytes'].map(k=>[k,Number(data.get(k))]));config.failure=data.get('failure');config.checksum=data.has('checksum');try{const r=await fetch(new URL('api/run',document.baseURI),{method:'POST',headers:{'Content-Type':'application/x-protobuf'},body:encodeConfig(config)});if(!r.ok)throw Error(decodeReply(new Uint8Array(await r.arrayBuffer())).error);paused=false;frozen=null;selected='';selectedEvent='';$('pause').textContent='Pause view';}catch(e){$('error').textContent=e.message;}};
 $('pause').onclick=()=>{if(paused&&frozen?.run!==state.run){selected='';selectedEvent='';}paused=!paused;frozen=paused?state:null;$('pause').textContent=paused?'Resume view':'Pause view';render();};
 $('slot').onchange=$('process').onchange=render;
 function selectTarget(target) {
@@ -80,11 +80,11 @@ document.addEventListener('keydown',e=>{
 $('legend').innerHTML=Object.values(eventTypes).map(v=>`<span><i style="background:${v.color}"></i>${esc(v.label)}</span>`).join('');
 $('download').onclick=async()=>{
   try {
-    const response=await fetch('/api/state');
+    const response=await fetch(new URL('api/state',document.baseURI));
     if(!response.ok)throw Error(`HTTP ${response.status}`);
     const url=URL.createObjectURL(new Blob([await response.arrayBuffer()],{type:'application/x-protobuf'}));
     const a=document.createElement('a');a.href=url;a.download=`cuda-shm-${state.run}.pb`;a.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   } catch(e) { $('error').textContent=e.message; }
 };
-async function poll(){try{const r=await fetch(`/api/state?since=${state.cursor}&run=${state.run}&state=${state.state||''}`);if(r.status!==204 && r.status!==304){if(!r.ok)throw Error(`HTTP ${r.status}`);const next=decodeSnapshot(new Uint8Array(await r.arrayBuffer()));if(next.run!==state.run&&!paused){selected='';selectedEvent='';}state=merge(state,next);if(!paused)render();}}catch(e){$('status').textContent=`Disconnected: ${e.message}`;}setTimeout(poll,150);}poll();
+async function poll(){try{const r=await fetch(new URL(`api/state?since=${state.cursor}&run=${state.run}&state=${state.state||''}`,document.baseURI));if(r.status!==204 && r.status!==304){if(!r.ok)throw Error(`HTTP ${r.status}`);const next=decodeSnapshot(new Uint8Array(await r.arrayBuffer()));if(next.run!==state.run&&!paused){selected='';selectedEvent='';}state=merge(state,next);if(!paused)render();}}catch(e){$('status').textContent=`Disconnected: ${e.message}`;}setTimeout(poll,150);}poll();

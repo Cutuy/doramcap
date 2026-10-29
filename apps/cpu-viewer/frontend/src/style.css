@@ -53,3 +53,43 @@ h2 { font-size: 17px; margin: 0 0 18px; }
 .tree-folder { flex: 0 0 14px; color: #94a3b8; }
 .tree-value { margin-left: auto; padding-left: 10px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .legend-separate { border-top: 1px solid #e8edf3; margin-top: 10px; padding-top: 10px; }
+
+/* Keep one overview visible while preserving full per-CPU details on demand. */
+main { max-width: none; padding: 10px 20px; }
+header { gap: 12px; }
+.eyebrow { margin: 0; font-size: 10px; }
+h1 { font-size: 24px; margin: 3px 0; }
+.subtitle { margin: 0; font-size: 12px; }
+.status { padding: 6px 10px; }
+.metrics { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; margin: 6px 0; }
+.metrics > div { padding: 6px 8px; border-radius: 8px; }
+.metrics small { margin-bottom: 3px; }
+.metrics strong { font-size: 15px; }
+.metrics .metric-detail { margin: 4px 0 0; font-size: 10px; line-height: 1.25; }
+.diagnostics-title { margin: 8px 0 0; color: #52637b; font-size: 12px; }
+.collector-status { color: #52637b; font-size: 11px; }
+.collector-status strong { font-size: inherit; }
+.cpu-details > summary { cursor: pointer; }
+.cpu-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.cpu-card { padding: 8px; border-radius: 8px; }
+.cpu-card h2 { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; margin: 0 0 2px; font-size: 13px; }
+.cpu-card h2 small { margin: 0; font-size: 9px; letter-spacing: 0; white-space: nowrap; }
+.compact-legend { min-height: 45px; font-size: 11px; }
+.compact-row { display: flex; align-items: center; gap: 5px; min-height: 16px; }
+.compact-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.compact-empty { color: #64748b; }
+.tree-value { padding-left: 4px; }
+.cpu-details { font-size: 10px; color: #52637b; }
+.cpu-details .cgroup-legend { max-height: 200px; margin-top: 7px; font-size: 11px; }
+.cpu-details .tree-row { min-height: 20px; }
+footer { margin-top: 8px; font-size: 11px; }
+@media (max-width: 1300px) { .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } .cpu-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .cpu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  main { padding: 12px; }
+  header { flex-direction: row; align-items: center; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cpu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cpu-card { padding: 6px; }
+}
+@media (max-width: 420px) { .cpu-grid { grid-template-columns: minmax(0, 1fr); } }

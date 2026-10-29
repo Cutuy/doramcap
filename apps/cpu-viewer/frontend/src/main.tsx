@@ -5,7 +5,7 @@ import 'uplot/dist/uPlot.min.css';
 import './style.css';
 import { clockSample, browserDelay, type ClockSample } from './latency';
 import { StreamDecoder } from './protocol';
-import { TopCpuStreams, MAX_GROUPS, MAX_CPUS, KERNEL_SERIES, WINDOW, type Point, type Snapshot } from './stream';
+import { TopCpuStreams, KERNEL_SERIES, WINDOW, type Point, type Snapshot } from './stream';
 
 function bytesLabel(bytes: number): string {
   const units = ['B', 'KiB', 'MiB', 'GiB'];
@@ -74,17 +74,17 @@ function CpuChart({ cpu, groups, frame }: { cpu: string; groups: Group[]; frame:
   useEffect(() => {
     const element = host.current!;
     const plot = new uPlot({
-      width: Math.max(250, element.clientWidth), height: 250,
+      width: Math.max(180, element.clientWidth), height: 65,
       legend: { show: false },
       hooks: { setCursor: [plot => setCursorIndex(plot.cursor.idx ?? null)] },
       cursor: { drag: { x: false, y: false } },
       scales: { x: { time: true }, y: { range: (_u, _min, max) => [0, Math.max(100, (max || 0) * 1.1)] } },
-      axes: [{ stroke: '#64748b', grid: { stroke: '#e8edf3' } }, { stroke: '#64748b', values: (_u, ticks) => ticks.map(v => `${v}%`), grid: { stroke: '#e8edf3' } }],
+      axes: [{ show: false }, { size: 38, font: '10px system-ui', stroke: '#64748b', values: (_u, ticks) => ticks.map(v => `${v}%`), grid: { stroke: '#e8edf3' } }],
       series: [{}, ...groups.map(group => ({ label: group.label, stroke: color(group.id), width: group.id === KERNEL_SERIES ? 2.5 : 2, dash: group.id === KERNEL_SERIES ? [6, 4] : [], spanGaps: false, value: (_u: uPlot, value: number) => value == null ? '—' : `${value.toFixed(1)}%` }))],
     }, [[], ...groups.map(() => [])], element);
     chart.current = plot;
     setCursorIndex(null);
-    const resize = new ResizeObserver(() => plot.setSize({ width: Math.max(250, element.clientWidth), height: 250 }));
+    const resize = new ResizeObserver(() => plot.setSize({ width: Math.max(180, element.clientWidth), height: 65 }));
     resize.observe(element);
     return () => { resize.disconnect(); plot.destroy(); chart.current = undefined; };
   }, [signature]);
@@ -97,7 +97,21 @@ function CpuChart({ cpu, groups, frame }: { cpu: string; groups: Group[]; frame:
   }, [frame, cpu, signature]);
   const rows = frame.charts.find(item => item.cpu === cpu)?.rows ?? [];
   const point = rows[cursorIndex ?? rows.length - 1];
-  return <section className="chart-card cpu-card"><h2>{cpuLabel(cpu)} <small>Top {groups.filter(g => g.id !== KERNEL_SERIES).length} active cgroups</small></h2><div ref={host}/><CgroupLegend groups={groups} point={point}/>{!groups.length && <p className="note">No measured activity in the last 5 seconds.</p>}</section>;
+  const active = groups.filter(group => group.id !== KERNEL_SERIES).sort((a, b) => (point?.values.get(b.id) ?? -1) - (point?.values.get(a.id) ?? -1));
+  const kernel = groups.find(group => group.id === KERNEL_SERIES);
+  const visible = [...(kernel ? [kernel] : []), ...active.slice(0, 2)];
+  return <section className="chart-card cpu-card">
+    <h2>{cpuLabel(cpu)} <small>{active.length} cgroups · 30 s</small></h2><div ref={host}/>
+    <div className="compact-legend" aria-label={`${cpuLabel(cpu)} activity`}>
+      {visible.map(group => <div className="compact-row" key={group.id} title={group.label}>
+        <span className={`tree-swatch ${group.id === KERNEL_SERIES ? 'dashed' : ''}`} style={{ borderColor: color(group.id) }}/>
+        <span className="compact-name">{group.id === KERNEL_SERIES ? 'Kernel threads' : group.label.split('/').filter(Boolean).at(-1) || group.label}</span>
+        <span className="tree-value">{point?.values.get(group.id) == null ? '—' : `${point.values.get(group.id)!.toFixed(1)}%`}</span>
+      </div>)}
+      {!visible.length && <span className="compact-empty">No recent activity</span>}
+    </div>
+    <details className="cpu-details"><summary>All cgroups</summary><CgroupLegend groups={groups} point={point}/></details>
+  </section>;
 }
 
 function App() {
@@ -125,7 +139,7 @@ function App() {
       for (let i = 0; i < 3 && !disposed; i++) {
         try {
           const start = performance.now();
-          const response = await fetch('/clock', { cache: 'no-store', signal: AbortSignal.any([clockAbort.signal, AbortSignal.timeout(3000)]) });
+          const response = await fetch(new URL('clock', document.baseURI), { cache: 'no-store', signal: AbortSignal.any([clockAbort.signal, AbortSignal.timeout(3000)]) });
           if (!response.ok) throw new Error('Clock endpoint unavailable');
           const timestamp = await response.text();
           const sample = clockSample(timestamp, start, performance.now());
@@ -142,7 +156,7 @@ function App() {
     void calibrate();
     const clockTimer = window.setInterval(() => { void calibrate(); }, 30000);
     function connect() {
-      const url = new URL('/stream', window.location.href);
+      const url = new URL('stream', document.baseURI);
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       source = new WebSocket(url);
       source.binaryType = 'arraybuffer';
@@ -196,24 +210,24 @@ function App() {
   const ingress = latest?.viewer_ingress;
   const fresh = status === 'Live' && (frame.age ?? Infinity) < 2;
   return <main>
-    <header><div><p className="eyebrow">DORAMCAP / LIVE TELEMETRY</p><h1>CPU activity by cgroup</h1><p className="subtitle">One live plot per CPU. Each line is a cgroup’s usage on that CPU.</p></div><span className={`status ${status === 'Live' && (frame.age ?? 0) < 2 ? 'live' : ''}`} role="status">{status === 'Live' && (frame.age ?? 0) >= 2 ? 'Stale · waiting for data' : status}</span></header>
-    <div className="pipeline"><span>system-monitor</span><b>→</b><span>DORA snapshots</span><b>→</b><span>cpu-viewer / binary WS</span><b>→</b><span>React</span></div>
-    <section className="metrics">
+    <header><div><p className="eyebrow">DORAMCAP / LIVE TELEMETRY</p><h1>CPU activity by cgroup</h1></div><span className={`status ${status === 'Live' && (frame.age ?? 0) < 2 ? 'live' : ''}`} role="status">{status === 'Live' && (frame.age ?? 0) >= 2 ? 'Stale · waiting for data' : status}</span></header>
+    <h2 className="diagnostics-title">Stream and collector details</h2>
+    <section className="metrics" aria-label="Stream and collector details">
       <div><small>DATA SOURCE</small><strong>{latest?.source ?? 'Waiting'}</strong></div>
       <div><small>CPU PLOTS</small><strong>{frame.cpus.length}</strong></div>
       <div><small>STREAM GAPS</small><strong>{frame.gaps}</strong></div>
       <div><small>ROLLING WINDOW</small><strong>30 s <em> / {frame.points} points</em></strong></div>
-    </section>
-    <section className="metrics ingress-metrics" aria-label="DORA ingress telemetry">
+
       <div title="Original snapshot and dictionary payload bytes received by cpu-viewer, measured over approximately one second. Excludes Dora transport overhead and WebSocket/browser traffic."><small>DORA INGRESS</small><strong>{fresh && ingress?.bytes_per_second != null ? `${bytesLabel(Number(ingress.bytes_per_second))}/s` : '—'}</strong><p className="metric-detail">{ingress ? `${bytesLabel(Number(ingress.total_bytes))} received since viewer start` : 'Waiting for measurements'}</p></div>
       <div><small>SNAPSHOT RATE</small><strong>{fresh && ingress?.messages_per_second != null ? `${Number(ingress.messages_per_second).toFixed(1)} /s` : '—'}</strong><p className="metric-detail">{ingress?.total_messages ?? '0'} snapshots received</p></div>
       <div title="Producer capture timestamp to viewer subscriber dequeue. Includes collection, publication, queueing and DORA delivery; excludes WebSocket delivery and browser rendering. Uses the shared host wall clock."><small>CAPTURE → BACKEND</small><strong>{milliseconds(fresh ? ingress?.capture_to_receive_ms : null)}</strong><p className="metric-detail">Latest · mean {milliseconds(fresh ? ingress?.mean_capture_to_receive_ms : null)} over ~1 s</p></div>
       <div title="Producer capture timestamp to browser WebSocket callback entry, before decoding. Includes backend processing, WebSocket delivery and browser scheduling. Uses a periodically calibrated server clock and browser monotonic time. Approximate one-way latency; network asymmetry affects the estimate. Excludes decoding and rendering."><small>CAPTURE → BROWSER ≈</small><strong>{milliseconds(fresh ? browserLatency : null)}</strong><p className="metric-detail">{clockDetail}</p></div>
     </section>
-    <p className="note">Ingress counts DORA snapshot payloads, including cgroup counters, virtual kernel totals, and the low-rate dictionary. Both latencies start at capture. Backend ends at DORA dequeue; browser includes onward delivery and callback scheduling, before decode/render. Browser timing uses the fastest of three clock probes every 30 seconds; the estimate assumes roughly symmetric delivery and shows half the calibration round-trip as uncertainty; values are not additive.{ingress && BigInt(ingress.invalid_timestamps) > 0n ? ` ${ingress.invalid_timestamps} invalid timestamps excluded.` : ''}</p>
-    <p className="note">Automatically showing up to {MAX_GROUPS} busiest cgroups per CPU, ranked by the last 5 seconds and updated once per second. 100% = one occupied core. Counters include descendants; lines are not stacked or summed. Up to {MAX_CPUS} CPUs · 10 Hz refresh.</p>
-    <p className="note kernel-status" role="status">Kernel-thread collector: <strong>{latest?.task_collection_enabled ? 'enabled (experimental)' : 'disabled'}</strong>. The dashed line is a reporting aggregate of PF_KTHREAD runtime, not a real cgroup or total kernel/IRQ/idle time. It may overlap cgroup lines; do not add them together.</p>
-    {latest?.task_collection_enabled && <p className="note">Kernel-only task map capacity: {latest.task_capacity ?? '—'} · Lost task events: {latest.task_losses?.dropped_events ?? '0'} · Lost runtime: {(Number(latest.task_losses?.dropped_runtime_ns ?? '0') / 1e6).toFixed(2)} ms · Identity errors: {latest.task_losses?.identity_errors ?? '0'}</p>}
+    <div className="collector-status" role="status" title="Kernel-thread usage may overlap cgroup usage">
+      Kernel threads: <strong>{latest?.task_collection_enabled ? 'enabled' : 'disabled'}</strong>
+      {latest?.task_collection_enabled && <> · Capacity: {latest.task_capacity ?? '—'} · Lost events: {latest.task_losses?.dropped_events ?? '0'} · Lost runtime: {(Number(latest.task_losses?.dropped_runtime_ns ?? '0') / 1e6).toFixed(2)} ms · Identity errors: {latest.task_losses?.identity_errors ?? '0'}</>}
+      {ingress && BigInt(ingress.invalid_timestamps) > 0n && <> · Invalid timestamps: {ingress.invalid_timestamps}</>}
+    </div>
     {latest?.task_collection_enabled && (BigInt(latest.task_losses?.dropped_events ?? '0') > 0n || BigInt(latest.task_losses?.identity_errors ?? '0') > 0n) && <p role="alert" className="loss-warning">Task collection is incomplete. The fixed task map can fill over time; restart the dataflow to begin a new collection session.</p>}
     <div className="cpu-grid">{frame.charts.map(chart => <CpuChart key={chart.cpu} cpu={chart.cpu} groups={chart.groups} frame={frame}/>)}</div>
     {!frame.cpus.length && <p className="note">Waiting for CPU samples…</p>}
