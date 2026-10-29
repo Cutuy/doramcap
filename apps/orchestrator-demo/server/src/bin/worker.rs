@@ -355,4 +355,21 @@ mod tests {
             "doramcap-live-12-34-1"
         );
     }
+
+    #[test]
+    fn successive_executors_have_distinct_sessions_at_the_same_timestamp() {
+        for prefix in [None, Some("gal-0123456789abcdef0123456789abcdef")] {
+            // Arrange
+            let pid = 12;
+            let timestamp = 34;
+
+            // Act
+            let sessions: std::collections::HashSet<_> = (1..=999)
+                .map(|index| session_id(prefix, pid, timestamp, index).unwrap())
+                .collect();
+
+            // Assert
+            assert_eq!(sessions.len(), 999);
+        }
+    }
 }

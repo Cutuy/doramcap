@@ -34,7 +34,8 @@ Use a current-thread Tokio runtime. External Python/Node steps use the JSON stdi
 adapter in `orchestrator::process`; they require their interpreter on the host.
 
 [Design and validation](docs/102626-function-steps.md) ·
-[Experiment lifecycle](../workload-lifecycle/docs/102626-experiment-workflow.svg).
+[Experiment lifecycle](../workload-lifecycle/docs/102626-experiment-workflow.svg) ·
+[Input lifetime](docs/102926-refactor-engineer.svg).
 API contracts live in Rust documentation (`cargo doc -p orchestrator --no-deps`).
 
 Real Docker validation (local Linux daemon and native BPF build prerequisites):

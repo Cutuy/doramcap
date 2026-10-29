@@ -92,29 +92,19 @@ impl<T> From<Output<T>> for Input<T> {
 
 /// Execute registered steps as local coroutines.
 ///
-/// # Synopsis
+/// # Ownership and concurrency
 ///
-/// Create with [`Self::new`], register typed factories with [`Self::register`],
-/// then await [`Self::run`] from ordinary procedural Rust.
+/// The executor owns its factories and observer; each call creates a fresh step.
+/// Factories own their captures, and shared services can outlive the executor.
+/// Calls run in the caller's task and may be non-`Send`; `tokio::join!` runs them
+/// cooperatively. Nested calls inherit the parent ID; spawned tasks do not.
+/// Registration requires exclusive access; callers coordinate side effects.
 ///
-/// # Ownership
+/// # Errors and cancellation
 ///
-/// Owns factories and the observer until dropped. Each invocation creates and
-/// drops a fresh step. Factories own captured dependencies; `Rc`/`Arc` services
-/// can outlive the executor when another owner retains them.
-///
-/// # Concurrency
-///
-/// Calls execute in the caller's task; futures and services may be non-`Send`.
-/// Use `tokio::join!` for cooperative concurrent calls. Nested calls through this
-/// executor inherit the active parent ID; spawned tasks do not inherit that scope.
-/// Factory registration requires exclusive access. Callers coordinate side effects.
-///
-/// # Failure semantics
-///
-/// Calls report validation, serialization and step errors. Factory/body panics
+/// Validation, codec and step errors are returned; factory, body and codec panics
 /// unwind. Observer panics are counted and suppressed. Cancellation drops the step
-/// future; callers retain responsibility for asynchronous cleanup. No retry occurs.
+/// future; callers remain responsible for async cleanup. Calls are never retried.
 pub struct LocalExecutor {
     factories: HashMap<TypeId, Box<dyn Any>>,
     session: String,
@@ -137,11 +127,12 @@ impl Default for LocalExecutor {
 }
 
 impl LocalExecutor {
-    /// Construct an executor owning `observer`, with no registered factories.
+    /// Construct an executor with no factories and the supplied observer.
     ///
-    /// The observer receives synchronous lifecycle callbacks and must not block.
-    /// Callback panics are suppressed and counted by [`Self::observer_failures`].
-    /// The initial telemetry label is `local`; payload capture is disabled.
+    /// # Behavior
+    ///
+    /// Callbacks are synchronous and must not block; panics are counted and
+    /// suppressed. The default label is `local` and payload capture is disabled.
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
@@ -155,8 +146,13 @@ impl LocalExecutor {
         }
     }
 
-    /// Attach a caller-defined telemetry grouping label (wire field `session`).
-    /// Labels do not determine dependency ownership or service lifetimes.
+    /// Set the event stream namespace (wire field `session`).
+    ///
+    /// # Behavior
+    ///
+    /// Each executor in a combined stream, including replacements, needs a distinct
+    /// label: invocation IDs and elapsed-time origins restart per executor. Labels
+    /// do not affect dependency ownership or service lifetimes.
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.session = label.into();
         self
@@ -168,12 +164,12 @@ impl LocalExecutor {
         self
     }
 
-    /// Register a factory for S. Re-registering replaces the previous factory.
+    /// Register a factory for `S`, replacing any previous factory.
     ///
-    /// The factory owns its captures and runs once per validated invocation. It
-    /// must return a fresh S; shared dependencies belong in its typed fields.
-    /// Missing factories fail before emitting events or invoking user code.
-    /// Factory panics unwind with a Panicked event, like step-body panics.
+    /// # Behavior
+    ///
+    /// The factory owns its captures and creates a fresh step for each validated
+    /// invocation. A missing factory fails before events; factory panics unwind.
     pub fn register<S: Step + 'static>(&mut self, factory: impl Fn() -> S + 'static) {
         let factory: Box<dyn Fn() -> S> = Box::new(factory);
         self.factories.insert(TypeId::of::<S>(), Box::new(factory));
@@ -186,31 +182,28 @@ impl LocalExecutor {
 
     /// Invoke a registered step and return its result with producer metadata.
     ///
-    /// # Parameters and return value
-    ///
-    /// `input` supplies owned arguments and optional producer dependencies. The
-    /// returned [`Output`] owns the decoded result and this invocation's identity.
-    ///
     /// # Behavior
     ///
-    /// Input and output are JSON-round-tripped. Invalid input prevents body
-    /// entry; output errors occur after the body and do not undo its effects.
-    /// Metadata includes the automatically derived Rust type name and declared
-    /// producers. Passing outputs from another executor fails before invocation.
-    /// Nested calls on this executor receive this invocation as their parent.
+    /// Input and output cross a JSON round-trip. The original input is dropped
+    /// after input preparation, before `Started` and factory construction; the
+    /// step receives the decoded value. Invalid input prevents step execution.
+    ///
+    /// `input` may declare producer dependencies. Outputs from another executor
+    /// are rejected; nested calls inherit the current invocation as parent. The
+    /// returned [`Output`] owns the decoded result and producer identity.
     ///
     /// # Errors
     ///
-    /// Returns [`Error::UnregisteredStep`], [`Error::InvalidDependency`] or
-    /// [`Error::IdExhausted`] before invocation events. JSON failures return
-    /// [`Error::Serialization`]; body errors propagate unchanged. Output failures
-    /// occur after side effects and do not roll them back.
+    /// [`Error::UnregisteredStep`], [`Error::InvalidDependency`] and
+    /// [`Error::IdExhausted`] occur before events. JSON failures return
+    /// [`Error::Serialization`]; step errors propagate. Output errors do not undo effects.
     ///
     /// # Cancellation and panics
     ///
-    /// Dropping an unpolled future performs no work. Dropping a polled, pending call
-    /// emits `Cancelled` (or `Panicked` during unwinding). It does not imply OS-level
-    /// effects ended; the caller and step retain explicit cleanup obligations.
+    /// Dropping an unpolled future does nothing. Dropping a pending call emits
+    /// `Cancelled`; callers remain responsible for async cleanup. Panics unwind
+    /// and emit `Panicked`: input codec or destructor panics can precede `Started`;
+    /// factory, body and output codec panics follow it.
     pub async fn run<S: Step + 'static>(
         &self,
         input: impl Into<Input<S::Input>>,
@@ -253,6 +246,8 @@ impl LocalExecutor {
             finished: false,
         };
         let prepared = roundtrip(&input.value, "input");
+        // Only decoded input needs to survive observation and step execution.
+        drop(input.value);
         let payload = if self.capture_payloads {
             prepared
                 .as_ref()

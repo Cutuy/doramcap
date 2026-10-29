@@ -4,7 +4,7 @@ use serde_json::Value;
 /// Identity of one call. IDs are monotonic within one executor.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Invocation {
-    /// Caller-supplied session identity.
+    /// Caller-supplied stream namespace, distinct for each contributing executor.
     pub session: String,
     /// Local invocation number, starting at one.
     pub id: u64,
@@ -24,7 +24,7 @@ pub struct Invocation {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum State {
-    /// Invocation began; input boundary outcome is available, before instance construction.
+    /// Input preparation returned and released the original input, before instance construction.
     Started,
     /// Body and output serialization completed successfully.
     Succeeded,
@@ -32,7 +32,8 @@ pub enum State {
     Failed,
     /// Caller dropped a polled invocation before it completed.
     Cancelled,
-    /// Invocation was dropped during stack unwinding.
+    /// Invocation was dropped during stack unwinding. Input preparation panics
+    /// can emit this event without a preceding `Started`.
     Panicked,
 }
 

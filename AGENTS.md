@@ -52,7 +52,7 @@ The worker is a Qualcomm laptop without CUDA capability. Run CUDA execution and 
 
 - All Markdown: brief prose, short bullets, compact tables; no walls of text.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
-- Document APIs primarily in docstrings/Rust doc comments. Aim for Linux API manpage structure and precision: synopsis, behavior, parameters, return values, errors, ownership and concurrency guarantees as applicable. Keep API details beside the code; link to them from READMEs.
+- Document APIs primarily in docstrings/Rust doc comments. Keep docstrings to at most three lines; use named sections or bullet points when more detail is necessary. Follow Linux API manpage precision for behavior, parameters, return values, errors, ownership and concurrency as applicable. Keep API details beside the code; link to them from READMEs.
 - State what things do directly; avoid contrastive “A, not B” phrasing.
 - Architecture: SVGs with short labels showing components and exchanged artifacts.
 - Plans: use `component/docs/mmddyy-feature-name.md` with the creation date; keep updates in that file and supporting SVGs alongside it.

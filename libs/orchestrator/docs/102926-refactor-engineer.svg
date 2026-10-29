@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="370" viewBox="0 0 1000 370" role="img" aria-labelledby="title desc">
+  <title id="title">Input lifetime before and after the executor refactor</title>
+  <desc id="desc">Before, the original input remained alive through the started event, factory, step execution, and terminal event. After, it is dropped immediately after the input JSON round-trip, before the started event and factory. The decoded input is used by the step in both cases.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#526479"/></marker>
+  </defs>
+  <rect width="1000" height="370" rx="12" fill="#f7f9fc"/>
+  <g font-family="sans-serif" fill="#172b42">
+    <text x="25" y="34" font-size="20" font-weight="bold">LocalExecutor input lifetime</text>
+    <text x="25" y="101" font-size="17" font-weight="bold">Before</text>
+    <text x="25" y="236" font-size="17" font-weight="bold">After</text>
+  </g>
+  <g fill="#fff" stroke="#91a6be" stroke-width="1.5">
+    <rect x="130" y="60" width="160" height="48" rx="7"/><rect x="345" y="60" width="130" height="48" rx="7"/>
+    <rect x="530" y="60" width="160" height="48" rx="7"/><rect x="745" y="60" width="175" height="48" rx="7"/>
+    <rect x="130" y="195" width="160" height="48" rx="7"/><rect x="345" y="195" width="130" height="48" rx="7"/>
+    <rect x="530" y="195" width="160" height="48" rx="7"/><rect x="745" y="195" width="175" height="48" rx="7"/>
+  </g>
+  <g font-family="sans-serif" text-anchor="middle" fill="#172b42" font-size="14">
+    <text x="210" y="89">JSON round-trip</text><text x="410" y="89">Started event</text>
+    <text x="610" y="89">Factory + step</text><text x="832" y="89">Terminal event</text>
+    <text x="210" y="224">JSON round-trip</text><text x="410" y="224">Started event</text>
+    <text x="610" y="224">Factory + step</text><text x="832" y="224">Terminal event</text>
+  </g>
+  <g fill="none" stroke="#526479" stroke-width="1.5" marker-end="url(#arrow)">
+    <path d="M290 84 H345"/><path d="M475 84 H530"/><path d="M690 84 H745"/>
+    <path d="M290 219 H345"/><path d="M475 219 H530"/><path d="M690 219 H745"/>
+  </g>
+  <g font-family="sans-serif" font-size="13" fill="#344b63">
+    <text x="130" y="133">Original input held until return</text>
+    <rect x="130" y="140" width="790" height="10" rx="5" fill="#d78d59"/>
+    <text x="530" y="168">Decoded input passed to step</text>
+    <rect x="300" y="175" width="390" height="10" rx="5" fill="#689a87"/>
+    <text x="130" y="268">Original input dropped</text>
+    <rect x="130" y="275" width="160" height="10" rx="5" fill="#d78d59"/>
+    <text x="530" y="268">Decoded input passed to step</text>
+    <rect x="300" y="292" width="390" height="10" rx="5" fill="#689a87"/>
+    <text x="25" y="340">On returned input errors, the original is dropped before Started and Failed are observed.</text>
+  </g>
+</svg>
