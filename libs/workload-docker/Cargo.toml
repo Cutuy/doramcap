@@ -22,7 +22,7 @@ prost-build = "0.14"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
-mcap = { version = "=0.25.0", default-features = false }
+mcap = { version = "=0.26.0", default-features = false }
 telemetry-protocol = { path = "../telemetry/protocol" }
 
 [lints]
