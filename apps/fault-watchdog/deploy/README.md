@@ -18,3 +18,9 @@ one trusted registration as `registration.pbtxt` before starting the manager.
 
 Compose runs foreground Dora coordinator/daemon services. The registration declares
 node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.
+
+Port `8088` is private to this project's Docker network. The dashboard's
+`FAULT_DEMO_LISTEN` in `flow.yml`, the registration's `port` and its loopback
+readiness/snapshot URLs must agree. The daemon shares the coordinator's network
+namespace; the gallery proxies to that container IP. No host port is published,
+so independent apps can reuse the same internal port.

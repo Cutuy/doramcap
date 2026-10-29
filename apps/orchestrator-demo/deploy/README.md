@@ -1,11 +1,15 @@
-# Orchestrator Lab wrapper
+# Orchestrator Lab hosting
 
-This pending profile packages the web server and Docker worker separately. Only
-the worker receives the Docker socket and private recovery directory.
+The existing native launcher runs the web server unprivileged and a separate,
+optionally elevated Docker worker. See [usage](../README.md).
 
-Stage the independent `orchestrator-demo` binary and `dist/` for
-`Dockerfile.server`; stage `orchestrator-worker` and `worker-host.ts` for
-`Dockerfile.worker`. Build the monitor image as
-`doramcap/system-monitor:local`.
+For gallery integration, prefer those two host processes with shared singleton,
+idle-stop and proxy handling. The worker already invokes the shared Compose
+workflow for experiments. Keeping it on the host gives its OverlayFS mounts the
+same namespace as the Docker daemon. Shutdown must let the active experiment
+finish cleanup before terminating the worker.
 
-The gallery does not load the pending registration. See [remaining work](../../project-explorer/server/docs/102727-remaining-apps.md#m7--orchestrator-lab-planned).
+The Compose profile here is pending and has no active gallery registration. Its
+containerized worker needs additional mount-namespace/capability qualification.
+A native-process gallery adapter belongs in the hosting PR; these assets alone
+do not enable it.
