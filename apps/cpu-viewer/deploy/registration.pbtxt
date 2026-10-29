@@ -12,6 +12,7 @@ recording_count {
   topic: "doramcap/snapshots"
 }
 env_prefix: "CPU_VIEWER"
+exclusive_resources: "host-bpf-monitor"
 requires_explicit_enable: true
 
 system_apps { dora_flows {
