@@ -16,6 +16,72 @@ event replay, charts, workflow editing, builds/pulls and automatic crash recover
 Keep the existing filesystem policy and capture limitations; no new isolation or
 provenance subsystem belongs to this plan.
 
+## UI language and concept renderings
+
+These are implementation references for the same page at different moments.
+Names, durations and run IDs are illustrative. The phase rail shows location in
+that flow; it is not navigation between independent screens. Initial delivery uses
+this light theme. Shared components and tokens own the appearance of every state.
+
+### Shared rules
+
+| Element | Rule |
+|---|---|
+| Page | Quiet background `#F5F7F6`; white surfaces; border `#D9E2DD`. Center the content with 64 px side margins at 1200 px. |
+| Text | Primary `#20352F`, secondary `#596B64`. System sans; 30 px page title, 19 px section title, 15 px body, 12–14 px labels. Monospace only for paths/identifiers. |
+| Spacing | 4 px base; use 8/16/24/32 px spacing, 12 px panel corners and 8 px control corners. Inputs/buttons are at least 44 px tall. |
+| Actions | Teal `#166653` with white text for the primary action. Secondary actions are outlined. Stop uses an amber label and remains visually separate from a failure. |
+| States | Active teal; completed `#267047`; attention `#8B5A13` on `#FFF3DC`; failed `#A33636` on `#FBECEC`; unknown neutral. Always include a text label. |
+| Layout | Main content takes about two thirds of the width; context takes one third. At widths below 900 px, stack context beneath the main content and wrap long paths/step labels. |
+| Accessibility | Visible labels, semantic controls and tables, 2 px focus outline with 2 px offset, logical keyboard order and minimum 4.5:1 contrast for normal text. Announce lifecycle changes politely; do not announce every poll. |
+| Motion | No completion percentage or invented future steps. Running is a labeled state; any optional motion respects reduced-motion preferences. |
+
+Use the same vocabulary everywhere: **Project, Review, Run, Result** for page
+phases; **Review project, Start run, Stop run, New run** for actions. Workflow
+states are **Running, Completed, Failed, Cancelled, Panicked**. Results always
+separate **Execution, Recording, Cleanup**; an unavailable outcome is **Unknown**.
+Friendly labels such as “Prepare project” map to known emitted step identities;
+retain the full emitted identity in accessible row details. Unknown steps use
+their emitted names. Repeated invocations remain separate rows.
+
+### Project and review
+
+The project concept shows profiles after discovery. Before the first review, hide
+that control; when no profiles exist, omit it. Changing the directory/profile
+invalidates the review. Missing prerequisites use an inline explanation and disable
+Start. Review shows the resolved application with read-only service rows.
+
+![Project selection concept with optional profile](102926-console-ui-project.svg)
+
+![Read-only project review concept](102926-console-ui-review.svg)
+
+### Run
+
+Keep the project/run identity visible. Show received workflow steps and completed
+durations, including repeated observations. The sample rows are illustrative;
+implementation displays actual emitted invocations. CPU recording becomes “In
+progress” only after monitor readiness. A lost connection says “Connection lost;
+run may still be active” and retains the last snapshot with its age.
+
+Stop changes the heading to “Stopping run”, disables repeated clicks with the
+label “Stopping…”, and continues polling through finalization and cleanup. A
+telemetry gap adds “Progress incomplete”; history eviction says “Older steps
+hidden”. Neither message changes the authoritative run outcome.
+
+![Workflow progress concept](102926-console-ui-run.svg)
+
+### Result and blocked cleanup
+
+Downloads are the primary result action. New run is secondary and is enabled only
+after verified cleanup. The blocked concept deliberately preserves the saved
+recording: recording validity and cleanup are independent. Missing artifacts show
+an unavailable label with a reason. Do not imply recovery through a Retry button.
+After process loss, show “Interrupted” and mark unverified outcomes Unknown.
+
+![Completed run and downloads concept](102926-console-ui-result.svg)
+
+![Saved recording with unverified cleanup concept](102926-console-ui-blocked.svg)
+
 ## Existing code and required changes
 
 | Existing code | Reuse / engineering gap |
@@ -221,6 +287,11 @@ revision and observed results beside its validation items before checking them.
 
 **Work items**
 
+- [ ] Add **`frontend/src/ui/tokens.css`**, `PageFrame.tsx`, `ActionButton.tsx`,
+  `StatusLabel.tsx` and `OutcomeSummary.tsx` following the concepts above. Share
+  spacing, colors, type and state labels; screen components do not redefine them.
+  Add the friendly step-label lookup to `RunSteps.tsx`, preserving full identities.
+
 - [ ] Add **`server/src/main.ts`**, `http.ts`, `native.ts` and `artifacts.ts`.
   Serve built frontend assets and the routes below with Node HTTP. Use generated
   protobuf JSON mappings for HTTP and binary protobuf for the addon; keep uint64
@@ -269,6 +340,10 @@ revision and observed results beside its validation items before checking them.
 - [ ] **`server/tests/artifacts.test.ts`**: traversal, wrong run ID and symlink swap
   fail; disconnect closes the fd. Stream an artifact larger than the stream buffer
   and verify backpressure without reading the entire file into memory.
+- [ ] Capture each concept state at 1200 px and 390 px widths. Verify shared
+  action placement and state labels, keyboard/focus order, contrast, wrapping and
+  no horizontal page overflow. Include Stopping, interrupted/Unknown, unavailable
+  recording, progress loss and saved-recording/blocked-cleanup variants.
 - [ ] Run `npm test` and `npm run build` in both Console packages. Browser-check
   Review, Starting, Run, Stopping, Finished and Blocked with deterministic native
   fixtures before the real-Docker test in M5.

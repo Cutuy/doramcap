@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+<title id="title">Console concept — watch workflow progress</title>
+<desc id="desc">Workflow steps, including repeated observations, show emitted state and duration. Stop run finishes recording and cleanup; there is no container dashboard or completion percentage.</desc>
+<style>text{font-family:Inter,Arial,sans-serif} .mono{font-family:monospace} </style>
+<rect x="0" y="0" width="1200" height="820" rx="0" fill="#F5F7F6"/>
+<rect x="0" y="0" width="1200" height="64" rx="0" fill="#FFFFFF"/>
+<text x="48" y="40" font-size="21" fill="#20352F" font-weight="700" text-anchor="start">doramcap</text>
+<path d="M167 23L167 43" stroke="#D9E2DD"/>
+<text x="187" y="40" font-size="16" fill="#596B64" font-weight="400" text-anchor="start">Console</text>
+<text x="1152" y="39" font-size="13" fill="#596B64" font-weight="500" text-anchor="end">Host · lab-01</text>
+<path d="M0 64H1200" stroke="#D9E2DD"/>
+<text x="64" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">01</text>
+<text x="93" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Project</text>
+<path d="M206 100H222" stroke="#D9E2DD"/>
+<text x="238" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">02</text>
+<text x="267" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Review</text>
+<path d="M380 100H396" stroke="#D9E2DD"/>
+<rect x="404" y="84" width="145" height="32" rx="16" fill="#E8F2EE"/>
+<text x="412" y="105" font-size="12" fill="#166653" font-weight="600" text-anchor="start">03</text>
+<text x="441" y="105" font-size="14" fill="#166653" font-weight="600" text-anchor="start">Run</text>
+<path d="M554 100H570" stroke="#D9E2DD"/>
+<text x="586" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">04</text>
+<text x="615" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Result</text>
+<text x="64" y="168" font-size="30" fill="#20352F" font-weight="600" text-anchor="start">Run in progress</text>
+<text x="64" y="199" font-size="15" fill="#596B64" font-weight="400" text-anchor="start">sample-project · extra-worker · Run 7c2a</text>
+<rect x="968" y="142" width="168" height="44" rx="8" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="1052.0" y="170" font-size="14" fill="#8B5A13" font-weight="600" text-anchor="middle">Stop run</text>
+<text x="64" y="788" font-size="11" fill="#596B64" font-weight="500" text-anchor="start">CONCEPT · Sample project and illustrative data</text>
+<text x="1136" y="788" font-size="11" fill="#596B64" font-weight="400" text-anchor="end">Single host / one active run</text>
+<rect x="64" y="240" width="704" height="450" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="92" y="280" font-size="19" fill="#20352F" font-weight="600" text-anchor="start">Workflow steps</text>
+<rect x="616" y="258" width="124" height="28" rx="14" fill="#E8F2EE"/>
+<text x="630" y="277" font-size="13" fill="#166653" font-weight="600" text-anchor="start">Running</text>
+<text x="92" y="323" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">Step</text>
+<text x="510" y="323" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">Status</text>
+<text x="740" y="323" font-size="12" fill="#596B64" font-weight="600" text-anchor="end">Duration</text>
+<path d="M92 339H740" stroke="#D9E2DD"/>
+<text x="92" y="374" font-size="15" fill="#20352F" font-weight="400" text-anchor="start">Prepare project</text>
+<text x="510" y="374" font-size="14" fill="#267047" font-weight="500" text-anchor="start">Completed</text>
+<text x="740" y="374" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">0.8 s</text>
+<path d="M92 390H740" stroke="#D9E2DD"/>
+<text x="92" y="422" font-size="15" fill="#20352F" font-weight="400" text-anchor="start">Prepare CPU recording</text>
+<text x="510" y="422" font-size="14" fill="#267047" font-weight="500" text-anchor="start">Completed</text>
+<text x="740" y="422" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">1.1 s</text>
+<path d="M92 438H740" stroke="#D9E2DD"/>
+<text x="92" y="470" font-size="15" fill="#20352F" font-weight="400" text-anchor="start">Start application</text>
+<text x="510" y="470" font-size="14" fill="#267047" font-weight="500" text-anchor="start">Completed</text>
+<text x="740" y="470" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">2.4 s</text>
+<path d="M92 486H740" stroke="#D9E2DD"/>
+<text x="92" y="518" font-size="15" fill="#20352F" font-weight="400" text-anchor="start">Observe application</text>
+<text x="510" y="518" font-size="14" fill="#267047" font-weight="500" text-anchor="start">Completed</text>
+<text x="740" y="518" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">0.2 s</text>
+<path d="M92 534H740" stroke="#D9E2DD"/>
+<text x="92" y="566" font-size="15" fill="#20352F" font-weight="400" text-anchor="start">Observe application</text>
+<text x="510" y="566" font-size="14" fill="#267047" font-weight="500" text-anchor="start">Completed</text>
+<text x="740" y="566" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">0.2 s</text>
+<path d="M92 582H740" stroke="#D9E2DD"/>
+<rect x="80" y="589" width="672" height="42" rx="6" fill="#E8F2EE"/>
+<text x="92" y="614" font-size="15" fill="#20352F" font-weight="500" text-anchor="start">Observe application</text>
+<text x="510" y="614" font-size="14" fill="#166653" font-weight="500" text-anchor="start">Running</text>
+<text x="740" y="614" font-size="14" fill="#596B64" font-weight="400" text-anchor="end">—</text>
+<rect x="792" y="240" width="344" height="198" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="820" y="279" font-size="18" fill="#20352F" font-weight="600" text-anchor="start">CPU recording</text>
+<rect x="820" y="302" width="120" height="28" rx="14" fill="#E8F2EE"/>
+<text x="834" y="321" font-size="13" fill="#166653" font-weight="600" text-anchor="start">In progress</text>
+<text x="820" y="366" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Evidence will be available after Stop.</text>
+<text x="820" y="393" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">The final result confirms its validity.</text>
+<rect x="792" y="458" width="344" height="232" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="820" y="498" font-size="18" fill="#20352F" font-weight="600" text-anchor="start">Stopping the run</text>
+<text x="820" y="539" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Stop ends the application, finishes</text>
+<text x="820" y="563" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">the recording, and checks cleanup.</text>
+<text x="820" y="610" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Closing this browser leaves the</text>
+<text x="820" y="634" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">run running on lab-01.</text>
+<text x="64" y="743" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Showing received workflow steps · Updated just now</text>
+</svg>

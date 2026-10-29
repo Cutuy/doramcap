@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+<title id="title">Console concept — inspect the result</title>
+<desc id="desc">Execution, recording and cleanup are separate outcomes. CPU recording and report downloads are available after verified cleanup.</desc>
+<style>text{font-family:Inter,Arial,sans-serif} .mono{font-family:monospace} </style>
+<rect x="0" y="0" width="1200" height="820" rx="0" fill="#F5F7F6"/>
+<rect x="0" y="0" width="1200" height="64" rx="0" fill="#FFFFFF"/>
+<text x="48" y="40" font-size="21" fill="#20352F" font-weight="700" text-anchor="start">doramcap</text>
+<path d="M167 23L167 43" stroke="#D9E2DD"/>
+<text x="187" y="40" font-size="16" fill="#596B64" font-weight="400" text-anchor="start">Console</text>
+<text x="1152" y="39" font-size="13" fill="#596B64" font-weight="500" text-anchor="end">Host · lab-01</text>
+<path d="M0 64H1200" stroke="#D9E2DD"/>
+<text x="64" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">01</text>
+<text x="93" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Project</text>
+<path d="M206 100H222" stroke="#D9E2DD"/>
+<text x="238" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">02</text>
+<text x="267" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Review</text>
+<path d="M380 100H396" stroke="#D9E2DD"/>
+<text x="412" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">03</text>
+<text x="441" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Run</text>
+<path d="M554 100H570" stroke="#D9E2DD"/>
+<rect x="578" y="84" width="145" height="32" rx="16" fill="#E8F2EE"/>
+<text x="586" y="105" font-size="12" fill="#166653" font-weight="600" text-anchor="start">04</text>
+<text x="615" y="105" font-size="14" fill="#166653" font-weight="600" text-anchor="start">Result</text>
+<text x="64" y="168" font-size="30" fill="#20352F" font-weight="600" text-anchor="start">Run complete</text>
+<text x="64" y="199" font-size="15" fill="#596B64" font-weight="400" text-anchor="start">sample-project · extra-worker · Run 7c2a</text>
+<rect x="968" y="142" width="168" height="44" rx="8" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="1052.0" y="170" font-size="14" fill="#20352F" font-weight="600" text-anchor="middle">New run</text>
+<text x="64" y="788" font-size="11" fill="#596B64" font-weight="500" text-anchor="start">CONCEPT · Sample project and illustrative data</text>
+<text x="1136" y="788" font-size="11" fill="#596B64" font-weight="400" text-anchor="end">Single host / one active run</text>
+<rect x="64" y="240" width="1072" height="137" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="92" y="279" font-size="13" fill="#596B64" font-weight="600" text-anchor="start">Execution</text>
+<text x="92" y="316" font-size="23" fill="#267047" font-weight="600" text-anchor="start">Stopped</text>
+<text x="92" y="345" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Application stopped.</text>
+<path d="M421 266L421 350" stroke="#D9E2DD"/>
+<text x="449" y="279" font-size="13" fill="#596B64" font-weight="600" text-anchor="start">Recording</text>
+<text x="449" y="316" font-size="23" fill="#267047" font-weight="600" text-anchor="start">Saved</text>
+<text x="449" y="345" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">CPU recording finalized.</text>
+<path d="M778 266L778 350" stroke="#D9E2DD"/>
+<text x="806" y="279" font-size="13" fill="#596B64" font-weight="600" text-anchor="start">Cleanup</text>
+<text x="806" y="316" font-size="23" fill="#267047" font-weight="600" text-anchor="start">Verified</text>
+<text x="806" y="345" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Ready for another run.</text>
+<rect x="64" y="397" width="1072" height="218" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="92" y="437" font-size="19" fill="#20352F" font-weight="600" text-anchor="start">Evidence</text>
+<text x="92" y="482" font-size="16" fill="#20352F" font-weight="600" text-anchor="start">CPU recording</text>
+<text x="92" y="507" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Recorded CPU activity · MCAP</text>
+<rect x="906" y="465" width="202" height="44" rx="8" fill="#166653"/>
+<text x="1007.0" y="493" font-size="14" fill="#FFFFFF" font-weight="600" text-anchor="middle">Download recording</text>
+<path d="M92 532H1108" stroke="#D9E2DD"/>
+<text x="92" y="565" font-size="16" fill="#20352F" font-weight="600" text-anchor="start">Run report</text>
+<text x="92" y="590" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Execution, evidence and cleanup outcomes</text>
+<rect x="906" y="548" width="202" height="44" rx="8" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="1007.0" y="576" font-size="14" fill="#20352F" font-weight="600" text-anchor="middle">Download report</text>
+<text x="64" y="743" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">This is the latest run. Download the evidence before starting another.</text>
+</svg>
