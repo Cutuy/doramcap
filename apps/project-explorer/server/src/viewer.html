@@ -119,11 +119,16 @@
       }
       async function init() {
         try {
+          if (generation) session = sessionStorage.getItem(key) || '';
+          if (generation && !session) {
+            expired('This link has no active viewer session. View available results or relaunch to open the app.');
+            await poll();
+            return;
+          }
           const policyResponse = await fetch(`${base}api/hosting/apps`);
           if (!policyResponse.ok) throw new Error('Hosting backend is unavailable');
           const policy = await policyResponse.json();
           if (!Number.isSafeInteger(policy.heartbeat_seconds) || policy.heartbeat_seconds <= 0) throw new Error('Invalid heartbeat policy');
-          if (generation) session = sessionStorage.getItem(key) || '';
           if (!session) await launch();
           await heartbeat();
           if (!ended) heartbeatTimer = setInterval(heartbeat, policy.heartbeat_seconds * 1000);
