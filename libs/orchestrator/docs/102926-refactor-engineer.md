@@ -1,4 +1,4 @@
-![Execution and observation boundaries](102926-refactor-engineer.svg)
+![Input lifetime before and after the refactor](102926-refactor-engineer.svg)
 
 # Orchestrator / executor refactor review
 
