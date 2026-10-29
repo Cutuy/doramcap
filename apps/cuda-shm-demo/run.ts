@@ -26,7 +26,7 @@ const alignment = integer(values['slot-alignment'], 'slot alignment');
 const seed = integer(values.seed, 'seed');
 if (seed > 0xffffffff) throw new Error('seed must fit u32');
 if (values.failure && !['stall', 'duplicate', 'corrupt-gpu', 'corrupt-cpu'].includes(values.failure)) throw new Error('invalid failure mode');
-const binary = process.env.CUDA_SHM_BINARY ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../../target/debug/cuda-shm-demo');
+const binary = process.env.CUDA_SHM_BINARY ?? resolve(dirname(fileURLToPath(import.meta.url)), '../../target/debug/cuda-shm-demo');
 const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 const path = values.sanitizer ?? binary;
 const prefix = values.sanitizer ? `--tool memcheck --error-exitcode 99 ${quote(binary)} ` : '';
