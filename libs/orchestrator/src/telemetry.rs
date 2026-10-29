@@ -1,13 +1,13 @@
-//! Protobuf workflow emission through the shared telemetry contract.
+//! Protobuf workflow emission through a caller-owned nonblocking sink.
 //!
-//! Supply a short nonblocking sink (typically bounded `try_send`). Sequence numbers
-//! advance even when encoding admission or delivery fails, making loss visible.
-//! Clone the observer to read counters after moving it into a LocalExecutor. No transport,
-//! threads or retained history are created. Payload capture follows executor payload-capture setting.
+//! # Behavior
 //!
-//! Each contributing executor needs a distinct `LocalExecutor::with_label` in a
-//! combined stream. Sequence numbers describe delivery order; invocation IDs and
-//! elapsed-time origins belong to each executor and restart on construction.
+//! Sequence numbers advance on admission or delivery failures. Clones share
+//! counters and ordering; no transport, threads or history are created. Payload
+//! capture follows the executor setting.
+//!
+//! Executors sharing a stream need distinct `LocalExecutor::with_label` values:
+//! invocation IDs and elapsed-time origins restart with each executor.
 use crate::{Event, Observer, State};
 use std::{cell::Cell, rc::Rc};
 use workflow_protocol as wire;
@@ -19,9 +19,7 @@ struct Inner {
     next: Cell<u64>,
     dropped: Cell<u64>,
 }
-/// Shared local observer. Each instance owns one sequence space across contexts.
-/// Clones share delivery ordering and counters. Callers assign distinct executor
-/// labels so invocation identities and clock origins remain distinguishable.
+/// Shared local observer; clones share sequence numbers and loss counters.
 #[derive(Clone)]
 pub struct TelemetryObserver(Rc<Inner>);
 impl TelemetryObserver {
