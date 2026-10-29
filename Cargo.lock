@@ -781,7 +781,7 @@ name = "cgroup-bpf"
 version = "0.1.0"
 dependencies = [
  "libbpf-cargo",
- "libbpf-rs",
+ "libbpf-rs 0.27.2",
 ]
 
 [[package]]
@@ -2692,7 +2692,7 @@ dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
- "libbpf-rs",
+ "libbpf-rs 0.26.2",
  "memmap2",
  "serde",
  "serde_json",
@@ -2706,6 +2706,18 @@ name = "libbpf-rs"
 version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd8e8db46a2d5967b5b3dba7aba32a875dc38f222395040607045635ec1f9b63"
+dependencies = [
+ "bitflags 2.13.2",
+ "libbpf-sys",
+ "libc",
+ "vsprintf",
+]
+
+[[package]]
+name = "libbpf-rs"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffef943d6690772a293abe80412ca438c227867cac93448af2518166df1b1a7b"
 dependencies = [
  "bitflags 2.13.2",
  "libbpf-sys",
@@ -4985,7 +4997,7 @@ name = "task-accounting"
 version = "0.1.0"
 dependencies = [
  "libbpf-cargo",
- "libbpf-rs",
+ "libbpf-rs 0.27.2",
  "serde",
 ]
 
