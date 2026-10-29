@@ -2,6 +2,7 @@
 //! elevates only this executable. Every scenario owns distinct named resources.
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
+use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
 use workload_docker::{compose::*, workflows::recorded_compose::*};
 
 fn project(root: &Path, key: &str) -> ComposeProject {
@@ -19,8 +20,9 @@ fn project(root: &Path, key: &str) -> ComposeProject {
 }
 fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
     ComposeRun {
-        filesystem: Default::default(),
+        filesystem: Some(Default::default()),
         artifacts: root.join(&id),
+        recovery_anchor_dir: None,
         id,
         projects: vec![
             {
@@ -33,10 +35,13 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
             project(root, "beta"),
         ],
         first_party: vec![],
-        monitor: CpuMonitor {
-            image: image.into(),
-            backend: "bpf".into(),
-            allow_unconfined_seccomp: true,
+        system_apps: SystemAppsConfig {
+            cpu_monitor: Some(CpuMonitor {
+                image: image.into(),
+                backend: "bpf".into(),
+                allow_unconfined_seccomp: true,
+                seccomp_profile: None,
+            }),
         },
         readiness_seconds: 10,
         stop_seconds: 3,
@@ -69,6 +74,89 @@ fn audit_recording(root: &Path) -> String {
     assert!(sequences.len() >= 3);
     assert!(sequences.iter().copied().eq(0..sequences.len() as u64));
     session.unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker, a synthetic monitor image and reviewed io_uring seccomp policy"]
+async fn synthetic_recorded_with_reviewed_profile() {
+    // Arrange: each test owns its files and Docker run identity.
+    let root = std::path::PathBuf::from(std::env::var("DORAMCAP_TEST_OUTPUT").unwrap());
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let profile = std::path::PathBuf::from(std::env::var("DORAMCAP_TEST_SECCOMP").unwrap());
+    let run = std::env::var("DORAMCAP_TEST_PREFIX").unwrap();
+    write(
+        &root.join("demo.json"),
+        serde_json::json!({"services":{"worker":{
+            "image":image,"entrypoint":["/bin/sh","-c"],
+            "command":["trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"],
+            "healthcheck":{"test":["CMD","/bin/true"],"interval":"100ms","timeout":"1s","retries":3}
+        }}}),
+    );
+    let socket =
+        std::env::var("DORAMCAP_TEST_SOCKET").unwrap_or_else(|_| "/var/run/docker.sock".into());
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter);
+    let artifacts = root.join(&run);
+    let spec = ComposeRun {
+        filesystem: Some(Default::default()),
+        id: run,
+        artifacts: artifacts.clone(),
+        recovery_anchor_dir: None,
+        projects: vec![project(&root, "demo")],
+        first_party: vec![],
+        system_apps: SystemAppsConfig {
+            cpu_monitor: Some(CpuMonitor {
+                image,
+                backend: "synthetic".into(),
+                allow_unconfined_seccomp: false,
+                seccomp_profile: Some(profile.to_str().unwrap().into()),
+            }),
+        },
+        readiness_seconds: 15,
+        stop_seconds: 5,
+    };
+
+    // Act: run and cooperatively stop the isolated workload and collector.
+    let report = runner
+        .run(
+            spec,
+            tokio::time::sleep(Duration::from_secs(8)),
+            |_: &orchestrator::Event| {},
+        )
+        .await
+        .unwrap();
+
+    // Assert: the run finalized and retained its exact reviewed policy and synthetic recording.
+    assert!(report.successful(), "{report:?}");
+    assert_eq!(
+        std::fs::read(artifacts.join("monitor-seccomp.json")).unwrap(),
+        std::fs::read(profile).unwrap()
+    );
+    let resolved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(artifacts.join("system.compose.json")).unwrap())
+            .unwrap();
+    let service = &resolved["services"]["cpu-monitor"];
+    assert_eq!(service["network_mode"], "none");
+    assert!(
+        service
+            .get("cap_add")
+            .is_none_or(|caps| caps.as_array().is_some_and(Vec::is_empty))
+    );
+    let mounts = service["volumes"].as_array().unwrap();
+    assert_eq!(mounts.len(), 1);
+    assert_eq!(mounts[0]["source"], artifacts.to_str().unwrap());
+    let bytes = std::fs::read(artifacts.join("cpu.mcap")).unwrap();
+    let snapshots: Vec<_> = mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .map(|message| message.unwrap())
+        .filter(|message| message.channel.topic == "doramcap/snapshots")
+        .collect();
+    assert!(!snapshots.is_empty());
+    assert!(
+        snapshots.iter().all(
+            |message| telemetry_protocol::decode(&message.data).unwrap().source == "synthetic"
+        )
+    );
 }
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires local Docker, native monitor image and BPF capabilities; use scripts/compose-e2e.py"]
@@ -672,4 +760,258 @@ async fn multi_project_lifecycle() {
         &root.join("summary.json"),
         serde_json::to_value(reports).unwrap(),
     );
+}
+
+#[tokio::test]
+#[ignore = "requires a local Docker Engine and DORAMCAP_TEST_IMAGE"]
+async fn direct_session_lifecycle_and_recovery() {
+    // Arrange: each transition owns a fresh project and private metadata.
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("direct-session-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    write(
+        &root.join("session.json"),
+        serde_json::json!({"services":{"app":service(&image)}}),
+    );
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    for mode in 0..3 {
+        let id = format!("session-{}-{}", std::process::id(), mode);
+        let artifacts = root.join(&id);
+        let spec = ComposeRun {
+            id: id.clone(),
+            artifacts: artifacts.clone(),
+            filesystem: None,
+            system_apps: SystemAppsConfig::default(),
+            recovery_anchor_dir: None,
+            projects: vec![project(&root, "session")],
+            first_party: vec![],
+            readiness_seconds: 10,
+            stop_seconds: 3,
+        };
+        if mode == 0 {
+            // Act: fail startup after Compose has begun creating resources.
+            write(
+                &root.join("broken.json"),
+                serde_json::json!({"services":{"app":{
+                    "image": image, "entrypoint": ["/nonexistent-program"]
+                }}}),
+            );
+            let mut broken = spec.clone();
+            broken.id.push_str("-broken");
+            broken.artifacts = root.join(&broken.id);
+            broken.projects = vec![project(&root, "broken")];
+            let failed = tokio::time::timeout(
+                Duration::from_secs(20),
+                runner.run(broken, std::future::pending(), |_: &orchestrator::Event| {}),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+            // Assert: partial startup is cleaned and does not prevent a new launch.
+            assert!(failed.execution_error.is_some());
+            assert!(failed.boundary_clean, "{failed:?}");
+            assert!(!runner.blocked());
+        }
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        // Act: await readiness before requesting stop or simulating a crashed caller.
+        let run = runner.run_with_ready(
+            spec,
+            async {
+                let _ = stopped.await;
+            },
+            |_: &orchestrator::Event| {},
+            Some(ready),
+        );
+        let mut run = Box::pin(run);
+        let plans = tokio::select! {
+            plans = started => plans.unwrap(),
+            result = &mut run => panic!("session ended before readiness: {result:?}"),
+        };
+        // Assert: a ready session is actually running and uses existing mounts.
+        assert!(DockerAdapter::ready(&adapter.inspect(&plans[0]).await.unwrap()).unwrap());
+        assert!(!artifacts.join("overlays").exists());
+        assert!(!artifacts.join("system-services.yaml").exists());
+        if mode == 2 {
+            // Act: abandon the caller, then recover using the durable shared metadata.
+            drop(run);
+            assert!(runner.blocked());
+            let recovered = workload_docker::workflows::recovery::recover_project(
+                adapter.clone(),
+                &artifacts,
+                &id,
+                "session",
+                true,
+                3,
+            )
+            .await
+            .unwrap();
+            // Assert: recovery stops writers and removes the project without app-specific logic.
+            assert!(
+                recovered.quiesced && recovered.cleanup_verified,
+                "{:?}",
+                recovered.errors
+            );
+            assert!(recovered.errors.is_empty(), "{:?}", recovered.errors);
+        } else {
+            // Act: cooperatively stop the ready session.
+            if mode == 0 {
+                stop.send(()).unwrap();
+            } else {
+                adapter
+                    .quiesce(StopInput {
+                        plan: plans[0].clone(),
+                        stop_seconds: 3,
+                    })
+                    .await
+                    .unwrap();
+            }
+            let report = tokio::time::timeout(Duration::from_secs(20), run)
+                .await
+                .unwrap()
+                .unwrap();
+            // Assert: evidence precedes verified removal, and another session can start.
+            assert_eq!(report.execution_error.is_some(), mode == 1, "{report:?}");
+            assert!(report.boundary_clean, "{report:?}");
+            assert!(report.writers_stopped);
+            assert!(artifacts.join("outer-evidence.json").is_file());
+            assert!(!runner.blocked());
+        }
+        assert!(
+            adapter
+                .inspect(&plans[0])
+                .await
+                .unwrap()
+                .containers
+                .is_empty()
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and DORAMCAP_TEST_IMAGE"]
+async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
+    // Arrange: either workload can become healthy only after both have started.
+    // The supporting service must outlive both writers during cleanup.
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("parallel-compose-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    for failure in [false, true] {
+        let shared = root.join(format!("sync-{}", u8::from(failure)));
+        std::fs::create_dir(&shared).unwrap();
+        let helper = "trap 'test -f /sync/alpha-stopped && test -f /sync/beta-stopped || exit 42; exit 0' TERM INT; touch /sync/system-ready; while :; do sleep 1 & wait $!; done";
+        for key in ["helper", "alpha", "beta"] {
+            let command = if key == "helper" {
+                helper.into()
+            } else {
+                format!(
+                    "test -f /sync/system-ready || exit 9; trap 'touch /sync/{key}-stopped; exit 0' TERM INT; touch /sync/{key}-started; while :; do sleep 1 & wait $!; done"
+                )
+            };
+            let health = if key == "helper" {
+                "test -f /sync/system-ready"
+            } else if failure && key == "beta" {
+                "false"
+            } else {
+                "test -f /sync/alpha-started && test -f /sync/beta-started"
+            };
+            write(
+                &root.join(format!("{key}.json")),
+                serde_json::json!({"services":{"app":{
+                    "image":image, "entrypoint":["/bin/sh","-c"], "command":[command.replace('$',"$$")],
+                    "volumes":[format!("{}:/sync",shared.display())],
+                    "healthcheck":{"test":["CMD-SHELL",health],"interval":"100ms","timeout":"1s","retries":20}
+                }}}),
+            );
+        }
+        let id = format!("parallel-{}-{}", std::process::id(), u8::from(failure));
+        let events = Rc::new(RefCell::new(Vec::<orchestrator::Event>::new()));
+        let sink = events.clone();
+        let spec = ComposeRun {
+            id: id.clone(),
+            artifacts: root.join(&id),
+            filesystem: None,
+            recovery_anchor_dir: None,
+            system_apps: Default::default(),
+            first_party: vec![project(&root, "helper")],
+            projects: vec![project(&root, "alpha"), project(&root, "beta")],
+            readiness_seconds: 5,
+            stop_seconds: 3,
+        };
+        // Act: wait for all ready workloads before requesting stop, or let readiness fail.
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let report = runner
+            .run_with_ready(
+                spec,
+                async {
+                    let _ = started.await;
+                },
+                move |event: &orchestrator::Event| sink.borrow_mut().push(event.clone()),
+                Some(ready),
+            )
+            .await
+            .unwrap();
+        // Assert: failure also drains every sibling and preserves shutdown ordering.
+        assert_eq!(report.execution_error.is_some(), failure, "{report:?}");
+        assert!(report.boundary_clean, "{report:?}");
+        assert!(!runner.blocked());
+        assert!(shared.join("alpha-stopped").is_file() && shared.join("beta-stopped").is_file());
+        assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+        let events = events.borrow();
+        let positions = |step: &str, state: orchestrator::State, keys: &[&str]| -> Vec<usize> {
+            events
+                .iter()
+                .enumerate()
+                .filter(|(_, event)| {
+                    event.invocation.step.ends_with(step)
+                        && event.state == state
+                        && event.payload.as_ref().is_some_and(|p| {
+                            keys.contains(&p["plan"]["key"].as_str().unwrap_or(""))
+                        })
+                })
+                .map(|(index, _)| index)
+                .collect()
+        };
+        if !failure {
+            let starts = positions(
+                "StartCompose",
+                orchestrator::State::Started,
+                &["alpha", "beta"],
+            );
+            // Start outputs have another payload shape; identify terminals by invocation ID.
+            let ids: Vec<_> = starts.iter().map(|i| events[*i].invocation.id).collect();
+            let first_ready = events
+                .iter()
+                .position(|e| {
+                    ids.contains(&e.invocation.id) && e.state == orchestrator::State::Succeeded
+                })
+                .unwrap();
+            assert_eq!(starts.len(), 2);
+            assert!(*starts.iter().max().unwrap() < first_ready);
+        }
+        let helper_stop = positions("QuiesceCompose", orchestrator::State::Started, &["helper"])[0];
+        let writer_ids: Vec<_> = positions(
+            "QuiesceCompose",
+            orchestrator::State::Started,
+            &["alpha", "beta"],
+        )
+        .iter()
+        .map(|i| events[*i].invocation.id)
+        .collect();
+        assert_eq!(writer_ids.len(), 2);
+        assert_eq!(
+            events[..helper_stop]
+                .iter()
+                .filter(|e| writer_ids.contains(&e.invocation.id)
+                    && e.state == orchestrator::State::Succeeded)
+                .count(),
+            2
+        );
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }

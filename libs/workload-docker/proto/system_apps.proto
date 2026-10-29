@@ -1,0 +1,15 @@
+syntax = "proto3";
+package doramcap.system_apps.v1;
+
+// Optional supporting apps prepared by the system-app adapter.
+message SystemAppsConfig {
+  CpuMonitor cpu_monitor = 1;
+}
+
+// One fresh CPU collector with its embedded MCAP writer.
+message CpuMonitor {
+  string image = 1; // Prepared local image reference.
+  string backend = 2; // bpf (also the omitted default), or synthetic for fixtures.
+  bool allow_unconfined_seccomp = 3; // Trusted-host exception; excludes seccomp_profile.
+  optional string seccomp_profile = 4; // Absolute reviewed policy, snapshotted privately.
+}

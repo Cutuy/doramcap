@@ -1,7 +1,8 @@
 # Docker workload lifecycle
 
-Run one experiment over prepared Compose projects. Fresh first-party CPU monitoring
-with embedded MCAP recording surrounds foreign workloads. Compose handles project
+Run one experiment over prepared Compose projects. Dedicated system-app steps
+prepare supporting services, launch them and verify their recordings. Independent projects resolve and run concurrently on the local async task.
+Compose handles project
 semantics; Bollard inspects Engine state and verifies cleanup. Writable host-directory
 binds use shared per-run OverlayFS views with default post-stop write-back.
 
@@ -24,7 +25,7 @@ assert!(report.successful());
 ```
 
 [Prepared input and validation](docs/102626-compose-workflow.md) ·
-[First-party Compose](compose/system-services.yaml) ·
+[System Monitor Compose](../../apps/system-monitor/deploy/recording.yaml) ·
 [Runnable example](examples/compose_experiment.rs) ·
 [Robotics qualification](../workload-lifecycle/docs/102626-adoption-candidates.md) ·
 [Filesystem metadata steps](docs/102626-filesystem-metadata.md) ·

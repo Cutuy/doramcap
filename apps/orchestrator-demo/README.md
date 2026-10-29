@@ -22,7 +22,15 @@ server or Node process remains resident. `--port` changes the HTTP port.
 Set `ORCHESTRATOR_ASSETS` to an absolute frontend build directory when relocating
 the server binary. Set `ORCHESTRATOR_BIND` to an IP address for container hosting;
 the default remains `127.0.0.1`. `/health/ready` succeeds while a worker is attached.
-
+The worker accepts `ORCHESTRATOR_DOCKER_SOCKET`, `ORCHESTRATOR_MONITOR_BACKEND`
+and `ORCHESTRATOR_MONITOR_SECCOMP` for trusted deployment configuration. With no
+overrides, it retains the existing native monitor and unconfined seccomp setup.
+Synthetic mode requires an explicit seccomp profile.
+`ORCHESTRATOR_RUN_PREFIX` can scope nested runs to a gallery generation.
+`ORCHESTRATOR_RECOVERY_DIRECTORY` optionally selects a private directory outside
+workload mounts for pre-launch recovery anchors.
+`ORCHESTRATOR_PRIVATE_TELEMETRY=1` sends lifecycle summaries without detailed
+payloads or filesystem paths; full reports remain in the run directory.
 
 [Milestones and validation](docs/102626-live-workflow.md) ·
 [Filesystem tracking](docs/102626-filesystem-tracking.md) ·

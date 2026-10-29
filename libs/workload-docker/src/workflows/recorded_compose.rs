@@ -1,7 +1,11 @@
-//! Record one local Compose run with fresh CPU monitoring and verified teardown.
+//! Compose lifecycle policy with supporting-app steps and verified teardown.
 //!
 //! This concrete workflow selects startup/shutdown order and recording policy.
 //! Individual Compose lifecycle steps can also be used independently.
+use super::system_apps::{
+    self, FinalizeSystemApps, LaunchSystemApps, PrepareSystemApps, SystemAppsConfig,
+    WaitForSystemApps,
+};
 use crate::compose::filesystem::{
     BaselineInput, CaptureFilesystemBaseline, CollectFilesystemChanges, CollectInput,
     FilesystemChanges,
@@ -14,7 +18,7 @@ use crate::{
     compose::error::invalid,
     compose::*,
 };
-use futures_util::StreamExt;
+use futures_util::{StreamExt, future::join_all};
 use orchestrator::{Input, LocalExecutor, Observer};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -27,18 +31,19 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
-    sync::watch,
+    io::AsyncWriteExt,
+    sync::{oneshot, watch},
 };
 
-/// Serial runner for the recorded Compose workflow, with an injected Docker adapter.
+/// Single-session runner with concurrent independent Compose operations.
 ///
 /// `run` accepts fully prepared settings and a cooperative stop future. It never
 /// discovers launch inputs or chooses profiles. Ordinary failures await
 /// independent teardown. Dropping/aborting `run` cannot await cleanup and leaves
 /// this manager blocked; callers must signal stop and continue awaiting the result.
-/// Unknown/failed cleanup blocks subsequent runs on this manager. No crash recovery
-/// or cross-process admission lock is implemented; external Engine access is cooperative.
+/// Unknown/failed cleanup blocks subsequent runs on this manager. Direct-mount
+/// recovery is available through [`super::recovery::recover_project`]. Admission
+/// across processes remains the caller’s responsibility.
 pub struct ComposeRunner {
     adapter: Rc<DockerAdapter>,
     blocked: bool,
@@ -84,6 +89,19 @@ impl ComposeRunner {
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
     ) -> Result<ComposeRunReport> {
+        self.run_with_ready(spec, stop, observer, None).await
+    }
+
+    /// Run a session and notify the caller after every project becomes ready.
+    /// A closed receiver at notification triggers teardown. Continue awaiting
+    /// this future for cleanup; plans remain valid only during the run.
+    pub async fn run_with_ready(
+        &mut self,
+        spec: ComposeRun,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    ) -> Result<ComposeRunReport> {
         if self.blocked {
             return Err(invalid(
                 "manager blocked by an unfinished or unverified experiment",
@@ -97,103 +115,112 @@ impl ComposeRunner {
         let artifacts = tokio::fs::canonicalize(artifacts).await?;
         snapshot(&artifacts, "before").await?;
         let diagnostics = Rc::new(RefCell::new(Vec::new()));
-        let mut executor = LocalExecutor::new(observer)
-            .with_label(&spec.id)
-            .capture_payloads(true);
-        macro_rules! register {
-            ($s:ident) => {{
-                let adapter = self.adapter.clone();
-                let diagnostics = diagnostics.clone();
-                executor.register::<$s>(move || $s {
-                    adapter: adapter.clone(),
-                    diagnostics: diagnostics.clone(),
-                });
-            }};
+        let executor = Rc::new_cyclic(|weak| {
+            let mut executor = LocalExecutor::new(observer)
+                .with_label(&spec.id)
+                .capture_payloads(true);
+            super::steps::register(&mut executor, self.adapter.clone(), diagnostics.clone());
+            let adapter = self.adapter.clone();
+            executor.register::<PrepareOverlays>(move || PrepareOverlays {
+                adapter: adapter.clone(),
+            });
+            executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
+            executor.register::<PrepareSystemApps>(|| PrepareSystemApps);
+            executor.register::<WaitForSystemApps>(|| WaitForSystemApps);
+            executor.register::<FinalizeSystemApps>(|| FinalizeSystemApps);
+            let weak = weak.clone();
+            executor.register::<LaunchSystemApps>(move || LaunchSystemApps {
+                executor: weak.clone(),
+            });
+            executor
+        });
+        if spec.filesystem.is_some() {
+            self.adapter.verify_overlay_namespace().await?;
         }
-        register!(ResolveCompose);
-        register!(StartCompose);
-        register!(InspectCompose);
-        register!(QuiesceCompose);
-        register!(RemoveCompose);
-        let adapter = self.adapter.clone();
-        executor.register::<CaptureFilesystemBaseline>(move || CaptureFilesystemBaseline {
-            adapter: adapter.clone(),
-        });
-        let adapter = self.adapter.clone();
-        executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
-            adapter: adapter.clone(),
-        });
-        let adapter = self.adapter.clone();
-        executor.register::<PrepareOverlays>(move || PrepareOverlays {
-            adapter: adapter.clone(),
-        });
-        executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
-        self.adapter.verify_overlay_namespace().await?;
-        // Resolve all projects before the first workload is launched.
-        let mut plans = Vec::new();
-        let system_file = artifacts.join("system-services.yaml");
-        private_write(
-            &system_file,
-            include_bytes!("../../compose/system-services.yaml"),
-        )
-        .await?;
-        let system = ComposeProject {
-            key: "system".into(),
-            directory: artifacts.clone(),
-            files: vec![system_file],
-            env_files: vec![],
-            profiles: vec![],
-            services: vec![],
-            completed_services: vec![],
-            remove_volumes: false,
-            environment: BTreeMap::from([
-                ("DORAMCAP_MONITOR_IMAGE".into(), spec.monitor.image.clone()),
-                (
-                    "DORAMCAP_MONITOR_BACKEND".into(),
-                    spec.monitor.backend.clone(),
-                ),
-                (
-                    "DORAMCAP_ARTIFACTS".into(),
-                    artifacts.to_string_lossy().into_owned(),
-                ),
-            ]),
-        };
-        for project in std::iter::once(system)
-            .chain(spec.first_party.clone())
-            .chain(spec.projects.clone())
-        {
-            let plan = executor
-                .run::<ResolveCompose>(ResolveInput {
-                    run: spec.id.clone(),
-                    artifacts: artifacts.clone(),
-                    project,
-                })
-                .await
-                .map_err(|e| invalid(e.to_string()))?;
-            plans.push(plan);
-        }
-        let baseline = executor
-            .run::<CaptureFilesystemBaseline>(BaselineInput {
-                projects: plans.iter().map(|p| p.value().clone()).collect(),
+        let system_apps = executor
+            .run::<PrepareSystemApps>(system_apps::PrepareInput {
+                config: spec.system_apps.clone(),
                 artifacts: artifacts.clone(),
             })
             .await
             .map_err(|e| invalid(e.to_string()))?;
-        self.blocked = true;
-        let mut preparation = Input::new(PrepareInput {
-            artifacts: artifacts.clone(),
-            projects: plans.iter().map(|p| p.value().clone()).collect(),
-            policy: spec.filesystem.clone(),
-        })
-        .after(&baseline);
-        for plan in &plans {
-            preparation = preparation.after(plan);
+        let system_count = system_apps.value().projects.len();
+        let projects: Vec<_> = system_apps
+            .value()
+            .projects
+            .iter()
+            .cloned()
+            .chain(spec.first_party.clone())
+            .chain(spec.projects.clone())
+            .collect();
+        let mut keys = HashSet::new();
+        if projects.iter().any(|project| !keys.insert(&project.key)) {
+            return Err(invalid("system and workload project keys must be unique"));
         }
-        let overlays = executor
-            .run::<PrepareOverlays>(preparation)
+        // Resolution has no launch side effects. Independent projects share this task.
+        let resolved = join_all(projects.into_iter().map(|project| {
+            executor.run::<ResolveCompose>(
+                Input::new(ResolveInput {
+                    run: spec.id.clone(),
+                    artifacts: artifacts.clone(),
+                    project,
+                })
+                .after(&system_apps),
+            )
+        }))
+        .await;
+        let mut plans = Vec::new();
+        for plan in resolved {
+            plans.push(plan.map_err(|e| invalid(e.to_string()))?);
+        }
+        let mut input = Input::new(BaselineInput {
+            projects: plans.iter().map(|p| p.value().clone()).collect(),
+            artifacts: artifacts.clone(),
+        });
+        for plan in &plans {
+            input = input.after(plan);
+        }
+        let baseline = executor
+            .run::<CaptureFilesystemBaseline>(input)
             .await
             .map_err(|e| invalid(e.to_string()))?;
-        let plans = overlays.value().projects.clone();
+        if let Some(directory) = &spec.recovery_anchor_dir {
+            super::recovery::write_anchor(
+                directory,
+                &artifacts,
+                &spec.id,
+                &plans
+                    .iter()
+                    .map(|plan| plan.value().clone())
+                    .collect::<Vec<_>>(),
+                &baseline.value().recovery_files(),
+            )
+            .await?;
+        }
+        self.blocked = true;
+        let overlays = if let Some(policy) = &spec.filesystem {
+            let mut preparation = Input::new(PrepareInput {
+                artifacts: artifacts.clone(),
+                projects: plans.iter().map(|p| p.value().clone()).collect(),
+                policy: policy.clone(),
+            })
+            .after(&baseline);
+            for plan in &plans {
+                preparation = preparation.after(plan);
+            }
+            Some(
+                executor
+                    .run::<PrepareOverlays>(preparation)
+                    .await
+                    .map_err(|e| invalid(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+        let plans: Vec<_> = overlays
+            .as_ref()
+            .map(|o| o.value().projects.clone())
+            .unwrap_or_else(|| plans.iter().map(|p| p.value().clone()).collect());
         let (finish, finished) = watch::channel(false);
         let (fault_tx, mut fault) = watch::channel(None::<String>);
         let docker = self.adapter.docker.clone();
@@ -207,32 +234,81 @@ impl ComposeRunner {
             result
         });
         let mut event_task = AbortOnDrop(event_task);
-        let mut attempted = Vec::new();
+        let mut attempted_groups = Vec::new();
         tokio::pin!(stop);
         let execute = async {
-            for plan in &plans {
-                attempted.push(plan.clone()); // retain even if Compose creates only some resources
-                executor
-                    .run::<StartCompose>(
-                        Input::new(StartInput {
+            let mut groups = Vec::new();
+            if system_count != 0 {
+                groups.push(plans[..system_count].to_vec());
+            }
+            // Preserve the declared order of additional supporting projects.
+            for plan in &plans[system_count..system_count + spec.first_party.len()] {
+                groups.push(vec![plan.clone()]);
+            }
+            groups.push(plans[system_count + spec.first_party.len()..].to_vec());
+            let mut previous = None;
+            let mut workload_starts = HashMap::new();
+            for (index, group) in groups.iter().enumerate() {
+                attempted_groups.push(group.clone()); // retain every possible partial launch
+                if index + 1 == groups.len() {
+                    let started = join_all(group.iter().map(|plan| {
+                        let mut input = Input::new(StartInput {
                             plan: plan.clone(),
                             readiness_seconds: spec.readiness_seconds,
                         })
-                        .after(&overlays),
-                    )
-                    .await?;
-                if plan.key == "system" {
-                    monitor_ready(&artifacts, spec.readiness_seconds)
-                        .await
-                        .map_err(|e| orchestrator::Error::message(e.to_string()))?;
+                        .after(&baseline);
+                        if let Some(overlays) = &overlays {
+                            input = input.after(overlays);
+                        }
+                        if let Some(previous) = &previous {
+                            input = input.after(previous);
+                        }
+                        executor.run::<StartCompose>(input)
+                    }))
+                    .await;
+                    // Observe all outcomes before propagating failure; never abandon siblings.
+                    for (plan, result) in group.iter().zip(started) {
+                        workload_starts.insert(plan.key.clone(), result?);
+                    }
+                } else {
+                    let recordings = if index == 0 && system_count != 0 {
+                        system_apps.value().recordings.clone()
+                    } else {
+                        vec![]
+                    };
+                    let mut input = Input::new(system_apps::LaunchInput {
+                        projects: group.clone(),
+                        recordings,
+                        readiness_seconds: spec.readiness_seconds,
+                    })
+                    .after(&baseline);
+                    if let Some(overlays) = &overlays {
+                        input = input.after(overlays);
+                    }
+                    if let Some(previous) = &previous {
+                        input = input.after(previous);
+                    }
+                    previous = Some(executor.run::<LaunchSystemApps>(input).await?);
                 }
             }
+            if let Some(ready) = ready {
+                ready
+                    .send(plans.clone())
+                    .map_err(|_| orchestrator::Error::message("readiness receiver dropped"))?;
+            }
             loop {
-                for plan in &plans {
-                    let state = executor
-                        .run::<InspectCompose>(Input::new(plan.clone()).after(&overlays))
-                        .await?;
-                    if !DockerAdapter::ready(state.value())
+                let states = join_all(plans.iter().map(|plan| {
+                    let mut input = Input::new(plan.clone()).after(&baseline);
+                    if let Some(started) = workload_starts.get(&plan.key) {
+                        input = input.after(started);
+                    } else if let Some(previous) = &previous {
+                        input = input.after(previous);
+                    }
+                    executor.run::<InspectCompose>(input)
+                }))
+                .await;
+                for (plan, state) in plans.iter().zip(states) {
+                    if !DockerAdapter::ready(state?.value())
                         .map_err(|e| orchestrator::Error::message(e.to_string()))?
                     {
                         return Err(orchestrator::Error::message(format!(
@@ -256,127 +332,167 @@ impl ComposeRunner {
         let mut shutdowns = Vec::new();
         let mut stopped_dependencies = Vec::new();
         let mut all_stopped = true;
-        for plan in attempted.iter().rev() {
-            let stopped = executor
-                .run::<QuiesceCompose>(
+        for group in attempted_groups.iter().rev() {
+            let stopped = join_all(group.iter().map(|plan| {
+                executor.run::<QuiesceCompose>(
                     Input::new(StopInput {
                         plan: plan.clone(),
                         stop_seconds: spec.stop_seconds,
                     })
-                    .after(&overlays),
+                    .after(&baseline),
                 )
-                .await;
-            match stopped {
-                Ok(s) => {
-                    all_stopped &= s.value().stopped;
-                    stopped_dependencies.push(s.clone());
-                    shutdowns.push((plan.clone(), s.into_value().diagnostics));
-                }
-                Err(e) => {
-                    all_stopped = false;
-                    shutdowns.push((
-                        plan.clone(),
-                        vec![invalid(e.to_string()).diagnostic("quiesce")],
-                    ));
+            }))
+            .await;
+            for (plan, stopped) in group.iter().zip(stopped) {
+                match stopped {
+                    Ok(s) => {
+                        all_stopped &= s.value().stopped;
+                        stopped_dependencies.push(s.clone());
+                        shutdowns.push((plan.clone(), s.into_value().diagnostics));
+                    }
+                    Err(e) => {
+                        all_stopped = false;
+                        shutdowns.push((
+                            plan.clone(),
+                            vec![invalid(e.to_string()).diagnostic("quiesce")],
+                        ));
+                    }
                 }
             }
-        }
-        // Producer has stopped; check a bounded terminal MCAP footer and stable size.
-        let recording = finalized_recording(&artifacts.join("cpu.mcap")).await;
-        if let Err(e) = &recording {
-            diagnostics
-                .borrow_mut()
-                .push(e.diagnostic("finalize recording"));
         }
         let mut collect_input = Input::new(CollectInput {
             baseline: baseline.value().clone(),
             host_views: overlays
-                .value()
-                .trees
-                .iter()
+                .as_ref()
+                .into_iter()
+                .flat_map(|o| &o.value().trees)
                 .map(|t| (t.source.clone(), t.merged.clone()))
                 .collect(),
-            projects: attempted.clone(),
+            projects: attempted_groups.iter().flatten().cloned().collect(),
         })
         .after(&baseline);
         for stopped in &stopped_dependencies {
             collect_input = collect_input.after(stopped);
         }
-        let filesystem_output = if all_stopped {
-            match executor
-                .run::<CollectFilesystemChanges>(collect_input)
-                .await
-            {
-                Ok(changes) => Some(changes),
-                Err(e) => {
-                    diagnostics
-                        .borrow_mut()
-                        .push(invalid(e.to_string()).diagnostic("filesystem changes"));
-                    None
+        let mut finalize_input =
+            Input::new(system_apps.value().recordings.clone()).after(&system_apps);
+        for stopped in &stopped_dependencies {
+            finalize_input = finalize_input.after(stopped);
+        }
+        // Writers are stopped; read-only recording checks and metadata collection are independent.
+        let (recording, filesystem_output) =
+            tokio::join!(executor.run::<FinalizeSystemApps>(finalize_input), async {
+                if !all_stopped {
+                    return None;
                 }
-            }
-        } else {
-            None
-        };
-        let filesystem_changes = filesystem_output.as_ref().map(|o| o.value().clone());
-        let overlay_output = if let Some(changes) = &filesystem_output {
-            match executor
-                .run::<FinalizeOverlays>(
-                    Input::new(overlays.value().clone())
-                        .after(&overlays)
-                        .after(changes),
-                )
-                .await
-            {
-                Ok(result) => Some(result),
-                Err(e) => {
-                    diagnostics
-                        .borrow_mut()
-                        .push(invalid(e.to_string()).diagnostic("finalize overlays"));
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        let mut cleanup = Vec::new();
-        for (plan, stop_diagnostics) in shutdowns {
-            let mut result = if all_stopped
-                && let (Some(changes), Some(finalized)) = (&filesystem_output, &overlay_output)
-            {
                 match executor
-                    .run::<RemoveCompose>(
-                        Input::new(StopInput {
-                            plan: plan.clone(),
-                            stop_seconds: spec.stop_seconds,
-                        })
-                        .after(&overlays)
-                        .after(changes)
-                        .after(finalized),
+                    .run::<CollectFilesystemChanges>(collect_input)
+                    .await
+                {
+                    Ok(changes) => Some(changes),
+                    Err(e) => {
+                        diagnostics
+                            .borrow_mut()
+                            .push(invalid(e.to_string()).diagnostic("filesystem changes"));
+                        None
+                    }
+                }
+            },);
+        if let Err(error) = &recording {
+            diagnostics
+                .borrow_mut()
+                .push(invalid(error.to_string()).diagnostic("finalize recording"));
+        }
+        let writers_stopped = all_stopped;
+        let filesystem_changes = filesystem_output.as_ref().map(|o| o.value().clone());
+        if overlays.is_none()
+            && let Some(changes) = &filesystem_changes
+            && let Err(error) =
+                super::compose_lifecycle::save_outer_evidence(&artifacts, &spec.id, changes)
+        {
+            diagnostics
+                .borrow_mut()
+                .push(invalid(error).diagnostic("filesystem checkpoint"));
+            all_stopped = false; // Retain resources until their evidence is durable.
+        }
+        let overlay_output =
+            if let (Some(changes), Some(overlays)) = (&filesystem_output, &overlays) {
+                match executor
+                    .run::<FinalizeOverlays>(
+                        Input::new(overlays.value().clone())
+                            .after(overlays)
+                            .after(changes),
                     )
                     .await
                 {
-                    Ok(c) => c.into_value(),
-                    Err(e) => Cleanup {
-                        project: plan.name.clone(),
-                        diagnostics: vec![invalid(e.to_string()).diagnostic("remove")],
-                        remaining: vec!["unknown".into()],
-                        retained_volumes: vec![],
-                        verified: false,
-                    },
+                    Ok(result) => Some(result),
+                    Err(e) => {
+                        diagnostics
+                            .borrow_mut()
+                            .push(invalid(e.to_string()).diagnostic("finalize overlays"));
+                        None
+                    }
                 }
             } else {
-                Cleanup {
-                    project: plan.name.clone(),
-                    diagnostics: vec![],
-                    remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
-                    retained_volumes: vec![],
-                    verified: false,
-                }
+                None
             };
-            result.diagnostics.extend(stop_diagnostics);
-            cleanup.push(result);
-        }
+        // Hosted recovery anchors require retaining experiment volumes whenever
+        // their metadata coverage is incomplete. Standalone runs keep their
+        // existing caller-selected volume policy.
+        let preserve_volumes = spec.recovery_anchor_dir.is_some()
+            && filesystem_changes
+                .as_ref()
+                .is_some_and(|changes| !changes.named_volumes.coverage_complete);
+        let cleanup = join_all(shutdowns.into_iter().map(|(plan, stop_diagnostics)| {
+            let executor = &executor;
+            let baseline = &baseline;
+            let filesystem_output = &filesystem_output;
+            let overlay_output = &overlay_output;
+            let overlays = &overlays;
+            async move {
+                let mut result = if all_stopped
+                    && (overlays.is_none() || overlay_output.is_some())
+                    && let Some(changes) = &filesystem_output
+                {
+                    let mut removal_plan = plan.clone();
+                    if preserve_volumes {
+                        removal_plan.remove_volumes = false;
+                    }
+                    let mut input = Input::new(StopInput {
+                        plan: removal_plan,
+                        stop_seconds: spec.stop_seconds,
+                    })
+                    .after(baseline)
+                    .after(changes);
+                    if let Some(finalized) = &overlay_output {
+                        input = input.after(finalized);
+                    }
+                    match executor.run::<RemoveCompose>(input).await {
+                        Ok(c) => c.into_value(),
+                        Err(e) => Cleanup {
+                            project: plan.name.clone(),
+                            diagnostics: vec![invalid(e.to_string()).diagnostic("remove")],
+                            remaining: vec!["unknown".into()],
+                            retained_volumes: vec![],
+                            verified: false,
+                        },
+                    }
+                } else {
+                    Cleanup {
+                        project: plan.name.clone(),
+                        diagnostics: vec![],
+                        remaining: vec![
+                            "preserved: shutdown or filesystem evidence incomplete".into(),
+                        ],
+                        retained_volumes: vec![],
+                        verified: false,
+                    }
+                };
+                result.diagnostics.extend(stop_diagnostics);
+                result
+            }
+        }))
+        .await;
         let _ = finish.send(true);
         let event_result = (&mut event_task.0).await;
         let event_stream_healthy = matches!(event_result, Ok(Ok(())));
@@ -390,19 +506,30 @@ impl ComposeRunner {
                 .borrow_mut()
                 .push(invalid("workflow observer lost events").diagnostic("observer"));
         }
+        if preserve_volumes {
+            diagnostics.borrow_mut().push(
+                invalid("named-volume evidence incomplete; volumes retained")
+                    .diagnostic("filesystem changes"),
+            );
+        }
         if let Err(e) = snapshot(&artifacts, "after").await {
             diagnostics.borrow_mut().push(e.diagnostic("post-state"));
         }
-        let boundary_clean = overlay_output.is_some()
-            && cleanup
-                .iter()
-                .all(|x| x.verified && x.diagnostics.is_empty());
+        let boundary_clean = all_stopped
+            && filesystem_output.is_some()
+            && (overlays.is_none() || overlay_output.is_some())
+            && cleanup.iter().all(|x| {
+                x.verified
+                    && x.diagnostics.is_empty()
+                    && (!preserve_volumes || x.retained_volumes.is_empty())
+            });
         let report = ComposeRunReport {
             id: spec.id,
             execution_error: outcome.err(),
             diagnostics: diagnostics.borrow().clone(),
             cleanup,
             boundary_clean,
+            writers_stopped,
             recording_finalized: recording.is_ok(),
             event_stream_healthy,
             filesystem_changes,
@@ -428,21 +555,21 @@ fn validate(spec: &ComposeRun) -> Result<()> {
     if !spec.artifacts.is_absolute()
         || spec.projects.is_empty()
         || spec.readiness_seconds == 0
-        || !(1..=60).contains(&spec.stop_seconds)
+        || !(1..=300).contains(&spec.stop_seconds)
     {
         return Err(invalid(
-            "require absolute new artifact directory, foreign projects, positive readiness and stop_seconds 1..60",
+            "require absolute new artifact directory, foreign projects, positive readiness and stop_seconds 1..300",
         ));
     }
-    if !spec.monitor.allow_unconfined_seccomp {
-        return Err(invalid(
-            "current embedded writer requires explicitly approved unconfined seccomp; no silent relaxation",
-        ));
+    spec.system_apps.validate()?;
+    if spec
+        .recovery_anchor_dir
+        .as_ref()
+        .is_some_and(|path| !path.is_absolute())
+    {
+        return Err(invalid("recovery anchor directory must be absolute"));
     }
-    if !["bpf", "synthetic"].contains(&spec.monitor.backend.as_str()) {
-        return Err(invalid("unsupported monitor backend"));
-    }
-    let mut keys = HashSet::from(["system".to_owned()]);
+    let mut keys = HashSet::new();
     for project in spec.first_party.iter().chain(&spec.projects) {
         validate_name(&project.key)?;
         if !project.directory.is_absolute() || !keys.insert(project.key.clone()) {
@@ -453,50 +580,7 @@ fn validate(spec: &ComposeRun) -> Result<()> {
     }
     Ok(())
 }
-async fn monitor_ready(directory: &Path, timeout: u64) -> Result<()> {
-    let start = tokio::time::Instant::now();
-    let mut previous = None;
-    loop {
-        if let Ok(metadata) = tokio::fs::metadata(directory.join("cpu.pb")).await {
-            if previous.is_some_and(|n| n > 0 && metadata.len() > n)
-                && tokio::fs::try_exists(directory.join("cpu.mcap")).await?
-            {
-                return Ok(());
-            }
-            previous = Some(metadata.len());
-        }
-        if start.elapsed() > Duration::from_secs(timeout) {
-            return Err(invalid(
-                "CPU monitor did not advance telemetry/arm MCAP recording",
-            ));
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
-    }
-}
-async fn finalized_recording(path: &Path) -> Result<()> {
-    let mut file = tokio::fs::File::open(path).await?;
-    let len = file.metadata().await?.len();
-    if len < 45 {
-        return Err(invalid("MCAP is truncated"));
-    }
-    let mut header = [0u8; 8];
-    file.read_exact(&mut header).await?;
-    file.seek(std::io::SeekFrom::End(-37)).await?;
-    let mut tail = [0u8; 37];
-    file.read_exact(&mut tail).await?;
-    if &header != b"\x89MCAP0\r\n"
-        || tail[29..] != header
-        || tail[0] != 2
-        || u64::from_le_bytes(tail[1..9].try_into().unwrap()) != 20
-    {
-        return Err(invalid("MCAP terminal footer/magic absent"));
-    }
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    if tokio::fs::metadata(path).await?.len() != len {
-        return Err(invalid("recording changed after producer exit"));
-    }
-    Ok(())
-}
+
 async fn snapshot(root: &Path, phase: &str) -> Result<()> {
     let mut state = BTreeMap::new();
     for name in ["meminfo", "loadavg", "uptime", "sys/kernel/random/boot_id"] {
@@ -562,56 +646,48 @@ async fn record_events(
     }
 }
 
-/// Inputs to the recorded Compose workflow: foreign projects, supporting services
-/// and a fresh CPU recorder, sharing one run lifetime. Images must exist locally.
+/// Inputs to the Compose workflow: workloads and supporting apps sharing one
+/// run lifetime. Images must exist locally.
 /// Artifact directory must be new and have an existing parent.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComposeRun {
-    /// Writable directory binds use OverlayFS; default final disposition writes back.
-    #[serde(default)]
-    pub filesystem: OverlayPolicy,
+    /// Some isolates writable directory binds through OverlayFS. None uses the
+    /// supplied mounts directly. Omitted JSON retains the default write-back policy.
+    #[serde(default = "default_filesystem")]
+    pub filesystem: Option<OverlayPolicy>,
     /// Caller-selected run identifier used in Docker ownership labels and project names.
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
     pub artifacts: PathBuf,
+    /// Existing private directory outside every workload mount, used to freeze
+    /// recovery identities before launch. The caller protects it from workloads.
+    #[serde(default)]
+    pub recovery_anchor_dir: Option<PathBuf>,
     /// Foreign Compose projects owned by this run; at least one is required.
     pub projects: Vec<ComposeProject>,
     /// Additional prepared first-party projects, such as a configured DORA/ROS
     /// subscriber. Started before foreign projects and stopped after them.
     #[serde(default)]
     pub first_party: Vec<ComposeProject>,
-    /// Fresh CPU monitor configuration; its embedded writer records this run.
-    pub monitor: CpuMonitor,
+    /// Supporting-app configuration, interpreted by the dedicated system-app steps.
+    #[serde(default)]
+    pub system_apps: SystemAppsConfig,
     /// Positive startup/readiness budget in seconds; default 60.
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,
-    /// Graceful stop budget per project in seconds, from 1 through 60; default 15.
+    /// Graceful stop budget per project in seconds, from 1 through 300; default 15.
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
+}
+fn default_filesystem() -> Option<OverlayPolicy> {
+    Some(OverlayPolicy::default())
 }
 fn readiness_default() -> u64 {
     60
 }
 fn stop_default() -> u64 {
     15
-}
-
-/// First-party collector settings. Recording uses its embedded MCAP writer.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct CpuMonitor {
-    /// Locally available monitor image reference, resolved to an immutable image ID.
-    pub image: String,
-    /// CpuMonitor backend: `bpf` (default) or `synthetic` for fixtures.
-    #[serde(default = "native_backend")]
-    pub backend: String,
-    /// Explicit trusted-host exception needed by the current io_uring writer.
-    /// This implementation refuses to silently relax Docker's seccomp profile.
-    pub allow_unconfined_seccomp: bool,
-}
-fn native_backend() -> String {
-    "bpf".into()
 }
 
 /// Outcome and cleanup are separate. Inspect `successful()` and `boundary_clean`
@@ -631,7 +707,10 @@ pub struct ComposeRunReport {
     pub cleanup: Vec<Cleanup>,
     /// Whether owned runtime resources were verified cleaned up.
     pub boundary_clean: bool,
-    /// Whether the native CPU MCAP passed finalization checks.
+    /// All attempted project writers stopped, independently of evidence or removal.
+    #[serde(default)]
+    pub writers_stopped: bool,
+    /// Whether configured supporting-app recordings passed finalization checks.
     pub recording_finalized: bool,
     /// Whether event capture completed without a detected error; not a losslessness guarantee.
     pub event_stream_healthy: bool,
@@ -648,5 +727,25 @@ impl ComposeRunReport {
             && self.event_stream_healthy
             && self.diagnostics.is_empty()
             && self.cleanup.iter().all(|x| x.diagnostics.is_empty())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn filesystem_policy_default_and_direct_mount_opt_out() {
+        // Arrange
+        let mut config = serde_json::json!({"id":"run", "artifacts":"/tmp/example", "projects":[{
+            "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
+        }]});
+        // Act / Assert
+        let defaulted: ComposeRun = serde_json::from_value(config.clone()).unwrap();
+        assert!(defaulted.filesystem.is_some());
+        assert!(validate(&defaulted).is_ok());
+        config["filesystem"] = serde_json::Value::Null;
+        let direct: ComposeRun = serde_json::from_value(config).unwrap();
+        assert!(direct.filesystem.is_none());
+        assert!(validate(&direct).is_ok());
     }
 }

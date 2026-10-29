@@ -159,3 +159,16 @@ pub struct Shutdown {
     /// All inspected owned containers are stopped; containers have not been removed.
     pub stopped: bool,
 }
+
+/// An Engine resource carrying a doramcap run ownership label.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OwnedResource {
+    /// Run identity from the ownership label.
+    pub run: String,
+    /// Compose project label, when present.
+    pub project: Option<String>,
+    /// Engine resource category: container, network, or volume.
+    pub kind: &'static str,
+    /// Docker resource ID or volume name.
+    pub id: String,
+}
