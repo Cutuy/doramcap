@@ -11,6 +11,7 @@ import tempfile
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--dora', required=True)
 parser.add_argument('--bin-dir', type=Path, required=True)
+parser.add_argument('--backend', choices=('bpf',), default='bpf')
 args = parser.parse_args()
 bin_dir = args.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:

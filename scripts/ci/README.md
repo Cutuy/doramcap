@@ -77,10 +77,10 @@ python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
 
 Each job runs default and all-feature Rust tests, builds native binaries/examples,
 then runs privileged cgroup accounting integration and allocation validation.
-The worker also benchmarks storage allocations and runs synthetic/native Dora
+The worker also benchmarks storage allocations and runs native Dora
 recording comparisons when the pinned CLI is installed at
 `/home/doramcap-ci/.local/bin/dora`. Native Dora validation runs through the
-approved root launcher; synthetic validation runs unprivileged.
+approved root launcher, alongside Storage demo integration tests.
 
 Persistent locations on the worker:
 

@@ -7,7 +7,7 @@ correlated events, CPU timing and on-disk record inspection.
 npm ci --prefix apps/storage-demo/frontend
 npm run build --prefix apps/storage-demo/frontend
 cargo build -p storage-demo -p system-monitor --features system-monitor/bpf
-cargo run -p storage-demo
+cargo run -p storage-demo -- --monitor "$PWD/apps/system-monitor/scripts/run-native-monitor.sh"
 # http://127.0.0.1:8091
 ```
 

@@ -1,6 +1,6 @@
 nodes:
   - id: system-monitor
-    path: ../../../target/debug/system-monitor
+    path: ../../system-monitor/scripts/run-native-monitor.sh
     args: --backend bpf --samples 10 --dora
     outputs:
       - snapshots

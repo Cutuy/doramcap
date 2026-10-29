@@ -83,7 +83,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dora", default="dora")
     parser.add_argument("--runs", type=int, default=1, help="repeat independent sessions to exercise shutdown races")
-    parser.add_argument("--backend", choices=("synthetic", "bpf"), default="synthetic")
+    parser.add_argument("--backend", choices=("bpf",), default="bpf")
     parser.add_argument("--bin-dir", type=Path, default=Path(__file__).resolve().parents[3] / "target/debug")
     args = parser.parse_args()
     if args.runs < 1:
@@ -116,13 +116,9 @@ def run_session(args, run):
         for i, message in enumerate(messages):
             assert message["records"], "missing numeric accounting records"
             assert message["capacity_overflow"] == 0 and message["dropped_batches"] == 0
-            if args.backend == "synthetic":
-                assert all(record["runtime_ns"] == (i + 1) * 50_000_000
-                           for record in message["records"])
-            else:
-                assert any(record["flags"] & 1 and record["runtime_ns"] > 0
-                           for record in message["records"])
-                assert all(not (record["flags"] & 64) for record in message["records"])
+            assert any(record["flags"] & 1 and record["runtime_ns"] > 0
+                       for record in message["records"])
+            assert all(not (record["flags"] & 64) for record in message["records"])
         assert all(a["capture_unix_ns"] < b["capture_unix_ns"]
                    for a, b in zip(messages, messages[1:]))
         print(f"PASS session {run + 1}: 10 Dora samples, original sequence/timestamps, "
