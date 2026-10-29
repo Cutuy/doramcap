@@ -14,4 +14,4 @@ rm -r "$stage"
 
 `registration.pbtxt` declares the headless gallery app. `recording.yaml` is the
 shared Docker workflow's supporting collector: it writes `cpu.pb` and `cpu.mcap`
-until stopped. Its direct MCAP writer requires an explicit io_uring seccomp policy.
+until stopped. It uses `seccomp=unconfined` for the direct MCAP writer’s io_uring calls.

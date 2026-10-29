@@ -18,5 +18,4 @@ artifact_collections {
 }
 shutdown_marker: "shutdown.complete"
 env_prefix: "FAULT_WATCHDOG"
-seccomp_file: "seccomp.json"
 requires_explicit_enable: true

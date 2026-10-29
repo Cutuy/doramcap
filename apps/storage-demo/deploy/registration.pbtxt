@@ -9,5 +9,4 @@ result_file: "activity.mcap"
 capture_directory: "captures"
 exclusive_resources: "host-bpf-monitor"
 env_prefix: "STORAGE"
-seccomp_file: "seccomp.json"
 requires_explicit_enable: true

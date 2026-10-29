@@ -55,6 +55,7 @@ message AppRegistration {
   bool nested_runs = 20;
   repeated doramcap.recovery.v1.RecoveryProject nested_projects = 21;
   string env_prefix = 22;
-  optional string seccomp_file = 23;
+  reserved 23;
+  reserved "seccomp_file";
   bool requires_explicit_enable = 24;
 }

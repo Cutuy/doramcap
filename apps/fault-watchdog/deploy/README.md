@@ -9,7 +9,7 @@ using this directory's `flow.yml` and `Dockerfile`. Tag the image
 
 For MCAP, build with `--features mcap`, stage `watchdog-mcap.pbtxt` as
 `watchdog.pbtxt`, and use `compose.mcap.yaml` and `registration.mcap.pbtxt`.
-The profile needs the reviewed io_uring seccomp policy and rotates at 16 MiB.
+The MCAP profile uses `seccomp=unconfined` for io_uring and rotates at 16 MiB.
 
 For OTLP, build with `--features otel`, configure a container-reachable collector
 URL in a private copy of `watchdog-otel.pbtxt`, and use `compose.otel.yaml` and

@@ -9,7 +9,7 @@ services:
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
-      - seccomp=${FAULT_WATCHDOG_SECCOMP:?}
+      - seccomp=unconfined
     tmpfs: [/tmp]
     volumes:
       - type: bind

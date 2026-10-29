@@ -12,7 +12,7 @@ services:
     ulimits:
       memlock: {soft: 268435456, hard: 268435456}
     security_opt:
-      - seccomp=${STORAGE_SECCOMP:?}
+      - seccomp=unconfined
     tmpfs: [/tmp]
     volumes:
       - type: bind

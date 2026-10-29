@@ -32,7 +32,7 @@ sudo /path/to/venv/bin/python apps/system-monitor/tests/validate_native.py --mon
 ## Embedded MCAP recording
 
 The [native BPF Compose template](deploy/recording.yaml) lets the shared Docker workflow retain CPU recordings without a separate recorder process. The workflow supplies
-the image, output directory and seccomp policy, then snapshots the selected
+the image and output directory, then snapshots the selected
 template into each run’s private artifacts.
 
 ```sh
