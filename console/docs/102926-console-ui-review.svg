@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
+<title id="title">Console concept — review the application</title>
+<desc id="desc">Read-only review of the selected project, enabled services, profile and CPU recording availability. Start run is the primary action.</desc>
+<style>text{font-family:Inter,Arial,sans-serif} .mono{font-family:monospace} </style>
+<rect x="0" y="0" width="1200" height="820" rx="0" fill="#F5F7F6"/>
+<rect x="0" y="0" width="1200" height="64" rx="0" fill="#FFFFFF"/>
+<text x="48" y="40" font-size="21" fill="#20352F" font-weight="700" text-anchor="start">doramcap</text>
+<path d="M167 23L167 43" stroke="#D9E2DD"/>
+<text x="187" y="40" font-size="16" fill="#596B64" font-weight="400" text-anchor="start">Console</text>
+<text x="1152" y="39" font-size="13" fill="#596B64" font-weight="500" text-anchor="end">Host · lab-01</text>
+<path d="M0 64H1200" stroke="#D9E2DD"/>
+<text x="64" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">01</text>
+<text x="93" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Project</text>
+<path d="M206 100H222" stroke="#D9E2DD"/>
+<rect x="230" y="84" width="145" height="32" rx="16" fill="#E8F2EE"/>
+<text x="238" y="105" font-size="12" fill="#166653" font-weight="600" text-anchor="start">02</text>
+<text x="267" y="105" font-size="14" fill="#166653" font-weight="600" text-anchor="start">Review</text>
+<path d="M380 100H396" stroke="#D9E2DD"/>
+<text x="412" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">03</text>
+<text x="441" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Run</text>
+<path d="M554 100H570" stroke="#D9E2DD"/>
+<text x="586" y="105" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">04</text>
+<text x="615" y="105" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Result</text>
+<text x="64" y="168" font-size="30" fill="#20352F" font-weight="600" text-anchor="start">Review project</text>
+<text x="64" y="199" font-size="15" fill="#596B64" font-weight="400" text-anchor="start">Check what will run before starting.</text>
+<rect x="968" y="142" width="168" height="44" rx="8" fill="#166653"/>
+<text x="1052.0" y="170" font-size="14" fill="#FFFFFF" font-weight="600" text-anchor="middle">Start run</text>
+<text x="64" y="788" font-size="11" fill="#596B64" font-weight="500" text-anchor="start">CONCEPT · Sample project and illustrative data</text>
+<text x="1136" y="788" font-size="11" fill="#596B64" font-weight="400" text-anchor="end">Single host / one active run</text>
+<rect x="64" y="240" width="704" height="166" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="92" y="277" font-size="19" fill="#20352F" font-weight="600" text-anchor="start">sample-project</text>
+<text x="740" y="276" font-size="13" fill="#166653" font-weight="600" text-anchor="end">Change selection</text>
+<text x="92" y="310" font-size="14" fill="#596B64" font-weight="400" text-anchor="start" class="mono">/srv/projects/sample-project</text>
+<text x="92" y="363" font-size="13" fill="#596B64" font-weight="400" text-anchor="start">Enabled profile</text>
+<rect x="214" y="343" width="124" height="28" rx="14" fill="#E8F2EE"/>
+<text x="228" y="362" font-size="13" fill="#166653" font-weight="600" text-anchor="start">extra-worker</text>
+<rect x="64" y="426" width="704" height="264" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="92" y="465" font-size="19" fill="#20352F" font-weight="600" text-anchor="start">Application</text>
+<text x="92" y="499" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">Service</text>
+<text x="394" y="499" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">Image</text>
+<text x="740" y="499" font-size="12" fill="#596B64" font-weight="600" text-anchor="end">Availability</text>
+<path d="M92 514H740" stroke="#D9E2DD"/>
+<text x="92" y="550" font-size="15" fill="#20352F" font-weight="500" text-anchor="start">worker</text>
+<text x="394" y="550" font-size="13" fill="#596B64" font-weight="400" text-anchor="start" class="mono">sample-worker:local</text>
+<text x="740" y="550" font-size="14" fill="#267047" font-weight="500" text-anchor="end">Available</text>
+<text x="92" y="610" font-size="15" fill="#20352F" font-weight="500" text-anchor="start">extra-worker</text>
+<text x="394" y="610" font-size="13" fill="#596B64" font-weight="400" text-anchor="start" class="mono">sample-worker:local</text>
+<text x="740" y="610" font-size="14" fill="#267047" font-weight="500" text-anchor="end">Available</text>
+<path d="M92 576H740" stroke="#D9E2DD"/>
+<rect x="792" y="240" width="344" height="260" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="820" y="279" font-size="18" fill="#20352F" font-weight="600" text-anchor="start">CPU recording</text>
+<rect x="820" y="301" width="145" height="28" rx="14" fill="#E8F2EE"/>
+<text x="834" y="320" font-size="13" fill="#267047" font-weight="600" text-anchor="start">Image available</text>
+<text x="820" y="362" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">The monitor will start with this run.</text>
+<text x="820" y="388" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Recording is confirmed after startup.</text>
+<path d="M820 416H1108" stroke="#D9E2DD"/>
+<text x="820" y="451" font-size="12" fill="#596B64" font-weight="600" text-anchor="start">Output</text>
+<text x="1108" y="451" font-size="13" fill="#20352F" font-weight="500" text-anchor="end">CPU MCAP + report</text>
+<rect x="792" y="520" width="344" height="170" rx="12" fill="#FFFFFF" stroke="#D9E2DD"/>
+<text x="820" y="557" font-size="16" fill="#20352F" font-weight="600" text-anchor="start">Execution policy</text>
+<text x="820" y="592" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Automatic restarts are disabled.</text>
+<text x="820" y="618" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Console owns stopping and cleanup.</text>
+<text x="820" y="653" font-size="13" fill="#596B64" font-weight="400" text-anchor="start">Compose files stay unchanged.</text>
+<text x="64" y="743" font-size="14" fill="#596B64" font-weight="400" text-anchor="start">Changing the project or profiles requires another review.</text>
+</svg>
