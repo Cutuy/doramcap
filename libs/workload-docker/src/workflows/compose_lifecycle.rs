@@ -174,7 +174,10 @@ struct OuterEvidence {
 }
 
 /// Validate a completed checkpoint using files beneath the private metadata root.
-fn read_outer_evidence(metadata: &Path, run: &str) -> Result<Option<FilesystemChanges>, String> {
+pub(crate) fn read_outer_evidence(
+    metadata: &Path,
+    run: &str,
+) -> Result<Option<FilesystemChanges>, String> {
     use std::io::Read;
     let root = crate::evidence::root(metadata).map_err(|e| e.to_string())?;
     let file = match crate::evidence::open(&root, "outer-evidence.json", false) {

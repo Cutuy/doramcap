@@ -1072,3 +1072,130 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
     }
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and DORAMCAP_TEST_IMAGE"]
+async fn nested_recovery_reuses_evidence_after_partial_removal() {
+    use std::{os::unix::fs::DirBuilderExt, process::Command};
+    use workload_docker::workflows::recovery::{RecoveryGroup, RecoveryProject, reconcile_group};
+
+    // Arrange: two anchored projects and an unrelated container keeping one network busy.
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let parent = format!("retry-{}", std::process::id());
+    let id = format!("{parent}-1");
+    let root = std::env::temp_dir().join(&parent);
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&root)
+        .unwrap();
+    let anchors = root.join("anchors");
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&anchors)
+        .unwrap();
+    for key in ["alpha", "beta"] {
+        write(
+            &root.join(format!("{key}.json")),
+            serde_json::json!({"services":{"app":service(&image)}}),
+        );
+    }
+    let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let (ready, started) = tokio::sync::oneshot::channel();
+    let mut run = Box::pin(runner.run_with_ready(
+        ComposeRun {
+            id: id.clone(),
+            artifacts: root.join(&id),
+            filesystem: None,
+            recovery_anchor_dir: Some(anchors.clone()),
+            projects: vec![project(&root, "alpha"), project(&root, "beta")],
+            first_party: vec![],
+            system_apps: Default::default(),
+            readiness_seconds: 10,
+            stop_seconds: 3,
+        },
+        std::future::pending(),
+        |_: &orchestrator::Event| {},
+        Some(ready),
+    ));
+    let plans = tokio::select! {
+        ready = started => ready.unwrap(),
+        result = &mut run => panic!("ended before readiness: {result:?}"),
+    };
+    drop(run);
+    let policy: Vec<_> = plans
+        .iter()
+        .rev()
+        .map(|p| RecoveryProject {
+            key: p.key.clone(),
+            remove_volumes: p.remove_volumes,
+        })
+        .collect();
+    let first = plans.last().unwrap();
+    let blocker = format!("{parent}-blocker");
+    let docker = |args: &[&str]| {
+        Command::new("docker")
+            .args(["--host", &format!("unix://{socket}")])
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let attached = docker(&[
+        "run",
+        "-d",
+        "--name",
+        &blocker,
+        "--network",
+        &format!("{}_default", first.name),
+        "--entrypoint",
+        "/bin/sleep",
+        &image,
+        "infinity",
+    ]);
+    assert!(
+        attached.status.success(),
+        "{}",
+        String::from_utf8_lossy(&attached.stderr)
+    );
+    let group = |attempt| RecoveryGroup {
+        artifacts_root: &root,
+        anchors: &anchors,
+        parent_run: &parent,
+        policy: &policy,
+        stop_seconds: 3,
+        preserve_only: false,
+        attempt,
+    };
+
+    // Act: collection succeeds, but network removal fails after its container is gone.
+    let partial = reconcile_group(adapter.clone(), group(1)).await;
+    let first_gone = adapter.inspect(first).await.unwrap().containers.is_empty();
+    let detached = docker(&["rm", "-f", &blocker]);
+    assert!(
+        detached.status.success(),
+        "{}",
+        String::from_utf8_lossy(&detached.stderr)
+    );
+
+    // Assert: complete evidence survives the failed removal.
+    assert!(partial.is_err());
+    assert!(first_gone);
+    let checkpoint = anchors.join(&id).join("outer-evidence.json");
+    let saved = std::fs::read(&checkpoint).unwrap();
+
+    // Act: a corrupt checkpoint must not authorize removal on a retry.
+    std::fs::write(&checkpoint, b"invalid").unwrap();
+    let corrupt = reconcile_group(adapter.clone(), group(2)).await;
+    let retained = !adapter.discover_runs(&id).await.unwrap().is_empty();
+    std::fs::write(&checkpoint, saved).unwrap();
+
+    // Act: retry with the intact saved evidence, without recollecting missing containers.
+    let retry = reconcile_group(adapter.clone(), group(3)).await;
+
+    // Assert: corrupt evidence fails closed; restored evidence permits verified cleanup.
+    assert!(corrupt.is_err());
+    assert!(retained);
+    assert!(retry.is_ok(), "{retry:?}");
+    assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+}

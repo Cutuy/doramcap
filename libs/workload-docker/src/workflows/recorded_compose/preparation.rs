@@ -1,10 +1,9 @@
 //! Side-effect-free Docker preflight and private run metadata preparation.
-use super::{
-    dora, observation,
-    project_steps::LaunchInput,
-    recorded_compose::ComposeRun,
+use super::super::{
+    dora,
     system_apps::{self, PrepareSystemApps},
 };
+use super::{ComposeRun, observation, projects::LaunchInput};
 use crate::compose::{
     adapter::validate_name,
     error::invalid,
@@ -132,7 +131,7 @@ impl PrepareRun {
             .await
             .map_err(|e| invalid(e.to_string()))?;
         if let Some(directory) = &spec.recovery_anchor_dir {
-            super::recovery::write_anchor(
+            super::super::recovery::write_anchor(
                 directory,
                 &artifacts,
                 &spec.id,
@@ -170,6 +169,9 @@ impl PrepareRun {
 
 pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     validate_name(&spec.id)?;
+    for flow in &spec.system_apps.dora_flows {
+        dora::validate_runtime(flow)?;
+    }
     if !spec.artifacts.is_absolute()
         || spec.projects.is_empty()
         || spec.readiness_seconds == 0

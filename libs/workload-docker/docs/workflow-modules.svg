@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1130" viewBox="0 0 1280 1130" role="img" aria-labelledby="title desc">
+  <title id="title">workload-docker workflow modules</title>
+  <desc id="desc">ComposeRunner in recorded_compose orders preparation, optional overlays, launch, observation, quiescence, finalization, removal and reporting. Supporting modules supply system-app and Dora steps, event capture, shared Docker operations and explicit crash recovery. Solid arrows show execution order; dashed arrows show module calls. Independent siblings use cooperative async concurrency.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8" fill="#475569"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #17324d; }
+      .title { font-size: 24px; font-weight: 700; }
+      .heading { font-size: 17px; font-weight: 700; }
+      .body { font-size: 15px; }
+      .small { font-size: 14px; }
+      .module { font-family: monospace; font-size: 16px; font-weight: 700; }
+      .phase { fill: #eff6ff; stroke: #94a3b8; }
+      .support { fill: #f0fdf4; stroke: #94a3b8; }
+      .flow { fill: none; stroke: #475569; stroke-width: 1.6; marker-end: url(#arrow); }
+      .call { fill: none; stroke: #475569; stroke-width: 1.4; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1280" height="1130" fill="white"/>
+  <text x="30" y="35" class="title">workload-docker: workflow modules</text>
+  <text x="30" y="61" class="body">All files below are modules in one Rust crate. Paths are relative to src/workflows/.</text>
+
+  <rect x="30" y="82" width="1220" height="78" rx="8" fill="#e2e8f0"/>
+  <text x="50" y="109" class="module">recorded_compose/mod.rs → ComposeRunner</text>
+  <text x="50" y="134" class="body">Orders phases, races execution against stop/failure, retains attempted plans and gates the next run.</text>
+  <text x="30" y="191" class="heading">Execution: recorded_compose/</text>
+  <text x="720" y="191" class="heading">Supporting modules / dependencies</text>
+
+  <g class="phase">
+    <rect x="30" y="210" width="590" height="90" rx="7"/>
+    <rect x="30" y="325" width="590" height="65" rx="7"/>
+    <rect x="30" y="415" width="590" height="100" rx="7"/>
+    <rect x="30" y="540" width="590" height="75" rx="7"/>
+    <rect x="30" y="640" width="590" height="100" rx="7"/>
+    <rect x="30" y="765" width="590" height="100" rx="7"/>
+    <rect x="30" y="890" width="590" height="65" rx="7"/>
+    <rect x="30" y="980" width="590" height="65" rx="7"/>
+  </g>
+  <text x="48" y="236" class="module">preparation.rs · PrepareRun</text>
+  <text x="48" y="262" class="body">Validate → prepare system apps → resolve projects concurrently</text>
+  <text x="48" y="284" class="body">Capture filesystem baseline; save optional recovery anchor</text>
+  <text x="48" y="351" class="module">compose::overlay · PrepareOverlays (optional)</text>
+  <text x="48" y="376" class="body">Mount per-run views; substitute execution manifests</text>
+  <text x="48" y="441" class="module">projects.rs · LaunchProjects / LaunchDoraFlows</text>
+  <text x="48" y="467" class="body">Supporting groups → ordered first-party groups → workloads</text>
+  <text x="48" y="491" class="body">Concurrent siblings per group; then start Dora flows concurrently</text>
+  <text x="48" y="566" class="module">projects.rs · ObserveProjects</text>
+  <text x="48" y="592" class="body">Poll Compose + Dora concurrently until stop or runtime failure</text>
+  <text x="48" y="666" class="module">projects.rs · QuiesceProjects</text>
+  <text x="48" y="692" class="body">Dora shutdown stages: workloads → producers → recorder drain</text>
+  <text x="48" y="716" class="body">Then stop Compose groups in reverse order; concurrent siblings</text>
+  <text x="48" y="791" class="module">finalization.rs · FinalizeRun</text>
+  <text x="48" y="817" class="body">Verify recordings + collect filesystem changes concurrently</text>
+  <text x="48" y="841" class="body">Persist evidence; finalize overlays/write-back; gate removal</text>
+  <text x="48" y="916" class="module">projects.rs · RemoveProjects</text>
+  <text x="48" y="941" class="body">Remove eligible projects concurrently; verify cleanup</text>
+  <text x="48" y="1006" class="module">finalization.rs · WriteRunReport</text>
+  <text x="48" y="1031" class="body">Finish event capture; save post-state, report and admission state</text>
+
+  <g class="flow">
+    <path d="M325 160V210"/>
+    <path d="M325 300V325"/><path d="M325 390V415"/>
+    <path d="M325 515V540"/><path d="M325 615V640"/>
+    <path d="M325 740V765"/><path d="M325 865V890"/>
+    <path d="M325 955V980"/>
+  </g>
+
+  <g class="support">
+    <rect x="720" y="210" width="530" height="110" rx="7"/>
+    <rect x="720" y="350" width="530" height="100" rx="7"/>
+    <rect x="720" y="480" width="530" height="100" rx="7"/>
+    <rect x="720" y="610" width="530" height="90" rx="7"/>
+    <rect x="720" y="730" width="530" height="145" rx="7"/>
+    <rect x="720" y="905" width="530" height="140" rx="7"/>
+  </g>
+  <text x="738" y="237" class="module">steps.rs + orchestrator::LocalExecutor</text>
+  <text x="738" y="263" class="body">Register step factories, shared adapter and diagnostics.</text>
+  <text x="738" y="286" class="body">Phase steps invoke child steps through this executor.</text>
+  <text x="738" y="308" class="small">Concurrency is explicit join_all / join! on the async task.</text>
+  <text x="738" y="377" class="module">system_apps.rs</text>
+  <text x="738" y="403" class="body">Generated config; prepare supporting Compose projects.</text>
+  <text x="738" y="426" class="body">Probe recording readiness and validate finalized recordings.</text>
+  <text x="738" y="507" class="module">dora.rs</text>
+  <text x="738" y="533" class="body">Bind, start, inspect and stop configured Dora flows.</text>
+  <text x="738" y="556" class="body">CLI runs in owned Compose services; checkpoint flow IDs.</text>
+  <text x="738" y="637" class="module">recorded_compose/observation.rs</text>
+  <text x="738" y="663" class="body">Before/after host snapshots; Docker event stream.</text>
+  <text x="738" y="686" class="body">Runner watches stream failure throughout execution.</text>
+  <text x="738" y="757" class="module">compose::* (outside workflows/)</text>
+  <text x="738" y="783" class="body">Resolve / start / inspect / quiesce / remove steps</text>
+  <text x="738" y="806" class="body">Filesystem baseline + changes; overlay prepare + finalize</text>
+  <text x="738" y="829" class="body">DockerAdapter → Compose CLI + Docker Engine</text>
+  <text x="738" y="855" class="small">Used by phase steps and the recovery path below.</text>
+  <text x="738" y="932" class="module">recovery.rs → compose_lifecycle.rs</text>
+  <text x="738" y="958" class="body">Explicit entry points after an interrupted run.</text>
+  <text x="738" y="981" class="body">Verify identity → recover Dora → stop → collect → remove.</text>
+  <text x="738" y="1004" class="body">Checkpoint evidence; reuse it after partial removal.</text>
+  <text x="738" y="1027" class="small">Direct-mount recovery retains runs needing overlay finalization.</text>
+
+  <g class="call">
+    <path d="M620 255H720"/>
+    <path d="M620 280L720 388"/>
+    <path d="M620 465L720 520"/>
+    <path d="M620 578L720 548"/>
+    <path d="M620 690L720 568"/>
+    <path d="M620 815H720"/>
+  </g>
+  <text x="30" y="1082" class="small">Solid arrows: phase order. Dashed arrows: selected module calls; supporting boxes describe the remaining shared uses.</text>
+  <text x="30" y="1106" class="small">Stop / startup failure enters quiescence with every attempted plan. Failed evidence or cleanup can retain resources and block admission.</text>
+</svg>

@@ -47,12 +47,32 @@ for every attempted project even after a partial launch. Inspection failures and
 residual owned containers block further runs on that manager instance. Graceful
 stop failure remains visible even when forced removal clears a container.
 
-Initial scope is cooperative local Engine access. No remote execution, recovery
-journal, application-specific machine reconfiguration, interactive PTY frontend,
-or inferred robot readiness. Container healthchecks are honored; running without
+Scope is cooperative local Engine access with explicit direct-mount recovery.
+Remote execution, application-specific machine reconfiguration, interactive PTY
+frontends and inferred robot readiness remain outside scope. Container healthchecks are honored; running without
 one is reported as process-level readiness. Writable host-directory binds use per-run overlays with post-stop write-back.
 Named volumes, devices and networks retain their explicit policies. See the
 [isolation contract and current qualification](102626-docker-experiment-isolation.md).
+
+## Target: shared Dora infrastructure
+
+![Current and proposed Dora ownership](shared-dora.svg)
+
+Common Dora infrastructure belongs to the shared Docker workflow layer. Future
+Docker workflows reuse that lifecycle; the app gallery is one consumer.
+The coordinator and daemon may run directly on the host; containerization is optional.
+
+The enclosing workflow starts Dora, then recording/supporting containers, then
+user containers. Shutdown stops users first, drains and stops supporting services,
+then stops Dora before final result/resource cleanup. Participating containers
+share one Dora/IPC domain; container IPC access, shared-memory mounts and node
+attachment must be configured and validated together. Dataflow routes remain
+explicit. Infrastructure lifetime covers every participating app.
+
+This is the target architecture. Current app deployments still create separate
+coordinator/daemon pairs, and the runner controls their app-specific flows.
+Replace that arrangement in the shared workflow layer; keep gallery-specific
+session policy outside it.
 
 ## Prepared request
 
@@ -143,7 +163,7 @@ observed transport/write failure, not a claim of lossless daemon history.
   are preserved. Successful exit must be declared or used as a completion dependency.
 - Caller and daemon share a trusted local host. Access to Docker is cooperative;
   this is not enforcement against root or another Docker client. No cross-process
-  experiment lock, remote executor, crash recovery, PTY frontend or arbitrary
+  experiment lock, remote executor, PTY frontend or arbitrary
   nested-launch mediation is provided by this implementation.
 - The current writer uses io_uring; the supplied first-party template explicitly
   uses `seccomp=unconfined` plus BPF/PERFMON/SYSLOG capabilities.
@@ -152,6 +172,11 @@ Dora-backed projects declare `system_apps.dora_flows` with their service, descri
 and ordered node groups. Shared launch/inspection/shutdown steps use Dora’s native
 controls before Compose teardown; recovery uses the saved flow UUID. See the
 [CPU Viewer registration](../../../apps/cpu-viewer/deploy/registration.pbtxt).
+
+Nested direct-mount recovery checkpoints complete filesystem evidence under its
+private anchor directory before removal. A retry reuses that evidence after partial
+removal. Missing or damaged checkpoints retain resources; OverlayFS recovery still
+requires its separate finalization path.
 
 ## Qualification
 

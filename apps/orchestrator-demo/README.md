@@ -31,7 +31,7 @@ payloads or filesystem paths; full reports remain in the run directory.
 
 [Milestones and validation](docs/102626-live-workflow.md) ·
 [Filesystem tracking](docs/102626-filesystem-tracking.md) ·
-[Compose workflow](../../libs/workload-docker/src/workflows/recorded_compose.rs) ·
+[Compose workflow](../../libs/workload-docker/src/workflows/recorded_compose/mod.rs) ·
 [Telemetry observer](../../libs/orchestrator/src/telemetry.rs)
 
 The filesystem panel separates host binds, container layers and named volumes,

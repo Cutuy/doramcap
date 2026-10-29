@@ -1,6 +1,28 @@
 //! Descriptor-relative access to private workflow evidence and retained artifacts.
 use rustix::fs::{Mode, OFlags, ResolveFlags, openat2};
 use std::{fs::File, io, os::unix::fs::OpenOptionsExt, path::Path};
+use tokio::io::AsyncReadExt;
+
+/// Read bounded private metadata without following its final component.
+/// Rejects non-regular files and growth beyond `limit`; parents are caller-owned.
+pub(crate) async fn read_regular(path: &Path, limit: u64) -> crate::compose::Result<Vec<u8>> {
+    use crate::compose::error::invalid;
+    let file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return Err(invalid("recovery metadata is not a bounded regular file"));
+    }
+    let mut bytes = Vec::new();
+    file.take(limit + 1).read_to_end(&mut bytes).await?;
+    if bytes.len() as u64 > limit {
+        return Err(invalid("recovery metadata exceeds its size limit"));
+    }
+    Ok(bytes)
+}
 
 /// Open a directory without following its final component if it is a symlink.
 /// The caller supplies a trusted parent path and owns the returned descriptor.

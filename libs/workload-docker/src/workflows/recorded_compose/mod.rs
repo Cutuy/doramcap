@@ -1,15 +1,19 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
-use super::{
-    dora,
+pub mod finalization;
+mod observation;
+pub mod preparation;
+pub mod projects;
+
+use self::{
+    finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
     observation::EventCapture,
-    project_steps::{
+    preparation::PrepareRun,
+    projects::{
         LaunchDoraFlows, LaunchFlowsInput, LaunchProjects, ObserveInput, ObserveProjects,
         QuiesceInput, QuiesceProjects, RemoveInput, RemoveProjects,
     },
-    run_finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
-    run_preparation::PrepareRun,
-    system_apps::SystemAppsConfig,
 };
+use super::{dora, system_apps::SystemAppsConfig};
 use crate::compose::{
     error::invalid,
     filesystem::FilesystemChanges,
@@ -382,10 +386,37 @@ mod tests {
         // Act / Assert
         let defaulted: ComposeRun = serde_json::from_value(config.clone()).unwrap();
         assert!(defaulted.filesystem.is_some());
-        assert!(super::super::run_preparation::validate(&defaulted).is_ok());
+        assert!(super::preparation::validate(&defaulted).is_ok());
         config["filesystem"] = serde_json::Value::Null;
         let direct: ComposeRun = serde_json::from_value(config).unwrap();
         assert!(direct.filesystem.is_none());
-        assert!(super::super::run_preparation::validate(&direct).is_ok());
+        assert!(super::preparation::validate(&direct).is_ok());
+    }
+
+    #[test]
+    fn preflight_requires_complete_dora_runtime_paths() {
+        // Arrange: registration loading permits a path supplied by the run owner.
+        let mut spec: ComposeRun = serde_json::from_value(serde_json::json!({
+            "id":"run", "artifacts":"/tmp/example", "projects":[{
+                "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
+            }], "system_apps":{"dora_flows":[{
+                "project":"workload", "service":"daemon", "name":"flow",
+                "descriptor":"/opt/flow.yml", "shutdown":[{"nodes":["source"]}]
+            }]}
+        }))
+        .unwrap();
+        assert!(dora::validate(&spec.system_apps.dora_flows[0]).is_ok());
+
+        // Act / Assert: runtime preflight rejects missing and relative paths.
+        for path in ["", "relative/results"] {
+            spec.system_apps.dora_flows[0].results_directory = path.into();
+            assert!(preparation::validate(&spec).is_err());
+        }
+
+        // Act: the caller supplies the absolute results directory before preparation.
+        spec.system_apps.dora_flows[0].results_directory = "/tmp/results".into();
+
+        // Assert
+        assert!(preparation::validate(&spec).is_ok());
     }
 }

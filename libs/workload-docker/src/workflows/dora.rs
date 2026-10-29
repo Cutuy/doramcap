@@ -1,11 +1,12 @@
 //! Workflow-owned Dora lifecycle through its supported CLI and owned Compose services.
 //! Commands address Dora node IDs; Compose retains ownership of foreground infrastructure.
-use super::{recovery::read_regular, system_apps::DoraFlow};
+use super::system_apps::DoraFlow;
 use crate::compose::{
     DockerAdapter, ResolvedComposeProject, Result,
     adapter::{private_write, validate_name},
     error::invalid,
 };
+use crate::evidence::read_regular;
 use futures_util::future::join_all;
 use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
@@ -150,6 +151,19 @@ pub fn validate(config: &DoraFlow) -> Result<()> {
             "inconsistent Dora snapshot or collector count policy",
         ));
     }
+    if !config.readiness_field.is_empty() && config.readiness_url.is_empty() {
+        return Err(invalid("Dora readiness_field requires readiness_url"));
+    }
+    Ok(())
+}
+
+/// Validate a complete run binding before any container or flow is started.
+/// Registration loading may omit the results path; the run owner must fill it.
+pub(crate) fn validate_runtime(config: &DoraFlow) -> Result<()> {
+    validate(config)?;
+    if !Path::new(&config.results_directory).is_absolute() {
+        return Err(invalid("Dora results_directory must be absolute"));
+    }
     Ok(())
 }
 
@@ -201,7 +215,7 @@ pub(super) fn bind(
     configs
         .iter()
         .map(|config| {
-            validate(config)?;
+            validate_runtime(config)?;
             let plan = plans
                 .iter()
                 .find(|p| p.key == config.project && p.services.contains_key(&config.service))
@@ -220,7 +234,7 @@ pub(super) fn bind(
 
 async fn start(adapter: &DockerAdapter, input: StartInput) -> Result<Flow> {
     let mut flow = input.flow;
-    validate(&flow.config)?;
+    validate_runtime(&flow.config)?;
     let deadline = Instant::now() + Duration::from_secs(input.timeout_seconds);
     loop {
         if let Some(state) = flow.lookup(adapter).await.ok().flatten() {
@@ -526,6 +540,13 @@ mod tests {
         assert!(validate(&config).is_err());
         config.completion_file = "shutdown.complete".into();
         config.readiness_url = "http://127.0.0.1:80@outside.example/state".into();
+        assert!(validate(&config).is_err());
+
+        // Act: a JSON readiness field has no meaning without a probe URL.
+        config.readiness_url.clear();
+        config.readiness_field = "ready".into();
+
+        // Assert
         assert!(validate(&config).is_err());
     }
     #[test]
