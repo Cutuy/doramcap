@@ -11,7 +11,6 @@ import sys
 import tempfile
 import time
 import subprocess
-from unittest.mock import patch
 
 
 def runtime_executable(name, monitor):
@@ -24,67 +23,67 @@ def runtime_executable(name, monitor):
 
 
 def validate_terminal_stop(monitor, supervisord, supervisorctl):
-    """Exercise terminal SIGINT delivery to the example's foreground process group."""
-    # Arrange: keep the test runner outside the example's process group.
-    example = monitor.resolve().parent / 'examples/supervisor_monitor'
-    with tempfile.TemporaryDirectory(prefix='supervisor-sigint-') as temp:
-        directory = Path(temp)
-        cgroup = Path('/sys/fs/cgroup') / directory.name
-        config = directory / 'run.pbtxt'
-        settings = dict(id='terminal', output_directory=str(directory / 'outputs'),
-                        supervisord=supervisord, supervisorctl=supervisorctl,
-                        monitor_binary=str(monitor.resolve()), readiness_seconds=15,
-                        stop_seconds=3, cgroup_parent=str(cgroup))
-        config.write_text('\n'.join(f'{key}: {json.dumps(value)}'
-                                    for key, value in settings.items()))
-        cgroup.mkdir()
-        try:
-            with (directory / 'events.log').open('w') as events:
-                child = subprocess.Popen([str(example), str(config), '60'],
-                                         stdout=subprocess.PIPE, stderr=events,
-                                         text=True, start_new_session=True)
-                try:
+    """Check terminal stop and forced test cleanup with real monitor processes."""
+    for stop in (signal.SIGINT, signal.SIGKILL):
+        # Arrange: isolate the example's terminal group and owned cgroup.
+        with tempfile.TemporaryDirectory(prefix='supervisor-sigint-') as temp:
+            directory = Path(temp)
+            cgroup = Path('/sys/fs/cgroup') / directory.name
+            settings = dict(id='terminal', output_directory=str(directory / 'outputs'),
+                            supervisord=supervisord, supervisorctl=supervisorctl,
+                            monitor_binary=str(monitor.resolve()), readiness_seconds=15,
+                            stop_seconds=3, cgroup_parent=str(cgroup))
+            config = directory / 'run.pbtxt'
+            config.write_text('\n'.join(f'{key}: {json.dumps(value)}'
+                                        for key, value in settings.items()))
+            cgroup.mkdir()
+            child = None
+            try:
+                with (directory / 'events.log').open('w') as events:
+                    child = subprocess.Popen(
+                        [str(monitor.resolve().parent / 'examples/supervisor_monitor'),
+                         str(config), '60'], stdout=subprocess.PIPE, stderr=events,
+                        text=True, start_new_session=True)
                     deadline = time.monotonic() + 20
-                    while True:
-                        if '::Inspect Succeeded' in (directory / 'events.log').read_text():
-                            break
+                    while '::Inspect Succeeded' not in (directory / 'events.log').read_text():
                         if child.poll() is not None or time.monotonic() >= deadline:
                             raise AssertionError('example did not reach recording readiness')
                         time.sleep(0.05)
-                    # Act: terminal Ctrl-C targets the entire foreground group.
-                    os.killpg(child.pid, signal.SIGINT)
+                    # Act: cooperative terminal stop or abrupt manager death.
+                    os.killpg(child.pid, stop)
                     output, _ = child.communicate(timeout=20)
-                    # Assert: cooperative stop preserves every independent outcome.
-                    assert child.returncode == 0, (child.returncode, output)
-                    report = json.loads(output)
-                    assert report['execution_error'] is None, report
-                    assert report['writers_stopped'], report
-                    assert report['recording_finalized'], report
-                    assert report['cleanup_verified'], report
-                    assert not report['diagnostics'], report
-                    assert not (cgroup / 'terminal').exists()
-                    print('PASS Supervisor terminal Ctrl-C recording and cleanup', flush=True)
-                finally:
-                    if child.poll() is None:
-                        child.kill()
-                    child.wait()
-        finally:
-            failure = sys.exception()
-            try:
-                # SIGKILL of the example cannot run its Rust cleanup. Own the test subtree.
-                (cgroup / 'cgroup.kill').write_text('1')
-                deadline = time.monotonic() + 5
-                while 'populated 0' not in (cgroup / 'cgroup.events').read_text().splitlines():
-                    if time.monotonic() >= deadline:
-                        raise TimeoutError('test cgroup remains populated')
-                    time.sleep(0.05)
-                if (cgroup / 'terminal').exists():
-                    (cgroup / 'terminal').rmdir()
-                cgroup.rmdir()
-            except Exception as error:
-                if failure is None:
-                    raise
-                failure.add_note(f'test cgroup cleanup failed: {error}')
+                    # Assert: cooperative stop verifies each independent outcome.
+                    if stop == signal.SIGINT:
+                        assert child.returncode == 0, (child.returncode, output)
+                        report = json.loads(output)
+                        assert report['execution_error'] is None and not report['diagnostics'], report
+                        assert all(report[key] for key in
+                                   ('writers_stopped', 'recording_finalized', 'cleanup_verified')), report
+                        assert not (cgroup / 'terminal').exists()
+                    else:
+                        assert child.returncode == -signal.SIGKILL, child.returncode
+            finally:
+                failure = sys.exception()
+                try:
+                    if child is not None:
+                        if child.poll() is None:
+                            child.kill()
+                        child.wait()
+                    (cgroup / 'cgroup.kill').write_text('1')
+                    deadline = time.monotonic() + 5
+                    while 'populated 0' not in (cgroup / 'cgroup.events').read_text().splitlines():
+                        if time.monotonic() >= deadline:
+                            raise TimeoutError('test cgroup remains populated')
+                        time.sleep(0.05)
+                    if (cgroup / 'terminal').exists():
+                        (cgroup / 'terminal').rmdir()
+                    cgroup.rmdir()
+                except Exception as error:
+                    if failure is None:
+                        raise
+                    failure.add_note(f'test cgroup cleanup failed: {error}')
+            assert not cgroup.exists()
+    print('PASS Supervisor terminal stop and killed-manager cleanup', flush=True)
 
 
 def validate(monitor):
@@ -109,20 +108,6 @@ def validate(monitor):
             subprocess.run([str(candidate), '--ignored', '--nocapture', '--test-threads=1'],
                            env=environment, check=True, timeout=120)
             validate_terminal_stop(monitor, supervisord, supervisorctl)
-            # Arrange: fail after the real monitor is ready, before cooperative stop.
-            existing = set(Path('/sys/fs/cgroup').glob('supervisor-sigint-*'))
-            injected = RuntimeError('injected terminal-test failure')
-            # Act / Assert: retain the original failure and remove the entire test subtree.
-            try:
-                with patch('os.killpg', side_effect=injected):
-                    validate_terminal_stop(monitor, supervisord, supervisorctl)
-            except RuntimeError as error:
-                assert error is injected
-                assert not getattr(error, '__notes__', []), error.__notes__
-            else:
-                raise AssertionError('injected failure was lost')
-            assert set(Path('/sys/fs/cgroup').glob('supervisor-sigint-*')) == existing
-            print('PASS Supervisor terminal-test failure cleanup', flush=True)
             return True
     raise RuntimeError('Build workload-supervisor --test native unprivileged before native validation')
 

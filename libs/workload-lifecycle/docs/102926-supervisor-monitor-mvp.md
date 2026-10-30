@@ -83,18 +83,9 @@ References: [Supervisor API](https://supervisord.org/api.html),
 [Supervisor configuration](https://supervisord.org/configuration.html),
 [quick-xml](https://github.com/tafia/quick-xml),
 [xmlrpc](https://docs.rs/xmlrpc/latest/xmlrpc/).
-Selected: official `supervisorctl`, presented for evaluation before implementation.
-Tokio bounds each direct control subprocess, kills and reaps on deadline, and uses
-kill-on-drop on cancellation. Fixed-program status parsing accepts only RUNNING
-and records PID/start ticks; any generation change ends the attempt. Native tests
-verify CLI nonzero exits, timeout, readiness and stop behavior on Supervisor 4.2.5.
-
-`quick-xml` is a maintained XML reader/writer, requiring an XML-RPC envelope/fault
-adapter plus Unix HTTP transport. `xmlrpc` 0.15.1 offers protocol values and a
-transport abstraction; its documented optional reqwest 0.11 transport would still
-need Unix-socket and cancellation integration. Neither adds value for this fixed
-program interface. No new third-party package/version was added to Cargo.lock;
-existing Tokio/prost/prost-reflect/serde/libc/hash dependencies are reused.
+Selected: official `supervisorctl`; existing Tokio bounds control calls and output,
+kills/reaps on deadline, and detects monitor generation changes. No new protocol
+adapter or third-party package/version was added. Qualified with Supervisor 4.2.5.
 
 ## Milestone 1: Deployment contract
 
@@ -116,14 +107,9 @@ existing Tokio/prost/prost-reflect/serde/libc/hash dependencies are reused.
   launching the monitor. No automatic sudo or host configuration mutation.
 - [x] Confirm TERM reaches the existing monitor shutdown handler and closes MCAP.
 
-Evidence (2026-10-29): fixed recipe matches Compose flags; generated `MonitorRun`
-and `Ownership` types are used directly with strict pbtxt parsing. Supervisor 4.2.5
-accepted executable/output paths containing spaces and completed MCAPs after TERM.
-Unit tests reject interpolation/comment/control characters, missing executables
-and unknown fields. `--check-bpf` verifies real kernel attachment before daemon
-resource creation. Unprivileged BPF and cgroup-delegation probes failed before
-output creation/daemon launch, as expected. No application sudo or host setup.
-Logs: `/tmp/supervisor-native-final.log`, `/tmp/supervisor-ci-tests-default.log`,
+Evidence: Supervisor 4.2.5 accepts paths with spaces; strict pbtxt/path tests reject
+unsupported inputs. Real BPF preflight rejects missing privileges before launch,
+and TERM produces readable MCAPs. Logs: `/tmp/supervisor-native-final.log`,
 `/tmp/supervisor-unprivileged-bpf.log`, `/tmp/supervisor-preflight-denied.log`.
 
 **Status:** complete.
@@ -149,23 +135,11 @@ Logs: `/tmp/supervisor-native-final.log`, `/tmp/supervisor-ci-tests-default.log`
 - [x] Run existing Compose lifecycle/recording tests and a real monitor-only
   Compose run. Confirm existing app/Dora and overlay behavior is preserved.
 
-Evidence (2026-10-29): neutral recording steps retain compatibility re-exports;
-both wrappers invoke `recorded_run::run`. Compose retains Docker events, Dora,
-filesystem/removal gates and independent outcomes. Contract tests cover phase
-order, launch/readiness failure, cancellation, quiescence/finalization failure
-and mandatory finish. Backend phase futures and Compose preparation are boxed to
-bound caller stack use; native tests run with their default thread stack.
-
-All five existing native Compose tests passed, including partial launch, failed
-readiness, cancellation barriers, direct-session recovery, retained evidence and
-nested cleanup. All 12 native OverlayFS tests passed. Updated an obsolete direct
-lineage assertion to verify the existing nested phase parent/dependency chain
-and the temporal writer-quiescence barrier. The Compose harness now supplies its
-socket/touch fixtures, runs serially, and accepts a Cargo profile (default `ci`).
-Real Dora embedded/published recording comparison matched 24 snapshots/26 messages.
-
-Logs: `/tmp/supervisor-compose-regressions-final2.log`, `/tmp/supervisor-overlay.log`,
-`/tmp/supervisor-dora.log`. Artifacts: `/tmp/supervisor-compose-regressions-1029d`.
+Evidence: both wrappers use the shared driver and recording steps. Contract tests
+cover ordering, failures and cancellation. Native Compose (5 tests), OverlayFS
+(12 tests) and Dora parity (24 snapshots/26 messages) passed. Logs:
+`/tmp/supervisor-compose-regressions-final2.log`, `/tmp/supervisor-overlay.log`,
+`/tmp/supervisor-dora.log`.
 
 **Status:** complete.
 
@@ -194,40 +168,12 @@ Logs: `/tmp/supervisor-compose-regressions-final2.log`, `/tmp/supervisor-overlay
 - [x] Confirm forced termination never reports recording success for truncated MCAP.
 - [x] Confirm incomplete ownership evidence blocks reuse without signaling unrelated PIDs.
 
-Evidence (2026-10-29): typed steps retain live child/cgroup-kill handles;
-fsynced protobuf intent precedes cgroup creation/spawn. Pre-exec placement occurs
-before Supervisor can fork. Removal verifies boot/device/inode, empty subtree
-and reaped daemon. PID/start ticks detect monitor generation changes. Every
-control call selects the private config, has a deadline and bounded output.
-
-Final native suite: two tests passed, covering daemon startup failure, early
-monitor exit, failed readiness without notification, TERM-resistant monitor with
-a descendant, cancellation during launch, manager-future drop and blocked reuse.
-Forced stop rejected the truncated recording. Dropped futures killed their owned
-subtree while leaving incomplete durable evidence and blocked admission. Unknown
-or mismatched cgroup identities are rejected without PID signaling. Concurrent
-real BPF runs produced readable MCAPs and removed separate cgroups/sockets.
-
-Logs: `/tmp/supervisor-native-final.log`. Final concurrent-run artifacts:
-`/tmp/supervisor-tests-509713-1793318580641694155`. Native tests built unprivileged;
-only test executables/helpers received capability elevation and memlock limits.
-
-Follow-up (2026-10-29): the daemon now starts in its own process group, so
-terminal Ctrl-C reaches the runner and follows its existing cooperative stop path.
-The native harness sends SIGINT to the example's foreground group after readiness
-and checks clean exit, independent report outcomes and cgroup removal. Runner API
-comments describe report-versus-error results, observer ownership and cancellation.
-ARM64 job **504** passed the regression and full worker suite; local follow-up
-qualification is recorded in milestone 4 below.
-
-Bugbot follow-up (2026-10-29): a failed ownership save now removes its own scratch
-file while preserving the original error and any pre-existing scratch evidence.
-The regression forces rename failure, retries cleanup persistence, decodes the
-saved cleanup flag and checks that existing scratch evidence stays unchanged.
-Terminal-test fallback kills the whole test cgroup, waits for emptiness and removes
-its directories; cleanup failures annotate the original exception. Native fault
-injection after BPF readiness verifies the exception and absence of leaked cgroups.
-Linux x86_64 and ARM64 native runs passed; qualification details follow in milestone 4.
+Evidence: native tests cover real BPF/MCAP, concurrent runs, startup/early-exit
+failures, forced stop, descendants, cancellation and blocked reuse. Ownership-save
+regression verifies failed-save cleanup and preservation of existing evidence.
+Terminal tests cover Ctrl-C and test-owned cleanup after manager SIGKILL.
+Latest logs: `/tmp/supervisor-trim-native.log`,
+`/tmp/supervisor-trim-arm.json`; see milestone 4 for current qualification.
 
 **Status:** complete.
 
@@ -251,138 +197,23 @@ Linux x86_64 and ARM64 native runs passed; qualification details follow in miles
 - [x] Before PR readiness, run final-revision ARM64 worker CI and the native
   Supervisor/System Monitor scenario. Report skipped/blocked checks separately.
 
-Evidence (2026-10-29): both final-source examples passed with a freshly built
-monitor. Both use BPF, 32,768 records, buffered recording and cooperative stop.
-The existing Rust MCAP reader accepted each file. Shared step events verified
-readiness → quiesce → recording finalization → removal.
+Evidence: both examples use BPF, 32,768 records and buffered MCAP. Compose produced
+35 snapshots/37 messages; Supervisor produced 36/38. Both passed shared phase-order,
+recording and cleanup checks. Logs: `/tmp/supervisor-parity-summary.log`,
+`/tmp/supervisor-mcap-parity.log`. Commands: [deployment README](../../../apps/system-monitor/deploy/README.md).
 
-| Semantic outcome | Compose | Supervisor |
+| Qualification | Latest result | Evidence |
 | --- | --- | --- |
-| Advancing CPU stream | 35 snapshots | 36 snapshots |
-| Readable MCAP | 37 messages | 38 messages |
-| Execution success / writers stopped | pass / pass | pass / pass |
-| Recording finalized / cleanup verified | pass / pass | pass / pass |
-| Shared recording events and phase order | pass | pass |
+| Linux boundaries, format, both Clippy variants, storage without defaults | pass | `/tmp/supervisor-bugbot-ci-results.json` |
+| Linux full workspace tests and examples/binaries | blocked/incomplete: disk exhaustion | `/tmp/supervisor-bugbot-ci-tests-default.log` |
+| Linux targeted builds, 5 library tests, native BPF/MCAP and terminal cleanup | pass | `/tmp/supervisor-trim-native.log` |
+| Linux snapshot synchronization | pass, 4 tests | `/tmp/supervisor-bugbot-linux-snapshots.log` |
+| ARM64 full worker suite and native regressions | pass, job 511 | `/tmp/supervisor-trim-arm.json` |
 
-Runnable commands: `compose_monitor` and `supervisor_monitor`; see the
-[deployment README](../../../apps/system-monitor/deploy/README.md).
-Artifacts: `/tmp/supervisor-compose-parity-final-1029`,
-`/tmp/supervisor-example-final-1029`. Local image:
-`doramcap/system-monitor:supervisor-mvp-1029`. Logs:
-`/tmp/supervisor-parity-summary.log`, `/tmp/supervisor-mcap-parity.log`.
+Cargo checks use the CI profile and locked dependencies; builds run unprivileged.
+ARM64 snapshot: `d7517c23d4994c6ea92439e9e1d1c709`. Earlier full local CI passed at
+`eb14d07`; the current full local run requires additional Linux disk space.
+Architecture review found no further defects in the one-app scope; resource-envelope
+and dedicated control-output boundary coverage remain unverified.
 
-| Final-source local check | Result |
-| --- | --- |
-| Dependency boundaries / boundary fixtures | pass / pass |
-| Formatting | pass |
-| Default-feature Clippy / all-feature Clippy | pass / pass |
-| Workspace tests: default / all features | pass / pass |
-| Storage tests without default features | pass |
-| All-feature workspace examples/binaries | pass |
-| Snapshot synchronization tests | pass |
-
-All Cargo checks used `--profile ci` and `--locked`, built unprivileged. The
-initial run used existing private compiler libraries. Following explicit approval,
-clang-18, libclang-18-dev, llvm-18-dev and libelf-dev were installed system-wide
-on x86_64; all four were already installed on ARM64. The system-toolchain rerun
-passed all checks except an all-feature link attempt that exhausted disk space.
-That attempt is retained in `/tmp/supervisor-ci-tests-all-enospc.log`; the isolated
-retry used a fresh generated CI cache and two build jobs and passed. Both
-attempts are recorded in `/tmp/supervisor-ci-tests-all-retry.json`; the successful
-run is `/tmp/supervisor-ci-tests-all.log`. No source changes were needed.
-Per-check logs: `/tmp/supervisor-ci-*.log`; results:
-`/tmp/supervisor-ci-results.json`. Capability suites are reported separately above.
-
-ARM64 final-source Pueue job **494** completed **Success**, snapshot
-`/home/doramcap-ci/jobs/34a4e7395bb9470b92b79a3c41583c36`.
-It passed default/all-feature Clippy/tests/builds, native accounting/allocation
-checks, Dora recording checks, and **both native Supervisor tests** (20.70 s,
-2 passed, 0 failed, 0 ignored). Supervisor was not skipped. Logs:
-`/tmp/supervisor-arm64-qualified.json`, `/tmp/supervisor-arm64-qualified-submit.log`.
-
-Native ARM64 artifacts: `/tmp/supervisor-tests-316498-1793319632528792500`
-(failure/cancellation cases) and `/tmp/supervisor-tests-316498-1793319636736019260`
-(concurrent BPF recordings). This confirms readable MCAPs, cooperative and forced
-stop outcomes, descendant cleanup, daemon reaping and abandoned-run admission
-on ARM64 as well as x86_64.
-
-Runtime provisioning: Supervisor 4.2.5 is installed at
-`/home/doramcap-ci/.local/share/doramcap-supervisor` with Ubuntu's setuptools
-68.1.2 wheel. The ARM64 administrator account requires a worker-local sudo password;
-root SSH is unavailable. A private runtime completed qualification without copying
-credentials or changing sudo policy. Native test discovery prefers system binaries,
-then this provisioned environment under the monitor executable owner's home.
-Application configuration still uses explicit protobuf executable paths.
-
-The system-toolchain x86_64 native rerun also passed (2 tests, 25.62 s).
-Log: `/tmp/supervisor-native-system-final.log`; concurrent recording artifacts:
-`/tmp/supervisor-tests-626512-1793319980588030029`.
-
-Documentation: the standalone Supervisor README was consolidated into the existing
-app deployment README. It keeps the launch example and host prerequisites; the fixed
-recipe and protobuf input remain beside it. Source and runtime behavior are unchanged.
-
-Follow-up qualification (2026-10-29): process-group isolation and API contract
-comments passed full final-source local CI again. Results:
-`/tmp/supervisor-fix-ci-results.json`; per-check logs:
-`/tmp/supervisor-fix-ci-*.log`. All checks passed without skipped matrix entries.
-Strict Supervisor Rustdoc passed (`/tmp/supervisor-fix-rustdoc.log`).
-
-The x86_64 native rerun passed both existing tests (17.43 s) plus the new terminal
-Ctrl-C regression, using real BPF and completed MCAPs. Log:
-`/tmp/supervisor-fix-native.log`. ARM64 job **504** completed **Success** on snapshot
-`/home/doramcap-ci/jobs/33add8bd5c65422298b5ddd78240dfc8`, including the same explicit
-terminal Ctrl-C PASS, both native tests and the full worker suite. Log:
-`/tmp/supervisor-fix-arm-final.json`. Compose/OverlayFS/Dora code is unchanged by
-this follow-up; their separate native parity scenarios above were not rerun locally.
-No required follow-up check remains blocked or skipped.
-
-Latest Bugbot-fix qualification (2026-10-29):
-
-| Final-source check | Result |
-| --- | --- |
-| Local boundaries / fixtures / formatting | pass / pass / pass |
-| Local default / all-feature Clippy | pass / pass |
-| Local storage without defaults | pass |
-| Local full default workspace tests | blocked: compilation exhausted Linux disk space |
-| Local full all-feature tests / workspace examples and binaries | incomplete / skipped after disk-space blocker |
-| Local snapshot synchronization | pass, four tests |
-| Local targeted builds / Supervisor library tests | pass / five passed |
-| Local real BPF/MCAP native Supervisor tests | two passed, 7.75 s |
-| Local terminal Ctrl-C / injected test-failure cleanup | pass / pass |
-| ARM64 full worker suite and native regressions | pass, job 510 |
-
-All executed local Cargo checks used the CI profile and locked dependencies;
-builds were unprivileged. Initial matrix results:
-`/tmp/supervisor-bugbot-ci-results.json`; failed compile log:
-`/tmp/supervisor-bugbot-ci-tests-default.log`. Full local CI needs additional free
-space on the Linux filesystem. External NTFS retries were stopped and their two
-task-created temporary build directories removed at the user's direction; no NTFS
-result counts toward Linux qualification. Other worktrees were untouched.
-
-Final Linux targeted logs: `/tmp/supervisor-bugbot-linux-*-build.log`,
-`/tmp/supervisor-bugbot-linux-unit.log`, `/tmp/supervisor-bugbot-linux-native.log`
-and `/tmp/supervisor-bugbot-linux-snapshots.log`. Native recordings were read by the
-existing MCAP reader, and both terminal stop and failure cleanup passed.
-
-ARM64 **510 Success**, snapshot
-`/home/doramcap-ci/jobs/c0c39c30f511474490fb55e4e8826876`, passed the full worker suite,
-new ownership regression, both native tests, terminal Ctrl-C and injected test
-failure cleanup. Log: `/tmp/supervisor-bugbot-arm-final.json`.
-
-Final architecture review reused the local `requirements-checklist.md` and kept
-requirements unchanged. No further architectural defect was identified in the
-one-app scope. Long-duration resource-envelope and dedicated control-output
-boundary coverage remain unverified; no new recovery or protocol layer was added.
-
-**Status:** implementation and native qualification complete. Latest full local CI
-is blocked by Linux disk space; its validation item above remains unchecked.
-Earlier full local passes and Compose/OverlayFS/Dora native runs remain historical
-evidence for the revisions identified above.
-
-## MVP completion
-
-One command prepares and launches System Monitor under Supervisor, reports ready
-only after recording advances, handles a stop request, verifies the recording,
-and proves owned processes have exited. The equivalent Compose run exercises the
-same driver and recording steps. Existing Compose callers retain their behavior.
+**Status:** implementation and native qualification complete; full local CI blocked.
