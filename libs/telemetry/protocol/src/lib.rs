@@ -1,4 +1,8 @@
 //! Protobuf telemetry shared by Dora, binary WebSocket and MCAP.
+// Wire record flags share the collector's canonical numeric definitions.
+pub use monitor_core::{
+    ALL_CPUS, FLAG_INCLUSIVE, FLAG_READ_ERROR, FLAG_ROOT, FLAG_RUNTIME, FLAG_VIRTUAL_KERNEL,
+};
 use prost::Message;
 use std::borrow::Borrow;
 pub const VERSION: u32 = 2;

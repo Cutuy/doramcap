@@ -8,6 +8,9 @@ pub use workload_lifecycle::recording::{
     FinalizeSystemApps, ReadinessInput, Recording, WaitForSystemApps,
 };
 
+pub const SYSTEM_PROJECT_KEY: &str = "system";
+pub const CPU_MONITOR_SERVICE: &str = "cpu-monitor";
+
 include!(concat!(env!("OUT_DIR"), "/doramcap.system_apps.v1.rs"));
 
 /// Serializable result of system-app preparation, independent of live OS handles.
@@ -44,7 +47,7 @@ async fn prepare(input: PrepareInput) -> Result<PreparedSystemApps> {
     private_write(&system_file, template).await?;
     Ok(PreparedSystemApps {
         projects: vec![ComposeProject {
-            key: "system".into(),
+            key: SYSTEM_PROJECT_KEY.into(),
             directory: artifacts.clone(),
             files: vec![system_file],
             env_files: vec![],

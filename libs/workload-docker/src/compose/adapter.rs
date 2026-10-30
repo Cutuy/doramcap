@@ -1,6 +1,6 @@
 use super::{
-    Cleanup, ComposeProjectState, ComposeService, Container, OwnedResource, ResolveInput,
-    ResolvedComposeProject, Result, Shutdown, StartInput, StopInput,
+    Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, OwnedResource,
+    ResolveInput, ResolvedComposeProject, Result, Shutdown, StartInput, StopInput,
     command::compose,
     error::{absent, engine, invalid},
 };
@@ -164,6 +164,36 @@ impl DockerAdapter {
         Ok(found)
     }
 
+    /// Discover declared profile names using the same explicit inputs as resolution.
+    /// Compose diagnostics and errors remain private to the caller.
+    pub async fn profiles(&self, project: &ComposeProject) -> Result<Vec<String>> {
+        let mut discovery = project.clone();
+        discovery.profiles.clear();
+        discovery.services.clear();
+        let (directory, mut args, _) = config_arguments(&discovery, "dc-console-discovery").await?;
+        args.extend(["config".into(), "--profiles".into()]);
+        let (stdout, stderr) = compose(
+            &self.socket,
+            &directory,
+            &discovery.environment,
+            &args,
+            Duration::from_secs(60),
+        )
+        .await?;
+        if stderr.contains("variable is not set") {
+            return Err(invalid(format!("unresolved Compose environment: {stderr}")));
+        }
+        let mut profiles: Vec<_> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        profiles.sort();
+        profiles.dedup();
+        Ok(profiles)
+    }
+
     /// Resolve supplied files, freeze local image IDs, and write a private launch
     /// manifest. No Docker resources are created. Host mounts remain live inputs.
     ///
@@ -181,44 +211,10 @@ impl DockerAdapter {
         validate_name(&input.run)?;
         validate_name(&input.project.key)?;
         let project = &input.project;
-        if project.files.is_empty() {
-            return Err(invalid("at least one Compose file is required"));
-        }
-        let directory = tokio::fs::canonicalize(&project.directory).await?;
         let name = format!("dc-{}-{}", input.run, project.key);
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
-        let mut args = vec![
-            "--project-directory".into(),
-            directory.to_string_lossy().into_owned(),
-            "--project-name".into(),
-            name.clone(),
-        ];
-        let mut sources = BTreeMap::new();
-        args.extend(["--env-file".into(), "/dev/null".into()]);
-        for (flag, files) in [("-f", &project.files), ("--env-file", &project.env_files)] {
-            for file in files {
-                let path = tokio::fs::canonicalize(directory.join(file)).await?;
-                sources.insert(
-                    path.to_string_lossy().into_owned(),
-                    digest(&tokio::fs::read(&path).await?),
-                );
-                args.extend([flag.into(), path.to_string_lossy().into_owned()]);
-            }
-        }
-        for profile in &project.profiles {
-            args.extend(["--profile".into(), profile.clone()]);
-        }
-        // Docker/Compose control variables must not redirect the approved target.
-        if project
-            .environment
-            .keys()
-            .any(|k| k.starts_with("DOCKER_") || k.starts_with("COMPOSE_"))
-        {
-            return Err(invalid(
-                "Docker/Compose control variables must be supplied as explicit launch settings",
-            ));
-        }
+        let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
@@ -284,7 +280,7 @@ impl DockerAdapter {
             .and_then(Value::as_object_mut)
             .ok_or_else(|| invalid("resolved Compose has no services"))?;
         if model_services.is_empty() {
-            return Err(invalid("selection contains no services"));
+            return Err(super::Error::EmptySelection);
         }
         let mut completed = project.completed_services.clone();
         for service in model_services.values() {
@@ -1107,6 +1103,49 @@ impl DockerAdapter {
         Ok(result)
     }
 }
+// Shared Compose arguments preserve the explicit environment and input order.
+async fn config_arguments(
+    project: &ComposeProject,
+    name: &str,
+) -> Result<(std::path::PathBuf, Vec<String>, BTreeMap<String, String>)> {
+    if project.files.is_empty() {
+        return Err(invalid("at least one Compose file is required"));
+    }
+    if project
+        .environment
+        .keys()
+        .any(|k| k.starts_with("DOCKER_") || k.starts_with("COMPOSE_"))
+    {
+        return Err(invalid(
+            "Docker/Compose control variables must be supplied as explicit launch settings",
+        ));
+    }
+    let directory = tokio::fs::canonicalize(&project.directory).await?;
+    let mut args = vec![
+        "--project-directory".into(),
+        directory.to_string_lossy().into_owned(),
+        "--project-name".into(),
+        name.into(),
+        "--env-file".into(),
+        "/dev/null".into(),
+    ];
+    let mut sources = BTreeMap::new();
+    for (flag, files) in [("-f", &project.files), ("--env-file", &project.env_files)] {
+        for file in files {
+            let path = tokio::fs::canonicalize(directory.join(file)).await?;
+            sources.insert(
+                path.to_string_lossy().into_owned(),
+                digest(&tokio::fs::read(&path).await?),
+            );
+            args.extend([flag.into(), path.to_string_lossy().into_owned()]);
+        }
+    }
+    for profile in &project.profiles {
+        args.extend(["--profile".into(), profile.clone()]);
+    }
+    Ok((directory, args, sources))
+}
+
 pub(crate) fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name.len() > 40

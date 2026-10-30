@@ -87,6 +87,11 @@ cpu_monitor {
 }
 ```
 
+Review and execution share project resolution and launch-group assembly in
+[`resolution`](../src/workflows/recorded_compose/resolution.rs). A private receipt
+covers complete manifest identities, service lifecycle policy, ordered groups and
+recording outputs. Start compares a fresh receipt before mounts or launch.
+
 `PrepareRun` validates inputs, resolves every project, captures a baseline and
 freezes recovery identities. `PrepareOverlays` supplies optional execution mounts.
 `LaunchProjects` starts each independent group and checks configured system-app

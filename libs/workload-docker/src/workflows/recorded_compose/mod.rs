@@ -3,6 +3,7 @@ pub mod finalization;
 mod observation;
 pub mod preparation;
 pub mod projects;
+pub mod resolution;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
@@ -24,6 +25,15 @@ use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
 use tokio::sync::oneshot;
+
+/// Optional typed notifications owned by one run.
+#[derive(Default)]
+pub struct RunSignals {
+    /// Send ready plans; a closed receiver triggers orderly teardown.
+    pub ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    /// Signal before stopping writers; a closed receiver does not affect cleanup.
+    pub quiescing: Option<oneshot::Sender<()>>,
+}
 
 /// Single-session runner with concurrent independent Compose operations.
 ///
@@ -92,8 +102,45 @@ impl ComposeRunner {
         observer: impl Observer + 'static,
         ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
     ) -> Result<ComposeRunReport> {
+        self.run_with_preflight(spec, stop, observer, ready, |_| Ok(()))
+            .await
+    }
+
+    /// Check the freshly prepared run before any mount or Docker launch.
+    /// A rejected check leaves the runner unblocked and returns its error.
+    pub async fn run_with_preflight(
+        &mut self,
+        spec: ComposeRun,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
+    ) -> Result<ComposeRunReport> {
+        self.run_with_signals(
+            spec,
+            stop,
+            observer,
+            RunSignals {
+                ready,
+                ..Default::default()
+            },
+            check,
+        )
+        .await
+    }
+
+    /// Run with typed readiness and quiescence notifications plus preflight validation.
+    /// Quiescence is signaled before stopping writers, including automatic shutdown.
+    pub async fn run_with_signals(
+        &mut self,
+        spec: ComposeRun,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        signals: RunSignals,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
+    ) -> Result<ComposeRunReport> {
         // Keep large backend preparation futures off callers' async state machines.
-        Box::pin(self.run_inner(spec, stop, observer, ready)).await
+        Box::pin(self.run_inner(spec, stop, observer, signals, check)).await
     }
 
     async fn run_inner(
@@ -101,7 +148,8 @@ impl ComposeRunner {
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        signals: RunSignals,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
         if self.blocked {
             return Err(invalid(
@@ -115,10 +163,12 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        executor.validate_descriptors().map_err(step_error)?;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
             .await
             .map_err(step_error)?;
+        check(prepared.value())?;
         let artifacts = prepared.value().artifacts.clone();
 
         // Mounts cross the side-effect boundary; dropping this run now blocks admission.
@@ -166,7 +216,7 @@ impl ComposeRunner {
             shutdown: None,
             finalized: None,
             cleanup: None,
-            ready,
+            signals,
             event_result: Ok(()),
         };
         let outcome = workload_lifecycle::recorded_run::run(&mut phases, stop).await;
@@ -242,7 +292,7 @@ struct ComposePhases {
     shutdown: Option<orchestrator::Output<projects::QuiescedProjects>>,
     finalized: Option<orchestrator::Output<finalization::FinalizedRun>>,
     cleanup: Option<orchestrator::Output<Vec<Cleanup>>>,
-    ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    signals: RunSignals,
     event_result: Result<()>,
 }
 impl workload_lifecycle::recorded_run::Phases for ComposePhases {
@@ -281,7 +331,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         }
     }
     fn ready(&mut self) -> std::result::Result<(), String> {
-        if let Some(ready) = self.ready.take() {
+        if let Some(ready) = self.signals.ready.take() {
             ready
                 .send(self.plans.clone())
                 .map_err(|_| "readiness receiver dropped".to_string())?;
@@ -310,6 +360,9 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         }
     }
     async fn quiesce(&mut self) -> std::result::Result<bool, String> {
+        if let Some(quiescing) = self.signals.quiescing.take() {
+            let _ = quiescing.send(());
+        }
         // Stop all writer roles before collecting filesystems or removing infrastructure.
         let mut input = Input::new(QuiesceInput {
             groups: self.attempted.clone(),
@@ -450,6 +503,17 @@ pub struct ComposeRun {
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
+/// Validate the shared startup and per-project shutdown budgets before side effects.
+pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()> {
+    if readiness_seconds == 0 {
+        return Err(invalid("readiness_seconds must be positive"));
+    }
+    if !(1..=300).contains(&stop_seconds) {
+        return Err(invalid("stop_seconds must be in 1..=300"));
+    }
+    Ok(())
+}
+
 fn default_filesystem() -> Option<OverlayPolicy> {
     Some(OverlayPolicy::default())
 }

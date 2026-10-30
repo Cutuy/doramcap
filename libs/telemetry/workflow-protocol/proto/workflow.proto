@@ -24,4 +24,23 @@ message Event {
   uint64 duration_ns = 12;
   optional string payload_json = 13;
   optional string error = 14;
+  StepDescriptor descriptor = 15;
+}
+
+// Workflow-owned observation semantics; Rust type names remain diagnostic.
+message StepDescriptor {
+  string id = 1;
+  string display_name = 2;
+  ProgressRetention retention = 3;
+  ProgressKind kind = 4;
+}
+enum ProgressRetention {
+  RETENTION_UNSPECIFIED = 0;
+  RECENT = 1;
+  KEEP = 2;
+}
+enum ProgressKind {
+  KIND_UNSPECIFIED = 0;
+  OPERATION = 1;
+  OBSERVATION = 2;
 }

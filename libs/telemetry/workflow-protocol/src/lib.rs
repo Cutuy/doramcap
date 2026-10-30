@@ -19,3 +19,20 @@ pub fn decode(bytes: &[u8]) -> Result<Event, prost::DecodeError> {
 pub fn encoded_len(event: &Event) -> usize {
     prost::Message::encoded_len(event)
 }
+
+impl StepDescriptor {
+    /// Describe a stable step identity and its workflow-owned presentation policy.
+    pub fn new(
+        id: &str,
+        display_name: &str,
+        retention: ProgressRetention,
+        kind: ProgressKind,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+            retention: retention as i32,
+            kind: kind as i32,
+        }
+    }
+}
