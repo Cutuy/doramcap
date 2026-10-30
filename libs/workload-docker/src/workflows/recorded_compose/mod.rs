@@ -3,6 +3,7 @@ pub mod finalization;
 mod observation;
 pub mod preparation;
 pub mod projects;
+pub mod resolution;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},

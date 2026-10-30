@@ -59,7 +59,7 @@ pub struct ResolvedComposeProject {
     /// Whether teardown removes owned named volumes.
     pub remove_volumes: bool,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComposeService {
     /// Pinned local Docker image ID.
     pub image_id: String,

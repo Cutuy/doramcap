@@ -1,9 +1,10 @@
 //! Side-effect-free Docker preflight and private run metadata preparation.
-use super::super::{
-    dora,
-    system_apps::{self, PrepareSystemApps},
+use super::super::system_apps::{self, PrepareSystemApps};
+use super::{
+    ComposeRun, observation,
+    projects::LaunchInput,
+    resolution::{self, ReviewReceipt},
 };
-use super::{ComposeRun, observation, projects::LaunchInput};
 use crate::compose::{
     adapter::validate_name,
     error::invalid,
@@ -11,7 +12,7 @@ use crate::compose::{
     overlay::OverlaySet,
     *,
 };
-use futures_util::future::join_all;
+use crate::workflows::dora;
 use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -25,6 +26,7 @@ pub struct PreparedRun {
     pub artifacts: PathBuf,
     pub groups: Vec<LaunchInput>,
     pub baseline: FilesystemBaseline,
+    pub receipt: ReviewReceipt,
 }
 impl PreparedRun {
     pub fn projects(&self) -> Vec<ResolvedComposeProject> {
@@ -90,37 +92,20 @@ impl PrepareRun {
             })
             .await
             .map_err(|e| invalid(e.to_string()))?;
-        let system_count = system.value().projects.len();
-        let projects: Vec<_> = system
-            .value()
-            .projects
-            .iter()
-            .cloned()
-            .chain(spec.first_party.clone())
-            .chain(spec.projects.clone())
-            .collect();
-        let mut keys = HashSet::new();
-        if projects.iter().any(|p| !keys.insert(&p.key)) {
-            return Err(invalid("system and workload project keys must be unique"));
-        }
-        let resolved = join_all(projects.into_iter().map(|project| {
-            executor.run::<ResolveCompose>(
-                Input::new(ResolveInput {
-                    run: spec.id.clone(),
-                    artifacts: artifacts.clone(),
-                    project,
-                })
-                .after(&system),
-            )
-        }))
-        .await;
-        // Await every independent resolution before propagating an error.
-        let plans: Vec<_> = resolved
-            .into_iter()
-            .collect::<orchestrator::Result<_>>()
-            .map_err(|e| invalid(e.to_string()))?;
+        let (plans, resolved) = resolution::resolve_with(
+            &spec,
+            &artifacts,
+            system.value(),
+            |input| async {
+                executor
+                    .run::<ResolveCompose>(Input::new(input).after(&system))
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+            },
+            |output| output.value(),
+        )
+        .await?;
         let projects: Vec<_> = plans.iter().map(|p| p.value().clone()).collect();
-        dora::bind(&spec.system_apps.dora_flows, &projects)?;
         let mut input = Input::new(BaselineInput {
             projects: projects.clone(),
             artifacts: artifacts.clone(),
@@ -142,28 +127,10 @@ impl PrepareRun {
             )
             .await?;
         }
-        let group = |projects, recordings| LaunchInput {
-            projects,
-            recordings,
-            readiness_seconds: spec.readiness_seconds,
-        };
-        let mut groups = Vec::new();
-        if system_count != 0 {
-            groups.push(group(
-                projects[..system_count].to_vec(),
-                system.value().recordings.clone(),
-            ));
-        }
-        for plan in &projects[system_count..system_count + spec.first_party.len()] {
-            groups.push(group(vec![plan.clone()], vec![]));
-        }
-        groups.push(group(
-            projects[system_count + spec.first_party.len()..].to_vec(),
-            vec![],
-        ));
         Ok(PreparedRun {
             artifacts,
-            groups,
+            groups: resolved.groups,
+            receipt: resolved.receipt,
             baseline: baseline.into_value(),
         })
     }
