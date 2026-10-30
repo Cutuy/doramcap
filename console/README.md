@@ -1,6 +1,9 @@
 # Console
 
 Run one local Compose project with optional CPU recording and inspect its current result.
+
+![Current Console integration boundaries](docs/console-compose-boundaries.svg)
+
 The server requires a local Docker socket, prebuilt local workload images, and the capabilities required by the existing recorded Compose workflow.
 Choose configured system apps with checkboxes on Review. CPU recording defaults
 to enabled when configured; deselecting it runs only the project.
