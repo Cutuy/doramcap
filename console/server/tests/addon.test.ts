@@ -31,7 +31,8 @@ test('opens and closes twice while Node remains responsive during native startup
   });
   server.listen(socket);
   await once(server, 'listening');
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "/tmp/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
+  await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
   const heartbeat = createServer((_request, response) => response.end('ok'));
   heartbeat.listen(0, '127.0.0.1');
   await once(heartbeat, 'listening');
@@ -104,7 +105,8 @@ test('artifact descriptors stay beneath the current run and reject symlinks', as
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket);
   await once(server, 'listening');
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "/tmp/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
+  await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
   const handle = await native.open(config, 1) as ConsoleHandle & { openArtifact(id: string, kind: string): Promise<number> };
   try {
     // Act
@@ -141,7 +143,8 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   await chmod(join(bin, 'docker'), 0o755);
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket); await once(server, 'listening');
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${directory}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "/tmp/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
+  await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${directory}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\nsystem_apps { cpu_monitor { image: "monitor:local" } }\n`);
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   const handle = await native.open(config, 1) as ConsoleHandle & { prepare(input: Buffer): Promise<Buffer> };
@@ -169,6 +172,38 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   } finally {
     process.env.PATH = originalPath;
     server.close(); await once(server, 'close');
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+
+test('invalid host configuration fails before creating native state', async () => {
+  // Arrange
+  const { stat } = await import('node:fs/promises');
+  const directory = await mkdtemp(join(tmpdir(), 'console-validation-'));
+  const config = join(directory, 'console.pbtxt');
+  const data = join(directory, 'data');
+  const secret = join(directory, 'secret');
+  const text = (origin: string) => `listen_address: "127.0.0.1:8080"
+public_origin: "${origin}"
+project_root: "${directory}"
+data_root: "${data}"
+docker_socket: "${directory}/missing.sock"
+access_secret_file: "${secret}"`;
+  try {
+    // Act / Assert: unreadable and empty secrets fail before storage or Docker setup.
+    await writeFile(config, text('http://127.0.0.1:8080'));
+    await assert.rejects(native.open(config, 1), /access_secret_file/);
+    await assert.rejects(stat(data), { code: 'ENOENT' });
+    await writeFile(secret, '\n', { mode: 0o600 });
+    await assert.rejects(native.open(config, 1), /nonempty secret/);
+    await assert.rejects(stat(data), { code: 'ENOENT' });
+    // Act / Assert: an invalid Origin is rejected even with a valid secret.
+    await writeFile(secret, 'test-secret');
+    await writeFile(config, text('https://example.com/path'));
+    await assert.rejects(native.open(config, 1), /public_origin/);
+    await assert.rejects(stat(data), { code: 'ENOENT' });
+  } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });

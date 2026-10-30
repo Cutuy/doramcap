@@ -1,5 +1,6 @@
 //! Bounded observational sampling; filesystem I/O runs outside execution's owner.
 use crate::{
+    policy::*,
     protocol::{Phase, RunMetric, Status},
     session::Session,
 };
@@ -14,11 +15,10 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use telemetry_protocol::{
+    ALL_CPUS, FLAG_INCLUSIVE, FLAG_READ_ERROR, FLAG_ROOT, FLAG_RUNTIME, FLAG_VIRTUAL_KERNEL,
+};
 
-const HISTORY: usize = 1200;
-const MAX_FRAME: u64 = 8 * 1024 * 1024;
-const MAX_HEADERS: usize = 4096;
-const MAX_ACTIVITY: u64 = 2 * 1024 * 1024;
 type Counters = BTreeMap<(u64, u32), u64>;
 
 #[derive(Default)]
@@ -49,7 +49,11 @@ impl Reader {
             if let Some((before, time)) = self.size {
                 if bytes >= before {
                     sample.write_bytes_per_second = Some(
-                        (bytes - before) as f64 / now.duration_since(time).as_secs_f64().max(0.001),
+                        (bytes - before) as f64
+                            / now
+                                .duration_since(time)
+                                .as_secs_f64()
+                                .max(MIN_RATE_INTERVAL.as_secs_f64()),
                     );
                 } else {
                     self.incomplete = true;
@@ -80,7 +84,7 @@ impl Reader {
         self.identity = Some(identity);
         let mut frames = Vec::new();
         let mut scanned = 0;
-        for _ in 0..MAX_HEADERS {
+        for _ in 0..MAX_CPU_HEADERS_PER_TICK {
             if self.offset + 4 > metadata.len() {
                 break;
             }
@@ -88,7 +92,7 @@ impl Reader {
             let mut header = [0; 4];
             file.read_exact(&mut header)?;
             let length = u32::from_le_bytes(header) as u64;
-            if length == 0 || length > MAX_FRAME {
+            if length == 0 || length > MAX_CPU_FRAME_BYTES {
                 return Err(std::io::Error::other("invalid CPU frame length"));
             }
             if self.offset + 4 + length > metadata.len() {
@@ -96,13 +100,13 @@ impl Reader {
             }
             // Scan headers only; decode the last two complete frames per tick.
             frames.push((self.offset + 4, length));
-            if frames.len() > 2 {
+            if frames.len() > MAX_CPU_SNAPSHOTS {
                 frames.remove(0);
             }
             self.offset += 4 + length;
             scanned += 1;
         }
-        if scanned == MAX_HEADERS && self.offset + 4 <= metadata.len() {
+        if scanned == MAX_CPU_HEADERS_PER_TICK && self.offset + 4 <= metadata.len() {
             self.incomplete = true;
         }
         for (offset, length) in frames {
@@ -118,11 +122,12 @@ impl Reader {
                     telemetry_protocol::snapshot_packet(&frame).body
                 && let Some(snapshot) = packet.snapshot
             {
-                if self.latest.len() == 2 {
+                if self.latest.len() == MAX_CPU_SNAPSHOTS {
                     self.latest.remove(0);
                 }
                 self.latest.push(snapshot);
             }
+            self.incomplete |= frame.dictionary_overflow != 0;
             let parents: BTreeSet<_> = frame
                 .snapshot
                 .records
@@ -146,14 +151,18 @@ impl Reader {
                         name: public_cgroup_name(entry.path.as_deref()?)?,
                     })
                 })
-                .take(512)
+                .take(MAX_CPU_GROUP_NAMES + 1)
                 .collect();
+            if self.names.len() > MAX_CPU_GROUP_NAMES {
+                self.names.truncate(MAX_CPU_GROUP_NAMES);
+                self.incomplete = true;
+            }
             let snapshot = &frame.snapshot;
             sample.cpu_cores = snapshot
                 .records
                 .iter()
                 .map(|r| r.cpu)
-                .filter(|cpu| *cpu != u32::MAX)
+                .filter(|cpu| *cpu != ALL_CPUS)
                 .collect::<BTreeSet<_>>()
                 .len() as u32;
             // Inclusive ancestor rows cover their descendants. Root-unavailable,
@@ -161,7 +170,11 @@ impl Reader {
             let records: BTreeMap<_, _> = snapshot
                 .records
                 .iter()
-                .filter(|r| r.cpu != u32::MAX && r.flags & 1 != 0 && r.flags & (16 | 64 | 128) == 0)
+                .filter(|r| {
+                    r.cpu != ALL_CPUS
+                        && r.flags & FLAG_RUNTIME != 0
+                        && r.flags & (FLAG_ROOT | FLAG_READ_ERROR | FLAG_VIRTUAL_KERNEL) == 0
+                })
                 .map(|r| ((r.cgroup_id, r.cpu), r))
                 .collect();
             let parents: BTreeMap<_, _> = snapshot
@@ -175,19 +188,19 @@ impl Reader {
                 && !snapshot
                     .records
                     .iter()
-                    .any(|r| r.flags & 64 != 0 && r.flags & 16 == 0);
+                    .any(|r| r.flags & FLAG_READ_ERROR != 0 && r.flags & FLAG_ROOT == 0);
             for (&key, row) in &records {
                 let mut parent = row.parent_id;
                 let mut covered = false;
                 let mut seen = BTreeSet::new();
                 while parent != 0 && parent != row.cgroup_id {
-                    if !seen.insert(parent) || seen.len() > 64 {
+                    if !seen.insert(parent) || seen.len() > MAX_CGROUP_ANCESTORS {
                         valid = false;
                         break;
                     }
                     if records
                         .get(&(parent, row.cpu))
-                        .is_some_and(|ancestor| ancestor.flags & 4 != 0)
+                        .is_some_and(|ancestor| ancestor.flags & FLAG_INCLUSIVE != 0)
                     {
                         covered = true;
                         break;
@@ -235,7 +248,11 @@ fn public_cgroup_name(path: &str) -> Option<String> {
         .rsplit('/')
         .find(|part| !part.is_empty())
         .unwrap_or("/");
-    let name: String = leaf.chars().filter(|c| !c.is_control()).take(128).collect();
+    let name: String = leaf
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_CPU_GROUP_NAME_CHARS)
+        .collect();
     (!name.is_empty() && name != "." && name != "..").then_some(name)
 }
 
@@ -243,60 +260,64 @@ fn terminal(phase: Phase) -> bool {
     matches!(phase, Phase::Finished | Phase::Blocked | Phase::Idle)
 }
 
-/// Sample at 10 Hz; retain 1200 samples and the last two producer snapshots.
+/// Sample and publish at the configured interval within the compile-time retention budgets.
 pub(crate) fn watch(
     session: Rc<RefCell<Session>>,
     directory: PathBuf,
     enabled: bool,
+    interval: Duration,
 ) -> (
     tokio::sync::oneshot::Sender<()>,
     tokio::task::JoinHandle<()>,
 ) {
     let (stop, mut stopped) = tokio::sync::oneshot::channel();
     let task = tokio::task::spawn_local(async move {
-        if !enabled {
-            let _ = stopped.await;
-            return;
-        }
         let started = Instant::now();
         let run_id = session.borrow().marker.as_ref().map(|m| m.run_id.clone());
         let mut reader = Reader::default();
         let mut finishing = false;
         loop {
             let tick = Instant::now();
-            let path = directory.clone();
-            let elapsed = started.elapsed();
-            let Ok((next, sample)) = tokio::task::spawn_blocking(move || {
-                let sample = reader.sample(&path, elapsed);
-                (reader, sample)
-            })
-            .await
-            else {
-                break;
+            let sample = if enabled {
+                let path = directory.clone();
+                let elapsed = started.elapsed();
+                let Ok((next, sample)) = tokio::task::spawn_blocking(move || {
+                    let sample = reader.sample(&path, elapsed);
+                    (reader, sample)
+                })
+                .await
+                else {
+                    break;
+                };
+                reader = next;
+                Some(sample)
+            } else {
+                None
             };
-            reader = next;
             {
                 let mut current = session.borrow_mut();
                 if current.marker.as_ref().map(|m| &m.run_id) != run_id.as_ref() {
                     break;
                 }
-                if current.metrics.len() == HISTORY {
-                    current.metrics.remove(0);
+                if let Some(sample) = sample {
+                    if current.metrics.len() == MAX_METRIC_SAMPLES {
+                        current.metrics.remove(0);
+                    }
+                    current.metrics.push(sample);
+                    current.cpu_snapshots = reader.latest.clone();
+                    current.cpu_group_names = reader.names.clone();
+                    if current
+                        .cpu_snapshots
+                        .iter()
+                        .map(Message::encoded_len)
+                        .sum::<usize>()
+                        > MAX_CPU_SNAPSHOT_BYTES
+                    {
+                        current.cpu_snapshots.clear();
+                        current.metrics_incomplete = true;
+                    }
+                    current.metrics_incomplete |= reader.incomplete;
                 }
-                current.metrics.push(sample);
-                current.cpu_snapshots = reader.latest.clone();
-                current.cpu_group_names = reader.names.clone();
-                if current
-                    .cpu_snapshots
-                    .iter()
-                    .map(Message::encoded_len)
-                    .sum::<usize>()
-                    > 1024 * 1024
-                {
-                    current.cpu_snapshots.clear();
-                    current.metrics_incomplete = true;
-                }
-                current.metrics_incomplete |= reader.incomplete;
                 current.publish();
             }
             if finishing {
@@ -304,7 +325,7 @@ pub(crate) fn watch(
             }
             tokio::select! {
                 _ = &mut stopped => finishing = true,
-                _ = tokio::time::sleep(Duration::from_millis(100).saturating_sub(tick.elapsed())) => {}
+                _ = tokio::time::sleep(interval.saturating_sub(tick.elapsed())) => {}
             }
         }
     });
@@ -320,7 +341,7 @@ pub(crate) async fn checkpoint(directory: PathBuf, status: Status) -> bool {
 
 fn save(directory: &Path, status: &Status) -> std::io::Result<()> {
     let bytes = status.encode_to_vec();
-    if bytes.len() as u64 > MAX_ACTIVITY {
+    if bytes.len() as u64 > MAX_ACTIVITY_BYTES {
         return Err(std::io::Error::other("activity too large"));
     }
     let root = workload_docker::evidence::root(directory)?;
@@ -346,7 +367,7 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
         return;
     };
     if !terminal(session.phase)
-        || marker.run_id.len() != 32
+        || marker.run_id.len() != RUN_ID_HEX_CHARS
         || !marker.run_id.bytes().all(|b| b.is_ascii_hexdigit())
     {
         return;
@@ -359,8 +380,8 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
             false,
         )?;
         let mut bytes = Vec::new();
-        file.take(MAX_ACTIVITY + 1).read_to_end(&mut bytes)?;
-        if bytes.len() as u64 > MAX_ACTIVITY {
+        file.take(MAX_ACTIVITY_BYTES + 1).read_to_end(&mut bytes)?;
+        if bytes.len() as u64 > MAX_ACTIVITY_BYTES {
             return Err(std::io::Error::other("activity too large"));
         }
         Status::decode(bytes.as_slice()).map_err(std::io::Error::other)
@@ -368,10 +389,10 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
     if let Ok(status) = result
         && status.run_id == marker.run_id
         && status.phase == session.phase as i32
-        && status.steps.len() <= 512
-        && status.metrics.len() <= HISTORY
-        && status.cpu_snapshots.len() <= 2
-        && status.cpu_group_names.len() <= 512
+        && status.steps.len() <= MAX_PROGRESS_ROWS
+        && status.metrics.len() <= MAX_METRIC_SAMPLES
+        && status.cpu_snapshots.len() <= MAX_CPU_SNAPSHOTS
+        && status.cpu_group_names.len() <= MAX_CPU_GROUP_NAMES
     {
         session.progress.restore(&status);
         session.metrics = status.metrics;
@@ -386,10 +407,11 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
                 && reader.latest.last().map(|s| s.sequence)
                     == session.cpu_snapshots.last().map(|s| s.sequence)
             {
+                session.metrics_incomplete |= reader.incomplete;
                 session.cpu_group_names = reader.names;
             }
         }
-        session.metrics_incomplete = status.metrics_incomplete;
+        session.metrics_incomplete |= status.metrics_incomplete;
         session
             .loss
             .store(status.lost_events, std::sync::atomic::Ordering::Relaxed);
@@ -401,6 +423,101 @@ mod tests {
     use super::*;
     use crate::protocol::Marker;
     use telemetry_protocol::pb;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn project_only_runs_publish_progress_without_sampling_cpu_files() {
+        // Arrange
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let session = Rc::new(RefCell::new(Session::new(
+                    Phase::Running,
+                    Some(Marker {
+                        run_id: "run".into(),
+                        ..Default::default()
+                    }),
+                )));
+                let (stop, done) = watch(
+                    session.clone(),
+                    PathBuf::from("/does-not-exist"),
+                    false,
+                    Duration::from_millis(1),
+                );
+                session
+                    .borrow_mut()
+                    .progress
+                    .apply(workflow_protocol::Event {
+                        version: workflow_protocol::VERSION,
+                        sequence: 1,
+                        invocation: 1,
+                        state: workflow_protocol::event::State::Succeeded as i32,
+                        ..Default::default()
+                    });
+                // Act
+                tokio::time::timeout(Duration::from_secs(1), async {
+                    loop {
+                        if session.borrow().snapshot.lock().unwrap().sequence == 1 {
+                            break;
+                        }
+                        tokio::task::yield_now().await;
+                    }
+                })
+                .await
+                .unwrap();
+                let _ = stop.send(());
+                done.await.unwrap();
+                // Assert
+                let current = session.borrow();
+                let snapshot = current.snapshot.lock().unwrap();
+                assert_eq!(snapshot.steps.len(), 1);
+                assert!(snapshot.metrics.is_empty());
+                assert!(snapshot.cpu_snapshots.is_empty());
+            })
+            .await;
+    }
+
+    #[test]
+    fn group_name_limit_reports_partial_observation_only_on_overflow() {
+        for count in [MAX_CPU_GROUP_NAMES, MAX_CPU_GROUP_NAMES + 1] {
+            // Arrange
+            let root = tempfile::tempdir().unwrap();
+            let ids = 1..=count as u64;
+            let packet = pb::Packet {
+                body: Some(pb::packet::Body::Snapshot(pb::SnapshotFrame {
+                    version: telemetry_protocol::VERSION,
+                    session_id: "capture".into(),
+                    dictionary_full: true,
+                    dictionary: ids
+                        .clone()
+                        .map(|id| pb::DictionaryEntry {
+                            id,
+                            parent_id: 0,
+                            path: Some(format!("/private/worker-{id}")),
+                        })
+                        .collect(),
+                    snapshot: Some(pb::Snapshot {
+                        schema_version: 1,
+                        records: ids
+                            .map(|id| pb::CpuRecord {
+                                cgroup_id: id,
+                                flags: FLAG_RUNTIME,
+                                ..Default::default()
+                            })
+                            .collect(),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })),
+            };
+            append(&root.path().join("cpu.pb"), &packet.encode_to_vec());
+            let mut reader = Reader::default();
+            // Act
+            reader.sample(root.path(), Duration::ZERO);
+            // Assert
+            assert_eq!(reader.names.len(), MAX_CPU_GROUP_NAMES);
+            assert_eq!(reader.incomplete, count > MAX_CPU_GROUP_NAMES);
+            assert!(reader.names.iter().all(|entry| !entry.name.contains('/')));
+        }
+    }
 
     fn frame(sequence: u64, runtime: u64) -> Vec<u8> {
         let mut records = Vec::new();
@@ -563,7 +680,7 @@ mod tests {
                 .is_none()
         );
         // Act: reject oversized allocations before reading payload.
-        std::fs::write(&stream, (MAX_FRAME as u32 + 1).to_le_bytes()).unwrap();
+        std::fs::write(&stream, (MAX_CPU_FRAME_BYTES as u32 + 1).to_le_bytes()).unwrap();
         assert!(
             reader
                 .sample(root.path(), Duration::ZERO)

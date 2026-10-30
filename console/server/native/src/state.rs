@@ -1,5 +1,8 @@
 //! Exclusive ownership and crash-safe marker persistence for the data root.
-use crate::protocol::{Marker, Phase};
+use crate::{
+    policy,
+    protocol::{Marker, Phase},
+};
 use prost::Message;
 use rustix::fs::{FlockOperation, OFlags, flock};
 use std::{
@@ -8,8 +11,6 @@ use std::{
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
-
-const MAX_MARKER: u64 = 64 * 1024;
 
 /// Restored admission state; unfinished or invalid markers always block.
 pub enum Restored {
@@ -50,14 +51,14 @@ impl StateStore {
         let restored = match store.read_marker() {
             Ok(None) => Restored::Idle,
             Ok(Some(marker))
-                if marker.version == 1
+                if marker.version == policy::MARKER_VERSION
                     && marker.outcome.as_ref().and_then(|o| o.boundary_clean) == Some(true)
                     && marker.phase == Phase::Idle as i32 =>
             {
                 Restored::Idle
             }
             Ok(Some(marker))
-                if marker.version == 1
+                if marker.version == policy::MARKER_VERSION
                     && marker.outcome.as_ref().and_then(|o| o.boundary_clean) == Some(true)
                     && marker.phase == Phase::Finished as i32 =>
             {
@@ -83,10 +84,10 @@ impl StateStore {
             return Err("marker is not a regular file".into());
         }
         let mut bytes = Vec::new();
-        file.take(MAX_MARKER + 1)
+        file.take(policy::MAX_MARKER_BYTES + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > MAX_MARKER {
+        if bytes.len() as u64 > policy::MAX_MARKER_BYTES {
             return Err("marker too large".into());
         }
         Marker::decode(bytes.as_slice())
@@ -97,10 +98,10 @@ impl StateStore {
     /// Durably replace the marker using a private temporary file and parent sync.
     pub fn write(&self, marker: &Marker) -> Result<(), String> {
         let bytes = marker.encode_to_vec();
-        if bytes.len() as u64 > MAX_MARKER {
+        if bytes.len() as u64 > policy::MAX_MARKER_BYTES {
             return Err("marker too large".into());
         }
-        let mut random = [0_u8; 16];
+        let mut random = [0_u8; policy::RANDOM_ID_BYTES];
         getrandom::fill(&mut random).map_err(|e| e.to_string())?;
         let temp = self.root.join(format!(".current-{}", hex::encode(random)));
         let result = (|| -> Result<(), String> {

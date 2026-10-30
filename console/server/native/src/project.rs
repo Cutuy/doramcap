@@ -5,6 +5,8 @@ use std::{
 };
 use workload_docker::compose::ComposeProject;
 
+pub(crate) const WORKLOAD_PROJECT_KEY: &str = "workload";
+
 /// Discover a single default Compose entry point and its optional override and env file.
 pub fn discover(
     root: &Path,
@@ -60,7 +62,7 @@ pub fn discover(
         vec![]
     };
     Ok(ComposeProject {
-        key: "workload".into(),
+        key: WORKLOAD_PROJECT_KEY.into(),
         directory,
         files,
         env_files,

@@ -1,6 +1,7 @@
 //! Native contracts and execution owner for the Console.
 pub mod config;
 mod metrics;
+pub mod policy;
 pub mod prepare;
 pub mod progress;
 pub mod project;
@@ -57,7 +58,7 @@ use session::{NativeState, Session};
 pub struct Console {
     owner: Mutex<Option<runtime::Owner<NativeState>>>,
     close_lock: tokio::sync::Mutex<()>,
-    snapshot: Arc<Mutex<protocol::Status>>,
+    snapshot: Arc<Mutex<Arc<protocol::Status>>>,
     loss: Arc<AtomicU64>,
     data_root: String,
 }
@@ -74,7 +75,7 @@ pub async fn open(config_path: String, contract_version: u32) -> Result<Console>
     let config = config::load(std::path::Path::new(&config_path))
         .map_err(|e| Error::new(Status::InvalidArg, e))?;
     let data_root = config.data_root.clone();
-    let snapshot = Arc::new(Mutex::new(protocol::Status::default()));
+    let snapshot = Arc::new(Mutex::new(Arc::new(protocol::Status::default())));
     let loss = Arc::new(AtomicU64::new(0));
     let owner_snapshot = snapshot.clone();
     let owner_loss = loss.clone();
@@ -190,15 +191,15 @@ impl Console {
                     let result = prepare::prepare(adapter, &config, request).await;
                     let mut state = session.borrow_mut();
                     match result {
-                        Ok(prepared) => {
+                        Ok(prepare::Preparation::Launchable(prepared)) => {
                             let bytes = prepared.review.encode_to_vec();
-                            if prepared.review.prepared_id.is_empty() {
-                                state.phase = protocol::Phase::Idle;
-                            } else {
-                                state.prepared = Some(prepared);
-                                state.phase = protocol::Phase::Reviewed;
-                            }
+                            state.prepared = Some(*prepared);
+                            state.phase = protocol::Phase::Reviewed;
                             let _ = sender.send(Ok(bytes));
+                        }
+                        Ok(prepare::Preparation::NeedsProfiles(review)) => {
+                            state.phase = protocol::Phase::Idle;
+                            let _ = sender.send(Ok(review.encode_to_vec()));
                         }
                         Err(error) => {
                             prepare::save_diagnostic(&config, &error);
@@ -249,7 +250,16 @@ impl Console {
             let run_id = receiver
                 .await
                 .map_err(|_| Error::new(Status::GenericFailure, "Internal"))?
-                .map_err(|error| Error::new(Status::GenericFailure, error))?;
+                .map_err(|error| {
+                    Error::new(
+                        if error == session::CommandError::Busy {
+                            Status::QueueFull
+                        } else {
+                            Status::GenericFailure
+                        },
+                        error.code(),
+                    )
+                })?;
             Ok(Buffer::from(
                 protocol::StartResponse { run_id }.encode_to_vec(),
             ))
@@ -317,15 +327,17 @@ impl Console {
         {
             return Err(Error::new(Status::Closing, "Console is closed"));
         }
-        let mut status = self
+        let snapshot = self
             .snapshot
             .lock()
             .map_err(|_| Error::new(Status::GenericFailure, "snapshot lock poisoned"))?
             .clone();
-        status.lost_events = self.loss.load(Ordering::Relaxed);
-        status.progress_incomplete |= status.lost_events != 0;
+        let lost = self.loss.load(Ordering::Relaxed);
         let data_root = self.data_root.clone();
         AsyncBlockBuilder::new(async move {
+            let mut status = snapshot.as_ref().clone();
+            status.lost_events = lost;
+            status.progress_incomplete |= lost != 0;
             status.cpu_available = open_snapshot_artifact(&data_root, &status, "cpu").is_ok();
             status.report_available = open_snapshot_artifact(&data_root, &status, "report").is_ok();
             Ok(Buffer::from(status.encode_to_vec()))
@@ -354,7 +366,7 @@ impl Console {
         let data_root = self.data_root.clone();
         let lost = self.loss.load(Ordering::Relaxed);
         AsyncBlockBuilder::new(async move {
-            let (mut status, cursor) = stream_update(status, &cursor);
+            let (mut status, cursor) = stream_update(status.as_ref(), &cursor);
             status.lost_events = lost;
             status.progress_incomplete |= lost != 0;
             status.cpu_available = open_snapshot_artifact(&data_root, &status, "cpu").is_ok();
@@ -376,7 +388,7 @@ impl Console {
     /// Open an authorized current-run artifact and transfer its descriptor to Node.
     #[napi]
     pub fn open_artifact(&self, env: Env, run_id: String, kind: String) -> Result<AsyncBlock<i32>> {
-        if run_id.len() != 32
+        if run_id.len() != policy::RUN_ID_HEX_CHARS
             || !run_id
                 .bytes()
                 .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
@@ -426,7 +438,7 @@ impl Console {
             .take();
         if let Some(owner) = owner {
             let reply = owner
-                .dispatch_control(|state| {
+                .dispatch_shutdown(|state| {
                     let (sender, receiver) = tokio::sync::oneshot::channel();
                     let mut session = state.session.borrow_mut();
                     session.closing = true;
@@ -437,14 +449,15 @@ impl Console {
                             | protocol::Phase::Stopping
                     ) {
                         session.stop_run();
-                        session.shutdown_waiters.push(sender);
+                        session.shutdown_waiter = Some(sender);
                     } else if session.phase == protocol::Phase::Preparing {
-                        session.shutdown_waiters.push(sender);
+                        session.shutdown_waiter = Some(sender);
                     } else {
                         let _ = sender.send(());
                     }
                     receiver
                 })
+                .await
                 .map_err(dispatch_error)?;
             let completed = reply
                 .await
@@ -474,7 +487,7 @@ fn open_artifact_file(
     run_id: &str,
     kind: &str,
 ) -> std::result::Result<std::fs::File, &'static str> {
-    if run_id.len() != 32
+    if run_id.len() != policy::RUN_ID_HEX_CHARS
         || !run_id
             .bytes()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
@@ -513,7 +526,7 @@ fn open_snapshot_artifact(
     kind: &str,
 ) -> std::result::Result<std::fs::File, &'static str> {
     let run_id = &status.run_id;
-    if run_id.len() != 32
+    if run_id.len() != policy::RUN_ID_HEX_CHARS
         || !run_id
             .bytes()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
@@ -546,7 +559,7 @@ pub struct LiveUpdate {
 }
 
 fn stream_update(
-    mut status: protocol::Status,
+    status: &protocol::Status,
     cursor: &protocol::StreamCursor,
 ) -> (protocol::Status, protocol::StreamCursor) {
     let next = protocol::StreamCursor {
@@ -558,23 +571,53 @@ fn stream_update(
             .last()
             .map_or(0, |snapshot| snapshot.sequence),
     };
-    if !cursor.run_id.is_empty()
+    let delta = !cursor.run_id.is_empty()
         && cursor.run_id == status.run_id
         && cursor.sequence <= status.sequence
-        && cursor.metric_elapsed_ns <= next.metric_elapsed_ns
-    {
-        status
+        && cursor.metric_elapsed_ns <= next.metric_elapsed_ns;
+    let send_cpu = !delta || cursor.cpu_sequence != next.cpu_sequence;
+    // Clone only selected rows from the immutable publication, outside the shared lock.
+    let update = protocol::Status {
+        phase: status.phase,
+        run_id: status.run_id.clone(),
+        steps: status
             .steps
-            .retain(|event| event.sequence > cursor.sequence);
-        status
+            .iter()
+            .filter(|event| !delta || event.sequence > cursor.sequence)
+            .cloned()
+            .collect(),
+        sequence: status.sequence,
+        lost_events: status.lost_events,
+        truncated_steps: status.truncated_steps,
+        progress_incomplete: status.progress_incomplete,
+        outcome: status.outcome.clone(),
+        overflow_steps: status.overflow_steps,
+        cpu_available: status.cpu_available,
+        report_available: status.report_available,
+        monitor_ready: status.monitor_ready,
+        project_directory: status.project_directory.clone(),
+        profiles: status.profiles.clone(),
+        metrics: status
             .metrics
-            .retain(|metric| metric.elapsed_ns > cursor.metric_elapsed_ns);
-        if cursor.cpu_sequence == next.cpu_sequence {
-            status.cpu_snapshots.clear();
-            status.cpu_group_names.clear();
-        }
-    }
-    (status, next)
+            .iter()
+            .filter(|metric| !delta || metric.elapsed_ns > cursor.metric_elapsed_ns)
+            .copied()
+            .collect(),
+        activity_available: status.activity_available,
+        metrics_incomplete: status.metrics_incomplete,
+        cpu_snapshots: if send_cpu {
+            status.cpu_snapshots.clone()
+        } else {
+            Vec::new()
+        },
+        system_apps: status.system_apps.clone(),
+        cpu_group_names: if send_cpu {
+            status.cpu_group_names.clone()
+        } else {
+            Vec::new()
+        },
+    };
+    (update, next)
 }
 
 #[cfg(test)]
@@ -607,9 +650,8 @@ mod stream_tests {
             ..Default::default()
         };
         // Act
-        let (checkpoint, cursor) =
-            stream_update(status.clone(), &protocol::StreamCursor::default());
-        let (heartbeat, _) = stream_update(status.clone(), &cursor);
+        let (checkpoint, cursor) = stream_update(&status, &protocol::StreamCursor::default());
+        let (heartbeat, _) = stream_update(&status, &cursor);
         // Assert
         assert_eq!(checkpoint.steps[0].invocation, id);
         assert_eq!(
@@ -637,9 +679,9 @@ mod stream_tests {
             elapsed_ns: id + 1,
             ..Default::default()
         });
-        let (delta, _) = stream_update(changed.clone(), &cursor);
+        let (delta, _) = stream_update(&changed, &cursor);
         changed.run_id = "next-run".into();
-        let (next_run, _) = stream_update(changed, &cursor);
+        let (next_run, _) = stream_update(&changed, &cursor);
         // Assert
         assert_eq!(delta.steps.len(), 1);
         assert_eq!(delta.steps[0].invocation, id + 1);

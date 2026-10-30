@@ -1,6 +1,6 @@
 //! Resolve a review using the same adapter and supporting-app template as execution.
 use crate::{
-    project,
+    policy, project,
     protocol::{ConsoleConfig, PrepareRequest, Review, Service},
 };
 use orchestrator::Step;
@@ -25,12 +25,27 @@ pub struct PreparedReview {
     pub directory: PathBuf,
 }
 
+/// A launchable review owns private inputs; a profile prompt owns only display data.
+pub enum Preparation {
+    Launchable(Box<PreparedReview>),
+    NeedsProfiles(Review),
+}
+impl Preparation {
+    /// Consume a launchable result; profile prompts have no retained launch inputs.
+    pub fn into_launchable(self) -> Option<PreparedReview> {
+        match self {
+            Self::Launchable(prepared) => Some(*prepared),
+            Self::NeedsProfiles(_) => None,
+        }
+    }
+}
+
 /// Resolve local image identities and private manifests without launching resources.
 pub async fn prepare(
     adapter: Rc<DockerAdapter>,
     config: &ConsoleConfig,
     request: PrepareRequest,
-) -> Result<PreparedReview, String> {
+) -> Result<Preparation, String> {
     let apps = crate::system_apps::select(config, request.system_apps.as_ref())?;
     let project = project::discover(
         Path::new(&config.project_root),
@@ -54,7 +69,7 @@ pub async fn prepare(
         .verify_overlay_namespace()
         .await
         .map_err(|e| e.to_string())?;
-    let mut random = [0_u8; 16];
+    let mut random = [0_u8; policy::RANDOM_ID_BYTES];
     getrandom::fill(&mut random).map_err(|e| e.to_string())?;
     let run_id = hex::encode(random);
     let reviews = Path::new(&config.data_root).join("reviews");
@@ -79,34 +94,22 @@ pub async fn prepare(
     )
     .await;
     match result {
-        Err(error)
-            if error == "selection contains no services"
-                && !available.is_empty()
-                && project.profiles.is_empty() =>
+        Err(workload_docker::compose::Error::EmptySelection)
+            if !available.is_empty() && project.profiles.is_empty() =>
         {
             let _ = std::fs::remove_dir_all(&directory);
-            Ok(PreparedReview {
-                review: Review {
-                    prepared_id: String::new(),
-                    run_id: String::new(),
-                    available_profiles: available,
-                    selected_profiles: Vec::new(),
-                    services: Vec::new(),
-                    warnings: vec!["Select a profile to enable at least one service.".into()],
-                    system_apps: crate::system_apps::options(config, &apps),
-                },
-                project,
-                workload_digest: String::new(),
-                monitor_image: None,
-                system_apps: apps,
-                directory,
-            })
+            Ok(Preparation::NeedsProfiles(Review {
+                available_profiles: available,
+                warnings: vec!["Select a profile to enable at least one service.".into()],
+                system_apps: crate::system_apps::options(config, &apps),
+                ..Default::default()
+            }))
         }
         Err(error) => {
             let _ = std::fs::remove_dir_all(&directory);
-            Err(error)
+            Err(error.to_string())
         }
-        Ok(review) => Ok(review),
+        Ok(review) => Ok(Preparation::Launchable(Box::new(review))),
     }
 }
 
@@ -118,22 +121,21 @@ async fn resolve(
     run_id: String,
     directory: PathBuf,
     apps: workload_docker::workflows::system_apps::SystemAppsConfig,
-) -> Result<PreparedReview, String> {
+) -> workload_docker::compose::Result<PreparedReview> {
     let workload = adapter
         .resolve(ResolveInput {
             run: run_id.clone(),
             artifacts: directory.clone(),
             project: project.clone(),
         })
-        .await
-        .map_err(|e| e.to_string())?;
+        .await?;
     let system = PrepareSystemApps
         .run(PrepareInput {
             config: apps.clone(),
             artifacts: directory.clone(),
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| workload_docker::compose::Error::Invalid(e.to_string()))?;
     let monitor_image = if let Some(monitor_project) = system.projects.into_iter().next() {
         let monitor = adapter
             .resolve(ResolveInput {
@@ -142,12 +144,14 @@ async fn resolve(
                 project: monitor_project,
             })
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| workload_docker::compose::Error::Invalid(e.to_string()))?;
         Some(
             monitor
                 .services
-                .get("cpu-monitor")
-                .ok_or("CPU monitor service missing")?
+                .get(crate::system_apps::CPU_MONITOR_ID)
+                .ok_or_else(|| {
+                    workload_docker::compose::Error::Invalid("CPU monitor service missing".into())
+                })?
                 .image_id
                 .clone(),
         )
@@ -193,7 +197,7 @@ pub(crate) fn save_diagnostic(config: &ConsoleConfig, message: &str) {
     {
         return;
     }
-    let mut random = [0_u8; 16];
+    let mut random = [0_u8; policy::RANDOM_ID_BYTES];
     if getrandom::fill(&mut random).is_err() {
         return;
     }

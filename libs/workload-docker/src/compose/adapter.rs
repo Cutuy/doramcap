@@ -280,7 +280,7 @@ impl DockerAdapter {
             .and_then(Value::as_object_mut)
             .ok_or_else(|| invalid("resolved Compose has no services"))?;
         if model_services.is_empty() {
-            return Err(invalid("selection contains no services"));
+            return Err(super::Error::EmptySelection);
         }
         let mut completed = project.completed_services.clone();
         for service in model_services.values() {

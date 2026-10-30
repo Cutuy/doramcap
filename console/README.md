@@ -18,3 +18,8 @@ node server/dist/main.js /path/to/console.pbtxt ./frontend
 Sign in as `console` with the secret file's contents. For remote access, use an SSH tunnel or TLS-terminating proxy; Basic authentication alone does not encrypt credentials. The selected project must
 be beneath the configured project root. Source files are trusted host inputs.
 If cleanup is unverified, follow the [host recovery procedure](docs/recovery.md) before starting another run.
+
+Readiness/stop deadlines and the sampling/publication interval are configurable in
+`runtime` in [console.pbtxt.example](console.pbtxt.example). Omitted values preserve
+the 60 s / 15 s / 100 ms defaults; values must be positive. Queue, retention and byte
+budgets are named constants in [policy.rs](server/native/src/policy.rs).

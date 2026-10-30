@@ -262,6 +262,7 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
     std::fs::write(project_dir.join("compose.yaml"), format!("services:\n  worker:\n    image: '{image}'\n    environment:\n      VALUE: '${{VALUE}}'\n  optional:\n    image: '{image}'\n    profiles: [extra]\n")).unwrap();
     std::fs::write(project_dir.join(".env"), "VALUE=before\n").unwrap();
     let config = ConsoleConfig {
+        runtime: None,
         listen_address: "127.0.0.1:8080".into(),
         public_origin: "http://127.0.0.1:8080".into(),
         project_root: root.path().to_string_lossy().into_owned(),
@@ -298,6 +299,8 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
     );
     let first = prepare::prepare(adapter.clone(), &config, request.clone())
         .await
+        .unwrap()
+        .into_launchable()
         .unwrap();
     let launch_dir = root.path().join("launch-resolution");
     std::fs::create_dir(&launch_dir).unwrap();
@@ -332,6 +335,8 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
     assert_ne!(changed.sha256, first.workload_digest);
     let second = prepare::prepare(adapter.clone(), &config, request.clone())
         .await
+        .unwrap()
+        .into_launchable()
         .unwrap();
     // Act: deselecting the app must not resolve even a missing monitor image.
     let mut no_monitor = config.clone();
@@ -352,6 +357,8 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
         },
     )
     .await
+    .unwrap()
+    .into_launchable()
     .unwrap();
     // Assert
     assert!(disabled.monitor_image.is_none());
@@ -410,6 +417,7 @@ async fn profile_only_project_reports_available_profiles() {
     assert_eq!(profiles, ["extra"]);
     assert_eq!(error.to_string(), "selection contains no services");
     let config = console_native::protocol::ConsoleConfig {
+        runtime: None,
         listen_address: "127.0.0.1:8080".into(),
         public_origin: "http://127.0.0.1:8080".into(),
         project_root: root.path().to_string_lossy().into_owned(),
@@ -434,6 +442,9 @@ async fn profile_only_project_reports_available_profiles() {
     )
     .await
     .unwrap();
-    assert!(review.review.prepared_id.is_empty());
-    assert_eq!(review.review.available_profiles, ["extra"]);
+    let console_native::prepare::Preparation::NeedsProfiles(review) = review else {
+        panic!("expected profile selection")
+    };
+    assert!(review.prepared_id.is_empty());
+    assert_eq!(review.available_profiles, ["extra"]);
 }

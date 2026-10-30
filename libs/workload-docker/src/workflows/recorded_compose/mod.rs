@@ -25,6 +25,30 @@ use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
 use tokio::sync::oneshot;
 
+/// Optional typed notifications owned by one run.
+#[derive(Default)]
+pub struct RunSignals {
+    /// Send ready plans; a closed receiver triggers orderly teardown.
+    pub ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    /// Signal before stopping writers; a closed receiver does not affect cleanup.
+    pub quiescing: Option<oneshot::Sender<()>>,
+}
+
+/// Identify finite lifecycle steps for progress retention using their Rust types.
+pub fn retain_progress_step(step: &str) -> bool {
+    use std::any::type_name;
+    [
+        type_name::<PrepareRun>(),
+        type_name::<PrepareOverlays>(),
+        type_name::<LaunchProjects>(),
+        type_name::<QuiesceProjects>(),
+        type_name::<FinalizeRun>(),
+        type_name::<RemoveProjects>(),
+        type_name::<WriteRunReport>(),
+    ]
+    .contains(&step)
+}
+
 /// Single-session runner with concurrent independent Compose operations.
 ///
 /// `run` accepts fully prepared settings and a cooperative stop future. It never
@@ -106,8 +130,31 @@ impl ComposeRunner {
         ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
+        self.run_with_signals(
+            spec,
+            stop,
+            observer,
+            RunSignals {
+                ready,
+                ..Default::default()
+            },
+            check,
+        )
+        .await
+    }
+
+    /// Run with typed readiness and quiescence notifications plus preflight validation.
+    /// Quiescence is signaled before stopping writers, including automatic shutdown.
+    pub async fn run_with_signals(
+        &mut self,
+        spec: ComposeRun,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        signals: RunSignals,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
+    ) -> Result<ComposeRunReport> {
         // Keep large backend preparation futures off callers' async state machines.
-        Box::pin(self.run_inner(spec, stop, observer, ready, check)).await
+        Box::pin(self.run_inner(spec, stop, observer, signals, check)).await
     }
 
     async fn run_inner(
@@ -115,7 +162,7 @@ impl ComposeRunner {
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
         if self.blocked {
@@ -182,7 +229,7 @@ impl ComposeRunner {
             shutdown: None,
             finalized: None,
             cleanup: None,
-            ready,
+            signals,
             event_result: Ok(()),
         };
         let outcome = workload_lifecycle::recorded_run::run(&mut phases, stop).await;
@@ -258,7 +305,7 @@ struct ComposePhases {
     shutdown: Option<orchestrator::Output<projects::QuiescedProjects>>,
     finalized: Option<orchestrator::Output<finalization::FinalizedRun>>,
     cleanup: Option<orchestrator::Output<Vec<Cleanup>>>,
-    ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    signals: RunSignals,
     event_result: Result<()>,
 }
 impl workload_lifecycle::recorded_run::Phases for ComposePhases {
@@ -297,7 +344,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         }
     }
     fn ready(&mut self) -> std::result::Result<(), String> {
-        if let Some(ready) = self.ready.take() {
+        if let Some(ready) = self.signals.ready.take() {
             ready
                 .send(self.plans.clone())
                 .map_err(|_| "readiness receiver dropped".to_string())?;
@@ -326,6 +373,9 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         }
     }
     async fn quiesce(&mut self) -> std::result::Result<bool, String> {
+        if let Some(quiescing) = self.signals.quiescing.take() {
+            let _ = quiescing.send(());
+        }
         // Stop all writer roles before collecting filesystems or removing infrastructure.
         let mut input = Input::new(QuiesceInput {
             groups: self.attempted.clone(),

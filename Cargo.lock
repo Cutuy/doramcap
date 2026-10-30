@@ -942,6 +942,7 @@ dependencies = [
  "telemetry-protocol",
  "tempfile",
  "tokio",
+ "url",
  "workflow-protocol",
  "workload-docker",
 ]

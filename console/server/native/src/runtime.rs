@@ -1,4 +1,5 @@
 //! Bounded command dispatch to a single thread owning non-Send state.
+use crate::policy::{COMMAND_QUEUE_CAPACITY, CONTROL_QUEUE_CAPACITY};
 use std::{future::Future, thread};
 use tokio::sync::{mpsc, oneshot};
 
@@ -7,7 +8,7 @@ type Command<T> = Box<dyn FnOnce(&mut T) + Send + 'static>;
 /// A handle to state constructed, used and destroyed on its owner thread.
 pub struct Owner<T: 'static> {
     commands: mpsc::Sender<Command<T>>,
-    control: mpsc::UnboundedSender<Command<T>>,
+    control: mpsc::Sender<Command<T>>,
     close: Option<mpsc::Sender<()>>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -27,8 +28,8 @@ impl<T: 'static> Owner<T> {
         Fut: Future<Output = Result<T, E>> + 'static,
         E: std::fmt::Display,
     {
-        let (commands, mut receiver) = mpsc::channel::<Command<T>>(32);
-        let (control, mut control_rx) = mpsc::unbounded_channel::<Command<T>>();
+        let (commands, mut receiver) = mpsc::channel::<Command<T>>(COMMAND_QUEUE_CAPACITY);
+        let (control, mut control_rx) = mpsc::channel::<Command<T>>(CONTROL_QUEUE_CAPACITY);
         let keep_control = control.clone();
         let (close, mut close_rx) = mpsc::channel(1);
         let keep_commands = commands.clone();
@@ -59,7 +60,6 @@ impl<T: 'static> Owner<T> {
                 }
                 loop {
                     tokio::select! {
-                        biased;
                         _ = close_rx.recv() => break,
                         Some(command) = control_rx.recv() => command(&mut state),
                         command = receiver.recv() => match command {
@@ -113,9 +113,27 @@ impl<T: 'static> Owner<T> {
     ) -> Result<oneshot::Receiver<R>, DispatchError> {
         let (reply, receiver) = oneshot::channel();
         self.control
+            .try_send(Box::new(move |state| {
+                let _ = reply.send(operation(state));
+            }))
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => DispatchError::Busy,
+                mpsc::error::TrySendError::Closed(_) => DispatchError::Closed,
+            })?;
+        Ok(receiver)
+    }
+
+    /// Wait for control capacity during serialized shutdown; ordinary admission stays nonblocking.
+    pub async fn dispatch_shutdown<R: Send + 'static>(
+        &self,
+        operation: impl FnOnce(&mut T) -> R + Send + 'static,
+    ) -> Result<oneshot::Receiver<R>, DispatchError> {
+        let (reply, receiver) = oneshot::channel();
+        self.control
             .send(Box::new(move |state| {
                 let _ = reply.send(operation(state));
             }))
+            .await
             .map_err(|_| DispatchError::Closed)?;
         Ok(receiver)
     }
@@ -202,12 +220,19 @@ mod tests {
                 })
                 .unwrap();
             started_rx.recv().unwrap();
-            for _ in 0..32 {
+            for _ in 0..COMMAND_QUEUE_CAPACITY {
                 drop(owner.dispatch(|_| ()).unwrap());
             }
             // Act / Assert
             assert!(matches!(owner.dispatch(|_| ()), Err(DispatchError::Busy)));
             let control = owner.dispatch_control(|_| 7).unwrap();
+            for _ in 1..CONTROL_QUEUE_CAPACITY {
+                drop(owner.dispatch_control(|_| ()).unwrap());
+            }
+            assert!(matches!(
+                owner.dispatch_control(|_| ()),
+                Err(DispatchError::Busy)
+            ));
             release_tx.send(()).unwrap();
             first.await.unwrap();
             assert_eq!(control.await.unwrap(), 7);

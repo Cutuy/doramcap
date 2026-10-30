@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 prost = "0.14"
+url = "=2.5.8"
 tokio = { version = "1", features = ["rt", "sync"] }
 prost-reflect = { version = "0.16", features = ["text-format"] }
 workload-docker = { path = "../../../libs/workload-docker" }

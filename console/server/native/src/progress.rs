@@ -2,23 +2,12 @@
 use std::collections::VecDeque;
 use workflow_protocol::{Event, event::State};
 
-const LIMIT: usize = 512;
+use crate::policy::MAX_PROGRESS_ROWS;
 
 // Keep the finite top-level Compose lifecycle visible as periodic checks age out.
 fn lifecycle_step(event: &Event) -> bool {
     event.parent.is_none()
-        && matches!(
-            event.step.rsplit("::").next(),
-            Some(
-                "PrepareRun"
-                    | "PrepareOverlays"
-                    | "LaunchProjects"
-                    | "QuiesceProjects"
-                    | "FinalizeRun"
-                    | "RemoveProjects"
-                    | "WriteRunReport"
-            )
-        )
+        && workload_docker::workflows::recorded_compose::retain_progress_step(&event.step)
 }
 
 /// Current invocation rows and independent indicators of missing history.
@@ -33,7 +22,7 @@ pub struct Progress {
 }
 
 impl Progress {
-    /// Incorporate a decoded event, retaining at most 512 invocation rows.
+    /// Incorporate an event within `policy::MAX_PROGRESS_ROWS`, reporting loss separately.
     pub fn apply(&mut self, mut event: Event) {
         if event.sequence > self.sequence {
             self.sequence_gaps = self.sequence_gaps.saturating_add(
@@ -62,7 +51,7 @@ impl Progress {
             *row = event;
             return;
         }
-        if self.rows.len() == LIMIT {
+        if self.rows.len() == MAX_PROGRESS_ROWS {
             if let Some(index) = self
                 .rows
                 .iter()
@@ -81,13 +70,17 @@ impl Progress {
     /// Restore bounded, already-redacted terminal activity without replaying events.
     pub fn restore(&mut self, status: &crate::protocol::Status) {
         self.rows.clear();
-        for event in status.steps.iter().take(LIMIT) {
+        for event in status.steps.iter().take(MAX_PROGRESS_ROWS) {
             self.apply(event.clone());
         }
         self.sequence = status.sequence;
         self.sequence_gaps = u64::from(status.progress_incomplete);
         self.truncated = status.truncated_steps;
         self.overflow = status.overflow_steps;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
     }
 
     /// Snapshot rows in admission order without exposing private event payloads.
@@ -135,7 +128,10 @@ mod tests {
         // Arrange
         let mut progress = Progress::default();
         let mut lifecycle = event(1, 1, State::Succeeded);
-        lifecycle.step = "workload_docker::workflow::PrepareRun".into();
+        lifecycle.step = std::any::type_name::<
+            workload_docker::workflows::recorded_compose::preparation::PrepareRun,
+        >()
+        .into();
         progress.apply(lifecycle);
         // Act
         for id in 2..=2_001 {
@@ -148,7 +144,9 @@ mod tests {
         assert_eq!(progress.truncated, 1_489);
         assert_eq!(
             progress.rows()[0].step,
-            "workload_docker::workflow::PrepareRun"
+            std::any::type_name::<
+                workload_docker::workflows::recorded_compose::preparation::PrepareRun,
+            >()
         );
         assert_eq!(progress.rows().last().unwrap().invocation, 2_001);
         assert!(!progress.incomplete());

@@ -2,6 +2,8 @@
 use crate::protocol::{ConsoleConfig, SystemApp, SystemAppSelection};
 use workload_docker::workflows::system_apps::SystemAppsConfig;
 
+pub(crate) use workload_docker::workflows::system_apps::CPU_MONITOR_SERVICE as CPU_MONITOR_ID;
+
 pub(crate) fn select(
     config: &ConsoleConfig,
     requested: Option<&SystemAppSelection>,
@@ -10,7 +12,7 @@ pub(crate) fn select(
     let Some(requested) = requested else {
         return Ok(available);
     };
-    if requested.ids.len() > 1 || requested.ids.iter().any(|id| id != "cpu-monitor") {
+    if requested.ids.len() > 1 || requested.ids.iter().any(|id| id != CPU_MONITOR_ID) {
         return Err("unknown or duplicate system app".into());
     }
     if requested.ids.is_empty() {
@@ -32,7 +34,7 @@ pub(crate) fn options(config: &ConsoleConfig, selected: &SystemAppsConfig) -> Ve
         return Vec::new();
     }
     vec![SystemApp {
-        id: "cpu-monitor".into(),
+        id: CPU_MONITOR_ID.into(),
         label: "CPU recording".into(),
         selected: selected.cpu_monitor.is_some(),
     }]
@@ -41,7 +43,7 @@ pub(crate) fn options(config: &ConsoleConfig, selected: &SystemAppsConfig) -> Ve
 pub(crate) fn selection(apps: &SystemAppsConfig) -> SystemAppSelection {
     SystemAppSelection {
         ids: if apps.cpu_monitor.is_some() {
-            vec!["cpu-monitor".into()]
+            vec![CPU_MONITOR_ID.into()]
         } else {
             Vec::new()
         },
@@ -87,7 +89,7 @@ mod tests {
             select(
                 &ConsoleConfig::default(),
                 Some(&SystemAppSelection {
-                    ids: vec!["cpu-monitor".into()]
+                    ids: vec![CPU_MONITOR_ID.into()]
                 })
             )
             .is_err()

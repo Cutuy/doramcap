@@ -1,5 +1,6 @@
 //! Owner-local session state and command transitions.
 use crate::{
+    policy,
     prepare::PreparedReview,
     progress::Progress,
     protocol::{ConsoleConfig, Marker, Phase},
@@ -16,15 +17,38 @@ use std::{
 use tokio::sync::oneshot;
 use workload_docker::{compose::DockerAdapter, workflows::recorded_compose::ComposeRunner};
 
+/// Stable public error categories; private diagnostics are stored separately.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CommandError {
+    InvalidInput,
+    Conflict,
+    StaleReview,
+    Stopped,
+    Busy,
+    Internal,
+}
+impl CommandError {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::InvalidInput => "InvalidInput",
+            Self::Conflict => "Conflict",
+            Self::StaleReview => "StaleReview",
+            Self::Stopped => "Stopped",
+            Self::Busy => "Busy",
+            Self::Internal => "Internal",
+        }
+    }
+}
+
 pub(crate) struct Session {
     pub phase: Phase,
     pub prepared: Option<PreparedReview>,
     pub marker: Option<Marker>,
     pub closing: bool,
-    pub shutdown_waiters: Vec<oneshot::Sender<()>>,
+    pub shutdown_waiter: Option<oneshot::Sender<()>>,
     pub start_key: Option<String>,
-    pub start_result: Option<Result<String, String>>,
-    pub start_waiters: Vec<oneshot::Sender<Result<String, String>>>,
+    pub start_result: Option<Result<String, CommandError>>,
+    pub start_waiters: Vec<oneshot::Sender<Result<String, CommandError>>>,
     pub stop: Option<oneshot::Sender<()>>,
     pub stop_latched: Rc<Cell<bool>>,
     pub progress: Progress,
@@ -35,7 +59,7 @@ pub(crate) struct Session {
     pub observer: Option<orchestrator::telemetry::TelemetryObserver>,
     pub lost_events: u64,
     pub monitor_ready: bool,
-    pub snapshot: Arc<Mutex<crate::protocol::Status>>,
+    pub snapshot: Arc<Mutex<Arc<crate::protocol::Status>>>,
     pub loss: Arc<AtomicU64>,
 }
 
@@ -49,7 +73,7 @@ impl Session {
             prepared: None,
             marker,
             closing: false,
-            shutdown_waiters: Vec::new(),
+            shutdown_waiter: None,
             start_key,
             start_result,
             start_waiters: Vec::new(),
@@ -63,7 +87,7 @@ impl Session {
             observer: None,
             lost_events: 0,
             monitor_ready: false,
-            snapshot: Arc::new(Mutex::new(crate::protocol::Status::default())),
+            snapshot: Arc::new(Mutex::new(Arc::new(crate::protocol::Status::default()))),
             loss: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -125,16 +149,27 @@ impl Session {
             cpu_snapshots: self.cpu_snapshots.clone(),
             cpu_group_names: self.cpu_group_names.clone(),
             metrics_incomplete: self.metrics_incomplete,
-            activity_available: !self.progress.rows().is_empty(),
+            activity_available: !self.progress.is_empty(),
             monitor_ready: self.monitor_ready,
             cpu_available: false,
             report_available: false,
         };
+        let publication = Arc::new(status);
         if let Ok(mut snapshot) = self.snapshot.lock() {
-            *snapshot = status;
+            let previous = std::mem::replace(&mut *snapshot, publication);
+            drop(snapshot);
+            drop(previous);
         }
     }
-    pub fn settle_start(&mut self, result: Result<String, String>) {
+    fn add_start_waiter(&mut self, sender: oneshot::Sender<Result<String, CommandError>>) {
+        self.start_waiters.retain(|waiter| !waiter.is_closed());
+        if self.start_waiters.len() >= policy::MAX_START_WAITERS {
+            let _ = sender.send(Err(CommandError::Busy));
+        } else {
+            self.start_waiters.push(sender);
+        }
+    }
+    pub fn settle_start(&mut self, result: Result<String, CommandError>) {
         self.start_result = Some(result.clone());
         for waiter in self.start_waiters.drain(..) {
             let _ = waiter.send(result.clone());
@@ -154,7 +189,7 @@ impl Session {
         self.begin_stopping();
     }
     pub fn finish_shutdown(&mut self) {
-        for waiter in self.shutdown_waiters.drain(..) {
+        if let Some(waiter) = self.shutdown_waiter.take() {
             let _ = waiter.send(());
         }
     }
@@ -172,7 +207,7 @@ pub(crate) struct NativeState {
 pub(crate) fn start(
     state: &mut NativeState,
     request: crate::protocol::StartRequest,
-) -> oneshot::Receiver<Result<String, String>> {
+) -> oneshot::Receiver<Result<String, CommandError>> {
     use crate::{
         project,
         protocol::{Marker, Outcome},
@@ -183,8 +218,8 @@ pub(crate) fn start(
 
     let (sender, receiver) = oneshot::channel();
     let mut session = state.session.borrow_mut();
-    if request.request_key.is_empty() || request.request_key.len() > 128 {
-        let _ = sender.send(Err("InvalidInput".into()));
+    if request.request_key.is_empty() || request.request_key.len() > policy::MAX_REQUEST_KEY_BYTES {
+        let _ = sender.send(Err(CommandError::InvalidInput));
         return receiver;
     }
     if session.start_key.as_deref() == Some(&request.request_key) {
@@ -193,27 +228,27 @@ pub(crate) fn start(
             .as_ref()
             .is_none_or(|marker| marker.run_id != request.prepared_id)
         {
-            let _ = sender.send(Err("Conflict".into()));
+            let _ = sender.send(Err(CommandError::Conflict));
             return receiver;
         }
         if let Some(result) = &session.start_result {
             let _ = sender.send(result.clone());
         } else {
-            session.start_waiters.push(sender);
+            session.add_start_waiter(sender);
         }
         return receiver;
     }
     if session.phase != Phase::Reviewed || session.closing {
-        let _ = sender.send(Err("Conflict".into()));
+        let _ = sender.send(Err(CommandError::Conflict));
         return receiver;
     }
     let Some(prepared) = session.prepared.take() else {
-        let _ = sender.send(Err("Conflict".into()));
+        let _ = sender.send(Err(CommandError::Conflict));
         return receiver;
     };
     if prepared.review.prepared_id != request.prepared_id {
         session.prepared = Some(prepared);
-        let _ = sender.send(Err("Conflict".into()));
+        let _ = sender.send(Err(CommandError::Conflict));
         return receiver;
     }
     let rediscovered = project::discover(
@@ -229,7 +264,7 @@ pub(crate) fn start(
         let _ = std::fs::remove_dir_all(&prepared.directory);
         session.phase = Phase::Idle;
         session.publish();
-        let _ = sender.send(Err("StaleReview".into()));
+        let _ = sender.send(Err(CommandError::StaleReview));
         return receiver;
     }
     let run_id = prepared.review.run_id.clone();
@@ -241,11 +276,11 @@ pub(crate) fn start(
         .is_err()
     {
         session.prepared = Some(prepared);
-        let _ = sender.send(Err("Internal".into()));
+        let _ = sender.send(Err(CommandError::Internal));
         return receiver;
     }
     let marker = Marker {
-        version: 1,
+        version: policy::MARKER_VERSION,
         run_id: run_id.clone(),
         request_key: request.request_key.clone(),
         phase: Phase::Starting as i32,
@@ -259,22 +294,24 @@ pub(crate) fn start(
     if state.store.write(&marker).is_err() {
         session.phase = Phase::Blocked;
         session.publish();
-        let _ = sender.send(Err("Internal".into()));
+        let _ = sender.send(Err(CommandError::Internal));
         return receiver;
     }
     let (stop_tx, stop_rx) = oneshot::channel();
     let (ready_tx, ready_rx) = oneshot::channel();
+    let (quiescing_tx, quiescing_rx) = oneshot::channel();
     session.phase = Phase::Starting;
     session.marker = Some(marker);
     session.start_key = Some(request.request_key);
     session.start_result = None;
-    session.start_waiters.push(sender);
+    session.add_start_waiter(sender);
     session.stop = Some(stop_tx);
     session.stop_latched = Rc::new(Cell::new(false));
     session.reset_activity();
     let latch = session.stop_latched.clone();
-    let (events_tx, mut events_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
-    let observer = TelemetryObserver::new(16 * 1024, move |bytes| {
+    let (events_tx, mut events_rx) =
+        tokio::sync::mpsc::channel::<Vec<u8>>(policy::EVENT_QUEUE_CAPACITY);
+    let observer = TelemetryObserver::new(policy::MAX_EVENT_BYTES, move |bytes| {
         events_tx
             .try_send(bytes.to_vec())
             .map_err(|e| io::Error::other(e.to_string()))
@@ -291,7 +328,6 @@ pub(crate) fn start(
                 Ok(event) => session.progress.apply(event),
                 Err(_) => session.progress.unknown_version = true,
             }
-            session.publish();
         }
     });
     let cpu_enabled = prepared.system_apps.cpu_monitor.is_some();
@@ -306,6 +342,7 @@ pub(crate) fn start(
             session.publish();
         }
     });
+    let runtime = crate::config::runtime(&state.config);
     let spec = ComposeRun {
         filesystem: Some(Default::default()),
         id: run_id.clone(),
@@ -314,17 +351,23 @@ pub(crate) fn start(
         projects: vec![prepared.project.clone()],
         first_party: vec![],
         system_apps: prepared.system_apps.clone(),
-        readiness_seconds: 60,
-        stop_seconds: 15,
+        readiness_seconds: u64::from(runtime.readiness_seconds.unwrap()),
+        stop_seconds: u64::from(runtime.stop_seconds.unwrap()),
     };
     let (metrics_stop, metrics_done) = crate::metrics::watch(
         state.session.clone(),
         spec.artifacts.clone(),
         spec.system_apps.cpu_monitor.is_some(),
+        std::time::Duration::from_millis(u64::from(runtime.sample_interval_ms.unwrap())),
     );
     let session_ref = state.session.clone();
     let check_session = session_ref.clone();
     let shutdown_session = session_ref.clone();
+    tokio::task::spawn_local(async move {
+        if quiescing_rx.await.is_ok() {
+            shutdown_session.borrow_mut().begin_stopping();
+        }
+    });
     let runner = state.runner.clone();
     let store = state.store.clone();
     let check_store = store.clone();
@@ -336,43 +379,45 @@ pub(crate) fn start(
         let (result, blocked) = {
             let mut runner = runner.lock().await;
             let result = runner
-                .run_with_preflight(
+                .run_with_signals(
                     spec.clone(),
                     async {
                         let _ = stop_rx.await;
                     },
                     move |event: &orchestrator::Event| {
-                        if event.state == orchestrator::State::Started
-                            && event.invocation.step.rsplit("::").next() == Some("QuiesceProjects")
-                        {
-                            shutdown_session.borrow_mut().begin_stopping();
-                        }
                         let mut safe = event.clone();
                         safe.payload = None;
                         safe.error = safe.error.map(|_| "step failed".into());
                         observer_for_runner.observe(&safe);
                         loss.store(observer_for_runner.dropped_events(), Ordering::Relaxed);
                     },
-                    Some(ready_tx),
+                    workload_docker::workflows::recorded_compose::RunSignals {
+                        ready: Some(ready_tx),
+                        quiescing: Some(quiescing_tx),
+                    },
                     move |prepared_run| {
                         let plans = prepared_run.projects();
-                        let workload = plans.iter().find(|p| p.key == "workload");
+                        let workload = plans
+                            .iter()
+                            .find(|p| p.key == crate::project::WORKLOAD_PROJECT_KEY);
                         let monitor = plans
                             .iter()
-                            .find(|p| p.key == "system")
-                            .and_then(|p| p.services.get("cpu-monitor"));
+                            .find(|p| {
+                                p.key == workload_docker::workflows::system_apps::SYSTEM_PROJECT_KEY
+                            })
+                            .and_then(|p| p.services.get(crate::system_apps::CPU_MONITOR_ID));
                         let rejection = if latch.get() {
-                            Some("Stopped")
+                            Some(CommandError::Stopped)
                         } else if workload.is_none_or(|p| p.sha256 != expected_digest)
                             || monitor.map(|m| &m.image_id) != expected_monitor.as_ref()
                         {
-                            Some("StaleReview")
+                            Some(CommandError::StaleReview)
                         } else {
                             None
                         };
                         if let Some(reason) = rejection {
-                            check_session.borrow_mut().settle_start(Err(reason.into()));
-                            return Err(Error::Invalid(reason.into()));
+                            check_session.borrow_mut().settle_start(Err(reason));
+                            return Err(Error::Invalid(reason.code().into()));
                         }
                         let mut session = check_session.borrow_mut();
                         let mut marker = session.marker.clone().expect("starting marker");
@@ -380,7 +425,7 @@ pub(crate) fn start(
                         if check_store.write(&marker).is_err() {
                             session.phase = Phase::Blocked;
                             session.publish();
-                            session.settle_start(Err("Internal".into()));
+                            session.settle_start(Err(CommandError::Internal));
                             return Err(Error::Invalid("marker persistence failed".into()));
                         }
                         session.marker = Some(marker);
@@ -402,7 +447,7 @@ pub(crate) fn start(
             let mut session = session_ref.borrow_mut();
             session.lost_events = lost;
             if session.start_result.is_none() {
-                session.settle_start(Err("Internal".into()));
+                session.settle_start(Err(CommandError::Internal));
             }
             let (phase, outcome) = match result {
                 Ok(report) => {
@@ -465,7 +510,7 @@ pub(crate) fn start(
             session.stop = None;
             session.publish();
             let snapshot = session.snapshot.lock().ok().map(|status| {
-                let mut status = status.clone();
+                let mut status = status.as_ref().clone();
                 status.phase = final_phase as i32;
                 status
             });
@@ -495,6 +540,52 @@ mod tests {
     };
     use std::time::Duration;
     use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
+
+    #[test]
+    fn pending_start_subscriptions_are_bounded_and_closed_receivers_are_reclaimed() {
+        // Arrange
+        let mut session = Session::new(Phase::Starting, None);
+        let mut receivers = Vec::new();
+        for _ in 0..policy::MAX_START_WAITERS {
+            let (sender, receiver) = oneshot::channel();
+            session.add_start_waiter(sender);
+            receivers.push(receiver);
+        }
+        let (extra, mut rejected) = oneshot::channel();
+        // Act
+        session.add_start_waiter(extra);
+        // Assert
+        assert_eq!(rejected.try_recv().unwrap(), Err(CommandError::Busy));
+        assert_eq!(session.start_waiters.len(), policy::MAX_START_WAITERS);
+        // Act: a disconnected subscriber releases admission for the next retry.
+        drop(receivers.pop());
+        let (next, mut admitted) = oneshot::channel();
+        session.add_start_waiter(next);
+        session.settle_start(Ok("run".into()));
+        // Assert
+        assert_eq!(admitted.try_recv().unwrap(), Ok("run".into()));
+        for mut receiver in receivers {
+            assert_eq!(receiver.try_recv().unwrap(), Ok("run".into()));
+        }
+        assert!(session.start_waiters.is_empty());
+    }
+
+    #[test]
+    fn published_snapshots_are_shared_and_remain_immutable_across_transitions() {
+        // Arrange
+        let mut session = Session::new(Phase::Starting, None);
+        session.publish();
+        let before = session.snapshot.lock().unwrap().clone();
+        let another_reader = session.snapshot.lock().unwrap().clone();
+        assert!(Arc::ptr_eq(&before, &another_reader));
+        // Act
+        session.begin_stopping();
+        // Assert
+        let after = session.snapshot.lock().unwrap().clone();
+        assert_eq!(before.phase, Phase::Starting as i32);
+        assert_eq!(after.phase, Phase::Stopping as i32);
+        assert!(!Arc::ptr_eq(&before, &after));
+    }
 
     #[test]
     fn shutdown_is_one_way_and_terminal_sessions_cannot_be_stopped_again() {
@@ -604,7 +695,7 @@ mod tests {
 "#,
                 )
                 .unwrap();
-                let config = ConsoleConfig {
+                let config = ConsoleConfig { runtime: None,
                     listen_address: "127.0.0.1:8080".into(),
                     public_origin: "http://127.0.0.1:8080".into(),
                     project_root: root.to_string_lossy().into_owned(),
@@ -630,7 +721,7 @@ mod tests {
                     },
                 )
                 .await
-                .unwrap();
+                .unwrap().into_launchable().unwrap();
                 let id = prepared.review.run_id.clone();
                 let mut session = Session::new(Phase::Reviewed, None);
                 session.prepared = Some(prepared);
@@ -664,7 +755,7 @@ mod tests {
                 assert!(shared.borrow().metrics.is_empty());
                 // Act: Stop awaits finalization and cleanup with no recorder.
                 let (done, finished) = oneshot::channel();
-                shared.borrow_mut().shutdown_waiters.push(done);
+                shared.borrow_mut().shutdown_waiter = Some(done);
                 shared.borrow_mut().stop_run();
                 tokio::time::timeout(std::time::Duration::from_secs(60), finished)
                     .await
@@ -711,10 +802,10 @@ mod tests {
             let project = root.join("project");
             std::fs::create_dir(&project).unwrap();
             std::fs::write(project.join("compose.yaml"), "services:\n  worker:\n    image: node:22-bookworm-slim\n    entrypoint: [\"/bin/sh\", \"-c\"]\n    command: [\"trap 'exit 0' TERM INT; while :; do sleep 1; done\"]\n").unwrap();
-            let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
+            let config = ConsoleConfig { runtime: None, listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap().into_launchable().unwrap();
             let id = review.review.run_id.clone();
             println!("test run id: {id}");
             let mut session = Session::new(Phase::Reviewed, None);
@@ -749,7 +840,7 @@ mod tests {
             assert!(terminal.is_ok(), "run failed to finish cleanup");
             assert_eq!(first_result, Ok(id.clone()));
             assert_eq!(retry_result, Ok(id.clone()));
-            assert_eq!(conflict_result, Err("Conflict".into()));
+            assert_eq!(conflict_result, Err(CommandError::Conflict));
             let session = shared.borrow();
             assert!(ready, "monitor never became ready; phase {:?}", session.phase);
             assert_eq!(session.phase, Phase::Finished);
@@ -790,10 +881,10 @@ mod tests {
             let project = root.join("project");
             std::fs::create_dir(&project).unwrap();
             std::fs::write(project.join("compose.yaml"), "services:\n  worker:\n    image: node:22-bookworm-slim\n    command: [\"sleep\", \"60\"]\n").unwrap();
-            let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
+            let config = ConsoleConfig { runtime: None, listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap().into_launchable().unwrap();
             let id = review.review.run_id.clone();
             let mut session = Session::new(Phase::Reviewed, None);
             session.prepared = Some(review);
@@ -815,7 +906,7 @@ mod tests {
             }).await.unwrap();
             // Assert
             assert!(observed, "preparation event was not observed before Stop");
-            assert_eq!(result, Err("Stopped".into()));
+            assert_eq!(result, Err(CommandError::Stopped));
             assert_eq!(shared.borrow().phase, Phase::Finished);
             assert_eq!(shared.borrow().marker.as_ref().unwrap().outcome.as_ref().unwrap().execution, "Cancelled");
             assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
@@ -836,7 +927,7 @@ mod tests {
             std::fs::write(project.join("compose.yaml"), base).unwrap();
             std::fs::write(project.join("included.yaml"), included).unwrap();
             std::fs::write(project.join(".env"), "VALUE=before\n").unwrap();
-            let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
+            let config = ConsoleConfig { runtime: None, listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
             let shared = Rc::new(RefCell::new(Session::new(Phase::Idle, None)));
@@ -846,7 +937,7 @@ mod tests {
                 if case == "new-env" { std::fs::remove_file(project.join(".env")).unwrap(); }
                 std::fs::write(project.join("compose.yaml"), base).unwrap();
                 std::fs::write(project.join("included.yaml"), included).unwrap();
-                let review = prepare::prepare(adapter.clone(), &state.config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+                let review = prepare::prepare(adapter.clone(), &state.config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap().into_launchable().unwrap();
                 let id = review.review.run_id.clone();
                 { let mut session = shared.borrow_mut(); session.phase = Phase::Reviewed; session.prepared = Some(review); session.start_key = None; session.start_result = None; }
                 match case {
@@ -863,7 +954,7 @@ mod tests {
                     while matches!(shared.borrow().phase, Phase::Starting | Phase::Stopping | Phase::Running) { tokio::time::sleep(Duration::from_millis(10)).await; }
                 }).await.unwrap();
                 // Assert
-                assert_eq!(result, Err("StaleReview".into()));
+                assert_eq!(result, Err(CommandError::StaleReview));
                 assert_eq!(shared.borrow().phase, Phase::Idle);
                 assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
                 assert!(!std::fs::read_to_string("/proc/self/mountinfo").unwrap().contains(root.to_str().unwrap()));
@@ -904,6 +995,7 @@ mod tests {
                 )
                 .unwrap();
                 let config = ConsoleConfig {
+                    runtime: None,
                     listen_address: "127.0.0.1:8080".into(),
                     public_origin: "http://127.0.0.1:8080".into(),
                     project_root: root.to_string_lossy().into_owned(),
@@ -929,6 +1021,8 @@ mod tests {
                     },
                 )
                 .await
+                .unwrap()
+                .into_launchable()
                 .unwrap();
                 let id = review.review.run_id.clone();
                 let mut session = Session::new(Phase::Reviewed, None);
@@ -969,7 +1063,7 @@ mod tests {
                 .await
                 .unwrap();
                 // Assert
-                assert_eq!(result, Err("StaleReview".into()));
+                assert_eq!(result, Err(CommandError::StaleReview));
                 assert_eq!(shared.borrow().phase, Phase::Idle);
                 assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
                 assert!(
@@ -990,10 +1084,10 @@ mod tests {
             let project = root.join("project");
             std::fs::create_dir(&project).unwrap();
             std::fs::write(project.join("compose.yaml"), "services:\n  worker:\n    image: node:22-bookworm-slim\n    entrypoint: [\"/bin/sh\", \"-c\"]\n    command: [\"trap 'exit 0' TERM INT; while :; do sleep 1; done\"]\n").unwrap();
-            let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
+            let config = ConsoleConfig { runtime: None, listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap().into_launchable().unwrap();
             let id = review.review.run_id.clone();
             println!("blocked-test run id: {id}, evidence: {}", root.display());
             let mut session = Session::new(Phase::Reviewed, None); session.prepared = Some(review);
@@ -1041,7 +1135,7 @@ mod tests {
             let outcome = shared.borrow().marker.as_ref().unwrap().outcome.clone().unwrap();
             assert_eq!(outcome.recording_finalized, Some(true));
             assert_eq!(outcome.boundary_clean, Some(false));
-            assert_eq!(admission, Err("Conflict".into()));
+            assert_eq!(admission, Err(CommandError::Conflict));
             assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
             assert!(!std::fs::read_to_string("/proc/self/mountinfo").unwrap().contains(root.to_str().unwrap()));
         }).await;
