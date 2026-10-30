@@ -112,30 +112,30 @@ revision and observed results beside its validation items before checking them.
 
 **Work items**
 
-- [ ] Create **`console/server/native/`**, Cargo package `console-native` (`cdylib`
+- [x] Create **`console/server/native/`**, Cargo package `console-native` (`cdylib`
   plus `rlib` for tests), and add it to workspace/boundary rules. New modules:
   `lib.rs` (bindings), `runtime.rs` (owner loop), `config.rs` (pbtxt loading).
-- [ ] Evaluate [napi-rs](https://napi.rs/) against [Neon](https://neon-rs.dev/)
+- [x] Evaluate [napi-rs](https://napi.rs/) against [Neon](https://neon-rs.dev/)
   for Promise completion, owned buffers and Linux packaging; present the decision
   before adding crates. Prefer napi-rs. Reuse existing Tokio, prost, prost-reflect,
   sha2 and rustix; use Node's HTTP/filesystem modules and the existing React/Vite/
   protobufjs toolchain. Pin additions after evaluation; no binding is adopted here.
-- [ ] Add **`console/proto/console.proto`** and generate Rust/TypeScript codecs.
+- [x] Add **`console/proto/console.proto`** and generate Rust/TypeScript codecs.
   Define `ConsoleConfig`, prepare/start requests, review, status, error and marker
   records. Import the existing system-app and workflow event schemas; configure
   prost external type mappings to reuse their generated Rust types. Protobuf
   uint64 values remain decimal strings/Long in TypeScript, including IDs and time.
-- [ ] `ConsoleConfig` fields: listen address, approved project root, data root,
-  Docker socket, access-secret file and `SystemAppsConfig`. Require a CPU monitor;
+- [x] `ConsoleConfig` fields: listen address, approved project root, data root,
+  Docker socket, access-secret file, public Origin and `SystemAppsConfig`. The public Origin is explicit because a wildcard listen address cannot identify the remote browser Origin. Require a CPU monitor;
   reject configured Dora flows for this first slice. Parse pbtxt using the existing
   prost-reflect pattern in [registry.rs](../../apps/project-explorer/server/src/registry.rs).
   Use generated configuration types directly.
-- [ ] Implement addon `open(configPath)` returning a Promise of a Console handle.
+- [x] Implement addon `open(configPath)` returning a Promise of a Console handle.
   Spawn one Rust thread with a current-thread Tokio runtime and LocalSet; construct
   `Rc<DockerAdapter>` and `ComposeRunner` there. A bounded command mailbox (32)
   carries owned requests with one-shot replies. Full mailbox returns Busy; no
   JavaScript values or `Rc` objects cross threads.
-- [ ] Expose async `prepare`, `start`, `status`, `stop`, `completed` and `close`
+- [x] Expose async `prepare`, `start`, `status`, `stop`, `completed` and `close`
   methods. Encode records as owned protobuf buffers across N-API. Include a
   contract version in initialization and reject a server/addon mismatch before
   listening. Add server package scripts for codec generation, native build, TypeScript
@@ -144,13 +144,15 @@ revision and observed results beside its validation items before checking them.
 
 **Validation**
 
-- [ ] **`native/tests/runtime.rs`**: injected adapter factory records construction,
+Partial evidence (2026-10-29, working tree based on `3418acc`): `cargo test --profile ci --locked -p console-native` passed five unit tests for owner thread affinity, mailbox saturation, configuration and uint64 encoding. `npm test` in `console/server` passed three tests using a local Docker API stub, including two open/close cycles and Node responsiveness during startup. `npm run build` passed. The current Node 22.23.3 server suite passes seven tests, including contract mismatch, two open/close cycles, a 100 ms HTTP heartbeat during delayed native startup, and exact sequence and invocation values above 2^53. The owner-thread and mailbox tests pass in the native suite.
+
+- [x] **`native/tests/runtime.rs`**: injected adapter factory records construction,
   command and destruction thread IDs; all equal the owner and differ from caller.
   Fill the mailbox and assert Busy without blocking the caller.
-- [ ] **`server/tests/addon.test.ts`**: import the built addon, open/close twice,
+- [x] **`server/tests/addon.test.ts`**: import the built addon, open/close twice,
   reject a version mismatch, and round-trip an invocation ID greater than `2^53`.
   Use Arrange/Act/Assert sections in Rust and TypeScript test cases.
-- [ ] Run a delayed native test operation while an HTTP heartbeat serves every
+- [x] Run a delayed native test operation while an HTTP heartbeat serves every
   100 ms; assert a response within 1 s throughout the delay. Build/test commands:
   `cargo test --profile ci --locked -p console-native` and `npm test` in `console/server`.
 
@@ -201,10 +203,18 @@ revision and observed results beside its validation items before checking them.
 
 **Validation**
 
-- [ ] **`native/tests/project.rs`**: table cases for each base name, base+override,
+Partial evidence (2026-10-29, working tree based on `3418acc`): `cargo test --profile ci --locked -p console-native` passed discovery tests for four base names, matching overrides, `.env`, ambiguous inputs and directory escapes. `cargo test --profile ci --locked -p workload-docker` passed 14 unit tests; its 17 capability/Docker tests were ignored in that unprivileged invocation. `real_compose` was built with `cargo test --profile ci --locked -p console-native --test real_compose --no-run` and its executable ran under sudo: both default versus explicit Compose/profile discovery and preflight rejection without owned resources or mounts passed. The real `changed_inputs_reject_before_launch` test also passed for a changed effective `.env` value and a newly added override, with no owned resources or mounts. The same real-Docker test passed for command and included-file changes; `retagged_local_image_rejects_before_launch` passed using a unique temporary alias that the test removed. The broader CLI equivalence cases and unchanged-review launch were subsequently verified below.
+
+Further evidence: `default_and_explicit_discovery_match_for_supported_names` passed unprivileged with Compose v5.6.0 for all four base names, both matching override extensions, default and selected-profile services, included files, service env files and a newly added service. The packaged acceptance launched an unchanged reviewed configuration twice.
+
+The capability-required `changed_inputs_reject_before_launch` executable also passed with a newly added `.env` alongside changed environment, override, command and include cases. Its first new-`.env` attempt failed because the fixture had an unset interpolation variable; adding an explicit Compose default corrected the fixture before the successful rerun.
+
+The real review test passed with `VALUE=hostile` in the test process: the resolved value came from the explicit `.env`, and an undeclared profile was rejected. Project unit tests passed the base, override, missing, ambiguous and root-escape cases.
+
+- [x] **`native/tests/project.rs`**: table cases for each base name, base+override,
   no file, ambiguous files, `.env`, invalid profile, outside-root and symlink escape.
   A hostile server environment must not alter the resolved project.
-- [ ] **`native/tests/prepare.rs`** with real Compose: compare enabled services and
+- [x] **`native/tests/prepare.rs`** with real Compose: compare enabled services and
   resolved values to both default CLI discovery and the equivalent explicit invocation
   for supported unambiguous base/override combinations,
   `.env`, included service/env files and profile cases. Add a new service and assert
@@ -212,7 +222,7 @@ revision and observed results beside its validation items before checking them.
 - [ ] **`libs/workload-docker/tests/docker.rs`**: reject the preflight callback and
   assert no new owned Docker resources or overlay mounts. Existing runner tests
   remain unchanged and pass through the default no-check path.
-- [ ] Add an override or `.env` after Review; Start rejects the changed input set.
+- [x] Add an override or `.env` after Review; Start rejects the changed input set.
   Change command/env/include contents and retag a local image after Review;
   each effective change rejects Start before launch. An unchanged review launches
   its pinned images. Run `cargo test --profile ci --locked -p workload-docker`
@@ -253,7 +263,7 @@ revision and observed results beside its validation items before checking them.
 - [ ] Add **`native/src/state.rs`**: acquire a nonblocking data-root file lock using
   existing rustix; persist `current.pb` before dispatching Start (0600 temporary
   file, sync, rename, parent sync). Marker fields: version, run ID, request key,
-  phase, artifact reference and final outcome. Same-key retries share the original
+  phase, artifact reference, public project identity, acceptance flag and final outcome. Same-key retries share the original
   acceptance result, including while preparation is pending; a different key during
   an active/blocked run returns Conflict. A known prelaunch rejection/Stop with
   `!runner.blocked()` records no-launch, invalidates review and returns to Idle.
@@ -269,14 +279,16 @@ revision and observed results beside its validation items before checking them.
 
 **Validation**
 
-- [ ] **`native/tests/progress.rs`**: scripted Started/Succeeded/Failed/Cancelled/
+Partial evidence (2026-10-29, working tree based on `3418acc`): `cargo test --profile ci --locked -p console-native` passed the bounded reducer and marker/lock unit tests. The unprivileged-built native test executable ran under sudo with `node:22-bookworm-slim` and `doramcap/system-monitor:native-cleanup-20261029` (image ID `e22bbfffd68a`): run `96d4044ada1aa549b2d8b04f0fc5b677` joined duplicate Start, rejected a second key, reached CPU readiness, stopped, finalized MCAP and verified cleanup; private evidence is `/tmp/.tmp3O3QhU`. A later run `0c68825568d296518665e9c1855cc174` verified MCAP session `1793318270577948797-1` with 49 contiguous snapshots; run `24a463759297eabf775f25202b9fe054` verified a distinct session `1793318337466856302-1` with 63. The real `stop_during_preparation_prevents_launch` test passed with no owned resources or mounts. Run `3b1639960c7c03456324232e37e227c3` forced an unclean test-owned workload termination: recording finalized, cleanup was unverified, and the next request conflicted; test-owned resources were removed afterward. An earlier recording-file removal experiment produced unavailable recording but verified cleanup, so its original expectation of blocked admission failed and was corrected. Two earlier attempts used the wrapper image `doramcap/system-monitor:local` and failed before readiness; their owned resources were checked and removed. The native reducer tests cover 10,000 completed invocations, bounded retention, terminal states, missing parents, unknown versions and final-event queue loss. State tests cover an interrupted replacement, persisted Starting before dispatch, clean completion and exclusive ownership. Node-level saturation and close-during-capture remain open.
+
+- [x] **`native/tests/progress.rs`**: scripted Started/Succeeded/Failed/Cancelled/
   Panicked events; repeated step names with different IDs; missing parent; unknown
   version; queue-full including final-event loss. Send 10,000 completed invocations;
   assert at most 512 rows, exact truncation accounting and independently readable completion.
-- [ ] **`native/tests/session.rs`**: delayed preparation plus Stop produces zero
+- [x] **`native/tests/session.rs`**: delayed preparation plus Stop produces zero
   launches; Stop while running waits for cleanup; duplicate Start launches once;
   a second key conflicts; cleanup failure keeps admission blocked.
-- [ ] **`native/tests/state.rs`**: crash points before marker rename, after durable
+- [x] **`native/tests/state.rs`**: crash points before marker rename, after durable
   marker but before dispatch, and before completion persistence. Restart either
   restores a proven finished result or blocks; two owners cannot acquire one root.
 - [ ] **`server/tests/addon.test.ts`**: stop polling while native events saturate the
@@ -303,7 +315,7 @@ revision and observed results beside its validation items before checking them.
   Keep raw native diagnostics in private host artifacts.
 - [ ] Add the frontend package/lockfile with `build` and `test` scripts, plus
   **`frontend/src/App.tsx`**, `api.ts`, `RunSteps.tsx`, `Result.tsx`. First Review
-  discovers profiles; changing the directory or profile checkboxes clears
+  discovers profiles; a profile-only project returns its available profiles with no prepared ID so the user can select one. Changing the directory or profile checkboxes clears
   its prepared ID and requires Review again. Start stores its request key until
   accepted. During Starting/Run/Stopping poll `/api/current` every 1 s with one request in flight; refresh restores the current
   run. Render emitted states and terminal durations, plus incomplete/truncated
@@ -331,6 +343,16 @@ revision and observed results beside its validation items before checking them.
 
 **Validation**
 
+Partial evidence (2026-10-29, working tree based on `3418acc`): `npm test` in `console/server` passed seven tests including route rejection, chunked body limits, descriptor traversal/symlink checks, 8 MiB streaming and disconnect closure. `npm test` in `console/frontend` passed six model and markup tests. Subsequent browser and packaged HTTP evidence is recorded below.
+
+Chromium 1248 rendered the project, review, run, stopping, result and blocked fixtures. The review button reached the review screen, and project, run, stopping, result and blocked had no horizontal page overflow at 390 px. Representative captures are in `console/docs/screenshots/`.
+
+Further browser evidence: project, starting, run, stopping, result, blocked, interrupted, unavailable-recording and progress-loss fixtures fit at both 1200 px and 390 px. Keyboard Tab, typing and Enter reached Review at both widths. The later checks below cover contrast and enabled-action focus order.
+
+After correcting profile discovery, Chromium confirmed a declared profile can be discovered, selected and reviewed at both widths. The Node 22 frontend tests and production build passed again.
+
+At 390 px, keyboard focus reached the enabled run, result and evidence actions in document order with visible outlines; stopping and interrupted states had no enabled actions. Calculated contrast for the shared body, muted, primary, status and notice text pairs ranged from 5.02:1 to 12.11:1.
+
 - [ ] **`server/tests/http.test.ts`**: exact route/status matrix, oversized request,
   wrong credentials, cross-origin mutation and unknown fields. Native-call spies
   prove rejected requests never invoke Start/Stop.
@@ -340,11 +362,11 @@ revision and observed results beside its validation items before checking them.
 - [ ] **`server/tests/artifacts.test.ts`**: traversal, wrong run ID and symlink swap
   fail; disconnect closes the fd. Stream an artifact larger than the stream buffer
   and verify backpressure without reading the entire file into memory.
-- [ ] Capture each concept state at 1200 px and 390 px widths. Verify shared
+- [x] Capture each concept state at 1200 px and 390 px widths. Verify shared
   action placement and state labels, keyboard/focus order, contrast, wrapping and
   no horizontal page overflow. Include Stopping, interrupted/Unknown, unavailable
   recording, progress loss and saved-recording/blocked-cleanup variants.
-- [ ] Run `npm test` and `npm run build` in both Console packages. Browser-check
+- [x] Run `npm test` and `npm run build` in both Console packages. Browser-check
   Review, Starting, Run, Stopping, Finished and Blocked with deterministic native
   fixtures before the real-Docker test in M5.
 
@@ -354,7 +376,7 @@ revision and observed results beside its validation items before checking them.
 
 - [ ] Add **`console/scripts/package.mts`** to build the addon, server and frontend
   into one directory, with `console.pbtxt.example` and launch instructions.
-  First package: Linux x86_64 glibc, Node 24; record the tested Compose version,
+  First package: Linux x86_64 glibc, Node 22.12 or later; record the tested Compose version,
   native prerequisites and CPU-monitor image ID. No image build/pull in Console.
 - [ ] Add **`console/tests/fixtures/basic/compose.yaml`**, `.env` and an optional
   override: long-running worker plus a profile-gated second worker using the
@@ -368,23 +390,34 @@ revision and observed results beside its validation items before checking them.
 
 **Validation**
 
-- [ ] Successful run: review default/profile selections, Start, observe real
+Partial evidence (2026-10-29, working tree based on `3418acc`): an initial Node 24 package passed startup, authenticated status and frontend delivery against a local API stub. The first real-Docker acceptance attempt could not start because the unprivileged server could not connect to `/var/run/docker.sock`; the user authorized sudo for the subsequent acceptance run. Docker Compose was v5.6.0.
+
+Further evidence: package `/tmp/doramcap-console-package-1029c` passed the startup smoke test on Node 22.23.3. The separate real-Docker harness, run with authorized sudo access, passed two captures, stale `.env`, missing image, early exit and interrupted-server restart. Run `1093fcff1982a8529a65023d1594d16c` produced session `1793319633912283758-1` with 43 snapshots; run `c5c2a54eb9555c1a4a08e6be322bc3c0` produced session `1793319640787362859-1` with 41. Both MCAP footers and contiguous sequences verified. The first harness attempt incorrectly expected every early exit to block even when cleanup succeeded; the assertion was corrected and the full harness rerun. Final-revision and remaining acceptance checks remain open.
+
+Final package evidence: Node 22.23.3 package startup passed. The separate real-Docker harness passed again: run `13a88f883c3adaafa0375c5f008e0e86` produced session `1793320276564780882-1` with 55 snapshots; run `4a1ca61ad09993a03286f52fdfd6fb49` produced session `1793320287005665264-1` with 50. Both had valid footers and contiguous sequences. Local default/all-feature workspace tests, default/all-feature Clippy, no-default storage tests, boundaries, formatting and snapshot synchronization passed. Tests explicitly ignored by the workspace suite, including the high-memlock case, were not run as part of those commands. The clean standalone all-feature examples/binaries build passed. ARM64 jobs 495–499 succeeded; job 499 includes the final implementation and expanded tests. Both local workspace configurations and both Clippy configurations passed again on the final implementation. The final clean all-feature examples/binaries build passed.
+
+The expanded harness passed after the final clean build: runs `e35d7e54ae6aa7c84286ec96dcbea764` and `bf28afa230a589562a60c19aedbaad8c` produced distinct sessions with 42 snapshots each and valid footers. A separate active run survived graceful server shutdown as a finalized, clean result restored after restart. Stale input, missing image, early exit and killed-server restart checks also passed.
+
+ARM64 worker job 500 passed on the completed implementation and expanded acceptance source.
+
+- [x] Successful run: review default/profile selections, Start, observe real
   PrepareRun/LaunchProjects/ObserveProjects events, Stop, observe finalization and
   removal, download MCAP/report. Reuse the existing footer/sequence checks from
   `native_recorded_workflow`; verify fresh capture session IDs across two runs.
-- [ ] Failure runs: missing image fails Review; changed effective config rejects
+- [x] Failure runs: missing image fails Review; changed effective config rejects
   Start; early exit reports execution failure; failed cleanup blocks next Start.
   Kill the server during capture and assert restart is Blocked without launching
   new resources. Explicitly clean up the harness's owned resources afterward.
 - [ ] Open the packaged server from a second machine and complete the same flow;
   reload during capture and after a clean restart. Verify source Compose files
   unchanged and the latest result restored. No history selector is required.
-- [ ] Run all local [CI checks](../../.github/workflows/ci.yml) on final source using
+  Second-machine browser acceptance was explicitly skipped at the user's request.
+- [x] Run all local [CI checks](../../.github/workflows/ci.yml) on final source using
   `--profile ci --locked`; report default/all-feature Clippy and workspace tests,
   no-default storage tests, builds, boundaries, formatting and snapshot tests separately.
-- [ ] Run new Docker/native test executables built unprivileged; elevate only the
+- [x] Run new Docker/native test executables built unprivileged; elevate only the
   executable when capabilities are required, following repository credential rules.
   Submit final source to the serial ARM64 worker and verify its result. Run the
   Console acceptance harness separately; the worker suite does not run that new harness.
 
-Acceptance evidence: **pending for every milestone**. This PR adds the plan only.
+Acceptance evidence is recorded beside each milestone above; unchecked items remain incomplete.

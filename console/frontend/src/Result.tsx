@@ -1,0 +1,8 @@
+import type { Snapshot } from './api';
+import { ActionButton } from './ui/ActionButton';
+import { OutcomeSummary } from './ui/OutcomeSummary';
+export function Result({ snapshot, newRun }: { snapshot: Snapshot; newRun: () => void }) {
+  const blocked = snapshot.phase === 'BLOCKED';
+  const interrupted = blocked && !snapshot.outcome;
+  return <><div className="heading"><div><h1>{interrupted ? 'Run interrupted' : blocked ? 'Cleanup unverified' : snapshot.outcome?.execution === 'Failed' ? 'Run failed' : 'Run complete'}</h1><p>Run <span className="mono">{snapshot.runId || 'Unknown'}</span></p></div><ActionButton variant="secondary" disabled={blocked} onClick={newRun}>New run</ActionButton></div><div className="columns"><div><OutcomeSummary outcome={snapshot.outcome}/><section className="panel"><h2>Evidence</h2><p className="muted">Download the current run’s recording and summary.</p><div className="actions">{snapshot.cpuAvailable ? <a className="button primary" href={`/api/artifacts/${snapshot.runId}/cpu`}>Download CPU recording</a> : <span className="unavailable">CPU recording unavailable</span>}{snapshot.reportAvailable ? <a className="button secondary" href={`/api/artifacts/${snapshot.runId}/report`}>Download report</a> : <span className="unavailable">Report unavailable</span>}</div></section></div><aside><section className={`panel ${blocked ? 'attention-panel' : ''}`}><h2>{blocked ? 'Admission blocked' : 'Ready for another run'}</h2><p>{blocked ? 'Cleanup could not be verified. Follow the host recovery procedure before starting another run.' : 'Cleanup was verified. You can choose a project for a new run.'}</p>{interrupted && <p>Execution, recording and cleanup outcomes are unknown after process interruption.</p>}</section></aside></div></>;
+}

@@ -1,0 +1,12 @@
+services:
+  worker:
+    image: ${CONSOLE_WORKER_IMAGE:?prebuilt worker image required}
+    environment:
+      TEST_VALUE: ${CONSOLE_TEST_VALUE:-before}
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["trap 'exit 0' TERM INT; while :; do sleep 1; done"]
+  extra:
+    image: ${CONSOLE_WORKER_IMAGE:?prebuilt worker image required}
+    profiles: [extra]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["trap 'exit 0' TERM INT; while :; do sleep 1; done"]

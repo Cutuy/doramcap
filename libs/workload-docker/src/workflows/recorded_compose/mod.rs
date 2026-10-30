@@ -92,8 +92,22 @@ impl ComposeRunner {
         observer: impl Observer + 'static,
         ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
     ) -> Result<ComposeRunReport> {
+        self.run_with_preflight(spec, stop, observer, ready, |_| Ok(()))
+            .await
+    }
+
+    /// Check the freshly prepared run before any mount or Docker launch.
+    /// A rejected check leaves the runner unblocked and returns its error.
+    pub async fn run_with_preflight(
+        &mut self,
+        spec: ComposeRun,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
+    ) -> Result<ComposeRunReport> {
         // Keep large backend preparation futures off callers' async state machines.
-        Box::pin(self.run_inner(spec, stop, observer, ready)).await
+        Box::pin(self.run_inner(spec, stop, observer, ready, check)).await
     }
 
     async fn run_inner(
@@ -102,6 +116,7 @@ impl ComposeRunner {
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
         ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
         if self.blocked {
             return Err(invalid(
@@ -119,6 +134,7 @@ impl ComposeRunner {
             .run::<PrepareRun>(spec.clone())
             .await
             .map_err(step_error)?;
+        check(prepared.value())?;
         let artifacts = prepared.value().artifacts.clone();
 
         // Mounts cross the side-effect boundary; dropping this run now blocks admission.

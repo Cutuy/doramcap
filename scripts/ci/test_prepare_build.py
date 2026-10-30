@@ -39,11 +39,11 @@ class PrepareBuildTests(unittest.TestCase):
 
     def test_unchanged_edit_delete_and_rename_across_submissions(self):
         # Arrange
-        first = self.snapshot('first', {'libs/a.rs': 'old', 'libs/gone.rs': 'gone'})
+        first = self.snapshot('first', {'libs/a.rs': 'old', 'libs/gone.rs': 'gone', 'console/server/native/src/lib.rs': 'console'})
         prepare_build.prepare(first, self.cache)
         cached = self.cache / 'libs/a.rs'
         os.utime(cached, ns=(1_000_000_000, 1_000_000_000))
-        identical = self.snapshot('identical', {'libs/a.rs': 'old', 'libs/gone.rs': 'gone'})
+        identical = self.snapshot('identical', {'libs/a.rs': 'old', 'libs/gone.rs': 'gone', 'console/server/native/src/lib.rs': 'console'})
         # Act
         prepare_build.prepare(identical, self.cache)
         # Assert
@@ -52,7 +52,7 @@ class PrepareBuildTests(unittest.TestCase):
         self.assertTrue((self.cache / '__pycache__').is_dir())
         self.assertEqual((self.cache / '__pycache__').stat().st_uid, os.getuid())
         # Arrange: same-size edit with an old source timestamp must still update.
-        edited = self.snapshot('edited', {'libs/a.rs': 'new', 'libs/renamed.rs': 'gone'})
+        edited = self.snapshot('edited', {'libs/a.rs': 'new', 'libs/renamed.rs': 'gone', 'console/server/native/src/lib.rs': 'console updated'})
         os.utime(edited / 'libs/a.rs', ns=(1_000_000_000, 1_000_000_000))
         (self.cache / 'generated.tmp').write_text('stale generated output')
         # Act
@@ -63,6 +63,7 @@ class PrepareBuildTests(unittest.TestCase):
         self.assertFalse((self.cache / 'libs/gone.rs').exists())
         self.assertTrue((self.cache / 'libs/renamed.rs').exists())
         self.assertFalse((self.cache / 'generated.tmp').exists())
+        self.assertEqual((self.cache / 'console/server/native/src/lib.rs').read_text(), 'console updated')
         self.assertEqual((first / 'libs/a.rs').read_text(), 'old')
 
     def test_permission_only_change(self):

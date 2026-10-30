@@ -1,0 +1,19 @@
+export interface Service { name: string; imageId: string }
+export interface Review { preparedId: string; runId: string; availableProfiles: string[]; selectedProfiles: string[]; services: Service[]; warnings: string[] }
+export interface Step { session: string; executor: string; invocation: string; step: string; state: string; durationNs: string }
+export interface Outcome { execution: string; writersStopped?: boolean | null; recordingFinalized?: boolean | null; boundaryClean?: boolean | null; eventStreamHealthy?: boolean | null }
+export interface Snapshot { phase: string; runId: string; steps: Step[]; sequence: string; lostEvents: string; truncatedSteps: string; overflowSteps: string; progressIncomplete: boolean; outcome: Outcome | null; cpuAvailable: boolean; reportAvailable: boolean; monitorReady: boolean; projectDirectory?: string; profiles?: string[] }
+export class ApiError extends Error { constructor(public code: string) { super(code); } }
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, { ...init, headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers }, credentials: 'same-origin' });
+  const value = await response.json();
+  if (!response.ok) throw new ApiError(value?.error?.code ?? 'Internal');
+  return value as T;
+}
+const post = <T>(path: string, value: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(value) });
+export const api = {
+  prepare: (directory: string, profiles: string[]) => post<Review>('/api/prepare', { directory, profiles }),
+  start: (preparedId: string, requestKey: string) => post<{ runId: string }>('/api/start', { preparedId, requestKey }),
+  stop: (runId: string) => post<{ accepted: boolean }>('/api/stop', { runId }),
+  current: () => request<Snapshot>('/api/current'),
+};

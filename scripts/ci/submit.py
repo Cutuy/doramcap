@@ -31,7 +31,7 @@ def git(*argv):
 # Include only build/test source paths; never tar the checkout or ignored files.
 paths = sorted(set(git('ls-files', '-z', '--cached', '--others', '--exclude-standard').decode().split('\0')))
 paths = [p for p in paths if p in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml')
-         or p.startswith(('libs/', 'apps/'))
+         or p.startswith(('libs/', 'apps/', 'console/'))
          or p in ('scripts/ci/check_boundaries.py', 'scripts/ci/test_boundaries.py', 'scripts/ci/boundaries.json')]
 manifest = {'head': git('rev-parse', 'HEAD').decode().strip(),
             'dirty': bool(git('status', '--porcelain')), 'files_sha256': {}, 'files_mode': {}}
