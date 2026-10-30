@@ -62,6 +62,9 @@ impl SupervisorRunner {
     pub fn blocked(&self) -> bool {
         self.blocked
     }
+    /// Run prepared settings until cooperative stop, then await cleanup.
+    /// Returns execution failures in `Ok(RunReport)`; inspect its independent outcomes.
+    /// See [`Self::run_with_ready`] for errors, observer ownership and cancellation.
     pub async fn run(
         &mut self,
         run: MonitorRun,
@@ -70,7 +73,16 @@ impl SupervisorRunner {
     ) -> Result<RunReport> {
         self.run_with_ready(run, stop, observer, None).await
     }
-    /// Notify only after the shared recording probe and liveness check succeed.
+    /// Run and notify after recording readiness and liveness succeed.
+    ///
+    /// # Results and errors
+    /// Preflight/admission errors return `Err`; execution and teardown failures enter
+    /// `Ok(RunReport)`. Evidence-writing errors return `Err` and keep admission blocked.
+    ///
+    /// # Ownership and cancellation
+    /// Owns `observer`, which receives synchronous events with serialized inputs.
+    /// A closed readiness receiver triggers teardown. Signal `stop` and await cleanup;
+    /// dropping the future performs best-effort termination and leaves admission blocked.
     pub async fn run_with_ready(
         &mut self,
         run: MonitorRun,

@@ -203,7 +203,9 @@ impl Launch {
             .open(Path::new(&ownership.cgroup).join("cgroup.procs"))
             .map_err(error)?;
         let mut command = std::process::Command::new(&run.supervisord);
+        // Terminal signals reach the runner; it owns cooperative daemon shutdown.
         command
+            .process_group(0)
             .arg("-n")
             .arg("-c")
             .arg(Path::new(&run.output_directory).join("supervisord.conf"))

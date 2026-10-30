@@ -13,6 +13,7 @@ Build the test executables unprivileged:
 ```sh
 rustc --edition=2024 --crate-name supervisor_fixture libs/workload-supervisor/tests/fixture.inc -o target/ci/supervisor-test-fixture
 cargo test --profile ci --locked -p workload-supervisor --test native --no-run
+cargo build --profile ci --locked -p workload-supervisor --example supervisor_monitor
 ```
 
 Run `tests/validate_native.py --monitor /absolute/path/to/target/ci/system-monitor`

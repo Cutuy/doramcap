@@ -212,6 +212,14 @@ Logs: `/tmp/supervisor-native-final.log`. Final concurrent-run artifacts:
 `/tmp/supervisor-tests-509713-1793318580641694155`. Native tests built unprivileged;
 only test executables/helpers received capability elevation and memlock limits.
 
+Follow-up (2026-10-29): the daemon now starts in its own process group, so
+terminal Ctrl-C reaches the runner and follows its existing cooperative stop path.
+The native harness sends SIGINT to the example's foreground group after readiness
+and checks clean exit, independent report outcomes and cgroup removal. Runner API
+comments describe report-versus-error results, observer ownership and cancellation.
+ARM64 job **504** passed the regression and full worker suite; local follow-up
+qualification is recorded in milestone 4 below.
+
 **Status:** complete.
 
 ## Milestone 4: Demonstrate backend parity
@@ -304,6 +312,21 @@ Log: `/tmp/supervisor-native-system-final.log`; concurrent recording artifacts:
 Documentation: the standalone Supervisor README was consolidated into the existing
 app deployment README. It keeps the launch example and host prerequisites; the fixed
 recipe and protobuf input remain beside it. Source and runtime behavior are unchanged.
+
+Follow-up qualification (2026-10-29): process-group isolation and API contract
+comments passed full final-source local CI again. Results:
+`/tmp/supervisor-fix-ci-results.json`; per-check logs:
+`/tmp/supervisor-fix-ci-*.log`. All checks passed without skipped matrix entries.
+Strict Supervisor Rustdoc passed (`/tmp/supervisor-fix-rustdoc.log`).
+
+The x86_64 native rerun passed both existing tests (17.43 s) plus the new terminal
+Ctrl-C regression, using real BPF and completed MCAPs. Log:
+`/tmp/supervisor-fix-native.log`. ARM64 job **504** completed **Success** on snapshot
+`/home/doramcap-ci/jobs/33add8bd5c65422298b5ddd78240dfc8`, including the same explicit
+terminal Ctrl-C PASS, both native tests and the full worker suite. Log:
+`/tmp/supervisor-fix-arm-final.json`. Compose/OverlayFS/Dora code is unchanged by
+this follow-up; their separate native parity scenarios above were not rerun locally.
+No required follow-up check remains blocked or skipped.
 
 **Status:** complete. Full final-source local CI, backend parity, x86_64 native
 qualification and ARM64 native qualification all passed. No required qualification
