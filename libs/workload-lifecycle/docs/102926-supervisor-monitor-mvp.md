@@ -2,7 +2,7 @@
 
 # System Monitor through Supervisor
 
-Created: 2026-10-29. Status: complete. All four milestones validated on x86_64 and ARM64.
+Created: 2026-10-29. Implementation complete. Latest follow-up: ARM64 validated; full local CI blocked by Linux disk space.
 
 Run the existing `apps/system-monitor` binary through a first-party Supervisor
 template. Exercise preparation, readiness, observation, cooperative stop,
@@ -220,6 +220,15 @@ comments describe report-versus-error results, observer ownership and cancellati
 ARM64 job **504** passed the regression and full worker suite; local follow-up
 qualification is recorded in milestone 4 below.
 
+Bugbot follow-up (2026-10-29): a failed ownership save now removes its own scratch
+file while preserving the original error and any pre-existing scratch evidence.
+The regression forces rename failure, retries cleanup persistence, decodes the
+saved cleanup flag and checks that existing scratch evidence stays unchanged.
+Terminal-test fallback kills the whole test cgroup, waits for emptiness and removes
+its directories; cleanup failures annotate the original exception. Native fault
+injection after BPF readiness verifies the exception and absence of leaked cgroups.
+Linux x86_64 and ARM64 native runs passed; qualification details follow in milestone 4.
+
 **Status:** complete.
 
 ## Milestone 4: Demonstrate backend parity
@@ -236,7 +245,7 @@ qualification is recorded in milestone 4 below.
 - [x] Compare semantic outcomes: advancing CPU stream, readable MCAP, graceful
   stop and verified cleanup. CPU sample values need not match across runs.
 - [x] Compare emitted lifecycle phase order and shared recording-step events.
-- [x] Run final-revision local CI: boundaries, formatting, default/all-feature
+- [ ] Run final-revision local CI: boundaries, formatting, default/all-feature
   Clippy and workspace tests, storage without defaults, examples/binaries and
   snapshot synchronization, with CI profile and locked dependencies.
 - [x] Before PR readiness, run final-revision ARM64 worker CI and the native
@@ -328,10 +337,48 @@ terminal Ctrl-C PASS, both native tests and the full worker suite. Log:
 this follow-up; their separate native parity scenarios above were not rerun locally.
 No required follow-up check remains blocked or skipped.
 
-**Status:** complete. Full final-source local CI, backend parity, x86_64 native
-qualification and ARM64 native qualification all passed. No required qualification
-checks remain blocked or skipped. Capability tests skipped by ordinary Cargo runs
-were executed separately by their native harnesses.
+Latest Bugbot-fix qualification (2026-10-29):
+
+| Final-source check | Result |
+| --- | --- |
+| Local boundaries / fixtures / formatting | pass / pass / pass |
+| Local default / all-feature Clippy | pass / pass |
+| Local storage without defaults | pass |
+| Local full default workspace tests | blocked: compilation exhausted Linux disk space |
+| Local full all-feature tests / workspace examples and binaries | incomplete / skipped after disk-space blocker |
+| Local snapshot synchronization | pass, four tests |
+| Local targeted builds / Supervisor library tests | pass / five passed |
+| Local real BPF/MCAP native Supervisor tests | two passed, 7.75 s |
+| Local terminal Ctrl-C / injected test-failure cleanup | pass / pass |
+| ARM64 full worker suite and native regressions | pass, job 510 |
+
+All executed local Cargo checks used the CI profile and locked dependencies;
+builds were unprivileged. Initial matrix results:
+`/tmp/supervisor-bugbot-ci-results.json`; failed compile log:
+`/tmp/supervisor-bugbot-ci-tests-default.log`. Full local CI needs additional free
+space on the Linux filesystem. External NTFS retries were stopped and their two
+task-created temporary build directories removed at the user's direction; no NTFS
+result counts toward Linux qualification. Other worktrees were untouched.
+
+Final Linux targeted logs: `/tmp/supervisor-bugbot-linux-*-build.log`,
+`/tmp/supervisor-bugbot-linux-unit.log`, `/tmp/supervisor-bugbot-linux-native.log`
+and `/tmp/supervisor-bugbot-linux-snapshots.log`. Native recordings were read by the
+existing MCAP reader, and both terminal stop and failure cleanup passed.
+
+ARM64 **510 Success**, snapshot
+`/home/doramcap-ci/jobs/c0c39c30f511474490fb55e4e8826876`, passed the full worker suite,
+new ownership regression, both native tests, terminal Ctrl-C and injected test
+failure cleanup. Log: `/tmp/supervisor-bugbot-arm-final.json`.
+
+Final architecture review reused the local `requirements-checklist.md` and kept
+requirements unchanged. No further architectural defect was identified in the
+one-app scope. Long-duration resource-envelope and dedicated control-output
+boundary coverage remain unverified; no new recovery or protocol layer was added.
+
+**Status:** implementation and native qualification complete. Latest full local CI
+is blocked by Linux disk space; its validation item above remains unchecked.
+Earlier full local passes and Compose/OverlayFS/Dora native runs remain historical
+evidence for the revisions identified above.
 
 ## MVP completion
 

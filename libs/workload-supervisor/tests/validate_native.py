@@ -7,9 +7,11 @@ from pathlib import Path
 import pwd
 import shutil
 import signal
+import sys
 import tempfile
 import time
 import subprocess
+from unittest.mock import patch
 
 
 def runtime_executable(name, monitor):
@@ -28,7 +30,6 @@ def validate_terminal_stop(monitor, supervisord, supervisorctl):
     with tempfile.TemporaryDirectory(prefix='supervisor-sigint-') as temp:
         directory = Path(temp)
         cgroup = Path('/sys/fs/cgroup') / directory.name
-        cgroup.mkdir()
         config = directory / 'run.pbtxt'
         settings = dict(id='terminal', output_directory=str(directory / 'outputs'),
                         supervisord=supervisord, supervisorctl=supervisorctl,
@@ -36,6 +37,7 @@ def validate_terminal_stop(monitor, supervisord, supervisorctl):
                         stop_seconds=3, cgroup_parent=str(cgroup))
         config.write_text('\n'.join(f'{key}: {json.dumps(value)}'
                                     for key, value in settings.items()))
+        cgroup.mkdir()
         try:
             with (directory / 'events.log').open('w') as events:
                 child = subprocess.Popen([str(example), str(config), '60'],
@@ -67,7 +69,22 @@ def validate_terminal_stop(monitor, supervisord, supervisorctl):
                         child.kill()
                     child.wait()
         finally:
-            cgroup.rmdir()
+            failure = sys.exception()
+            try:
+                # SIGKILL of the example cannot run its Rust cleanup. Own the test subtree.
+                (cgroup / 'cgroup.kill').write_text('1')
+                deadline = time.monotonic() + 5
+                while 'populated 0' not in (cgroup / 'cgroup.events').read_text().splitlines():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('test cgroup remains populated')
+                    time.sleep(0.05)
+                if (cgroup / 'terminal').exists():
+                    (cgroup / 'terminal').rmdir()
+                cgroup.rmdir()
+            except Exception as error:
+                if failure is None:
+                    raise
+                failure.add_note(f'test cgroup cleanup failed: {error}')
 
 
 def validate(monitor):
@@ -92,6 +109,20 @@ def validate(monitor):
             subprocess.run([str(candidate), '--ignored', '--nocapture', '--test-threads=1'],
                            env=environment, check=True, timeout=120)
             validate_terminal_stop(monitor, supervisord, supervisorctl)
+            # Arrange: fail after the real monitor is ready, before cooperative stop.
+            existing = set(Path('/sys/fs/cgroup').glob('supervisor-sigint-*'))
+            injected = RuntimeError('injected terminal-test failure')
+            # Act / Assert: retain the original failure and remove the entire test subtree.
+            try:
+                with patch('os.killpg', side_effect=injected):
+                    validate_terminal_stop(monitor, supervisord, supervisorctl)
+            except RuntimeError as error:
+                assert error is injected
+                assert not getattr(error, '__notes__', []), error.__notes__
+            else:
+                raise AssertionError('injected failure was lost')
+            assert set(Path('/sys/fs/cgroup').glob('supervisor-sigint-*')) == existing
+            print('PASS Supervisor terminal-test failure cleanup', flush=True)
             return True
     raise RuntimeError('Build workload-supervisor --test native unprivileged before native validation')
 
