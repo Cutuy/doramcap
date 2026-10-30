@@ -176,7 +176,7 @@ impl Console {
                     return receiver;
                 }
                 if let Some(old) = session.prepared.take() {
-                    let _ = std::fs::remove_dir_all(old.directory);
+                    let _ = std::fs::remove_dir_all(old.run.artifacts);
                 }
                 session.reset_activity();
                 session.phase = protocol::Phase::Preparing;

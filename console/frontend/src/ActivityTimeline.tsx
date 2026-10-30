@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import type { Step } from './api';
-import { elapsedDuration, shortStep, stepTimes } from './workflow';
+import { elapsedDuration, shortStep, stepTimes, stepKey } from './workflow';
 import { flowPath, invocationKey as identity, timelineModel } from './timeline';
 
 const left = 250, width = 720, svgWidth = 990, top = 34, rowHeight = 46;
@@ -17,12 +17,12 @@ export function ActivityTimeline({ steps, now, live = true }: { steps: Step[]; n
   const [selected, setSelected] = useState<Step | null>(null);
   const shown = paused?.steps ?? steps;
   const shownNow = paused?.now ?? now;
-  const { rows, rowByName, flows } = useMemo(() => timelineModel(shown), [shown]);
+  const { rows, rowByName, rowLabels, flows } = useMemo(() => timelineModel(shown), [shown]);
   const plotBottom = top + Math.max(1, rows.length) * rowHeight;
   const svgHeight = plotBottom + 30;
   const uniqueId = useId().replace(/:/g, '');
   const clipId = `activity-plot-${uniqueId}`, arrowId = `activity-arrow-${uniqueId}`;
-  const rowY = (step: Step) => top + rowByName.get(step.step)! * rowHeight + 12;
+  const rowY = (step: Step) => top + rowByName.get(stepKey(step))! * rowHeight + 12;
   const right = Math.max(windowSeconds, shownNow);
   const start = right - windowSeconds;
   const focus = selected && (shown.find(step => identity(step) === identity(selected)) ?? selected);
@@ -47,12 +47,12 @@ export function ActivityTimeline({ steps, now, live = true }: { steps: Step[]; n
       const lane = Math.floor((plotY - top) / rowHeight);
       const time = start + (plotX - left) * windowSeconds / width;
       const distance = (item: typeof visible[number]) => Math.max(item.start - time, time - item.end, 0);
-      const nearby = visible.filter(item => rowByName.get(item.step.step) === lane).sort((a,b) => distance(a) - distance(b))[0];
+      const nearby = visible.filter(item => rowByName.get(stepKey(item.step)) === lane).sort((a,b) => distance(a) - distance(b))[0];
       if (nearby) select(nearby.step);
     }} role="group" aria-label={`Workflow activity timeline, ${live ? (paused ? 'paused' : 'following live') : 'completed run'}, showing ${windowSeconds} seconds`}>
       <defs><clipPath id={clipId}><rect x={left} y="28" width={width} height={plotBottom - 28} /></clipPath><marker id={arrowId} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="context-stroke"/></marker></defs>
       {Array.from({ length: 6 }, (_, i) => <g key={i}><line x1={left + i * width / 5} x2={left + i * width / 5} y1="28" y2={plotBottom} className="timeline-grid"/><text x={left + i * width / 5} y="17" textAnchor="middle" className="timeline-axis">{(start + i * windowSeconds / 5).toFixed(1)} s</text></g>)}
-      {rows.map((name, i) => <g key={name} className="timeline-step-row" data-step={name}><rect x={left} y={top + i * rowHeight} width={width} height={rowHeight - 4} rx="5" className="timeline-lane"/><text x="8" y={top + 27 + i * rowHeight} className="timeline-lane-label"><title>{name}</title>{name.split('::').at(-1)}</text></g>)}
+      {rows.map((name, i) => <g key={name} className="timeline-step-row" data-step={name}><rect x={left} y={top + i * rowHeight} width={width} height={rowHeight - 4} rx="5" className="timeline-lane"/><text x="8" y={top + 27 + i * rowHeight} className="timeline-lane-label"><title>{name}</title>{rowLabels.get(name)}</text></g>)}
       <g clipPath={`url(#${clipId})`} className="timeline-flows">{flows.filter(flow => Math.max(flow.from, flow.to) >= start && Math.min(flow.from, flow.to) <= right).map(flow => {
         const related = !selected || identity(selected) === identity(flow.source) || identity(selected) === identity(flow.target);
         return <path key={`${identity(flow.source)}:${identity(flow.target)}:${flow.kind}`} className={`timeline-flow ${flow.kind}`} d={flowPath(x(flow.from), rowY(flow.source), x(flow.to), rowY(flow.target))} fill="none" stroke={flow.kind === 'parent' ? '#8c6924' : '#526bb0'} strokeWidth={selected && related ? 2.5 : 1.5} strokeDasharray={flow.kind === 'parent' ? '4 3' : undefined} opacity={selected ? (related ? 0.95 : 0.04) : 0.2} markerEnd={`url(#${arrowId})`}><title>{`${flow.kind === 'parent' ? 'Parent' : 'Dependency'}: ${shortStep(flow.source)} (${flow.source.invocation}) → ${shortStep(flow.target)} (${flow.target.invocation})`}</title></path>;

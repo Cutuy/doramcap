@@ -56,14 +56,13 @@ pub fn parse(text: &str) -> Result<ConsoleConfig, String> {
         );
     }
     let runtime = runtime(&config);
-    for (name, value) in [
-        ("readiness_seconds", runtime.readiness_seconds),
-        ("stop_seconds", runtime.stop_seconds),
-        ("sample_interval_ms", runtime.sample_interval_ms),
-    ] {
-        if value == Some(0) {
-            return Err(format!("runtime.{name} must be positive"));
-        }
+    workload_docker::workflows::recorded_compose::validate_budgets(
+        u64::from(runtime.readiness_seconds.unwrap()),
+        u64::from(runtime.stop_seconds.unwrap()),
+    )
+    .map_err(|e| format!("runtime.{e}"))?;
+    if runtime.sample_interval_ms == Some(0) {
+        return Err("runtime.sample_interval_ms must be positive".into());
     }
     config
         .listen_address
@@ -130,6 +129,22 @@ mod tests {
             // Act / Assert
             let error = parse(&format!("{VALID} runtime {{ {field}: 0 }}")).unwrap_err();
             assert!(error.contains(field));
+        }
+    }
+
+    #[test]
+    fn stop_budget_uses_the_same_boundary_as_execution() {
+        for stop in [1, 300] {
+            // Arrange / Act
+            let config = parse(&format!("{VALID} runtime {{ stop_seconds: {stop} }}"));
+            // Assert
+            assert!(config.is_ok());
+        }
+        for stop in [0, 301] {
+            // Arrange / Act
+            let error = parse(&format!("{VALID} runtime {{ stop_seconds: {stop} }}")).unwrap_err();
+            // Assert
+            assert!(error.contains("stop_seconds"));
         }
     }
 

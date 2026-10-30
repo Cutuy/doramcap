@@ -4,10 +4,12 @@ use workflow_protocol::{Event, event::State};
 
 use crate::policy::MAX_PROGRESS_ROWS;
 
-// Keep the finite top-level Compose lifecycle visible as periodic checks age out.
+// Keep workflow-declared top-level stages visible as periodic checks age out.
 fn lifecycle_step(event: &Event) -> bool {
     event.parent.is_none()
-        && workload_docker::workflows::recorded_compose::retain_progress_step(&event.step)
+        && event.descriptor.as_ref().is_some_and(|descriptor| {
+            descriptor.retention == workflow_protocol::ProgressRetention::Keep as i32
+        })
 }
 
 /// Current invocation rows and independent indicators of missing history.
@@ -128,10 +130,13 @@ mod tests {
         // Arrange
         let mut progress = Progress::default();
         let mut lifecycle = event(1, 1, State::Succeeded);
-        lifecycle.step = std::any::type_name::<
-            workload_docker::workflows::recorded_compose::preparation::PrepareRun,
-        >()
-        .into();
+        lifecycle.step = "renamed::RustImplementation".into();
+        lifecycle.descriptor = Some(workflow_protocol::StepDescriptor::new(
+            "compose.prepare",
+            "Prepare project",
+            workflow_protocol::ProgressRetention::Keep,
+            workflow_protocol::ProgressKind::Operation,
+        ));
         progress.apply(lifecycle);
         // Act
         for id in 2..=2_001 {
@@ -143,10 +148,8 @@ mod tests {
         assert_eq!(progress.rows().len(), 512);
         assert_eq!(progress.truncated, 1_489);
         assert_eq!(
-            progress.rows()[0].step,
-            std::any::type_name::<
-                workload_docker::workflows::recorded_compose::preparation::PrepareRun,
-            >()
+            progress.rows()[0].descriptor.as_ref().unwrap().id,
+            "compose.prepare"
         );
         assert_eq!(progress.rows().last().unwrap().invocation, 2_001);
         assert!(!progress.incomplete());
@@ -189,6 +192,7 @@ mod tests {
                 session: "session".into(),
                 id: 1,
                 step: "step".into(),
+                descriptor: None,
                 version: 1,
                 executor: "local".into(),
                 parent: None,

@@ -25,6 +25,7 @@ prost-build = "0.14"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
+tempfile = "3"
 mcap = { version = "=0.26.0", default-features = false }
 telemetry-protocol = { path = "../telemetry/protocol" }
 

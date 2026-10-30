@@ -3,7 +3,6 @@ use crate::{
     policy, project,
     protocol::{ConsoleConfig, PrepareRequest, Review, Service},
 };
-use orchestrator::Step;
 use std::{
     collections::HashSet,
     os::unix::fs::DirBuilderExt,
@@ -11,18 +10,25 @@ use std::{
     rc::Rc,
 };
 use workload_docker::{
-    compose::{ComposeProject, DockerAdapter, ResolveInput},
-    workflows::system_apps::{PrepareInput, PrepareSystemApps},
+    compose::{ComposeProject, DockerAdapter},
+    workflows::recorded_compose::{
+        ComposeRun,
+        resolution::{self, ReviewReceipt},
+    },
 };
 
 /// Private inputs retained until the review is consumed or replaced.
 pub struct PreparedReview {
     pub review: Review,
-    pub project: ComposeProject,
-    pub workload_digest: String,
-    pub monitor_image: Option<String>,
-    pub system_apps: workload_docker::workflows::system_apps::SystemAppsConfig,
-    pub directory: PathBuf,
+    pub run: ComposeRun,
+    pub receipt: ReviewReceipt,
+}
+
+impl PreparedReview {
+    /// Console prepares exactly one workload alongside optional supporting apps.
+    pub fn project(&self) -> &ComposeProject {
+        &self.run.projects[0]
+    }
 }
 
 /// A launchable review owns private inputs; a profile prompt owns only display data.
@@ -122,42 +128,27 @@ async fn resolve(
     directory: PathBuf,
     apps: workload_docker::workflows::system_apps::SystemAppsConfig,
 ) -> workload_docker::compose::Result<PreparedReview> {
-    let workload = adapter
-        .resolve(ResolveInput {
-            run: run_id.clone(),
-            artifacts: directory.clone(),
-            project: project.clone(),
-        })
-        .await?;
-    let system = PrepareSystemApps
-        .run(PrepareInput {
-            config: apps.clone(),
-            artifacts: directory.clone(),
-        })
-        .await
-        .map_err(|e| workload_docker::compose::Error::Invalid(e.to_string()))?;
-    let monitor_image = if let Some(monitor_project) = system.projects.into_iter().next() {
-        let monitor = adapter
-            .resolve(ResolveInput {
-                run: run_id.clone(),
-                artifacts: directory.clone(),
-                project: monitor_project,
-            })
-            .await
-            .map_err(|e| workload_docker::compose::Error::Invalid(e.to_string()))?;
-        Some(
-            monitor
-                .services
-                .get(crate::system_apps::CPU_MONITOR_ID)
-                .ok_or_else(|| {
-                    workload_docker::compose::Error::Invalid("CPU monitor service missing".into())
-                })?
-                .image_id
-                .clone(),
-        )
-    } else {
-        None
+    let runtime = crate::config::runtime(config);
+    let run = ComposeRun {
+        filesystem: Some(Default::default()),
+        id: run_id.clone(),
+        artifacts: directory,
+        recovery_anchor_dir: None,
+        projects: vec![project.clone()],
+        first_party: vec![],
+        system_apps: apps.clone(),
+        readiness_seconds: u64::from(runtime.readiness_seconds.unwrap()),
+        stop_seconds: u64::from(runtime.stop_seconds.unwrap()),
     };
+    let resolved = resolution::preview(adapter, &run).await?;
+    let workload = resolved
+        .groups
+        .iter()
+        .flat_map(|group| &group.projects)
+        .find(|plan| plan.key == project.key)
+        .ok_or_else(|| {
+            workload_docker::compose::Error::Invalid("workload project missing".into())
+        })?;
     let services = workload
         .services
         .iter()
@@ -178,11 +169,8 @@ async fn resolve(
     };
     Ok(PreparedReview {
         review,
-        project,
-        workload_digest: workload.sha256,
-        monitor_image,
-        system_apps: apps,
-        directory,
+        run,
+        receipt: resolved.receipt,
     })
 }
 

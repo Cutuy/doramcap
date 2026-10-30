@@ -1,15 +1,15 @@
 import type { Step } from './api';
-import { stepTimes } from './workflow';
+import { stepTimes, stepKey, stepName } from './workflow';
 
 export const invocationKey = (step: Step) => JSON.stringify([step.session, step.executor, step.invocation]);
 export interface Flow { source: Step; target: Step; kind: 'parent' | 'dependency'; from: number; to: number }
 
-/** Group by full Rust type name; resolve only explicit, executor-local relationships. */
+/** Group by stable descriptor identity; resolve explicit executor-local relationships. */
 export function timelineModel(steps: Step[]) {
   const firstStart = new Map<string, number>();
   for (const step of steps) {
     const start = stepTimes(step).start;
-    firstStart.set(step.step, Math.min(firstStart.get(step.step) ?? Infinity, start));
+    firstStart.set(stepKey(step), Math.min(firstStart.get(stepKey(step)) ?? Infinity, start));
   }
   const rows = [...firstStart].sort((a, b) => a[1] - b[1]).map(([name]) => name);
   const rowByName = new Map(rows.map((name, index) => [name, index]));
@@ -25,7 +25,8 @@ export function timelineModel(steps: Step[]) {
     if (target.parent) add(target.parent, 'parent');
     for (const id of new Set(target.dependencies ?? [])) add(id, 'dependency');
   }
-  return { rows, rowByName, flows };
+  const rowLabels = new Map(steps.map(step => [stepKey(step), stepName(step)]));
+  return { rows, rowByName, rowLabels, flows };
 }
 
 /** Route arrowheads to the top of a bar, including relationships within one row. */

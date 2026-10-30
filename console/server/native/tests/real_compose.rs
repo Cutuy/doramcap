@@ -302,13 +302,25 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
         .unwrap()
         .into_launchable()
         .unwrap();
+    // Act: shared resolution produces the same receipt in execution's artifact directory.
+    let mut launch_request = first.run.clone();
+    launch_request.artifacts = root.path().join("fresh-resolution");
+    std::fs::create_dir(&launch_request.artifacts).unwrap();
+    let fresh = workload_docker::workflows::recorded_compose::resolution::preview(
+        adapter.clone(),
+        &launch_request,
+    )
+    .await
+    .unwrap();
+    // Assert
+    assert_eq!(first.receipt, fresh.receipt);
     let launch_dir = root.path().join("launch-resolution");
     std::fs::create_dir(&launch_dir).unwrap();
     let unchanged = adapter
         .resolve(workload_docker::compose::ResolveInput {
             run: first.review.run_id.clone(),
             artifacts: launch_dir.clone(),
-            project: first.project.clone(),
+            project: first.project().clone(),
         })
         .await
         .unwrap();
@@ -320,7 +332,10 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
             .iter()
             .any(|diagnostic| diagnostic.contains("process-level readiness only"))
     );
-    assert_eq!(unchanged.sha256, first.workload_digest);
+    assert_eq!(
+        std::fs::read(&unchanged.manifest).unwrap(),
+        std::fs::read(first.run.artifacts.join("workload.compose.json")).unwrap()
+    );
     std::fs::write(project_dir.join(".env"), "VALUE=after\n").unwrap();
     let changed_dir = root.path().join("changed-resolution");
     std::fs::create_dir(&changed_dir).unwrap();
@@ -328,11 +343,14 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
         .resolve(workload_docker::compose::ResolveInput {
             run: first.review.run_id.clone(),
             artifacts: changed_dir,
-            project: first.project.clone(),
+            project: first.project().clone(),
         })
         .await
         .unwrap();
-    assert_ne!(changed.sha256, first.workload_digest);
+    assert_ne!(
+        std::fs::read(&changed.manifest).unwrap(),
+        std::fs::read(first.run.artifacts.join("workload.compose.json")).unwrap()
+    );
     let second = prepare::prepare(adapter.clone(), &config, request.clone())
         .await
         .unwrap()
@@ -361,22 +379,20 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
     .into_launchable()
     .unwrap();
     // Assert
-    assert!(disabled.monitor_image.is_none());
-    assert!(disabled.system_apps.cpu_monitor.is_none());
+    assert!(disabled.run.system_apps.cpu_monitor.is_none());
     assert!(!disabled.review.system_apps[0].selected);
-    assert!(!disabled.directory.join("system-services.yaml").exists());
+    assert!(!disabled.run.artifacts.join("system-services.yaml").exists());
     assert!(first.review.system_apps[0].selected);
     // Assert
     assert_eq!(first.review.available_profiles, ["extra"]);
     assert_eq!(first.review.services.len(), 2);
-    assert_eq!(first.monitor_image, second.monitor_image);
     // Run IDs affect labels and project names, so compare resolved environment directly.
     let manifest: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(first.directory.join("workload.compose.json")).unwrap(),
+        &std::fs::read(first.run.artifacts.join("workload.compose.json")).unwrap(),
     )
     .unwrap();
     let updated: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(second.directory.join("workload.compose.json")).unwrap(),
+        &std::fs::read(second.run.artifacts.join("workload.compose.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(

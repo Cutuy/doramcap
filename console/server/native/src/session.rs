@@ -123,19 +123,19 @@ impl Session {
             project_directory: self
                 .prepared
                 .as_ref()
-                .map(|p| p.project.directory.to_string_lossy().into_owned())
+                .map(|p| p.project().directory.to_string_lossy().into_owned())
                 .or_else(|| marker.map(|m| m.project_directory.clone()))
                 .unwrap_or_default(),
             profiles: self
                 .prepared
                 .as_ref()
-                .map(|p| p.project.profiles.clone())
+                .map(|p| p.project().profiles.clone())
                 .or_else(|| marker.map(|m| m.profiles.clone()))
                 .unwrap_or_default(),
             system_apps: self
                 .prepared
                 .as_ref()
-                .map(|p| crate::system_apps::selection(&p.system_apps))
+                .map(|p| crate::system_apps::selection(&p.run.system_apps))
                 .or_else(|| marker.and_then(|m| m.system_apps.clone())),
             outcome: marker.and_then(|m| m.outcome.clone()),
             steps: self.progress.rows(),
@@ -214,7 +214,7 @@ pub(crate) fn start(
     };
     use orchestrator::{Observer, telemetry::TelemetryObserver};
     use std::{io, os::unix::fs::DirBuilderExt, path::Path};
-    use workload_docker::{compose::Error, workflows::recorded_compose::ComposeRun};
+    use workload_docker::compose::Error;
 
     let (sender, receiver) = oneshot::channel();
     let mut session = state.session.borrow_mut();
@@ -253,15 +253,15 @@ pub(crate) fn start(
     }
     let rediscovered = project::discover(
         Path::new(&state.config.project_root),
-        &prepared.project.directory,
-        prepared.project.profiles.clone(),
+        &prepared.project().directory,
+        prepared.project().profiles.clone(),
     );
     if !rediscovered.as_ref().is_ok_and(|fresh| {
-        fresh.directory == prepared.project.directory
-            && fresh.files == prepared.project.files
-            && fresh.env_files == prepared.project.env_files
+        fresh.directory == prepared.project().directory
+            && fresh.files == prepared.project().files
+            && fresh.env_files == prepared.project().env_files
     }) {
-        let _ = std::fs::remove_dir_all(&prepared.directory);
+        let _ = std::fs::remove_dir_all(&prepared.run.artifacts);
         session.phase = Phase::Idle;
         session.publish();
         let _ = sender.send(Err(CommandError::StaleReview));
@@ -287,9 +287,9 @@ pub(crate) fn start(
         artifact_reference: run_id.clone(),
         outcome: None,
         start_accepted: false,
-        project_directory: prepared.project.directory.to_string_lossy().into_owned(),
-        profiles: prepared.project.profiles.clone(),
-        system_apps: Some(crate::system_apps::selection(&prepared.system_apps)),
+        project_directory: prepared.project().directory.to_string_lossy().into_owned(),
+        profiles: prepared.project().profiles.clone(),
+        system_apps: Some(crate::system_apps::selection(&prepared.run.system_apps)),
     };
     if state.store.write(&marker).is_err() {
         session.phase = Phase::Blocked;
@@ -330,7 +330,7 @@ pub(crate) fn start(
             }
         }
     });
-    let cpu_enabled = prepared.system_apps.cpu_monitor.is_some();
+    let cpu_enabled = prepared.run.system_apps.cpu_monitor.is_some();
     let ready_session = state.session.clone();
     tokio::task::spawn_local(async move {
         if ready_rx.await.is_ok() {
@@ -343,17 +343,8 @@ pub(crate) fn start(
         }
     });
     let runtime = crate::config::runtime(&state.config);
-    let spec = ComposeRun {
-        filesystem: Some(Default::default()),
-        id: run_id.clone(),
-        artifacts: runs.join(&run_id),
-        recovery_anchor_dir: None,
-        projects: vec![prepared.project.clone()],
-        first_party: vec![],
-        system_apps: prepared.system_apps.clone(),
-        readiness_seconds: u64::from(runtime.readiness_seconds.unwrap()),
-        stop_seconds: u64::from(runtime.stop_seconds.unwrap()),
-    };
+    let mut spec = prepared.run.clone();
+    spec.artifacts = runs.join(&run_id);
     let (metrics_stop, metrics_done) = crate::metrics::watch(
         state.session.clone(),
         spec.artifacts.clone(),
@@ -372,8 +363,7 @@ pub(crate) fn start(
     let store = state.store.clone();
     let check_store = store.clone();
     let check_run = run_id.clone();
-    let expected_digest = prepared.workload_digest.clone();
-    let expected_monitor = prepared.monitor_image.clone();
+    let expected_receipt = prepared.receipt.clone();
     tokio::task::spawn_local(async move {
         let observer_for_runner = observer.clone();
         let (result, blocked) = {
@@ -396,21 +386,9 @@ pub(crate) fn start(
                         quiescing: Some(quiescing_tx),
                     },
                     move |prepared_run| {
-                        let plans = prepared_run.projects();
-                        let workload = plans
-                            .iter()
-                            .find(|p| p.key == crate::project::WORKLOAD_PROJECT_KEY);
-                        let monitor = plans
-                            .iter()
-                            .find(|p| {
-                                p.key == workload_docker::workflows::system_apps::SYSTEM_PROJECT_KEY
-                            })
-                            .and_then(|p| p.services.get(crate::system_apps::CPU_MONITOR_ID));
                         let rejection = if latch.get() {
                             Some(CommandError::Stopped)
-                        } else if workload.is_none_or(|p| p.sha256 != expected_digest)
-                            || monitor.map(|m| &m.image_id) != expected_monitor.as_ref()
-                        {
+                        } else if prepared_run.receipt != expected_receipt {
                             Some(CommandError::StaleReview)
                         } else {
                             None
@@ -525,7 +503,7 @@ pub(crate) fn start(
             session.publish();
             session.finish_shutdown();
         }
-        let _ = std::fs::remove_dir_all(prepared.directory);
+        let _ = std::fs::remove_dir_all(prepared.run.artifacts);
     });
     receiver
 }

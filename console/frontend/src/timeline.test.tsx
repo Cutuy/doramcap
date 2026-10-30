@@ -62,3 +62,17 @@ test('timeline rows follow recorded start time even when startup events arrive a
   // Assert
   assert.deepEqual(rows, ['compose::StartCompose', 'compose::QuiesceCompose', 'compose::WriteRunReport']);
 });
+
+
+test('stable descriptors keep one timeline row across implementation renames', () => {
+  // Arrange
+  const descriptor = { id: 'custom.stage', displayName: 'Custom stage', retention: 'KEEP', kind: 'OPERATION' };
+  const steps = [step('1', 'old::Implementation', { descriptor }), step('2', 'new::RenamedImplementation', { descriptor })];
+  // Act
+  const model = timelineModel(steps);
+  const html = renderToStaticMarkup(<ActivityTimeline steps={steps} now={2} live={false}/>);
+  // Assert
+  assert.deepEqual(model.rows, ['custom.stage']);
+  assert.equal((html.match(/class="timeline-step-row"/g) ?? []).length, 1);
+  assert.match(html, /Custom stage/);
+});

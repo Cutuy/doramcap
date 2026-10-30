@@ -6227,6 +6227,7 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
+ "serde",
 ]
 
 [[package]]
@@ -6247,6 +6248,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "telemetry-protocol",
+ "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "workload-lifecycle",

@@ -198,6 +198,11 @@ access_secret_file: "${secret}"`;
     await writeFile(secret, '\n', { mode: 0o600 });
     await assert.rejects(native.open(config, 1), /nonempty secret/);
     await assert.rejects(stat(data), { code: 'ENOENT' });
+    // Act / Assert: backend budget constraints fail before native state is created.
+    await writeFile(secret, 'test-secret');
+    await writeFile(config, `${text('http://127.0.0.1:8080')}\nruntime { stop_seconds: 301 }`);
+    await assert.rejects(native.open(config, 1), /stop_seconds/);
+    await assert.rejects(stat(data), { code: 'ENOENT' });
     // Act / Assert: an invalid Origin is rejected even with a valid secret.
     await writeFile(secret, 'test-secret');
     await writeFile(config, text('https://example.com/path'));

@@ -1,21 +1,13 @@
 import type { Step } from './api';
 
-const lifecycleNames: Record<string, string> = {
-  PrepareRun: 'Prepare project',
-  PrepareOverlays: 'Prepare filesystem',
-  LaunchProjects: 'Start project',
-  QuiesceProjects: 'Stop project',
-  FinalizeRun: 'Finalize recording',
-  RemoveProjects: 'Remove resources',
-  WriteRunReport: 'Write run report',
-};
-
-export const shortStep = (step: Step) => step.step.split('::').at(-1) ?? step.step;
-export const stepName = (step: Step) => lifecycleNames[shortStep(step)] ?? shortStep(step);
+/** Older captures without descriptors retain a diagnostic display fallback. */
+export const shortStep = (step: Step) => step.descriptor?.displayName || step.step.split('::').at(-1) || step.step;
+export const stepName = shortStep;
+export const stepKey = (step: Step) => step.descriptor?.id || step.step;
 export function isLifecycleStep(step: Step): boolean {
-  return step.parent == null && Object.hasOwn(lifecycleNames, shortStep(step));
+  return step.parent == null && step.descriptor?.retention === 'KEEP';
 }
-export const isHealthCheck = (step: Step) => ['ObserveProjects', 'InspectCompose'].includes(shortStep(step));
+export const isHealthCheck = (step: Step) => step.descriptor?.kind === 'OBSERVATION';
 
 /** Convert elapsed and duration together so the 64-bit subtraction stays exact. */
 export function stepTimes(step: Step): { start: number; end: number } {

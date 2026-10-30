@@ -24,5 +24,6 @@ If cleanup is unverified, follow the [host recovery procedure](docs/recovery.md)
 
 Readiness/stop deadlines and the sampling/publication interval are configurable in
 `runtime` in [console.pbtxt.example](console.pbtxt.example). Omitted values preserve
-the 60 s / 15 s / 100 ms defaults; values must be positive. Queue, retention and byte
+the 60 s / 15 s / 100 ms defaults. Stop grace is 1–300 s; readiness and sampling
+values must be positive. Queue, retention and byte
 budgets are named constants in [policy.rs](server/native/src/policy.rs).

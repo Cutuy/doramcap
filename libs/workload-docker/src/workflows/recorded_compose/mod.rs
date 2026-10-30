@@ -3,6 +3,7 @@ pub mod finalization;
 mod observation;
 pub mod preparation;
 pub mod projects;
+pub mod resolution;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
@@ -32,21 +33,6 @@ pub struct RunSignals {
     pub ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
     /// Signal before stopping writers; a closed receiver does not affect cleanup.
     pub quiescing: Option<oneshot::Sender<()>>,
-}
-
-/// Identify finite lifecycle steps for progress retention using their Rust types.
-pub fn retain_progress_step(step: &str) -> bool {
-    use std::any::type_name;
-    [
-        type_name::<PrepareRun>(),
-        type_name::<PrepareOverlays>(),
-        type_name::<LaunchProjects>(),
-        type_name::<QuiesceProjects>(),
-        type_name::<FinalizeRun>(),
-        type_name::<RemoveProjects>(),
-        type_name::<WriteRunReport>(),
-    ]
-    .contains(&step)
 }
 
 /// Single-session runner with concurrent independent Compose operations.
@@ -177,6 +163,7 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        executor.validate_descriptors().map_err(step_error)?;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
             .await
@@ -516,6 +503,17 @@ pub struct ComposeRun {
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
+/// Validate the shared startup and per-project shutdown budgets before side effects.
+pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()> {
+    if readiness_seconds == 0 {
+        return Err(invalid("readiness_seconds must be positive"));
+    }
+    if !(1..=300).contains(&stop_seconds) {
+        return Err(invalid("stop_seconds must be in 1..=300"));
+    }
+    Ok(())
+}
+
 fn default_filesystem() -> Option<OverlayPolicy> {
     Some(OverlayPolicy::default())
 }
