@@ -1,0 +1,9 @@
+listen_address: "127.0.0.1:8080"
+public_origin: "http://127.0.0.1:8080"
+project_root: "/absolute/path/to/projects"
+data_root: "/absolute/path/to/private-console-data"
+docker_socket: "/var/run/docker.sock"
+access_secret_file: "/absolute/path/to/console-secret"
+system_apps { cpu_monitor { image: "doramcap-system-monitor:local" } }
+# Optional runtime policy; omitted fields preserve these defaults.
+runtime { readiness_seconds: 60 stop_seconds: 15 sample_interval_ms: 100 }

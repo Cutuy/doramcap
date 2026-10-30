@@ -1,0 +1,113 @@
+syntax = "proto3";
+package doramcap.console.v1;
+
+import "system_apps.proto";
+import "workflow.proto";
+import "telemetry.proto";
+
+message ConsoleConfig {
+  string listen_address = 1;
+  string project_root = 2;
+  string data_root = 3;
+  string docker_socket = 4;
+  string access_secret_file = 5;
+  doramcap.system_apps.v1.SystemAppsConfig system_apps = 6;
+  string public_origin = 7;
+  RuntimeConfig runtime = 8;
+}
+
+// Omitted fields preserve defaults; explicit zero is invalid.
+message RuntimeConfig {
+  optional uint32 readiness_seconds = 1; // Default: 60.
+  optional uint32 stop_seconds = 2; // Default: 15.
+  optional uint32 sample_interval_ms = 3; // Default: 100; also bounds activity publication cadence.
+}
+
+message ServerSettings { string listen_address = 1; string access_secret_file = 2; string public_origin = 3; }
+
+// Omitted selection preserves host defaults; an explicit empty list selects no apps.
+message SystemAppSelection { repeated string ids = 1; }
+message SystemApp { string id = 1; string label = 2; bool selected = 3; }
+message PrepareRequest { string directory = 1; repeated string profiles = 2; SystemAppSelection system_apps = 3; }
+message StartRequest { string prepared_id = 1; string request_key = 2; }
+message StopRequest { string run_id = 1; }
+message StartResponse { string run_id = 1; }
+message StopResponse { bool accepted = 1; }
+message Service { string name = 1; string image_id = 2; }
+message Review {
+  string prepared_id = 1;
+  string run_id = 2;
+  repeated string available_profiles = 3;
+  repeated string selected_profiles = 4;
+  repeated Service services = 5;
+  repeated string warnings = 6;
+  repeated SystemApp system_apps = 7;
+}
+
+enum Phase {
+  PHASE_UNSPECIFIED = 0;
+  IDLE = 1;
+  PREPARING = 2;
+  REVIEWED = 3;
+  STARTING = 4;
+  RUNNING = 5;
+  STOPPING = 6;
+  FINISHED = 7;
+  BLOCKED = 8;
+}
+message Outcome {
+  string execution = 1;
+  optional bool writers_stopped = 2;
+  optional bool recording_finalized = 3;
+  optional bool boundary_clean = 4;
+  optional bool event_stream_healthy = 5;
+}
+// Display name from the existing cgroup dictionary; host ancestor paths stay private.
+message CpuGroupName { uint64 id = 1; string name = 2; }
+message Status {
+  Phase phase = 1;
+  string run_id = 2;
+  repeated doramcap.workflow.v1.Event steps = 3;
+  uint64 sequence = 4;
+  uint64 lost_events = 5;
+  uint64 truncated_steps = 6;
+  bool progress_incomplete = 7;
+  Outcome outcome = 8;
+  uint64 overflow_steps = 9;
+  bool cpu_available = 10;
+  bool report_available = 11;
+  bool monitor_ready = 12;
+  string project_directory = 13;
+  repeated string profiles = 14;
+  repeated RunMetric metrics = 15;
+  bool activity_available = 16;
+  bool metrics_incomplete = 17;
+  repeated doramcap.telemetry.v1.Snapshot cpu_snapshots = 18;
+  SystemAppSelection system_apps = 19;
+  repeated CpuGroupName cpu_group_names = 20;
+}
+message ConsoleError { string code = 1; string message = 2; }
+message Marker {
+  uint32 version = 1;
+  string run_id = 2;
+  string request_key = 3;
+  Phase phase = 4;
+  string artifact_reference = 5;
+  Outcome outcome = 6;
+  bool start_accepted = 7;
+  string project_directory = 8;
+  repeated string profiles = 9;
+  SystemAppSelection system_apps = 10;
+}
+
+// One bounded, host-observed sample; absent values denote unavailable data.
+message RunMetric {
+  uint64 elapsed_ns = 1;
+  optional uint64 recording_bytes = 2;
+  optional double write_bytes_per_second = 3;
+  optional double cpu_percent = 4;
+  uint32 cpu_cores = 5;
+}
+
+// Opaque per-connection cursor; an empty cursor requests a bounded checkpoint.
+message StreamCursor { string run_id = 1; uint64 sequence = 2; uint64 metric_elapsed_ns = 3; uint64 cpu_sequence = 4; }

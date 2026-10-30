@@ -1,0 +1,22 @@
+{
+  "name": "doramcap-console-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "tsx scripts/generate.ts",
+    "build:native": "cargo build --profile ci --locked -p console-native && tsx scripts/copy-native.ts",
+    "build": "npm run generate && tsc --noEmit && tsx scripts/build.ts",
+    "test": "npm run build:native && npm run generate && tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "long": "^5.3.2",
+    "protobufjs": "^8.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "protobufjs-cli": "^2.7.1",
+    "tsx": "^4.20.0",
+    "typescript": "^7.0.2"
+  }
+}
