@@ -657,3 +657,33 @@ CUDA and high-memlock cases remain skipped; second-machine browser acceptance
 remains skipped by user instruction.
 
 - [x] Record final-source local CI and ARM64 results.
+
+## M11 — Remove generic project warning
+
+**Work items**
+
+- [x] Remove the blanket policy/configuration banner from successful reviews.
+  Compose diagnostics stay private, including routine process-only readiness;
+  actionable prompts such as selecting a profile remain public. Raw diagnostics
+  can include interpolated secrets and are never forwarded to the browser.
+
+**Validation**
+
+The real Docker review test passed with added assertions: a project without
+healthchecks still has private process-level readiness diagnostics, while its
+public review has no generic warning. Builds ran unprivileged; only the test
+executable was elevated. All 15 native unit tests, six project/state integration tests and eight server
+tests passed. The default native command ignored ten Docker/capability tests;
+one Docker review test was explicitly run and passed above. The packaged native module
+was replaced and the server gracefully restarted after confirming FINISHED.
+ARM64 job 517 passed the final application source.
+
+- [x] Verify diagnostics remain private and the successful review has no banner.
+Full local CI passed on the final application source: both Clippy/workspace
+configurations, storage without default features, examples/binaries, formatting,
+boundaries and snapshot synchronization (CI profile and locked dependencies).
+Logs: `/tmp/console-warning-*.log`. The restarted app restored FINISHED run
+`41043c3092c58bd4a8f8b2f429ef2c54`. Existing ignored workspace capability/CUDA/
+high-memlock tests and second-machine browser acceptance remain skipped.
+
+- [x] Record full local CI and confirm packaged restart.

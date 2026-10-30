@@ -155,19 +155,14 @@ async fn resolve(
             image_id: service.image_id.clone(),
         })
         .collect();
-    // Raw Compose diagnostics may contain interpolation values and remain private.
-    let warnings = if workload.diagnostics.is_empty() {
-        vec![]
-    } else {
-        vec!["Project has policy or configuration warnings; inspect private host evidence.".into()]
-    };
     let review = Review {
         prepared_id: run_id.clone(),
         run_id,
         available_profiles: available,
         selected_profiles: project.profiles.clone(),
         services,
-        warnings,
+        // Raw Compose diagnostics stay in private evidence; expose actionable prompts only.
+        warnings: Vec::new(),
     };
     Ok(PreparedReview {
         review,

@@ -307,6 +307,14 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
         })
         .await
         .unwrap();
+    // Assert: routine diagnostics stay private and do not become a generic banner.
+    assert!(first.review.warnings.is_empty());
+    assert!(
+        unchanged
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.contains("process-level readiness only"))
+    );
     assert_eq!(unchanged.sha256, first.workload_digest);
     std::fs::write(project_dir.join(".env"), "VALUE=after\n").unwrap();
     let changed_dir = root.path().join("changed-resolution");
