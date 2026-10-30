@@ -4,12 +4,21 @@ use workflow_protocol::{Event, event::State};
 
 use crate::policy::MAX_PROGRESS_ROWS;
 
-// Keep workflow-declared top-level stages visible as periodic checks age out.
-fn lifecycle_step(event: &Event) -> bool {
-    event.parent.is_none()
-        && event.descriptor.as_ref().is_some_and(|descriptor| {
-            descriptor.retention == workflow_protocol::ProgressRetention::Keep as i32
-        })
+fn step_key(event: &Event) -> &str {
+    event
+        .descriptor
+        .as_ref()
+        .map(|d| d.id.as_str())
+        .unwrap_or(&event.step)
+}
+
+// Console summarizes the latest invocation of each top-level identity.
+fn same_summary_step(left: &Event, right: &Event) -> bool {
+    left.parent.is_none()
+        && right.parent.is_none()
+        && left.session == right.session
+        && left.executor == right.executor
+        && step_key(left) == step_key(right)
 }
 
 /// Current invocation rows and independent indicators of missing history.
@@ -57,7 +66,22 @@ impl Progress {
             if let Some(index) = self
                 .rows
                 .iter()
-                .position(|row| row.state != State::Started as i32 && !lifecycle_step(row))
+                .enumerate()
+                .position(|(index, row)| {
+                    row.state != State::Started as i32
+                        && (row.parent.is_some()
+                            || same_summary_step(row, &event)
+                            || self
+                                .rows
+                                .iter()
+                                .skip(index + 1)
+                                .any(|later| same_summary_step(row, later)))
+                })
+                .or_else(|| {
+                    self.rows
+                        .iter()
+                        .position(|row| row.state != State::Started as i32)
+                })
             {
                 self.rows.remove(index);
                 self.truncated = self.truncated.saturating_add(1);
@@ -126,7 +150,7 @@ mod tests {
         assert!(!progress.incomplete());
     }
     #[test]
-    fn lifecycle_rows_survive_periodic_telemetry_eviction() {
+    fn distinct_top_level_steps_survive_repeated_invocation_eviction() {
         // Arrange
         let mut progress = Progress::default();
         let mut lifecycle = event(1, 1, State::Succeeded);
@@ -134,8 +158,6 @@ mod tests {
         lifecycle.descriptor = Some(workflow_protocol::StepDescriptor::new(
             "compose.prepare",
             "Prepare project",
-            workflow_protocol::ProgressRetention::Keep,
-            workflow_protocol::ProgressKind::Operation,
         ));
         progress.apply(lifecycle);
         // Act
@@ -154,6 +176,26 @@ mod tests {
         assert_eq!(progress.rows().last().unwrap().invocation, 2_001);
         assert!(!progress.incomplete());
     }
+    #[test]
+    fn unique_completed_steps_fall_back_to_oldest_eviction() {
+        // Arrange
+        let mut progress = Progress::default();
+        // Act
+        for id in 1..=513 {
+            let mut row = event(id, id, State::Succeeded);
+            row.descriptor = Some(workflow_protocol::StepDescriptor::new(
+                &format!("step.{id}"),
+                "Step",
+            ));
+            progress.apply(row);
+        }
+        // Assert
+        assert_eq!(progress.rows().len(), 512);
+        assert_eq!(progress.rows()[0].invocation, 2);
+        assert_eq!(progress.truncated, 1);
+        assert_eq!(progress.overflow, 0);
+    }
+
     #[test]
     fn active_overflow_unknown_versions_and_redaction_are_independent() {
         // Arrange
