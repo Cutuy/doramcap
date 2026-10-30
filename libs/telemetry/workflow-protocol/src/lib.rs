@@ -19,3 +19,13 @@ pub fn decode(bytes: &[u8]) -> Result<Event, prost::DecodeError> {
 pub fn encoded_len(event: &Event) -> usize {
     prost::Message::encoded_len(event)
 }
+
+impl StepDescriptor {
+    /// Describe a stable step identity and display label.
+    pub fn new(id: &str, display_name: &str) -> Self {
+        Self {
+            id: id.into(),
+            display_name: display_name.into(),
+        }
+    }
+}

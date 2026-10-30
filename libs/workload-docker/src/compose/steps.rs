@@ -57,6 +57,12 @@ pub struct InspectCompose {
     pub diagnostics: Diagnostics,
 }
 impl Step for InspectCompose {
+    fn descriptor() -> Option<orchestrator::StepDescriptor> {
+        Some(orchestrator::StepDescriptor::new(
+            "compose.inspect",
+            "Inspect project",
+        ))
+    }
     type Input = ResolvedComposeProject;
     type Output = ComposeProjectState;
     async fn run(&mut self, plan: ResolvedComposeProject) -> Result<ComposeProjectState> {

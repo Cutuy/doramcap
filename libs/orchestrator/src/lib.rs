@@ -19,6 +19,7 @@ pub use error::{Error, Result};
 pub use event::{Event, Invocation, Observer, State};
 pub use executor::{Input, LocalExecutor, Output};
 use serde::{Serialize, de::DeserializeOwned};
+pub use workflow_protocol::StepDescriptor;
 
 /// One transient execution object, created by its registered factory for each invocation.
 ///
@@ -39,6 +40,11 @@ pub trait Step {
     /// Caller-declared telemetry revision; currently not used for decoding, dispatch,
     /// or compatibility checks. The Rust type name supplies the step name.
     const VERSION: u32 = 1;
+
+    /// Optional stable observation metadata, captured at registration; absent metadata stays diagnostic.
+    fn descriptor() -> Option<StepDescriptor> {
+        None
+    }
 
     /// Perform one invocation using injected fields and owned inputs.
     async fn run(&mut self, input: Self::Input) -> Result<Self::Output>;

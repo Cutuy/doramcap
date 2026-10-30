@@ -1,11 +1,11 @@
 use workflow_protocol::{Event, FILE_DESCRIPTOR_SET, decode, encode, encoded_len, event};
 
 #[test]
-fn descriptor_is_identical_to_the_pre_extraction_contract() {
+fn descriptor_matches_the_current_schema_snapshot() {
     // Arrange
-    let legacy = include_bytes!("fixtures/legacy-descriptor.bin");
+    let expected = include_bytes!("fixtures/descriptor.bin");
     // Act / Assert
-    assert_eq!(FILE_DESCRIPTOR_SET, legacy);
+    assert_eq!(FILE_DESCRIPTOR_SET, expected);
 }
 
 #[test]
@@ -27,6 +27,7 @@ fn event_encoding_preserves_the_v1_wire_layout() {
         duration_ns: 8,
         payload_json: Some("{}".into()),
         error: Some(String::new()),
+        descriptor: None,
     };
     // Act
     let bytes = encode(&event);

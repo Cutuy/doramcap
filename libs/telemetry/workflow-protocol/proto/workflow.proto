@@ -24,4 +24,12 @@ message Event {
   uint64 duration_ns = 12;
   optional string payload_json = 13;
   optional string error = 14;
+  StepDescriptor descriptor = 15;
+}
+
+// Workflow-owned identity and label; Rust type names remain diagnostic.
+message StepDescriptor {
+  string id = 1;
+  string display_name = 2;
+  reserved 3, 4;
 }

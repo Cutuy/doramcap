@@ -3,7 +3,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::{
     any::{Any, TypeId, type_name},
     cell::Cell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     time::Instant,
 };
@@ -107,6 +107,7 @@ impl<T> From<Output<T>> for Input<T> {
 /// future; callers remain responsible for async cleanup. Calls are never retried.
 pub struct LocalExecutor {
     factories: HashMap<TypeId, Box<dyn Any>>,
+    descriptors: HashMap<TypeId, Option<workflow_protocol::StepDescriptor>>,
     session: String,
     next_id: Cell<u64>,
     origin: Instant,
@@ -136,6 +137,7 @@ impl LocalExecutor {
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
+            descriptors: HashMap::new(),
             session: "local".into(),
             next_id: Cell::new(1),
             origin: Instant::now(),
@@ -168,11 +170,29 @@ impl LocalExecutor {
     ///
     /// # Behavior
     ///
-    /// The factory owns its captures and creates a fresh step for each validated
-    /// invocation. A missing factory fails before events; factory panics unwind.
+    /// The factory owns captures; registration captures the step descriptor.
+    /// Invalid/duplicate declared metadata fails before invocation; factory panics unwind.
     pub fn register<S: Step + 'static>(&mut self, factory: impl Fn() -> S + 'static) {
         let factory: Box<dyn Fn() -> S> = Box::new(factory);
         self.factories.insert(TypeId::of::<S>(), Box::new(factory));
+        self.descriptors.insert(TypeId::of::<S>(), S::descriptor());
+    }
+
+    /// Reject incomplete or duplicate declared descriptors before invoking any step.
+    pub fn validate_descriptors(&self) -> Result<()> {
+        let mut ids = HashSet::new();
+        for descriptor in self.descriptors.values().flatten() {
+            if descriptor.id.trim().is_empty()
+                || descriptor.display_name.trim().is_empty()
+                || !ids.insert(&descriptor.id)
+            {
+                return Err(Error::Configuration(format!(
+                    "invalid or duplicate step descriptor: {}",
+                    descriptor.id
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Number of observer callbacks that panicked. Check evidence coverage separately.
@@ -208,6 +228,7 @@ impl LocalExecutor {
         &self,
         input: impl Into<Input<S::Input>>,
     ) -> Result<Output<S::Output>> {
+        self.validate_descriptors()?;
         let factory = self
             .factories
             .get(&TypeId::of::<S>())
@@ -231,6 +252,7 @@ impl LocalExecutor {
             session: self.session.clone(),
             id,
             step: type_name::<S>().into(),
+            descriptor: self.descriptors.get(&TypeId::of::<S>()).cloned().flatten(),
             version: S::VERSION,
             executor: "local".into(),
             parent: ACTIVE

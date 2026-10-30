@@ -8,8 +8,11 @@ pub struct Invocation {
     pub session: String,
     /// Local invocation number, starting at one.
     pub id: u64,
-    /// Derived from the step's Rust type name; renames change this name.
+    /// Diagnostic Rust type name; use `descriptor.id` for stable observation identity.
     pub step: String,
+    /// Optional workflow-provided identity, label and observation policy.
+    #[serde(default)]
+    pub descriptor: Option<workflow_protocol::StepDescriptor>,
     /// Step input/output contract revision.
     pub version: u32,
     /// Executor identity. The implementation supports only `local`.
