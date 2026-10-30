@@ -823,3 +823,28 @@ capability, CUDA and high-memlock tests and second-machine browser skips remain
 unchanged. Logs: `/tmp/console-order-*.log`.
 
 - [x] Record final-source local CI and ARM64 results.
+
+## M15 — Expanding activity card
+
+**Work items**
+
+- [x] Remove the timeline's 600 px height limit and internal vertical scrolling.
+  Let the activity card grow with its rows; retain horizontal scrolling on
+  narrow screens.
+
+**Validation**
+
+24 frontend tests and the production build passed. Chromium measured matching
+container/content heights at 1200 px (482/482 px) and 390 px (664/664 px), with
+no maximum height or internal vertical overflow. Document width matched each
+viewport. The hosted static assets and completed-activity screenshots are updated.
+
+- [x] Verify card expansion and narrow-screen containment in the packaged app.
+Full local CI passed on the final application source: both Clippy/workspace
+configurations, storage without default features, examples/binaries, formatting,
+boundaries and snapshot synchronization (CI profile, locked dependencies,
+unprivileged builds). ARM64 job 522 passed. Existing ignored capability/CUDA/
+high-memlock cases and the second-machine browser skip remain unchanged. Logs:
+`/tmp/console-expand-*.log`.
+
+- [x] Record final-source local CI and ARM64 results.
