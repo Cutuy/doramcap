@@ -26,6 +26,7 @@ test('timeline events are keyboard buttons and completed view supports elapsed-t
   // Assert
   assert.match(html, /role="button" tabindex="0"/);
   assert.match(html, /Browse elapsed time/);
+  assert.doesNotMatch(html, /Inspect retained event|timeline-event-picker/);
   assert.match(html, /Retained workflow events from this run/);
   assert.doesNotMatch(html, /Following live/);
 });
@@ -55,7 +56,9 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   assert.match(zero, /0 B/);
   assert.match(zero, /0.0%/);
   assert.match(zero, /8 cores/);
-  assert.match(zero, /100% equals one/);
+  assert.match(zero, /Top CPU groups/);
+  assert.match(zero, /Capture health/);
+  assert.doesNotMatch(zero, /Inclusive ancestors|recorder boundary/);
 });
 
 test('completed runs without retained activity do not imply that events will arrive', () => {

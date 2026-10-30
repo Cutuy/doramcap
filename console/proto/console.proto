@@ -3,6 +3,7 @@ package doramcap.console.v1;
 
 import "system_apps.proto";
 import "workflow.proto";
+import "telemetry.proto";
 
 message ConsoleConfig {
   string listen_address = 1;
@@ -67,6 +68,7 @@ message Status {
   repeated RunMetric metrics = 15;
   bool activity_available = 16;
   bool metrics_incomplete = 17;
+  repeated doramcap.telemetry.v1.Snapshot cpu_snapshots = 18;
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {
@@ -89,3 +91,6 @@ message RunMetric {
   optional double cpu_percent = 4;
   uint32 cpu_cores = 5;
 }
+
+// Opaque per-connection cursor; an empty cursor requests a bounded checkpoint.
+message StreamCursor { string run_id = 1; uint64 sequence = 2; uint64 metric_elapsed_ns = 3; uint64 cpu_sequence = 4; }

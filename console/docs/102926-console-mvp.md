@@ -520,3 +520,72 @@ E2E harness was reintroduced.
   completed freeze and restoration against a real packaged Docker run.
 - [x] Check narrow layout and retained failure/unavailable states using components.
 - [x] Run local CI and final-source ARM64 checks; record exact results and skips.
+
+## M8 — Binary 10 Hz telemetry and existing Rust counters
+
+The user requested the demos' binary Protobuf delivery pattern, direct timeline
+selection, and useful existing Rust metrics in place of explanatory panel copy.
+
+**Work items**
+
+- [x] Add authenticated `/api/live`: four-byte little-endian framing around
+  Rust-encoded Status checkpoints/deltas at 10 Hz. Keep control routes compatible.
+  Use opaque Rust cursors, bounded frames, four-client admission, slow-client
+  backpressure/timeouts and fresh checkpoints after reconnect; no JSON live polling.
+- [x] Reuse generated protobufjs codecs already used by the demos. Merge exact
+  invocation identities, cap rows at 512 and metric samples at 1200; avoid copying
+  unchanged history and resending unchanged CPU payloads on heartbeats.
+- [x] Sample existing output at 10 Hz away from execution's owner thread. Reuse
+  `doramcap.telemetry.v1.Snapshot` for the last two CPU frames; expose no dictionary
+  paths. Reuse existing sequence, cgroup runtime, flags, parents, dropped-batch and
+  capacity-overflow fields for CPU ranking and capture health. Transport cursor
+  metadata is new; no producer measurement fields were invented.
+- [x] Remove the retained-event picker and both explanatory paragraphs. Keep
+  keyboard/direct timeline selection, larger hit targets, nearest-event selection
+  within lanes, and parent/dependency navigation. Put nested checks in Details.
+- [x] Leave io_uring rates absent: the deployed system-monitor publishes CPU
+  snapshots, but its embedded recorder does not export storage writer counters.
+  Preserve that distinction from storage-demo's process-local metrics.
+
+**Validation**
+
+Focused evidence: 17 frontend tests, 15 native unit tests (five ignored Docker
+cases) and eight server tests passed. A real large-checkpoint run exposed a corked
+write/drain stall missed by the original small-frame mock. The route now writes
+one framed buffer; the regression test uses a 200 KB message and passes.
+A real completed-run connection then delivered 21 frames in 1.99 seconds (10.06 Hz),
+with a 253,047-byte checkpoint and 118-byte median heartbeats. Direct timeline
+clicks opened details, the picker was absent, and browser requests used only
+`/api/live`. The 390 px document width remained 390 px.
+
+Final packaged evidence (2026-10-29): run
+`c0b3896e618477dbf8c12fd7f950d77c` reached monitor readiness and delivered 21
+active frames over 1.992 seconds (10.04 Hz), including 19 new metric samples and
+updated producer CPU snapshots. Stop completed execution, finalized recording and
+verified cleanup. Restart restored 450 metric samples, 255 invocation rows and
+two CPU snapshots; metrics coverage remained complete. A real server restart
+showed the disconnect indicator and automatically reconnected while retaining
+03 Run. The terminal WriteRunReport marker at the plot edge was directly
+clickable; the event picker and both removed paragraphs are absent. Final
+completed screenshots are `screenshots/completed-activity*.png`.
+
+Run `47f3f72d071b6d497361d3276cb5f360` hit the Compose system-project launch
+60-second deadline before producing monitor data. It reported failed execution,
+unavailable recording and verified cleanup; the successful run above followed
+that clean boundary. The earlier live-browser attempt also exposed an edge hit
+target clipped outside the plot; short markers now remain within plot bounds.
+
+Final checks passed: 17 frontend tests and production build, 15 native unit tests
+(five Docker/capability cases ignored), eight server tests/build, both Clippy and
+workspace-test configurations, storage without default features, all-feature
+examples/binaries, formatting, boundaries and snapshot synchronization. All Cargo
+checks used the CI profile and locked dependencies, built unprivileged. ARM64 job
+512 initially failed the same nested-if Clippy warning found locally; it was
+corrected. Jobs 513 and 514 passed; job 514 includes the final event hit-target
+fix. Workspace-ignored capability/CUDA/high-memlock cases remain skipped. No E2E
+harness was added.
+
+- [x] Verify live sampling, reconnect/restoration and final screenshots against
+  the packaged Docker app; record actual outcomes and unavailable cases.
+- [x] Run final-source local CI, frontend/server builds and ARM64 validation;
+  record results and skips separately.

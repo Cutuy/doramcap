@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const HISTORY: usize = 120;
+const HISTORY: usize = 1200;
 const MAX_FRAME: u64 = 8 * 1024 * 1024;
 const MAX_HEADERS: usize = 4096;
 const MAX_ACTIVITY: u64 = 2 * 1024 * 1024;
@@ -28,6 +28,7 @@ struct Reader {
     previous: Option<(String, u64, Counters)>,
     size: Option<(u64, Instant)>,
     incomplete: bool,
+    latest: Vec<telemetry_protocol::pb::Snapshot>,
 }
 impl Reader {
     fn sample(&mut self, directory: &Path, elapsed: Duration) -> RunMetric {
@@ -71,6 +72,7 @@ impl Reader {
         if self.identity.is_some_and(|old| old != identity) || metadata.len() < self.offset {
             self.offset = 0;
             self.previous = None;
+            self.latest.clear();
             self.incomplete = true;
         }
         self.identity = Some(identity);
@@ -106,6 +108,19 @@ impl Reader {
             let mut bytes = vec![0; length as usize];
             file.read_exact(&mut bytes)?;
             let frame = telemetry_protocol::decode(&bytes).map_err(std::io::Error::other)?;
+            if self
+                .latest
+                .last()
+                .is_none_or(|last| last.sequence != frame.snapshot.sequence)
+                && let Some(telemetry_protocol::pb::packet::Body::Snapshot(packet)) =
+                    telemetry_protocol::snapshot_packet(&frame).body
+                && let Some(snapshot) = packet.snapshot
+            {
+                if self.latest.len() == 2 {
+                    self.latest.remove(0);
+                }
+                self.latest.push(snapshot);
+            }
             let snapshot = &frame.snapshot;
             sample.cpu_cores = snapshot
                 .records
@@ -189,7 +204,7 @@ fn terminal(phase: Phase) -> bool {
     matches!(phase, Phase::Finished | Phase::Blocked | Phase::Idle)
 }
 
-/// Sample once per second; retain at most 120 samples and save terminal activity.
+/// Sample at 10 Hz; retain 1200 samples and the last two producer snapshots.
 pub(crate) fn watch(
     session: Rc<RefCell<Session>>,
     directory: PathBuf,
@@ -204,6 +219,7 @@ pub(crate) fn watch(
         let mut reader = Reader::default();
         let mut finishing = false;
         loop {
+            let tick = Instant::now();
             let path = directory.clone();
             let elapsed = started.elapsed();
             let Ok((next, sample)) = tokio::task::spawn_blocking(move || {
@@ -224,6 +240,17 @@ pub(crate) fn watch(
                     current.metrics.remove(0);
                 }
                 current.metrics.push(sample);
+                current.cpu_snapshots = reader.latest.clone();
+                if current
+                    .cpu_snapshots
+                    .iter()
+                    .map(Message::encoded_len)
+                    .sum::<usize>()
+                    > 1024 * 1024
+                {
+                    current.cpu_snapshots.clear();
+                    current.metrics_incomplete = true;
+                }
                 current.metrics_incomplete |= reader.incomplete;
                 current.publish();
             }
@@ -232,7 +259,7 @@ pub(crate) fn watch(
             }
             tokio::select! {
                 _ = &mut stopped => finishing = true,
-                _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+                _ = tokio::time::sleep(Duration::from_millis(100).saturating_sub(tick.elapsed())) => {}
             }
         }
     });
@@ -298,9 +325,11 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
         && status.phase == session.phase as i32
         && status.steps.len() <= 512
         && status.metrics.len() <= HISTORY
+        && status.cpu_snapshots.len() <= 2
     {
         session.progress.restore(&status);
         session.metrics = status.metrics;
+        session.cpu_snapshots = status.cpu_snapshots;
         session.metrics_incomplete = status.metrics_incomplete;
         session
             .loss

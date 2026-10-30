@@ -11,6 +11,7 @@ export interface NativeConsole {
   prepare(input: Buffer): Promise<Buffer>;
   start(input: Buffer): Promise<Buffer>;
   status(): Promise<Buffer>;
+  update(cursor: Buffer): Promise<{data: Buffer; cursor: Buffer}>;
   stop(input: Buffer): Promise<Buffer>;
   openArtifact(runId: string, kind: string): Promise<number>;
   close(): Promise<void>;

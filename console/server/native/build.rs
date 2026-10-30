@@ -9,12 +9,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "::workload_docker::workflows::system_apps",
         )
         .extern_path(".doramcap.workflow.v1", "::workflow_protocol")
+        .extern_path(".doramcap.telemetry.v1", "::telemetry_protocol::pb")
         .compile_protos(
             &["../../proto/console.proto"],
             &[
                 "../../proto",
                 "../../../libs/workload-docker/proto",
                 "../../../libs/telemetry/workflow-protocol/proto",
+                "../../../libs/telemetry/protocol/proto",
             ],
         )?;
     println!("cargo:rerun-if-changed=../../proto/console.proto");
@@ -22,5 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "cargo:rerun-if-changed=../../../libs/telemetry/workflow-protocol/proto/workflow.proto"
     );
+    println!("cargo:rerun-if-changed=../../../libs/telemetry/protocol/proto/telemetry.proto");
     Ok(())
 }

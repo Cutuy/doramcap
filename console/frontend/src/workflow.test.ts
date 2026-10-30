@@ -11,7 +11,7 @@ test('classifies top-level lifecycle steps separately from periodic and nested e
   assert.equal(isLifecycleStep(step({ parent: '1' })), false);
   assert.equal(isLifecycleStep(step({ step: 'compose::ObserveProjects' })), false);
   assert.equal(timelineLane(step({ step: 'compose::ObserveProjects' })), 1);
-  assert.equal(timelineLane(step({ step: 'compose::InspectCompose', parent: '1' })), 1);
+  assert.equal(timelineLane(step({ step: 'compose::InspectCompose', parent: '1' })), 2);
   assert.equal(timelineLane(step({ step: 'compose::ResolveCompose', parent: '1' })), 2);
 });
 

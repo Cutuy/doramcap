@@ -1,3 +1,5 @@
+import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -80,6 +82,7 @@ async function asset(response: ServerResponse, path: string, assets: string): Pr
 export function createConsoleServer(config: HttpOptions) {
   const origin = new URL(config.origin);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== config.origin || !config.secret) throw new Error('invalid server origin or empty secret');
+  let streams = 0;
   return createServer(async (request, response) => {
     try {
       if (!authenticate(request, config.secret)) {
@@ -100,6 +103,30 @@ export function createConsoleServer(config: HttpOptions) {
         const input = wire.StartRequest.encode({ preparedId: string(value.preparedId), requestKey: string(value.requestKey) }).finish();
         const result = wire.StartResponse.decode(await config.native.start(Buffer.from(input)));
         reply(response, 202, wire.StartResponse.toObject(result, options)); return;
+      }
+      if (request.method === 'GET' && url.pathname === '/api/live') {
+        if (request.headers.origin && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
+        if (streams >= 4) throw new HttpError(409, 'Busy');
+        streams++;
+        const controller = new AbortController();
+        response.once('close', () => controller.abort());
+        response.writeHead(200, { 'content-type': 'application/x-protobuf', 'cache-control': 'no-store', 'x-accel-buffering': 'no', 'x-content-type-options': 'nosniff' });
+        response.flushHeaders();
+        let cursor = Buffer.alloc(0);
+        try {
+          while (!response.destroyed) {
+            const tick = performance.now();
+            const update = await config.native.update(cursor);
+            if (response.destroyed) break;
+            if (update.data.length > 4 * 1024 * 1024) throw new Error('live frame exceeds limit');
+            const header = Buffer.allocUnsafe(4); header.writeUInt32LE(update.data.length);
+            const writable = response.write(Buffer.concat([header, update.data]));
+            cursor = Buffer.from(update.cursor);
+            if (!writable) await once(response, 'drain', {signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)])});
+            await delay(Math.max(0, 100 - (performance.now() - tick)), undefined, {signal: controller.signal});
+          }
+        } finally { streams--; response.destroy(); }
+        return;
       }
       if (request.method === 'GET' && url.pathname === '/api/current') {
         const result = wire.Status.decode(await config.native.status());

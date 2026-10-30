@@ -12,6 +12,7 @@ test('authentication, Origin, size and field validation precede native mutations
   // Arrange
   let starts = 0; let stops = 0;
   const native: NativeConsole = {
+    update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     settings: async () => Buffer.alloc(0), close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
     prepare: async () => Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()),
     start: async () => { starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
@@ -53,4 +54,48 @@ test('authentication, Origin, size and field validation precede native mutations
     server.closeAllConnections(); server.close(); await once(server, 'close');
     await rm(assets, { recursive: true, force: true });
   }
+});
+
+test('live feed forwards binary Rust frames with opaque cursors at a bounded cadence', async () => {
+  // Arrange
+  let calls = 0; let statuses = 0;
+  const cursors: number[] = [];
+  const native: NativeConsole = {
+    settings: async () => Buffer.alloc(0), close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
+    prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
+    status: async () => { statuses++; return Buffer.alloc(0); },
+    update: async cursor => {
+      cursors.push(cursor[0] ?? 0); calls++;
+      return { data: Buffer.from(wire.Status.encode(wire.Status.fromObject({phase:wire.Phase.RUNNING,runId:'run',sequence:'9007199254740993',steps:[{step:'x'.repeat(200000)}]})).finish()), cursor: Buffer.from([calls]) };
+    },
+  };
+  const server = createConsoleServer({native,secret:'secret',origin:'http://console.test',assets:'/tmp'});
+  server.listen(0,'127.0.0.1'); await once(server,'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const url = `http://127.0.0.1:${address.port}/api/live`;
+  const auth = `Basic ${Buffer.from('console:secret').toString('base64')}`;
+  const controller = new AbortController();
+  try {
+    // Act / Assert: authentication and Origin checks still precede streaming.
+    assert.equal((await fetch(url)).status,401);
+    assert.equal((await fetch(url,{headers:{authorization:auth,origin:'http://other.test'}})).status,403);
+    const response = await fetch(url,{headers:{authorization:auth},signal:controller.signal});
+    assert.equal(response.headers.get('content-type'),'application/x-protobuf');
+    const reader = response.body!.getReader();
+    let pending = Buffer.alloc(0); let frames = 0;
+    const started = performance.now();
+    while (frames < 3) {
+      const {value,done} = await reader.read(); assert.equal(done,false);
+      pending = Buffer.concat([pending,Buffer.from(value!)]);
+      while(pending.length>=4 && pending.length>=4+pending.readUInt32LE(0)) {
+        const length=pending.readUInt32LE(0);
+        assert.equal(wire.Status.decode(pending.subarray(4,4+length)).sequence.toString(),'9007199254740993');
+        pending=pending.subarray(4+length); frames++;
+      }
+    }
+    // Assert: no JSON/status round trip; the native cursor is passed back unchanged.
+    assert.equal(statuses,0); assert.deepEqual(cursors.slice(0,3),[0,1,2]);
+    assert.ok(performance.now()-started>=150,'feed must not spin unbounded');
+    controller.abort(); await reader.cancel().catch(()=>{});
+  } finally { controller.abort(); server.closeAllConnections(); server.close(); await once(server,'close'); }
 });

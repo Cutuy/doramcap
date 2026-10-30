@@ -33,5 +33,5 @@ export function elapsedDuration(step: Step, now: number): number {
   return Math.max(0, (step.state === 'STARTED' ? Math.max(now, end) : end) - start);
 }
 export function timelineLane(step: Step): number {
-  return isHealthCheck(step) ? 1 : isLifecycleStep(step) ? 0 : 2;
+  return shortStep(step) === 'ObserveProjects' ? 1 : isLifecycleStep(step) ? 0 : 2;
 }

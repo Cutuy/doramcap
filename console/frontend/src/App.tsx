@@ -33,22 +33,21 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false; let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      const requestGeneration = generation.current;
+    const controller = new AbortController();
+    const connect = async () => {
       try {
-        const current = await api.current();
-        if (!cancelled && requestGeneration === generation.current) {
-          if (acceptsSnapshot(expected.current, current)) {
+        await api.live(current => {
+          if (!cancelled && acceptsSnapshot(expected.current, current)) {
             setSnapshot(current); setUpdated(Date.now()); setDisconnected(false);
             if (active.has(current.phase)) { viewingRun.current = false; expected.current = current.runId; selecting.current = false; setPhase('Run'); }
             else if (['FINISHED', 'BLOCKED'].includes(current.phase) && !selecting.current && !viewingRun.current) { setPhase('Result'); setStopPending(false); }
           }
-        }
+        }, controller.signal);
       } catch { if (!cancelled) setDisconnected(true); }
-      if (!cancelled) timer = setTimeout(poll, 1000);
+      if (!cancelled) timer = setTimeout(connect, 1000);
     };
-    void poll();
-    return () => { cancelled = true; clearTimeout(timer); };
+    void connect();
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
   }, []);
 
   useEffect(() => {
@@ -94,7 +93,7 @@ export function App() {
     <div className="sr-only" aria-live="polite">{phase} {state === 'STOPPING' ? 'Stopping run' : ''}</div>
     {phase === 'Project' && <><div className="heading"><div><h1>Choose a project</h1><p>Select a server-side Compose project to record.</p></div></div><div className="columns"><section className="panel"><h2>Project directory</h2><p className="muted">Enter a directory beneath the approved project root.</p><label htmlFor="directory">Directory on this host</label><input id="directory" value={directory} onChange={event => changeDirectory(event.target.value)} placeholder="/projects/my-project" autoComplete="off"/>{available.length > 0 && <fieldset><legend>Optional profiles</legend>{available.map(profile => <label className="checkbox" key={profile}><input type="checkbox" checked={profiles.includes(profile)} onChange={() => toggleProfile(profile)}/>{profile}</label>)}</fieldset>}<div className="actions"><ActionButton disabled={!directory.trim() || busy} onClick={() => void prepare()}>{busy ? 'Checking…' : available.length ? 'Review project' : 'Continue'}</ActionButton></div></section><aside><section className="panel"><h2>Before you start</h2><p>Use the project’s default Compose files and prebuilt local images. CPU recording starts with the run.</p><p className="muted">One project runs at a time on this host.</p></section></aside></div></>}
     {phase === 'Review' && review && <><div className="heading"><div><h1>Review project</h1><p>Confirm the resolved application before starting.</p></div><ActionButton onClick={() => void start()} disabled={busy}>Start run</ActionButton></div><div className="columns"><section className="panel"><div className="panel-heading"><h2>Application</h2><StatusLabel label="Ready to start" tone="success"/></div><p className="mono break">{directory}</p><h3>Enabled services</h3><table><thead><tr><th>Service</th><th>Local image</th></tr></thead><tbody>{review.services.map(service => <tr key={service.name}><td>{service.name}</td><td className="mono break">{service.imageId}</td></tr>)}</tbody></table>{review.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}<div className="actions"><ActionButton variant="secondary" onClick={() => { selecting.current = true; setPhase('Project'); }}>Change project</ActionButton></div></section><aside><section className="panel"><h2>Run settings</h2><p>Profiles</p><p>{profiles.length ? profiles.join(', ') : 'Default'}</p><p className="muted">CPU recording will be checked after startup and finalized on Stop.</p></section></aside></div></>}
-    {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === 'STOPPING' || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{(snapshot?.projectDirectory || directory) && <>{snapshot?.projectDirectory || directory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton variant="secondary" onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={state === 'STOPPING' || stopPending} onClick={() => void stop()}>{state === 'STOPPING' || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === 'STOPPING' || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>CPU recording</h2><StatusLabel label={historical ? (snapshot?.cpuAvailable ? 'Saved' : 'Unavailable') : snapshot?.monitorReady ? 'In progress' : 'Waiting for readiness'} tone={snapshot?.monitorReady ? 'active' : 'neutral'}/><p className="muted">{historical ? 'Open Result to download the available recording and report.' : 'Evidence is available after Stop and finalization.'}</p></section><RunMetrics samples={snapshot?.metrics} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/>{!historical && <section className="panel"><h2>Stopping the run</h2><p>Stop ends the application, finishes the recording, and checks cleanup.</p><p className="muted">Closing this browser leaves the run on the host.</p></section>}</aside></div></>}
+    {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === 'STOPPING' || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{(snapshot?.projectDirectory || directory) && <>{snapshot?.projectDirectory || directory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton variant="secondary" onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={state === 'STOPPING' || stopPending} onClick={() => void stop()}>{state === 'STOPPING' || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === 'STOPPING' || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>CPU recording</h2><StatusLabel label={historical ? (snapshot?.cpuAvailable ? 'Saved' : 'Unavailable') : snapshot?.monitorReady ? 'In progress' : 'Waiting for readiness'} tone={snapshot?.monitorReady ? 'active' : 'neutral'}/><p className="muted">{historical ? 'Open Result to download the available recording and report.' : 'Evidence is available after Stop and finalization.'}</p></section><RunMetrics samples={snapshot?.metrics} cpuSnapshots={snapshot?.cpuSnapshots} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/>{!historical && <section className="panel"><h2>Stopping the run</h2><p>Stop ends the application, finishes the recording, and checks cleanup.</p><p className="muted">Closing this browser leaves the run on the host.</p></section>}</aside></div></>}
     {phase === 'Result' && snapshot && <Result snapshot={snapshot} newRun={newRun} viewRun={() => navigateRun('Run')}/>}
   </PageFrame>;
 }

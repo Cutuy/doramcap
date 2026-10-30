@@ -1,9 +1,11 @@
+import { readLive } from './live';
+import type { doramcap } from './generated/console';
 export interface Service { name: string; imageId: string }
 export interface Review { preparedId: string; runId: string; availableProfiles: string[]; selectedProfiles: string[]; services: Service[]; warnings: string[] }
 export interface Step { session: string; executor: string; invocation: string; step: string; state: string; durationNs: string; elapsedNs?: string; parent?: string | null; dependencies?: string[]; sequence?: string; stepVersion?: number; error?: string | null }
 export interface Outcome { execution: string; writersStopped?: boolean | null; recordingFinalized?: boolean | null; boundaryClean?: boolean | null; eventStreamHealthy?: boolean | null }
 export interface RunMetric { elapsedNs: string; recordingBytes?: string | null; writeBytesPerSecond?: number | null; cpuPercent?: number | null; cpuCores: number }
-export interface Snapshot { phase: string; runId: string; steps: Step[]; sequence: string; lostEvents: string; truncatedSteps: string; overflowSteps: string; progressIncomplete: boolean; outcome: Outcome | null; cpuAvailable: boolean; reportAvailable: boolean; monitorReady: boolean; projectDirectory?: string; profiles?: string[]; metrics?: RunMetric[]; activityAvailable?: boolean; metricsIncomplete?: boolean }
+export interface Snapshot { phase: string; runId: string; steps: Step[]; sequence: string; lostEvents: string; truncatedSteps: string; overflowSteps: string; progressIncomplete: boolean; outcome: Outcome | null; cpuAvailable: boolean; reportAvailable: boolean; monitorReady: boolean; projectDirectory?: string; profiles?: string[]; metrics?: RunMetric[]; activityAvailable?: boolean; metricsIncomplete?: boolean; cpuSnapshots?: doramcap.telemetry.v1.ISnapshot[] }
 export class ApiError extends Error { constructor(public code: string) { super(code); } }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers }, credentials: 'same-origin' });
@@ -17,4 +19,5 @@ export const api = {
   start: (preparedId: string, requestKey: string) => post<{ runId: string }>('/api/start', { preparedId, requestKey }),
   stop: (runId: string) => post<{ accepted: boolean }>('/api/stop', { runId }),
   current: () => request<Snapshot>('/api/current'),
+  live: readLive,
 };
