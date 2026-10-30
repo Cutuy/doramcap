@@ -164,13 +164,14 @@ impl DockerAdapter {
         Ok(found)
     }
 
-    /// Discover declared profile names using the same explicit inputs as resolution.
-    /// Compose diagnostics and errors remain private to the caller.
-    pub async fn profiles(&self, project: &ComposeProject) -> Result<Vec<String>> {
+    /// Discover profiles for explicit `run` and project identities using resolution
+    /// inputs. Invalid identities fail before file or process access; diagnostics stay private.
+    pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
+        let name = project_name(run, &project.key)?;
         let mut discovery = project.clone();
         discovery.profiles.clear();
         discovery.services.clear();
-        let (directory, mut args, _) = config_arguments(&discovery, "dc-console-discovery").await?;
+        let (directory, mut args, _) = config_arguments(&discovery, &name).await?;
         args.extend(["config".into(), "--profiles".into()]);
         let (stdout, stderr) = compose(
             &self.socket,
@@ -208,10 +209,8 @@ impl DockerAdapter {
     /// images, filesystem failures and Compose/Engine failures return errors.
     /// Partially written artifacts may remain; input files are not modified.
     pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
-        validate_name(&input.run)?;
-        validate_name(&input.project.key)?;
         let project = &input.project;
-        let name = format!("dc-{}-{}", input.run, project.key);
+        let name = project_name(&input.run, &project.key)?;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let (directory, mut args, sources) = config_arguments(project, &name).await?;
@@ -1146,6 +1145,12 @@ async fn config_arguments(
     Ok((directory, args, sources))
 }
 
+fn project_name(run: &str, key: &str) -> Result<String> {
+    validate_name(run)?;
+    validate_name(key)?;
+    Ok(format!("dc-{run}-{key}"))
+}
+
 pub(crate) fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name.len() > 40
@@ -1198,6 +1203,80 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compose::Error;
+
+    fn discovery_project(directory: &Path) -> ComposeProject {
+        ComposeProject {
+            key: "workload".into(),
+            directory: directory.into(),
+            files: vec!["compose.yaml".into()],
+            env_files: vec![],
+            environment: BTreeMap::new(),
+            profiles: vec![],
+            services: vec![],
+            completed_services: vec![],
+            remove_volumes: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn compose_arguments_pass_explicit_run_and_project_identity() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        tokio::fs::write(root.path().join("compose.yaml"), b"services: {}")
+            .await
+            .unwrap();
+        let project = discovery_project(root.path());
+        for run in ["review-a", "review-b"] {
+            // Act
+            let name = project_name(run, &project.key).unwrap();
+            let (_, args, _) = config_arguments(&project, &name).await.unwrap();
+            // Assert
+            let names: Vec<_> = args
+                .windows(2)
+                .filter(|pair| pair[0] == "--project-name")
+                .map(|pair| pair[1].as_str())
+                .collect();
+            assert_eq!(names, [format!("dc-{run}-workload")]);
+            assert!(project.environment.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn discovery_and_resolution_reject_invalid_identity_before_io() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let socket = root.path().join("engine.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let adapter = DockerAdapter {
+            docker: Docker::connect_with_unix(
+                socket.to_str().unwrap(),
+                120,
+                bollard::API_DEFAULT_VERSION,
+            )
+            .unwrap(),
+            socket: socket.to_string_lossy().into_owned(),
+        };
+        for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
+            let mut project = discovery_project(Path::new("/nonexistent-project"));
+            project.key = key.into();
+            // Act
+            let profiles = adapter.profiles(run, &project).await;
+            let resolution = adapter
+                .resolve(ResolveInput {
+                    run: run.into(),
+                    artifacts: "/nonexistent-artifacts".into(),
+                    project,
+                })
+                .await;
+            // Assert
+            for error in [profiles.unwrap_err(), resolution.unwrap_err()] {
+                assert!(
+                    matches!(error, Error::Invalid(ref message) if message.starts_with("identity must"))
+                );
+            }
+        }
+    }
 
     #[test]
     fn digest_preserves_lowercase_sha256_encoding() {
