@@ -101,7 +101,7 @@ After process loss, show “Interrupted” and mark unverified outcomes Unknown.
 | M2 | Directory/profile preparation and a review guard before launch | M1 |
 | M3 | Start/Stop, bounded workflow progress and durable admission | M2 |
 | M4 | One-page HTTP/UI flow and current-result downloads | M3 |
-| M5 | Packaged launch and real Docker acceptance harness | M4 |
+| M5 | Packaged launch and manual Docker qualification | M4 |
 
 Implement each milestone as a reviewable change with its tests. Record commands,
 revision and observed results beside its validation items before checking them.
@@ -378,15 +378,16 @@ At 390 px, keyboard focus reached the enabled run, result and evidence actions i
   into one directory, with `console.pbtxt.example` and launch instructions.
   First package: Linux x86_64 glibc, Node 22.12 or later; record the tested Compose version,
   native prerequisites and CPU-monitor image ID. No image build/pull in Console.
-- [ ] Add **`console/tests/fixtures/basic/compose.yaml`**, `.env` and an optional
-  override: long-running worker plus a profile-gated second worker using the
-  supplied local test image. Add explicit fixture variants for early exit and
-  missing image. Reuse the monitor-image/test environment from
-  [docker.rs](../../libs/workload-docker/tests/docker.rs); own every run's resources.
-- [ ] Add **`console/tests/acceptance.mts`**: start the packaged server, drive the
-  five HTTP routes, collect step states, download evidence and terminate it.
-  Record package/host versions, run IDs, report fields and MCAP verification output
-  alongside this milestone. No milestone completes on screenshots alone.
+- [ ] Manually qualify the packaged server with a small Compose project and local
+  images; record run IDs, outcomes and downloaded evidence beside this milestone.
+  Keep focused component and integration tests for individual contracts.
+
+Testing policy update (2026-10-29): the user requested removal of the branch's
+standalone end-to-end harnesses. Removed packaged acceptance, package smoke and
+simulated UI server scripts, their Compose fixtures and the acceptance-only MCAP
+verifier. Historical evidence below records checks performed before removal.
+After removal, all nine frontend tests, the frontend production build and
+`git diff --check` passed. Application source is unchanged by this cleanup.
 
 **Validation**
 
@@ -417,8 +418,9 @@ ARM64 worker job 500 passed on the completed implementation and expanded accepta
   no-default storage tests, builds, boundaries, formatting and snapshot tests separately.
 - [x] Run new Docker/native test executables built unprivileged; elevate only the
   executable when capabilities are required, following repository credential rules.
-  Submit final source to the serial ARM64 worker and verify its result. Run the
-  Console acceptance harness separately; the worker suite does not run that new harness.
+  Submit final source to the serial ARM64 worker and verify its result.
+  Manual packaged Docker qualification is separate from the worker suite. The
+  standalone Console harness was subsequently removed at the user's request.
 
 Acceptance evidence is recorded beside each milestone above; unchecked items remain incomplete.
 
@@ -436,7 +438,7 @@ The requested timeline uses existing workflow telemetry, following the activity 
 
 Evidence (2026-10-29): the nine frontend tests and production build passed, and five native reducer tests passed, including 2,000 observations with lifecycle retention and exact eviction accounting. Chromium checks at 1200 px and 390 px verified the stage list excludes periodic checks, the timeline moves and pauses, the running duration advances, and telemetry loss remains visible.
 
-The earlier interactive demo run is blocked with cleanup unverified; its recording was saved. Real-Docker acceptance for this change is pending resolution of that run, so no second run is started behind the block. ARM64 preliminary job 502 passed.
+The earlier interactive demo run is blocked with cleanup unverified; its recording was saved. Manual real-Docker qualification for this change is pending resolution of that run, so no second run is started behind the block. ARM64 preliminary job 502 passed; final-source job 505 passed on `a314bea`.
 
 The updated package passed its startup smoke test and was installed for the interactive demo. Restart restored the same blocked run with its CPU recording and report available.
 
@@ -444,4 +446,4 @@ Local default-feature workspace tests, storage without default features, both Cl
 
 - [x] Test stage filtering, 64-bit timestamp arithmetic, moving/paused timeline, loss display and bounded lifecycle retention.
 - [x] Check the run view in Chromium at desktop and narrow widths; run frontend tests/build and Rust reducer tests.
-- [ ] Run applicable local CI, final-source ARM64 validation and the separate real-Docker Console acceptance harness; record failures and skipped checks.
+- [ ] Run applicable local CI, final-source ARM64 validation and manual packaged real-Docker qualification; record failures and skipped checks. The automated Console acceptance harness was removed at the user's request.

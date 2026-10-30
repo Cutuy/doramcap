@@ -18,6 +18,10 @@ Always present suitable, well-maintained, highly reputable third-party crates to
 
 ## Test structure
 
+Frontend component testing is encouraged. Prefer focused unit, component and
+integration tests. Avoid extensive end-to-end test scripts and bespoke browser
+or process orchestration harnesses unless explicitly requested by the user.
+
 Test cases should generally use explicit `// Arrange`, `// Act`, and `// Assert`
 sections to separate setup, the operation under test, and verification. For
 stateful scenarios, repeat Act/Assert sections for distinct transitions.
