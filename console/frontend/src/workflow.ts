@@ -32,6 +32,3 @@ export function elapsedDuration(step: Step, now: number): number {
   const { start, end } = stepTimes(step);
   return Math.max(0, (step.state === 'STARTED' ? Math.max(now, end) : end) - start);
 }
-export function timelineLane(step: Step): number {
-  return shortStep(step) === 'ObserveProjects' ? 1 : isLifecycleStep(step) ? 0 : 2;
-}

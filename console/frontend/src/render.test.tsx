@@ -23,7 +23,8 @@ test('activity timeline retains repeated health-check invocations', () => {
   // Act
   const html = renderToStaticMarkup(<ActivityTimeline steps={rows} now={2} />);
   // Assert
-  assert.match(html, /Health checks/);
+  assert.equal((html.match(/class="timeline-step-row"/g) ?? []).length, 1);
+  assert.match(html, /data-step="module::ObserveProjects"/);
   assert.match(html, /invocation 9007199254740993/);
   assert.match(html, /invocation 9007199254740994/);
 });

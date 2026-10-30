@@ -589,3 +589,42 @@ harness was added.
   the packaged Docker app; record actual outcomes and unavailable cases.
 - [x] Run final-source local CI, frontend/server builds and ARM64 validation;
   record results and skips separately.
+
+## M9 — Step rows and explicit event flows
+
+**Work items**
+
+- [x] Give each full Rust step type a separate timeline row. Repeated invocations
+  share that row; labels expose the full type name on hover. Keep rows present
+  while browsing windows and preserve direct/keyboard event inspection.
+- [x] Draw reported dependencies from producer completion to consumer start and
+  parent links from parent start to child start. Resolve exact invocation IDs
+  within their session/executor; omit links whose endpoints were evicted.
+  Render arrowheads, curved same-row links, clipped cross-window links and
+  selection highlighting. Reuse existing telemetry; no new APIs or dependencies.
+
+**Validation**
+
+Frontend: 20 tests and the production build passed. Focused cases cover repeated
+names, full-name separation, precise scoped IDs, missing endpoints, duplicate
+references and same-row/cross-window arrows. Headless Chromium against the
+packaged completed Docker run displayed 20 rows and 218 InspectCompose markers
+in the 60-second window. Selecting invocation 340 opened its precise details
+and highlighted its one reported parent link from invocation 338. At 390 px,
+the document remained 390 px wide; the timeline scrolls within its panel.
+Updated `screenshots/completed-activity*.png` capture this real retained run.
+
+- [x] Verify grouping, relationships, event selection and narrow-screen layout.
+Keyboard Enter opened the selected InspectCompose event; following parent 338
+opened ObserveProjects and highlighted its reported relationships.
+
+Local CI passed on the final application source: default/all-feature Clippy and
+workspace tests, storage without default features, all-feature examples/binaries,
+formatting, library boundaries and snapshot synchronization. Builds used the CI
+profile and locked dependencies, unprivileged. Logs: `/tmp/console-rows-*.log`.
+ARM64 job 515 passed the same application source, including native accounting and
+allocation checks. Existing ignored capability/CUDA/high-memlock tests remain
+skipped. This rendering change reused the completed real Docker run above;
+no new execution acceptance or second-machine browser run was performed.
+
+- [x] Run local CI and ARM64 on the final source; record results separately.
