@@ -28,25 +28,19 @@ Sudo is authorized for tests requiring Linux capabilities. Build unprivileged; e
 
 Use `.sudo-password` from the main checkout (first entry in `git worktree list --porcelain`) through sudo's stdin. Keep it gitignored and mode `0600`; never print, log, commit, copy, or pass its contents as arguments. Request local provisioning if missing or unreadable; stop and report authentication failures.
 
-## Local CI
+## Testing and CI
 
-Before declaring a PR ready, run the checks in [.github/workflows/ci.yml](.github/workflows/ci.yml) on the local host: library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Use the CI Cargo profile and locked dependencies. Build unprivileged; follow the capability-required test rules above when elevation is needed.
-
-Prefer local CI and run it on the final source revision unless the user explicitly waives it. Run ARM64 worker validation on the final source revision when the user explicitly asks for it, when a high-risk change cannot be adequately validated on x86, or when preparing a PR, unless the user explicitly waives it. Report each applicable result separately, including skipped or blocked checks; targeted tests alone do not constitute a full CI pass.
-
-## ARM64 CI
-
-Submit trusted source to the Pueue worker at `doramcap-ci@100.64.0.20` (ARM64 WSL2, Linux 6.18):
+- Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
+- Run local checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
+- Run ARM64 validation on the final revision for PRs, explicit requests, or high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
+- ARM64 worker: `doramcap-ci@100.64.0.20` over Tailscale (WSL2, Linux 6.18). Submit trusted source to Pueue's serial default queue and verify completion. WSL must be running; Git pushes do not submit jobs. Native tests use passwordless sudo; never copy credentials.
+- ARM64 covers default/all-feature Rust tests and native cgroup accounting/allocations. Run Dora end-to-end tests separately and CUDA/GPU/IPC qualification on a CUDA-capable host. See [worker documentation](scripts/ci/README.md).
 
 ```sh
 python3 scripts/ci/submit.py --source /absolute/path/to/checkout
 ssh doramcap-ci@100.64.0.20 pueue status
 ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ```
-
-Use the serial default queue and verify the job result. Build unprivileged; native tests have passwordless sudo. Never copy credentials. WSL must be running; Git pushes do not trigger CI. The suite covers default/all-feature Rust tests and native cgroup accounting/allocations; run Dora end-to-end tests separately. See [worker documentation](scripts/ci/README.md).
-
-The worker is a Qualcomm laptop without CUDA capability. Run CUDA execution and GPU/IPC qualification on a separate CUDA-capable host.
 
 ## Documentation style
 
