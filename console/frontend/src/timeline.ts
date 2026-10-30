@@ -6,7 +6,12 @@ export interface Flow { source: Step; target: Step; kind: 'parent' | 'dependency
 
 /** Group by full Rust type name; resolve only explicit, executor-local relationships. */
 export function timelineModel(steps: Step[]) {
-  const rows = [...new Set(steps.map(step => step.step))];
+  const firstStart = new Map<string, number>();
+  for (const step of steps) {
+    const start = stepTimes(step).start;
+    firstStart.set(step.step, Math.min(firstStart.get(step.step) ?? Infinity, start));
+  }
+  const rows = [...firstStart].sort((a, b) => a[1] - b[1]).map(([name]) => name);
   const rowByName = new Map(rows.map((name, index) => [name, index]));
   const byInvocation = new Map(steps.map(step => [invocationKey(step), step]));
   const flows: Flow[] = [];

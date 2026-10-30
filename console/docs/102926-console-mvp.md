@@ -790,3 +790,36 @@ evidence remains above. Existing workspace capability/CUDA/high-memlock and
 second-machine browser skips remain unchanged. Logs: `/tmp/console-names-*.log`.
 
 - [x] Record final-source local CI and ARM64 results.
+
+## M14 — Timeline row chronology
+
+**Work items**
+
+- [x] Order step-name rows by their earliest recorded invocation start, preserving
+  one row per full step type. Incoming array order and delayed/restored startup
+  rows must not place launch stages below cleanup. Keep timestamps and explicit
+  flow relationships unchanged.
+
+**Validation**
+
+24 frontend tests and the production build passed. The added model case supplies
+report/cleanup events before startup events and verifies chronological row order
+with repeated invocations still grouped. Chromium verified launch above shutdown
+and shutdown above report against the packaged completed run; the 390 px page
+remained 390 px wide. Completed-activity screenshots were refreshed.
+
+The current run's private Docker events recorded three creates/starts and three
+kills/stops/deaths/removals, with zero starts after the first shutdown event.
+Rust invokes launch groups before its observation loop, then quiesces groups in
+reverse order, finalizes evidence/filesystems, removes resources and writes the
+report. `LaunchDoraFlows` is an empty generic step for this Compose-only run.
+
+- [x] Verify chronological grouping, narrow layout and actual container ordering.
+Full local CI passed on the final application source: both Clippy/workspace
+configurations, storage without default features, examples/binaries, formatting,
+boundaries and snapshot synchronization (CI profile, locked dependencies,
+unprivileged builds). ARM64 job 521 passed. Existing native/workspace ignored
+capability, CUDA and high-memlock tests and second-machine browser skips remain
+unchanged. Logs: `/tmp/console-order-*.log`.
+
+- [x] Record final-source local CI and ARM64 results.

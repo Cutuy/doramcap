@@ -52,3 +52,13 @@ test('same-row arrows remain curved and explicit links crossing the window are r
   assert.match(html, /Dependency: InspectCompose \(1\) → InspectCompose \(2\)/);
   assert.equal((html.match(/class="timeline-event"/g) ?? []).length, 1);
 });
+
+
+test('timeline rows follow recorded start time even when startup events arrive after cleanup', () => {
+  // Arrange: terminal updates and restored rows can arrive in a different order.
+  const steps = [step('3', 'compose::WriteRunReport', {elapsedNs:'10000000000',durationNs:'1000000000'}), step('2', 'compose::QuiesceCompose', {elapsedNs:'8000000000',durationNs:'1000000000'}), step('1', 'compose::StartCompose'), step('4', 'compose::StartCompose', {elapsedNs:'3000000000',durationNs:'1000000000'})];
+  // Act
+  const { rows } = timelineModel(steps);
+  // Assert
+  assert.deepEqual(rows, ['compose::StartCompose', 'compose::QuiesceCompose', 'compose::WriteRunReport']);
+});
