@@ -17,17 +17,17 @@ test('event inspector preserves precise identity, timing, relationships and safe
   for (const id of ['9007199254740993', '9007199254740994', '9007199254740995', '9007199254740996']) assert.match(html, new RegExp(id));
   assert.match(html, /0.100 s/);
   assert.match(html, /1.100 s/);
-  assert.match(html, /private host evidence/);
-  assert.match(html, /payloads are excluded/);
+  assert.match(html, /step failed/);
+  assert.doesNotMatch(html, /payloads are excluded|private host evidence/);
 });
 test('timeline events are keyboard buttons and completed view supports elapsed-time browsing', () => {
   // Arrange / Act
   const html = renderToStaticMarkup(<ActivityTimeline steps={[step]} now={2} live={false}/>);
   // Assert
   assert.match(html, /role="button" tabindex="0"/);
-  assert.match(html, /Browse elapsed time/);
+  assert.match(html, /Elapsed time/);
   assert.doesNotMatch(html, /Inspect retained event|timeline-event-picker/);
-  assert.match(html, /Retained workflow events from this run/);
+  assert.doesNotMatch(html, /Retained workflow events|Select an event|Scroll the timeline/);
   assert.doesNotMatch(html, /Following live/);
 });
 test('completed result exposes run activity even when admission is blocked', () => {
@@ -50,6 +50,7 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   const zero = renderToStaticMarkup(<RunMetrics samples={[{elapsedNs:'1000000000',recordingBytes:'0',writeBytesPerSecond:0,cpuPercent:0,cpuCores:8}]} historical/>);
   // Assert
   assert.match(historical, /Completed run/);
+  assert.doesNotMatch(historical, /Retained view|512 invocations|1200 metric samples/);
   assert.match(absent, /Unavailable/);
   assert.match(absent, /Connection lost/);
   assert.match(absent, /incomplete/);
@@ -67,7 +68,7 @@ test('completed runs without retained activity do not imply that events will arr
   // Act
   const html = renderToStaticMarkup(<RunActivity snapshot={snapshot} historical stopping={false} disconnected={false}/>);
   // Assert
-  assert.match(html, /No workflow steps were retained/);
-  assert.match(html, /No retained workflow events available/);
+  assert.match(html, /No workflow steps available/);
+  assert.match(html, /No events available/);
   assert.doesNotMatch(html, /Waiting for workflow/);
 });

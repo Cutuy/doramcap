@@ -628,3 +628,32 @@ skipped. This rendering change reused the completed real Docker run above;
 no new execution acceptance or second-machine browser run was performed.
 
 - [x] Run local CI and ARM64 on the final source; record results separately.
+
+## M10 — Concise interface copy
+
+**Work items**
+
+- [x] Remove routine retention limits, timeline subtitles, selection hints,
+  payload explanations and redundant metric/Stop/download commentary. Keep
+  statuses, controls, units, empty states and actionable failure/recovery messages.
+- [x] Simplify missing-data wording and remove the redundant successful-result
+  readiness panel. Leave actual incomplete-progress and cleanup warnings visible.
+
+**Validation**
+
+All 20 frontend component/model tests and the production build passed. Updated
+assertions cover the absent retention/payload prose and concise empty states.
+Headless Chromium verified the removed copy was absent on the packaged completed
+run, event selection still opened details, and the 390 px page remained 390 px
+wide. Refreshed `screenshots/completed-activity*.png` show the simplified view.
+No new Docker execution was needed for this copy/layout change.
+
+- [x] Verify the rendered copy, event selection and narrow layout.
+Final-source local CI passed: both Clippy/workspace configurations, storage
+without default features, examples/binaries, formatting, boundaries and snapshot
+synchronization (CI profile, locked dependencies, unprivileged builds). ARM64
+job 516 passed. Logs: `/tmp/console-copy-*.log`. Existing ignored capability,
+CUDA and high-memlock cases remain skipped; second-machine browser acceptance
+remains skipped by user instruction.
+
+- [x] Record final-source local CI and ARM64 results.
