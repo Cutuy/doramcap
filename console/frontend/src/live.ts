@@ -46,7 +46,7 @@ export function mergeLive(previous: Snapshot | null, next: Snapshot): Snapshot {
     for (const metric of next.metrics) metrics.set(metric.elapsedNs, metric);
     history = [...metrics.values()].slice(-1200);
   }
-  return { ...next, steps, metrics: history, cpuSnapshots: next.cpuSnapshots?.length ? next.cpuSnapshots : previous.cpuSnapshots };
+  return { ...next, steps, metrics: history, cpuSnapshots: next.cpuSnapshots?.length ? next.cpuSnapshots : previous.cpuSnapshots, cpuGroupNames: next.cpuSnapshots?.length ? next.cpuGroupNames : previous.cpuGroupNames };
 }
 
 export async function readLive(consume: (status: Snapshot) => void, signal: AbortSignal) {

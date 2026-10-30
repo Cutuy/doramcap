@@ -749,3 +749,44 @@ capability/CUDA/high-memlock skips remain skipped. Second-machine browser
 acceptance remains skipped. Logs: `/tmp/console-apps-*.log`.
 
 - [x] Record final-source local CI and ARM64 results.
+
+## M13 — Named CPU consumers
+
+**Work items**
+
+- [x] Display actual cgroup names from the producer's existing dictionary in
+  Top CPU consumers. Keep exact numeric IDs in tooltips and as missing-name
+  fallback. Task names are not present in the current producer protocol.
+- [x] Add a public display-name projection (up to 512 names, 128 characters each),
+  using the final cgroup path component. Keep ancestor host paths private.
+  Send names with CPU frames, retain them across heartbeats and checkpoint them.
+- [x] Resolve names for older completed checkpoints from a matching final
+  `cpu.pb` dictionary. Bound reads and require matching snapshot sequence;
+  unavailable/mismatched dictionaries keep the numeric fallback.
+
+**Validation**
+
+23 frontend tests/build, 17 native unit tests, six project/state integration
+checks and eight server tests/build passed. Focused tests cover exact IDs above
+2^53, heartbeat retention, fresh-frame reset, named/numeric rendering, private
+ancestor exclusion, length limits and legacy checkpoint backfill. An initial
+TypeScript fixture used string IDs directly in generated Long fields; converting
+through the generated protobuf factory corrected the build before validation.
+
+After the user's active run finished, the packaged app restarted and restored
+151 cgroup names for run `cdc8376960dae20c815fd5a84fb7f2dc`. Chromium displayed
+actual names (including `session-7.scope` and
+`gvfs-udisks2-volume-monitor.service`), event inspection still worked, and the
+390 px page remained 390 px wide. Updated completed-activity screenshots show
+this real recorded run. No new Docker execution was needed for this label change.
+
+- [x] Verify names, privacy bounds, exact identity and completed-run restoration.
+Full local CI passed on the final application source: both Clippy/workspace
+configurations, storage without default features, examples/binaries, formatting,
+boundaries and snapshot synchronization (CI profile, locked dependencies,
+unprivileged builds). ARM64 job 520 passed. The eleven ignored native Docker/
+capability cases were not rerun for this display change; prior M12 execution
+evidence remains above. Existing workspace capability/CUDA/high-memlock and
+second-machine browser skips remain unchanged. Logs: `/tmp/console-names-*.log`.
+
+- [x] Record final-source local CI and ARM64 results.

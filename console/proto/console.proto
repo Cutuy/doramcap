@@ -54,6 +54,8 @@ message Outcome {
   optional bool boundary_clean = 4;
   optional bool event_stream_healthy = 5;
 }
+// Display name from the existing cgroup dictionary; host ancestor paths stay private.
+message CpuGroupName { uint64 id = 1; string name = 2; }
 message Status {
   Phase phase = 1;
   string run_id = 2;
@@ -74,6 +76,7 @@ message Status {
   bool metrics_incomplete = 17;
   repeated doramcap.telemetry.v1.Snapshot cpu_snapshots = 18;
   SystemAppSelection system_apps = 19;
+  repeated CpuGroupName cpu_group_names = 20;
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {

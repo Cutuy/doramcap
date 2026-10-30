@@ -29,6 +29,7 @@ struct Reader {
     size: Option<(u64, Instant)>,
     incomplete: bool,
     latest: Vec<telemetry_protocol::pb::Snapshot>,
+    names: Vec<crate::protocol::CpuGroupName>,
 }
 impl Reader {
     fn sample(&mut self, directory: &Path, elapsed: Duration) -> RunMetric {
@@ -73,6 +74,7 @@ impl Reader {
             self.offset = 0;
             self.previous = None;
             self.latest.clear();
+            self.names.clear();
             self.incomplete = true;
         }
         self.identity = Some(identity);
@@ -121,6 +123,31 @@ impl Reader {
                 }
                 self.latest.push(snapshot);
             }
+            let parents: BTreeSet<_> = frame
+                .snapshot
+                .records
+                .iter()
+                .map(|row| row.parent_id)
+                .collect();
+            let leaves: BTreeSet<_> = frame
+                .snapshot
+                .records
+                .iter()
+                .map(|row| row.cgroup_id)
+                .filter(|id| !parents.contains(id))
+                .collect();
+            self.names = frame
+                .dictionary
+                .iter()
+                .filter(|entry| leaves.contains(&entry.id))
+                .filter_map(|entry| {
+                    Some(crate::protocol::CpuGroupName {
+                        id: entry.id,
+                        name: public_cgroup_name(entry.path.as_deref()?)?,
+                    })
+                })
+                .take(512)
+                .collect();
             let snapshot = &frame.snapshot;
             sample.cpu_cores = snapshot
                 .records
@@ -200,6 +227,18 @@ impl Reader {
     }
 }
 
+fn public_cgroup_name(path: &str) -> Option<String> {
+    if path.is_empty() {
+        return None;
+    }
+    let leaf = path
+        .rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or("/");
+    let name: String = leaf.chars().filter(|c| !c.is_control()).take(128).collect();
+    (!name.is_empty() && name != "." && name != "..").then_some(name)
+}
+
 fn terminal(phase: Phase) -> bool {
     matches!(phase, Phase::Finished | Phase::Blocked | Phase::Idle)
 }
@@ -246,6 +285,7 @@ pub(crate) fn watch(
                 }
                 current.metrics.push(sample);
                 current.cpu_snapshots = reader.latest.clone();
+                current.cpu_group_names = reader.names.clone();
                 if current
                     .cpu_snapshots
                     .iter()
@@ -331,10 +371,24 @@ pub(crate) fn restore(session: &mut Session, data_root: &Path) {
         && status.steps.len() <= 512
         && status.metrics.len() <= HISTORY
         && status.cpu_snapshots.len() <= 2
+        && status.cpu_group_names.len() <= 512
     {
         session.progress.restore(&status);
         session.metrics = status.metrics;
         session.cpu_snapshots = status.cpu_snapshots;
+        session.cpu_group_names = status.cpu_group_names;
+        // Older checkpoints omitted names; read the matching final producer dictionary.
+        if session.cpu_group_names.is_empty() && !session.cpu_snapshots.is_empty() {
+            let mut reader = Reader::default();
+            if let Ok(root) =
+                workload_docker::evidence::root(&data_root.join("runs").join(&marker.run_id))
+                && reader.cpu(&root, &mut RunMetric::default()).is_ok()
+                && reader.latest.last().map(|s| s.sequence)
+                    == session.cpu_snapshots.last().map(|s| s.sequence)
+            {
+                session.cpu_group_names = reader.names;
+            }
+        }
         session.metrics_incomplete = status.metrics_incomplete;
         session
             .loss
@@ -371,6 +425,12 @@ mod tests {
             body: Some(pb::packet::Body::Snapshot(pb::SnapshotFrame {
                 version: 2,
                 session_id: "capture".into(),
+                dictionary_full: true,
+                dictionary: vec![pb::DictionaryEntry {
+                    id: 11,
+                    parent_id: 10,
+                    path: Some("/private/ancestor/worker.service".into()),
+                }],
                 snapshot: Some(pb::Snapshot {
                     schema_version: 1,
                     sequence,
@@ -393,6 +453,61 @@ mod tests {
         file.write_all(bytes).unwrap();
     }
     #[test]
+    fn names_are_bounded_leaf_names_and_legacy_checkpoints_can_restore_them() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let id = "a".repeat(32);
+        let directory = root.path().join("runs").join(&id);
+        std::fs::create_dir_all(&directory).unwrap();
+        let stream = directory.join("cpu.pb");
+        append(&stream, &frame(0, 100));
+        append(&stream, &frame(1, 200));
+        let mut reader = Reader::default();
+        reader.sample(&directory, Duration::ZERO);
+        let status = Status {
+            phase: Phase::Finished as i32,
+            run_id: id.clone(),
+            cpu_snapshots: reader.latest,
+            ..Default::default()
+        };
+        save(&directory, &status).unwrap();
+        let mut session = Session::new(
+            Phase::Finished,
+            Some(Marker {
+                run_id: id,
+                ..Default::default()
+            }),
+        );
+        // Act
+        restore(&mut session, root.path());
+        // Assert
+        assert_eq!(session.cpu_group_names[0].name, "worker.service");
+        assert_eq!(
+            public_cgroup_name("/private/parent/worker.service\n").as_deref(),
+            Some("worker.service")
+        );
+        assert_eq!(public_cgroup_name("/").as_deref(), Some("/"));
+        assert!(public_cgroup_name("").is_none());
+        assert_eq!(
+            public_cgroup_name(&"é".repeat(200))
+                .unwrap()
+                .chars()
+                .count(),
+            128
+        );
+        let encoded = Status {
+            cpu_group_names: session.cpu_group_names,
+            ..Default::default()
+        }
+        .encode_to_vec();
+        assert!(
+            !encoded
+                .windows(b"private".len())
+                .any(|bytes| bytes == b"private")
+        );
+    }
+
+    #[test]
     fn totals_exclude_inclusive_descendants_and_virtual_kernel_preserving_u64_deltas() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
@@ -407,6 +522,8 @@ mod tests {
         // Assert
         assert_eq!(first.cpu_percent, Some(20.0));
         assert_eq!(first.cpu_cores, 2);
+        assert_eq!(reader.names[0].id, 11);
+        assert_eq!(reader.names[0].name, "worker.service");
         assert_eq!(first.recording_bytes, Some(100));
         assert!(first.write_bytes_per_second.is_none());
         // Act: a partial writer frame must wait without corrupting the cursor.

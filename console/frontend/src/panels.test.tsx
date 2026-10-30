@@ -8,6 +8,7 @@ import { RunMetrics } from './RunMetrics';
 import { Result } from './Result';
 import { SystemApps } from './SystemApps';
 import { cpuRecordingEnabled } from './api';
+import { doramcap } from './generated/console';
 import { PageFrame } from './ui/PageFrame';
 import type { Snapshot, Step } from './api';
 
@@ -59,7 +60,7 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   assert.match(zero, /0 B/);
   assert.match(zero, /0.0%/);
   assert.match(zero, /8 cores/);
-  assert.match(zero, /Top CPU groups/);
+  assert.match(zero, /Top CPU consumers/);
   assert.match(zero, /Capture health/);
   assert.doesNotMatch(zero, /Inclusive ancestors|recorder boundary/);
 });
@@ -95,4 +96,16 @@ test('system app choices reflect selection and disabled recording stays distinct
   assert.equal(cpuRecordingEnabled(snapshot), false);
   assert.equal(cpuRecordingEnabled({ systemApps: { ids: ['cpu-monitor'] } }), true);
   assert.equal(cpuRecordingEnabled({}), true);
+});
+
+test('CPU consumers show reported cgroup names with an ID tooltip and numeric fallback', () => {
+  // Arrange
+  const cpuSnapshots = [1,2].map(sequence=>doramcap.telemetry.v1.Snapshot.fromObject({sequence,monotonicEndNs:sequence*100000000,records:[{cgroupId:'9007199254740993',parentId:0,cpu:0,flags:1,runtimeNs:sequence*10000000}]}));
+  // Act
+  const named = renderToStaticMarkup(<RunMetrics cpuSnapshots={cpuSnapshots} cpuGroupNames={[{id:'9007199254740993',name:'worker.service'}]}/>);
+  const missing = renderToStaticMarkup(<RunMetrics cpuSnapshots={cpuSnapshots}/>);
+  // Assert
+  assert.match(named, /title="Cgroup 9007199254740993">worker.service/);
+  assert.match(named, /worker.service core utilization/);
+  assert.match(missing, />Cgroup 9007199254740993<\/span>/);
 });

@@ -46,3 +46,15 @@ test('CPU rankings use existing counters with exact deltas, and suppress reset o
   assert.deepEqual(topCpuGroups([source(1,5n),source(2,0n)]),[]);
   assert.deepEqual(topCpuGroups([]),[]);
 });
+
+test('cgroup names keep exact IDs across heartbeats and reset with a fresh CPU frame', () => {
+  // Arrange
+  const id = '9007199254740993';
+  const first = snapshot({cpuSnapshots:[{sequence:'1'}],cpuGroupNames:[{id,name:'worker.service'}]});
+  // Act
+  const heartbeat = mergeLive(first,snapshot({}));
+  const changed = mergeLive(heartbeat,snapshot({cpuSnapshots:[{sequence:'2'}],cpuGroupNames:[]}));
+  // Assert
+  assert.deepEqual(heartbeat.cpuGroupNames,[{id,name:'worker.service'}]);
+  assert.deepEqual(changed.cpuGroupNames,[]);
+});

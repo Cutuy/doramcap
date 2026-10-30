@@ -570,6 +570,7 @@ fn stream_update(
             .retain(|metric| metric.elapsed_ns > cursor.metric_elapsed_ns);
         if cursor.cpu_sequence == next.cpu_sequence {
             status.cpu_snapshots.clear();
+            status.cpu_group_names.clear();
         }
     }
     (status, next)
@@ -584,6 +585,10 @@ mod stream_tests {
         let id = (1_u64 << 53) + 1;
         let status = protocol::Status {
             run_id: "run".into(),
+            cpu_group_names: vec![protocol::CpuGroupName {
+                id,
+                name: "worker.service".into(),
+            }],
             sequence: id,
             steps: vec![workflow_protocol::Event {
                 sequence: id,
@@ -616,6 +621,7 @@ mod stream_tests {
             heartbeat.steps.is_empty()
                 && heartbeat.metrics.is_empty()
                 && heartbeat.cpu_snapshots.is_empty()
+                && heartbeat.cpu_group_names.is_empty()
         );
         // Act
         let mut changed = status;
@@ -638,6 +644,7 @@ mod stream_tests {
         assert_eq!(delta.steps[0].invocation, id + 1);
         assert_eq!(delta.metrics.len(), 1);
         assert_eq!(delta.cpu_snapshots.len(), 1);
+        assert_eq!(delta.cpu_group_names[0].id, id);
         assert_eq!(next_run.steps.len(), 2);
     }
 }

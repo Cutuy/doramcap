@@ -31,6 +31,7 @@ pub(crate) struct Session {
     pub metrics: Vec<crate::protocol::RunMetric>,
     pub metrics_incomplete: bool,
     pub cpu_snapshots: Vec<telemetry_protocol::pb::Snapshot>,
+    pub cpu_group_names: Vec<crate::protocol::CpuGroupName>,
     pub observer: Option<orchestrator::telemetry::TelemetryObserver>,
     pub lost_events: u64,
     pub monitor_ready: bool,
@@ -58,6 +59,7 @@ impl Session {
             metrics: Vec::new(),
             metrics_incomplete: false,
             cpu_snapshots: Vec::new(),
+            cpu_group_names: Vec::new(),
             observer: None,
             lost_events: 0,
             monitor_ready: false,
@@ -102,6 +104,7 @@ impl Session {
                 || self.loss.load(Ordering::Relaxed) != 0,
             metrics: self.metrics.clone(),
             cpu_snapshots: self.cpu_snapshots.clone(),
+            cpu_group_names: self.cpu_group_names.clone(),
             metrics_incomplete: self.metrics_incomplete,
             activity_available: !self.progress.rows().is_empty(),
             monitor_ready: self.monitor_ready,
@@ -249,6 +252,7 @@ pub(crate) fn start(
     session.progress = Progress::default();
     session.metrics.clear();
     session.cpu_snapshots.clear();
+    session.cpu_group_names.clear();
     session.metrics_incomplete = false;
     session.lost_events = 0;
     session.loss.store(0, Ordering::Relaxed);
