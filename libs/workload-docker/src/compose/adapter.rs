@@ -1,6 +1,6 @@
 use super::{
-    Cleanup, ComposeProjectState, ComposeService, Container, OwnedResource, ResolveInput,
-    ResolvedComposeProject, Result, Shutdown, StartInput, StopInput,
+    Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, OwnedResource,
+    ResolveInput, ResolvedComposeProject, Result, Shutdown, StartInput, StopInput,
     command::compose,
     error::{absent, engine, invalid},
 };
@@ -164,6 +164,37 @@ impl DockerAdapter {
         Ok(found)
     }
 
+    /// Discover profiles for explicit `run` and project identities using resolution
+    /// inputs. Invalid identities fail before file or process access; diagnostics stay private.
+    pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
+        let name = project_name(run, &project.key)?;
+        let mut discovery = project.clone();
+        discovery.profiles.clear();
+        discovery.services.clear();
+        let (directory, mut args, _) = config_arguments(&discovery, &name).await?;
+        args.extend(["config".into(), "--profiles".into()]);
+        let (stdout, stderr) = compose(
+            &self.socket,
+            &directory,
+            &discovery.environment,
+            &args,
+            Duration::from_secs(60),
+        )
+        .await?;
+        if stderr.contains("variable is not set") {
+            return Err(invalid(format!("unresolved Compose environment: {stderr}")));
+        }
+        let mut profiles: Vec<_> = stdout
+            .lines()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        profiles.sort();
+        profiles.dedup();
+        Ok(profiles)
+    }
+
     /// Resolve supplied files, freeze local image IDs, and write a private launch
     /// manifest. No Docker resources are created. Host mounts remain live inputs.
     ///
@@ -178,47 +209,11 @@ impl DockerAdapter {
     /// images, filesystem failures and Compose/Engine failures return errors.
     /// Partially written artifacts may remain; input files are not modified.
     pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
-        validate_name(&input.run)?;
-        validate_name(&input.project.key)?;
         let project = &input.project;
-        if project.files.is_empty() {
-            return Err(invalid("at least one Compose file is required"));
-        }
-        let directory = tokio::fs::canonicalize(&project.directory).await?;
-        let name = format!("dc-{}-{}", input.run, project.key);
+        let name = project_name(&input.run, &project.key)?;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
-        let mut args = vec![
-            "--project-directory".into(),
-            directory.to_string_lossy().into_owned(),
-            "--project-name".into(),
-            name.clone(),
-        ];
-        let mut sources = BTreeMap::new();
-        args.extend(["--env-file".into(), "/dev/null".into()]);
-        for (flag, files) in [("-f", &project.files), ("--env-file", &project.env_files)] {
-            for file in files {
-                let path = tokio::fs::canonicalize(directory.join(file)).await?;
-                sources.insert(
-                    path.to_string_lossy().into_owned(),
-                    digest(&tokio::fs::read(&path).await?),
-                );
-                args.extend([flag.into(), path.to_string_lossy().into_owned()]);
-            }
-        }
-        for profile in &project.profiles {
-            args.extend(["--profile".into(), profile.clone()]);
-        }
-        // Docker/Compose control variables must not redirect the approved target.
-        if project
-            .environment
-            .keys()
-            .any(|k| k.starts_with("DOCKER_") || k.starts_with("COMPOSE_"))
-        {
-            return Err(invalid(
-                "Docker/Compose control variables must be supplied as explicit launch settings",
-            ));
-        }
+        let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
@@ -284,7 +279,7 @@ impl DockerAdapter {
             .and_then(Value::as_object_mut)
             .ok_or_else(|| invalid("resolved Compose has no services"))?;
         if model_services.is_empty() {
-            return Err(invalid("selection contains no services"));
+            return Err(super::Error::EmptySelection);
         }
         let mut completed = project.completed_services.clone();
         for service in model_services.values() {
@@ -1107,6 +1102,55 @@ impl DockerAdapter {
         Ok(result)
     }
 }
+// Shared Compose arguments preserve the explicit environment and input order.
+async fn config_arguments(
+    project: &ComposeProject,
+    name: &str,
+) -> Result<(std::path::PathBuf, Vec<String>, BTreeMap<String, String>)> {
+    if project.files.is_empty() {
+        return Err(invalid("at least one Compose file is required"));
+    }
+    if project
+        .environment
+        .keys()
+        .any(|k| k.starts_with("DOCKER_") || k.starts_with("COMPOSE_"))
+    {
+        return Err(invalid(
+            "Docker/Compose control variables must be supplied as explicit launch settings",
+        ));
+    }
+    let directory = tokio::fs::canonicalize(&project.directory).await?;
+    let mut args = vec![
+        "--project-directory".into(),
+        directory.to_string_lossy().into_owned(),
+        "--project-name".into(),
+        name.into(),
+        "--env-file".into(),
+        "/dev/null".into(),
+    ];
+    let mut sources = BTreeMap::new();
+    for (flag, files) in [("-f", &project.files), ("--env-file", &project.env_files)] {
+        for file in files {
+            let path = tokio::fs::canonicalize(directory.join(file)).await?;
+            sources.insert(
+                path.to_string_lossy().into_owned(),
+                digest(&tokio::fs::read(&path).await?),
+            );
+            args.extend([flag.into(), path.to_string_lossy().into_owned()]);
+        }
+    }
+    for profile in &project.profiles {
+        args.extend(["--profile".into(), profile.clone()]);
+    }
+    Ok((directory, args, sources))
+}
+
+fn project_name(run: &str, key: &str) -> Result<String> {
+    validate_name(run)?;
+    validate_name(key)?;
+    Ok(format!("dc-{run}-{key}"))
+}
+
 pub(crate) fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name.len() > 40
@@ -1159,6 +1203,80 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compose::Error;
+
+    fn discovery_project(directory: &Path) -> ComposeProject {
+        ComposeProject {
+            key: "workload".into(),
+            directory: directory.into(),
+            files: vec!["compose.yaml".into()],
+            env_files: vec![],
+            environment: BTreeMap::new(),
+            profiles: vec![],
+            services: vec![],
+            completed_services: vec![],
+            remove_volumes: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn compose_arguments_pass_explicit_run_and_project_identity() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        tokio::fs::write(root.path().join("compose.yaml"), b"services: {}")
+            .await
+            .unwrap();
+        let project = discovery_project(root.path());
+        for run in ["review-a", "review-b"] {
+            // Act
+            let name = project_name(run, &project.key).unwrap();
+            let (_, args, _) = config_arguments(&project, &name).await.unwrap();
+            // Assert
+            let names: Vec<_> = args
+                .windows(2)
+                .filter(|pair| pair[0] == "--project-name")
+                .map(|pair| pair[1].as_str())
+                .collect();
+            assert_eq!(names, [format!("dc-{run}-workload")]);
+            assert!(project.environment.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn discovery_and_resolution_reject_invalid_identity_before_io() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let socket = root.path().join("engine.sock");
+        let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let adapter = DockerAdapter {
+            docker: Docker::connect_with_unix(
+                socket.to_str().unwrap(),
+                120,
+                bollard::API_DEFAULT_VERSION,
+            )
+            .unwrap(),
+            socket: socket.to_string_lossy().into_owned(),
+        };
+        for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
+            let mut project = discovery_project(Path::new("/nonexistent-project"));
+            project.key = key.into();
+            // Act
+            let profiles = adapter.profiles(run, &project).await;
+            let resolution = adapter
+                .resolve(ResolveInput {
+                    run: run.into(),
+                    artifacts: "/nonexistent-artifacts".into(),
+                    project,
+                })
+                .await;
+            // Assert
+            for error in [profiles.unwrap_err(), resolution.unwrap_err()] {
+                assert!(
+                    matches!(error, Error::Invalid(ref message) if message.starts_with("identity must"))
+                );
+            }
+        }
+    }
 
     #[test]
     fn digest_preserves_lowercase_sha256_encoding() {
