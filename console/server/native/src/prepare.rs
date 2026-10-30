@@ -58,8 +58,11 @@ pub async fn prepare(
         Path::new(&request.directory),
         request.profiles,
     )?;
+    let mut random = [0_u8; policy::RANDOM_ID_BYTES];
+    getrandom::fill(&mut random).map_err(|e| e.to_string())?;
+    let run_id = hex::encode(random);
     let available = adapter
-        .profiles(&project)
+        .profiles(&run_id, &project)
         .await
         .map_err(|e| e.to_string())?;
     let allowed: HashSet<_> = available.iter().collect();
@@ -75,9 +78,6 @@ pub async fn prepare(
         .verify_overlay_namespace()
         .await
         .map_err(|e| e.to_string())?;
-    let mut random = [0_u8; policy::RANDOM_ID_BYTES];
-    getrandom::fill(&mut random).map_err(|e| e.to_string())?;
-    let run_id = hex::encode(random);
     let reviews = Path::new(&config.data_root).join("reviews");
     std::fs::DirBuilder::new()
         .recursive(true)

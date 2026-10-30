@@ -36,7 +36,7 @@ async fn default_discovery_matches_explicit_inputs_and_profiles() {
         cmd.current_dir(root.path())
             .env_clear()
             .env("PATH", "/usr/bin:/bin");
-        cmd.args(["compose", "--project-name", "console-discovery-test"]);
+        cmd.args(["compose", "--project-name", "dc-discovery-workload"]);
         if explicit {
             cmd.args([
                 "--env-file",
@@ -58,12 +58,13 @@ async fn default_discovery_matches_explicit_inputs_and_profiles() {
         serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
     };
     // Act
-    let profiles = adapter.profiles(&project).await.unwrap();
+    let profiles = adapter.profiles("discovery", &project).await.unwrap();
     let implicit = compose(false);
     let explicit = compose(true);
     // Assert
     assert_eq!(profiles, ["optional"]);
     assert_eq!(implicit, explicit);
+    assert_eq!(explicit["name"], "dc-discovery-workload");
     assert_eq!(
         explicit["services"]["worker"]["environment"]["VALUE"],
         "from-file"
@@ -111,7 +112,7 @@ fn default_and_explicit_discovery_match_for_supported_names() {
                     .current_dir(root.path())
                     .env_clear()
                     .env("PATH", "/usr/bin:/bin");
-                command.args(["compose", "--project-name", "console-discovery-test"]);
+                command.args(["compose", "--project-name", "dc-discovery-workload"]);
                 if explicit {
                     command.args([
                         "--env-file",
@@ -420,7 +421,7 @@ async fn profile_only_project_reports_available_profiles() {
         .unwrap();
     let project = console_native::project::discover(root.path(), root.path(), vec![]).unwrap();
     // Act
-    let profiles = adapter.profiles(&project).await.unwrap();
+    let profiles = adapter.profiles("profileonly", &project).await.unwrap();
     let error = adapter
         .resolve(workload_docker::compose::ResolveInput {
             run: "profileonly".into(),
