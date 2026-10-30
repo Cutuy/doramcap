@@ -11,7 +11,7 @@ Compose. One system app is the complete workload for this MVP.
 
 ## Scope
 
-- Add `apps/system-monitor/deploy/supervisor/recording.conf` and a short usage README.
+- Add `apps/system-monitor/deploy/supervisor/recording.conf`; keep usage in the existing app deployment README.
 - Keep the existing Compose recipe at `deploy/recording.yaml`.
 - Run one dedicated Supervisor daemon and one monitor program in an owned cgroup.
 - Use a prebuilt monitor binary with BPF support and explicit host prerequisites.
@@ -100,7 +100,7 @@ existing Tokio/prost/prost-reflect/serde/libc/hash dependencies are reused.
 
 **Work items**
 
-- [x] Add the fixed monitor recipe and minimal deployment README.
+- [x] Add the fixed monitor recipe and usage in the existing deployment README.
 - [x] Define generated protobuf inputs: run identity, new output directory,
   supervisor/control executable locations, monitor binary, readiness/stop deadlines,
   and the delegated cgroup location. Use pbtxt for examples.
@@ -248,7 +248,7 @@ readiness → quiesce → recording finalization → removal.
 | Shared recording events and phase order | pass | pass |
 
 Runnable commands: `compose_monitor` and `supervisor_monitor`; see the
-[deployment README](../../../apps/system-monitor/deploy/supervisor/README.md).
+[deployment README](../../../apps/system-monitor/deploy/README.md).
 Artifacts: `/tmp/supervisor-compose-parity-final-1029`,
 `/tmp/supervisor-example-final-1029`. Local image:
 `doramcap/system-monitor:supervisor-mvp-1029`. Logs:
@@ -300,6 +300,10 @@ Application configuration still uses explicit protobuf executable paths.
 The system-toolchain x86_64 native rerun also passed (2 tests, 25.62 s).
 Log: `/tmp/supervisor-native-system-final.log`; concurrent recording artifacts:
 `/tmp/supervisor-tests-626512-1793319980588030029`.
+
+Documentation: the standalone Supervisor README was consolidated into the existing
+app deployment README. It keeps the launch example and host prerequisites; the fixed
+recipe and protobuf input remain beside it. Source and runtime behavior are unchanged.
 
 **Status:** complete. Full final-source local CI, backend parity, x86_64 native
 qualification and ARM64 native qualification all passed. No required qualification

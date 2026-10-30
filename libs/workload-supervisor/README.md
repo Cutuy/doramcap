@@ -4,7 +4,7 @@ Rust steps run one System Monitor under an owned foreground Supervisor daemon.
 
 ![Lifecycle](../workload-lifecycle/docs/102926-supervisor-monitor-mvp.svg)
 
-See the [runnable deployment](../../apps/system-monitor/deploy/supervisor/README.md),
+See the [deployment example](../../apps/system-monitor/deploy/README.md),
 [protobuf inputs](proto/supervisor.proto) and Rust API documentation.
 Native fault and BPF recording tests live in [tests/native.rs](tests/native.rs).
 
