@@ -1,0 +1,30 @@
+syntax = "proto3";
+package doramcap.supervisor.v1;
+
+// Absolute executable paths and a fresh private output directory are required.
+message MonitorRun {
+  string id = 1;
+  string output_directory = 2;
+  string supervisord = 3;
+  string supervisorctl = 4;
+  string monitor_binary = 5;
+  uint64 readiness_seconds = 6;
+  uint64 stop_seconds = 7;
+  string cgroup_parent = 8;
+}
+
+// Durable intent precedes cgroup creation and daemon spawn; never signal by PID alone.
+message Ownership {
+  MonitorRun run = 1;
+  string boot_id = 2;
+  string cgroup = 3;
+  uint64 cgroup_device = 4;
+  uint64 cgroup_inode = 5;
+  uint32 daemon_pid = 6;
+  string daemon_start_ticks = 7;
+  bool cleanup_verified = 8;
+  string monitor_sha256 = 9;
+  string config_sha256 = 10;
+  uint32 monitor_pid = 11;
+  string monitor_start_ticks = 12;
+}

@@ -6145,11 +6145,37 @@ dependencies = [
  "telemetry-protocol",
  "thiserror 2.0.21",
  "tokio",
+ "workload-lifecycle",
 ]
 
 [[package]]
 name = "workload-lifecycle"
 version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "orchestrator",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "workload-supervisor"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "libc",
+ "mcap",
+ "orchestrator",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "workload-lifecycle",
+]
 
 [[package]]
 name = "writeable"

@@ -450,27 +450,62 @@ async fn multi_project_lifecycle() {
                         && matches!(e.state, orchestrator::State::Succeeded)
                 })
                 .unwrap();
-            for stopped in events.iter().filter(|e| {
+            let quiesced = events
+                .iter()
+                .find(|e| {
+                    e.invocation.step.ends_with("QuiesceProjects")
+                        && e.state == orchestrator::State::Succeeded
+                })
+                .unwrap();
+            let finalized = events
+                .iter()
+                .find(|e| {
+                    e.invocation.step.ends_with("FinalizeRun")
+                        && e.state == orchestrator::State::Succeeded
+                })
+                .unwrap();
+            let removing = events
+                .iter()
+                .find(|e| {
+                    e.invocation.step.ends_with("RemoveProjects")
+                        && e.state == orchestrator::State::Started
+                })
+                .unwrap();
+            assert_eq!(collected.invocation.parent, Some(finalized.invocation.id));
+            assert!(
+                finalized
+                    .invocation
+                    .dependencies
+                    .contains(&quiesced.invocation.id)
+            );
+            assert!(
+                removing
+                    .invocation
+                    .dependencies
+                    .contains(&finalized.invocation.id)
+            );
+            let collected_start = events
+                .iter()
+                .position(|e| {
+                    e.invocation.id == collected.invocation.id
+                        && e.state == orchestrator::State::Started
+                })
+                .unwrap();
+            for (index, stopped) in events.iter().enumerate().filter(|(_, e)| {
                 e.invocation.step.ends_with("QuiesceCompose")
-                    && matches!(e.state, orchestrator::State::Succeeded)
+                    && e.state == orchestrator::State::Succeeded
             }) {
+                assert_eq!(stopped.invocation.parent, Some(quiesced.invocation.id));
                 assert!(
-                    collected
-                        .invocation
-                        .dependencies
-                        .contains(&stopped.invocation.id)
+                    index < collected_start,
+                    "collection crossed the writer-quiescence barrier"
                 );
             }
             for removed in events
                 .iter()
                 .filter(|e| e.invocation.step.ends_with("RemoveCompose"))
             {
-                assert!(
-                    removed
-                        .invocation
-                        .dependencies
-                        .contains(&collected.invocation.id)
-                );
+                assert_eq!(removed.invocation.parent, Some(removing.invocation.id));
             }
         }
         assert!(

@@ -1,0 +1,8 @@
+id: "monitor-example"
+output_directory: "/tmp/monitor-example"
+supervisord: "/usr/bin/supervisord"
+supervisorctl: "/usr/bin/supervisorctl"
+monitor_binary: "/absolute/checkout/target/ci/system-monitor"
+readiness_seconds: 30
+stop_seconds: 15
+cgroup_parent: "/sys/fs/cgroup/delegated-doramcap"
