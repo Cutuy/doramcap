@@ -916,3 +916,27 @@ configured 14.4-second stop deadline.
 Nine other ignored native Docker/capability cases were not rerun. Existing
 workspace capability/CUDA/high-memlock skips remain; second-machine browser
 acceptance remains explicitly skipped. No browser test harness was added.
+
+## M18 — CPU consumer name overflow
+
+**Work items**
+
+- [x] Truncate long CPU consumer names with an ellipsis. Reserve a separate
+  column for the percentage and keep both values on one row.
+
+**Validation**
+
+28 frontend tests and the production build passed. Chromium checked the hosted
+app at 1200 and 390 px with a name requiring 3256 px: it truncated within
+230/260 px, the percentage occupied one line, and neither overlap nor document
+overflow occurred. Screenshots: `/tmp/console-ellipsis-{1200,390}.png`.
+
+- [x] Verify long-name layout in the packaged app at desktop and phone widths.
+Full local CI passed on the final CSS source: both workspace/Clippy
+configurations, storage without defaults, examples/binaries, formatting,
+boundaries and snapshot synchronization (CI profile, locked dependencies,
+unprivileged builds). ARM64 job 525 passed. Existing ignored
+capability/CUDA/high-memlock cases and the second-machine browser skip remain
+unchanged. Logs: `/tmp/console-ellipsis-*.log`.
+
+- [x] Record final-source ARM64 result.

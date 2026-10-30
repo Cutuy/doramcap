@@ -4,6 +4,6 @@
 
 .event-relation{border:0;padding:0;background:transparent;color:#166653;text-decoration:underline;cursor:pointer;font:inherit;display:block;overflow-wrap:anywhere;text-align:left}
 
-.cpu-ranking{list-style:none;margin:0;padding:0;display:grid;gap:16px}.cpu-ranking li>div{display:flex;gap:12px;justify-content:space-between;overflow-wrap:anywhere}.cpu-ranking meter{width:100%;height:10px;accent-color:#177763}
+.cpu-ranking{list-style:none;margin:0;padding:0;display:grid;gap:16px}.cpu-ranking li>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:baseline}.cpu-ranking li>div>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cpu-ranking li>div>strong{white-space:nowrap}.cpu-ranking meter{width:100%;height:10px;accent-color:#177763}
 
 .timeline-flow{pointer-events:stroke}.timeline-flow-key{width:22px;border-top:2px solid #526bb0}.timeline-flow-key.parent{border-top:2px dashed #8c6924}
