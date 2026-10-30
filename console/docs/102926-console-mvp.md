@@ -940,3 +940,25 @@ capability/CUDA/high-memlock cases and the second-machine browser skip remain
 unchanged. Logs: `/tmp/console-ellipsis-*.log`.
 
 - [x] Record final-source ARM64 result.
+
+## M19 — Rebase onto current main
+
+**Work items**
+
+- [x] Rebase onto main `e3a8993`, preserving the boxed Compose runner future,
+  Console's prelaunch check and all supervisor/library boundary rules.
+- [x] Push the rebased branch using force-with-lease; leave main and the active
+  worktree lease unchanged.
+
+**Validation**
+
+Rebased application source `47fe306` passed full local CI: boundaries and their
+tests, formatting, default/all-feature Clippy and workspace tests, storage
+without defaults, examples/binaries and snapshot synchronization. Builds were
+unprivileged with locked dependencies and the CI profile. Existing ignored
+capability/CUDA/high-memlock cases remain skipped. The hosted package was not
+restarted for this Git operation; earlier browser/Docker evidence remains above.
+Logs: `/tmp/console-rebase-*.log`.
+
+- [x] Verify current main is an ancestor and run final-source local CI.
+- [x] Verify final-source ARM64 job 526: completed successfully.
