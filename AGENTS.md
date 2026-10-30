@@ -31,6 +31,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 ## Testing and CI
 
 - When implementing a plan document, prioritize fast feedback and early validation of the direction. Use focused checks for each milestone and strategically defer or skip redundant full CI runs; batch full CI at meaningful integration points and on the final source revision unless waived. Record deferred checks in the plan so milestone validation stays explicit.
+- Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
 - Run local checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
 - Run ARM64 validation on the final revision for PRs, explicit requests, or high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
