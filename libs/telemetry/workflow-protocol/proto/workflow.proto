@@ -24,6 +24,5 @@ message Event {
   uint64 duration_ns = 12;
   optional string payload_json = 13;
   optional string error = 14;
-  reserved 15;
-  optional string display_name = 16;
+  optional string display_name = 15;
 }
