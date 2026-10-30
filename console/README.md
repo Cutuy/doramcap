@@ -16,4 +16,4 @@ node server/dist/main.js /path/to/console.pbtxt ./frontend
 
 Sign in as `console` with the secret file's contents. For remote access, use an SSH tunnel or TLS-terminating proxy; Basic authentication alone does not encrypt credentials. The selected project must
 be beneath the configured project root. Source files are trusted host inputs.
-If cleanup is unverified, follow the [Docker experiment isolation recovery procedure](https://github.com/Cutuy/doramcap/blob/main/libs/workload-docker/docs/102626-docker-experiment-isolation.md) before starting another run.
+If cleanup is unverified, follow the [host recovery procedure](docs/recovery.md) before starting another run.

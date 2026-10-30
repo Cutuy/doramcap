@@ -447,3 +447,15 @@ Local default-feature workspace tests, storage without default features, both Cl
 - [x] Test stage filtering, 64-bit timestamp arithmetic, moving/paused timeline, loss display and bounded lifecycle retention.
 - [x] Check the run view in Chromium at desktop and narrow widths; run frontend tests/build and Rust reducer tests.
 - [ ] Run applicable local CI, final-source ARM64 validation and manual packaged real-Docker qualification; record failures and skipped checks. The automated Console acceptance harness was removed at the user's request.
+
+Manual recovery and qualification (2026-10-29): the blocked demo report showed
+forced/unclean workload shutdown diagnostics, verified Docker removal and completed
+filesystem finalization. Host checks confirmed no run/project containers, networks,
+volumes or overlay mounts; the marker was archived beside its evidence before
+restart. The demo services now handle SIGTERM. Manual run
+`b28ac30eb9bc11aa0937e25c8e714027` with profile `extra` reached CPU readiness,
+served Hello World and stopped with Completed execution, finalized recording and
+verified cleanup; both downloads are available. The blocked screen now explains
+manual recovery, documented in [recovery.md](recovery.md). All nine frontend tests,
+the production build and diff whitespace checks passed. Full CI was not rerun for
+this guidance-only change; earlier CI evidence remains tied to its recorded revision.
