@@ -87,6 +87,11 @@ impl Session {
                 .map(|p| p.project.profiles.clone())
                 .or_else(|| marker.map(|m| m.profiles.clone()))
                 .unwrap_or_default(),
+            system_apps: self
+                .prepared
+                .as_ref()
+                .map(|p| crate::system_apps::selection(&p.system_apps))
+                .or_else(|| marker.and_then(|m| m.system_apps.clone())),
             outcome: marker.and_then(|m| m.outcome.clone()),
             steps: self.progress.rows(),
             sequence: self.progress.sequence,
@@ -224,6 +229,7 @@ pub(crate) fn start(
         start_accepted: false,
         project_directory: prepared.project.directory.to_string_lossy().into_owned(),
         profiles: prepared.project.profiles.clone(),
+        system_apps: Some(crate::system_apps::selection(&prepared.system_apps)),
     };
     if state.store.write(&marker).is_err() {
         session.phase = Phase::Blocked;
@@ -269,11 +275,12 @@ pub(crate) fn start(
             session.publish();
         }
     });
+    let cpu_enabled = prepared.system_apps.cpu_monitor.is_some();
     let ready_session = state.session.clone();
     tokio::task::spawn_local(async move {
         if ready_rx.await.is_ok() {
             let mut session = ready_session.borrow_mut();
-            session.monitor_ready = true;
+            session.monitor_ready = cpu_enabled;
             if session.phase == Phase::Starting {
                 session.phase = Phase::Running;
             }
@@ -287,12 +294,15 @@ pub(crate) fn start(
         recovery_anchor_dir: None,
         projects: vec![prepared.project.clone()],
         first_party: vec![],
-        system_apps: state.config.system_apps.clone().expect("validated monitor"),
+        system_apps: prepared.system_apps.clone(),
         readiness_seconds: 60,
         stop_seconds: 15,
     };
-    let (metrics_stop, metrics_done) =
-        crate::metrics::watch(state.session.clone(), spec.artifacts.clone());
+    let (metrics_stop, metrics_done) = crate::metrics::watch(
+        state.session.clone(),
+        spec.artifacts.clone(),
+        spec.system_apps.cpu_monitor.is_some(),
+    );
     let session_ref = state.session.clone();
     let check_session = session_ref.clone();
     let runner = state.runner.clone();
@@ -329,7 +339,7 @@ pub(crate) fn start(
                         let rejection = if latch.get() {
                             Some("Stopped")
                         } else if workload.is_none_or(|p| p.sha256 != expected_digest)
-                            || monitor.is_none_or(|m| m.image_id != expected_monitor)
+                            || monitor.map(|m| &m.image_id) != expected_monitor.as_ref()
                         {
                             Some("StaleReview")
                         } else {
@@ -379,11 +389,15 @@ pub(crate) fn start(
                         }
                         .into(),
                         writers_stopped: Some(report.writers_stopped),
-                        recording_finalized: Some(report.recording_finalized),
+                        recording_finalized: spec
+                            .system_apps
+                            .cpu_monitor
+                            .as_ref()
+                            .map(|_| report.recording_finalized),
                         boundary_clean: Some(report.boundary_clean),
                         event_stream_healthy: Some(report.event_stream_healthy),
                     };
-                    let public = serde_json::json!({"execution":outcome.execution,"writers_stopped":outcome.writers_stopped,"recording_finalized":outcome.recording_finalized,"boundary_clean":outcome.boundary_clean,"event_stream_healthy":outcome.event_stream_healthy});
+                    let public = serde_json::json!({"execution":outcome.execution,"writers_stopped":outcome.writers_stopped,"recording_finalized":outcome.recording_finalized,"boundary_clean":outcome.boundary_clean,"event_stream_healthy":outcome.event_stream_healthy,"system_apps":crate::system_apps::selection(&spec.system_apps).ids});
                     let path = spec.artifacts.join("console-report.json");
                     let _ = workload_docker::evidence::write_private_once(&path, &public);
                     (
@@ -468,6 +482,128 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires Docker, a prebuilt workload image and Linux capabilities"]
+    async fn run_without_system_apps_stops_cleanly_and_persists_selection() {
+        use prost::Message;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                // Arrange
+                let root = tempfile::tempdir().unwrap().keep();
+                println!("private test evidence: {}", root.display());
+                let project = root.join("project");
+                std::fs::create_dir(&project).unwrap();
+                std::fs::write(
+                    project.join("compose.yaml"),
+                    r#"services:
+  worker:
+    image: node:22-bookworm-slim
+    command: ["node", "-e", "process.on('SIGTERM',()=>process.exit(0)); require('fs').writeFileSync('/tmp/ready','ready'); setInterval(()=>{},1000)"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+"#,
+                )
+                .unwrap();
+                let config = ConsoleConfig {
+                    listen_address: "127.0.0.1:8080".into(),
+                    public_origin: "http://127.0.0.1:8080".into(),
+                    project_root: root.to_string_lossy().into_owned(),
+                    data_root: root.join("data").to_string_lossy().into_owned(),
+                    docker_socket: "/var/run/docker.sock".into(),
+                    access_secret_file: "/tmp/secret".into(),
+                    system_apps: Some(SystemAppsConfig {
+                        cpu_monitor: Some(CpuMonitor {
+                            image: "console-missing-monitor:selection-test".into(),
+                        }),
+                        ..Default::default()
+                    }),
+                };
+                let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
+                let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
+                let prepared = prepare::prepare(
+                    adapter.clone(),
+                    &config,
+                    PrepareRequest {
+                        directory: project.to_string_lossy().into_owned(),
+                        profiles: vec![],
+                        system_apps: Some(crate::protocol::SystemAppSelection::default()),
+                    },
+                )
+                .await
+                .unwrap();
+                let id = prepared.review.run_id.clone();
+                let mut session = Session::new(Phase::Reviewed, None);
+                session.prepared = Some(prepared);
+                let shared = Rc::new(RefCell::new(session));
+                let mut state = NativeState {
+                    runner: Rc::new(tokio::sync::Mutex::new(ComposeRunner::new(adapter.clone()))),
+                    store: Rc::new(store),
+                    adapter,
+                    config,
+                    session: shared.clone(),
+                };
+                let request = StartRequest {
+                    prepared_id: id.clone(),
+                    request_key: "no-apps".into(),
+                };
+                // Act: retries join the reviewed run with its explicit empty selection.
+                let first = start(&mut state, request.clone());
+                let retry = start(&mut state, request);
+                assert_eq!(first.await.unwrap().unwrap(), id);
+                assert_eq!(retry.await.unwrap().unwrap(), id);
+                tokio::time::timeout(std::time::Duration::from_secs(90), async {
+                    while shared.borrow().phase == Phase::Starting {
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                // Assert
+                assert_eq!(shared.borrow().phase, Phase::Running);
+                assert!(!shared.borrow().monitor_ready);
+                assert!(shared.borrow().metrics.is_empty());
+                // Act: Stop awaits finalization and cleanup with no recorder.
+                let (done, finished) = oneshot::channel();
+                shared.borrow_mut().shutdown_waiters.push(done);
+                shared.borrow_mut().stop_run();
+                tokio::time::timeout(std::time::Duration::from_secs(60), finished)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                // Assert
+                let session = shared.borrow();
+                assert_eq!(session.phase, Phase::Finished);
+                let marker = session.marker.as_ref().unwrap();
+                assert_eq!(marker.outcome.as_ref().unwrap().execution, "Completed");
+                assert_eq!(marker.outcome.as_ref().unwrap().boundary_clean, Some(true));
+                assert_eq!(marker.outcome.as_ref().unwrap().recording_finalized, None);
+                let restored = Marker::decode(
+                    std::fs::read(root.join("data/current.pb"))
+                        .unwrap()
+                        .as_slice(),
+                )
+                .unwrap();
+                assert!(restored.system_apps.unwrap().ids.is_empty());
+                assert!(!root.join("data/runs").join(&id).join("cpu.mcap").exists());
+                assert!(session.cpu_snapshots.is_empty());
+                assert!(
+                    session
+                        .snapshot
+                        .lock()
+                        .unwrap()
+                        .system_apps
+                        .as_ref()
+                        .unwrap()
+                        .ids
+                        .is_empty()
+                );
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires Docker, prebuilt worker/monitor images and Linux capabilities"]
     async fn real_run_retries_once_stops_and_finalizes() {
         tokio::task::LocalSet::new().run_until(async {
@@ -480,7 +616,7 @@ mod tests {
             let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
             let id = review.review.run_id.clone();
             println!("test run id: {id}");
             let mut session = Session::new(Phase::Reviewed, None);
@@ -559,7 +695,7 @@ mod tests {
             let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
             let id = review.review.run_id.clone();
             let mut session = Session::new(Phase::Reviewed, None);
             session.prepared = Some(review);
@@ -611,7 +747,7 @@ mod tests {
                 if case == "new-env" { std::fs::remove_file(project.join(".env")).unwrap(); }
                 std::fs::write(project.join("compose.yaml"), base).unwrap();
                 std::fs::write(project.join("included.yaml"), included).unwrap();
-                let review = prepare::prepare(adapter.clone(), &state.config, PrepareRequest { directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+                let review = prepare::prepare(adapter.clone(), &state.config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
                 let id = review.review.run_id.clone();
                 { let mut session = shared.borrow_mut(); session.phase = Phase::Reviewed; session.prepared = Some(review); session.start_key = None; session.start_result = None; }
                 match case {
@@ -688,6 +824,7 @@ mod tests {
                     adapter.clone(),
                     &config,
                     PrepareRequest {
+                        system_apps: None,
                         directory: project.to_string_lossy().into_owned(),
                         profiles: vec![],
                     },
@@ -757,7 +894,7 @@ mod tests {
             let config = ConsoleConfig { listen_address: "127.0.0.1:8080".into(), public_origin: "http://127.0.0.1:8080".into(), project_root: root.to_string_lossy().into_owned(), data_root: root.join("data").to_string_lossy().into_owned(), docker_socket: "/var/run/docker.sock".into(), access_secret_file: "/tmp/secret".into(), system_apps: Some(SystemAppsConfig { cpu_monitor: Some(CpuMonitor { image: "doramcap/system-monitor:native-cleanup-20261029".into() }), ..Default::default() }) };
             let (store, _) = StateStore::open(std::path::Path::new(&config.data_root)).unwrap();
             let adapter = Rc::new(DockerAdapter::connect(&config.docker_socket).await.unwrap());
-            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
+            let review = prepare::prepare(adapter.clone(), &config, PrepareRequest { system_apps: None, directory: project.to_string_lossy().into_owned(), profiles: vec![] }).await.unwrap();
             let id = review.review.run_id.clone();
             println!("blocked-test run id: {id}, evidence: {}", root.display());
             let mut session = Session::new(Phase::Reviewed, None); session.prepared = Some(review);

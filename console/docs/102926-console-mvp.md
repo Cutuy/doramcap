@@ -126,7 +126,7 @@ revision and observed results beside its validation items before checking them.
   prost external type mappings to reuse their generated Rust types. Protobuf
   uint64 values remain decimal strings/Long in TypeScript, including IDs and time.
 - [x] `ConsoleConfig` fields: listen address, approved project root, data root,
-  Docker socket, access-secret file, public Origin and `SystemAppsConfig`. The public Origin is explicit because a wildcard listen address cannot identify the remote browser Origin. Require a CPU monitor;
+  Docker socket, access-secret file, public Origin and `SystemAppsConfig`. The public Origin is explicit because a wildcard listen address cannot identify the remote browser Origin. Expose configured CPU recording as an optional review-time system app (M12);
   reject configured Dora flows for this first slice. Parse pbtxt using the existing
   prost-reflect pattern in [registry.rs](../../apps/project-explorer/server/src/registry.rs).
   Use generated configuration types directly.
@@ -687,3 +687,65 @@ Logs: `/tmp/console-warning-*.log`. The restarted app restored FINISHED run
 high-memlock tests and second-machine browser acceptance remain skipped.
 
 - [x] Record full local CI and confirm packaged restart.
+
+## M12 — Review-time system app selection
+
+This extends the original read-only CPU-recording concept with a System apps
+checkbox panel on Review. The existing injectable template is CPU recording;
+Dora flow injection remains outside Console's supported configuration.
+
+**Work items**
+
+- [x] Add optional `SystemAppSelection` to PrepareRequest and public Review app
+  options. Omission uses host defaults; an explicit empty list selects no apps.
+  Reject unknown, duplicate and unconfigured IDs. Host configuration supplies
+  trusted images/templates; browser requests carry IDs only.
+- [x] Reprepare after checkbox changes and disable Start until the new review
+  succeeds. Bind Start to that review's selected generated SystemAppsConfig,
+  pin selected monitor images and revalidate their presence/absence before launch.
+- [x] Persist selection in Marker/Status and the public report. With CPU disabled,
+  skip the monitor, CPU sampling/readiness and MCAP validation; show Disabled
+  separately from recording failure, with workflow activity/report still usable.
+  Existing snapshots with no selection field retain their historical CPU meaning.
+- [x] Allow host configuration without a CPU monitor. Keep protobuf configuration
+  and existing templates/dependencies. No new crate or producer fields.
+
+**Validation**
+
+21 frontend tests/build and eight server tests passed. New focused cases cover
+checkbox state, disabled controls, unavailable-vs-disabled outcomes, optional HTTP
+selection and explicit empty lists. Rust selection tests cover defaults, empty,
+unknown/duplicate IDs and unavailable apps. The Docker review test also verifies
+that disabling CPU bypasses resolution of a deliberately missing monitor image.
+
+Real Docker runs passed with CPU enabled (`c72b05f17866e70efd681040a8529683`,
+52 snapshots) and disabled (`b6323ce99d15b18ff1804488d41f73d9`). Both exercised
+Start retries, Stop and verified cleanup. The disabled run had no MCAP/CPU
+samples, a null recording outcome and a persisted empty selection.
+The initial disabled fixture stopped before its Node shutdown handler was ready;
+cleanup correctly reported unclean shutdown. Adding a healthcheck to the fixture
+made the successful rerun exercise a ready workload; no recovery bypass was added.
+
+- [x] Verify real Docker execution with selected and unselected CPU recording.
+Packaged Chromium verification used an isolated review-only data root with the
+same built server/native/frontend. The default CPU checkbox was checked; an
+injected failed reprepare left Start disabled, Retry review created a new review
+with CPU unchecked, and checking CPU again produced another reviewed selection.
+The 390 px document remained 390 px wide. Updated `screenshots/review.png` and
+`review-narrow.png` show the real resolved project. The temporary validation
+server was stopped; the interactive app remains hosted at its existing URL.
+Initial packaging checks caught TypeScript nullability/incomplete test-fixture
+errors; both were corrected before the successful tests and production builds.
+
+- [x] Verify the packaged checkbox/review interaction, failure retry and screenshots.
+Final source passed 21 frontend tests/build, eight server tests/build, both
+Clippy/workspace configurations, storage without default features, examples/
+binaries, formatting, boundaries and snapshot synchronization. Cargo used the
+CI profile and locked dependencies with unprivileged builds. ARM64 jobs 518 and
+519 passed; 519 includes the final TypeScript test-fixture corrections. Three
+ignored Docker tests were explicitly run above (selected run, unselected run and
+review); the other eight native Docker/capability cases and existing workspace
+capability/CUDA/high-memlock skips remain skipped. Second-machine browser
+acceptance remains skipped. Logs: `/tmp/console-apps-*.log`.
+
+- [x] Record final-source local CI and ARM64 results.

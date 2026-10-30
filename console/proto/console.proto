@@ -17,7 +17,10 @@ message ConsoleConfig {
 
 message ServerSettings { string listen_address = 1; string access_secret_file = 2; string public_origin = 3; }
 
-message PrepareRequest { string directory = 1; repeated string profiles = 2; }
+// Omitted selection preserves host defaults; an explicit empty list selects no apps.
+message SystemAppSelection { repeated string ids = 1; }
+message SystemApp { string id = 1; string label = 2; bool selected = 3; }
+message PrepareRequest { string directory = 1; repeated string profiles = 2; SystemAppSelection system_apps = 3; }
 message StartRequest { string prepared_id = 1; string request_key = 2; }
 message StopRequest { string run_id = 1; }
 message StartResponse { string run_id = 1; }
@@ -30,6 +33,7 @@ message Review {
   repeated string selected_profiles = 4;
   repeated Service services = 5;
   repeated string warnings = 6;
+  repeated SystemApp system_apps = 7;
 }
 
 enum Phase {
@@ -69,6 +73,7 @@ message Status {
   bool activity_available = 16;
   bool metrics_incomplete = 17;
   repeated doramcap.telemetry.v1.Snapshot cpu_snapshots = 18;
+  SystemAppSelection system_apps = 19;
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {
@@ -81,6 +86,7 @@ message Marker {
   bool start_accepted = 7;
   string project_directory = 8;
   repeated string profiles = 9;
+  SystemAppSelection system_apps = 10;
 }
 
 // One bounded, host-observed sample; absent values denote unavailable data.

@@ -281,11 +281,13 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
             .unwrap(),
     );
     let request = PrepareRequest {
+        system_apps: None,
         directory: project_dir.to_string_lossy().into_owned(),
         profiles: vec!["extra".into()],
     };
     // Act
     let invalid = PrepareRequest {
+        system_apps: None,
         directory: request.directory.clone(),
         profiles: vec!["not-declared".into()],
     };
@@ -328,7 +330,35 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
         .await
         .unwrap();
     assert_ne!(changed.sha256, first.workload_digest);
-    let second = prepare::prepare(adapter, &config, request).await.unwrap();
+    let second = prepare::prepare(adapter.clone(), &config, request.clone())
+        .await
+        .unwrap();
+    // Act: deselecting the app must not resolve even a missing monitor image.
+    let mut no_monitor = config.clone();
+    no_monitor
+        .system_apps
+        .as_mut()
+        .unwrap()
+        .cpu_monitor
+        .as_mut()
+        .unwrap()
+        .image = "console-missing-monitor:selection-test".into();
+    let disabled = prepare::prepare(
+        adapter,
+        &no_monitor,
+        PrepareRequest {
+            system_apps: Some(console_native::protocol::SystemAppSelection::default()),
+            ..request
+        },
+    )
+    .await
+    .unwrap();
+    // Assert
+    assert!(disabled.monitor_image.is_none());
+    assert!(disabled.system_apps.cpu_monitor.is_none());
+    assert!(!disabled.review.system_apps[0].selected);
+    assert!(!disabled.directory.join("system-services.yaml").exists());
+    assert!(first.review.system_apps[0].selected);
     // Assert
     assert_eq!(first.review.available_profiles, ["extra"]);
     assert_eq!(first.review.services.len(), 2);
@@ -397,6 +427,7 @@ async fn profile_only_project_reports_available_profiles() {
         std::rc::Rc::new(adapter),
         &config,
         console_native::protocol::PrepareRequest {
+            system_apps: None,
             directory: root.path().to_string_lossy().into_owned(),
             profiles: vec![],
         },

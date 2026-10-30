@@ -20,7 +20,8 @@ pub struct PreparedReview {
     pub review: Review,
     pub project: ComposeProject,
     pub workload_digest: String,
-    pub monitor_image: String,
+    pub monitor_image: Option<String>,
+    pub system_apps: workload_docker::workflows::system_apps::SystemAppsConfig,
     pub directory: PathBuf,
 }
 
@@ -30,6 +31,7 @@ pub async fn prepare(
     config: &ConsoleConfig,
     request: PrepareRequest,
 ) -> Result<PreparedReview, String> {
+    let apps = crate::system_apps::select(config, request.system_apps.as_ref())?;
     let project = project::discover(
         Path::new(&config.project_root),
         Path::new(&request.directory),
@@ -73,6 +75,7 @@ pub async fn prepare(
         available.clone(),
         run_id,
         directory.clone(),
+        apps.clone(),
     )
     .await;
     match result {
@@ -90,10 +93,12 @@ pub async fn prepare(
                     selected_profiles: Vec::new(),
                     services: Vec::new(),
                     warnings: vec!["Select a profile to enable at least one service.".into()],
+                    system_apps: crate::system_apps::options(config, &apps),
                 },
                 project,
                 workload_digest: String::new(),
-                monitor_image: String::new(),
+                monitor_image: None,
+                system_apps: apps,
                 directory,
             })
         }
@@ -112,6 +117,7 @@ async fn resolve(
     available: Vec<String>,
     run_id: String,
     directory: PathBuf,
+    apps: workload_docker::workflows::system_apps::SystemAppsConfig,
 ) -> Result<PreparedReview, String> {
     let workload = adapter
         .resolve(ResolveInput {
@@ -123,30 +129,31 @@ async fn resolve(
         .map_err(|e| e.to_string())?;
     let system = PrepareSystemApps
         .run(PrepareInput {
-            config: config.system_apps.clone().ok_or("CPU monitor required")?,
+            config: apps.clone(),
             artifacts: directory.clone(),
         })
         .await
         .map_err(|e| e.to_string())?;
-    let monitor_project = system
-        .projects
-        .into_iter()
-        .next()
-        .ok_or("CPU monitor required")?;
-    let monitor = adapter
-        .resolve(ResolveInput {
-            run: run_id.clone(),
-            artifacts: directory.clone(),
-            project: monitor_project,
-        })
-        .await
-        .map_err(|e| e.to_string())?;
-    let monitor_image = monitor
-        .services
-        .get("cpu-monitor")
-        .ok_or("CPU monitor service missing")?
-        .image_id
-        .clone();
+    let monitor_image = if let Some(monitor_project) = system.projects.into_iter().next() {
+        let monitor = adapter
+            .resolve(ResolveInput {
+                run: run_id.clone(),
+                artifacts: directory.clone(),
+                project: monitor_project,
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        Some(
+            monitor
+                .services
+                .get("cpu-monitor")
+                .ok_or("CPU monitor service missing")?
+                .image_id
+                .clone(),
+        )
+    } else {
+        None
+    };
     let services = workload
         .services
         .iter()
@@ -163,12 +170,14 @@ async fn resolve(
         services,
         // Raw Compose diagnostics stay in private evidence; expose actionable prompts only.
         warnings: Vec::new(),
+        system_apps: crate::system_apps::options(config, &apps),
     };
     Ok(PreparedReview {
         review,
         project,
         workload_digest: workload.sha256,
         monitor_image,
+        system_apps: apps,
         directory,
     })
 }

@@ -92,9 +92,10 @@ export function createConsoleServer(config: HttpOptions) {
       const url = new URL(request.url ?? '/', config.origin);
       if (request.method === 'POST' && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
       if (request.method === 'POST' && url.pathname === '/api/prepare') {
-        const value = await body(request); fields(value, ['directory', 'profiles']);
+        const value = await body(request); fields(value, value.systemApps === undefined ? ['directory', 'profiles'] : ['directory', 'profiles', 'systemApps']);
+        if (value.systemApps !== undefined && (!Array.isArray(value.systemApps) || value.systemApps.length > 128)) throw new HttpError(400, 'InvalidInput');
         if (!Array.isArray(value.profiles) || value.profiles.length > 128) throw new HttpError(400, 'InvalidInput');
-        const input = wire.PrepareRequest.encode({ directory: string(value.directory), profiles: value.profiles.map(string) }).finish();
+        const input = wire.PrepareRequest.encode({ directory: string(value.directory), profiles: value.profiles.map(string), ...(Array.isArray(value.systemApps) ? { systemApps: { ids: value.systemApps.map(string) } } : {}) }).finish();
         const result = wire.Review.decode(await config.native.prepare(Buffer.from(input)));
         reply(response, 200, wire.Review.toObject(result, options)); return;
       }

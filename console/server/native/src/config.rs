@@ -39,16 +39,17 @@ pub fn parse(text: &str) -> Result<ConsoleConfig, String> {
         .listen_address
         .parse::<std::net::SocketAddr>()
         .map_err(|e| format!("invalid listen_address: {e}"))?;
-    let apps = config.system_apps.as_ref().ok_or("CPU monitor required")?;
-    if apps
-        .cpu_monitor
-        .as_ref()
-        .is_none_or(|monitor| monitor.image.is_empty())
-    {
-        return Err("CPU monitor image required".into());
-    }
-    if !apps.dora_flows.is_empty() {
-        return Err("Dora flows are not supported by Console MVP".into());
+    if let Some(apps) = &config.system_apps {
+        if apps
+            .cpu_monitor
+            .as_ref()
+            .is_some_and(|monitor| monitor.image.is_empty())
+        {
+            return Err("CPU monitor image required".into());
+        }
+        if !apps.dora_flows.is_empty() {
+            return Err("Dora flows are not supported by Console MVP".into());
+        }
     }
     Ok(config)
 }
@@ -78,7 +79,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_missing_monitor_relative_paths_and_dora() {
+    fn accepts_no_apps_and_rejects_relative_paths_empty_images_and_dora() {
         // Arrange
         let missing = VALID.replace("cpu_monitor { image: \"monitor:local\" }", "");
         let relative = VALID.replace("/projects", "projects");
@@ -87,7 +88,8 @@ mod tests {
             "system_apps { dora_flows { name: \"flow\" }",
         );
         // Act / Assert
-        assert!(parse(&missing).is_err());
+        assert!(parse(&missing).is_ok());
+        assert!(parse(&VALID.replace("monitor:local", "")).is_err());
         assert!(parse(&relative).is_err());
         assert!(parse(&dora).is_err());
         assert!(parse(&format!("{VALID} unknown_field: 1")).is_err());

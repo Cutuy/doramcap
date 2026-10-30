@@ -1,13 +1,14 @@
 # Console
 
-Run one local Compose project with CPU recording and inspect its current result.
-The server requires a local Docker socket, prebuilt workload and CPU-monitor
-images, and the capabilities required by the existing recorded Compose workflow.
+Run one local Compose project with optional CPU recording and inspect its current result.
+The server requires a local Docker socket, prebuilt local workload images, and the capabilities required by the existing recorded Compose workflow.
+Choose configured system apps with checkboxes on Review. CPU recording defaults
+to enabled when configured; deselecting it runs only the project.
 The configured Docker socket must be directly accessible to the server user.
-The monitor image must run the system-monitor binary as its entrypoint.
+When configured, the monitor image must run the system-monitor binary as its entrypoint.
 
 Copy `console.pbtxt.example`, set the absolute paths, public browser Origin and
-CPU-monitor image, and create the secret file with mode `0600`. Start the package
+optional CPU-monitor image, and create the secret file with mode `0600`. Start the package
 with Node 22.12 or later:
 
 ```sh

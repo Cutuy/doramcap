@@ -208,12 +208,17 @@ fn terminal(phase: Phase) -> bool {
 pub(crate) fn watch(
     session: Rc<RefCell<Session>>,
     directory: PathBuf,
+    enabled: bool,
 ) -> (
     tokio::sync::oneshot::Sender<()>,
     tokio::task::JoinHandle<()>,
 ) {
     let (stop, mut stopped) = tokio::sync::oneshot::channel();
     let task = tokio::task::spawn_local(async move {
+        if !enabled {
+            let _ = stopped.await;
+            return;
+        }
         let started = Instant::now();
         let run_id = session.borrow().marker.as_ref().map(|m| m.run_id.clone());
         let mut reader = Reader::default();

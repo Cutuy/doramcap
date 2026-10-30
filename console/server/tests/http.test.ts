@@ -11,10 +11,11 @@ import { wire, type NativeConsole } from '../src/native.js';
 test('authentication, Origin, size and field validation precede native mutations', async () => {
   // Arrange
   let starts = 0; let stops = 0;
+  const selections: (string[] | undefined)[] = [];
   const native: NativeConsole = {
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     settings: async () => Buffer.alloc(0), close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
-    prepare: async () => Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()),
+    prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
     start: async () => { starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
     stop: async () => { stops++; return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish()); },
     status: async () => Buffer.from(wire.Status.encode({ phase: wire.Phase.RUNNING, sequence: '9007199254740993' as never }).finish()),
@@ -43,6 +44,11 @@ test('authentication, Origin, size and field validation precede native mutations
     assert.equal(chunkedStatus, 400);
     assert.equal(starts, 0); assert.equal(stops, 0);
     assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[]}')).status, 200);
+    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":[]}')).status, 200);
+    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":["cpu-monitor"]}')).status, 200);
+    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":null}')).status, 400);
+    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":[42]}')).status, 400);
+    assert.deepEqual(selections, [undefined, [], ['cpu-monitor']]);
     assert.equal((await post('/api/start', '{"preparedId":"run","requestKey":"key"}')).status, 202);
     assert.equal((await post('/api/stop', '{"runId":"run"}')).status, 200);
     assert.equal(starts, 1); assert.equal(stops, 1);

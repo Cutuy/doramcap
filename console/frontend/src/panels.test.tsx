@@ -6,6 +6,8 @@ import { ActivityTimeline, EventDetails } from './ActivityTimeline';
 import { RunActivity } from './RunActivity';
 import { RunMetrics } from './RunMetrics';
 import { Result } from './Result';
+import { SystemApps } from './SystemApps';
+import { cpuRecordingEnabled } from './api';
 import { PageFrame } from './ui/PageFrame';
 import type { Snapshot, Step } from './api';
 
@@ -71,4 +73,26 @@ test('completed runs without retained activity do not imply that events will arr
   assert.match(html, /No workflow steps available/);
   assert.match(html, /No events available/);
   assert.doesNotMatch(html, /Waiting for workflow/);
+});
+
+
+test('system app choices reflect selection and disabled recording stays distinct from failure', () => {
+  // Arrange
+  const apps = [{ id: 'cpu-monitor', label: 'CPU recording', selected: true }];
+  const snapshot: Snapshot = { phase: 'FINISHED', runId: 'a'.repeat(32), steps: [], sequence: '0', lostEvents: '0', truncatedSteps: '0', overflowSteps: '0', progressIncomplete: false, cpuAvailable: false, reportAvailable: true, monitorReady: false, systemApps: { ids: [] }, outcome: { execution: 'Completed', recordingFinalized: null, boundaryClean: true } };
+  // Act
+  const enabled = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}}/>);
+  const checking = renderToStaticMarkup(<SystemApps apps={[{...apps[0],selected:false}]} busy toggle={() => {}}/>);
+  const result = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
+  // Assert
+  assert.match(enabled, /type="checkbox" checked=""/);
+  assert.match(enabled, /CPU recording/);
+  assert.match(checking, /fieldset disabled=""/);
+  assert.doesNotMatch(checking, /checked=""/);
+  assert.match(result, /Disabled/);
+  assert.match(result, /CPU recording disabled/);
+  assert.doesNotMatch(result, /Download CPU recording/);
+  assert.equal(cpuRecordingEnabled(snapshot), false);
+  assert.equal(cpuRecordingEnabled({ systemApps: { ids: ['cpu-monitor'] } }), true);
+  assert.equal(cpuRecordingEnabled({}), true);
 });

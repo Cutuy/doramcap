@@ -7,6 +7,7 @@ pub mod project;
 pub mod runtime;
 mod session;
 pub mod state;
+mod system_apps;
 
 pub mod protocol {
     include!(concat!(env!("OUT_DIR"), "/doramcap.console.v1.rs"));
