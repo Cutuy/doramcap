@@ -2,7 +2,8 @@
 
 # System Monitor through Supervisor
 
-Created: 2026-10-29. Status: proposed; implementation has not started.
+Created: 2026-10-29. Status: implementation complete; milestones 1–3 validated. Milestone 4 native
+ARM64 Supervisor qualification is blocked by missing worker runtime provisioning.
 
 Run the existing `apps/system-monitor` binary through a first-party Supervisor
 template. Exercise preparation, readiness, observation, cooperative stop,
@@ -56,7 +57,7 @@ admission behavior and existing report fields.
 | `libs/workload-lifecycle/src/recorded_run.rs` | Shared lifecycle sequencing and outcomes |
 | `libs/workload-supervisor/src/` | Native ownership, adapter and typed steps |
 | `libs/workload-supervisor/proto/` | MVP run configuration and durable ownership evidence |
-| `libs/workload-supervisor/examples/system_monitor.rs` | End-to-end monitor run using generated protobuf settings |
+| `libs/workload-supervisor/examples/supervisor_monitor.rs` | End-to-end monitor run using generated protobuf settings |
 
 The fixed template uses environment substitutions for the absolute binary and
 run directory. Preparation creates a private daemon configuration with its own
@@ -83,106 +84,206 @@ References: [Supervisor API](https://supervisord.org/api.html),
 [Supervisor configuration](https://supervisord.org/configuration.html),
 [quick-xml](https://github.com/tafia/quick-xml),
 [xmlrpc](https://docs.rs/xmlrpc/latest/xmlrpc/).
-Select and record the control approach before implementing a custom protocol or
-adding dependencies. No new dependency is adopted by this plan.
+Selected: official `supervisorctl`, presented for evaluation before implementation.
+Tokio bounds each direct control subprocess, kills and reaps on deadline, and uses
+kill-on-drop on cancellation. Fixed-program status parsing accepts only RUNNING
+and records PID/start ticks; any generation change ends the attempt. Native tests
+verify CLI nonzero exits, timeout, readiness and stop behavior on Supervisor 4.2.5.
+
+`quick-xml` is a maintained XML reader/writer, requiring an XML-RPC envelope/fault
+adapter plus Unix HTTP transport. `xmlrpc` 0.15.1 offers protocol values and a
+transport abstraction; its documented optional reqwest 0.11 transport would still
+need Unix-socket and cancellation integration. Neither adds value for this fixed
+program interface. No new third-party package/version was added to Cargo.lock;
+existing Tokio/prost/prost-reflect/serde/libc/hash dependencies are reused.
 
 ## Milestone 1: Deployment contract
 
 **Work items**
 
-- [ ] Add the fixed monitor recipe and minimal deployment README.
-- [ ] Define generated protobuf inputs: run identity, new output directory,
+- [x] Add the fixed monitor recipe and minimal deployment README.
+- [x] Define generated protobuf inputs: run identity, new output directory,
   supervisor/control executable locations, monitor binary, readiness/stop deadlines,
   and the delegated cgroup location. Use pbtxt for examples.
-- [ ] Match the Compose command: BPF backend, 32,768 records, `cpu.pb`, `cpu.mcap`,
+- [x] Match the Compose command: BPF backend, 32,768 records, `cpu.pb`, `cpu.mcap`,
   buffered recording. Retain logs and config/binary identity beside outputs.
-- [ ] Record the selected control approach and dependency evaluation.
+- [x] Record the selected control approach and dependency evaluation.
 
 **Validation**
 
-- [ ] Validate the template with the supported Supervisor version, including paths
+- [x] Validate the template with the supported Supervisor version, including paths
   containing spaces and unsupported interpolation characters.
-- [ ] Reject missing binaries, unavailable BPF access or cgroup delegation before
+- [x] Reject missing binaries, unavailable BPF access or cgroup delegation before
   launching the monitor. No automatic sudo or host configuration mutation.
-- [ ] Confirm TERM reaches the existing monitor shutdown handler and closes MCAP.
+- [x] Confirm TERM reaches the existing monitor shutdown handler and closes MCAP.
 
-Evidence: source inspection shows a BPF-only CLI and `ctrlc` termination handling.
-Real deployment validation remains pending.
+Evidence (2026-10-29): fixed recipe matches Compose flags; generated `MonitorRun`
+and `Ownership` types are used directly with strict pbtxt parsing. Supervisor 4.2.5
+accepted executable/output paths containing spaces and completed MCAPs after TERM.
+Unit tests reject interpolation/comment/control characters, missing executables
+and unknown fields. `--check-bpf` verifies real kernel attachment before daemon
+resource creation. Unprivileged BPF and cgroup-delegation probes failed before
+output creation/daemon launch, as expected. No application sudo or host setup.
+Logs: `/tmp/supervisor-native-final.log`, `/tmp/supervisor-ci-tests-default.log`,
+`/tmp/supervisor-unprivileged-bpf.log`, `/tmp/supervisor-preflight-denied.log`.
+
+**Status:** complete.
 
 ## Milestone 2: Shared recording steps and lifecycle driver
 
 **Work items**
 
-- [ ] Move `Recording`, `WaitForSystemApps` and `FinalizeSystemApps` behavior into
+- [x] Move `Recording`, `WaitForSystemApps` and `FinalizeSystemApps` behavior into
   the neutral crate, with compatibility re-exports and backend-neutral errors.
-- [ ] Extract the sequencing driver and adapt `ComposeRunner` to use it. Keep
+- [x] Extract the sequencing driver and adapt `ComposeRunner` to use it. Keep
   preparation, Docker events, filesystem and Dora work in Compose phase hooks.
-- [ ] Permit a system-app-only Compose run when a monitor is configured;
+- [x] Permit a system-app-only Compose run when a monitor is configured;
   continue rejecting runs with neither projects nor supporting apps.
-- [ ] Gate finalization on writer quiescence. Record execution, finalization and
+- [x] Gate finalization on writer quiescence. Record execution, finalization and
   cleanup outcomes independently without weakening existing cleanup gates.
 
 **Validation**
 
-- [ ] Contract tests cover successful phase order, readiness failure, cancellation
+- [x] Contract tests cover successful phase order, readiness failure, cancellation
   during launch, quiescence failure and finalization failure with safe cleanup.
-- [ ] Verify no readiness notification after cancellation or failed probes.
-- [ ] Run existing Compose lifecycle/recording tests and a real monitor-only
+- [x] Verify no readiness notification after cancellation or failed probes.
+- [x] Run existing Compose lifecycle/recording tests and a real monitor-only
   Compose run. Confirm existing app/Dora and overlay behavior is preserved.
 
-Evidence: `system_apps.rs` already isolates stream-readiness and MCAP-footer checks.
-`ComposeRun` validation currently requires foreign projects. No extraction is complete.
+Evidence (2026-10-29): neutral recording steps retain compatibility re-exports;
+both wrappers invoke `recorded_run::run`. Compose retains Docker events, Dora,
+filesystem/removal gates and independent outcomes. Contract tests cover phase
+order, launch/readiness failure, cancellation, quiescence/finalization failure
+and mandatory finish. Backend phase futures and Compose preparation are boxed to
+bound caller stack use; native tests run with their default thread stack.
+
+All five existing native Compose tests passed, including partial launch, failed
+readiness, cancellation barriers, direct-session recovery, retained evidence and
+nested cleanup. All 12 native OverlayFS tests passed. Updated an obsolete direct
+lineage assertion to verify the existing nested phase parent/dependency chain
+and the temporal writer-quiescence barrier. The Compose harness now supplies its
+socket/touch fixtures, runs serially, and accepts a Cargo profile (default `ci`).
+Real Dora embedded/published recording comparison matched 24 snapshots/26 messages.
+
+Logs: `/tmp/supervisor-compose-regressions-final2.log`, `/tmp/supervisor-overlay.log`,
+`/tmp/supervisor-dora.log`. Artifacts: `/tmp/supervisor-compose-regressions-1029d`.
+
+**Status:** complete.
 
 ## Milestone 3: Supervisor steps on the shared driver
 
 **Work items**
 
-- [ ] Add typed prepare, launch, inspect, quiesce and remove steps in
+- [x] Add typed prepare, launch, inspect, quiesce and remove steps in
   `workload-supervisor`, registered on the existing executor.
-- [ ] Persist ownership intent before spawning; establish the daemon's cgroup
+- [x] Persist ownership intent before spawning; establish the daemon's cgroup
   before it can create descendants. Keep runtime handles out of serialized inputs.
-- [ ] Launch the monitor explicitly, invoke the shared recording readiness step,
+- [x] Launch the monitor explicitly, invoke the shared recording readiness step,
   inspect liveness until stop, then quiesce and use shared recording finalization.
-- [ ] Bound control calls, stop the owned daemon, reap it and verify the cgroup is
+- [x] Bound control calls, stop the owned daemon, reap it and verify the cgroup is
   empty. Retain diagnostics and block reuse on unknown ownership or cleanup failure.
-- [ ] Add a thin Supervisor run wrapper and the System Monitor example using the
+- [x] Add a thin Supervisor run wrapper and the System Monitor example using the
   same driver as Compose. Record how to diagnose an abandoned MVP run safely.
 
 **Validation**
 
-- [ ] Run a real native monitor and read its completed MCAP with existing readers.
-- [ ] Inject startup failure, early monitor exit, stop timeout and manager-future
+- [x] Run a real native monitor and read its completed MCAP with existing readers.
+- [x] Inject startup failure, early monitor exit, stop timeout and manager-future
   cancellation. Verify attempted resources remain accountable and teardown runs.
-- [ ] Verify descendant cleanup, daemon reaping and two concurrent runs with
+- [x] Verify descendant cleanup, daemon reaping and two concurrent runs with
   separate sockets, cgroups and output directories.
-- [ ] Confirm forced termination never reports recording success for truncated MCAP.
-- [ ] Confirm incomplete ownership evidence blocks reuse without signaling unrelated PIDs.
+- [x] Confirm forced termination never reports recording success for truncated MCAP.
+- [x] Confirm incomplete ownership evidence blocks reuse without signaling unrelated PIDs.
 
-Evidence: pending implementation and native tests. Tests requiring capabilities
-build unprivileged and elevate only the test executable under repository rules.
+Evidence (2026-10-29): typed steps retain live child/cgroup-kill handles;
+fsynced protobuf intent precedes cgroup creation/spawn. Pre-exec placement occurs
+before Supervisor can fork. Removal verifies boot/device/inode, empty subtree
+and reaped daemon. PID/start ticks detect monitor generation changes. Every
+control call selects the private config, has a deadline and bounded output.
+
+Final native suite: two tests passed, covering daemon startup failure, early
+monitor exit, failed readiness without notification, TERM-resistant monitor with
+a descendant, cancellation during launch, manager-future drop and blocked reuse.
+Forced stop rejected the truncated recording. Dropped futures killed their owned
+subtree while leaving incomplete durable evidence and blocked admission. Unknown
+or mismatched cgroup identities are rejected without PID signaling. Concurrent
+real BPF runs produced readable MCAPs and removed separate cgroups/sockets.
+
+Logs: `/tmp/supervisor-native-final.log`. Final concurrent-run artifacts:
+`/tmp/supervisor-tests-509713-1793318580641694155`. Native tests built unprivileged;
+only test executables/helpers received capability elevation and memlock limits.
+
+**Status:** complete.
 
 ## Milestone 4: Demonstrate backend parity
 
 **Work items**
 
-- [ ] Provide runnable Compose and Supervisor monitor-only examples with the same
+- [x] Provide runnable Compose and Supervisor monitor-only examples with the same
   recording policy, cooperative stop and outcome summary.
-- [ ] Add a compact architecture/usage link and record the native host prerequisites.
-- [ ] Update library-boundary rules for the neutral extraction and new backend.
+- [x] Add a compact architecture/usage link and record the native host prerequisites.
+- [x] Update library-boundary rules for the neutral extraction and new backend.
 
 **Validation**
 
-- [ ] Compare semantic outcomes: advancing CPU stream, readable MCAP, graceful
+- [x] Compare semantic outcomes: advancing CPU stream, readable MCAP, graceful
   stop and verified cleanup. CPU sample values need not match across runs.
-- [ ] Compare emitted lifecycle phase order and shared recording-step events.
-- [ ] Run final-revision local CI: boundaries, formatting, default/all-feature
+- [x] Compare emitted lifecycle phase order and shared recording-step events.
+- [x] Run final-revision local CI: boundaries, formatting, default/all-feature
   Clippy and workspace tests, storage without defaults, examples/binaries and
   snapshot synchronization, with CI profile and locked dependencies.
 - [ ] Before PR readiness, run final-revision ARM64 worker CI and the native
   Supervisor/System Monitor scenario. Report skipped/blocked checks separately.
 
-Evidence: pending. Supervisor installation or persistent host permission changes
-require separate approval if the prerequisites are unavailable.
+Evidence (2026-10-29): both final-source examples passed with a freshly built
+monitor. Both use BPF, 32,768 records, buffered recording and cooperative stop.
+The existing Rust MCAP reader accepted each file. Shared step events verified
+readiness → quiesce → recording finalization → removal.
+
+| Semantic outcome | Compose | Supervisor |
+| --- | --- | --- |
+| Advancing CPU stream | 35 snapshots | 36 snapshots |
+| Readable MCAP | 37 messages | 38 messages |
+| Execution success / writers stopped | pass / pass | pass / pass |
+| Recording finalized / cleanup verified | pass / pass | pass / pass |
+| Shared recording events and phase order | pass | pass |
+
+Runnable commands: `compose_monitor` and `supervisor_monitor`; see the
+[deployment README](../../../apps/system-monitor/deploy/supervisor/README.md).
+Artifacts: `/tmp/supervisor-compose-parity-final-1029`,
+`/tmp/supervisor-example-final-1029`. Local image:
+`doramcap/system-monitor:supervisor-mvp-1029`. Logs:
+`/tmp/supervisor-parity-summary.log`, `/tmp/supervisor-mcap-parity.log`.
+
+| Final-source local check | Result |
+| --- | --- |
+| Dependency boundaries / boundary fixtures | pass / pass |
+| Formatting | pass |
+| Default-feature Clippy / all-feature Clippy | pass / pass |
+| Workspace tests: default / all features | pass / pass |
+| Storage tests without default features | pass |
+| All-feature workspace examples/binaries | pass |
+| Snapshot synchronization tests | pass |
+
+All Cargo checks used `--profile ci` and `--locked`, built unprivileged. Existing
+private clang/libclang/libelf tools supplied missing system development packages.
+Per-check logs: `/tmp/supervisor-ci-*.log`; results:
+`/tmp/supervisor-ci-results.json`. Capability suites are reported separately above.
+
+ARM64 final-source Pueue job **492** completed **Success**, snapshot
+`/home/doramcap-ci/jobs/7e1aca83effc46b9ae346e35a2c55096`. It passed default/all-feature
+Clippy/tests/builds, native accounting/allocation checks and Dora recording checks.
+Log: `/tmp/supervisor-arm64-final.json`. Earlier jobs 489–491 precede final source.
+
+**Blocked:** native ARM64 Supervisor/System Monitor qualification printed
+`SKIP Supervisor native scenario: provision supervisord and supervisorctl`.
+The runtime is absent; installation approval/provisioning remains outstanding.
+The CI account's sudo permission covers only the native test launcher, so system
+package provisioning requires worker administration. No credentials were copied.
+Automatic installation and persistent permission changes were not performed.
+
+**Status:** implementation and local parity complete; ARM64 native Supervisor
+validation remains open. This milestone is not marked complete.
 
 ## MVP completion
 

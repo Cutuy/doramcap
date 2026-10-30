@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+workload-lifecycle = { path = "../workload-lifecycle" }
 orchestrator = { path = "../orchestrator" }
 prost = "0.14"
 bollard = { version = "=0.21.1", default-features = false, features = ["http", "pipe"] }

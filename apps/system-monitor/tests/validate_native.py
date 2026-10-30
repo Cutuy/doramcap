@@ -33,6 +33,10 @@ def main():
     if policy_suite.exists():
         policy_binary = args.monitor.resolve().parent / 'examples/native_policy'
         subprocess.run([sys.executable, str(policy_suite), '--binary', str(policy_binary), '--enable-root-cpuset'], check=True, timeout=90)
+    supervisor_suite = Path(__file__).resolve().parents[3] / 'libs/workload-supervisor/tests/validate_native.py'
+    if supervisor_suite.exists():
+        import runpy
+        runpy.run_path(str(supervisor_suite))['validate'](args.monitor)
     cpus = sorted(os.sched_getaffinity(0))
     assert len(cpus) >= 2, 'two available CPUs required'
     root = Path('/sys/fs/cgroup') / f'doramcap-validation-{os.getpid()}'

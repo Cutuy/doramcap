@@ -28,6 +28,7 @@ cargo test --locked --workspace
 cargo test --locked --workspace --all-features
 cargo build --locked --workspace --all-features --examples --bins
 "$CARGO_TARGET_DIR/debug/examples/policy_overhead"
+rustc --edition=2024 --crate-name supervisor_fixture libs/workload-supervisor/tests/fixture.inc -o "$CARGO_TARGET_DIR/debug/supervisor-test-fixture"
 sudo -n /usr/local/libexec/doramcap-ci-native-tests "$PWD"
 
 "$CARGO_TARGET_DIR/debug/examples/storage_benchmark"

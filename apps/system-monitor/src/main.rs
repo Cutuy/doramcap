@@ -21,6 +21,7 @@ struct Options {
     tasks: usize,
     dora: bool,
     check: bool,
+    check_bpf: bool,
     output: Option<PathBuf>,
     publisher_delay: Duration,
     record: Option<PathBuf>,
@@ -37,6 +38,7 @@ impl Options {
             tasks: 0,
             dora: false,
             check: false,
+            check_bpf: false,
             output: None,
             publisher_delay: Duration::ZERO,
             record: None,
@@ -66,9 +68,13 @@ impl Options {
                 }
                 "--dora" => opts.dora = true,
                 "--check" => opts.check = true,
+                "--check-bpf" => {
+                    opts.check = true;
+                    opts.check_bpf = true;
+                }
                 "--help" | "-h" => {
                     println!(
-                        "system-monitor [--check] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
+                        "system-monitor [--check | --check-bpf] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
                     );
                     std::process::exit(0);
                 }
@@ -334,7 +340,13 @@ fn collect_sample(
 
 fn run(opts: Options) -> Result<()> {
     if opts.check {
-        println!("{}", serde_json::to_string_pretty(&capabilities()?)?);
+        let mut capabilities = capabilities()?;
+        if opts.check_bpf {
+            // Probe real kernel attachment before a lifecycle owner launches recording.
+            let _backend = Backend::new(&opts)?;
+            capabilities.attachment_verified = true;
+        }
+        println!("{}", serde_json::to_string_pretty(&capabilities)?);
         return Ok(());
     }
     if opts.tasks != 0 && !cfg!(feature = "task-bpf") {

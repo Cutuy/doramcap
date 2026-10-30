@@ -66,7 +66,14 @@ impl Step for FinalizeRun {
                 .collect(),
         };
         let (recording, changes) = tokio::join!(
-            executor.run::<FinalizeSystemApps>(input.recordings),
+            async {
+                if !input.shutdown.writers_stopped {
+                    return Err(orchestrator::Error::message(
+                        "recording writers not quiescent",
+                    ));
+                }
+                executor.run::<FinalizeSystemApps>(input.recordings).await
+            },
             async {
                 if !input.shutdown.writers_stopped {
                     return None;
