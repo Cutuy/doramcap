@@ -1,15 +1,12 @@
-use orchestrator::{
-    Event, LocalExecutor, Observer, Step, StepDescriptor, telemetry::TelemetryObserver,
-};
+use orchestrator::{Event, LocalExecutor, Observer, Step, telemetry::TelemetryObserver};
 use std::{cell::RefCell, rc::Rc};
 
 struct RenamedImplementation;
 impl Step for RenamedImplementation {
     type Input = ();
     type Output = ();
-    fn descriptor() -> Option<StepDescriptor> {
-        Some(StepDescriptor::new("example.prepare", "Prepare example"))
-    }
+    const ID: Option<&'static str> = Some("example.prepare");
+    const DISPLAY_NAME: Option<&'static str> = Some("Prepare example");
     async fn run(&mut self, _: ()) -> orchestrator::Result<()> {
         Ok(())
     }
@@ -18,27 +15,23 @@ struct AnotherImplementation;
 impl Step for AnotherImplementation {
     type Input = ();
     type Output = ();
-    fn descriptor() -> Option<StepDescriptor> {
-        RenamedImplementation::descriptor()
-    }
+    const ID: Option<&'static str> = RenamedImplementation::ID;
     async fn run(&mut self, _: ()) -> orchestrator::Result<()> {
-        panic!("duplicate metadata must fail before body")
+        panic!("duplicate identity must fail before body")
     }
 }
-struct InvalidMetadata;
-impl Step for InvalidMetadata {
+struct InvalidName;
+impl Step for InvalidName {
     type Input = ();
     type Output = ();
-    fn descriptor() -> Option<StepDescriptor> {
-        Some(StepDescriptor::new("", "Missing ID"))
-    }
+    const ID: Option<&'static str> = Some("");
     async fn run(&mut self, _: ()) -> orchestrator::Result<()> {
-        panic!("invalid metadata must fail before body")
+        panic!("invalid identity must fail before body")
     }
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn stable_metadata_survives_protobuf_independently_of_rust_type_names() {
+async fn invocation_ids_are_distinct_while_step_identity_and_label_stay_stable() {
     // Arrange
     let packets = Rc::new(RefCell::new(Vec::new()));
     let sink = packets.clone();
@@ -50,19 +43,29 @@ async fn stable_metadata_survives_protobuf_independently_of_rust_type_names() {
     executor.register::<RenamedImplementation>(|| RenamedImplementation);
     // Act
     executor.run::<RenamedImplementation>(()).await.unwrap();
+    executor.run::<RenamedImplementation>(()).await.unwrap();
     // Assert
-    for packet in packets.borrow().iter() {
-        let event = workflow_protocol::decode(packet).unwrap();
-        assert!(event.step.ends_with("RenamedImplementation"));
-        let descriptor = event.descriptor.unwrap();
-        assert_eq!(descriptor.id, "example.prepare");
-        assert_eq!(descriptor.display_name, "Prepare example");
+    let events: Vec<_> = packets
+        .borrow()
+        .iter()
+        .map(|packet| workflow_protocol::decode(packet).unwrap())
+        .collect();
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| event.invocation)
+            .collect::<Vec<_>>(),
+        [1, 1, 2, 2]
+    );
+    for event in events {
+        assert_eq!(event.step, "example.prepare");
+        assert_eq!(event.display_name.as_deref(), Some("Prepare example"));
     }
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn duplicate_or_incomplete_descriptors_fail_before_factory_or_observation() {
-    for incomplete in [false, true] {
+async fn duplicate_or_empty_step_names_fail_before_factory_or_observation() {
+    for invalid in [false, true] {
         // Arrange
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
@@ -71,8 +74,8 @@ async fn duplicate_or_incomplete_descriptors_fail_before_factory_or_observation(
         executor.register::<RenamedImplementation>(|| {
             panic!("invalid registry must fail before factory")
         });
-        if incomplete {
-            executor.register::<InvalidMetadata>(|| InvalidMetadata);
+        if invalid {
+            executor.register::<InvalidName>(|| InvalidName);
         } else {
             executor.register::<AnotherImplementation>(|| AnotherImplementation);
         }
@@ -85,12 +88,12 @@ async fn duplicate_or_incomplete_descriptors_fail_before_factory_or_observation(
 }
 
 #[test]
-fn legacy_invocation_json_has_optional_metadata() {
+fn invocation_json_without_a_label_remains_readable() {
     // Arrange
-    let legacy = r#"{"session":"run","id":1,"step":"legacy::Step","version":1,"executor":"local","parent":null,"dependencies":[]}"#;
+    let input = r#"{"session":"run","id":1,"step":"legacy::Step","version":1,"executor":"local","parent":null,"dependencies":[]}"#;
     // Act
-    let invocation: orchestrator::Invocation = serde_json::from_str(legacy).unwrap();
+    let invocation: orchestrator::Invocation = serde_json::from_str(input).unwrap();
     // Assert
-    assert!(invocation.descriptor.is_none());
+    assert!(invocation.display_name.is_none());
     assert_eq!(invocation.step, "legacy::Step");
 }

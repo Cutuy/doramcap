@@ -24,12 +24,8 @@ pub struct LaunchProjects {
     pub executor: Weak<LocalExecutor>,
 }
 impl Step for LaunchProjects {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.launch",
-            "Start project",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.launch");
+    const DISPLAY_NAME: Option<&'static str> = Some("Start project");
     type Input = LaunchInput;
     type Output = ();
     async fn run(&mut self, input: LaunchInput) -> orchestrator::Result<()> {
@@ -100,12 +96,8 @@ pub struct ObserveProjects {
     pub executor: Weak<LocalExecutor>,
 }
 impl Step for ObserveProjects {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.observe",
-            "Observe projects",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.observe");
+    const DISPLAY_NAME: Option<&'static str> = Some("Observe projects");
     type Input = ObserveInput;
     type Output = ();
     async fn run(&mut self, input: ObserveInput) -> orchestrator::Result<()> {
@@ -168,12 +160,8 @@ pub struct QuiesceProjects {
     pub diagnostics: Diagnostics,
 }
 impl Step for QuiesceProjects {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.quiesce",
-            "Stop project",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.quiesce");
+    const DISPLAY_NAME: Option<&'static str> = Some("Stop project");
     type Input = QuiesceInput;
     type Output = QuiescedProjects;
     async fn run(&mut self, input: QuiesceInput) -> orchestrator::Result<QuiescedProjects> {
@@ -249,12 +237,8 @@ pub struct RemoveProjects {
     pub executor: Weak<LocalExecutor>,
 }
 impl Step for RemoveProjects {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.remove",
-            "Remove resources",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.remove");
+    const DISPLAY_NAME: Option<&'static str> = Some("Remove resources");
     type Input = RemoveInput;
     type Output = Vec<Cleanup>;
     async fn run(&mut self, input: RemoveInput) -> orchestrator::Result<Vec<Cleanup>> {

@@ -121,12 +121,8 @@ pub struct PrepareOverlays {
     pub adapter: std::rc::Rc<super::DockerAdapter>,
 }
 impl Step for PrepareOverlays {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.filesystem.prepare",
-            "Prepare filesystem",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.filesystem.prepare");
+    const DISPLAY_NAME: Option<&'static str> = Some("Prepare filesystem");
     type Input = PrepareInput;
     type Output = OverlaySet;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {

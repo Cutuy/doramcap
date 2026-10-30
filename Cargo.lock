@@ -6123,7 +6123,6 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
- "serde",
 ]
 
 [[package]]

@@ -90,6 +90,12 @@ impl<T> From<Output<T>> for Input<T> {
     }
 }
 
+struct Registration {
+    factory: Box<dyn Any>,
+    step: &'static str,
+    display_name: Option<&'static str>,
+}
+
 /// Execute registered steps as local coroutines.
 ///
 /// # Ownership and concurrency
@@ -106,8 +112,8 @@ impl<T> From<Output<T>> for Input<T> {
 /// unwind. Observer panics are counted and suppressed. Cancellation drops the step
 /// future; callers remain responsible for async cleanup. Calls are never retried.
 pub struct LocalExecutor {
-    factories: HashMap<TypeId, Box<dyn Any>>,
-    descriptors: HashMap<TypeId, Option<workflow_protocol::StepDescriptor>>,
+    factories: HashMap<TypeId, Registration>,
+    registration_error: Option<String>,
     session: String,
     next_id: Cell<u64>,
     origin: Instant,
@@ -137,7 +143,7 @@ impl LocalExecutor {
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
-            descriptors: HashMap::new(),
+            registration_error: None,
             session: "local".into(),
             next_id: Cell::new(1),
             origin: Instant::now(),
@@ -170,29 +176,45 @@ impl LocalExecutor {
     ///
     /// # Behavior
     ///
-    /// The factory owns captures; registration captures the step descriptor.
+    /// The factory owns captures; registration captures static step identity and label.
     /// Invalid/duplicate declared metadata fails before invocation; factory panics unwind.
     pub fn register<S: Step + 'static>(&mut self, factory: impl Fn() -> S + 'static) {
         let factory: Box<dyn Fn() -> S> = Box::new(factory);
-        self.factories.insert(TypeId::of::<S>(), Box::new(factory));
-        self.descriptors.insert(TypeId::of::<S>(), S::descriptor());
+        self.factories.insert(
+            TypeId::of::<S>(),
+            Registration {
+                factory: Box::new(factory),
+                step: S::ID.unwrap_or(type_name::<S>()),
+                display_name: S::DISPLAY_NAME,
+            },
+        );
+        self.registration_error = self.check_registrations();
     }
 
-    /// Reject incomplete or duplicate declared descriptors before invoking any step.
-    pub fn validate_descriptors(&self) -> Result<()> {
+    /// Reject invalid registered names before invoking any step.
+    pub fn validate_steps(&self) -> Result<()> {
+        match &self.registration_error {
+            Some(error) => Err(Error::Configuration(error.clone())),
+            None => Ok(()),
+        }
+    }
+
+    fn check_registrations(&self) -> Option<String> {
         let mut ids = HashSet::new();
-        for descriptor in self.descriptors.values().flatten() {
-            if descriptor.id.trim().is_empty()
-                || descriptor.display_name.trim().is_empty()
-                || !ids.insert(&descriptor.id)
+        for registration in self.factories.values() {
+            if registration.step.trim().is_empty()
+                || registration
+                    .display_name
+                    .is_some_and(|name| name.trim().is_empty())
+                || !ids.insert(registration.step)
             {
-                return Err(Error::Configuration(format!(
-                    "invalid or duplicate step descriptor: {}",
-                    descriptor.id
-                )));
+                return Some(format!(
+                    "invalid or duplicate step identity: {}",
+                    registration.step
+                ));
             }
         }
-        Ok(())
+        None
     }
 
     /// Number of observer callbacks that panicked. Check evidence coverage separately.
@@ -228,11 +250,14 @@ impl LocalExecutor {
         &self,
         input: impl Into<Input<S::Input>>,
     ) -> Result<Output<S::Output>> {
-        self.validate_descriptors()?;
-        let factory = self
+        self.validate_steps()?;
+        let registration = self
             .factories
             .get(&TypeId::of::<S>())
-            .and_then(|entry| entry.downcast_ref::<Box<dyn Fn() -> S>>())
+            .ok_or(Error::UnregisteredStep(type_name::<S>()))?;
+        let factory = registration
+            .factory
+            .downcast_ref::<Box<dyn Fn() -> S>>()
             .ok_or(Error::UnregisteredStep(type_name::<S>()))?;
         let input = input.into();
         if input
@@ -251,8 +276,8 @@ impl LocalExecutor {
         let invocation = Invocation {
             session: self.session.clone(),
             id,
-            step: type_name::<S>().into(),
-            descriptor: self.descriptors.get(&TypeId::of::<S>()).cloned().flatten(),
+            step: registration.step.into(),
+            display_name: registration.display_name.map(str::to_owned),
             version: S::VERSION,
             executor: "local".into(),
             parent: ACTIVE

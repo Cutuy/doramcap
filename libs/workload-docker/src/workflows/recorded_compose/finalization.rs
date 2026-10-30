@@ -42,12 +42,8 @@ pub struct FinalizeRun {
     pub diagnostics: Diagnostics,
 }
 impl Step for FinalizeRun {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.finalize",
-            "Finalize recording",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.finalize");
+    const DISPLAY_NAME: Option<&'static str> = Some("Finalize recording");
     type Input = FinalizeInput;
     type Output = FinalizedRun;
     async fn run(&mut self, input: FinalizeInput) -> orchestrator::Result<FinalizedRun> {
@@ -163,12 +159,8 @@ pub struct WriteRunReport {
     pub diagnostics: Diagnostics,
 }
 impl Step for WriteRunReport {
-    fn descriptor() -> Option<orchestrator::StepDescriptor> {
-        Some(orchestrator::StepDescriptor::new(
-            "compose.report",
-            "Write run report",
-        ))
-    }
+    const ID: Option<&'static str> = Some("compose.report");
+    const DISPLAY_NAME: Option<&'static str> = Some("Write run report");
     type Input = ReportInput;
     type Output = ComposeRunReport;
     async fn run(&mut self, mut input: ReportInput) -> orchestrator::Result<ComposeRunReport> {
