@@ -109,3 +109,24 @@ test('CPU consumers show reported cgroup names with an ID tooltip and numeric fa
   assert.match(named, /worker.service core utilization/);
   assert.match(missing, />Cgroup 9007199254740993<\/span>/);
 });
+
+test('elapsed label reports actual run time rather than the timeline window endpoint', () => {
+  // Arrange / Act
+  const beginning = renderToStaticMarkup(<ActivityTimeline steps={[]} now={0}/>);
+  const active = renderToStaticMarkup(<ActivityTimeline steps={[step]} now={2}/>);
+  // Assert
+  assert.match(beginning,/Elapsed time · 0.0 s/);
+  assert.match(active,/Elapsed time · 2.0 s/);
+  assert.doesNotMatch(beginning,/Elapsed time · 15.0 s/);
+});
+
+test('cancellation during preparation has a terminal result and offers a new run', () => {
+  // Arrange
+  const snapshot: Snapshot = {phase:'FINISHED',runId:'a'.repeat(32),steps:[],sequence:'0',lostEvents:'0',truncatedSteps:'0',overflowSteps:'0',progressIncomplete:false,cpuAvailable:false,reportAvailable:false,monitorReady:false,systemApps:{ids:[]},outcome:{execution:'Cancelled',boundaryClean:true}};
+  // Act
+  const html = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
+  // Assert
+  assert.match(html,/Run cancelled/);
+  assert.match(html,/>New run<\/button>/);
+  assert.doesNotMatch(html,/Stop run|Run complete/);
+});

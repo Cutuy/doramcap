@@ -16,3 +16,7 @@ export function outcomeLabels(outcome: Outcome | null) {
     cleanup: outcome?.boundaryClean == null ? 'Unknown' : outcome.boundaryClean ? 'Verified' : 'Unverified',
   };
 }
+
+/** Stop is a one-way transition; retries at the API remain idempotent. */
+export const canStopRun = (snapshot: Pick<Snapshot, 'phase' | 'runId'> | null, pending = false) =>
+  !pending && !!snapshot?.runId && ['STARTING', 'RUNNING'].includes(snapshot.phase);

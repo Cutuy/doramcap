@@ -29,7 +29,7 @@ test('delta merging preserves lifecycle rows, replaces invocations, bounds metri
   // Assert
   assert.equal(state.steps.length,512); assert.equal(state.steps[0].invocation,'1'); assert.equal(state.metrics?.length,1200); assert.equal(String(state.cpuSnapshots?.[0].sequence),'1');
   // Act
-  state=mergeLive(state,snapshot({steps:[{session:'s',executor:'local',invocation:'1304',state:3}]}));
+  state=mergeLive(state,snapshot({sequence:'1304',steps:[{session:'s',executor:'local',invocation:'1304',state:3}]}));
   assert.equal(state.steps.at(-1)?.state,'FAILED');
   state=mergeLive(state,snapshot({runId:'new'}));
   assert.equal(state.steps.length,0); assert.equal(state.metrics?.length,0); assert.equal(state.cpuSnapshots?.length,0);
@@ -57,4 +57,21 @@ test('cgroup names keep exact IDs across heartbeats and reset with a fresh CPU f
   // Assert
   assert.deepEqual(heartbeat.cpuGroupNames,[{id,name:'worker.service'}]);
   assert.deepEqual(changed.cpuGroupNames,[]);
+});
+
+test('review/start sequence resets discard previous-run time even under the same prepared ID', () => {
+  // Arrange: an old server published completed activity under the new review ID.
+  const stale = snapshot({phase:wire.Phase.REVIEWED,sequence:'800',steps:[{invocation:'1',elapsedNs:'90000000000',state:2}],metrics:[{elapsedNs:'90000000000'}],cpuSnapshots:[{sequence:100}]});
+  // Act
+  const starting = mergeLive(stale,snapshot({phase:wire.Phase.STARTING,sequence:'0'}));
+  // Assert
+  assert.equal(starting.steps.length,0);
+  assert.equal(starting.metrics?.length,0);
+  assert.equal(starting.cpuSnapshots?.length,0);
+  // Act / Assert: also reset if the first active frame arrives after Starting.
+  const running = mergeLive(stale,snapshot({phase:wire.Phase.RUNNING,sequence:'2',steps:[{invocation:'1',elapsedNs:'100000000',state:1}]}));
+  assert.equal(running.steps.length,1);
+  assert.equal(running.steps[0].elapsedNs,'100000000');
+  // Act / Assert: review frames never inherit activity from an earlier same-ID frame.
+  assert.equal(mergeLive(stale,snapshot({phase:wire.Phase.REVIEWED,sequence:'800'})).steps.length,0);
 });

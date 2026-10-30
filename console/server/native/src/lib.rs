@@ -177,6 +177,7 @@ impl Console {
                 if let Some(old) = session.prepared.take() {
                     let _ = std::fs::remove_dir_all(old.directory);
                 }
+                session.reset_activity();
                 session.phase = protocol::Phase::Preparing;
                 session.start_key = None;
                 session.start_result = None;

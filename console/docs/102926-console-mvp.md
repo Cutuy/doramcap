@@ -848,3 +848,71 @@ high-memlock cases and the second-machine browser skip remain unchanged. Logs:
 `/tmp/console-expand-*.log`.
 
 - [x] Record final-source local CI and ARM64 results.
+
+## M16 — Fresh-run elapsed time
+
+**Work items**
+
+- [x] Clear native activity when preparing another project and starting a run.
+  Exclude previous outcomes from review responses while preserving the recovery
+  marker on disk.
+- [x] Replace browser history on run/sequence resets, including review-to-start
+  transitions with the same run ID. Display actual elapsed time independently
+  of the selected timeline window.
+
+**Validation**
+
+In one Chromium session, packaged Docker run
+`d04a8d44a6f2de06dd84d9dc31d738aa` ran for 61 seconds. The following run
+`f9f0c455a624f2a9eb37362e7c48384a` started at 0.0 seconds, as did the third
+run. Regression cases cover native reset/privacy, browser sequence resets and
+0/2-second labels within a 15-second window.
+
+- [x] Verify repeated runs and actual elapsed labels against real execution.
+28 frontend tests/build, 19 native unit tests, six project/state integration
+checks and eight server tests/build passed. Full local CI passed both workspace/
+Clippy configurations, storage without defaults, examples/binaries, formatting,
+boundaries and snapshot synchronization. Builds used CI profile, locked
+dependencies and no elevation. ARM64 job 524 passed the final application source.
+Logs: `/tmp/console-reset-*.log`.
+
+- [x] Record final-source local CI and ARM64 results.
+
+## M17 — One-way shutdown
+
+**Work items**
+
+- [x] Publish STOPPING when Rust begins QuiesceProjects, before bounded telemetry
+  delivery. Preserve the existing observation-loop cancellation and awaited
+  finalization.
+- [x] Allow Stop only during STARTING/RUNNING; reset pending/retry state between
+  runs. Preserve API idempotency for network retries.
+- [x] Finish clean prelaunch cancellation with a cancelled result and New run
+  action. Return the existing Stopped error as HTTP 409 without a generic UI
+  failure. Preserve blocked admission after uncertain cleanup.
+
+**Validation**
+
+An initial real-browser check exposed clean prelaunch cancellation returning to
+IDLE and leaving Stop visible. After correction, the complete three-run check
+was repeated successfully: the second run above reached FINISHED/Cancelled with
+verified cleanup. Elevated `stop_during_preparation_prevents_launch` passed and
+confirmed no owned resources or remaining mounts. The CPU-enabled
+`real_run_retries_once_stops_and_finalizes` also passed. Both executables were
+built unprivileged.
+
+The third run, `b990e11a8ff6abe077d4a01681e12473`, intentionally lost Compose
+health. STOPPING appeared with a disabled button; ObserveProjects/InspectCompose
+rows stayed at 22 across 1.1 seconds of quiescence. It finished with execution
+Failed, writers stopped, verified cleanup and a healthy event stream. Historical
+activity offered no Stop; elapsed time stayed frozen at 16.6 seconds. The
+updated `screenshots/stopping.png` captures this real shutdown. There is no
+configured 14.4-second stop deadline.
+
+- [x] Verify automatic shutdown, preparation cancellation and terminal controls
+  using the packaged browser and real Docker, separately from local CI.
+- [x] Record final-source local CI and ARM64 results (M16 evidence above).
+
+Nine other ignored native Docker/capability cases were not rerun. Existing
+workspace capability/CUDA/high-memlock skips remain; second-machine browser
+acceptance remains explicitly skipped. No browser test harness was added.

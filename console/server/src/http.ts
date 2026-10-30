@@ -62,7 +62,7 @@ function nativeError(error: unknown): HttpError {
   const code = value?.message ?? '';
   if (code === 'InvalidInput') return new HttpError(400, code);
   if (code === 'Missing') return new HttpError(404, code);
-  if (code === 'Conflict' || code === 'StaleReview') return new HttpError(409, code);
+  if (code === 'Conflict' || code === 'StaleReview' || code === 'Stopped') return new HttpError(409, code);
   if (value?.code === 'QueueFull' || value?.code === 'Closing') return new HttpError(503, 'Busy');
   return new HttpError(500, 'Internal');
 }

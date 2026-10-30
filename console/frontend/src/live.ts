@@ -26,7 +26,10 @@ export class LiveFrames {
 
 /** Merge idempotent invocation replacements; keep server-equivalent bounded history. */
 export function mergeLive(previous: Snapshot | null, next: Snapshot): Snapshot {
-  if (!previous || previous.runId !== next.runId) return next;
+  if (!previous || previous.runId !== next.runId
+    || ['IDLE', 'PREPARING', 'REVIEWED'].includes(next.phase)
+    || BigInt(next.sequence) < BigInt(previous.sequence)
+    || (next.phase === 'STARTING' && previous.phase !== 'STARTING')) return next;
   const steps = next.steps.length ? [...previous.steps] : previous.steps;
   for (const step of next.steps) {
     const index = steps.findIndex(row => row.session === step.session && row.executor === step.executor && row.invocation === step.invocation);

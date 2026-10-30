@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, outcomeLabels, requestKey, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, outcomeLabels, requestKey, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('profile changes and lost Start responses retain explicit intent', () => {
@@ -31,4 +31,14 @@ test('execution and cleanup failures remain separate from saved recording', () =
   // Assert
   assert.deepEqual(labels, { execution: 'Failed', recording: 'Saved', cleanup: 'Unverified' });
   assert.equal(outcomeLabels(null).cleanup, 'Unknown');
+});
+
+test('Stop is available only during preparation/execution and remains disabled after shutdown starts', () => {
+  // Arrange / Act / Assert
+  for (const phase of ['STARTING','RUNNING']) {
+    assert.equal(canStopRun({phase,runId:'run'}),true);
+    assert.equal(canStopRun({phase,runId:'run'},true),false);
+  }
+  for (const phase of ['IDLE','PREPARING','REVIEWED','STOPPING','FINISHED','BLOCKED']) assert.equal(canStopRun({phase,runId:'run'}),false);
+  assert.equal(canStopRun(null),false);
 });

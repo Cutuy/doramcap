@@ -67,8 +67,27 @@ impl Session {
             loss: Arc::new(AtomicU64::new(0)),
         }
     }
+    pub fn reset_activity(&mut self) {
+        self.progress = Progress::default();
+        self.metrics.clear();
+        self.cpu_snapshots.clear();
+        self.cpu_group_names.clear();
+        self.metrics_incomplete = false;
+        self.lost_events = 0;
+        self.loss.store(0, Ordering::Relaxed);
+        self.monitor_ready = false;
+    }
     pub fn publish(&self) {
-        let marker = self.marker.as_ref();
+        let marker = self.marker.as_ref().filter(|_| {
+            matches!(
+                self.phase,
+                Phase::Starting
+                    | Phase::Running
+                    | Phase::Stopping
+                    | Phase::Finished
+                    | Phase::Blocked
+            )
+        });
         let status = crate::protocol::Status {
             phase: self.phase as i32,
             run_id: self
@@ -121,15 +140,18 @@ impl Session {
             let _ = waiter.send(result.clone());
         }
     }
+    pub fn begin_stopping(&mut self) {
+        if matches!(self.phase, Phase::Starting | Phase::Running) {
+            self.phase = Phase::Stopping;
+            self.publish();
+        }
+    }
     pub fn stop_run(&mut self) {
         self.stop_latched.set(true);
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
-        if matches!(self.phase, Phase::Starting | Phase::Running) {
-            self.phase = Phase::Stopping;
-        }
-        self.publish();
+        self.begin_stopping();
     }
     pub fn finish_shutdown(&mut self) {
         for waiter in self.shutdown_waiters.drain(..) {
@@ -249,14 +271,7 @@ pub(crate) fn start(
     session.start_waiters.push(sender);
     session.stop = Some(stop_tx);
     session.stop_latched = Rc::new(Cell::new(false));
-    session.progress = Progress::default();
-    session.metrics.clear();
-    session.cpu_snapshots.clear();
-    session.cpu_group_names.clear();
-    session.metrics_incomplete = false;
-    session.lost_events = 0;
-    session.loss.store(0, Ordering::Relaxed);
-    session.monitor_ready = false;
+    session.reset_activity();
     let latch = session.stop_latched.clone();
     let (events_tx, mut events_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(512);
     let observer = TelemetryObserver::new(16 * 1024, move |bytes| {
@@ -309,6 +324,7 @@ pub(crate) fn start(
     );
     let session_ref = state.session.clone();
     let check_session = session_ref.clone();
+    let shutdown_session = session_ref.clone();
     let runner = state.runner.clone();
     let store = state.store.clone();
     let check_store = store.clone();
@@ -326,6 +342,11 @@ pub(crate) fn start(
                         let _ = stop_rx.await;
                     },
                     move |event: &orchestrator::Event| {
+                        if event.state == orchestrator::State::Started
+                            && event.invocation.step.rsplit("::").next() == Some("QuiesceProjects")
+                        {
+                            shutdown_session.borrow_mut().begin_stopping();
+                        }
                         let mut safe = event.clone();
                         safe.payload = None;
                         safe.error = safe.error.map(|_| "step failed".into());
@@ -414,9 +435,18 @@ pub(crate) fn start(
                     )
                 }
                 Err(_) if !blocked && session.phase != Phase::Blocked => (
-                    Phase::Idle,
+                    if session.stop_latched.get() {
+                        Phase::Finished
+                    } else {
+                        Phase::Idle
+                    },
                     Some(Outcome {
-                        execution: "Cancelled".into(),
+                        execution: if session.stop_latched.get() {
+                            "Cancelled"
+                        } else {
+                            "Failed"
+                        }
+                        .into(),
                         boundary_clean: Some(true),
                         ..Default::default()
                     }),
@@ -465,6 +495,70 @@ mod tests {
     };
     use std::time::Duration;
     use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
+
+    #[test]
+    fn shutdown_is_one_way_and_terminal_sessions_cannot_be_stopped_again() {
+        // Arrange
+        let mut session = Session::new(Phase::Running, None);
+        // Act / Assert: automatic quiescence publishes Stopping immediately.
+        session.begin_stopping();
+        assert_eq!(session.phase, Phase::Stopping);
+        assert_eq!(
+            session.snapshot.lock().unwrap().phase,
+            Phase::Stopping as i32
+        );
+        // Act / Assert: a repeated stop cannot reopen a completed session.
+        session.phase = Phase::Finished;
+        session.begin_stopping();
+        assert_eq!(session.phase, Phase::Finished);
+    }
+
+    #[test]
+    fn preparing_a_new_review_clears_completed_run_telemetry_and_outcome() {
+        // Arrange
+        let mut session = Session::new(
+            Phase::Finished,
+            Some(Marker {
+                run_id: "old-run".into(),
+                outcome: Some(crate::protocol::Outcome {
+                    execution: "Completed".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        );
+        session.progress.apply(workflow_protocol::Event {
+            version: workflow_protocol::VERSION,
+            sequence: 1,
+            elapsed_ns: 90_000_000_000,
+            state: workflow_protocol::event::State::Succeeded as i32,
+            ..Default::default()
+        });
+        session.metrics.push(crate::protocol::RunMetric::default());
+        session
+            .cpu_snapshots
+            .push(telemetry_protocol::pb::Snapshot::default());
+        session.cpu_group_names.push(crate::protocol::CpuGroupName {
+            id: 1,
+            name: "old".into(),
+        });
+        session.monitor_ready = true;
+        // Act
+        session.reset_activity();
+        session.phase = Phase::Preparing;
+        session.publish();
+        // Assert
+        let snapshot = session.snapshot.lock().unwrap();
+        assert!(snapshot.run_id.is_empty());
+        assert_eq!(snapshot.sequence, 0);
+        assert!(snapshot.steps.is_empty());
+        assert!(snapshot.metrics.is_empty());
+        assert!(snapshot.cpu_snapshots.is_empty());
+        assert!(snapshot.cpu_group_names.is_empty());
+        assert!(snapshot.outcome.is_none());
+        assert!(!snapshot.monitor_ready);
+        assert_eq!(session.marker.as_ref().unwrap().run_id, "old-run");
+    }
 
     #[test]
     fn restored_accepted_request_keeps_its_retry_identity() {
@@ -722,7 +816,8 @@ mod tests {
             // Assert
             assert!(observed, "preparation event was not observed before Stop");
             assert_eq!(result, Err("Stopped".into()));
-            assert_eq!(shared.borrow().phase, Phase::Idle);
+            assert_eq!(shared.borrow().phase, Phase::Finished);
+            assert_eq!(shared.borrow().marker.as_ref().unwrap().outcome.as_ref().unwrap().execution, "Cancelled");
             assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
             assert!(!std::fs::read_to_string("/proc/self/mountinfo").unwrap().contains(root.to_str().unwrap()));
         }).await;
