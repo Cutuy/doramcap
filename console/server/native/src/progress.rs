@@ -4,21 +4,13 @@ use workflow_protocol::{Event, event::State};
 
 use crate::policy::MAX_PROGRESS_ROWS;
 
-fn step_key(event: &Event) -> &str {
-    event
-        .descriptor
-        .as_ref()
-        .map(|d| d.id.as_str())
-        .unwrap_or(&event.step)
-}
-
 // Console summarizes the latest invocation of each top-level identity.
 fn same_summary_step(left: &Event, right: &Event) -> bool {
     left.parent.is_none()
         && right.parent.is_none()
         && left.session == right.session
         && left.executor == right.executor
-        && step_key(left) == step_key(right)
+        && left.step == right.step
 }
 
 /// Current invocation rows and independent indicators of missing history.
@@ -154,11 +146,8 @@ mod tests {
         // Arrange
         let mut progress = Progress::default();
         let mut lifecycle = event(1, 1, State::Succeeded);
-        lifecycle.step = "renamed::RustImplementation".into();
-        lifecycle.descriptor = Some(workflow_protocol::StepDescriptor::new(
-            "compose.prepare",
-            "Prepare project",
-        ));
+        lifecycle.step = "compose.prepare".into();
+        lifecycle.display_name = Some("Prepare project".into());
         progress.apply(lifecycle);
         // Act
         for id in 2..=2_001 {
@@ -169,10 +158,7 @@ mod tests {
         // Assert
         assert_eq!(progress.rows().len(), 512);
         assert_eq!(progress.truncated, 1_489);
-        assert_eq!(
-            progress.rows()[0].descriptor.as_ref().unwrap().id,
-            "compose.prepare"
-        );
+        assert_eq!(progress.rows()[0].step, "compose.prepare");
         assert_eq!(progress.rows().last().unwrap().invocation, 2_001);
         assert!(!progress.incomplete());
     }
@@ -183,10 +169,8 @@ mod tests {
         // Act
         for id in 1..=513 {
             let mut row = event(id, id, State::Succeeded);
-            row.descriptor = Some(workflow_protocol::StepDescriptor::new(
-                &format!("step.{id}"),
-                "Step",
-            ));
+            row.step = format!("step.{id}");
+            row.display_name = Some("Step".into());
             progress.apply(row);
         }
         // Assert
@@ -234,7 +218,7 @@ mod tests {
                 session: "session".into(),
                 id: 1,
                 step: "step".into(),
-                descriptor: None,
+                display_name: None,
                 version: 1,
                 executor: "local".into(),
                 parent: None,
