@@ -64,6 +64,9 @@ message Status {
   bool monitor_ready = 12;
   string project_directory = 13;
   repeated string profiles = 14;
+  repeated RunMetric metrics = 15;
+  bool activity_available = 16;
+  bool metrics_incomplete = 17;
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {
@@ -76,4 +79,13 @@ message Marker {
   bool start_accepted = 7;
   string project_directory = 8;
   repeated string profiles = 9;
+}
+
+// One bounded, host-observed sample; absent values denote unavailable data.
+message RunMetric {
+  uint64 elapsed_ns = 1;
+  optional uint64 recording_bytes = 2;
+  optional double write_bytes_per_second = 3;
+  optional double cpu_percent = 4;
+  uint32 cpu_cores = 5;
 }

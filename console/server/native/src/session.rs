@@ -28,6 +28,8 @@ pub(crate) struct Session {
     pub stop: Option<oneshot::Sender<()>>,
     pub stop_latched: Rc<Cell<bool>>,
     pub progress: Progress,
+    pub metrics: Vec<crate::protocol::RunMetric>,
+    pub metrics_incomplete: bool,
     pub observer: Option<orchestrator::telemetry::TelemetryObserver>,
     pub lost_events: u64,
     pub monitor_ready: bool,
@@ -52,6 +54,8 @@ impl Session {
             stop: None,
             stop_latched: Rc::new(Cell::new(false)),
             progress: Progress::default(),
+            metrics: Vec::new(),
+            metrics_incomplete: false,
             observer: None,
             lost_events: 0,
             monitor_ready: false,
@@ -89,6 +93,9 @@ impl Session {
             overflow_steps: self.progress.overflow,
             progress_incomplete: self.progress.incomplete()
                 || self.loss.load(Ordering::Relaxed) != 0,
+            metrics: self.metrics.clone(),
+            metrics_incomplete: self.metrics_incomplete,
+            activity_available: !self.progress.rows().is_empty(),
             monitor_ready: self.monitor_ready,
             cpu_available: false,
             report_available: false,
@@ -231,6 +238,8 @@ pub(crate) fn start(
     session.stop = Some(stop_tx);
     session.stop_latched = Rc::new(Cell::new(false));
     session.progress = Progress::default();
+    session.metrics.clear();
+    session.metrics_incomplete = false;
     session.lost_events = 0;
     session.loss.store(0, Ordering::Relaxed);
     session.monitor_ready = false;
@@ -246,7 +255,7 @@ pub(crate) fn start(
     session.publish();
     drop(session);
     let progress_session = state.session.clone();
-    tokio::task::spawn_local(async move {
+    let progress_done = tokio::task::spawn_local(async move {
         while let Some(bytes) = events_rx.recv().await {
             let mut session = progress_session.borrow_mut();
             match workflow_protocol::decode(&bytes) {
@@ -278,6 +287,8 @@ pub(crate) fn start(
         readiness_seconds: 60,
         stop_seconds: 15,
     };
+    let (metrics_stop, metrics_done) =
+        crate::metrics::watch(state.session.clone(), spec.artifacts.clone());
     let session_ref = state.session.clone();
     let check_session = session_ref.clone();
     let runner = state.runner.clone();
@@ -342,61 +353,81 @@ pub(crate) fn start(
             let blocked = runner.blocked();
             (result, blocked)
         };
-        let mut session = session_ref.borrow_mut();
-        session.lost_events = observer.dropped_events();
-        session.observer = None;
-        if session.start_result.is_none() {
-            session.settle_start(Err("Internal".into()));
-        }
-        let (phase, outcome) = match result {
-            Ok(report) => {
-                let outcome = Outcome {
-                    execution: if report.execution_error.is_some() {
-                        "Failed"
-                    } else {
-                        "Completed"
-                    }
-                    .into(),
-                    writers_stopped: Some(report.writers_stopped),
-                    recording_finalized: Some(report.recording_finalized),
-                    boundary_clean: Some(report.boundary_clean),
-                    event_stream_healthy: Some(report.event_stream_healthy),
-                };
-                let public = serde_json::json!({"execution":outcome.execution,"writers_stopped":outcome.writers_stopped,"recording_finalized":outcome.recording_finalized,"boundary_clean":outcome.boundary_clean,"event_stream_healthy":outcome.event_stream_healthy});
-                let path = spec.artifacts.join("console-report.json");
-                let _ = workload_docker::evidence::write_private_once(&path, &public);
-                (
-                    if report.boundary_clean && !blocked {
-                        Phase::Finished
-                    } else {
-                        Phase::Blocked
-                    },
-                    Some(outcome),
-                )
+        let lost = observer.dropped_events();
+        session_ref.borrow_mut().observer = None;
+        drop(observer);
+        let _ = progress_done.await;
+        let _ = metrics_stop.send(());
+        let _ = metrics_done.await;
+        let (final_phase, snapshot) = {
+            let mut session = session_ref.borrow_mut();
+            session.lost_events = lost;
+            if session.start_result.is_none() {
+                session.settle_start(Err("Internal".into()));
             }
-            Err(_) if !blocked && session.phase != Phase::Blocked => (
-                Phase::Idle,
-                Some(Outcome {
-                    execution: "Cancelled".into(),
-                    boundary_clean: Some(true),
-                    ..Default::default()
-                }),
-            ),
-            Err(_) => (Phase::Blocked, None),
+            let (phase, outcome) = match result {
+                Ok(report) => {
+                    let outcome = Outcome {
+                        execution: if report.execution_error.is_some() {
+                            "Failed"
+                        } else {
+                            "Completed"
+                        }
+                        .into(),
+                        writers_stopped: Some(report.writers_stopped),
+                        recording_finalized: Some(report.recording_finalized),
+                        boundary_clean: Some(report.boundary_clean),
+                        event_stream_healthy: Some(report.event_stream_healthy),
+                    };
+                    let public = serde_json::json!({"execution":outcome.execution,"writers_stopped":outcome.writers_stopped,"recording_finalized":outcome.recording_finalized,"boundary_clean":outcome.boundary_clean,"event_stream_healthy":outcome.event_stream_healthy});
+                    let path = spec.artifacts.join("console-report.json");
+                    let _ = workload_docker::evidence::write_private_once(&path, &public);
+                    (
+                        if report.boundary_clean && !blocked {
+                            Phase::Finished
+                        } else {
+                            Phase::Blocked
+                        },
+                        Some(outcome),
+                    )
+                }
+                Err(_) if !blocked && session.phase != Phase::Blocked => (
+                    Phase::Idle,
+                    Some(Outcome {
+                        execution: "Cancelled".into(),
+                        boundary_clean: Some(true),
+                        ..Default::default()
+                    }),
+                ),
+                Err(_) => (Phase::Blocked, None),
+            };
+            let mut marker = session.marker.clone().expect("starting marker");
+            marker.phase = phase as i32;
+            marker.outcome = outcome;
+            let final_phase = if store.write(&marker).is_ok() {
+                phase
+            } else {
+                Phase::Blocked
+            };
+            session.marker = Some(marker);
+            session.stop = None;
+            session.publish();
+            let snapshot = session.snapshot.lock().ok().map(|status| {
+                let mut status = status.clone();
+                status.phase = final_phase as i32;
+                status
+            });
+            (final_phase, snapshot)
         };
-        let mut marker = session.marker.clone().expect("starting marker");
-        marker.phase = phase as i32;
-        marker.outcome = outcome;
-        session.phase = if store.write(&marker).is_ok() {
-            phase
-        } else {
-            Phase::Blocked
-        };
-        session.marker = Some(marker);
-        session.stop = None;
-        session.publish();
-        session.finish_shutdown();
-        drop(session);
+        if let Some(snapshot) = snapshot {
+            let _ = crate::metrics::checkpoint(spec.artifacts.clone(), snapshot).await;
+        }
+        {
+            let mut session = session_ref.borrow_mut();
+            session.phase = final_phase;
+            session.publish();
+            session.finish_shutdown();
+        }
         let _ = std::fs::remove_dir_all(prepared.directory);
     });
     receiver

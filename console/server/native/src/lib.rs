@@ -1,5 +1,6 @@
 //! Native contracts and execution owner for the Console.
 pub mod config;
+mod metrics;
 pub mod prepare;
 pub mod progress;
 pub mod project;
@@ -91,6 +92,8 @@ pub async fn open(config_path: String, contract_version: u32) -> Result<Console>
         let mut session = Session::new(phase, marker);
         session.snapshot = owner_snapshot;
         session.loss = owner_loss;
+        session.publish();
+        metrics::restore(&mut session, std::path::Path::new(&config.data_root));
         session.publish();
         Ok::<_, String>(NativeState {
             runner: Rc::new(tokio::sync::Mutex::new(ComposeRunner::new(adapter.clone()))),

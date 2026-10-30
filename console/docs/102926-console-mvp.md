@@ -459,3 +459,64 @@ verified cleanup; both downloads are available. The blocked screen now explains
 manual recovery, documented in [recovery.md](recovery.md). All nine frontend tests,
 the production build and diff whitespace checks passed. Full CI was not rerun for
 this guidance-only change; earlier CI evidence remains tied to its recorded revision.
+
+## M7 — Interactive run inspection and resource panels
+
+The user requested clickable event details, MCAP rate/size, CPU totals across
+cores, and navigation from Result back to the current run's retained activity.
+This adds bounded observation and a completed snapshot; it provides no event
+replay or run-history selector.
+
+**Work items**
+
+- [x] Select timeline events with mouse or keyboard, inspect timing/identity,
+  parent/dependencies and redacted failure status; browse elapsed time.
+- [x] Navigate between 03 Run and 04 Result after completion, with frozen timing
+  and no execution controls in the completed view.
+- [x] Add protobuf `RunMetric` and additive `/api/current` fields for up to 120
+  samples, MCAP bytes/file-growth rate and CPU utilization. Existing workflow
+  events already supply detail fields; these metric fields are new Console APIs.
+- [x] Read the existing CPU protobuf sidecar with bounded header traversal and
+  at most two 8 MiB frames per tick, using the existing telemetry-protocol crate.
+  Sample on blocking workers away from the execution owner and JavaScript loop.
+- [x] Sum inclusive cgroups once across cores; exclude unavailable root and
+  overlapping virtual kernel rows. Label recorded cgroup coverage and use 100%
+  per fully occupied core. Counter resets/invalid coverage remain unavailable.
+- [x] Drain telemetry and await final metric sampling/checkpoint before shutdown
+  acknowledgement. Persist redacted bounded terminal activity in `activity.pb`;
+  restore only the marker's matching terminal run after restart. Old runs without
+  a snapshot explicitly lack retained events.
+
+**Validation**
+
+Initial evidence: 14 frontend component/model tests and the production build
+passed. Native unit tests passed (14 passed, five Docker/capability tests ignored),
+including exact 64-bit deltas without inclusive/virtual double-counting, partial
+frames, counter resets, frame bounds, symlink rejection and matching-run restoration.
+
+Final evidence (2026-10-29): package `/tmp/doramcap-console-panels-final` ran
+`599a71ac143838ac9d560cc5bbe3ceb4` with profile `extra`. Live inspection showed
+MCAP growth and nonzero CPU totals across 20 cores. Stop completed execution,
+finalized the 38,788,677-byte recording and verified cleanup. After graceful
+restart, all 258 invocation rows and 68 metric samples were byte-for-byte equal
+in the decoded status arrays. Result navigation and the 03 rail opened the
+read-only view, with no Stop control. Selected event details and both panels fit
+at 1200 px and 390 px; screenshots are in `screenshots/run-inspector*.png` and
+`screenshots/completed-activity*.png`.
+
+Final-source local CI passed: default/all-feature Clippy and workspace tests,
+no-default storage tests, formatting, boundaries, snapshot synchronization and
+all-feature example/binary builds (`--profile ci --locked`). Fourteen frontend
+tests and its production build, fourteen native unit tests and seven server
+tests/build passed. An initial Clippy borrow-scope warning and a test fixture's
+TypeScript type error were fixed before the final checks. Only this lease's
+build artifacts were cleaned between configurations to stay within disk space.
+Workspace-ignored capability/CUDA/high-memlock cases remain skipped; the packaged
+Docker flow above was checked manually. ARM64 worker job 508 passed the final
+implementation snapshot; jobs 506/507 covered earlier snapshots. No standalone
+E2E harness was reintroduced.
+
+- [x] Verify selected details, historical navigation, live recording/CPU samples,
+  completed freeze and restoration against a real packaged Docker run.
+- [x] Check narrow layout and retained failure/unavailable states using components.
+- [x] Run local CI and final-source ARM64 checks; record exact results and skips.

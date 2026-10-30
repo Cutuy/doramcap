@@ -78,6 +78,18 @@ impl Progress {
         self.rows.push_back(event);
     }
 
+    /// Restore bounded, already-redacted terminal activity without replaying events.
+    pub fn restore(&mut self, status: &crate::protocol::Status) {
+        self.rows.clear();
+        for event in status.steps.iter().take(LIMIT) {
+            self.apply(event.clone());
+        }
+        self.sequence = status.sequence;
+        self.sequence_gaps = u64::from(status.progress_incomplete);
+        self.truncated = status.truncated_steps;
+        self.overflow = status.overflow_steps;
+    }
+
     /// Snapshot rows in admission order without exposing private event payloads.
     pub fn rows(&self) -> Vec<Event> {
         self.rows.iter().cloned().collect()
