@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1150" viewBox="0 0 1680 1150" role="img" aria-labelledby="t d"><title id="t">Console integration: ownership and abstraction boundaries</title><desc id="d">Current code. Console owns app selection, admission and projections. ComposeRunner owns backend lifecycle and resource policy. Orchestrator invokes typed steps and emits observations. The shared lifecycle driver awaits Compose phase hooks.</desc><defs>
+<marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#2563eb"/></marker>
+<marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#16826c"/></marker>
+<marker id="p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#7950b5"/></marker>
+<style>text{font-family:DejaVu Sans,Arial,sans-serif;fill:#162b43}.title{font-size:30px;font-weight:bold}.owner{font-size:22px;font-weight:bold}.name{font-size:21px;font-weight:bold}.body{font-size:18px}.small{font-size:16px}.label{font-size:16px;fill:#24394c}.edge{fill:none;stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round}</style></defs><rect width="1680" height="1150" fill="white"/>
+<text x="30" y="45" class="title" text-anchor="start">Console integration: ownership and abstraction boundaries</text>
+<text x="30" y="79" class="body" text-anchor="start" style="fill:#526479">Workflow execution: Console owner thread and Tokio LocalSet</text>
+<rect x="30" y="110" width="410" height="1000" rx="12" fill="#eff6ff" stroke="#97b9e7" stroke-width="1.6"/>
+<rect x="480" y="110" width="720" height="810" rx="12" fill="#eef9f4" stroke="#8cc4ad" stroke-width="1.6"/>
+<rect x="1240" y="110" width="410" height="500" rx="12" fill="#f5f0fc" stroke="#b5a0d1" stroke-width="1.6"/>
+<rect x="1240" y="670" width="410" height="250" rx="12" fill="#fff8e8" stroke="#d6ba76" stroke-width="1.6"/>
+<rect x="480" y="970" width="1170" height="140" rx="12" fill="#f3f5f8" stroke="#b4bfcc" stroke-width="1.6"/>
+<text x="55" y="145" class="owner" text-anchor="start" style="fill:#1d4e91">Console application</text>
+<text x="505" y="145" class="owner" text-anchor="start" style="fill:#17634d">workload-docker · Compose domain</text>
+<text x="1265" y="145" class="owner" text-anchor="start" style="fill:#664395">orchestrator</text>
+<text x="1265" y="710" class="owner" text-anchor="start" style="fill:#80601c">workload-lifecycle</text>
+<text x="505" y="997" class="small" text-anchor="start" style="fill:#526479">Host resources</text>
+<rect x="60" y="175" width="350" height="65" rx="12" fill="#fff" stroke="#97b9e7" stroke-width="1.6"/>
+<text x="235.0" y="206" class="name" text-anchor="middle">Browser UI</text>
+<rect x="60" y="300" width="350" height="65" rx="12" fill="#fff" stroke="#97b9e7" stroke-width="1.6"/>
+<text x="235.0" y="331" class="name" text-anchor="middle">Node HTTP server</text>
+<rect x="50" y="420" width="370" height="665" rx="12" fill="#e4efff" stroke="#729acd" stroke-width="1.6" stroke-dasharray="8 5"/>
+<text x="70" y="452" class="owner" text-anchor="start" style="fill:#1d4e91">Rust native addon</text>
+<text x="70" y="476" class="small" text-anchor="start" style="fill:#526479">Bindings · native state ownership</text>
+<rect x="60" y="495" width="350" height="100" rx="12" fill="#fff" stroke="#97b9e7" stroke-width="1.6"/>
+<text x="235.0" y="526" class="name" text-anchor="middle">Session / admission</text>
+<text x="235.0" y="552" class="body" text-anchor="middle">Selected apps · Start / Stop</text>
+<text x="235.0" y="575" class="body" text-anchor="middle">StateStore · PreparedReview</text>
+<rect x="60" y="660" width="350" height="100" rx="12" fill="#fff" stroke="#97b9e7" stroke-width="1.6"/>
+<text x="235.0" y="691" class="name" text-anchor="middle">Review preparation</text>
+<text x="235.0" y="717" class="body" text-anchor="middle">Profiles · selected app config</text>
+<text x="235.0" y="740" class="body" text-anchor="middle">Review + private PreparedReview</text>
+<rect x="60" y="955" width="350" height="100" rx="12" fill="#fff" stroke="#97b9e7" stroke-width="1.6"/>
+<text x="235.0" y="986" class="name" text-anchor="middle">Observation projection</text>
+<text x="235.0" y="1012" class="body" text-anchor="middle">Redacted workflow progress</text>
+<text x="235.0" y="1035" class="body" text-anchor="middle">CPU reader · shared Status</text>
+<rect x="510" y="175" width="660" height="90" rx="12" fill="#fff" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="840.0" y="206" class="name" text-anchor="middle">ComposeRun</text>
+<text x="840.0" y="232" class="body" text-anchor="middle">Projects · selected SystemAppsConfig · runtime budgets</text>
+<rect x="510" y="335" width="660" height="130" rx="12" fill="#fff" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="840.0" y="366" class="name" text-anchor="middle">ComposeRunner</text>
+<text x="840.0" y="392" class="body" text-anchor="middle">PreparedRun → preflight → launch groups</text>
+<text x="840.0" y="415" class="body" text-anchor="middle">RunSignals: ready / quiescing</text>
+<text x="840.0" y="438" class="body" text-anchor="middle">ComposeRunReport: execution · finalization · cleanup</text>
+<rect x="510" y="550" width="660" height="210" rx="12" fill="#dff2e8" stroke="#77ac96" stroke-width="1.6" stroke-dasharray="7 5"/>
+<text x="530" y="580" class="owner" text-anchor="start" style="fill:#17634d">Step implementations</text>
+<text x="840" y="610" class="body" text-anchor="middle">PrepareRun · launch · observe · quiesce</text>
+<text x="840" y="634" class="body" text-anchor="middle">FinalizeRun · remove · write report</text>
+<rect x="530" y="660" width="280" height="80" rx="12" fill="#fff" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="670.0" y="691" class="name" text-anchor="middle">App preparation</text>
+<text x="670.0" y="717" class="body" text-anchor="middle">PrepareSystemApps</text>
+<rect x="850" y="650" width="300" height="100" rx="12" fill="#fff" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="1000.0" y="681" class="body" text-anchor="middle">Compose child steps</text>
+<text x="1000.0" y="707" class="body" text-anchor="middle">Resolve · Start · Inspect</text>
+<text x="1000.0" y="730" class="body" text-anchor="middle">Quiesce · Remove</text>
+<rect x="850" y="825" width="320" height="65" rx="12" fill="#fff" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="1010.0" y="856" class="name" text-anchor="middle">DockerAdapter</text>
+<rect x="1270" y="185" width="350" height="90" rx="12" fill="#fff" stroke="#b5a0d1" stroke-width="1.6"/>
+<text x="1445.0" y="216" class="name" text-anchor="middle">Step&lt;Input, Output&gt;</text>
+<text x="1445.0" y="242" class="body" text-anchor="middle">Input.after(...) · StepDescriptor</text>
+<rect x="1270" y="335" width="350" height="130" rx="12" fill="#fff" stroke="#b5a0d1" stroke-width="1.6"/>
+<text x="1445.0" y="366" class="name" text-anchor="middle">LocalExecutor</text>
+<text x="1445.0" y="392" class="body" text-anchor="middle">Typed registration + invocation</text>
+<text x="1445.0" y="415" class="body" text-anchor="middle">Failure / cancellation events</text>
+<text x="1445.0" y="438" class="body" text-anchor="middle">Shared executor for child calls</text>
+<rect x="1270" y="510" width="350" height="65" rx="12" fill="#fff" stroke="#b5a0d1" stroke-width="1.6"/>
+<text x="1445.0" y="541" class="name" text-anchor="middle">Observer&lt;Event&gt;</text>
+<rect x="1270" y="750" width="350" height="130" rx="12" fill="#fff" stroke="#d6ba76" stroke-width="1.6"/>
+<text x="1445.0" y="781" class="name" text-anchor="middle">recorded_run::run</text>
+<text x="1445.0" y="807" class="body" text-anchor="middle">Phases hooks → Outcome</text>
+<text x="1445.0" y="830" class="body" text-anchor="middle">launch · ready · inspect</text>
+<text x="1445.0" y="853" class="body" text-anchor="middle">quiesce · finalize · remove · finish</text>
+<rect x="510" y="1010" width="320" height="80" rx="12" fill="#fff" stroke="#b4bfcc" stroke-width="1.6"/>
+<text x="670.0" y="1041" class="name" text-anchor="middle">Private run data</text>
+<text x="670.0" y="1067" class="body" text-anchor="middle">Manifests · telemetry · reports</text>
+<rect x="880" y="1010" width="740" height="80" rx="12" fill="#fff" stroke="#b4bfcc" stroke-width="1.6"/>
+<text x="1250.0" y="1041" class="name" text-anchor="middle">Docker Engine + Compose</text>
+<text x="1250.0" y="1067" class="body" text-anchor="middle">Selected system / first-party apps · workload containers</text>
+<path d="M235 240V300" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="253" y="278" class="label" text-anchor="start">HTTP / Protobuf</text>
+<path d="M390 365V495" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="377" y="398" class="label" text-anchor="end">N-API / Protobuf</text>
+<path d="M235 595V660" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="250" y="634" class="label" text-anchor="start">PrepareRequest</text>
+<path d="M410 530H450V220H510" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<path d="M510 430H470V577H410" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<path d="M410 748H460V820H510" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<path d="M840 265V335" class="edge" stroke="#16826c" marker-end="url(#g)"/>
+<text x="857" y="310" class="label" text-anchor="start">Run intent</text>
+<path d="M1170 375H1270" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<text x="1220" y="362" class="label" text-anchor="middle">run&lt;S&gt;</text>
+<path d="M1445 335V275" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<path d="M1270 430H1230V592H1170" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<text x="1240" y="494" class="label" text-anchor="start">invoke</text>
+<path d="M1170 450H1210V815H1270" class="edge" stroke="#16826c" marker-end="url(#g)" marker-start="url(#g)"/>
+<text x="1198" y="790" class="label" transform="rotate(-90 1198 790)">Phases / Outcome</text>
+<path d="M670 640V660" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<path d="M1000 640V650" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<path d="M1000 750V825" class="edge" stroke="#16826c" marker-end="url(#g)"/>
+<text x="1018" y="789" class="label" text-anchor="start">Adapter calls</text>
+<path d="M1445 465V510" class="edge" stroke="#7950b5" marker-end="url(#p)"/>
+<text x="1462" y="493" class="label" text-anchor="start">Event</text>
+<path d="M1620 542H1665V940H455V1004H410" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="1020" y="930" class="label" text-anchor="middle">Step events</text>
+<path d="M60 1005H45V333H60" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="22" y="910" class="small" style="fill:#526479" transform="rotate(-90 22 910)">Status / live Protobuf</text>
+<path d="M1010 890V1010" class="edge" stroke="#16826c" marker-end="url(#g)"/>
+<text x="1028" y="962" class="label" text-anchor="start">Compose CLI / Engine API</text>
+<path d="M510 1040H410" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<text x="460" y="1027" class="label" text-anchor="middle">CPU files</text>
+<rect x="510" y="775" width="320" height="115" rx="12" fill="white" stroke="#8cc4ad" stroke-width="1.6"/>
+<text x="670" y="804" class="name" text-anchor="middle">Shared input resolution</text>
+<text x="670" y="833" class="body" text-anchor="middle">preview() / resolve_with()</text>
+<text x="670" y="858" class="body" text-anchor="middle">Groups + ReviewReceipt</text>
+<path d="M570 760V775" class="edge" stroke="#16826c" marker-end="url(#g)"/>
+<path d="M790 775V740" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+<path d="M830 857H850" class="edge" stroke="#2563eb" marker-end="url(#b)"/>
+</svg>

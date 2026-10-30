@@ -1,0 +1,24 @@
+import { execFileSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const output = resolve(process.argv[2] ?? `${root}/console/package`);
+if (existsSync(output)) throw new Error(`Output already exists: ${output}`);
+const run = (command: string, args: string[], cwd: string) => execFileSync(command, args, { cwd, stdio: 'inherit' });
+run('npm', ['ci'], `${root}/console/server`);
+run('npm', ['run', 'build:native'], `${root}/console/server`);
+run('npm', ['run', 'build'], `${root}/console/server`);
+run('npm', ['ci'], `${root}/console/frontend`);
+run('npm', ['run', 'build'], `${root}/console/frontend`);
+mkdirSync(`${output}/server`, { recursive: true });
+cpSync(`${root}/console/server/dist`, `${output}/server/dist`, { recursive: true });
+cpSync(`${root}/console/server/build`, `${output}/server/build`, { recursive: true });
+cpSync(`${root}/console/server/package.json`, `${output}/server/package.json`);
+cpSync(`${root}/console/server/package-lock.json`, `${output}/server/package-lock.json`);
+run('npm', ['ci', '--omit=dev', '--ignore-scripts'], `${output}/server`);
+cpSync(`${root}/console/frontend/dist`, `${output}/frontend`, { recursive: true });
+cpSync(`${root}/console/console.pbtxt.example`, `${output}/console.pbtxt.example`);
+writeFileSync(`${output}/README.md`, readFileSync(`${root}/console/README.md`));
+console.log(`Console package: ${output}`);
