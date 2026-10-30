@@ -2,8 +2,7 @@
 
 # System Monitor through Supervisor
 
-Created: 2026-10-29. Status: implementation complete; milestones 1–3 validated. Milestone 4 native
-ARM64 Supervisor qualification is blocked by missing worker runtime provisioning.
+Created: 2026-10-29. Status: complete. All four milestones validated on x86_64 and ARM64.
 
 Run the existing `apps/system-monitor` binary through a first-party Supervisor
 template. Exercise preparation, readiness, observation, cooperative stop,
@@ -232,7 +231,7 @@ only test executables/helpers received capability elevation and memlock limits.
 - [x] Run final-revision local CI: boundaries, formatting, default/all-feature
   Clippy and workspace tests, storage without defaults, examples/binaries and
   snapshot synchronization, with CI profile and locked dependencies.
-- [ ] Before PR readiness, run final-revision ARM64 worker CI and the native
+- [x] Before PR readiness, run final-revision ARM64 worker CI and the native
   Supervisor/System Monitor scenario. Report skipped/blocked checks separately.
 
 Evidence (2026-10-29): both final-source examples passed with a freshly built
@@ -265,25 +264,47 @@ Artifacts: `/tmp/supervisor-compose-parity-final-1029`,
 | All-feature workspace examples/binaries | pass |
 | Snapshot synchronization tests | pass |
 
-All Cargo checks used `--profile ci` and `--locked`, built unprivileged. Existing
-private clang/libclang/libelf tools supplied missing system development packages.
+All Cargo checks used `--profile ci` and `--locked`, built unprivileged. The
+initial run used existing private compiler libraries. Following explicit approval,
+clang-18, libclang-18-dev, llvm-18-dev and libelf-dev were installed system-wide
+on x86_64; all four were already installed on ARM64. The system-toolchain rerun
+passed all checks except an all-feature link attempt that exhausted disk space.
+That attempt is retained in `/tmp/supervisor-ci-tests-all-enospc.log`; the isolated
+retry used a fresh generated CI cache and two build jobs and passed. Both
+attempts are recorded in `/tmp/supervisor-ci-tests-all-retry.json`; the successful
+run is `/tmp/supervisor-ci-tests-all.log`. No source changes were needed.
 Per-check logs: `/tmp/supervisor-ci-*.log`; results:
 `/tmp/supervisor-ci-results.json`. Capability suites are reported separately above.
 
-ARM64 final-source Pueue job **492** completed **Success**, snapshot
-`/home/doramcap-ci/jobs/7e1aca83effc46b9ae346e35a2c55096`. It passed default/all-feature
-Clippy/tests/builds, native accounting/allocation checks and Dora recording checks.
-Log: `/tmp/supervisor-arm64-final.json`. Earlier jobs 489–491 precede final source.
+ARM64 final-source Pueue job **494** completed **Success**, snapshot
+`/home/doramcap-ci/jobs/34a4e7395bb9470b92b79a3c41583c36`.
+It passed default/all-feature Clippy/tests/builds, native accounting/allocation
+checks, Dora recording checks, and **both native Supervisor tests** (20.70 s,
+2 passed, 0 failed, 0 ignored). Supervisor was not skipped. Logs:
+`/tmp/supervisor-arm64-qualified.json`, `/tmp/supervisor-arm64-qualified-submit.log`.
 
-**Blocked:** native ARM64 Supervisor/System Monitor qualification printed
-`SKIP Supervisor native scenario: provision supervisord and supervisorctl`.
-The runtime is absent; installation approval/provisioning remains outstanding.
-The CI account's sudo permission covers only the native test launcher, so system
-package provisioning requires worker administration. No credentials were copied.
-Automatic installation and persistent permission changes were not performed.
+Native ARM64 artifacts: `/tmp/supervisor-tests-316498-1793319632528792500`
+(failure/cancellation cases) and `/tmp/supervisor-tests-316498-1793319636736019260`
+(concurrent BPF recordings). This confirms readable MCAPs, cooperative and forced
+stop outcomes, descendant cleanup, daemon reaping and abandoned-run admission
+on ARM64 as well as x86_64.
 
-**Status:** implementation and local parity complete; ARM64 native Supervisor
-validation remains open. This milestone is not marked complete.
+Runtime provisioning: Supervisor 4.2.5 is installed at
+`/home/doramcap-ci/.local/share/doramcap-supervisor` with Ubuntu's setuptools
+68.1.2 wheel. The ARM64 administrator account requires a worker-local sudo password;
+root SSH is unavailable. A private runtime completed qualification without copying
+credentials or changing sudo policy. Native test discovery prefers system binaries,
+then this provisioned environment under the monitor executable owner's home.
+Application configuration still uses explicit protobuf executable paths.
+
+The system-toolchain x86_64 native rerun also passed (2 tests, 25.62 s).
+Log: `/tmp/supervisor-native-system-final.log`; concurrent recording artifacts:
+`/tmp/supervisor-tests-626512-1793319980588030029`.
+
+**Status:** complete. Full final-source local CI, backend parity, x86_64 native
+qualification and ARM64 native qualification all passed. No required qualification
+checks remain blocked or skipped. Capability tests skipped by ordinary Cargo runs
+were executed separately by their native harnesses.
 
 ## MVP completion
 

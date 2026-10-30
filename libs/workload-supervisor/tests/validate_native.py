@@ -3,15 +3,25 @@
 import argparse
 import os
 from pathlib import Path
+import pwd
 import shutil
 import subprocess
+
+
+def runtime_executable(name, monitor):
+    system = shutil.which(name)
+    if system:
+        return system
+    owner_home = Path(pwd.getpwuid(monitor.stat().st_uid).pw_dir)
+    private = owner_home / '.local/share/doramcap-supervisor/bin' / name
+    return str(private) if private.is_file() and os.access(private, os.X_OK) else None
 
 
 def validate(monitor):
     binary_dir = monitor.resolve().parent
     fixture = binary_dir / 'supervisor-test-fixture'
-    supervisord = shutil.which('supervisord')
-    supervisorctl = shutil.which('supervisorctl')
+    supervisord = runtime_executable('supervisord', monitor)
+    supervisorctl = runtime_executable('supervisorctl', monitor)
     if not supervisord or not supervisorctl:
         print('SKIP Supervisor native scenario: provision supervisord and supervisorctl', flush=True)
         return False
