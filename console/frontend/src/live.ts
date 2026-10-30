@@ -1,6 +1,6 @@
 import { doramcap } from './generated/console';
 import type { Snapshot } from './api';
-import { isLifecycleStep } from './workflow';
+import { evictionIndex } from './workflow';
 const wire = doramcap.console.v1;
 const LIMIT = 4 * 1024 * 1024;
 export const decodeStatus = (bytes: Uint8Array) => wire.Status.toObject(wire.Status.decode(bytes), { longs: String, enums: String, defaults: true }) as Snapshot;
@@ -36,7 +36,7 @@ export function mergeLive(previous: Snapshot | null, next: Snapshot): Snapshot {
     if (index >= 0) steps[index] = step;
     else {
       if (steps.length === 512) {
-        const victim = steps.findIndex(row => row.state !== 'STARTED' && !isLifecycleStep(row));
+        const victim = evictionIndex(steps, step);
         if (victim < 0) continue;
         steps.splice(victim, 1);
       }

@@ -1,10 +1,10 @@
 import type { Step } from './api';
 import { StatusLabel } from './ui/StatusLabel';
-import { elapsedDuration, isLifecycleStep, stepName } from './workflow';
+import { elapsedDuration, summarySteps, stepName } from './workflow';
 
 const labels: Record<string, string> = { STARTED: 'Running', SUCCEEDED: 'Completed', FAILED: 'Failed', CANCELLED: 'Cancelled', PANICKED: 'Panicked' };
 export function RunSteps({ steps, now = 0, emptyMessage = 'Waiting for workflow steps.' }: { steps: Step[]; now?: number; emptyMessage?: string }) {
-  const stages = steps.filter(isLifecycleStep);
+  const stages = summarySteps(steps);
   return <div className="table-wrap"><table><thead><tr><th>Step</th><th>Status</th><th className="duration">Elapsed</th></tr></thead><tbody>{stages.map(step => {
     const label = labels[step.state] ?? 'Unknown';
     const tone = step.state === 'STARTED' ? 'active' : step.state === 'SUCCEEDED' ? 'success' : ['FAILED', 'PANICKED'].includes(step.state) ? 'failure' : 'neutral';

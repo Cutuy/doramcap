@@ -95,9 +95,9 @@ Validation when implemented: complete selected participant graph, one experiment
 
 Console previously inferred lifecycle retention, labels and observation status from Rust type names. Renaming a type or adding a workflow could silently change UI behavior.
 
-Step implementations now declare stable ID, display name, retention and kind using generated protobuf StepDescriptor types. LocalExecutor validates declared metadata before invocation; telemetry carries it to native retention and frontend grouping/presentation. Both name lookup tables are removed. Existing generic steps can omit metadata; older captures display diagnostic names without inferred lifecycle classification.
+Step implementations declare only stable ID and display name using generated protobuf StepDescriptor types. LocalExecutor validates identity/label before invocation; telemetry transports them to Console. Console owns bounded-history eviction and latest-per-top-level-step summaries, using IDs and parent links. The descriptor has no retention or kind fields. Both name lookup tables are removed; older captures use diagnostic-name fallback.
 
-Validation: protobuf transport survives a diagnostic type name change; duplicate/incomplete metadata rejects before factories/events; legacy Invocation JSON decodes. Native retention and frontend tests exercise stable metadata, including an unfamiliar workflow and renamed implementation. The demo consumer compiles.
+Validation: protobuf transport survives a diagnostic type name change; duplicate/incomplete metadata rejects before factories/events; legacy Invocation JSON decodes. Native buffering and frontend tests cover distinct top-level identities, repeated checks, fully unique completed histories, active-row overflow and renamed implementations. The demo consumer compiles.
 
 ## Coverage and continuation
 
@@ -113,10 +113,10 @@ Validation: protobuf transport survives a diagnostic type name change; duplicate
 
 Executed on x86 Linux using locked dependencies and profile ci:
 
-- `cargo test --profile ci --locked -p console-native -p workload-docker -p orchestrator`: 76 passed; 28 capability/runtime cases ignored.
-- Frontend test suite: 30 passed; generated TypeScript/Vite build passed.
+- Descriptor simplification: focused orchestrator/workflow-protocol/workload-docker suites passed 47 tests; Console native passed 34. Across both runs, 28 capability/runtime cases remain ignored.
+- Frontend test suite: 31 passed; generated TypeScript/Vite build passed.
 - Server test suite: 9 passed; generated TypeScript/native build passed.
 - Focused Clippy for those three Rust packages and all targets passed with warnings denied; orchestrator-demo all-target check passed.
-- Two existing Docker review-only tests passed using the compiled test executable with sudo: selected profiles/environment/receipt relocation, and profile-only prompting. Unprivileged attempts failed on socket access. No full CI, ARM64, Compose launches or cleanup/capability qualification in this pass.
+- Earlier explicit-identity validation: two existing Docker review-only tests passed using the compiled test executable with sudo: selected profiles/environment/receipt relocation, and profile-only prompting. Unprivileged attempts failed on socket access. No full CI, ARM64, Compose launches or cleanup/capability qualification in this pass.
 
 Next: introduce the next concrete app before designing catalog recipes, capabilities or dependency-selection policy. The shared resolution/receipt and observation contracts are ready for that work. Live app addition, arbitrary plugins and a new scheduler remain deferred.

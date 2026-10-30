@@ -3,7 +3,7 @@ import type { doramcap } from './generated/console';
 export interface Service { name: string; imageId: string }
 export interface SystemApp { id: string; label: string; selected: boolean }
 export interface Review { preparedId: string; runId: string; availableProfiles: string[]; selectedProfiles: string[]; services: Service[]; warnings: string[]; systemApps: SystemApp[] }
-export interface StepDescriptor { id: string; displayName: string; retention: string; kind: string }
+export interface StepDescriptor { id: string; displayName: string }
 export interface Step { descriptor?: StepDescriptor | null; session: string; executor: string; invocation: string; step: string; state: string; durationNs: string; elapsedNs?: string; parent?: string | null; dependencies?: string[]; sequence?: string; stepVersion?: number; error?: string | null }
 export interface Outcome { execution: string; writersStopped?: boolean | null; recordingFinalized?: boolean | null; boundaryClean?: boolean | null; eventStreamHealthy?: boolean | null }
 export interface RunMetric { elapsedNs: string; recordingBytes?: string | null; writeBytesPerSecond?: number | null; cpuPercent?: number | null; cpuCores: number }

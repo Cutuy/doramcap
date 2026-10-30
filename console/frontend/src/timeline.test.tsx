@@ -66,7 +66,7 @@ test('timeline rows follow recorded start time even when startup events arrive a
 
 test('stable descriptors keep one timeline row across implementation renames', () => {
   // Arrange
-  const descriptor = { id: 'custom.stage', displayName: 'Custom stage', retention: 'KEEP', kind: 'OPERATION' };
+  const descriptor = { id: 'custom.stage', displayName: 'Custom stage' };
   const steps = [step('1', 'old::Implementation', { descriptor }), step('2', 'new::RenamedImplementation', { descriptor })];
   // Act
   const model = timelineModel(steps);

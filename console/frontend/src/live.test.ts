@@ -21,9 +21,9 @@ test('binary framing survives split headers and bodies with precise u64 IDs', ()
   const oversized = new Uint8Array(4); new DataView(oversized.buffer).setUint32(0,4*1024*1024+1,true);
   assert.throws(()=>decoder.receive(oversized,()=>{}),/length/);
 });
-test('delta merging preserves lifecycle rows, replaces invocations, bounds metrics and resets runs', () => {
+test('delta merging preserves distinct top-level rows, replaces invocations, bounds metrics and resets runs', () => {
   // Arrange
-  let state = snapshot({steps:[{session:'s',executor:'local',invocation:'1',sequence:'1',step:'renamed::PreparationImpl',descriptor:{id:'compose.prepare',displayName:'Prepare project',retention:2,kind:1},state:2}],cpuSnapshots:[{sequence:'1'}]});
+  let state = snapshot({steps:[{session:'s',executor:'local',invocation:'1',sequence:'1',step:'renamed::PreparationImpl',descriptor:{id:'compose.prepare',displayName:'Prepare project'},state:2}],cpuSnapshots:[{sequence:'1'}]});
   // Act
   for(let i=2;i<1305;i++) state=mergeLive(state,snapshot({sequence:String(i),steps:[{session:'s',executor:'local',invocation:String(i),sequence:String(i),step:'module::ObserveProjects',state:2}],metrics:[{elapsedNs:String(i)}]}));
   // Assert

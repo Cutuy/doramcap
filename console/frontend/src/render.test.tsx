@@ -41,14 +41,16 @@ test('blocked cleanup preserves saved recording and disables new run', () => {
   assert.match(html, /disabled=""[^>]*>New run/);
 });
 
-test('workflow list excludes periodic checks and keeps lifecycle invocation identity', () => {
+test('workflow list summarizes latest top-level invocations and excludes children', () => {
   // Arrange
-  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'renamed::LaunchImpl', descriptor: { id: 'compose.launch', displayName: 'Start project', retention: 'KEEP', kind: 'OPERATION' }, state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
+  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'renamed::LaunchImpl', descriptor: { id: 'compose.launch', displayName: 'Start project' }, state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
   rows.push({ session: 's', executor: 'local', invocation: '3', step: 'module::ObserveProjects', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '300000000' });
+  rows.push({ ...rows[0], invocation: '4', parent: '3', step: 'module::InspectCompose', descriptor: null });
   // Act
   const html = renderToStaticMarkup(<RunSteps steps={rows} />);
   // Assert
-  assert.equal((html.match(/Start project/g) ?? []).length, 2);
-  assert.match(html, /9007199254740993/);
-  assert.doesNotMatch(html, /ObserveProjects/);
+  assert.equal((html.match(/Start project/g) ?? []).length, 1);
+  assert.match(html, /9007199254740994/);
+  assert.match(html, /ObserveProjects/);
+  assert.doesNotMatch(html, /InspectCompose/);
 });
