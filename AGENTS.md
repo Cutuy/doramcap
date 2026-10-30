@@ -48,6 +48,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
 - Document APIs primarily in docstrings/Rust doc comments. Keep docstrings to at most three lines; use named sections or bullet points when more detail is necessary. Follow Linux API manpage precision for behavior, parameters, return values, errors, ownership and concurrency as applicable. Keep API details beside the code; link to them from READMEs.
 - State what things do directly; avoid contrastive “A, not B” phrasing.
+- In SVGs and web apps, NEVER add footnotes such as “this is A, not B” or explanatory notes about caveats unless explicitly requested.
 - Architecture: SVGs with short labels showing components and exchanged artifacts.
 - Plans: use `component/docs/mmddyy-feature-name.md` with the creation date; keep updates in that file and supporting SVGs alongside it.
 - Plans: lead with an embedded architecture SVG. A short high-level plan may precede the detailed milestones.
