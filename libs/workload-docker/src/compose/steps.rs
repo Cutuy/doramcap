@@ -61,8 +61,6 @@ impl Step for InspectCompose {
         Some(orchestrator::StepDescriptor::new(
             "compose.inspect",
             "Inspect project",
-            orchestrator::ProgressRetention::Recent,
-            orchestrator::ProgressKind::Observation,
         ))
     }
     type Input = ResolvedComposeProject;

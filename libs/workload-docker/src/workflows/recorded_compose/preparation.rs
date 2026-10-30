@@ -64,8 +64,6 @@ impl Step for PrepareRun {
         Some(orchestrator::StepDescriptor::new(
             "compose.prepare",
             "Prepare project",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = ComposeRun;

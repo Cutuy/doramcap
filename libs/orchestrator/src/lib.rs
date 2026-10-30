@@ -19,7 +19,7 @@ pub use error::{Error, Result};
 pub use event::{Event, Invocation, Observer, State};
 pub use executor::{Input, LocalExecutor, Output};
 use serde::{Serialize, de::DeserializeOwned};
-pub use workflow_protocol::{ProgressKind, ProgressRetention, StepDescriptor};
+pub use workflow_protocol::StepDescriptor;
 
 /// One transient execution object, created by its registered factory for each invocation.
 ///

@@ -46,8 +46,6 @@ impl Step for FinalizeRun {
         Some(orchestrator::StepDescriptor::new(
             "compose.finalize",
             "Finalize recording",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = FinalizeInput;
@@ -169,8 +167,6 @@ impl Step for WriteRunReport {
         Some(orchestrator::StepDescriptor::new(
             "compose.report",
             "Write run report",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = ReportInput;

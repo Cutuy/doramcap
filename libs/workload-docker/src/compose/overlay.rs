@@ -125,8 +125,6 @@ impl Step for PrepareOverlays {
         Some(orchestrator::StepDescriptor::new(
             "compose.filesystem.prepare",
             "Prepare filesystem",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = PrepareInput;

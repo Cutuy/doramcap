@@ -1,6 +1,5 @@
 use orchestrator::{
-    Event, LocalExecutor, Observer, ProgressKind, ProgressRetention, Step, StepDescriptor,
-    telemetry::TelemetryObserver,
+    Event, LocalExecutor, Observer, Step, StepDescriptor, telemetry::TelemetryObserver,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -9,12 +8,7 @@ impl Step for RenamedImplementation {
     type Input = ();
     type Output = ();
     fn descriptor() -> Option<StepDescriptor> {
-        Some(StepDescriptor::new(
-            "example.prepare",
-            "Prepare example",
-            ProgressRetention::Keep,
-            ProgressKind::Operation,
-        ))
+        Some(StepDescriptor::new("example.prepare", "Prepare example"))
     }
     async fn run(&mut self, _: ()) -> orchestrator::Result<()> {
         Ok(())
@@ -36,12 +30,7 @@ impl Step for InvalidMetadata {
     type Input = ();
     type Output = ();
     fn descriptor() -> Option<StepDescriptor> {
-        Some(StepDescriptor::new(
-            "",
-            "Missing ID",
-            ProgressRetention::Keep,
-            ProgressKind::Operation,
-        ))
+        Some(StepDescriptor::new("", "Missing ID"))
     }
     async fn run(&mut self, _: ()) -> orchestrator::Result<()> {
         panic!("invalid metadata must fail before body")
@@ -68,7 +57,6 @@ async fn stable_metadata_survives_protobuf_independently_of_rust_type_names() {
         let descriptor = event.descriptor.unwrap();
         assert_eq!(descriptor.id, "example.prepare");
         assert_eq!(descriptor.display_name, "Prepare example");
-        assert_eq!(descriptor.retention, ProgressRetention::Keep as i32);
     }
 }
 

@@ -185,16 +185,6 @@ impl LocalExecutor {
             if descriptor.id.trim().is_empty()
                 || descriptor.display_name.trim().is_empty()
                 || !ids.insert(&descriptor.id)
-                || !matches!(
-                    workflow_protocol::ProgressRetention::try_from(descriptor.retention),
-                    Ok(workflow_protocol::ProgressRetention::Recent
-                        | workflow_protocol::ProgressRetention::Keep)
-                )
-                || !matches!(
-                    workflow_protocol::ProgressKind::try_from(descriptor.kind),
-                    Ok(workflow_protocol::ProgressKind::Operation
-                        | workflow_protocol::ProgressKind::Observation)
-                )
             {
                 return Err(Error::Configuration(format!(
                     "invalid or duplicate step descriptor: {}",

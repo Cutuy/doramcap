@@ -28,8 +28,6 @@ impl Step for LaunchProjects {
         Some(orchestrator::StepDescriptor::new(
             "compose.launch",
             "Start project",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = LaunchInput;
@@ -106,8 +104,6 @@ impl Step for ObserveProjects {
         Some(orchestrator::StepDescriptor::new(
             "compose.observe",
             "Observe projects",
-            orchestrator::ProgressRetention::Recent,
-            orchestrator::ProgressKind::Observation,
         ))
     }
     type Input = ObserveInput;
@@ -176,8 +172,6 @@ impl Step for QuiesceProjects {
         Some(orchestrator::StepDescriptor::new(
             "compose.quiesce",
             "Stop project",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = QuiesceInput;
@@ -259,8 +253,6 @@ impl Step for RemoveProjects {
         Some(orchestrator::StepDescriptor::new(
             "compose.remove",
             "Remove resources",
-            orchestrator::ProgressRetention::Keep,
-            orchestrator::ProgressKind::Operation,
         ))
     }
     type Input = RemoveInput;

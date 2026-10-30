@@ -21,18 +21,11 @@ pub fn encoded_len(event: &Event) -> usize {
 }
 
 impl StepDescriptor {
-    /// Describe a stable step identity and its workflow-owned presentation policy.
-    pub fn new(
-        id: &str,
-        display_name: &str,
-        retention: ProgressRetention,
-        kind: ProgressKind,
-    ) -> Self {
+    /// Describe a stable step identity and display label.
+    pub fn new(id: &str, display_name: &str) -> Self {
         Self {
             id: id.into(),
             display_name: display_name.into(),
-            retention: retention as i32,
-            kind: kind as i32,
         }
     }
 }
