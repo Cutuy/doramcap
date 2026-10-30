@@ -3,7 +3,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::{
     any::{Any, TypeId, type_name},
     cell::Cell,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     rc::Rc,
     time::Instant,
 };
@@ -90,6 +90,12 @@ impl<T> From<Output<T>> for Input<T> {
     }
 }
 
+struct Registration {
+    factory: Box<dyn Any>,
+    step: &'static str,
+    display_name: Option<&'static str>,
+}
+
 /// Execute registered steps as local coroutines.
 ///
 /// # Ownership and concurrency
@@ -106,7 +112,8 @@ impl<T> From<Output<T>> for Input<T> {
 /// unwind. Observer panics are counted and suppressed. Cancellation drops the step
 /// future; callers remain responsible for async cleanup. Calls are never retried.
 pub struct LocalExecutor {
-    factories: HashMap<TypeId, Box<dyn Any>>,
+    factories: HashMap<TypeId, Registration>,
+    registration_error: Option<String>,
     session: String,
     next_id: Cell<u64>,
     origin: Instant,
@@ -136,6 +143,7 @@ impl LocalExecutor {
     pub fn new(observer: impl Observer + 'static) -> Self {
         Self {
             factories: HashMap::new(),
+            registration_error: None,
             session: "local".into(),
             next_id: Cell::new(1),
             origin: Instant::now(),
@@ -168,11 +176,45 @@ impl LocalExecutor {
     ///
     /// # Behavior
     ///
-    /// The factory owns its captures and creates a fresh step for each validated
-    /// invocation. A missing factory fails before events; factory panics unwind.
+    /// The factory owns captures; registration captures static step identity and label.
+    /// Invalid/duplicate declared metadata fails before invocation; factory panics unwind.
     pub fn register<S: Step + 'static>(&mut self, factory: impl Fn() -> S + 'static) {
         let factory: Box<dyn Fn() -> S> = Box::new(factory);
-        self.factories.insert(TypeId::of::<S>(), Box::new(factory));
+        self.factories.insert(
+            TypeId::of::<S>(),
+            Registration {
+                factory: Box::new(factory),
+                step: S::ID.unwrap_or(type_name::<S>()),
+                display_name: S::DISPLAY_NAME,
+            },
+        );
+        self.registration_error = self.check_registrations();
+    }
+
+    /// Reject invalid registered names before invoking any step.
+    pub fn validate_steps(&self) -> Result<()> {
+        match &self.registration_error {
+            Some(error) => Err(Error::Configuration(error.clone())),
+            None => Ok(()),
+        }
+    }
+
+    fn check_registrations(&self) -> Option<String> {
+        let mut ids = HashSet::new();
+        for registration in self.factories.values() {
+            if registration.step.trim().is_empty()
+                || registration
+                    .display_name
+                    .is_some_and(|name| name.trim().is_empty())
+                || !ids.insert(registration.step)
+            {
+                return Some(format!(
+                    "invalid or duplicate step identity: {}",
+                    registration.step
+                ));
+            }
+        }
+        None
     }
 
     /// Number of observer callbacks that panicked. Check evidence coverage separately.
@@ -208,10 +250,14 @@ impl LocalExecutor {
         &self,
         input: impl Into<Input<S::Input>>,
     ) -> Result<Output<S::Output>> {
-        let factory = self
+        self.validate_steps()?;
+        let registration = self
             .factories
             .get(&TypeId::of::<S>())
-            .and_then(|entry| entry.downcast_ref::<Box<dyn Fn() -> S>>())
+            .ok_or(Error::UnregisteredStep(type_name::<S>()))?;
+        let factory = registration
+            .factory
+            .downcast_ref::<Box<dyn Fn() -> S>>()
             .ok_or(Error::UnregisteredStep(type_name::<S>()))?;
         let input = input.into();
         if input
@@ -230,7 +276,8 @@ impl LocalExecutor {
         let invocation = Invocation {
             session: self.session.clone(),
             id,
-            step: type_name::<S>().into(),
+            step: registration.step.into(),
+            display_name: registration.display_name.map(str::to_owned),
             version: S::VERSION,
             executor: "local".into(),
             parent: ACTIVE

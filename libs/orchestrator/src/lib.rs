@@ -37,8 +37,14 @@ pub trait Step {
     type Output: Serialize + DeserializeOwned;
 
     /// Caller-declared telemetry revision; currently not used for decoding, dispatch,
-    /// or compatibility checks. The Rust type name supplies the step name.
+    /// or compatibility checks.
     const VERSION: u32 = 1;
+
+    /// Stable step identity; None uses the Rust type name.
+    const ID: Option<&'static str> = None;
+
+    /// Optional display label, captured once at registration.
+    const DISPLAY_NAME: Option<&'static str> = None;
 
     /// Perform one invocation using injected fields and owned inputs.
     async fn run(&mut self, input: Self::Input) -> Result<Self::Output>;

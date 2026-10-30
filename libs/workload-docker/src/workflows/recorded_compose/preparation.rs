@@ -58,6 +58,8 @@ pub struct PrepareRun {
     pub adapter: Rc<DockerAdapter>,
 }
 impl Step for PrepareRun {
+    const ID: Option<&'static str> = Some("compose.prepare");
+    const DISPLAY_NAME: Option<&'static str> = Some("Prepare project");
     type Input = ComposeRun;
     type Output = PreparedRun;
     async fn run(&mut self, spec: ComposeRun) -> orchestrator::Result<PreparedRun> {

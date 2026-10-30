@@ -8,8 +8,11 @@ pub struct Invocation {
     pub session: String,
     /// Local invocation number, starting at one.
     pub id: u64,
-    /// Derived from the step's Rust type name; renames change this name.
+    /// Stable step identity; defaults to the Rust type name for unnamed steps.
     pub step: String,
+    /// Optional display label supplied by the step registration.
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// Step input/output contract revision.
     pub version: u32,
     /// Executor identity. The implementation supports only `local`.

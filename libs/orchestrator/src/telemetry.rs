@@ -69,6 +69,7 @@ impl Observer for TelemetryObserver {
             session: event.invocation.session.clone(),
             invocation: event.invocation.id,
             step: event.invocation.step.clone(),
+            display_name: event.invocation.display_name.clone(),
             step_version: event.invocation.version,
             executor: event.invocation.executor.clone(),
             parent: event.invocation.parent,

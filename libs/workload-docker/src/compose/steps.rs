@@ -57,6 +57,8 @@ pub struct InspectCompose {
     pub diagnostics: Diagnostics,
 }
 impl Step for InspectCompose {
+    const ID: Option<&'static str> = Some("compose.inspect");
+    const DISPLAY_NAME: Option<&'static str> = Some("Inspect project");
     type Input = ResolvedComposeProject;
     type Output = ComposeProjectState;
     async fn run(&mut self, plan: ResolvedComposeProject) -> Result<ComposeProjectState> {

@@ -115,6 +115,7 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        executor.validate_steps().map_err(step_error)?;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
             .await

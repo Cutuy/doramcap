@@ -9,6 +9,7 @@ fn event(state: State) -> Event {
             session: "run".into(),
             id: 9_007_199_254_740_995,
             step: "Audit".into(),
+            display_name: None,
             version: 2,
             executor: "local".into(),
             parent: Some(7),

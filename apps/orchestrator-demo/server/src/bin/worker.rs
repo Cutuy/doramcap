@@ -312,6 +312,7 @@ mod tests {
                 session: "run".into(),
                 id: 1,
                 step: "step".into(),
+                display_name: None,
                 version: 1,
                 executor: "local".into(),
                 parent: None,
