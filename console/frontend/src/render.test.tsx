@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { App } from './App';
 import { Result } from './Result';
 import { RunSteps } from './RunSteps';
+import { ActivityTimeline } from './ActivityTimeline';
 import type { Snapshot } from './api';
 
 test('project screen has labeled controls and phase navigation', () => {
@@ -14,6 +15,17 @@ test('project screen has labeled controls and phase navigation', () => {
   assert.match(html, /aria-label="Run phases"/);
   assert.match(html, /for="directory"/);
   assert.match(html, /Continue/);
+});
+
+test('activity timeline retains repeated health-check invocations', () => {
+  // Arrange
+  const rows = ['9007199254740993', '9007199254740994'].map((invocation, index) => ({ session: 's', executor: 'local', invocation, step: 'module::ObserveProjects', state: 'SUCCEEDED', elapsedNs: String((index + 1) * 1_000_000_000), durationNs: '100000000' }));
+  // Act
+  const html = renderToStaticMarkup(<ActivityTimeline steps={rows} now={2} />);
+  // Assert
+  assert.match(html, /Health checks/);
+  assert.match(html, /invocation 9007199254740993/);
+  assert.match(html, /invocation 9007199254740994/);
 });
 
 test('blocked cleanup preserves saved recording and disables new run', () => {
@@ -28,13 +40,14 @@ test('blocked cleanup preserves saved recording and disables new run', () => {
   assert.match(html, /disabled=""[^>]*>New run/);
 });
 
-test('repeated workflow invocations remain separate and retain full identity', () => {
+test('workflow list excludes periodic checks and keeps lifecycle invocation identity', () => {
   // Arrange
-  const rows = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'module::ObserveProjects', state: 'SUCCEEDED', durationNs: '100000000' }));
+  const rows = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'module::LaunchProjects', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
+  rows.push({ session: 's', executor: 'local', invocation: '3', step: 'module::ObserveProjects', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '300000000' });
   // Act
   const html = renderToStaticMarkup(<RunSteps steps={rows} />);
   // Assert
-  assert.equal((html.match(/Observe application/g) ?? []).length, 2);
+  assert.equal((html.match(/Start project/g) ?? []).length, 2);
   assert.match(html, /9007199254740993/);
-  assert.match(html, /module::ObserveProjects/);
+  assert.doesNotMatch(html, /ObserveProjects/);
 });

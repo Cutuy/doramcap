@@ -12,7 +12,7 @@ Use local prebuilt images and the existing CPU monitor. First qualification uses
 a small Compose fixture; vEDGAR `singlepc` follows separately.
 
 Defer custom file/env pickers, individual service selection, history browsing,
-event replay, charts, workflow editing, builds/pulls and automatic crash recovery.
+event replay, general-purpose charts, workflow editing, builds/pulls and automatic crash recovery.
 Keep the existing filesystem policy and capture limitations; no new isolation or
 provenance subsystem belongs to this plan.
 
@@ -421,3 +421,27 @@ ARM64 worker job 500 passed on the completed implementation and expanded accepta
   Console acceptance harness separately; the worker suite does not run that new harness.
 
 Acceptance evidence is recorded beside each milestone above; unchecked items remain incomplete.
+
+## M6 — Workflow stages and live activity timeline
+
+The requested timeline uses existing workflow telemetry, following the activity demo's moving SVG view. It does not add event replay or a new telemetry source.
+
+**Work items**
+
+- [x] Show top-level Compose lifecycle steps with status and elapsed duration; omit periodic checks from this list.
+- [x] Show a moving, bounded timeline of workflow events, including health checks, with pause and time-window controls.
+- [x] Retain lifecycle rows within the existing bounded reducer as old periodic events are evicted; preserve loss accounting and full invocation IDs.
+
+**Validation**
+
+Evidence (2026-10-29): the nine frontend tests and production build passed, and five native reducer tests passed, including 2,000 observations with lifecycle retention and exact eviction accounting. Chromium checks at 1200 px and 390 px verified the stage list excludes periodic checks, the timeline moves and pauses, the running duration advances, and telemetry loss remains visible.
+
+The earlier interactive demo run is blocked with cleanup unverified; its recording was saved. Real-Docker acceptance for this change is pending resolution of that run, so no second run is started behind the block. ARM64 preliminary job 502 passed.
+
+The updated package passed its startup smoke test and was installed for the interactive demo. Restart restored the same blocked run with its CPU recording and report available.
+
+Local default-feature workspace tests, storage without default features, both Clippy variants, formatting, boundaries, snapshot synchronization and the clean all-feature examples/binaries build passed. The first all-feature workspace attempt ran out of disk space while linking an example; the lease's disposable build artifacts were removed and the clean retry passed. Server tests and the packaged startup smoke test also passed. Workspace-ignored capability and CUDA tests were not run by those commands.
+
+- [x] Test stage filtering, 64-bit timestamp arithmetic, moving/paused timeline, loss display and bounded lifecycle retention.
+- [x] Check the run view in Chromium at desktop and narrow widths; run frontend tests/build and Rust reducer tests.
+- [ ] Run applicable local CI, final-source ARM64 validation and the separate real-Docker Console acceptance harness; record failures and skipped checks.

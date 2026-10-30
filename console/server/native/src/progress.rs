@@ -4,6 +4,23 @@ use workflow_protocol::{Event, event::State};
 
 const LIMIT: usize = 512;
 
+// Keep the finite top-level Compose lifecycle visible as periodic checks age out.
+fn lifecycle_step(event: &Event) -> bool {
+    event.parent.is_none()
+        && matches!(
+            event.step.rsplit("::").next(),
+            Some(
+                "PrepareRun"
+                    | "PrepareOverlays"
+                    | "LaunchProjects"
+                    | "QuiesceProjects"
+                    | "FinalizeRun"
+                    | "RemoveProjects"
+                    | "WriteRunReport"
+            )
+        )
+}
+
 /// Current invocation rows and independent indicators of missing history.
 #[derive(Default)]
 pub struct Progress {
@@ -49,7 +66,7 @@ impl Progress {
             if let Some(index) = self
                 .rows
                 .iter()
-                .position(|row| row.state != State::Started as i32)
+                .position(|row| row.state != State::Started as i32 && !lifecycle_step(row))
             {
                 self.rows.remove(index);
                 self.truncated = self.truncated.saturating_add(1);
@@ -99,6 +116,29 @@ mod tests {
         assert_eq!(progress.rows().len(), 512);
         assert_eq!(progress.truncated, 9_488);
         assert_eq!(progress.overflow, 0);
+        assert!(!progress.incomplete());
+    }
+    #[test]
+    fn lifecycle_rows_survive_periodic_telemetry_eviction() {
+        // Arrange
+        let mut progress = Progress::default();
+        let mut lifecycle = event(1, 1, State::Succeeded);
+        lifecycle.step = "workload_docker::workflow::PrepareRun".into();
+        progress.apply(lifecycle);
+        // Act
+        for id in 2..=2_001 {
+            let mut check = event(id, id, State::Succeeded);
+            check.step = "workload_docker::workflow::ObserveProjects".into();
+            progress.apply(check);
+        }
+        // Assert
+        assert_eq!(progress.rows().len(), 512);
+        assert_eq!(progress.truncated, 1_489);
+        assert_eq!(
+            progress.rows()[0].step,
+            "workload_docker::workflow::PrepareRun"
+        );
+        assert_eq!(progress.rows().last().unwrap().invocation, 2_001);
         assert!(!progress.incomplete());
     }
     #[test]
