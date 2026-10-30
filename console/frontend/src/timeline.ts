@@ -4,7 +4,7 @@ import { stepTimes, stepKey, stepName } from './workflow';
 export const invocationKey = (step: Step) => JSON.stringify([step.session, step.executor, step.invocation]);
 export interface Flow { source: Step; target: Step; kind: 'parent' | 'dependency'; from: number; to: number }
 
-/** Group by stable descriptor identity; resolve explicit executor-local relationships. */
+/** Group by stable step identity; resolve explicit executor-local relationships. */
 export function timelineModel(steps: Step[]) {
   const firstStart = new Map<string, number>();
   for (const step of steps) {

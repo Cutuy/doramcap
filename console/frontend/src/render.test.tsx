@@ -43,9 +43,9 @@ test('blocked cleanup preserves saved recording and disables new run', () => {
 
 test('workflow list summarizes latest top-level invocations and excludes children', () => {
   // Arrange
-  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'renamed::LaunchImpl', descriptor: { id: 'compose.launch', displayName: 'Start project' }, state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
+  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'compose.launch', displayName: 'Start project', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
   rows.push({ session: 's', executor: 'local', invocation: '3', step: 'module::ObserveProjects', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '300000000' });
-  rows.push({ ...rows[0], invocation: '4', parent: '3', step: 'module::InspectCompose', descriptor: null });
+  rows.push({ ...rows[0], invocation: '4', parent: '3', step: 'module::InspectCompose', displayName: null });
   // Act
   const html = renderToStaticMarkup(<RunSteps steps={rows} />);
   // Assert

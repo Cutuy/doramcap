@@ -1,9 +1,9 @@
 import type { Step } from './api';
 
-/** Older captures without descriptors retain a diagnostic display fallback. */
-export const shortStep = (step: Step) => step.descriptor?.displayName || step.step.split('::').at(-1) || step.step;
+/** Captures without a label use their recorded step name. */
+export const shortStep = (step: Step) => step.displayName || step.step.split('::').at(-1) || step.step;
 export const stepName = shortStep;
-export const stepKey = (step: Step) => step.descriptor?.id || step.step;
+export const stepKey = (step: Step) => step.step;
 const summaryKey = (step: Step) => JSON.stringify([step.session, step.executor, stepKey(step)]);
 const sameSummaryStep = (left: Step, right: Step) => left.parent == null && right.parent == null && summaryKey(left) === summaryKey(right);
 

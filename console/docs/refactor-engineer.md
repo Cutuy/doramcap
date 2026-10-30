@@ -95,7 +95,7 @@ Validation when implemented: complete selected participant graph, one experiment
 
 Console previously inferred lifecycle retention, labels and observation status from Rust type names. Renaming a type or adding a workflow could silently change UI behavior.
 
-Step implementations declare only stable ID and display name using generated protobuf StepDescriptor types. LocalExecutor validates identity/label before invocation; telemetry transports them to Console. Console owns bounded-history eviction and latest-per-top-level-step summaries, using IDs and parent links. The descriptor has no retention or kind fields. Both name lookup tables are removed; older captures use diagnostic-name fallback.
+Step implementations declare static IDs and optional display labels. Invocation.step carries the identity once; display_name is a flat optional label. LocalExecutor validates names at registration and caches the result; telemetry transports the fields to Console. Console owns bounded-history eviction and latest-per-top-level-step summaries, using IDs and parent links. No StepDescriptor object or classification fields are used. Both name lookup tables are removed; older captures use diagnostic-name fallback.
 
 Validation: protobuf transport survives a diagnostic type name change; duplicate/incomplete metadata rejects before factories/events; legacy Invocation JSON decodes. Native buffering and frontend tests cover distinct top-level identities, repeated checks, fully unique completed histories, active-row overflow and renamed implementations. The demo consumer compiles.
 
@@ -113,7 +113,7 @@ Validation: protobuf transport survives a diagnostic type name change; duplicate
 
 Executed on x86 Linux using locked dependencies and profile ci:
 
-- Descriptor simplification: focused orchestrator/workflow-protocol/workload-docker suites passed 47 tests; Console native passed 34. Across both runs, 28 capability/runtime cases remain ignored.
+- Flat invocation fields: orchestrator passed 25 tests; Console native passed 34, with 11 runtime/capability cases ignored. Workload-docker and orchestrator-demo all-target checks passed. Docker runtime qualification was not rerun for this change.
 - Frontend test suite: 31 passed; generated TypeScript/Vite build passed.
 - Server test suite: 9 passed; generated TypeScript/native build passed.
 - Focused Clippy for those three Rust packages and all targets passed with warnings denied; orchestrator-demo all-target check passed.
