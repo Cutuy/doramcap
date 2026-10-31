@@ -640,10 +640,9 @@ async fn multi_project_lifecycle() {
     let request = spec(&root, format!("{prefix}-outsider"), &image);
     let project_label = format!("com.docker.compose.project=dc-{}-alpha", request.id);
     let outsider_name = format!("{prefix}-outsider-container");
-    let outsider_id = Rc::new(RefCell::new(String::new()));
-    let created = outsider_id.clone();
+    let (injected, notification) = tokio::sync::oneshot::channel();
     let outsider_image = image.clone();
-    let stop = async move {
+    let inject = async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let output = tokio::process::Command::new("docker")
             .args([
@@ -668,16 +667,22 @@ async fn multi_project_lifecycle() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        *created.borrow_mut() = String::from_utf8(output.stdout).unwrap().trim().into();
+        let id = String::from_utf8(output.stdout).unwrap().trim().to_owned();
+        let _ = injected.send(());
+        id
     };
     // Act
-    let report = manager
-        .run(request, stop, |_: &orchestrator::Event| {})
-        .await
-        .unwrap();
+    let run = manager.run(
+        request,
+        async {
+            let _ = notification.await;
+        },
+        |_: &orchestrator::Event| {},
+    );
+    let (report, id) = tokio::join!(run, inject);
+    let report = report.unwrap();
     // Assert: ambiguous ownership preserves stopped resources; the outsider remains and admission blocks.
     assert!(!report.boundary_clean && manager.blocked(), "{report:#?}");
-    let id = outsider_id.borrow().clone();
     assert!(!id.is_empty(), "outsider was not created: {report:#?}");
     let inspection = tokio::process::Command::new("docker")
         .args(["inspect", "--format", "{{.State.Running}}", &id])
