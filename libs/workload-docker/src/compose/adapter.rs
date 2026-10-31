@@ -265,6 +265,7 @@ impl DockerAdapter {
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
     pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+        // Validate identities and normalize Compose under the stable repository project name.
         validate_name(&input.run)?;
         validate_name(&input.project.key)?;
         let identity = tokio::fs::canonicalize(&input.project.directory).await?;
@@ -279,8 +280,7 @@ impl DockerAdapter {
         if !normalized.stderr.trim().is_empty() {
             diagnostics.push(normalized.stderr);
         }
-        // Explicit resource names escape Compose project namespacing. External
-        // resources are deliberately retained; internal resources must be scoped.
+        // Scope and label owned networks and volumes while retaining external resources.
         for kind in ["networks", "volumes"] {
             if let Some(resources) = model.get_mut(kind).and_then(Value::as_object_mut) {
                 for (key, resource) in resources {
@@ -323,6 +323,7 @@ impl DockerAdapter {
         if model_services.is_empty() {
             return Err(super::Error::EmptySelection);
         }
+        // Recognize one-shot services declared explicitly or through completion dependencies.
         let mut completed = project.completed_services.clone();
         for service in model_services.values() {
             if let Some(deps) = service["depends_on"].as_object() {
@@ -338,6 +339,7 @@ impl DockerAdapter {
                 "completed_services refers to an unselected service",
             ));
         }
+        // Pin local images and validate each service's mounts, replicas and container name.
         let mut services = BTreeMap::new();
         for (service_name, service) in model_services.iter_mut() {
             let image = service["image"].as_str().ok_or_else(|| {
@@ -401,6 +403,7 @@ impl DockerAdapter {
             if service.get("healthcheck").is_none() {
                 diagnostics.push(format!("{service_name}: process-level readiness only"));
             }
+            // Freeze execution policy and attach the run's ownership labels.
             let object = service
                 .as_object_mut()
                 .ok_or_else(|| invalid("invalid resolved service"))?;
@@ -449,6 +452,7 @@ impl DockerAdapter {
                 },
             );
         }
+        // Reject existing containers, networks and volumes before publishing the plan.
         let plan = ResolvedComposeProject {
             run: input.run,
             key: project.key.clone(),
@@ -467,14 +471,14 @@ impl DockerAdapter {
         {
             return Err(invalid("runtime project resources already exist"));
         }
-        // Compose's config renderer already escapes literal dollars for re-import.
-        // Preserve that representation; escaping again changes commands/environment.
+        // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;
         private_write(&plan.manifest, &bytes).await?;
         let plan = ResolvedComposeProject {
             sha256: digest(&bytes),
             ..plan
         };
+        // Validate the frozen manifest through Compose before returning it to the launcher.
         let mut check = Self::args(&plan);
         check.extend(["config".into(), "--quiet".into()]);
         compose(
@@ -485,6 +489,7 @@ impl DockerAdapter {
             Duration::from_secs(30),
         )
         .await?;
+        // Record source hashes, resolved settings and policy changes beside the manifest.
         private_write(
             &artifacts.join(format!("{}.resolution.json", project.key)),
             &serde_json::to_vec_pretty(

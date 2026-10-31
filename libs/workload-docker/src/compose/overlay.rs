@@ -27,6 +27,8 @@ use std::{
 use tokio::io::AsyncWriteExt;
 
 /// Disposition after all writers stop. Default reproduces persistent host output.
+/// Retaining results uses `WriteBack` to the configured host source.
+/// Prefer a per-experiment source directory for isolated retained results.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Disposition {
