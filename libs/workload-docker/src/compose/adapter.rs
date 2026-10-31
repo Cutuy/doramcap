@@ -18,7 +18,11 @@ pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
 pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
-type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
+enum StartupOutcome {
+    Running(tokio::task::JoinHandle<Result<(String, String)>>),
+    Finished(Result<(String, String)>),
+}
+type StartupCommand = tokio::sync::Mutex<Option<StartupOutcome>>;
 
 /// Shared local Docker connection used by Compose configuration and workflow steps.
 /// Clones share pending startup commands; callers serialize conflicting lifecycle operations.

@@ -231,9 +231,11 @@ impl ComposeExecution<'_> {
         }
         starting.insert(
             self.plan.name.clone(),
-            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
-                compose(&socket, &directory, &BTreeMap::new(), &args, budget).await
-            })))),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                super::StartupOutcome::Running(tokio::spawn(async move {
+                    compose(&socket, &directory, &BTreeMap::new(), &args, budget).await
+                })),
+            ))),
         );
         drop(starting);
         let (out, err) = self
@@ -256,15 +258,23 @@ impl ComposeExecution<'_> {
             return Ok(None);
         };
         let mut command = command.lock().await;
-        let Some(pending) = command.as_mut() else {
+        if command.is_none() {
             return Ok(None);
-        };
-        let result = pending.await;
-        command.take();
+        }
+        if let Some(super::StartupOutcome::Running(pending)) = command.as_mut() {
+            let result = pending
+                .await
+                .map_err(|e| invalid(format!("Compose startup task: {e}")))
+                .and_then(std::convert::identity);
+            // Retain completed output across cancellation while waiting to remove the entry.
+            *command = Some(super::StartupOutcome::Finished(result));
+        }
         self.adapter.starting.lock().await.remove(&self.plan.name);
-        result
-            .map_err(|e| invalid(format!("Compose startup task: {e}")))?
-            .map(Some)
+        match command.take() {
+            Some(super::StartupOutcome::Finished(result)) => result.map(Some),
+            None => Ok(None),
+            Some(super::StartupOutcome::Running(_)) => unreachable!(),
+        }
     }
     /// Execute a command in one owned service; cancellation terminates the CLI client.
     pub(crate) async fn exec(
