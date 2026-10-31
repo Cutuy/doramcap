@@ -14,6 +14,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         config.field_attribute(format!(".doramcap.compose.v1.{field}"), "#[serde(default)]");
     }
+    for field in ["RuntimeService.shm_size", "BindMount.read_only"] {
+        config.field_attribute(
+            format!(".doramcap.compose.v1.{field}"),
+            r#"#[serde(skip_serializing_if = "Option::is_none")]"#,
+        );
+    }
     config
         .btree_map([".doramcap.compose.v1"])
         .type_attribute(".doramcap.compose.v1", "#[derive(serde::Serialize, serde::Deserialize)]")
@@ -22,10 +28,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .type_attribute(".doramcap.dora.v1", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(default, deny_unknown_fields)]")
         .compile_protos(
-            &["proto/filesystem.proto", "proto/dora.proto", "proto/compose.proto"],
+            &["proto/filesystem.proto", "proto/dora.proto", "proto/compose.proto", "proto/compose_runtime.proto"],
             &["proto"],
         )?;
     println!("cargo:rerun-if-changed=proto/compose.proto");
+    println!("cargo:rerun-if-changed=proto/compose_runtime.proto");
     println!("cargo:rerun-if-changed=proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/dora.proto");
     Ok(())

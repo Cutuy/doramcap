@@ -6,13 +6,17 @@ impl ComposeProjectState {
     /// Returns `false` while readiness is incomplete; unexpected exits, image
     /// changes and restarts return errors with diagnostic context.
     pub fn ready(&self) -> Result<bool> {
-        for (name, service) in &self.plan.services {
+        let plan = self
+            .plan
+            .as_ref()
+            .ok_or_else(|| invalid("Compose state plan missing"))?;
+        for (name, service) in &plan.services {
             let containers: Vec<_> = self
                 .containers
                 .iter()
                 .filter(|c| c.service == *name)
                 .collect();
-            if containers.len() != service.replicas {
+            if containers.len() as u64 != service.replicas {
                 return Ok(false);
             }
             for container in containers {

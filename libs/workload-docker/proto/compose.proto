@@ -34,7 +34,7 @@ message ResolvedComposeProject {
   string run = 1;
   // Prepared project key.
   string key = 2;
-  // Generated Docker Compose project name, scoped to the artifact directory.
+  // Generated Docker Compose project name, stable for its repository/key.
   string name = 3;
   // Private resolved execution manifest path; can contain secrets.
   string manifest = 4;
@@ -157,18 +157,4 @@ message Shutdown {
   repeated Diagnostic diagnostics = 2;
   // All inspected owned containers are stopped; containers have not been removed.
   bool stopped = 3;
-}
-
-// An Engine resource carrying a doramcap run ownership label.
-message OwnedResource {
-  // Canonical private artifact directory recorded on owned Docker resources.
-  optional string artifacts = 1;
-  // Run identity from the ownership label.
-  string run = 2;
-  // Compose project label, when present.
-  optional string project = 3;
-  // Engine resource category: container, network, or volume.
-  string kind = 4;
-  // Docker resource ID or volume name.
-  string id = 5;
 }

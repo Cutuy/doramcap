@@ -15,7 +15,7 @@ fn plan(root: &Path, source: &Path) -> ResolvedComposeProject {
         run: "overlay-test".into(),
         key: "foreign".into(),
         name: "dc-overlay-test".into(),
-        manifest,
+        manifest: manifest.to_str().unwrap().into(),
         sha256: hex::encode(Sha256::digest(&bytes)),
         services: BTreeMap::new(),
         diagnostics: vec![],

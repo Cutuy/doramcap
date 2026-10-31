@@ -47,7 +47,12 @@ step!(
     adapter,
     input,
     adapter
-        .project(&input.plan)
+        .project(
+            input
+                .plan
+                .as_ref()
+                .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?
+        )
         .start(&input.services, input.readiness_seconds)
         .await,
     "Start one project; caller must clean the attempted plan on every failure path."
@@ -65,7 +70,12 @@ step!(
             ));
         }
         adapter
-            .project(&input.plan)
+            .project(
+                input
+                    .plan
+                    .as_ref()
+                    .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?,
+            )
             .stop(input.stop_seconds, input.allow_volume_deletion)
             .await
     },
@@ -103,7 +113,12 @@ step!(
     adapter,
     input,
     adapter
-        .project(&input.plan)
+        .project(
+            input
+                .plan
+                .as_ref()
+                .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?
+        )
         .quiesce(&input.services, input.stop_seconds)
         .await,
     "Stop writers while preserving containers and volumes for filesystem evidence."
@@ -121,7 +136,12 @@ step!(
             ));
         }
         adapter
-            .project(&input.plan)
+            .project(
+                input
+                    .plan
+                    .as_ref()
+                    .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?,
+            )
             .remove(input.allow_volume_deletion)
             .await
     },

@@ -31,8 +31,7 @@ impl ComposeExecution<'_> {
         args.extend(["config".into(), "--quiet".into()]);
         compose(
             &self.adapter.socket,
-            self.plan
-                .manifest
+            Path::new(&self.plan.manifest)
                 .parent()
                 .ok_or_else(|| invalid("manifest parent missing"))?,
             &BTreeMap::new(),
@@ -55,7 +54,9 @@ impl ComposeExecution<'_> {
             "--project-name".into(),
             self.plan.name.clone(),
             "-f".into(),
-            self.plan.manifest.to_string_lossy().into_owned(),
+            Path::new(&self.plan.manifest)
+                .to_string_lossy()
+                .into_owned(),
         ]
     }
     pub(super) async fn containers(&self) -> Result<Vec<bollard::models::ContainerSummary>> {
@@ -146,7 +147,7 @@ impl ComposeExecution<'_> {
             });
         }
         Ok(ComposeProjectState {
-            plan: self.plan.clone(),
+            plan: Some(self.plan.clone()),
             containers,
         })
     }
@@ -178,6 +179,8 @@ impl ComposeExecution<'_> {
             if !services.is_empty() {
                 selected
                     .plan
+                    .as_mut()
+                    .ok_or_else(|| invalid("Compose state plan missing"))?
                     .services
                     .retain(|name, _| services.contains(name));
             }
@@ -210,12 +213,15 @@ impl ComposeExecution<'_> {
         self.command(args, seconds).await
     }
     pub(super) async fn command(&self, args: Vec<String>, seconds: u64) -> Result<()> {
-        let log = self.plan.manifest.with_extension(format!(
+        let log = Path::new(&self.plan.manifest).with_extension(format!(
             "launch-{}.log",
             &digest(&serde_json::to_vec(&args)?)[..16]
         ));
         let socket = self.adapter.socket.clone();
-        let directory = self.plan.manifest.parent().unwrap().to_path_buf();
+        let directory = Path::new(&self.plan.manifest)
+            .parent()
+            .unwrap()
+            .to_path_buf();
         let budget = Duration::from_secs(seconds);
         let mut starting = self.adapter.starting.lock().await;
         if starting.contains_key(&self.plan.name) {
@@ -274,7 +280,7 @@ impl ComposeExecution<'_> {
         args.extend_from_slice(command);
         compose(
             &self.adapter.socket,
-            self.plan.manifest.parent().unwrap(),
+            Path::new(&self.plan.manifest).parent().unwrap(),
             &BTreeMap::new(),
             &args,
             timeout,
@@ -284,8 +290,13 @@ impl ComposeExecution<'_> {
     }
     // Share image, health and replica checks between endpoint routing and command execution.
     fn running_service(mut state: ComposeProjectState, service: &str) -> Result<Container> {
-        state.plan.services.retain(|name, _| name == service);
-        if state.plan.services.is_empty() || !state.ready()? {
+        let plan = state
+            .plan
+            .as_mut()
+            .ok_or_else(|| invalid("Compose state plan missing"))?;
+        plan.services.retain(|name, _| name == service);
+        let empty = plan.services.is_empty();
+        if empty || !state.ready()? {
             return Err(invalid("service is not ready"));
         }
         let mut containers = state
@@ -398,13 +409,12 @@ impl ComposeExecution<'_> {
     pub(crate) async fn quiesce(&self, services: &[String], seconds: u64) -> Result<Shutdown> {
         let mut result = Shutdown {
             project: self.plan.name.clone(),
-            diagnostics: Vec::new(),
-            stopped: false,
+            ..Default::default()
         };
         match self.finish_start().await {
             Ok(Some((out, err))) => {
                 if let Err(error) = private_write(
-                    &self.plan.manifest.with_extension("launch-interrupted.log"),
+                    &Path::new(&self.plan.manifest).with_extension("launch-interrupted.log"),
                     format!("{out}\n{err}").as_bytes(),
                 )
                 .await
@@ -441,7 +451,7 @@ impl ComposeExecution<'_> {
         if all_owned && self.verify_manifest().await.is_ok() {
             if let Err(e) = compose(
                 &self.adapter.socket,
-                self.plan.manifest.parent().unwrap(),
+                Path::new(&self.plan.manifest).parent().unwrap(),
                 &BTreeMap::new(),
                 &args,
                 Duration::from_secs(seconds.saturating_mul(before.len() as u64 + 1) + 10),
@@ -500,7 +510,7 @@ impl ComposeExecution<'_> {
                                 );
                             }
                             if let Err(e) = save_stopped_inspection(
-                                self.plan.manifest.parent().unwrap(),
+                                Path::new(&self.plan.manifest).parent().unwrap(),
                                 &self.plan.key,
                                 &id,
                                 &serde_json::to_vec_pretty(&stopped)?,
@@ -546,10 +556,7 @@ impl ComposeExecution<'_> {
         }
         let mut result = Cleanup {
             project: self.plan.name.clone(),
-            diagnostics: vec![],
-            remaining: vec![],
-            retained_volumes: vec![],
-            verified: false,
+            ..Default::default()
         };
         let mut experiment_owner = None;
         // Keep the stopped IPC owner until all other owned resources are removed.

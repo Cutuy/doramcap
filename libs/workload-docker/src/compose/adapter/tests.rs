@@ -9,7 +9,7 @@ use std::time::Duration;
 fn input_project(directory: &Path) -> ComposeProject {
     ComposeProject {
         key: "workload".into(),
-        directory: directory.into(),
+        directory: directory.to_str().unwrap().into(),
         files: vec!["compose.yaml".into()],
         env_files: vec![],
         environment: BTreeMap::new(),
@@ -68,7 +68,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
             .resolve(ResolveInput {
                 run: run.into(),
                 artifacts: "/nonexistent-artifacts".into(),
-                project,
+                project: Some(project),
             })
             .await;
         // Assert
@@ -92,9 +92,65 @@ fn digest_preserves_lowercase_sha256_encoding() {
     );
 }
 
+#[tokio::test]
+async fn absent_protobuf_plans_fail_before_engine_access() {
+    use crate::compose::{
+        QuiesceCompose, RemoveCompose, StartCompose, StartInput, StopCompose, StopInput,
+    };
+    use orchestrator::Step;
+    use std::{cell::RefCell, rc::Rc};
+
+    // Arrange: no Engine is available, and protobuf requests omit their required plan.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let adapter = Rc::new(adapter);
+    let diagnostics = Rc::new(RefCell::new(Vec::new()));
+
+    // Act
+    let errors = [
+        StartCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StartInput::default())
+        .await
+        .err(),
+        StopCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+        QuiesceCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+        RemoveCompose {
+            adapter,
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+    ];
+
+    // Assert: invalid requests retain typed diagnostics without attempting Docker operations.
+    assert!(errors.iter().all(Option::is_some));
+    let diagnostics = diagnostics.borrow();
+    assert_eq!(diagnostics.len(), 4);
+    assert!(diagnostics.iter().all(
+        |diagnostic| diagnostic.kind == "validation" && diagnostic.message.contains("missing")
+    ));
+}
+
 fn state() -> ComposeProjectState {
     ComposeProjectState {
-        plan: ResolvedComposeProject {
+        plan: Some(ResolvedComposeProject {
             run: "run".into(),
             key: "project".into(),
             name: "dc-run-project".into(),
@@ -110,7 +166,7 @@ fn state() -> ComposeProjectState {
             )]),
             diagnostics: vec![],
             remove_volumes: false,
-        },
+        }),
         containers: vec![Container {
             id: "id".into(),
             service: "worker".into(),
@@ -138,7 +194,14 @@ fn health_completion_and_image_identity_are_distinct() {
     state.containers[0].status = "exited".into();
     state.containers[0].exit_code = Some(0);
     assert!(state.ready().is_err());
-    state.plan.services.get_mut("worker").unwrap().completed = true;
+    state
+        .plan
+        .as_mut()
+        .unwrap()
+        .services
+        .get_mut("worker")
+        .unwrap()
+        .completed = true;
     assert!(state.ready().unwrap());
     // Act / Assert: unexpected image replacement must never count as ready.
     state.containers[0].image_id = "another-image".into();
@@ -148,7 +211,14 @@ fn health_completion_and_image_identity_are_distinct() {
 fn missing_replicas_never_count_as_ready() {
     // Arrange
     let mut state = state();
-    state.plan.services.get_mut("worker").unwrap().replicas = 2;
+    state
+        .plan
+        .as_mut()
+        .unwrap()
+        .services
+        .get_mut("worker")
+        .unwrap()
+        .replicas = 2;
     // Act / Assert
     assert!(!state.ready().unwrap());
 }
@@ -282,7 +352,7 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
     );
     let plan = ResolvedComposeProject {
         name: "run".into(),
-        ..state().plan
+        ..state().plan.unwrap()
     };
     let project = adapter.project(&plan);
     let mut cancelled = Box::pin(project.finish_start());

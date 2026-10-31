@@ -13,6 +13,7 @@ mod state;
 mod steps;
 pub use adapter::{ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
+pub(crate) use model::{BindMount, ResourceLimit, RuntimeService};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
     ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,

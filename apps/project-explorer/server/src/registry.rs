@@ -345,14 +345,14 @@ impl Registration {
         }
         Ok(ComposeProject {
             key: self.id.clone(),
-            directory: self.directory.clone(),
-            files: vec![self.compose_file.clone().into()],
-            env_files: vec![],
+            directory: self
+                .directory
+                .to_str()
+                .ok_or("registration path is not UTF-8")?
+                .into(),
+            files: vec![self.compose_file.clone()],
             environment,
-            profiles: vec![],
-            services: vec![],
-            completed_services: vec![],
-            remove_volumes: false,
+            ..Default::default()
         })
     }
 }

@@ -15,8 +15,8 @@ fn step_id<S: Step>() -> &'static str {
 fn project(root: &Path, key: &str) -> ComposeProject {
     ComposeProject {
         key: key.into(),
-        directory: root.into(),
-        files: vec![format!("{key}.json").into()],
+        directory: root.to_str().unwrap().into(),
+        files: vec![format!("{key}.json")],
         env_files: vec![],
         environment: BTreeMap::new(),
         profiles: vec![],
@@ -36,8 +36,8 @@ fn monitor(root: &Path, image: &str, artifacts: &Path) -> ComposeProject {
     }
     ComposeProject {
         key: "monitor".into(),
-        directory: root.into(),
-        files: vec![file],
+        directory: root.to_str().unwrap().into(),
+        files: vec![file.to_str().unwrap().into()],
         env_files: vec![],
         environment: BTreeMap::from([
             ("DORAMCAP_MONITOR_IMAGE".into(), image.into()),
@@ -555,7 +555,7 @@ async fn multi_project_lifecycle() {
         .run(StopInput {
             allow_volume_deletion: true,
             services: vec![],
-            plan: beta,
+            plan: Some(beta),
             stop_seconds: 3,
         })
         .await
@@ -956,7 +956,7 @@ async fn direct_session_lifecycle_and_prerun_reset() {
                 .run(StopInput {
                     allow_volume_deletion: false,
                     services: vec![],
-                    plan: plans[0].clone(),
+                    plan: Some(plans[0].clone()),
                     stop_seconds: 3,
                 })
                 .await

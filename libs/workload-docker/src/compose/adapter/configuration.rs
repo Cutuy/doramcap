@@ -8,7 +8,7 @@ use crate::compose::{
     error::{absent, engine, invalid},
 };
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 /// Rendered Compose configuration and the inputs used to produce it.
 pub(crate) struct NormalizedCompose {
@@ -28,12 +28,12 @@ impl ComposeConfiguration<'_> {
     /// Invalid settings, missing files or Compose failures return errors.
     pub(crate) async fn normalize(
         &self,
-        input: &ResolveInput,
+        run: &str,
+        project: &ComposeProject,
         name: &str,
     ) -> Result<NormalizedCompose> {
-        validate_name(&input.run)?;
-        validate_name(&input.project.key)?;
-        let project = &input.project;
+        validate_name(run)?;
+        validate_name(&project.key)?;
         let (directory, mut args, sources) = config_arguments(project, name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
@@ -70,12 +70,15 @@ impl ComposeConfiguration<'_> {
     pub(crate) async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
         // Validate identities and normalize Compose under the stable repository project name.
         validate_name(&input.run)?;
-        validate_name(&input.project.key)?;
-        let identity = tokio::fs::canonicalize(&input.project.directory).await?;
-        let name = project_name(&input.project.key, &identity);
-        let normalized = self.normalize(&input, &name).await?;
+        let project = input
+            .project
+            .as_ref()
+            .ok_or_else(|| invalid("Compose project missing"))?;
+        validate_name(&project.key)?;
+        let identity = tokio::fs::canonicalize(&project.directory).await?;
+        let name = project_name(&project.key, &identity);
+        let normalized = self.normalize(&input.run, project, &name).await?;
         let mut model = normalized.model;
-        let project = &input.project;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
@@ -178,7 +181,7 @@ impl ComposeConfiguration<'_> {
             let replicas = service["scale"]
                 .as_u64()
                 .or_else(|| service["deploy"]["replicas"].as_u64())
-                .unwrap_or(1) as usize;
+                .unwrap_or(1);
             if replicas == 0 {
                 return Err(invalid(format!(
                     "{service_name}: zero replicas is unsupported; deselect via profiles"
@@ -261,7 +264,10 @@ impl ComposeConfiguration<'_> {
             run: input.run,
             key: project.key.clone(),
             name,
-            manifest,
+            manifest: manifest
+                .to_str()
+                .ok_or_else(|| invalid("manifest path is not UTF-8"))?
+                .into(),
             sha256: String::new(),
             services,
             diagnostics,
@@ -276,7 +282,7 @@ impl ComposeConfiguration<'_> {
         }
         // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;
-        private_write(&plan.manifest, &bytes).await?;
+        private_write(Path::new(&plan.manifest), &bytes).await?;
         let plan = ResolvedComposeProject {
             sha256: digest(&bytes),
             ..plan

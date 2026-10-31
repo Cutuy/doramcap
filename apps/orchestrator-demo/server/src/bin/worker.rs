@@ -209,9 +209,16 @@ async fn recorded_demo(
     .await?;
     let collector = ComposeProject {
         key: "monitor".into(),
-        directory: workspace.clone(),
-        files: vec![monitor_file],
-        env_files: vec![],
+        directory: workspace
+            .to_str()
+            .ok_or("workspace path is not UTF-8")?
+            .into(),
+        files: vec![
+            monitor_file
+                .to_str()
+                .ok_or("Compose path is not UTF-8")?
+                .into(),
+        ],
         environment: BTreeMap::from([
             ("DORAMCAP_MONITOR_IMAGE".into(), monitor.into()),
             (
@@ -219,10 +226,8 @@ async fn recorded_demo(
                 artifacts.to_string_lossy().into_owned(),
             ),
         ]),
-        profiles: vec![],
-        services: vec![],
-        completed_services: vec![],
         remove_volumes: true,
+        ..Default::default()
     };
     Ok(runner
         .run(
@@ -233,14 +238,13 @@ async fn recorded_demo(
                 repository_root: repository.into(),
                 projects: vec![ComposeProject {
                     key: "demo".into(),
-                    directory: workspace,
-                    files: vec![file],
-                    env_files: vec![],
-                    environment: BTreeMap::new(),
-                    profiles: vec![],
-                    services: vec![],
-                    completed_services: vec![],
+                    directory: workspace
+                        .to_str()
+                        .ok_or("workspace path is not UTF-8")?
+                        .into(),
+                    files: vec![file.to_str().ok_or("Compose path is not UTF-8")?.into()],
                     remove_volumes: true,
+                    ..Default::default()
                 }],
                 system_apps: vec![collector],
                 dora: Default::default(),

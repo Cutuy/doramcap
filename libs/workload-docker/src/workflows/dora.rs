@@ -2,21 +2,50 @@
 use super::experiment::ExperimentOwner;
 use super::shared_dora::{COORDINATOR, DAEMON};
 use crate::compose::{error::invalid, *};
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/doramcap.dora.v1.rs"));
 
-pub(crate) fn services(runtime: &DoraRuntime) -> serde_json::Value {
-    let service = |args: Vec<String>| {
-        serde_json::json!({
-            "image":runtime.image, "network_mode":"host", "stop_signal":"SIGINT",
-            "ulimits":{"memlock":{"soft":runtime.memlock_bytes,"hard":runtime.memlock_bytes}},
-            "user":format!("{}:{}",runtime.participant_uid.unwrap(),runtime.participant_gid.unwrap()),
-            "working_dir":runtime.runtime_directory, "environment":{"HOME":runtime.runtime_directory,"DORA_DAEMON_LOCAL_LISTEN_PORT":runtime.daemon_port.to_string()},
-            "entrypoint":["/usr/local/bin/dora"], "command":args,
-            "volumes":[{"type":"bind","source":runtime.runtime_directory,"target":runtime.runtime_directory},
-                {"type":"bind","source":runtime.zenoh_overlay,"target":runtime.zenoh_overlay,"read_only":true}]
-        })
+/// Build typed Compose declarations for the owned coordinator and daemon.
+pub(crate) fn services(runtime: &DoraRuntime) -> BTreeMap<String, RuntimeService> {
+    let bind = |source: &str, read_only| BindMount {
+        r#type: "bind".into(),
+        source: source.into(),
+        target: source.into(),
+        read_only,
+    };
+    let service = |command| RuntimeService {
+        image: runtime.image.clone(),
+        network_mode: "host".into(),
+        stop_signal: "SIGINT".into(),
+        ulimits: BTreeMap::from([(
+            "memlock".into(),
+            ResourceLimit {
+                soft: runtime.memlock_bytes,
+                hard: runtime.memlock_bytes,
+            },
+        )]),
+        user: format!(
+            "{}:{}",
+            runtime.participant_uid.unwrap(),
+            runtime.participant_gid.unwrap()
+        ),
+        working_dir: runtime.runtime_directory.clone(),
+        environment: BTreeMap::from([
+            ("HOME".into(), runtime.runtime_directory.clone()),
+            (
+                "DORA_DAEMON_LOCAL_LISTEN_PORT".into(),
+                runtime.daemon_port.to_string(),
+            ),
+        ]),
+        entrypoint: vec!["/usr/local/bin/dora".into()],
+        command,
+        volumes: vec![
+            bind(&runtime.runtime_directory, None),
+            bind(&runtime.zenoh_overlay, Some(true)),
+        ],
+        ipc: "shareable".into(),
+        shm_size: None,
     };
     let mut daemon = service(vec![
         "daemon".into(),
@@ -27,8 +56,7 @@ pub(crate) fn services(runtime: &DoraRuntime) -> serde_json::Value {
         "--zenoh-config-overlay".into(),
         runtime.zenoh_overlay.clone(),
     ]);
-    daemon["ipc"] = "shareable".into();
-    daemon["shm_size"] = runtime.shm_bytes.into();
+    daemon.shm_size = Some(runtime.shm_bytes);
     let mut coordinator = service(vec![
         "coordinator".into(),
         "--interface".into(),
@@ -38,11 +66,11 @@ pub(crate) fn services(runtime: &DoraRuntime) -> serde_json::Value {
         "--store".into(),
         "memory".into(),
     ]);
-    coordinator["ipc"] = format!("service:{DAEMON}").into();
+    coordinator.ipc = format!("service:{DAEMON}");
     if !runtime.graph.is_empty() {
-        coordinator["volumes"].as_array_mut().unwrap().push(serde_json::json!({"type":"bind","source":runtime.graph,"target":runtime.graph,"read_only":true}));
+        coordinator.volumes.push(bind(&runtime.graph, Some(true)));
     }
-    serde_json::json!({COORDINATOR:coordinator,DAEMON:daemon})
+    BTreeMap::from([(COORDINATOR.into(), coordinator), (DAEMON.into(), daemon)])
 }
 
 impl ExperimentOwner {

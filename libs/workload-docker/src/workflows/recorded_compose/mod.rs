@@ -346,7 +346,7 @@ impl ComposePhases {
         graph: &orchestrator::Output<()>,
     ) -> orchestrator::Result<()> {
         let mut input = Input::new(StartInput {
-            plan: self.plan.clone(),
+            plan: Some(self.plan.clone()),
             services,
             readiness_seconds: self.spec.readiness_seconds,
         })
@@ -385,7 +385,12 @@ impl ComposePhases {
                 .run::<InspectCompose>(self.plan.clone())
                 .await?
                 .into_value();
-            state.plan.services.retain(|name, _| system.contains(name));
+            state
+                .plan
+                .as_mut()
+                .ok_or_else(|| orchestrator::Error::message("Compose state plan missing"))?
+                .services
+                .retain(|name, _| system.contains(name));
             if !state
                 .ready()
                 .map_err(|e| orchestrator::Error::message(e.to_string()))?
@@ -421,7 +426,7 @@ impl ComposePhases {
         let Ok(stopped) = self
             .executor
             .run::<QuiesceCompose>(StopInput {
-                plan: self.plan.clone(),
+                plan: Some(self.plan.clone()),
                 services: services.to_vec(),
                 allow_volume_deletion: false,
                 stop_seconds: self.spec.stop_seconds,
@@ -528,7 +533,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         let mut input = Input::new(StopInput {
             allow_volume_deletion: false,
             services: vec![],
-            plan: self.plan.clone(),
+            plan: Some(self.plan.clone()),
             stop_seconds: self.spec.stop_seconds,
         })
         .after(&self.prepared);
@@ -594,7 +599,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
                 Input::new(StopInput {
                     allow_volume_deletion: !finalized.value().preserve_volumes,
                     services: vec![],
-                    plan: self.plan.clone(),
+                    plan: Some(self.plan.clone()),
                     stop_seconds: self.spec.stop_seconds,
                 })
                 .after(self.shutdown.as_ref().ok_or("shutdown evidence absent")?)

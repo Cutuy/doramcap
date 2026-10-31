@@ -35,9 +35,7 @@ impl Error {
             operation: operation.into(),
             kind: "validation".into(),
             message: self.to_string(),
-            status: None,
-            stdout: None,
-            stderr: None,
+            ..Default::default()
         };
         match self {
             Self::Engine { operation, source } => {
