@@ -433,10 +433,6 @@ impl Registry {
     pub fn get(&self, id: &str) -> Option<&Registration> {
         self.apps.get(id)
     }
-    #[cfg(test)]
-    pub(crate) fn get_mut(&mut self, id: &str) -> Option<&mut Registration> {
-        self.apps.get_mut(id)
-    }
     /// Iterate registered applications in stable ID order.
     pub fn iter(&self) -> impl Iterator<Item = &Registration> {
         self.apps.values()

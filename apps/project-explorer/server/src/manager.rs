@@ -5,94 +5,11 @@ use crate::{
 };
 use std::{
     collections::BTreeMap,
-    io::Read,
     path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
 use workload_docker::compose::{DockerAdapter, OwnedResource};
-
-fn nested_run(run: &str) -> Option<&str> {
-    let (generation, suffix) = run.strip_prefix("gal-")?.split_once('-')?;
-    if generation.len() != 32
-        || !generation
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        || suffix.is_empty()
-        || suffix.len() > 3
-        || suffix.starts_with('0')
-        || !suffix.bytes().all(|b| b.is_ascii_digit())
-    {
-        return None;
-    }
-    Some(generation)
-}
-
-/// Attribute a nested resource only when its generation policy and anchor agree.
-fn nested_owner<'a>(
-    registry: &'a Registry,
-    data: &Path,
-    resource: &OwnedResource,
-) -> Option<&'a Registration> {
-    let generation = nested_run(&resource.run)?;
-    let root = crate::artifact_fs::root(data).ok()?;
-    let read = |path: &str| -> Option<Vec<u8>> {
-        let file = crate::artifact_fs::open(&root, path, false).ok()?;
-        let mut bytes = Vec::new();
-        file.take(2 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .ok()?;
-        (bytes.len() <= 2 * 1024 * 1024).then_some(bytes)
-    };
-    let mut owner = None;
-    for app in registry.iter().filter(|app| app.nested_runs) {
-        if !app.nested_projects.iter().any(|project| {
-            resource.project.as_deref()
-                == Some(format!("dc-{}-{}", resource.run, project.key).as_str())
-        }) {
-            continue;
-        }
-        let directory = format!("{}-{generation}", app.id);
-        let Some(policy) =
-            read(&format!("{directory}/metadata/nested-policy.json")).and_then(|bytes| {
-                serde_json::from_slice::<Vec<crate::registry::NestedProject>>(&bytes).ok()
-            })
-        else {
-            continue;
-        };
-        if policy != app.nested_projects {
-            continue;
-        }
-        let Some(anchor) = read(&format!(
-            "{directory}/private/recovery/{}.json",
-            resource.run
-        ))
-        .and_then(|bytes| {
-            serde_json::from_slice::<workload_docker::workflows::recovery::RecoveryAnchor>(&bytes)
-                .ok()
-        }) else {
-            continue;
-        };
-        if anchor.run != resource.run
-            || anchor.projects.len() != policy.len()
-            || anchor.projects.iter().zip(&policy).any(|(a, p)| {
-                a.key != p.key
-                    || a.remove_volumes != p.remove_volumes
-                    || a.resolution_sha256.len() != 64
-                    || !a
-                        .resolution_sha256
-                        .bytes()
-                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-            })
-        {
-            continue;
-        }
-        if owner.replace(app).is_some() {
-            return None;
-        }
-    }
-    owner
-}
 
 /// A registered application and its independent lifecycle coordinator.
 #[derive(Clone)]
@@ -107,7 +24,7 @@ pub enum Error {
     UnknownApp,
     ShuttingDown,
     Blocked(String),
-    Conflict { owner: String, resource: String },
+    Busy { owner: String },
 }
 
 /// The manager exposes server-owned registrations and per-app coordination.
@@ -167,18 +84,24 @@ impl Manager {
         let mut issues: BTreeMap<&str, Vec<String>> = BTreeMap::new();
         let mut ambiguous = Vec::new();
         for resource in resources {
-            let owner = if resource
-                .run
-                .strip_prefix("gal-")
-                .is_some_and(|value| value.as_bytes().get(32) == Some(&b'-'))
+            if let (Some(root), Some(artifacts)) = (data, resource.artifacts.as_deref())
+                && !artifacts.starts_with(root)
             {
-                data.and_then(|root| nested_owner(&registry, root, resource))
-            } else {
-                registry.iter().find(|app| {
-                    resource.project.as_deref()
-                        == Some(format!("dc-{}-{}", resource.run, app.id).as_str())
+                continue;
+            }
+            let owner = data.and_then(|root| {
+                resource.artifacts.as_ref().and_then(|artifacts| {
+                    registry.iter().find(|app| {
+                        resource
+                            .run
+                            .strip_prefix("gal-")
+                            .and_then(|id| id.get(..32))
+                            .is_some_and(|id| {
+                                artifacts.starts_with(root.join(format!("{}-{id}", app.id)))
+                            })
+                    })
                 })
-            };
+            });
             let description = format!("{}:{} (run {})", resource.kind, resource.id, resource.run);
             if let Some(app) = owner {
                 issues.entry(&app.id).or_default().push(description);
@@ -232,17 +155,13 @@ impl Manager {
         let mut accepted_at = now;
         loop {
             let admission = self.admission.lock().await;
+            if let Status::Blocked { error } = app.lifecycle.status().await {
+                return Err(Error::Blocked(error));
+            }
             for other in self.iter().filter(|other| other.registration.id != id) {
-                if let Some(resource) = app
-                    .registration
-                    .exclusive_resources
-                    .iter()
-                    .find(|resource| other.registration.exclusive_resources.contains(resource))
-                    && !matches!(other.lifecycle.status().await, Status::Stopped { .. })
-                {
-                    return Err(Error::Conflict {
+                if !matches!(other.lifecycle.status().await, Status::Stopped { .. }) {
+                    return Err(Error::Busy {
                         owner: other.registration.id.clone(),
-                        resource: (*resource).clone(),
                     });
                 }
             }
@@ -306,6 +225,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn another_directory_does_not_block_launch() {
+        // Arrange
+        let registry = Registry::new(&workspace()).unwrap();
+        let resources = [OwnedResource {
+            artifacts: Some(PathBuf::from("/other-repository/data/run")),
+            run: "gal-0123".into(),
+            project: Some("dc-gal-0123-activity-demo".into()),
+            kind: "container",
+            id: "other-container".into(),
+        }];
+        let manager = Manager::from_resources_at(
+            registry,
+            Duration::from_secs(120),
+            &resources,
+            Some(Path::new("/this-repository/data")),
+        );
+
+        // Act
+        let launched = manager.launch("activity-demo", Instant::now()).await;
+
+        // Assert
+        assert!(launched.is_ok(), "{launched:?}");
+    }
+
+    #[tokio::test]
     async fn ambiguous_owned_resource_blocks_all_registered_apps() {
         // Arrange
         let registry = Registry::new(&workspace()).unwrap();
@@ -325,42 +269,23 @@ mod tests {
         assert!(matches!(result, Err(Error::Blocked(message)) if message.contains("orphan")));
     }
     #[tokio::test]
-    async fn anchored_nested_resources_block_only_their_owner() {
+    async fn scoped_nested_resources_block_only_their_owner() {
         // Arrange
-        let mut registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
-        let app = registry.get_mut("activity-demo").unwrap();
-        app.nested_runs = true;
-        app.nested_projects = vec![crate::registry::NestedProject {
-            key: "demo".into(),
-            remove_volumes: true,
-        }];
+        let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
         let data =
             std::env::temp_dir().join(format!("gallery-discovery-{:032x}", rand::random::<u128>()));
         let token = "0123456789abcdef0123456789abcdef";
         let run = format!("gal-{token}-1");
         let generation = data.join(format!("activity-demo-{token}"));
-        std::fs::create_dir_all(generation.join("metadata")).unwrap();
-        std::fs::create_dir_all(generation.join("private/recovery")).unwrap();
-        std::fs::write(
-            generation.join("metadata/nested-policy.json"),
-            serde_json::to_vec(&app.nested_projects).unwrap(),
-        )
-        .unwrap();
-        let anchor = serde_json::json!({"run": run, "projects": [{"key": "demo", "remove_volumes": true,
-            "resolution_sha256": "a".repeat(64)}], "filesystem_baselines": {}});
-        let anchor_path = generation
-            .join("private/recovery")
-            .join(format!("{run}.json"));
-        std::fs::write(&anchor_path, serde_json::to_vec(&anchor).unwrap()).unwrap();
-        let resources = vec![OwnedResource {
-            artifacts: None,
+        let mut resources = vec![OwnedResource {
+            artifacts: Some(generation.join("private/telemetry").join(&run)),
             run: run.clone(),
             project: Some(format!("dc-{run}-demo")),
             kind: "volume",
             id: "nested-volume".into(),
         }];
 
-        // Act / Assert: the known owner is blocked and another app can launch.
+        // Act / Assert: retained owned resources block admission of a different experiment.
         let manager = Manager::from_resources_at(
             registry.clone(),
             Duration::from_secs(120),
@@ -371,10 +296,13 @@ mod tests {
             manager.launch("activity-demo", Instant::now()).await,
             Err(Error::Blocked(_))
         ));
-        assert!(manager.launch("storage-demo", Instant::now()).await.is_ok());
+        assert!(matches!(
+            manager.launch("storage-demo", Instant::now()).await,
+            Err(Error::Busy { .. })
+        ));
 
-        // Act / Assert: an inconsistent private anchor makes ownership ambiguous.
-        std::fs::write(&anchor_path, b"{}").unwrap();
+        // Act / Assert: missing directory ownership labels make ownership ambiguous.
+        resources[0].artifacts = None;
         let manager =
             Manager::from_resources_at(registry, Duration::from_secs(120), &resources, Some(&data));
         assert!(matches!(
@@ -385,21 +313,12 @@ mod tests {
             manager.launch("storage-demo", Instant::now()).await,
             Err(Error::Blocked(_))
         ));
-        std::fs::remove_dir_all(data).unwrap();
     }
 
     #[tokio::test]
     async fn conflicting_concurrent_launches_are_serialized_until_cleanup() {
         // Arrange
-        let mut registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
-        registry
-            .get_mut("activity-demo")
-            .unwrap()
-            .exclusive_resources = vec!["test-gpu".into()];
-        registry
-            .get_mut("storage-demo")
-            .unwrap()
-            .exclusive_resources = vec!["test-gpu".into()];
+        let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
         let manager = Manager::from_resources(registry, Duration::from_secs(120), &[]);
 
         // Act
@@ -410,14 +329,12 @@ mod tests {
 
         // Assert
         let (owner, other, accepted) = match (activity, storage) {
-            (Ok(launch), Err(Error::Conflict { owner, resource })) => {
+            (Ok(launch), Err(Error::Busy { owner })) => {
                 assert_eq!(owner, "activity-demo");
-                assert_eq!(resource, "test-gpu");
                 ("activity-demo", "storage-demo", launch)
             }
-            (Err(Error::Conflict { owner, resource }), Ok(launch)) => {
+            (Err(Error::Busy { owner }), Ok(launch)) => {
                 assert_eq!(owner, "storage-demo");
-                assert_eq!(resource, "test-gpu");
                 ("storage-demo", "activity-demo", launch)
             }
             result => panic!("unexpected admission results: {result:?}"),
@@ -431,12 +348,12 @@ mod tests {
         let after_cleanup = manager.launch(other, Instant::now()).await;
 
         // Assert
-        assert!(matches!(during_cleanup, Err(Error::Conflict { .. })));
+        assert!(matches!(during_cleanup, Err(Error::Busy { .. })));
         assert!(after_cleanup.unwrap().start);
     }
 
     #[tokio::test]
-    async fn waiting_for_cleanup_does_not_block_an_unrelated_app() {
+    async fn waiting_for_cleanup_keeps_other_experiments_busy() {
         // Arrange
         let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
         let manager = Manager::from_resources(registry, Duration::from_secs(120), &[]);
@@ -464,7 +381,7 @@ mod tests {
         let resumed = waiter.await.unwrap();
 
         // Assert
-        assert!(unrelated.unwrap().unwrap().start);
+        assert!(matches!(unrelated.unwrap(), Err(Error::Busy { .. })));
         assert!(resumed.unwrap().start);
     }
 }
