@@ -1,0 +1,17 @@
+doramcap
+Copyright (c) 2026 doramcap contributors.
+
+Project materials are licensed under the PolyForm Noncommercial License 1.0.0
+in LICENSE, except for separately licensed materials identified below or in
+individual files. Third-party materials retain their own licenses.
+
+The following Linux eBPF programs are licensed under GPL-2.0-only:
+
+- libs/resources/cgroup-bpf/src/bpf/monitor.bpf.c
+- libs/resources/task-accounting/src/bpf/tasks.bpf.c
+
+Each program's directory contains the full GPL version 2 text in COPYING.
+The GPL terms apply to source and compiled forms of those programs.
+
+For commercial use outside the permitted purposes of the applicable license,
+a separate written agreement with the relevant copyright holders is required.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 typedef unsigned long long __u64;
 typedef unsigned int __u32;
 typedef int __s32;

@@ -3,6 +3,12 @@
 A workspace of reusable telemetry libraries and independently runnable applications.
 Each component owns its documentation, tests, examples, and benchmarks.
 
+Source is available under [PolyForm Noncommercial 1.0.0](LICENSE), permitting
+personal, research, and other noncommercial use as defined by that license.
+Commercial use outside its permitted purposes requires a separate agreement
+with the copyright holders. The two Linux eBPF programs use GPL-2.0-only;
+see [licensing scope](NOTICE).
+
 Browse apps, crates, documentation and dependencies with the
 [project explorer](apps/project-explorer/).
 
