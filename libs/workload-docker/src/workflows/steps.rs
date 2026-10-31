@@ -38,6 +38,25 @@ pub fn register(
     });
 }
 
+/// Register communication, graph and workload operations on the experiment executor.
+pub fn register_experiment(
+    executor: &mut LocalExecutor,
+    owner: super::experiment::SharedExperiment,
+) {
+    use super::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
+    macro_rules! step {
+        ($kind:ident, $dependency:ident) => {{
+            let owner = $dependency.clone();
+            executor.register::<$kind>(move || $kind {
+                owner: owner.clone(),
+            });
+        }};
+    }
+    step!(StartDoraRuntime, owner);
+    step!(StopDoraRuntime, owner);
+    step!(RegisterDoraGraph, owner);
+}
+
 /// Build the recorded-run executor with shared mechanics and session steps.
 /// Weak child-call references keep factories from retaining their own executor.
 pub(super) fn executor(
@@ -55,25 +74,34 @@ pub(super) fn executor(
     )
 }
 
+/// Bind prepared experiment operations while preserving preparation event lineage.
+pub(super) fn bind_experiment(
+    executor: Rc<LocalExecutor>,
+    adapter: Rc<DockerAdapter>,
+    diagnostics: Diagnostics,
+    owner: super::experiment::SharedExperiment,
+) -> crate::compose::Result<Rc<LocalExecutor>> {
+    let mut executor = Rc::try_unwrap(executor)
+        .map_err(|_| crate::compose::error::invalid("executor still running during binding"))?;
+    register_experiment(&mut executor, owner);
+    Ok(attach(executor, adapter, diagnostics))
+}
+
 pub(super) fn attach(
     mut executor: LocalExecutor,
     adapter: Rc<DockerAdapter>,
     diagnostics: Diagnostics,
 ) -> Rc<LocalExecutor> {
-    use super::{
-        recorded_compose::{finalization::*, preparation::PrepareRun, projects::*},
-        system_apps::*,
-    };
+    use super::recorded_compose::{finalization::*, preparation::PrepareRun};
     use crate::compose::overlay::{FinalizeOverlays, PrepareOverlays};
-    Rc::new_cyclic(|weak: &Weak<LocalExecutor>| {
+    Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());
-        super::dora::register(&mut executor, adapter.clone());
         let dependency = adapter.clone();
         executor.register::<PrepareOverlays>(move || PrepareOverlays {
             adapter: dependency.clone(),
         });
         executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
-        executor.register::<PrepareSystemApps>(|| PrepareSystemApps);
+        use workload_lifecycle::recording::{FinalizeRecordings, WaitForRecordings};
         executor.register::<WaitForRecordings>(|| WaitForRecordings);
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
         let dependency = adapter.clone();
@@ -81,24 +109,6 @@ pub(super) fn attach(
         executor.register::<PrepareRun>(move || PrepareRun {
             adapter: dependency.clone(),
             executor: child.clone(),
-        });
-        macro_rules! nested {
-            ($kind:ident) => {{
-                let child = weak.clone();
-                executor.register::<$kind>(move || $kind {
-                    executor: child.clone(),
-                });
-            }};
-        }
-        nested!(LaunchProjects);
-        nested!(LaunchDoraFlows);
-        nested!(ObserveProjects);
-        nested!(RemoveProjects);
-        let child = weak.clone();
-        let sink = diagnostics.clone();
-        executor.register::<QuiesceProjects>(move || QuiesceProjects {
-            executor: child.clone(),
-            diagnostics: sink.clone(),
         });
         let child = weak.clone();
         let sink = diagnostics.clone();

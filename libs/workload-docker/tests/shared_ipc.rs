@@ -1,4 +1,5 @@
 //! Native Compose qualification before migrating the recorded workflow.
+mod support;
 use orchestrator::Step;
 use prost::Message;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt, path::Path, rc::Rc, time::Duration};
@@ -104,8 +105,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 coordinator.to_string(),
                 "--local-listen-port".into(),
                 daemon.to_string(),
-                "--worker-threads".into(),
-                "2".into(),
                 "--zenoh-config-overlay".into(),
                 overlay.to_str().unwrap().into(),
             ],
@@ -177,10 +176,10 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     .run(ResolveInput {
         repository_root: None,
         run: format!("shm-{}", std::process::id()),
-        artifacts: root.to_string_lossy().into_owned(),
+        artifacts: root.to_str().unwrap().into(),
         project: Some(ComposeProject {
             key: "experiment".into(),
-            directory: root.to_string_lossy().into_owned(),
+            directory: root.to_str().unwrap().into(),
             files: vec!["compose.json".into()],
             env_files: vec![],
             environment: BTreeMap::new(),
@@ -397,14 +396,15 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         diagnostics: Default::default(),
     }
     .run(StopInput {
-        plan: Some(plan.clone()),
-        services: vec![],
         allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan.clone()),
         stop_seconds: 5,
     })
     .await
     .unwrap();
     assert!(cleanup.verified, "{cleanup:?}");
+    support::assert_no_run_resources(&adapter, &plan.run).await;
     assert!(
         result.is_ok(),
         "{}; artifacts: {}",
@@ -424,10 +424,10 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     .run(ResolveInput {
         repository_root: None,
         run: plan.run.clone(),
-        artifacts: cancel_dir.to_string_lossy().into_owned(),
+        artifacts: cancel_dir.to_str().unwrap().into(),
         project: Some(ComposeProject {
             key: "cancellation".into(),
-            directory: root.to_string_lossy().into_owned(),
+            directory: root.to_str().unwrap().into(),
             files: vec!["compose.json".into()],
             env_files: vec![],
             environment: BTreeMap::new(),
@@ -464,9 +464,9 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         diagnostics: Default::default(),
     }
     .run(StopInput {
-        plan: Some(plan.clone()),
-        services: vec![],
         allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan.clone()),
         stop_seconds: 5,
     })
     .await
@@ -476,6 +476,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     assert!(!matches!(cancelled, Ok(Ok(_))));
     assert!(!state.containers.iter().any(|c| c.service == "adopted"));
     assert!(cleanup.verified, "{cleanup:?}");
+    support::assert_no_run_resources(&adapter, &plan.run).await;
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -500,9 +501,9 @@ async fn cleanup_interrupted_shared_ipc_test() {
         diagnostics: Default::default(),
     }
     .run(StopInput {
-        plan: Some(plan.clone()),
-        services: vec![],
         allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan),
         stop_seconds: 5,
     })
     .await

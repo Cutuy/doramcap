@@ -10,7 +10,9 @@ Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, b
 
 ## Configuration
 
-Prefer protobuf schemas and protobuf text format (pbtxt) for application configuration. Avoid JSON configuration when a protobuf schema can express it. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
+Favor strongly typed protobuf messages over untyped JSON for internal models and application configuration; use protobuf text format (pbtxt) for configuration files. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
+
+Favor TypeScript for dynamic configuration processing. Use protobuf contracts to decouple TypeScript configuration processing from Rust execution. Preserve arbitrary third-party configuration in its native format at integration boundaries.
 
 Environment-based application configuration is highly discouraged. Every new environment configuration input or extension of an existing environment contract requires the user's explicit approval. Encapsulate approved exceptions behind a named interface with an explicit list of supported variables; the Dora bridge is `dora_app::environment`.
 
@@ -32,11 +34,11 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 
 ## Testing and CI
 
-- When implementing a plan document, prioritize fast feedback and early validation of the direction. Use focused checks for each milestone and strategically defer or skip redundant full CI runs; batch full CI at meaningful integration points and on the final source revision unless waived. Record deferred checks in the plan so milestone validation stays explicit.
+- Use focused checks for incremental changes. Reserve full CI for meaningful integration points, high-risk changes, or explicit requests. Avoid repeating full CI for each interaction. For plan-driven work, record completed and deferred checks in the relevant milestone.
 - Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
-- Run local checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
-- Run ARM64 validation on the final revision for PRs, explicit requests, or high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
+- When full local CI is warranted, run these checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, example/binary builds, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
+- Run ARM64 validation at PR integration points, when explicitly requested, or for high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
 - ARM64 worker: `doramcap-ci@100.64.0.20` over Tailscale (WSL2, Linux 6.18). Submit trusted source to Pueue's serial default queue and verify completion. WSL must be running; Git pushes do not submit jobs. Native tests use passwordless sudo; never copy credentials.
 - ARM64 covers default/all-feature Rust tests and native cgroup accounting/allocations. Run Dora end-to-end tests separately and CUDA/GPU/IPC qualification on a CUDA-capable host. See [worker documentation](scripts/ci/README.md).
 

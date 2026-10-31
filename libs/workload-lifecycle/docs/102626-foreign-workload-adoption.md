@@ -7,7 +7,7 @@ Design owner: `workload-lifecycle`. Docker implementation: `workload-docker`.
 See [component boundaries](102626-component-boundaries.md).
 
 The implementation and current coverage are documented in
-[Compose workflow milestones](../../workload-docker/docs/102626-compose-workflow.md). Robotics qualification
+[Compose workflow milestones](../../workload-docker/docs/102926-shared-dora-experiment.md). Robotics qualification
 milestones below remain open until those upstream workloads have actually run.
 
 ## Milestones and validation
@@ -238,7 +238,7 @@ no remote execution or distributed coordination now.
 | Existing `prost`, `sha2`, `pbtxt-config` | Typed policy/records and deterministic digests where contracts fit |
 | Existing resource/telemetry/session components | Reuse domain ownership; record adapter coverage explicitly |
 
-The [local Compose workflow](../../workload-docker/docs/102626-compose-workflow.md) adopts the approved Bollard client and Compose CLI. GPU device selection and SM partitioning
+The [local Compose workflow](../../workload-docker/docs/102926-shared-dora-experiment.md) adopts the approved Bollard client and Compose CLI. GPU device selection and SM partitioning
 are separate capabilities; opaque containers cannot promise green-context or exact
 SM placement from a generic Docker resource request.
 

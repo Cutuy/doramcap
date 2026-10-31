@@ -1,19 +1,13 @@
 services:
-  coordinator:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: coordinator
-    image: doramcap/fault-watchdog:otel
-    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
-  dashboard:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: daemon
-    image: doramcap/fault-watchdog:otel
-    user: ${FAULT_WATCHDOG_UID:?}:${FAULT_WATCHDOG_GID:?}
-    security_opt:
-    - no-new-privileges:true
+  controls:
+    extends: {file: compose.yaml, service: controls}
+  source-a:
+    extends: {file: compose.yaml, service: source-a}
+  source-b:
+    extends: {file: compose.yaml, service: source-b}
+  watchdog:
+    extends: {file: compose.yaml, service: watchdog}
     volumes:
-    - type: bind
-      source: ${FAULT_WATCHDOG_RESULTS_DIR:?}
-      target: /results
+      - {type: bind, source: ./watchdog-otel.pbtxt, target: /opt/fault-demo/watchdog.pbtxt, read_only: true}
+  dashboard:
+    extends: {file: compose.yaml, service: dashboard}

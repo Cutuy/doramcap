@@ -1,34 +1,37 @@
+x-runtime: &runtime
+  type: bind
+  source: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+  target: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+x-results: &results
+  type: bind
+  source: ${MCAP_RECORDER_RESULTS_DIR:?}
+  target: /results
+x-node: &node
+  image: doramcap/mcap-recorder:local
+  user: ${MCAP_RECORDER_UID:?}:${MCAP_RECORDER_GID:?}
+  network_mode: host
+  ulimits:
+    memlock: {soft: 268435456, hard: 268435456}
+  volumes: [*runtime, *results]
 services:
-  coordinator:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: coordinator
-    image: doramcap/mcap-recorder:local
-    user: ${MCAP_RECORDER_UID:?}:${MCAP_RECORDER_GID:?}
-  recorder:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: daemon
-    image: doramcap/mcap-recorder:local
-    user: ${MCAP_RECORDER_UID:?}:${MCAP_RECORDER_GID:?}
-    cap_add:
-    - BPF
-    - PERFMON
-    - SYSLOG
+  monitor:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {recorder: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/system-monitor]
+    cap_add: [BPF, PERFMON, SYSLOG]
+    security_opt: [seccomp=unconfined]
     cgroup: host
-    ulimits:
-      memlock:
-        soft: 268435456
-        hard: 268435456
     volumes:
-    - type: bind
-      source: /sys/fs/cgroup
-      target: /sys/fs/cgroup
-      read_only: true
-    - type: bind
-      source: /sys/kernel/btf
-      target: /sys/kernel/btf
-      read_only: true
-    - type: bind
-      source: ${MCAP_RECORDER_RESULTS_DIR:?}
-      target: /results
+      - *runtime
+      - *results
+      - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
+      - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
+    command: ["--backend", "bpf", "--dora", "--published-count", "/results/published.count"]
+  recorder:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    entrypoint: [/usr/local/bin/mcap-recorder]
+    command: ["/results/recording.mcap"]

@@ -1,7 +1,7 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
 use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
-use crate::workflows::shared::{dora, shared_dora::DAEMON};
+use crate::workflows::{dora, shared_dora::DAEMON};
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
 

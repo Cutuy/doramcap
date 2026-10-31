@@ -47,9 +47,6 @@ pub async fn run(
         private_dir(&directory).map_err(|e| e.to_string())?;
         let metadata = directory.join("metadata");
         private_dir(&metadata).map_err(|e| e.to_string())?;
-        write_private_once(&metadata.join("additional-declared.json"), &app.additional_files)?;
-        write_private_once(&metadata.join("collections-declared.json"), &app.artifact_collections)?;
-        write_private_once(&metadata.join("primary-policy.json"), &primary_policy(app))?;
         let results = directory.join("results");
         private_dir(&results).map_err(|e| e.to_string())?;
         if !app.private_directories.is_empty() {
@@ -67,29 +64,26 @@ pub async fn run(
             project.environment.insert(app.environment_key("DOCKER_SOCKET"), path.to_str().ok_or("Docker socket path is not UTF-8")?.into());
             project.environment.insert(app.environment_key("DOCKER_GID"), metadata.gid().to_string());
         }
-        let mut system_apps = app.system_apps.clone().unwrap_or_default();
-        for flow in &mut system_apps.dora_flows { flow.results_directory = results.to_str().ok_or("results path is not UTF-8")?.into(); }
+        let dora = app.resolve_dora(uid, gid)?;
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
-            filesystem: None, system_apps, repository_root: app.repository_root.clone(),
-            projects: vec![project], first_party: vec![],
+            filesystem: None, dora, recordings:vec![], repository_root: app.repository_root.clone(),
+            projects: vec![], system_apps: vec![project],
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
         let (started, receiver) = oneshot::channel();
         let (cancel, cancelled) = oneshot::channel::<()>();
-        let completion = runner.run_with_ready(spec, async {
+        let mut completion = Box::pin(runner.run_with_ready(spec, async {
             tokio::select! { _ = stop => {}, _ = cancelled => {} }
-        }, |_: &orchestrator::Event| {}, Some(started));
-        tokio::pin!(completion);
+        }, |_: &orchestrator::Event| {}, Some(started)));
         let endpoint_error = tokio::select! {
             result = &mut completion => return result.map_err(|e| e.to_string()),
             plans = receiver => {
                 match plans {
-                    Ok(plans) => {
-                        let endpoint = match (app.port, plans.iter().find(|plan| plan.key == app.id)) {
-                            (Some(port), Some(plan)) => adapter.project(plan).endpoint(&app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
-                            (None, _) => Ok(None),
-                            _ => Err("ready workflow has no app project".into()),
+                    Ok(plan) => {
+                        let endpoint = match app.port {
+                            Some(port) => adapter.project(&plan).endpoint( &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
+                            None => Ok(None),
                         };
                         match endpoint {
                             Ok(endpoint) => ready.send(endpoint).err().map(|_| "readiness receiver dropped".to_owned()),
@@ -108,6 +102,11 @@ pub async fn run(
     }.await;
     match result {
         Ok(outcome) => {
+            if !outcome.recording_finalized {
+                report
+                    .errors
+                    .push("recording did not complete cleanly".into());
+            }
             report.quiesced = outcome.writers_stopped;
             report.cleanup_verified = outcome.boundary_clean;
             report.changes = outcome.filesystem_changes;
@@ -115,8 +114,8 @@ pub async fn run(
             report.errors.extend(
                 outcome
                     .cleanup
+                    .diagnostics
                     .iter()
-                    .flat_map(|cleanup| &cleanup.diagnostics)
                     .map(|d| format!("{}: {}", d.operation, d.message)),
             );
             report.errors.extend(
@@ -148,7 +147,7 @@ async fn finish(app: &Registration, directory: &Path, report: &mut StopReport) {
 }
 
 /// Validate the declared outputs, freeze their indexes, then publish one marker.
-/// Normal completion and crash recovery use this same publication operation.
+/// Publish successful normal completion after verified cleanup.
 async fn publish_results(app: &Registration, directory: &Path) -> Result<(), String> {
     let metadata = directory.join("metadata");
     let results = directory.join("results");
@@ -334,33 +333,6 @@ async fn finalize_collections(
         });
     }
     write_private_once(&metadata.join("collections-index.json"), &published)
-}
-
-fn primary_policy(app: &Registration) -> Vec<String> {
-    vec![
-        app.result_file.clone(),
-        match app.result_format() {
-            ResultFormat::Mcap => "mcap",
-            ResultFormat::File => "file",
-        }
-        .into(),
-        if app.result_optional {
-            "optional"
-        } else {
-            "required"
-        }
-        .into(),
-        app.capture_directory.clone().unwrap_or_default(),
-        app.shutdown_marker.clone().unwrap_or_default(),
-        app.recording_count
-            .as_ref()
-            .map(|check| check.count_file.clone())
-            .unwrap_or_default(),
-        app.recording_count
-            .as_ref()
-            .map(|check| check.topic.clone())
-            .unwrap_or_default(),
-    ]
 }
 
 fn finalize_primary(metadata: &Path, result: &Path, optional: bool) -> Result<(), String> {

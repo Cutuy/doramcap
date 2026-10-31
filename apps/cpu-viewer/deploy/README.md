@@ -1,26 +1,16 @@
-# Native CPU Viewer wrapper
+# CPU Viewer deployment
 
-Runs CPU Viewer, BPF System Monitor and MCAP Recorder in an isolated Dora flow;
-retains `cpu.mcap`. Requires Dora CLI 1.1.0 and a compatible kernel with BTF and
-cgroup v2.
+CPU Viewer combines BPF System Monitor and MCAP Recorder in a shared Dora experiment.
+It requires a compatible kernel with BTF and cgroup v2.
+
+Build native image inputs from the repository root:
 
 ```sh
-cargo build --release --locked -p cpu-viewer -p mcap-recorder -p system-monitor --features system-monitor/dora,system-monitor/bpf,system-monitor/task-bpf
-npm ci --prefix apps/cpu-viewer/frontend
-npm run build --prefix apps/cpu-viewer/frontend
-dora --version  # must report dora-cli 1.1.0
-stage=$(mktemp -d)
-cp "$(command -v dora)" "$stage/dora"
-cp target/release/cpu-viewer target/release/system-monitor target/release/mcap-recorder "$stage/"
-cp -r apps/cpu-viewer/frontend/dist "$stage/dist"
-cp apps/cpu-viewer/deploy/flow.yml "$stage/"
-docker build -t doramcap/cpu-viewer:local -f apps/cpu-viewer/deploy/Dockerfile "$stage"
-rm -r "$stage"
+cargo build --release --locked -p cpu-viewer -p mcap-recorder -p system-monitor \
+  --features system-monitor/bpf,system-monitor/task-bpf,system-monitor/dora
 ```
 
-Enable with `--enable-app cpu-viewer`. Only the collector acquires BPF, PERFMON
-and SYSLOG file capabilities; cgroup/BTF mounts are read-only. The manager checks
-collector losses and recorded counts before publishing. See [native qualification](../../project-explorer/server/docs/102727-remaining-apps.md#m8--native-collection-profiles-planned).
+The Dockerfile takes these binaries and frontend `dist/`. The gallery uses
+`registration.pbtxt` and starts shared Dora before the app services.
 
-Compose runs foreground Dora coordinator/daemon services. The registration declares
-node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.
+[Shared lifecycle and test results](../../../libs/workload-docker/docs/102926-shared-dora-experiment.md).

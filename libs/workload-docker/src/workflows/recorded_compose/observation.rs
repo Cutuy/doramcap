@@ -19,11 +19,16 @@ pub(super) struct EventCapture {
     task: tokio::task::JoinHandle<Result<()>>,
 }
 impl EventCapture {
-    pub fn start(docker: bollard::Docker, run: String, path: std::path::PathBuf) -> Self {
+    pub fn start(
+        docker: bollard::Docker,
+        run: String,
+        project: String,
+        path: std::path::PathBuf,
+    ) -> Self {
         let (finish, finished) = watch::channel(false);
         let (fault_tx, fault) = watch::channel(None);
         let task = tokio::spawn(async move {
-            let result = record_events(docker, run, &path, finished).await;
+            let result = record_events(docker, run, project, &path, finished).await;
             if let Err(error) = &result {
                 let _ = fault_tx.send(Some(error.to_string()));
             }
@@ -35,12 +40,14 @@ impl EventCapture {
             task,
         }
     }
-    pub async fn failure(&mut self) -> String {
-        let _ = self.fault.changed().await;
-        self.fault
-            .borrow()
-            .clone()
-            .unwrap_or_else(|| "Docker event stream ended".into())
+    /// Cancelling this wait leaves event capture running and preserves pending failures.
+    pub fn failure(&self) -> impl std::future::Future<Output = String> + use<> {
+        let mut fault = self.fault.clone();
+        async move {
+            let _ = fault.changed().await;
+            let error = fault.borrow().clone();
+            error.unwrap_or_else(|| "Docker event stream ended".into())
+        }
     }
     pub async fn finish(mut self) -> Result<()> {
         let _ = self.finish.send(true);
@@ -72,6 +79,7 @@ pub(super) async fn snapshot(root: &Path, phase: &str) -> Result<()> {
 async fn record_events(
     docker: bollard::Docker,
     run: String,
+    project: String,
     path: &Path,
     mut finish: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -90,7 +98,10 @@ async fn record_events(
         since: Some(since),
         filters: Some(HashMap::from([(
             "label".into(),
-            vec![format!("{RUN_LABEL}={run}")],
+            vec![
+                format!("{RUN_LABEL}={run}"),
+                format!("com.docker.compose.project={project}"),
+            ],
         )])),
         ..Default::default()
     }));
@@ -119,3 +130,6 @@ async fn record_events(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

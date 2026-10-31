@@ -9,18 +9,14 @@ named volumes remain separate; reset never replays interrupted host writes.
 Compose handles configuration and container launch; Bollard verifies ownership,
 readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 
-The gallery and existing app deployments currently use
-`workflows::recorded_compose`. The app-migration PR switches
-those callers to the shared API and removes the old runner.
-
 Module relationships and execution barriers:
 
-![Workflow modules](src/workflows/shared/recorded_compose/workflow-modules.svg)
+![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
-# async fn example(spec: workload_docker::workflows::shared::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
+# async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
 use std::rc::Rc;
-use workload_docker::{compose::DockerAdapter, workflows::shared::recorded_compose::ComposeRunner};
+use workload_docker::{compose::DockerAdapter, workflows::recorded_compose::ComposeRunner};
 let docker = Rc::new(DockerAdapter::connect("/var/run/docker.sock").await?);
 let mut manager = ComposeRunner::new(docker);
 let report = manager.run(spec, async {

@@ -92,11 +92,7 @@ impl ComposeConfiguration<'_> {
             .repository_root
             .as_ref()
             .map(|_| repository_scope(&identity));
-        let name = if input.repository_root.is_some() {
-            project_name(&project.key, &identity)
-        } else {
-            format!("dc-{}-{}", input.run, project.key)
-        };
+        let name = project_name(&project.key, &identity);
         let normalized = self.normalize(&input.run, project, &name).await?;
         let mut model = normalized.model;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
@@ -123,7 +119,7 @@ impl ComposeConfiguration<'_> {
                         )));
                     }
                     if resource["external"] != true {
-                        if kind == "volumes" && input.repository_root.is_some() {
+                        if kind == "volumes" {
                             resource["name"] = format!("{name}_{}_{key}", input.run).into();
                         }
                         let labels = resource

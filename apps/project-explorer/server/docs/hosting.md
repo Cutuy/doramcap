@@ -2,6 +2,7 @@
 
 The gallery manages one Compose generation per app through the shared Rust
 workflow. Viewers share that generation; it stops when their sessions expire.
+Each app has a separate repository scope; different apps may run concurrently.
 Docker Engine access and independently built app images are required.
 
 ## Start
@@ -52,17 +53,12 @@ For a URL prefix, set `GALLERY_PREFIX=/gallery` on Caddy and use
 `/etc/caddy/Caddyfile.prefix`. Open `/gallery/#/apps`; `--origin` contains only
 scheme and host, including port.
 
-## Recovery
+## Restarting after interruption
 
-Keep the data directory private and persistent. It retains finalized outputs,
-logs and workflow checkpoints; only declared results are downloadable.
+Keep the data directory private and persistent. Finalized outputs, logs and
+recording status remain there; only declared results are downloadable.
 
-After a manager crash, unresolved owned resources block replacement launches.
-Stop the manager and recover the app using the generation ID from its diagnostic:
-
-```sh
-target/debug/recover "$PWD" /absolute/path/gallery-data APP_ID GENERATION /var/run/docker.sock
-```
-
-Recovery invokes the shared workflow's ordered shutdown and cleanup. Investigate
-reported failures before retrying; incomplete cleanup retains owned resources.
+Each app is a separate repository scope. Its next launch stops and verifies old
+writers, discards leftover overlay data, and removes owned containers and networks
+before preparing a new run. Unexpected reset failures block that launch. Other
+apps may run concurrently. Save any old upper data you need before launching again.

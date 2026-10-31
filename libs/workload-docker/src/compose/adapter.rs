@@ -67,7 +67,7 @@ impl DockerAdapter {
     pub(crate) fn experiment_resources<'a>(
         &'a self,
         scope: &'a str,
-        owner: Option<&'a str>,
+        owner: &'a str,
     ) -> ExperimentResources<'a> {
         ExperimentResources {
             adapter: self,

@@ -507,7 +507,7 @@ async fn dead_container_with_no_process_is_quiescent() {
     );
     // Act
     let result = adapter
-        .experiment_resources("scope", Some("owner"))
+        .experiment_resources("scope", "owner")
         .verify_stopped()
         .await;
     // Assert: process absence allows reset to continue, regardless of the failure status.

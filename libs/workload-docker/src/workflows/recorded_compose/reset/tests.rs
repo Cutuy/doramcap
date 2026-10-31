@@ -60,6 +60,7 @@ fn controllers_exclude_the_same_canonical_repository_and_allow_other_repositorie
 fn empty_scope() -> Vec<(&'static str, u16, serde_json::Value)> {
     use serde_json::json;
     vec![
+        ("/containers/dc-", 404, json!({"message":"absent"})),
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
@@ -127,11 +128,18 @@ async fn engine_inspection_failure_preserves_upper_data() {
     std::fs::write(upper.join("data"), b"unfinished").unwrap();
     let (adapter, server) = test_engine_status(
         root.path(),
-        vec![(
-            "/containers/json",
-            200,
-            serde_json::json!({"invalid":"container list"}),
-        )],
+        vec![
+            (
+                "/containers/dc-",
+                404,
+                serde_json::json!({"message":"absent"}),
+            ),
+            (
+                "/containers/json",
+                200,
+                serde_json::json!({"invalid":"container list"}),
+            ),
+        ],
     );
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
@@ -143,6 +151,36 @@ async fn engine_inspection_failure_preserves_upper_data() {
     // Assert
     assert!(result.is_err());
     assert_eq!(std::fs::read(upper.join("data")).unwrap(), b"unfinished");
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_foreign_reservation_for_this_repository_blocks_reset() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let controller = Rc::new(
+        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+    );
+    let workspace = controller.workspace();
+    std::fs::create_dir(&workspace).unwrap();
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        vec![(
+            "/containers/dc-",
+            200,
+            serde_json::json!({"Config":{"Labels":{}}}),
+        )],
+    );
+    let mut reset = ResetExperiment {
+        adapter: Rc::new(adapter),
+        controller,
+        stop_seconds: 3,
+    };
+    // Act
+    let result = reset.run(()).await;
+    // Assert
+    assert!(result.is_err());
+    assert!(workspace.exists());
     server.await.unwrap();
 }
 
@@ -161,6 +199,7 @@ async fn an_unverified_writer_blocks_workspace_deletion() {
     let (adapter, server) = test_engine_status(
         root.path(),
         vec![
+            ("/containers/dc-", 404, json!({"message":"absent"})),
             ("/containers/json", 200, containers.clone()),
             ("/containers/writer/stop", 204, json!(null)),
             ("/containers/json", 200, containers),
@@ -265,48 +304,4 @@ async fn discard_rejects_linked_upper_without_deleting_the_link_target() {
     // Assert
     assert!(result.is_err());
     assert_eq!(std::fs::read(outside.join("data")).unwrap(), b"keep");
-}
-
-#[tokio::test]
-async fn legacy_admission_blocks_shared_runner_before_any_side_effects() {
-    use crate::{
-        compose::adapter::tests::test_engine,
-        workflows::shared::recorded_compose::{ComposeRun, ComposeRunner},
-    };
-
-    // Arrange: the current runner holds admission; the Engine accepts no requests.
-    let root = tempfile::tempdir().unwrap();
-    let repository = root.path().join("repo");
-    std::fs::create_dir(&repository).unwrap();
-    let controller = Controller::acquire(&repository).unwrap();
-    let directory = controller.directory.clone();
-    let artifacts = root.path().join("not-created");
-    let (adapter, server) = test_engine(root.path(), vec![]);
-    server.await.unwrap();
-    let request: ComposeRun = serde_json::from_value(serde_json::json!({
-        "id": "shared-admission", "filesystem": null, "artifacts": artifacts,
-        "repository_root": repository.join("."), "projects": []
-    }))
-    .unwrap();
-    let mut runner = ComposeRunner::new(Rc::new(adapter));
-
-    // Act
-    let result = runner
-        .run(
-            request,
-            std::future::pending(),
-            |_: &orchestrator::Event| {},
-        )
-        .await;
-
-    // Assert
-    assert!(
-        matches!(result, Err(crate::compose::Error::Invalid(message))
-        if message.contains("another experiment controller is active"))
-    );
-    assert!(!artifacts.exists());
-    assert!(!controller.workspace().exists());
-    drop(controller);
-    std::fs::remove_file(directory.join("controller.lock")).unwrap();
-    std::fs::remove_dir(directory).unwrap();
 }
