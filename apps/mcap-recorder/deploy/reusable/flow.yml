@@ -1,15 +1,10 @@
-# The assembler sets node ID and connects these to a selected CPU producer.
-# Bounded backpressure can stall publication; collection reports its own losses.
+# The assembler sets matching service/node IDs and selected workload outputs.
+# Dora 1.1 backpressure queues have a hard safety cap, not a lossless guarantee.
 nodes:
-  - id: cpu-recorder
-    path: /usr/local/bin/mcap-recorder
-    args: /results/cpu.mcap
+  - id: workload-recorder
+    path: dynamic
     inputs:
-      snapshots:
-        source: system-monitor/snapshots
+      data:
+        source: workload/data
         queue_size: 64
-        queue_policy: backpressure
-      dictionary:
-        source: system-monitor/dictionary
-        queue_size: 4
         queue_policy: backpressure

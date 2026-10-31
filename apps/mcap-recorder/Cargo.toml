@@ -9,10 +9,18 @@ dora-app = { path = "../../libs/dora-app" }
 telemetry-mcap = { path = "../../libs/telemetry/mcap" }
 dora-node-api = { version = "=1.1.0", default-features = false }
 eyre = "0.6"
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+serde_json = "1"
+telemetry-protocol = { path = "../../libs/telemetry/protocol" }
 
 [dev-dependencies]
-prost = "0.14"
-telemetry-protocol = { path = "../../libs/telemetry/protocol" }
+mcap = { version = "=0.26.0", default-features = false }
+monitor-core = { path = "../../libs/resources/monitor-core" }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
 
 [[example]]
 name = "dora_attachment_fixture"

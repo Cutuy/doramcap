@@ -1,0 +1,14 @@
+output_path: "/results/cpu.mcap"
+report_path: "/results/cpu.report.pbtxt"
+input {
+  input: "snapshots"
+  topic: "doramcap/snapshots"
+  message_encoding: "protobuf"
+  validation: CPU_SNAPSHOT
+}
+input {
+  input: "dictionary"
+  topic: "doramcap/dictionary"
+  message_encoding: "protobuf"
+  validation: CPU_DICTIONARY
+}
