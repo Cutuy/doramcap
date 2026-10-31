@@ -2,7 +2,7 @@
 name = "cuda-dora-shm"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 description = "Fixed-slot CUDA host-memory IPC adapter for Dora"
 
 [dependencies]

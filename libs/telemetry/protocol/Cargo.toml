@@ -2,7 +2,7 @@
 name = "telemetry-protocol"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 [dependencies]
 monitor-core = { path = "../../resources/monitor-core" }
 prost = "0.14"

@@ -2,7 +2,7 @@
 name = "cuda-host-memory"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 description = "CUDA registration of mmap-backed host memory"
 
 [dependencies]

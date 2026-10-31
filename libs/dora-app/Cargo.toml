@@ -3,7 +3,7 @@ name = "dora-app"
 description = "Compose-owned Dora node attachment and app readiness"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 
 [features]
 default = ["node"]

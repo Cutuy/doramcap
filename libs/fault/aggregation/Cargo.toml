@@ -2,7 +2,7 @@
 name = "fault-aggregation"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 
 [dependencies]
 fault-schema = { path = "../schema" }

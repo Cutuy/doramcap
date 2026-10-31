@@ -2,7 +2,7 @@
 name = "pbtxt-config"
 version.workspace = true
 edition.workspace = true
-license-file.workspace = true
+license.workspace = true
 
 [dependencies]
 prost = "0.14"
