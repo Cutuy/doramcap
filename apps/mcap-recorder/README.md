@@ -24,3 +24,6 @@ Use `--bin-dir` with a custom Cargo target directory. `--backend bpf` requires
 native build features and permission to load BPF programs.
 
 [Docker deployment and gallery registration](deploy/README.md).
+
+[Recorder-only deployment inputs](deploy/reusable/README.md) reuse the CPU recorder
+with an experiment-owned producer and shared Dora connection.
