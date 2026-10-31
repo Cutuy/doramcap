@@ -63,6 +63,7 @@ impl PrepareRun {
         let mut model = json!({"services":{}});
         let mut system_services = Vec::new();
         let mut user_services = Vec::new();
+        let mut diagnostics = Vec::new();
         for (system, apps) in [(true, &spec.first_party), (false, &spec.projects)] {
             for app in apps {
                 let mut app = app.clone();
@@ -87,13 +88,6 @@ impl PrepareRun {
                         project: app.clone(),
                     })
                     .await?;
-                private_write(
-                    &artifacts.join(format!("{key}.inputs.json")),
-                    &serde_json::to_vec(
-                        &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr}),
-                    )?,
-                )
-                .await?;
                 let mut part = normalized.model;
                 if part["services"]
                     .as_object()
@@ -127,15 +121,22 @@ impl PrepareRun {
                 } else {
                     user_services.extend(names);
                 }
-                merge(&mut model, part)?;
+                let warnings = merge(&mut model, part)?;
+                private_write(
+                    &artifacts.join(format!("{key}.inputs.json")),
+                    &serde_json::to_vec(
+                        &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
+                    )?,
+                )
+                .await?;
+                diagnostics.extend(warnings);
             }
         }
         // Add Dora services and connect every container to the shared IPC namespace.
-        let mut diagnostics = Vec::new();
         {
             let d = &dora;
             let reserved = super::super::dora::services(d);
-            merge(&mut model, json!({"services":reserved}))?;
+            diagnostics.extend(merge(&mut model, json!({"services":reserved}))?);
             let services = model["services"].as_object_mut().unwrap();
             for (name, service) in services.iter_mut() {
                 let daemon = name == super::super::shared_dora::DAEMON;
@@ -226,6 +227,7 @@ impl PrepareRun {
         freeze_files(&mut model, &artifacts).await?;
         let manifest = artifacts.join("experiment.input.json");
         private_write(&manifest, &serde_json::to_vec(&model)?).await?;
+        let apps = spec.first_party.iter().chain(&spec.projects);
         let mut plan = self
             .adapter
             .resolve(ResolveInput {
@@ -239,17 +241,11 @@ impl PrepareRun {
                     environment: BTreeMap::new(),
                     profiles: vec![],
                     services: vec![],
-                    completed_services: spec
-                        .first_party
-                        .iter()
-                        .chain(&spec.projects)
+                    completed_services: apps
+                        .clone()
                         .flat_map(|p| p.completed_services.clone())
                         .collect(),
-                    remove_volumes: spec
-                        .first_party
-                        .iter()
-                        .chain(&spec.projects)
-                        .all(|p| p.remove_volumes),
+                    remove_volumes: apps.clone().all(|p| p.remove_volumes),
                 },
             })
             .await?;
@@ -291,28 +287,36 @@ impl PrepareRun {
     }
 }
 
-fn merge(model: &mut Value, part: Value) -> Result<()> {
+/// Merge supported sections and return warnings for omitted top-level fields.
+fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
+    let Value::Object(mut part) = part else {
+        return Err(invalid("Compose input must be an object"));
+    };
+    let model = model.as_object_mut().unwrap();
     for kind in ["services", "networks", "volumes", "configs", "secrets"] {
-        if let Some(entries) = part[kind].as_object() {
+        if let Some(Value::Object(entries)) = part.remove(kind) {
             let target = model
-                .as_object_mut()
-                .unwrap()
                 .entry(kind)
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
                 .unwrap();
             for (key, value) in entries {
-                if target.contains_key(key) {
-                    if kind == "networks" && key == "default" && target[key] == *value {
+                if target.contains_key(&key) {
+                    if kind == "networks" && key == "default" && target[&key] == value {
                         continue;
                     }
                     return Err(invalid(format!("Compose naming conflict: {kind}/{key}")));
                 }
-                target.insert(key.clone(), value.clone());
+                target.insert(key, value);
             }
         }
     }
-    Ok(())
+    // Project name is assigned separately; version is Compose metadata.
+    Ok(part
+        .keys()
+        .filter(|key| !matches!(key.as_str(), "name" | "version"))
+        .map(|field| format!("unsupported Compose top-level field '{field}' is ignored"))
+        .collect())
 }
 async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     let source = tokio::fs::canonicalize(source).await?;
@@ -378,4 +382,61 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
+        // Arrange
+        let mut model = json!({"services":{}});
+        let mut diagnostics = Vec::new();
+        let service = json!({"image":"app:local", "x-app-setting":"retained"});
+        let input = json!({
+            "name":"input-project", "version":"3.9",
+            "services":{"app":service.clone()},
+            "networks":{"default":{}}, "volumes":{"data":{}},
+            "configs":{"settings":{"file":"settings.txt"}},
+            "secrets":{"token":{"file":"token.txt"}},
+            "future-section":{"option":true}, "x-project-setting":"omitted"
+        });
+
+        // Act
+        diagnostics.extend(merge(&mut model, input).unwrap());
+
+        // Assert
+        assert_eq!(model["services"]["app"], service);
+        assert!(model["volumes"]["data"].is_object());
+        assert!(model["configs"]["settings"].is_object());
+        assert!(model["secrets"]["token"].is_object());
+        diagnostics.sort();
+        assert_eq!(
+            diagnostics,
+            [
+                "unsupported Compose top-level field 'future-section' is ignored",
+                "unsupported Compose top-level field 'x-project-setting' is ignored",
+            ]
+        );
+        assert!(model.get("future-section").is_none());
+
+        // Act: identical default networks remain shareable across app inputs.
+        diagnostics.extend(merge(&mut model, json!({"networks":{"default":{}}})).unwrap());
+
+        // Assert
+        assert_eq!(model["networks"]["default"], json!({}));
+        assert_eq!(diagnostics.len(), 2);
+
+        // Act: duplicate service names still fail.
+        let result = merge(&mut model, json!({"services":{"app":service}}));
+
+        // Assert
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Compose naming conflict: services/app")
+        );
+    }
 }
