@@ -4,11 +4,17 @@ import { openSync, closeSync } from 'node:fs';
 import { copyFile, writeFile } from 'node:fs/promises';
 
 const root = '/opt/provenance', results = '/results', dora = '/usr/local/bin/dora', binary = '/usr/local/bin/provenance-demo', prefix = 'provenance-hosted';
-const env = { ...process.env, PROVENANCE_PREFIX: prefix };
+/** Environment for children owned by the embedded Dora flow. */
+function embeddedFlowEnvironment(): Record<string, string | undefined> {
+  const environment: Record<string, string | undefined> = { ...process.env, PROVENANCE_PREFIX: prefix };
+  for (const key of ['DORA_NODE_ID', 'DORA_DAEMON_LOCAL_LISTEN_PORT', 'DORA_ZENOH_CONFIG_OVERLAY']) delete environment[key];
+  return environment;
+}
+const env = embeddedFlowEnvironment();
 let stopping = false; process.on('SIGINT', () => { stopping = true; }); process.on('SIGTERM', () => { stopping = true; });
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let launcherFd: number;
-const command = (args: string[], timeout = 30_000) => { const result = spawnSync(dora, args, { timeout, stdio: ['ignore', launcherFd, launcherFd] }); if (result.error || result.status !== 0) throw result.error ?? new Error(`dora ${args[0]} failed: ${result.status}`); };
+const command = (args: string[], timeout = 30_000) => { const result = spawnSync(dora, args, { env, timeout, stdio: ['ignore', launcherFd, launcherFd] }); if (result.error || result.status !== 0) throw result.error ?? new Error(`dora ${args[0]} failed: ${result.status}`); };
 type Process = ReturnType<typeof spawn>;
 const waitForExit = (child: Process, timeout: number) => new Promise<boolean>(resolve => {
   if (child.exitCode !== null || child.signalCode !== null) return resolve(true);
