@@ -51,6 +51,5 @@ artifact_collections {
   format: FILE
 }
 shutdown_marker: "shutdown.complete"
-exclusive_resources: "nvidia-gpu"
 env_prefix: "CUDA"
 requires_explicit_enable: true
