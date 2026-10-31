@@ -1,0 +1,12 @@
+include: "watchdog.pbtxt"
+app {
+  id: "watchdog"
+  config { [type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
+    otel {
+      enabled: true
+      endpoint: "http://127.0.0.1:4318/v1/logs"
+      timeout_ms: 500
+      service_name: "fault-watchdog"
+    }
+  } }
+}

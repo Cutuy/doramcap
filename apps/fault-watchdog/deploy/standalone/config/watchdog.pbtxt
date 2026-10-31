@@ -1,0 +1,12 @@
+app {
+  id: "watchdog"
+  config { [type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
+    inputs: "workload_faults"
+    source_timeout_ms: 3000
+    snapshot_interval_ms: 500
+    maintenance_ms: 10
+    queue_capacity: 32
+    shutdown_ms: 5000
+    live_output: "faults"
+  } }
+}

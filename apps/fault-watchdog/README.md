@@ -19,4 +19,4 @@ queued; optional adapters run only when enabled in configuration.
 
 Rust API documentation covers host clocks, queue loss, retries and finalization.
 
-[Docker deployment and gallery registration](deploy/README.md).
+[Standalone system-service deployment](deploy/standalone/README.md) · [Gallery deployment](deploy/README.md).
