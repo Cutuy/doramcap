@@ -1,6 +1,6 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
-use crate::compose::adapter::{DIRECTORY_OWNER_LABEL, validate_name};
+use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
 use crate::workflows::{dora, shared_dora::DAEMON};
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
@@ -62,9 +62,9 @@ pub(super) fn configure_dora(
         let app = service.as_object_mut().unwrap();
         if app
             .get("labels")
-            .is_some_and(|labels| labels.get(DIRECTORY_OWNER_LABEL).is_some())
+            .is_some_and(|labels| labels.get(EXPERIMENT_OWNER_LABEL).is_some())
         {
-            return Err(invalid("reserved directory-owner label"));
+            return Err(invalid("reserved experiment-owner label"));
         }
         let env = app
             .entry("environment")
@@ -97,7 +97,7 @@ pub(super) fn configure_dora(
     }
     diagnostics.extend(merge(model, json!({"services":dora::services(d)}))?);
     model["services"][DAEMON]["container_name"] = owner.into();
-    model["services"][DAEMON]["labels"][DIRECTORY_OWNER_LABEL] = "true".into();
+    model["services"][DAEMON]["labels"][EXPERIMENT_OWNER_LABEL] = "true".into();
     Ok(diagnostics)
 }
 
@@ -172,15 +172,14 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
 /// Validate run identity, paths, app keys and budgets before creating artifacts.
 pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     validate_name(&spec.id)?;
+    if !spec.repository_root.is_absolute() {
+        return Err(invalid("repository root must be absolute"));
+    }
     super::super::validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
     if (spec.projects.is_empty() && spec.system_apps.is_empty())
-        || std::iter::once(&spec.artifacts)
-            .chain(&spec.recovery_anchor_dir)
-            .any(|path| !path.is_absolute())
+        || std::iter::once(&spec.artifacts).any(|path| !path.is_absolute())
     {
-        return Err(invalid(
-            "require absolute artifact/recovery paths and app inputs",
-        ));
+        return Err(invalid("require absolute artifact paths and app inputs"));
     }
     let mut keys = HashSet::new();
     for p in spec.system_apps.iter().chain(&spec.projects) {

@@ -7,7 +7,7 @@ telemetry; the demo owns transport and presentation.
 ![Architecture](docs/102626-live-workflow.svg)
 
 The former native launcher has been removed; a supported local launch path is
-not currently provided. The hosting profile is pending qualification.
+not currently provided. The worker accepts an explicit repository root.
 
 **Run experiment** executes the Compose workflow and filesystem fixture;
 **Test failure & cleanup** uses an unhealthy service to exercise cleanup.
@@ -21,9 +21,7 @@ Set `ORCHESTRATOR_ASSETS` to an absolute frontend build directory when relocatin
 the server binary. Set `ORCHESTRATOR_BIND` to an IP address for container hosting;
 the default remains `127.0.0.1`. `/health/ready` succeeds while a worker is attached.
 The worker accepts `ORCHESTRATOR_DOCKER_SOCKET` for trusted deployment configuration.
-`ORCHESTRATOR_RUN_PREFIX` can scope nested runs to a gallery generation.
-`ORCHESTRATOR_RECOVERY_DIRECTORY` optionally selects a private directory outside
-workload mounts for pre-launch recovery anchors.
+`ORCHESTRATOR_RUN_PREFIX` scopes output run names.
 `ORCHESTRATOR_PRIVATE_TELEMETRY=1` sends lifecycle summaries without detailed
 payloads or filesystem paths; full reports remain in the run directory.
 

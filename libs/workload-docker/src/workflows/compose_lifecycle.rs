@@ -93,13 +93,7 @@ pub(crate) fn read_outer_evidence(
     let name = relative
         .to_str()
         .ok_or("filesystem checkpoint path is not UTF-8")?;
-    let valid_recovery = name.strip_prefix("recovery-").is_some_and(|suffix| {
-        suffix.len() == 32
-            && suffix
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    });
-    if name != "filesystem" && !valid_recovery {
+    if name != "filesystem" {
         return Err("outer filesystem checkpoint directory is invalid".into());
     }
     crate::evidence::open(&root, &format!("{name}/changes.json"), false)

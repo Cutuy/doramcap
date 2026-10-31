@@ -17,7 +17,7 @@ use tokio::io::AsyncWriteExt;
 
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
-pub(crate) const DIRECTORY_OWNER_LABEL: &str = "io.doramcap.directory-owner";
+pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 const PROJECT_LABEL: &str = "com.docker.compose.project";
 type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
 
@@ -189,7 +189,8 @@ impl DockerAdapter {
     pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
         validate_name(run)?;
         validate_name(&project.key)?;
-        let name = format!("dc-{run}-{}", project.key);
+        let identity = tokio::fs::canonicalize(&project.directory).await?;
+        let name = project_name(&project.key, &identity);
         let mut discovery = project.clone();
         discovery.profiles.clear();
         discovery.services.clear();
@@ -220,13 +221,15 @@ impl DockerAdapter {
     /// Render Compose inputs and collect the CLI version, source-file hashes and stderr.
     /// No runtime resources or manifests are created. Relative paths use the input directory.
     /// Invalid settings, missing files or Compose failures return errors.
-    pub(crate) async fn normalize(&self, input: &ResolveInput) -> Result<NormalizedCompose> {
+    pub(crate) async fn normalize(
+        &self,
+        input: &ResolveInput,
+        name: &str,
+    ) -> Result<NormalizedCompose> {
         validate_name(&input.run)?;
         validate_name(&input.project.key)?;
         let project = &input.project;
-        let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key, &artifacts);
-        let (directory, mut args, sources) = config_arguments(project, &name).await?;
+        let (directory, mut args, sources) = config_arguments(project, name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
@@ -261,11 +264,14 @@ impl DockerAdapter {
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
     pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
-        let normalized = self.normalize(&input).await?;
+        validate_name(&input.run)?;
+        validate_name(&input.project.key)?;
+        let identity = tokio::fs::canonicalize(&input.project.directory).await?;
+        let name = project_name(&input.project.key, &identity);
+        let normalized = self.normalize(&input, &name).await?;
         let mut model = normalized.model;
         let project = &input.project;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key, &artifacts);
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
@@ -290,6 +296,9 @@ impl DockerAdapter {
                         )));
                     }
                     if resource["external"] != true {
+                        if kind == "volumes" {
+                            resource["name"] = format!("{name}_{}_{key}", input.run).into();
+                        }
                         let labels = resource
                             .as_object_mut()
                             .ok_or_else(|| invalid("invalid resource"))?
@@ -449,10 +458,10 @@ impl DockerAdapter {
             diagnostics,
             remove_volumes: project.remove_volumes,
         };
-        if !self.project_containers(&plan).await?.is_empty() {
+        if !self.project_containers(&plan.name).await?.is_empty() {
             return Err(invalid("runtime project name already exists"));
         }
-        if !self.project_networks(&plan).await?.is_empty()
+        if !self.project_networks(&plan.name).await?.is_empty()
             || !self.project_volumes(&plan).await?.is_empty()
         {
             return Err(invalid("runtime project resources already exist"));
@@ -523,24 +532,21 @@ impl DockerAdapter {
     }
     pub(crate) async fn project_containers(
         &self,
-        plan: &ResolvedComposeProject,
+        project: &str,
     ) -> Result<Vec<bollard::models::ContainerSummary>> {
         self.docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
-                filters: project_filters(plan),
+                filters: project_filters(project),
                 ..Default::default()
             }))
             .await
             .map_err(|e| engine("list project containers", e))
     }
-    async fn project_networks(
-        &self,
-        plan: &ResolvedComposeProject,
-    ) -> Result<Vec<bollard::models::Network>> {
+    async fn project_networks(&self, project: &str) -> Result<Vec<bollard::models::Network>> {
         self.docker
             .list_networks(Some(ListNetworksOptions {
-                filters: project_filters(plan),
+                filters: project_filters(project),
             }))
             .await
             .map_err(|e| engine("list project networks", e))
@@ -551,7 +557,13 @@ impl DockerAdapter {
     ) -> Result<Vec<bollard::models::Volume>> {
         self.docker
             .list_volumes(Some(ListVolumesOptions {
-                filters: project_filters(plan),
+                filters: Some(HashMap::from([(
+                    "label".into(),
+                    vec![
+                        format!("{PROJECT_LABEL}={}", plan.name),
+                        format!("{RUN_LABEL}={}", plan.run),
+                    ],
+                )])),
             }))
             .await
             .map(|volumes| volumes.volumes.unwrap_or_default())
@@ -568,7 +580,7 @@ impl DockerAdapter {
     /// snapshot; concurrent Engine clients may change state between requests.
     pub async fn inspect(&self, plan: &ResolvedComposeProject) -> Result<ComposeProjectState> {
         let mut containers = Vec::new();
-        for summary in self.project_containers(plan).await? {
+        for summary in self.project_containers(&plan.name).await? {
             if !Self::owned(&summary, plan) {
                 return Err(invalid(format!("unowned container in {}", plan.name)));
             }
@@ -717,9 +729,92 @@ impl DockerAdapter {
         }
     }
 
+    pub(crate) async fn check_machine_owner(&self, project: &str, recorded: bool) -> Result<()> {
+        match self
+            .docker
+            .inspect_container(crate::workflows::shared_dora::MACHINE_OWNER, None)
+            .await
+        {
+            Ok(container) => {
+                let labels = container.config.and_then(|c| c.labels).unwrap_or_default();
+                if !recorded || labels.get(PROJECT_LABEL).map(String::as_str) != Some(project) {
+                    return Err(invalid(
+                        "machine experiment reservation belongs to another controller",
+                    ));
+                }
+                Ok(())
+            }
+            Err(e) if absent(&e) => Ok(()),
+            Err(e) => Err(engine("inspect experiment reservation", e)),
+        }
+    }
+
+    pub(crate) async fn verify_project_empty(&self, project: &str) -> Result<()> {
+        if !self.project_containers(project).await?.is_empty()
+            || !self.project_networks(project).await?.is_empty()
+        {
+            return Err(invalid("previous project still has containers or networks"));
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn stop_for_reset(
+        &self,
+        plan: &ResolvedComposeProject,
+        seconds: u64,
+    ) -> Result<()> {
+        // Verify the full project before mutating it; never infer ownership from names.
+        for summary in self.project_containers(&plan.name).await? {
+            let labels = summary.labels.unwrap_or_default();
+            if labels.get(RUN_LABEL) != Some(&plan.run)
+                || labels.get(ARTIFACTS_LABEL).map(Path::new) != plan.manifest.parent()
+            {
+                return Err(invalid("unexpected ownership in previous experiment"));
+            }
+        }
+        if !self.resources_owned(plan).await? {
+            return Err(invalid("unowned previous experiment resources"));
+        }
+        let state = self.inspect(plan).await?;
+        for container in state.containers.iter().filter(|c| c.pid != 0) {
+            match self
+                .docker
+                .stop_container(
+                    &container.id,
+                    Some(StopContainerOptions {
+                        t: Some(seconds as i32),
+                        ..Default::default()
+                    }),
+                )
+                .await
+            {
+                Ok(()) => {}
+                Err(e)
+                    if absent(&e)
+                        || matches!(
+                            &e,
+                            bollard::errors::Error::DockerResponseServerError {
+                                status_code: 304,
+                                ..
+                            }
+                        ) => {}
+                Err(e) => return Err(engine("stop previous writer", e)),
+            }
+        }
+        let state = self.inspect(plan).await?;
+        if state
+            .containers
+            .iter()
+            .any(|c| c.pid != 0 || !matches!(c.status.as_str(), "exited" | "created"))
+        {
+            return Err(invalid("previous experiment still has live writers"));
+        }
+        Ok(())
+    }
+
     /// Create the named IPC owner without starting it, before workload side effects.
     /// Native Compose creates its pinned configuration; Docker rejects another
-    /// experiment claiming the same directory-derived container name.
+    /// experiment claiming the machine-wide experiment container name.
     pub(crate) async fn reserve(
         &self,
         plan: &ResolvedComposeProject,
@@ -819,7 +914,7 @@ impl DockerAdapter {
     }
 
     pub(crate) async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
-        let networks = self.project_networks(plan).await?;
+        let networks = self.project_networks(&plan.name).await?;
         let volumes = self.project_volumes(plan).await?;
         Ok(networks
             .iter()
@@ -992,7 +1087,7 @@ impl DockerAdapter {
             Ok(None) => {}
             Err(error) => result.diagnostics.push(error.diagnostic("pending startup")),
         }
-        let mut before = self.project_containers(plan).await?;
+        let mut before = self.project_containers(&plan.name).await?;
         let all_owned = before.iter().all(|c| Self::owned(c, plan));
         // Preserve dependency-order stop semantics through Compose, with a bounded
         // grace period. Fall back to per-container Engine operations on CLI error.
@@ -1136,17 +1231,17 @@ impl DockerAdapter {
             retained_volumes: vec![],
             verified: false,
         };
-        let mut directory_owner = None;
+        let mut experiment_owner = None;
         // Keep the stopped IPC owner until all other owned resources are removed.
-        for summary in self.project_containers(plan).await? {
+        for summary in self.project_containers(&plan.name).await? {
             if summary
                 .labels
                 .as_ref()
-                .and_then(|labels| labels.get(DIRECTORY_OWNER_LABEL))
+                .and_then(|labels| labels.get(EXPERIMENT_OWNER_LABEL))
                 .is_some()
             {
                 if Self::owned(&summary, plan) {
-                    directory_owner = summary.id;
+                    experiment_owner = summary.id;
                 }
                 continue;
             }
@@ -1170,7 +1265,7 @@ impl DockerAdapter {
                     .push(engine(format!("remove {id}"), e).diagnostic("remove"));
             }
         }
-        let networks = self.project_networks(plan).await?;
+        let networks = self.project_networks(&plan.name).await?;
         for network in networks {
             if let Some(id) = network.id {
                 // Compose-scoped names were validated before launch; unknown names
@@ -1215,23 +1310,22 @@ impl DockerAdapter {
             }
         }
         result.remaining.extend(
-            self.project_networks(plan)
+            self.project_networks(&plan.name)
                 .await?
                 .into_iter()
                 .filter_map(|n| n.id)
                 .map(|id| format!("network:{id}")),
         );
         result.remaining.extend(
-            self.project_containers(plan)
+            self.project_containers(&plan.name)
                 .await?
                 .into_iter()
-                .filter(|c| c.id != directory_owner)
+                .filter(|c| c.id != experiment_owner)
                 .map(|c| format!("container:{}", c.id.unwrap_or_default())),
         );
         if result.remaining.is_empty()
             && result.diagnostics.is_empty()
-            && (input.allow_volume_deletion || result.retained_volumes.is_empty())
-            && let Some(id) = directory_owner
+            && let Some(id) = experiment_owner
             && let Err(error) = self
                 .docker
                 .remove_container(&id, None::<RemoveContainerOptions>)
@@ -1240,16 +1334,16 @@ impl DockerAdapter {
         {
             result
                 .diagnostics
-                .push(engine("release directory owner", error).diagnostic("cleanup"));
+                .push(engine("release experiment owner", error).diagnostic("cleanup"));
         }
         result.remaining.extend(
-            self.project_containers(plan)
+            self.project_containers(&plan.name)
                 .await?
                 .into_iter()
                 .filter(|c| {
                     c.labels
                         .as_ref()
-                        .is_some_and(|l| l.contains_key(DIRECTORY_OWNER_LABEL))
+                        .is_some_and(|l| l.contains_key(EXPERIMENT_OWNER_LABEL))
                 })
                 .map(|c| format!("container:{}", c.id.unwrap_or_default())),
         );
@@ -1300,10 +1394,10 @@ async fn config_arguments(
     Ok((directory, args, sources))
 }
 
-fn project_filters(plan: &ResolvedComposeProject) -> Option<HashMap<String, Vec<String>>> {
+fn project_filters(project: &str) -> Option<HashMap<String, Vec<String>>> {
     Some(HashMap::from([(
         "label".into(),
-        vec![format!("{PROJECT_LABEL}={}", plan.name)],
+        vec![format!("{PROJECT_LABEL}={project}")],
     )]))
 }
 
@@ -1341,25 +1435,13 @@ async fn save_stopped_inspection(
     }
     Err(invalid("too many stopped inspection attempts"))
 }
-/// Internal identity scoped to the canonical private run directory.
-pub(crate) fn project_name(run: &str, key: &str, artifacts: &Path) -> String {
+/// Stable identity for one repository/project key; run IDs remain ownership labels.
+pub(crate) fn project_name(key: &str, repository: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     format!(
-        "dc-{run}-{}-{key}",
-        &digest(artifacts.as_os_str().as_bytes())[..16]
+        "dc-{}-{key}",
+        &digest(repository.as_os_str().as_bytes())[..16]
     )
-}
-/// Stable Docker ownership name shared by runs under one canonical output parent.
-pub(crate) fn directory_owner(artifacts: &Path) -> Result<String> {
-    use std::os::unix::ffi::OsStrExt;
-    let parent = artifacts
-        .parent()
-        .ok_or_else(|| invalid("artifact directory has no parent"))?;
-    let parent = std::fs::canonicalize(parent)?;
-    Ok(format!(
-        "doramcap-dir-{}",
-        digest(parent.as_os_str().as_bytes())
-    ))
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -1396,26 +1478,24 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn compose_arguments_pass_explicit_run_and_project_identity() {
+    async fn compose_arguments_pass_explicit_project_identity() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
         tokio::fs::write(root.path().join("compose.yaml"), b"services: {}")
             .await
             .unwrap();
         let project = discovery_project(root.path());
-        for run in ["review-a", "review-b"] {
-            // Act
-            let name = project_name(run, &project.key, root.path());
-            let (_, args, _) = config_arguments(&project, &name).await.unwrap();
-            // Assert
-            let names: Vec<_> = args
-                .windows(2)
-                .filter(|pair| pair[0] == "--project-name")
-                .map(|pair| pair[1].as_str())
-                .collect();
-            assert_eq!(names, [name.as_str()]);
-            assert!(project.environment.is_empty());
-        }
+        // Act
+        let name = project_name(&project.key, root.path());
+        let (_, args, _) = config_arguments(&project, &name).await.unwrap();
+        // Assert
+        let names: Vec<_> = args
+            .windows(2)
+            .filter(|pair| pair[0] == "--project-name")
+            .map(|pair| pair[1].as_str())
+            .collect();
+        assert_eq!(names, [name.as_str()]);
+        assert!(project.environment.is_empty());
     }
 
     #[tokio::test]

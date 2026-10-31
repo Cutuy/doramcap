@@ -61,7 +61,7 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
     ComposeRun {
         filesystem: Some(Default::default()),
         artifacts: root.join(&id),
-        recovery_anchor_dir: None,
+        repository_root: root.to_path_buf(),
         id: id.clone(),
         projects: vec![
             {
@@ -133,7 +133,7 @@ async fn native_recorded_workflow() {
         filesystem: Some(Default::default()),
         id: run,
         artifacts: artifacts.clone(),
-        recovery_anchor_dir: None,
+        repository_root: root.to_path_buf(),
         projects: vec![project(&root, "demo")],
         system_apps: vec![monitor(&root, &image, &artifacts)],
         dora: Default::default(),
@@ -836,7 +836,7 @@ async fn multi_project_lifecycle() {
 
 #[tokio::test]
 #[ignore = "requires a local Docker Engine and DORAMCAP_TEST_IMAGE"]
-async fn direct_session_lifecycle_and_recovery() {
+async fn direct_session_lifecycle_and_prerun_reset() {
     // Arrange: each transition owns a fresh project and private metadata.
     let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
     let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
@@ -857,7 +857,7 @@ async fn direct_session_lifecycle_and_recovery() {
             filesystem: None,
             dora: Default::default(),
             recordings: vec![],
-            recovery_anchor_dir: None,
+            repository_root: root.to_path_buf(),
             projects: vec![project(&root, "session")],
             system_apps: vec![],
             readiness_seconds: 10,
@@ -891,7 +891,7 @@ async fn direct_session_lifecycle_and_recovery() {
         let (stop, stopped) = tokio::sync::oneshot::channel();
         // Act: await readiness before requesting stop or simulating a crashed caller.
         let run = runner.run_with_ready(
-            spec,
+            spec.clone(),
             async {
                 let _ = stopped.await;
             },
@@ -908,26 +908,17 @@ async fn direct_session_lifecycle_and_recovery() {
         assert!(!artifacts.join("overlays").exists());
         assert!(!artifacts.join("system-services.yaml").exists());
         if mode == 2 {
-            // Act: abandon the caller, then recover using the durable shared metadata.
+            // Act: skip teardown, then let the next workflow reset the old project.
             drop(run);
             assert!(runner.blocked());
-            let recovered = workload_docker::workflows::recovery::recover_project(
-                adapter.clone(),
-                &artifacts,
-                &id,
-                "experiment",
-                true,
-                3,
-            )
-            .await
-            .unwrap();
-            // Assert: recovery stops writers and removes the project without app-specific logic.
-            assert!(
-                recovered.quiesced && recovered.cleanup_verified,
-                "{:?}",
-                recovered.errors
-            );
-            assert!(recovered.errors.is_empty(), "{:?}", recovered.errors);
+            for attempt in 0..2 {
+                let mut probe = spec.clone();
+                probe.id = format!("reset-{}-{attempt}", std::process::id());
+                probe.artifacts = root.join(&probe.id);
+                reset_probe(adapter.clone(), probe).await.unwrap();
+            }
+            // Assert: reset is repeatable and preserves the previous output directory.
+            assert!(artifacts.exists());
         } else {
             // Act: cooperatively stop the ready session.
             if mode == 0 {
@@ -1013,7 +1004,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             id: id.clone(),
             artifacts: root.join(&id),
             filesystem: None,
-            recovery_anchor_dir: None,
+            repository_root: root.to_path_buf(),
             dora: Default::default(),
             recordings: vec![],
             system_apps: vec![project(&root, "helper")],
@@ -1111,82 +1102,92 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-#[tokio::test(flavor = "current_thread")]
-#[ignore = "requires Docker Engine and DORAMCAP_TEST_IMAGE"]
-async fn nested_recovery_reuses_evidence_after_partial_removal() {
-    use std::{os::unix::fs::DirBuilderExt, process::Command};
-    use workload_docker::workflows::recovery::{RecoveryGroup, RecoveryProject, reconcile_group};
+async fn reset_probe(
+    adapter: Rc<DockerAdapter>,
+    input: ComposeRun,
+) -> std::result::Result<(), String> {
+    let result = ComposeRunner::new(adapter)
+        .run_with_preflight(
+            input,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |_| {
+                Err(workload_docker::compose::Error::Invalid(
+                    "reset-probe-complete".into(),
+                ))
+            },
+        )
+        .await;
+    match result {
+        Err(workload_docker::compose::Error::Invalid(message))
+            if message == "reset-probe-complete" =>
+        {
+            Ok(())
+        }
+        other => Err(format!("{other:?}")),
+    }
+}
 
-    // Arrange: two anchored projects and an unrelated container keeping one network busy.
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and the prepared Dora image"]
+async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
+    // Arrange: a live experiment and a test container keeping its network busy.
     let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
     let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
-    let parent = format!("retry-{}", std::process::id());
-    let id = format!("{parent}-1");
-    let root = std::env::temp_dir().join(&parent);
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&root)
-        .unwrap();
-    let anchors = root.join("anchors");
-    std::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(&anchors)
-        .unwrap();
-    for key in ["alpha", "beta"] {
-        write(
-            &root.join(format!("{key}.json")),
-            serde_json::json!({"services":{key:service(&image)}}),
-        );
-    }
+    let root = std::env::temp_dir().join(format!("reset-partial-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    write(
+        &root.join("session.json"),
+        serde_json::json!({"services":{"app":service(&image)}}),
+    );
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
+    let original = ComposeRun {
+        id: format!("partial-{}", std::process::id()),
+        artifacts: root.join("first"),
+        repository_root: root.clone(),
+        filesystem: None,
+        projects: vec![project(&root, "session")],
+        system_apps: vec![],
+        dora: Default::default(),
+        recordings: vec![],
+        readiness_seconds: 15,
+        stop_seconds: 3,
+    };
     let mut runner = ComposeRunner::new(adapter.clone());
     let (ready, started) = tokio::sync::oneshot::channel();
     let mut run = Box::pin(runner.run_with_ready(
-        ComposeRun {
-            id: id.clone(),
-            artifacts: root.join(&id),
-            filesystem: None,
-            recovery_anchor_dir: Some(anchors.clone()),
-            projects: vec![project(&root, "alpha"), project(&root, "beta")],
-            system_apps: vec![],
-            dora: Default::default(),
-            recordings: vec![],
-            readiness_seconds: 10,
-            stop_seconds: 3,
-        },
+        original.clone(),
         std::future::pending(),
         |_: &orchestrator::Event| {},
         Some(ready),
     ));
-    let plans = tokio::select! {
-        ready = started => vec![ready.unwrap()],
-        result = &mut run => panic!("ended before readiness: {result:?}"),
-    };
-    drop(run);
-    let policy: Vec<_> = plans
-        .iter()
-        .rev()
-        .map(|p| RecoveryProject {
-            key: p.key.clone(),
-            remove_volumes: p.remove_volumes,
-        })
-        .collect();
-    let first = plans.last().unwrap();
-    let blocker = format!("{parent}-blocker");
+    let plan = tokio::select! { ready = started => ready.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
+    let blocker = format!("reset-blocker-{}", std::process::id());
     let docker = |args: &[&str]| {
-        Command::new("docker")
+        std::process::Command::new("docker")
             .args(["--host", &format!("unix://{socket}")])
             .args(args)
             .output()
             .unwrap()
     };
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&plan.manifest).unwrap()).unwrap();
+    let network = manifest["networks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()["name"]
+        .as_str()
+        .unwrap();
     let attached = docker(&[
         "run",
         "-d",
         "--name",
         &blocker,
         "--network",
-        &format!("{}_default", first.name),
+        network,
         "--entrypoint",
         "/bin/sleep",
         &image,
@@ -1197,70 +1198,176 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
         "{}",
         String::from_utf8_lossy(&attached.stderr)
     );
-    let group = |attempt| RecoveryGroup {
-        artifacts_root: &root,
-        anchors: &anchors,
-        parent_run: &parent,
-        policy: &policy[0],
-        stop_seconds: 3,
-        preserve_only: false,
-        attempt,
-    };
-
-    // Act: collection succeeds, but network removal fails after its container is gone.
-    let partial = reconcile_group(adapter.clone(), group(1)).await;
-    let remaining = adapter.inspect(first).await.unwrap().containers;
-    let detached = docker(&["rm", "-f", &blocker]);
+    drop(run);
+    let mut probe = original.clone();
+    probe.id.push_str("-next");
+    probe.artifacts = root.join("next");
+    // Act: cleanup cannot remove the network while the unrelated container uses it.
+    let failed = reset_probe(adapter.clone(), probe.clone()).await;
+    // Assert: reset failure prevents preparation, even though some containers were removed.
+    assert!(failed.is_err());
+    assert!(!probe.artifacts.exists());
+    assert!(original.artifacts.exists());
+    let remaining = adapter.inspect(&plan).await.unwrap();
+    assert!(remaining.containers.iter().all(|c| c.pid == 0));
     assert!(
-        detached.status.success(),
-        "{}",
-        String::from_utf8_lossy(&detached.stderr)
+        remaining
+            .containers
+            .iter()
+            .any(|c| c.service == "dora-daemon")
     );
-
-    // Assert: complete evidence survives the failed removal.
-    assert!(partial.is_err());
-    assert_eq!(remaining.len(), 1);
-    assert_eq!(remaining[0].service, "dora-daemon");
-    assert_eq!(remaining[0].pid, 0);
-    assert!(directory_occupied(&root).await);
-    let checkpoint = anchors.join(&id).join("outer-evidence.json");
-    let saved = std::fs::read(&checkpoint).unwrap();
-
-    // Act: a corrupt checkpoint must not authorize removal on a retry.
-    std::fs::write(&checkpoint, b"invalid").unwrap();
-    let corrupt = reconcile_group(adapter.clone(), group(2)).await;
-    let retained = !adapter.discover_runs(&id).await.unwrap().is_empty();
-    std::fs::write(&checkpoint, saved).unwrap();
-
-    // Act: retry with the intact saved evidence, without recollecting missing containers.
-    let retry = reconcile_group(adapter.clone(), group(3)).await;
-
-    // Assert: corrupt evidence fails closed; restored evidence permits verified cleanup.
-    assert!(corrupt.is_err());
-    assert!(retained);
-    assert!(retry.is_ok(), "{retry:?}");
-    assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+    // Act: release the test blocker and retry the same next request.
+    assert!(docker(&["rm", "-f", &blocker]).status.success());
+    reset_probe(adapter.clone(), probe).await.unwrap();
+    // Assert: the old project is fully removed; its output directory remains.
+    assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+    assert!(original.artifacts.exists());
+    // Act / Assert: a clean previous teardown is also harmless.
+    let mut clean = original;
+    clean.id.push_str("-clean");
+    clean.artifacts = root.join("clean");
+    reset_probe(adapter, clean).await.unwrap();
 }
 
-async fn directory_occupied(root: &Path) -> bool {
-    use sha2::{Digest, Sha256};
-    let name = format!(
-        "doramcap-dir-{}",
-        hex::encode(Sha256::digest(
-            std::fs::canonicalize(root).unwrap().as_os_str().as_bytes()
-        ))
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and the prepared Dora image"]
+async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
+    // Arrange
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("stable-volumes-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let mut app = service(&image);
+    app["command"] = serde_json::json!([
+        "test ! -e /scratch/marker || exit 44; touch /scratch/marker; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
+    ]);
+    app["volumes"] = serde_json::json!(["scratch:/scratch"]);
+    write(
+        &root.join("session.json"),
+        serde_json::json!({"services":{"app":app},"volumes":{"scratch":{}}}),
     );
-    let docker = bollard::Docker::connect_with_unix(
-        &std::env::var("DORAMCAP_TEST_SOCKET").unwrap(),
-        120,
-        bollard::API_DEFAULT_VERSION,
+    let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter);
+    let mut projects = Vec::new();
+    let mut volumes = Vec::new();
+    for index in 0..2 {
+        let id = format!("retained-{}-{index}", std::process::id());
+        let mut project = project(&root, "session");
+        project.remove_volumes = false;
+        let input = ComposeRun {
+            id: id.clone(),
+            artifacts: root.join(id),
+            repository_root: root.clone(),
+            filesystem: None,
+            projects: vec![project],
+            system_apps: vec![],
+            dora: Default::default(),
+            recordings: vec![],
+            readiness_seconds: 15,
+            stop_seconds: 3,
+        };
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        // Act
+        let mut run = Box::pin(runner.run_with_ready(
+            input,
+            async {
+                let _ = stopped.await;
+            },
+            |_: &orchestrator::Event| {},
+            Some(ready),
+        ));
+        let plan = tokio::select! { plan = started => plan.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
+        projects.push(plan.name);
+        stop.send(()).unwrap();
+        let report = run.await.unwrap();
+        // Assert: neither the old marker nor the old volume is reused.
+        assert!(report.boundary_clean, "{report:?}");
+        assert!(report.execution_error.is_none(), "{report:?}");
+        assert_eq!(report.cleanup.retained_volumes.len(), 1);
+        volumes.push(report.cleanup.retained_volumes[0].clone());
+    }
+    assert_eq!(projects[0], projects[1]);
+    assert_ne!(volumes[0], volumes[1]);
+    for volume in volumes {
+        assert!(
+            std::process::Command::new("docker")
+                .args([
+                    "--host",
+                    &format!("unix://{socket}"),
+                    "volume",
+                    "rm",
+                    &volume
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and the prepared Dora image"]
+async fn active_experiment_excludes_same_and_different_repositories() {
+    // Arrange
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("one-experiment-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let repositories: Vec<_> = ["first", "second"]
+        .iter()
+        .map(|name| {
+            let path = root.join(name);
+            std::fs::create_dir(&path).unwrap();
+            write(
+                &path.join("session.json"),
+                serde_json::json!({"services":{"app":service(&image)}}),
+            );
+            path
+        })
+        .collect();
+    let input = |repository: &Path, id: &str| ComposeRun {
+        id: id.into(),
+        artifacts: repository.join(id),
+        repository_root: repository.to_owned(),
+        filesystem: None,
+        projects: vec![project(repository, "session")],
+        system_apps: vec![],
+        dora: Default::default(),
+        recordings: vec![],
+        readiness_seconds: 15,
+        stop_seconds: 3,
+    };
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let (ready, started) = tokio::sync::oneshot::channel();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let mut run = Box::pin(runner.run_with_ready(
+        input(&repositories[0], "active"),
+        async {
+            let _ = stopped.await;
+        },
+        |_: &orchestrator::Event| {},
+        Some(ready),
+    ));
+    let plan = tokio::select! { plan = started => plan.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
+    // Act / Assert: neither a sibling run nor another repository can enter preparation.
+    for repository in &repositories {
+        let next = input(repository, "blocked");
+        assert!(reset_probe(adapter.clone(), next.clone()).await.is_err());
+        assert!(!next.artifacts.exists());
+    }
+    assert!(DockerAdapter::ready(&adapter.inspect(&plan).await.unwrap()).unwrap());
+    // Act: finish the owner, then start preparation in the other repository.
+    stop.send(()).unwrap();
+    assert!(run.await.unwrap().boundary_clean);
+    let next = input(&repositories[1], "accepted");
+    reset_probe(adapter.clone(), next.clone()).await.unwrap();
+    // Assert: its actual produced project identity differs from the first repository's.
+    let resolution: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(next.artifacts.join("experiment.resolution.json")).unwrap(),
     )
     .unwrap();
-    match docker.inspect_container(&name, None).await {
-        Ok(_) => true,
-        Err(bollard::errors::Error::DockerResponseServerError {
-            status_code: 404, ..
-        }) => false,
-        Err(error) => panic!("inspect directory owner: {error}"),
-    }
+    assert_ne!(resolution["plan"]["name"], plan.name);
+    assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
 }

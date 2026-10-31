@@ -87,7 +87,7 @@ pub(super) fn bind_experiment(
     Ok(attach(executor, adapter, diagnostics))
 }
 
-fn attach(
+pub(super) fn attach(
     mut executor: LocalExecutor,
     adapter: Rc<DockerAdapter>,
     diagnostics: Diagnostics,

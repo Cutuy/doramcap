@@ -32,14 +32,14 @@ use tokio::io::AsyncWriteExt;
 pub enum Disposition {
     #[default]
     WriteBack,
-    Retain,
+    Discard,
 }
 /// Per-run filesystem policy. Directory binds are isolated by default.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OverlayPolicy {
     #[serde(default)]
-    /// Apply the stopped view to its source, or retain an independent copy.
+    /// Apply upper changes to their source, or discard them.
     pub disposition: Disposition,
 }
 /// One shared tree and its private run-owned mount/staging locations.
@@ -53,8 +53,6 @@ pub struct OverlayTree {
     pub work: PathBuf,
     /// Mountpoint bound into containers.
     pub merged: PathBuf,
-    /// Materialized results available after unmount.
-    pub staged: PathBuf,
     /// Original metadata inventory used for conflict detection.
     pub baseline: PathBuf,
 }
@@ -76,7 +74,7 @@ pub struct MountMapping {
     /// Reason for redirecting or preserving this source.
     pub reason: String,
 }
-/// Persisted preparation result; caller must finalize or retain it for recovery.
+/// Prepared views; the caller finalizes them or discards them on the next reset.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverlaySet {
     /// Private artifact directory for ownership and result records.
@@ -100,12 +98,12 @@ pub struct PrepareInput {
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
 }
-/// Final result locations. Retained views are materialized independently of lower trees.
+/// Final result locations; discard returns no source paths.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverlayResults {
-    /// Apply the stopped view to its source, or retain an independent copy.
+    /// Apply upper changes to their source, or discard them.
     pub disposition: Disposition,
-    /// Original paths after write-back, or independent retained views.
+    /// Original paths after write-back; empty after discard.
     pub paths: Vec<PathBuf>,
     /// True only after every owned mount has been strictly unmounted.
     pub unmounted: bool,
@@ -143,9 +141,9 @@ impl Step for PrepareOverlays {
         Ok(set)
     }
 }
-/// Strictly unmount, then apply the supported upper delta or retain a full view.
-/// Caller proves writer quiescence. Errors preserve upper/retained data; never
-/// use lazy unmount. Write-back is not atomic; a failed call requires recovery.
+/// Strictly unmount, then apply upper changes or discard them; writers must stop first.
+/// Interrupted write-back leaves upper data for the user to salvage before reset.
+/// Pre-run reset never replays writes.
 pub struct FinalizeOverlays;
 impl Step for FinalizeOverlays {
     type Input = OverlaySet;
@@ -398,10 +396,9 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             upper: base.join("upper"),
             work: base.join("work"),
             merged: base.join("merged"),
-            staged: base.join("staged"),
             baseline: base.join("baseline.pb"),
         };
-        for path in [&tree.upper, &tree.work, &tree.merged, &tree.staged] {
+        for path in [&tree.upper, &tree.work, &tree.merged] {
             tokio::fs::create_dir(path).await?;
         }
         // Capture baselines before any mounts so failure here owns no kernel resources.
@@ -593,39 +590,105 @@ async fn check_lower(tree: &OverlayTree) -> Result<()> {
     }
     Ok(())
 }
-/// Finalize a prepared set after writers exit.
-///
-/// Write-back strictly unmounts all views, validates every upper tree, then
-/// applies deletions and copies supported upper entries directly to each lower.
-/// Retain materializes an independent merged tree before unmount. Lower trees
-/// must remain stable throughout; errors preserve upper and block admission.
-/// Apply is not atomic and partial failures require manual resolution.
-pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
-    for tree in &set.trees {
-        check_lower(tree).await?;
-        if set.policy.disposition == Disposition::Retain {
-            rsync(
-                &tree.merged,
-                &tree.staged,
-                None,
-                &tree.upper.parent().unwrap().join("stage.log"),
-                false,
-                false,
-            )
-            .await?;
+/// Unmount owned views and delete their upper/work data; missing paths are done.
+/// Writers must already be stopped. Unexpected mounts, symlinks and I/O errors fail.
+pub async fn discard(directory: &Path) -> Result<()> {
+    let metadata = match tokio::fs::symlink_metadata(directory).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e.into()),
+    };
+    if !metadata.is_dir() || tokio::fs::canonicalize(directory).await? != directory {
+        return Err(invalid("overlay cleanup directory must be canonical"));
+    }
+    let mut trees = Vec::new();
+    let mut entries = tokio::fs::read_dir(directory).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_type().await?.is_dir() {
+            if entry
+                .file_name()
+                .to_str()
+                .is_none_or(|name| name.is_empty() || !name.bytes().all(|c| c.is_ascii_digit()))
+            {
+                return Err(invalid("unexpected directory in overlay cleanup"));
+            }
+            trees.push(entry.path());
+        } else if entry.file_type().await?.is_symlink() {
+            return Err(invalid("linked overlay cleanup metadata"));
         }
     }
-    for tree in &set.trees {
-        check_lower(tree).await?;
+    // Inspect every mount before changing any filesystem state.
+    let views: Vec<_> = trees.iter().map(|tree| tree.join("merged")).collect();
+    let mounted = mounts().await?;
+    for mount in mounted.iter().filter(|mount| mount.starts_with(directory)) {
+        if !views.contains(mount) {
+            return Err(invalid("unexpected mount in overlay cleanup"));
+        }
     }
-    for tree in set.trees.iter().rev() {
-        unmount(&tree.merged).await?;
+    for view in views.iter().rev().filter(|view| mounted.contains(view)) {
+        unmount(view).await?;
     }
-    let remaining = mounts().await?;
-    if set.trees.iter().any(|t| remaining.contains(&t.merged)) {
-        return Err(invalid("overlay remains mounted after unmount"));
+    if mounts()
+        .await?
+        .iter()
+        .any(|mount| mount.starts_with(directory))
+    {
+        return Err(invalid("overlay cleanup left a mounted view"));
     }
-    private_write(&set.directory.join("unmounted.json"), b"true\n").await?;
+    let disposable: Vec<_> = trees
+        .iter()
+        .flat_map(|tree| ["upper", "work", "merged", "staged"].map(|name| tree.join(name)))
+        .collect();
+    for path in &disposable {
+        match tokio::fs::symlink_metadata(path).await {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                tokio::fs::remove_dir_all(path).await?
+            }
+            Ok(_) => return Err(invalid("invalid overlay cleanup tree")),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    // Absence is the success condition, including retries after partial deletion.
+    for path in &disposable {
+        match tokio::fs::symlink_metadata(path).await {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+            Ok(_) => return Err(invalid("overlay data remains after cleanup")),
+        }
+    }
+    if mounts()
+        .await?
+        .iter()
+        .any(|mount| mount.starts_with(directory))
+    {
+        return Err(invalid("mounted view remains after overlay cleanup"));
+    }
+    Ok(())
+}
+
+/// Finalize stopped views: apply supported upper changes, or discard them.
+/// Write-back validates stable lower trees; errors preserve upper data until reset.
+/// Application is non-atomic and is never replayed by pre-run cleanup.
+pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
+    if set.policy.disposition == Disposition::Discard {
+        discard(&set.directory).await?;
+    } else {
+        for tree in &set.trees {
+            check_lower(tree).await?;
+        }
+        for tree in set.trees.iter().rev() {
+            unmount(&tree.merged).await?;
+        }
+        if mounts()
+            .await?
+            .iter()
+            .any(|path| path.starts_with(&set.directory))
+        {
+            return Err(invalid("overlay remains mounted after unmount"));
+        }
+        private_write(&set.directory.join("unmounted.json"), b"true\n").await?;
+    }
     let mut paths = Vec::new();
     let mut warnings = Vec::new();
     if set.policy.disposition == Disposition::WriteBack {
@@ -720,8 +783,6 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             .await?;
             paths.push(tree.source.clone());
         }
-    } else {
-        paths.extend(set.trees.iter().map(|tree| tree.staged.clone()));
     }
     let result = OverlayResults {
         disposition: set.policy.disposition,

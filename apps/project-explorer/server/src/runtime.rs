@@ -495,7 +495,7 @@ mod tests {
             .ancestors()
             .nth(3)
             .unwrap();
-        let manager = Manager::from_resources(Registry::new(workspace).unwrap(), timeout, &[]);
+        let manager = Manager::new(Registry::new(workspace).unwrap(), timeout);
         let (commands, receiver) = mpsc::unbounded_channel();
         let service = Service {
             manager: manager.clone(),

@@ -77,7 +77,7 @@ fn request() -> ComposeRun {
         id: "run".into(),
         artifacts: "/runs/run".into(),
         filesystem: None,
-        recovery_anchor_dir: None,
+        repository_root: "/tmp".into(),
         system_apps: vec![app("system")],
         projects: vec![app("adopted")],
         dora: runtime(),
@@ -192,7 +192,7 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
     },"networks":{"users":{}},"volumes":{"data":{}}});
 
     // Act
-    let warnings = configure_dora(&mut model, &runtime(), "directory-owner".into()).unwrap();
+    let warnings = configure_dora(&mut model, &runtime(), "experiment-owner".into()).unwrap();
 
     // Assert
     for name in ["monitor", "adopted", "dora-coordinator"] {
@@ -209,7 +209,7 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
     assert_eq!(model["services"]["dora-daemon"]["shm_size"], 134217728);
     assert_eq!(
         model["services"]["dora-daemon"]["container_name"],
-        "directory-owner"
+        "experiment-owner"
     );
     assert!(
         model["services"]["dora-daemon"]["environment"]
@@ -271,7 +271,7 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
         );
     }
     for part in [
-        json!({"app":{"labels":{"io.doramcap.directory-owner":"true"}}}),
+        json!({"app":{"labels":{"io.doramcap.experiment-owner":"true"}}}),
         json!({"dora-daemon":{}}),
         json!({"dora-coordinator":{}}),
     ] {
@@ -344,7 +344,7 @@ fn request_validation_rejects_invalid_paths_keys_and_budgets() {
     let cases: [fn(&mut ComposeRun); 8] = [
         |s| s.id = "bad/id".into(),
         |s| s.artifacts = "relative".into(),
-        |s| s.recovery_anchor_dir = Some("relative".into()),
+        |s| s.repository_root = "relative".into(),
         |s| {
             s.system_apps.clear();
             s.projects.clear();

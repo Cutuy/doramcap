@@ -72,11 +72,14 @@ impl PrepareRun {
             for app in apps {
                 let normalized = self
                     .adapter
-                    .normalize(&ResolveInput {
-                        run: spec.id.clone(),
-                        artifacts: artifacts.clone(),
-                        project: model::app_input(app, &dora)?,
-                    })
+                    .normalize(
+                        &ResolveInput {
+                            run: spec.id.clone(),
+                            artifacts: artifacts.clone(),
+                            project: model::app_input(app, &dora)?,
+                        },
+                        &crate::compose::adapter::project_name("experiment", &spec.repository_root),
+                    )
                     .await?;
                 let warnings =
                     model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
@@ -94,7 +97,7 @@ impl PrepareRun {
         diagnostics.extend(model::configure_dora(
             &mut model,
             &dora,
-            crate::compose::adapter::directory_owner(&artifacts)?,
+            super::super::shared_dora::MACHINE_OWNER.into(),
         )?);
         if !dora.graph.is_empty() {
             let graph = super::super::shared_dora::graph(
@@ -116,7 +119,7 @@ impl PrepareRun {
                 artifacts: artifacts.clone(),
                 project: ComposeProject {
                     key: "experiment".into(),
-                    directory: artifacts.clone(),
+                    directory: spec.repository_root.clone(),
                     files: vec![manifest],
                     env_files: vec![],
                     environment: BTreeMap::new(),
@@ -134,7 +137,7 @@ impl PrepareRun {
             eprintln!("warning: {warning}");
         }
         plan.diagnostics.extend(diagnostics);
-        // Capture the filesystem baseline and optional crash-recovery anchor.
+        // Capture the filesystem baseline for normal completion.
         let executor = self
             .executor
             .upgrade()
@@ -147,16 +150,6 @@ impl PrepareRun {
             .await
             .map_err(|e| invalid(e.to_string()))?
             .into_value();
-        if let Some(directory) = &spec.recovery_anchor_dir {
-            super::super::recovery::write_anchor(
-                directory,
-                &artifacts,
-                &spec.id,
-                &plan,
-                &baseline.recovery_files(),
-            )
-            .await?;
-        }
         Ok(PreparedRun {
             artifacts,
             plan,

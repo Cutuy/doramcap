@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1110" viewBox="0 0 1440 1110" role="img" aria-labelledby="title desc">
   <title id="title">Docker workflow modules — shared Dora experiment</title>
-  <desc id="desc">ComposeRunner prepares one Compose project, starts Dora then system and adopted apps, monitors the run, drains workloads, stops Dora and finalizes outputs. The recorded_compose directory contains preparation, phase orchestration, observation and finalization. Dora configuration, runtime control, graph ownership, step registration, filesystem checkpoints and crash recovery are supporting modules.</desc>
+  <desc id="desc">ComposeRunner prepares one Compose project, starts Dora then system and adopted apps, monitors the run, drains workloads, stops Dora and finalizes outputs. The recorded_compose directory contains preparation, phase orchestration, observation and finalization. Dora configuration, runtime control, graph ownership, step registration, filesystem checkpoints and pre-run reset are supporting modules.</desc>
   <defs>
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0 0L9 4.5L0 9" fill="#64748b"/></marker>
     <style>
@@ -76,13 +76,13 @@
   <text x="810" y="730" class="body">Register step factories and shared dependencies</text>
   <text x="810" y="754" class="label">Docker · Dora · preparation · finalization</text>
 
-  <text x="40" y="828" class="heading">Saved checkpoints and crash recovery</text>
+  <text x="40" y="828" class="heading">Pre-run reset and saved reports</text>
   <rect x="40" y="848" width="650" height="96" rx="10" fill="#fff8ed" stroke="#dcc7a0" stroke-width="1.5"/>
   <text x="62" y="881" class="file">compose_lifecycle.rs</text>
   <text x="62" y="915" class="body">StopReport · durable filesystem checkpoints</text>
   <rect x="770" y="848" width="630" height="96" rx="10" fill="#fff8ed" stroke="#dcc7a0" stroke-width="1.5"/>
-  <text x="792" y="881" class="file">recovery.rs</text>
-  <text x="792" y="915" class="body">Verify saved ownership → stop → collect → remove</text>
+  <text x="792" y="881" class="file">recorded_compose/reset.rs</text>
+  <text x="792" y="915" class="body">Lock → stop → unmount → discard → remove</text>
   <path d="M770 898H692" class="line"/>
 
   <text x="40" y="987" class="heading">Shared execution and Docker operations</text>

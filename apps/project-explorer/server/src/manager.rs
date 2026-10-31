@@ -1,15 +1,13 @@
-//! Registry-backed per-app coordination and conservative restart discovery.
+//! Registry-backed app coordination; experiment admission and reset belong to the runner.
 use crate::{
     lifecycle::{AppLifecycle, Attempt, Launch, Status},
     registry::{Registration, Registry},
 };
 use std::{
     collections::BTreeMap,
-    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
-use workload_docker::compose::{DockerAdapter, OwnedResource};
 
 /// A registered application and its independent lifecycle coordinator.
 #[derive(Clone)]
@@ -28,108 +26,23 @@ pub enum Error {
 }
 
 /// The manager exposes server-owned registrations and per-app coordination.
-/// Startup discovery must run before this value is made available to clients.
+/// The recorded runner resets prior resources before starting a generation.
 #[derive(Clone)]
 pub struct Manager {
     apps: BTreeMap<String, AppEntry>,
     admission: Arc<tokio::sync::Mutex<()>>,
 }
 impl Manager {
-    /// Query the Engine before accepting launches. Any matching labeled resources
-    /// block their registered app. An unrecognized ownership record blocks every
-    /// app because its ownership cannot be attributed safely.
-    pub async fn discover(
-        registry: Registry,
-        docker: &DockerAdapter,
-        idle_timeout: Duration,
-    ) -> workload_docker::compose::Result<Self> {
-        let resources = docker.discover_runs("gal-").await?;
-        Ok(Self::from_resources_at(
-            registry,
-            idle_timeout,
-            &resources,
-            None,
-        ))
-    }
-    /// Discover resources and attribute nested runs using private generation anchors.
-    /// Unknown or inconsistent ownership still blocks every registered app.
-    pub async fn discover_at(
-        registry: Registry,
-        docker: &DockerAdapter,
-        idle_timeout: Duration,
-        data: &Path,
-    ) -> workload_docker::compose::Result<Self> {
-        let resources = docker.discover_runs("gal-").await?;
-        Ok(Self::from_resources_at(
-            registry,
-            idle_timeout,
-            &resources,
-            Some(data),
-        ))
-    }
-    #[cfg(test)]
-    pub(crate) fn from_resources(
-        registry: Registry,
-        idle_timeout: Duration,
-        resources: &[OwnedResource],
-    ) -> Self {
-        Self::from_resources_at(registry, idle_timeout, resources, None)
-    }
-    fn from_resources_at(
-        registry: Registry,
-        idle_timeout: Duration,
-        resources: &[OwnedResource],
-        data: Option<&Path>,
-    ) -> Self {
-        let mut issues: BTreeMap<&str, Vec<String>> = BTreeMap::new();
-        let mut ambiguous = Vec::new();
-        for resource in resources {
-            if let (Some(root), Some(artifacts)) = (data, resource.artifacts.as_deref())
-                && !artifacts.starts_with(root)
-            {
-                continue;
-            }
-            let owner = data.and_then(|root| {
-                resource.artifacts.as_ref().and_then(|artifacts| {
-                    registry.iter().find(|app| {
-                        resource
-                            .run
-                            .strip_prefix("gal-")
-                            .and_then(|id| id.get(..32))
-                            .is_some_and(|id| {
-                                artifacts.starts_with(root.join(format!("{}-{id}", app.id)))
-                            })
-                    })
-                })
-            });
-            let description = format!("{}:{} (run {})", resource.kind, resource.id, resource.run);
-            if let Some(app) = owner {
-                issues.entry(&app.id).or_default().push(description);
-            } else {
-                ambiguous.push(description);
-            }
-        }
+    /// Construct app coordinators; the recorded workflow resets prior runs before launch.
+    pub fn new(registry: Registry, idle_timeout: Duration) -> Self {
         let apps = registry
             .iter()
             .map(|app| {
-                let mut owned = issues.remove(app.id.as_str()).unwrap_or_default();
-                owned.extend(ambiguous.iter().cloned());
-                let lifecycle = if owned.is_empty() {
-                    AppLifecycle::new(idle_timeout)
-                } else {
-                    AppLifecycle::blocked(
-                        idle_timeout,
-                        format!(
-                            "existing manager resources require cleanup: {}",
-                            owned.join(", ")
-                        ),
-                    )
-                };
                 (
                     app.id.clone(),
                     AppEntry {
                         registration: app.clone(),
-                        lifecycle,
+                        lifecycle: AppLifecycle::new(idle_timeout),
                     },
                 )
             })
@@ -201,125 +114,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discovered_project_blocks_launch_and_unknown_ids_are_rejected() {
-        // Arrange
-        let registry = Registry::new(&workspace()).unwrap();
-        let resources = vec![OwnedResource {
-            artifacts: None,
-            run: "gal-0123".into(),
-            project: Some("dc-gal-0123-activity-demo".into()),
-            kind: "container",
-            id: "old-container".into(),
-        }];
-        let manager = Manager::from_resources(registry, Duration::from_secs(120), &resources);
-
-        // Act
-        let blocked = manager.launch("activity-demo", Instant::now()).await;
-        let unknown = manager.launch("other", Instant::now()).await;
-
-        // Assert
-        assert!(
-            matches!(blocked, Err(Error::Blocked(message)) if message.contains("old-container"))
-        );
-        assert_eq!(unknown, Err(Error::UnknownApp));
-    }
-
-    #[tokio::test]
-    async fn another_directory_does_not_block_launch() {
-        // Arrange
-        let registry = Registry::new(&workspace()).unwrap();
-        let resources = [OwnedResource {
-            artifacts: Some(PathBuf::from("/other-repository/data/run")),
-            run: "gal-0123".into(),
-            project: Some("dc-gal-0123-activity-demo".into()),
-            kind: "container",
-            id: "other-container".into(),
-        }];
-        let manager = Manager::from_resources_at(
-            registry,
-            Duration::from_secs(120),
-            &resources,
-            Some(Path::new("/this-repository/data")),
-        );
-
-        // Act
-        let launched = manager.launch("activity-demo", Instant::now()).await;
-
-        // Assert
-        assert!(launched.is_ok(), "{launched:?}");
-    }
-
-    #[tokio::test]
-    async fn ambiguous_owned_resource_blocks_all_registered_apps() {
-        // Arrange
-        let registry = Registry::new(&workspace()).unwrap();
-        let resources = vec![OwnedResource {
-            artifacts: None,
-            run: "gal-0123".into(),
-            project: None,
-            kind: "network",
-            id: "orphan".into(),
-        }];
-        let manager = Manager::from_resources(registry, Duration::from_secs(120), &resources);
-
-        // Act
-        let result = manager.launch("activity-demo", Instant::now()).await;
-
-        // Assert
-        assert!(matches!(result, Err(Error::Blocked(message)) if message.contains("orphan")));
-    }
-    #[tokio::test]
-    async fn scoped_nested_resources_block_only_their_owner() {
-        // Arrange
-        let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
-        let data =
-            std::env::temp_dir().join(format!("gallery-discovery-{:032x}", rand::random::<u128>()));
-        let token = "0123456789abcdef0123456789abcdef";
-        let run = format!("gal-{token}-1");
-        let generation = data.join(format!("activity-demo-{token}"));
-        let mut resources = vec![OwnedResource {
-            artifacts: Some(generation.join("private/telemetry").join(&run)),
-            run: run.clone(),
-            project: Some(format!("dc-{run}-demo")),
-            kind: "volume",
-            id: "nested-volume".into(),
-        }];
-
-        // Act / Assert: retained owned resources block admission of a different experiment.
-        let manager = Manager::from_resources_at(
-            registry.clone(),
-            Duration::from_secs(120),
-            &resources,
-            Some(&data),
-        );
-        assert!(matches!(
-            manager.launch("activity-demo", Instant::now()).await,
-            Err(Error::Blocked(_))
-        ));
-        assert!(matches!(
-            manager.launch("storage-demo", Instant::now()).await,
-            Err(Error::Busy { .. })
-        ));
-
-        // Act / Assert: missing directory ownership labels make ownership ambiguous.
-        resources[0].artifacts = None;
-        let manager =
-            Manager::from_resources_at(registry, Duration::from_secs(120), &resources, Some(&data));
-        assert!(matches!(
-            manager.launch("activity-demo", Instant::now()).await,
-            Err(Error::Blocked(_))
-        ));
-        assert!(matches!(
-            manager.launch("storage-demo", Instant::now()).await,
-            Err(Error::Blocked(_))
-        ));
-    }
-
-    #[tokio::test]
     async fn conflicting_concurrent_launches_are_serialized_until_cleanup() {
         // Arrange
         let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
-        let manager = Manager::from_resources(registry, Duration::from_secs(120), &[]);
+        let manager = Manager::new(registry, Duration::from_secs(120));
 
         // Act
         let (activity, storage) = tokio::join!(
@@ -356,7 +154,7 @@ mod tests {
     async fn waiting_for_cleanup_keeps_other_experiments_busy() {
         // Arrange
         let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
-        let manager = Manager::from_resources(registry, Duration::from_secs(120), &[]);
+        let manager = Manager::new(registry, Duration::from_secs(120));
         let first = manager
             .launch("activity-demo", Instant::now())
             .await

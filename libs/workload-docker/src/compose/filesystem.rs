@@ -90,14 +90,6 @@ pub struct FilesystemBaseline {
     sources: Vec<Source>,
     pub directory: PathBuf,
 }
-impl FilesystemBaseline {
-    /// Baseline metadata files to authenticate before workload launch.
-    pub(crate) fn recovery_files(&self) -> Vec<PathBuf> {
-        std::iter::once(self.directory.join("baseline.json"))
-            .chain(self.sources.iter().map(|source| source.baseline.clone()))
-            .collect()
-    }
-}
 /// Explicit inputs to pre-launch metadata capture.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaselineInput {
@@ -129,7 +121,7 @@ pub struct CategoryChanges {
     pub manifest: PathBuf,
     pub counts: ChangeCounts,
     /// Whether every in-scope source was scanned completely. Missing in older
-    /// reports defaults to false, so recovery does not infer complete coverage.
+    /// reports defaults to false, so callers cannot infer complete coverage.
     #[serde(default)]
     pub coverage_complete: bool,
     /// Source exceptions and incomplete scans, distinct from file changes.

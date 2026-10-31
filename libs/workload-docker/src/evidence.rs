@@ -19,12 +19,12 @@ pub(crate) async fn read_regular(path: &Path, limit: u64) -> crate::compose::Res
         .await?;
     let metadata = file.metadata().await?;
     if !metadata.is_file() || metadata.len() > limit {
-        return Err(invalid("recovery metadata is not a bounded regular file"));
+        return Err(invalid("workflow metadata is not a bounded regular file"));
     }
     let mut bytes = Vec::new();
     file.take(limit + 1).read_to_end(&mut bytes).await?;
     if bytes.len() as u64 > limit {
-        return Err(invalid("recovery metadata exceeds its size limit"));
+        return Err(invalid("workflow metadata exceeds its size limit"));
     }
     Ok(bytes)
 }

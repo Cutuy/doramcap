@@ -10,7 +10,6 @@ mod proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.hosting.v1.rs"));
 }
 pub use proto::{AppRegistration, ArtifactCollection, RecordingCount, ResultFormat};
-pub use workload_docker::workflows::recovery::RecoveryProject as NestedProject;
 
 // Keep the existing private checkpoint representation during configuration migration.
 mod result_format_serde {
@@ -91,6 +90,7 @@ impl ArtifactCollection {
 #[derive(Clone, Debug)]
 pub struct Registration {
     pub directory: PathBuf,
+    pub repository_root: PathBuf,
     pub config: AppRegistration,
 }
 impl std::ops::Deref for Registration {
@@ -126,7 +126,7 @@ impl Registration {
 
     /// Parse one protobuf text registration. Unknown fields and malformed text fail.
     /// The caller validates semantic constraints before admitting the registration.
-    fn parse(text: &str, directory: PathBuf) -> Result<Self, String> {
+    fn parse(text: &str, directory: PathBuf, repository_root: PathBuf) -> Result<Self, String> {
         use prost_reflect::{DescriptorPool, DynamicMessage};
         static POOL: std::sync::OnceLock<DescriptorPool> = std::sync::OnceLock::new();
         let pool = POOL.get_or_init(|| {
@@ -142,7 +142,11 @@ impl Registration {
             .map_err(|e| e.to_string())?
             .transcode_to()
             .map_err(|e| e.to_string())?;
-        Ok(Self { directory, config })
+        Ok(Self {
+            repository_root,
+            directory,
+            config,
+        })
     }
 }
 
@@ -274,9 +278,6 @@ impl Registration {
             })
             || self.readiness_seconds == 0
             || self.stop_seconds == 0
-            || (self.nested_runs && !self.docker_socket)
-            || self.nested_projects.len() != usize::from(self.nested_runs)
-            || self.nested_projects.iter().any(|p| p.key != "experiment")
             || self.private_directories.len() > 4
             || self.private_directories.iter().any(|name| {
                 name.is_empty()
@@ -381,7 +382,7 @@ impl Registry {
             .retain(|id, app| !app.requires_explicit_enable || enabled.contains(id.as_str()));
         Ok(registry)
     }
-    /// Load all registrations for recovery, including apps requiring opt-in.
+    /// Load all registrations, including apps requiring opt-in.
     pub fn load_all(workspace: &Path) -> Result<Self, String> {
         if !workspace.is_absolute() {
             return Err("workspace path must be absolute".into());
@@ -409,8 +410,12 @@ impl Registry {
                 ));
             }
             let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let app = Registration::parse(&text, directory)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let app = Registration::parse(
+                &text,
+                directory,
+                fs::canonicalize(workspace).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| format!("{}: {e}", path.display()))?;
             app.validate()
                 .map_err(|e| format!("{}: {e}", path.display()))?;
             let id = app.id.clone();
@@ -475,7 +480,7 @@ mod tests {
             fs::read_to_string(workspace().join("apps/activity-demo/deploy/registration.pbtxt"))
                 .unwrap();
         // Act
-        let app = Registration::parse(&text, PathBuf::new()).unwrap();
+        let app = Registration::parse(&text, PathBuf::new(), PathBuf::new()).unwrap();
         // Assert
         assert!(app.validate().is_ok());
         assert_eq!(app.result_format(), ResultFormat::Mcap);
@@ -485,7 +490,7 @@ mod tests {
             format!("{text} id: \"duplicate\""),
             text.replace("port: 8088", "port: 4294967296"),
         ] {
-            assert!(Registration::parse(&invalid, PathBuf::new()).is_err());
+            assert!(Registration::parse(&invalid, PathBuf::new(), PathBuf::new()).is_err());
         }
         // Act / Assert: validation rejects unknown enum numbers and invalid ports.
         for invalid in [
@@ -493,7 +498,7 @@ mod tests {
             text.replace("port: 8088", "port: 65536"),
         ] {
             assert!(
-                Registration::parse(&invalid, PathBuf::new())
+                Registration::parse(&invalid, PathBuf::new(), PathBuf::new())
                     .unwrap()
                     .validate()
                     .is_err()
@@ -504,6 +509,7 @@ mod tests {
             let app = Registration::parse(
                 &fs::read_to_string(&path).unwrap(),
                 path.parent().unwrap().into(),
+                PathBuf::new(),
             )
             .unwrap();
             assert!(app.validate().is_ok(), "{}", path.display());
@@ -589,6 +595,7 @@ mod tests {
             let app = Registration::parse(
                 &fs::read_to_string(&path).unwrap(),
                 path.parent().unwrap().into(),
+                PathBuf::new(),
             )
             .unwrap();
             if app.dora.as_ref().is_none_or(|dora| dora.graph.is_empty()) {
@@ -613,7 +620,7 @@ mod tests {
         let text =
             fs::read_to_string(workspace().join("apps/activity-demo/deploy/registration.pbtxt"))
                 .unwrap();
-        let mut app = Registration::parse(&text, PathBuf::new()).unwrap();
+        let mut app = Registration::parse(&text, PathBuf::new(), PathBuf::new()).unwrap();
         // Act
         app.headless = true;
         app.port = None;
@@ -709,7 +716,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../cuda-shm-demo/deploy/registration.pbtxt"
         ));
-        let registration = Registration::parse(text, PathBuf::new()).unwrap();
+        let registration = Registration::parse(text, PathBuf::new(), PathBuf::new()).unwrap();
 
         // Act
         let validated = registration.validate();
@@ -737,30 +744,7 @@ mod tests {
                 .any(|c| c.matches("run.log"))
         );
     }
-    #[test]
-    fn pending_orchestrator_registration_limits_private_wiring_and_exports() {
-        // Arrange
-        let text = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../orchestrator-demo/deploy/registration.pending.pbtxt"
-        ));
-        let mut app = Registration::parse(text, PathBuf::new()).unwrap();
 
-        // Act
-        let valid = app.validate();
-        let collection = &app.artifact_collections[0];
-
-        // Assert
-        assert!(valid.is_ok());
-        assert!(app.docker_socket);
-        assert!(app.nested_runs);
-        assert_eq!(app.private_directories, ["socket", "recovery"]);
-        assert!(collection.matches("cpu.mcap"));
-        assert!(!collection.matches("report.json"));
-        assert!(!collection.matches("worker.log"));
-        app.docker_socket = false;
-        assert!(app.validate().is_err());
-    }
     #[test]
     fn loads_independent_manifest_and_rejects_duplicate_and_unsafe_entries() {
         // Arrange

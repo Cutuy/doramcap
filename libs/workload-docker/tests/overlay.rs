@@ -48,9 +48,9 @@ async fn serial_overlay_isolation_and_harvest() {
     std::fs::write(source.join("hard-a"), b"hard").unwrap();
     std::fs::hard_link(source.join("hard-a"), source.join("hard-b")).unwrap();
     for (i, disposition) in [
-        Disposition::Retain,
+        Disposition::Discard,
         Disposition::WriteBack,
-        Disposition::Retain,
+        Disposition::Discard,
     ]
     .into_iter()
     .enumerate()
@@ -106,7 +106,7 @@ async fn serial_overlay_isolation_and_harvest() {
         std::fs::remove_dir_all(view.join("opaque")).unwrap();
         std::fs::create_dir(view.join("opaque")).unwrap();
         std::fs::write(view.join("opaque/new"), b"new").unwrap();
-        if disposition == Disposition::Retain {
+        if disposition == Disposition::Discard {
             std::fs::write(view.join("hard-a"), b"linked").unwrap();
         }
         let sparse = std::fs::File::create(view.join("sparse")).unwrap();
@@ -131,11 +131,14 @@ async fn serial_overlay_isolation_and_harvest() {
         let result = finalize(set.clone()).await.unwrap();
         // Assert
         assert_unmounted(&set);
-        let dest = &result.paths[0];
-        if disposition == Disposition::WriteBack {
-            assert!(!set.trees[0].staged.join("unchanged").exists());
-            assert!(!set.trees[0].staged.join("child/unchanged").exists());
+        if disposition == Disposition::Discard {
+            assert!(result.paths.is_empty());
+            assert!(!set.trees[0].upper.exists());
+            assert!(!set.trees[0].work.exists());
+            assert_eq!(std::fs::read(source.join("edit")).unwrap(), prior);
+            continue;
         }
+        let dest = &result.paths[0];
         assert_eq!(std::fs::read(dest.join("edit")).unwrap(), b"after!");
         assert!(!dest.join("gone").exists());
         assert_eq!(std::fs::read(dest.join("renamed")).unwrap(), b"renamed");
@@ -143,24 +146,6 @@ async fn serial_overlay_isolation_and_harvest() {
             std::fs::metadata(dest.join("new")).unwrap().mode() & 0o777,
             0o640
         );
-        if disposition == Disposition::Retain {
-            let attr_path =
-                std::ffi::CString::new(dest.join("new").as_os_str().as_encoded_bytes()).unwrap();
-            let mut attr = [0u8; 5];
-            // SAFETY: destination buffer is writable for exactly its supplied size.
-            assert_eq!(
-                unsafe {
-                    libc::getxattr(
-                        attr_path.as_ptr(),
-                        c"user.test".as_ptr(),
-                        attr.as_mut_ptr().cast(),
-                        attr.len(),
-                    )
-                },
-                5
-            );
-            assert_eq!(&attr, b"value");
-        }
         assert!(!dest.join("opaque/old").exists());
         assert_eq!(std::fs::read(dest.join("opaque/new")).unwrap(), b"new");
         assert_eq!(
@@ -172,11 +157,7 @@ async fn serial_overlay_isolation_and_harvest() {
             std::fs::metadata(dest.join("hard-b")).unwrap().ino()
         );
         assert!(std::fs::metadata(dest.join("sparse")).unwrap().blocks() * 512 < 1024 * 1024);
-        if disposition == Disposition::Retain {
-            assert_eq!(std::fs::read(source.join("edit")).unwrap(), prior);
-        } else {
-            assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"after!");
-        }
+        assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"after!");
     }
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -481,7 +462,6 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
         std::fs::read(source.join("unchanged")).unwrap(),
         b"large model untouched"
     );
-    assert_eq!(std::fs::read_dir(&tree.staged).unwrap().count(), 0);
     assert!(!tree.upper.parent().unwrap().join("stage.log").exists());
     use prost::Message;
     let action_bytes = std::fs::read(tree.upper.parent().unwrap().join("apply-plan.pb")).unwrap();
@@ -777,7 +757,6 @@ async fn two_serial_writebacks_inherit_prior_results() {
                 .into_os_string(),
             target
         );
-        assert_eq!(std::fs::read_dir(&set.trees[0].staged).unwrap().count(), 0);
     }
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -939,7 +918,6 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
         std::fs::read(source.join("model")).unwrap(),
         vec![3u8; 8 * 1024 * 1024]
     );
-    assert_eq!(std::fs::read_dir(&set.trees[0].staged).unwrap().count(), 0);
     let log =
         std::fs::read_to_string(set.trees[0].upper.parent().unwrap().join("apply.log")).unwrap();
     assert!(log.contains("recording"));

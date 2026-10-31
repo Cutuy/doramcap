@@ -2,6 +2,7 @@
 pub mod finalization;
 mod observation;
 pub mod preparation;
+pub mod reset;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
@@ -38,9 +39,9 @@ impl RunSignals {
     }
 }
 
-/// Run one experiment with directory-scoped Docker ownership.
+/// Run one machine-exclusive experiment in a stable repository Compose project.
 /// Signal stop and await completion for cleanup; dropping the future leaves the
-/// manager blocked and owned Docker resources for recovery.
+/// next run responsible for resetting owned Docker and upper-layer resources.
 pub struct ComposeRunner {
     adapter: Rc<DockerAdapter>,
     blocked: bool,
@@ -76,8 +77,8 @@ impl ComposeRunner {
     ///
     /// # Ownership and cancellation
     ///
-    /// A directory-derived container name excludes runs sharing the artifact parent
-    /// directory. Independent directories can run concurrently.
+    /// An exclusive controller lease and reserved daemon name exclude overlapping
+    /// experiments. Pre-run reset discards previous uppers without replaying writes.
     /// Dropping the future cannot await cleanup and can leave resources alive and
     /// this manager blocked. Signal `stop` and await completion for orderly shutdown.
     pub async fn run(
@@ -149,11 +150,11 @@ impl ComposeRunner {
         signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
-        if self.blocked {
-            return Err(invalid(
-                "manager blocked by an unfinished or unverified experiment",
-            ));
-        }
+        validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
+        let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
+        self.blocked = true;
+        let mut spec = spec;
+        spec.repository_root = controller.repository.clone();
         let diagnostics = Rc::new(RefCell::new(Vec::new()));
         let executor = super::steps::executor(
             self.adapter.clone(),
@@ -161,7 +162,23 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        let backend = self.adapter.clone();
+        let reset_controller = controller.clone();
+        let stop_seconds = spec.stop_seconds;
+        let mut executor =
+            Rc::try_unwrap(executor).map_err(|_| invalid("executor already shared"))?;
+        executor.register::<reset::ResetPreviousProject>(move || reset::ResetPreviousProject {
+            adapter: backend.clone(),
+            controller: reset_controller.clone(),
+            stop_seconds,
+        });
         executor.validate_steps().map_err(step_error)?;
+        let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
+        executor
+            .run::<reset::ResetPreviousProject>(())
+            .await
+            .map_err(step_error)?;
+        self.blocked = false;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
             .await
@@ -170,6 +187,7 @@ impl ComposeRunner {
         let artifacts = prepared.value().artifacts.clone();
 
         self.blocked = true;
+        controller.save(&prepared.value().plan).await?;
         self.adapter
             .reserve(
                 &prepared.value().plan,
@@ -611,14 +629,12 @@ pub struct ComposeRun {
     /// supplied mounts directly. Omitted JSON retains the default write-back policy.
     #[serde(default = "default_filesystem")]
     pub filesystem: Option<OverlayPolicy>,
-    /// Caller-selected run identifier used in Docker ownership labels and project names.
+    /// Caller-selected run identifier used in Docker ownership labels and output names.
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
     pub artifacts: PathBuf,
-    /// Existing private directory outside every workload mount, used to freeze
-    /// recovery identities before launch. The caller protects it from workloads.
-    #[serde(default)]
-    pub recovery_anchor_dir: Option<PathBuf>,
+    /// Explicit repository root used for the stable Compose project identity.
+    pub repository_root: PathBuf,
     /// Adopted Compose app inputs whose services join the experiment project.
     pub projects: Vec<ComposeProject>,
     /// Ordinary system app inputs, started and stabilized before adopted apps.

@@ -18,7 +18,6 @@ gallery workflow, which delegates container lifecycle operations to `ComposeRunn
 | [workflow.rs](../src/workflow.rs) | Set up generations, invoke shared workflows and validate/publish results |
 | [artifact_fs.rs](../src/artifact_fs.rs) | Safely open and enumerate retained artifacts |
 | [lease.rs](../src/lease.rs) | Hold the exclusive manager lock for the data directory |
-| [bin/recover.rs](../src/bin/recover.rs) | Explicit recovery after a manager crash |
 
 Caddy forwards app traffic directly to the ready container after authorization.
 The diagram shows hosting control requests. Shared Docker workflow phases are

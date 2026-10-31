@@ -46,7 +46,7 @@ pub struct ResolvedComposeProject {
     pub run: String,
     /// Prepared project key.
     pub key: String,
-    /// Generated Docker Compose project name, scoped to the artifact directory.
+    /// Generated Docker Compose project name, stable for its repository/key.
     pub name: String,
     /// Private resolved execution manifest path; can contain secrets.
     pub manifest: PathBuf,

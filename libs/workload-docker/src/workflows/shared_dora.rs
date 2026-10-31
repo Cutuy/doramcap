@@ -12,6 +12,7 @@ use dora_core::{
 use std::{collections::HashSet, path::Path};
 
 pub(crate) const COORDINATOR: &str = "dora-coordinator";
+pub(crate) const MACHINE_OWNER: &str = "doramcap-experiment";
 pub(crate) const DAEMON: &str = "dora-daemon";
 const OVERLAY: &[u8] = b"{transport:{shared_memory:{enabled:true}}}\n";
 
