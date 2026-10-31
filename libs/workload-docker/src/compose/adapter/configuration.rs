@@ -1,6 +1,7 @@
 //! Compile adopted Compose files into frozen execution plans.
 use super::{
-    ARTIFACTS_LABEL, DockerAdapter, RUN_LABEL, digest, private_write, project_name, validate_name,
+    ARTIFACTS_LABEL, CONTROLLER_LABEL, DockerAdapter, RUN_LABEL, digest, private_write,
+    project_name, validate_name,
 };
 use crate::compose::{
     ComposeProject, ComposeService, ResolveInput, ResolvedComposeProject, Result,
@@ -21,42 +22,6 @@ pub struct ComposeConfiguration<'a> {
     pub(super) adapter: &'a DockerAdapter,
 }
 impl ComposeConfiguration<'_> {
-    /// Require a local socket peer sharing the caller's mount namespace.
-    /// Overlay binds must resolve in the daemon's namespace. Different namespaces
-    /// fail here. This requires a direct local socket; peer namespace comparison
-    /// does not establish the destination behind a proxy.
-    pub async fn verify_overlay_namespace(&self) -> Result<()> {
-        use std::os::fd::AsRawFd;
-        let stream = tokio::net::UnixStream::connect(&self.adapter.socket).await?;
-        let mut cred = libc::ucred {
-            pid: 0,
-            uid: 0,
-            gid: 0,
-        };
-        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-        // SAFETY: destination and length point to correctly sized live storage.
-        if unsafe {
-            libc::getsockopt(
-                stream.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_PEERCRED,
-                (&mut cred as *mut libc::ucred).cast(),
-                &mut len,
-            )
-        } != 0
-        {
-            return Err(std::io::Error::last_os_error().into());
-        }
-        let ours = tokio::fs::read_link("/proc/self/ns/mnt").await?;
-        let theirs = tokio::fs::read_link(format!("/proc/{}/ns/mnt", cred.pid)).await?;
-        if ours != theirs {
-            return Err(invalid(
-                "Docker peer and manager mount namespaces differ; host overlay visibility is unqualified",
-            ));
-        }
-        Ok(())
-    }
-
     /// Discover profiles for explicit `run` and project identities using resolution
     /// inputs. Invalid identities fail before file or process access; diagnostics stay private.
     pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
@@ -101,7 +66,7 @@ impl ComposeConfiguration<'_> {
             .ok_or_else(|| invalid("Compose project missing"))?;
         validate_name(&project.key)?;
         tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key);
+        let name = resolution_name(input, project)?;
         let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
@@ -144,13 +109,17 @@ impl ComposeConfiguration<'_> {
             .as_ref()
             .ok_or_else(|| invalid("Compose project missing"))?;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key);
+        let name = resolution_name(&input, project)?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
         if !normalized.stderr.trim().is_empty() {
             diagnostics.push(normalized.stderr);
         }
+        let scope = input
+            .repository_root
+            .as_deref()
+            .map(|root| super::repository_scope(Path::new(root)));
         // Explicit resource names escape Compose project namespacing. External
         // resources are deliberately retained; internal resources must be scoped.
         for kind in ["networks", "volumes"] {
@@ -169,6 +138,9 @@ impl ComposeConfiguration<'_> {
                         )));
                     }
                     if resource["external"] != true {
+                        if kind == "volumes" && scope.is_some() {
+                            resource["name"] = format!("{name}_{}_{key}", input.run).into();
+                        }
                         let labels = resource
                             .as_object_mut()
                             .ok_or_else(|| invalid("invalid resource"))?
@@ -178,6 +150,14 @@ impl ComposeConfiguration<'_> {
                             .ok_or_else(|| invalid("invalid resource labels"))?;
                         if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
                             return Err(invalid("reserved resource ownership label"));
+                        }
+                        if labels.contains_key(CONTROLLER_LABEL) {
+                            return Err(invalid("reserved experiment-controller label"));
+                        }
+                        if kind == "networks"
+                            && let Some(scope) = &scope
+                        {
+                            labels.insert(CONTROLLER_LABEL.into(), json!(scope));
                         }
                         labels.insert(RUN_LABEL.into(), json!(input.run));
                         labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
@@ -308,6 +288,12 @@ impl ComposeConfiguration<'_> {
             if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
                 return Err(invalid(format!("reserved label {RUN_LABEL}")));
             }
+            if labels.contains_key(CONTROLLER_LABEL) {
+                return Err(invalid("reserved experiment-controller label"));
+            }
+            if let Some(scope) = &scope {
+                labels.insert(CONTROLLER_LABEL.into(), json!(scope));
+            }
             labels.insert(RUN_LABEL.into(), json!(input.run));
             labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
             services.insert(
@@ -409,4 +395,19 @@ pub(super) async fn config_arguments(
         args.extend(["--profile".into(), profile.clone()]);
     }
     Ok((directory, args, sources))
+}
+
+fn resolution_name(input: &ResolveInput, project: &ComposeProject) -> Result<String> {
+    match input.repository_root.as_deref() {
+        Some(root) => {
+            let root = Path::new(root);
+            if !root.is_absolute() || !root.is_dir() || std::fs::canonicalize(root)? != root {
+                return Err(invalid(
+                    "repository root must be an existing canonical absolute directory",
+                ));
+            }
+            Ok(super::repository_project_name(&project.key, root))
+        }
+        None => Ok(project_name(&input.run, &project.key)),
+    }
 }

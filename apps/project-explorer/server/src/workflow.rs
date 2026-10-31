@@ -1,7 +1,7 @@
 //! Gallery bindings for the shared Docker session workflow and result publication.
 use crate::{
     lifecycle::Token,
-    registry::{ArtifactCollection, NestedProject, RecordingCount, Registration, ResultFormat},
+    registry::{ArtifactCollection, RecordingCount, Registration, ResultFormat},
 };
 use std::{
     fs::{self, DirBuilder},
@@ -13,10 +13,7 @@ use tokio::sync::oneshot;
 use workload_docker::compose::DockerAdapter;
 use workload_docker::evidence::write_private_once;
 pub use workload_docker::workflows::compose_lifecycle::StopReport;
-use workload_docker::workflows::{
-    recorded_compose::{ComposeRun, ComposeRunner},
-    recovery::{RecoveryGroup, reconcile_group, recover_project},
-};
+use workload_docker::workflows::recorded_compose::{ComposeRun, ComposeRunner};
 
 fn private_dir(path: &Path) -> std::io::Result<()> {
     DirBuilder::new().mode(0o700).create(path)
@@ -53,7 +50,6 @@ pub async fn run(
         write_private_once(&metadata.join("additional-declared.json"), &app.additional_files)?;
         write_private_once(&metadata.join("collections-declared.json"), &app.artifact_collections)?;
         write_private_once(&metadata.join("primary-policy.json"), &primary_policy(app))?;
-        if app.nested_runs { write_private_once(&metadata.join("nested-policy.json"), &app.nested_projects)?; }
         let results = directory.join("results");
         private_dir(&results).map_err(|e| e.to_string())?;
         if !app.private_directories.is_empty() {
@@ -75,7 +71,7 @@ pub async fn run(
         for flow in &mut system_apps.dora_flows { flow.results_directory = results.to_str().ok_or("results path is not UTF-8")?.into(); }
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
-            filesystem: None, system_apps, recovery_anchor_dir: None,
+            filesystem: None, system_apps, repository_root: app.repository_root.clone(),
             projects: vec![project], first_party: vec![],
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
@@ -135,97 +131,11 @@ pub async fn run(
             report.errors.push(error);
         }
     }
-    finish(adapter, app, generation, &directory, &mut report).await;
+    finish(app, &directory, &mut report).await;
     report
 }
 
-/// Recover a generation under the manager's exclusive lease. Saved app policies
-/// are checked here; Docker ownership, evidence and teardown use shared recovery.
-pub async fn recover(
-    adapter: Rc<DockerAdapter>,
-    app: &Registration,
-    generation: Token,
-    root: &Path,
-) -> Result<StopReport, String> {
-    let root = fs::canonicalize(root).map_err(|e| e.to_string())?;
-    let directory = root.join(format!("{}-{generation:032x}", app.id));
-    let metadata = directory.join("metadata");
-    let descriptor = workload_docker::evidence::root(&metadata).map_err(|e| e.to_string())?;
-    let read = |name: &str| -> Result<serde_json::Value, String> {
-        use std::io::Read;
-        let mut bytes = Vec::new();
-        workload_docker::evidence::open(&descriptor, name, false)
-            .map_err(|e| e.to_string())?
-            .take(2 * 1024 * 1024 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() > 2 * 1024 * 1024 {
-            return Err("saved app policy is too large".into());
-        }
-        serde_json::from_slice(&bytes).map_err(|e| e.to_string())
-    };
-    for (name, expected) in [
-        (
-            "primary-policy.json",
-            serde_json::json!(primary_policy(app)),
-        ),
-        (
-            "additional-declared.json",
-            serde_json::json!(app.additional_files),
-        ),
-        (
-            "collections-declared.json",
-            serde_json::json!(app.artifact_collections),
-        ),
-    ] {
-        if read(name)? != expected {
-            return Err(format!("saved app policy changed: {name}"));
-        }
-    }
-    if app.nested_runs && read("nested-policy.json")? != serde_json::json!(app.nested_projects) {
-        return Err("nested project policy changed".into());
-    }
-    // Older generations stored Docker metadata directly beside app policy.
-    let docker = if metadata
-        .join("docker")
-        .try_exists()
-        .map_err(|e| e.to_string())?
-    {
-        metadata.join("docker")
-    } else {
-        metadata
-    };
-    let mut report = recover_project(
-        adapter.clone(),
-        &docker,
-        &format!("gal-{generation:032x}"),
-        &app.id,
-        false,
-        app.stop_seconds,
-    )
-    .await?;
-    finish(adapter, app, generation, &directory, &mut report).await;
-    Ok(report)
-}
-
-async fn finish(
-    adapter: Rc<DockerAdapter>,
-    app: &Registration,
-    generation: Token,
-    directory: &Path,
-    report: &mut StopReport,
-) {
-    if app.nested_runs {
-        stop_and_verify_nested(
-            &adapter,
-            directory,
-            &format!("gal-{generation:032x}"),
-            &app.nested_projects,
-            app.stop_seconds,
-            report,
-        )
-        .await;
-    }
+async fn finish(app: &Registration, directory: &Path, report: &mut StopReport) {
     if !report.cleanup_verified {
         report
             .errors
@@ -669,71 +579,6 @@ async fn verify_recording_file(
     Ok(())
 }
 
-/// Stop writers, collect category-preserving filesystem metadata, and remove the
-/// owned project. The result directory remains on disk. Callers must preserve the
-/// report and block replacement if `cleanup_verified` is false.
-async fn stop_and_verify_nested(
-    adapter: &Rc<DockerAdapter>,
-    generation: &Path,
-    run: &str,
-    policy: &[NestedProject],
-    stop_seconds: u64,
-    report: &mut StopReport,
-) {
-    if report.quiesced
-        && let Err(error) =
-            reconcile_nested(adapter.clone(), generation, run, policy, stop_seconds, true).await
-    {
-        eprintln!("nested shutdown failed: {error}");
-        report
-            .errors
-            .push("nested shutdown is incomplete; evidence remains private".into());
-    }
-    verify_no_nested_resources(adapter, run, report).await;
-}
-
-async fn verify_no_nested_resources(adapter: &DockerAdapter, run: &str, report: &mut StopReport) {
-    match adapter.resources().discover_runs(&format!("{run}-")).await {
-        Ok(resources) if resources.is_empty() => {}
-        Ok(_) => {
-            report.cleanup_verified = false;
-            report
-                .errors
-                .push("nested Docker resources require recovery".into());
-        }
-        Err(error) => {
-            report.cleanup_verified = false;
-            eprintln!("nested Docker discovery failed: {error}");
-            report
-                .errors
-                .push("nested Docker cleanup could not be verified".into());
-        }
-    }
-}
-
-async fn reconcile_nested(
-    adapter: Rc<DockerAdapter>,
-    generation: &Path,
-    parent_run: &str,
-    policy: &[NestedProject],
-    stop_seconds: u64,
-    preserve_only: bool,
-) -> Result<(), String> {
-    reconcile_group(
-        adapter,
-        RecoveryGroup {
-            artifacts_root: &generation.join("results/runs"),
-            anchors: &generation.join("private/recovery"),
-            parent_run,
-            policy,
-            stop_seconds,
-            preserve_only,
-            attempt: rand::random(),
-        },
-    )
-    .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -855,25 +700,6 @@ mod tests {
                 .unwrap();
         assert_eq!(index, ["first.txt"]);
         std::fs::remove_dir_all(root).unwrap();
-    }
-    #[test]
-    fn primary_policy_freezes_validation_requirements() {
-        // Arrange
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .ancestors()
-            .nth(3)
-            .unwrap();
-        let registry = crate::registry::Registry::load(root, &["cpu-viewer".into()]).unwrap();
-        let app = registry.get("cpu-viewer").unwrap();
-        let original = primary_policy(app);
-        // Act / Assert: removing the delivery check changes the recovery policy.
-        let mut changed = app.clone();
-        changed.recording_count = None;
-        assert_ne!(primary_policy(&changed), original);
-        // Act / Assert: changing required output semantics also changes it.
-        changed = app.clone();
-        changed.result_optional = true;
-        assert_ne!(primary_policy(&changed), original);
     }
     #[tokio::test]
     async fn special_output_files_do_not_block_validation() {

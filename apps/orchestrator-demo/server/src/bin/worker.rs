@@ -2,10 +2,7 @@
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use serde_json::json;
 use std::{collections::BTreeMap, rc::Rc, time::Duration};
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::Path};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -23,8 +20,8 @@ use workload_docker::{
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 4 {
-        return Err("worker SOCKET IMAGE ARTIFACT_DIRECTORY".into());
+    if args.len() != 5 {
+        return Err("worker SOCKET IMAGE ARTIFACT_DIRECTORY REPOSITORY_ROOT".into());
     }
     let stream = UnixStream::connect(&args[1]).await?;
     let (read, mut write) = stream.into_split();
@@ -93,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let result = recorded_demo(
             &mut runner,
             &monitor,
-            Path::new(&args[3]),
-            &session,
+            &Path::new(&args[3]).join(&session),
+            Path::new(&args[4]),
             inject,
             stop_rx.clone(),
             move |event: &orchestrator::Event| {
@@ -186,16 +183,17 @@ fn session_id(
 async fn recorded_demo(
     runner: &mut ComposeRunner,
     monitor: &CpuMonitor,
-    root: &Path,
-    session: &str,
+    artifacts: &Path,
+    repository: &Path,
     inject: bool,
     mut stop: watch::Receiver<bool>,
     observer: impl Observer + 'static,
 ) -> Result<ComposeRunReport, Box<dyn std::error::Error>> {
-    if runner.blocked() {
-        return Err("manager blocked by an unfinished or unverified experiment".into());
-    }
-    let workspace = root.join(format!("{session}-inputs"));
+    let session = artifacts
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or("invalid artifact directory")?;
+    let workspace = artifacts.with_file_name(format!("{session}-inputs"));
     tokio::fs::create_dir(&workspace).await?;
     let host = workspace.join("host");
     tokio::fs::create_dir(&host).await?;
@@ -210,9 +208,8 @@ async fn recorded_demo(
             ComposeRun {
                 filesystem: Some(Default::default()),
                 id: session.into(),
-                artifacts: root.join(session),
-                recovery_anchor_dir: std::env::var_os("ORCHESTRATOR_RECOVERY_DIRECTORY")
-                    .map(PathBuf::from),
+                artifacts: artifacts.to_owned(),
+                repository_root: repository.to_owned(),
                 projects: vec![ComposeProject {
                     key: "demo".into(),
                     directory: workspace.to_str().ok_or("workspace is not UTF-8")?.into(),

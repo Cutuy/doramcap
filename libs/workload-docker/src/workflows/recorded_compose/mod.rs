@@ -4,6 +4,7 @@ pub mod finalization;
 mod observation;
 pub mod preparation;
 pub mod projects;
+pub mod reset;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
@@ -43,15 +44,9 @@ impl RunSignals {
     }
 }
 
-/// Single-session runner with concurrent independent Compose operations.
-///
-/// `run` accepts fully prepared settings and a cooperative stop future. It never
-/// discovers launch inputs or chooses profiles. Ordinary failures await
-/// independent teardown. Dropping/aborting `run` cannot await cleanup and leaves
-/// this manager blocked; callers must signal stop and continue awaiting the result.
-/// Unknown/failed cleanup blocks subsequent runs on this manager. Direct-mount
-/// recovery is available through [`super::recovery::recover_project`]. Admission
-/// across processes remains the caller’s responsibility.
+/// Run prepared Compose projects with repository-scoped admission and reset.
+/// Signal stop and await completion for cleanup. A later run resets resources
+/// left by cancellation or incomplete teardown before launching new workloads.
 pub struct ComposeRunner {
     adapter: Rc<DockerAdapter>,
     blocked: bool,
@@ -87,8 +82,8 @@ impl ComposeRunner {
     ///
     /// # Ownership and cancellation
     ///
-    /// Exclusive access serializes calls on this manager. There is no admission
-    /// lock across managers or processes. Ordinary runtime failures await teardown.
+    /// A canonical repository lock serializes managers and processes.
+    /// Ordinary runtime failures await teardown; later runs first reset the scope.
     /// Dropping the future cannot await cleanup and can leave resources alive and
     /// this manager blocked. Signal `stop` and await completion for orderly shutdown.
     pub async fn run(
@@ -160,11 +155,12 @@ impl ComposeRunner {
         mut signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
-        if self.blocked {
-            return Err(invalid(
-                "manager blocked by an unfinished or unverified experiment",
-            ));
-        }
+        // Serialize this repository and reset its fixed resource scope before preparation.
+        validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
+        let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
+        self.blocked = true;
+        let mut spec = spec;
+        spec.repository_root = controller.repository.clone();
         let diagnostics = Rc::new(RefCell::new(Vec::new()));
         let executor = super::steps::executor(
             self.adapter.clone(),
@@ -172,7 +168,23 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        let mut executor =
+            Rc::try_unwrap(executor).map_err(|_| invalid("executor already shared"))?;
+        let backend = self.adapter.clone();
+        let scope = controller.clone();
+        let stop_seconds = spec.stop_seconds;
+        executor.register::<reset::ResetExperiment>(move || reset::ResetExperiment {
+            adapter: backend.clone(),
+            controller: scope.clone(),
+            stop_seconds,
+        });
         executor.validate_steps().map_err(step_error)?;
+        let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
+        executor
+            .run::<reset::ResetExperiment>(())
+            .await
+            .map_err(step_error)?;
+        self.blocked = false;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
             .await
@@ -188,6 +200,7 @@ impl ComposeRunner {
                     .run::<PrepareOverlays>(
                         Input::new(PrepareInput {
                             artifacts: artifacts.clone(),
+                            workspace: controller.workspace(),
                             projects: prepared.value().projects(),
                             policy: policy.clone(),
                         })
@@ -393,10 +406,8 @@ pub struct ComposeRun {
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
     pub artifacts: PathBuf,
-    /// Existing private directory outside every workload mount, used to freeze
-    /// recovery identities before launch. The caller protects it from workloads.
-    #[serde(default)]
-    pub recovery_anchor_dir: Option<PathBuf>,
+    /// Canonical repository defining exclusive admission, reset and project identity.
+    pub repository_root: PathBuf,
     /// Foreign Compose projects owned by this run; may be empty with supporting apps.
     pub projects: Vec<ComposeProject>,
     /// Additional prepared first-party projects, such as a configured DORA/ROS
@@ -519,7 +530,7 @@ mod tests {
     fn supporting_apps_allow_monitor_only_and_empty_runs_reject() {
         // Arrange
         let mut spec: ComposeRun = serde_json::from_value(serde_json::json!({
-            "id":"monitor", "artifacts":"/tmp/new-monitor-run", "projects":[], "filesystem":null
+            "id":"monitor", "repository_root":"/tmp", "artifacts":"/tmp/new-monitor-run", "projects":[], "filesystem":null
         }))
         .unwrap();
         // Act / Assert
@@ -535,7 +546,7 @@ mod tests {
     #[test]
     fn filesystem_policy_default_and_direct_mount_opt_out() {
         // Arrange
-        let mut config = serde_json::json!({"id":"run", "artifacts":"/tmp/example", "projects":[{
+        let mut config = serde_json::json!({"id":"run", "repository_root":"/tmp", "artifacts":"/tmp/example", "projects":[{
             "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
         }]});
         // Act / Assert
@@ -552,7 +563,7 @@ mod tests {
     fn preflight_requires_complete_dora_runtime_paths() {
         // Arrange: registration loading permits a path supplied by the run owner.
         let mut spec: ComposeRun = serde_json::from_value(serde_json::json!({
-            "id":"run", "artifacts":"/tmp/example", "projects":[{
+            "id":"run", "repository_root":"/tmp", "artifacts":"/tmp/example", "projects":[{
                 "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
             }], "system_apps":{"dora_flows":[{
                 "project":"workload", "service":"daemon", "name":"flow",

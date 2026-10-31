@@ -2,7 +2,9 @@
 
 Run one experiment over prepared Compose projects. The workflow orders reusable
 preparation, launch, observation, quiescence, finalization and removal steps.
-Independent projects run concurrently on the local async task.
+Independent projects run concurrently on the local async task. Each run supplies
+its canonical repository root; a strict pre-run reset stops previous writers and
+removes that repository's containers, networks and temporary OverlayFS workspace.
 Dora-backed apps declare node groups in `SystemAppsConfig`; shared Rust steps launch, inspect and drain those flows before Compose teardown.
 Compose handles project
 semantics; Bollard inspects Engine state and verifies cleanup. Writable host-directory
@@ -44,5 +46,4 @@ Real native Docker tests: `python3 libs/workload-docker/scripts/compose-e2e.py -
 Host overlays require Linux CAP_SYS_ADMIN, a local daemon sharing the manager mount
 namespace, and rsync. Direct write-back rejects ambiguous hardlinks and overlay
 redirect/metacopy features; ACL/xattr/capability fidelity is unqualified. Use
-`filesystem.disposition: "retain"` to materialize results without changing original
-host directories. Named volumes retain their separate declared policy.
+`filesystem.disposition: "discard"` to delete the stopped upper changes. Named volumes retain their separate declared policy.

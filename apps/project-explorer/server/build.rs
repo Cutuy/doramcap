@@ -3,10 +3,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     prost_build::Config::new()
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .file_descriptor_set_path(out.join("registration.bin"))
-        .extern_path(
-            ".doramcap.recovery.v1.RecoveryProject",
-            "::workload_docker::workflows::recovery::RecoveryProject",
-        )
         .extern_path(".doramcap.system_apps.v1", "::workload_docker::workflows::system_apps")
         // Serde is used only for existing private recovery checkpoints.
         .type_attribute(".doramcap.hosting.v1.ArtifactCollection", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]")
@@ -17,7 +13,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &["proto", "../../../libs/workload-docker/proto"],
         )?;
     println!("cargo:rerun-if-changed=proto/registration.proto");
-    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/recovery.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/system_apps.proto");
     Ok(())
 }

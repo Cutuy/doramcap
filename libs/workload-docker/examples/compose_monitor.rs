@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         filesystem: None,
         id: args[1].clone(),
         artifacts: args[2].clone().into(),
-        recovery_anchor_dir: None,
+        repository_root: std::env::current_dir()?,
         projects: vec![],
         first_party: vec![],
         system_apps: SystemAppsConfig {

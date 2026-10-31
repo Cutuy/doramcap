@@ -50,8 +50,7 @@ impl PreparedRun {
     }
 }
 
-/// Validate inputs, resolve all projects, capture a baseline and freeze recovery
-/// identities before any mount or container is created. Failures leave private
+/// Validate inputs, resolve all projects, capture a baseline before any mount or container is created. Failures leave private
 /// metadata only. Supporting apps precede ordered first-party and workload groups.
 pub struct PrepareRun {
     pub executor: Weak<LocalExecutor>,
@@ -77,10 +76,7 @@ impl PrepareRun {
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
         observation::snapshot(&artifacts, "before").await?;
         if spec.filesystem.is_some() {
-            self.adapter
-                .configuration()
-                .verify_overlay_namespace()
-                .await?;
+            crate::compose::overlay::verify_namespace(self.adapter.socket_path()).await?;
         }
         let executor = self
             .executor
@@ -106,9 +102,15 @@ impl PrepareRun {
         if projects.iter().any(|p| !keys.insert(&p.key)) {
             return Err(invalid("system and workload project keys must be unique"));
         }
+        let repository = spec
+            .repository_root
+            .to_str()
+            .ok_or_else(|| invalid("repository path is not UTF-8"))?
+            .to_owned();
         let resolved = join_all(projects.into_iter().map(|project| {
             executor.run::<ResolveCompose>(
                 Input::new(ResolveInput {
+                    repository_root: Some(repository.clone()),
                     run: spec.id.clone(),
                     artifacts: artifacts.to_string_lossy().into_owned(),
                     project: Some(project),
@@ -135,16 +137,6 @@ impl PrepareRun {
             .run::<CaptureFilesystemBaseline>(input)
             .await
             .map_err(|e| invalid(e.to_string()))?;
-        if let Some(directory) = &spec.recovery_anchor_dir {
-            super::super::recovery::write_anchor(
-                directory,
-                &artifacts,
-                &spec.id,
-                &projects,
-                &baseline.value().recovery_files(),
-            )
-            .await?;
-        }
         let group = |projects, recordings| LaunchInput {
             projects,
             recordings,
@@ -186,13 +178,6 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
         return Err(invalid(
             "require absolute new artifact directory, a workload or supporting app, positive readiness and stop_seconds 1..300",
         ));
-    }
-    if spec
-        .recovery_anchor_dir
-        .as_ref()
-        .is_some_and(|p| !p.is_absolute())
-    {
-        return Err(invalid("recovery anchor directory must be absolute"));
     }
     let mut keys = HashSet::new();
     for project in spec.first_party.iter().chain(&spec.projects) {

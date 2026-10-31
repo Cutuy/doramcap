@@ -90,14 +90,6 @@ pub struct FilesystemBaseline {
     sources: Vec<Source>,
     pub directory: PathBuf,
 }
-impl FilesystemBaseline {
-    /// Baseline metadata files to authenticate before workload launch.
-    pub(crate) fn recovery_files(&self) -> Vec<PathBuf> {
-        std::iter::once(self.directory.join("baseline.json"))
-            .chain(self.sources.iter().map(|source| source.baseline.clone()))
-            .collect()
-    }
-}
 /// Explicit inputs to pre-launch metadata capture.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaselineInput {
