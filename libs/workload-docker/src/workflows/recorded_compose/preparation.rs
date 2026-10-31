@@ -3,7 +3,7 @@ use super::super::system_apps::{self, PrepareSystemApps};
 use super::{
     ComposeRun, observation,
     projects::LaunchInput,
-    resolution::{self, ReviewReceipt},
+    resolution::{self, ConfigurationSnapshot},
 };
 use crate::compose::{
     adapter::validate_name,
@@ -26,8 +26,8 @@ pub struct PreparedRun {
     pub artifacts: PathBuf,
     pub groups: Vec<LaunchInput>,
     pub baseline: FilesystemBaseline,
-    /// Snapshot to compare with Review before creating mounts or launching containers.
-    pub receipt: ReviewReceipt,
+    /// Configuration snapshot for detecting changed inputs before mounts or launch.
+    pub snapshot: ConfigurationSnapshot,
 }
 impl PreparedRun {
     pub fn projects(&self) -> Vec<ResolvedComposeProject> {
@@ -131,7 +131,7 @@ impl PrepareRun {
         Ok(PreparedRun {
             artifacts,
             groups: resolved.groups,
-            receipt: resolved.receipt,
+            snapshot: resolved.snapshot,
             baseline: baseline.into_value(),
         })
     }

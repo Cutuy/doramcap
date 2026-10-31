@@ -1,4 +1,4 @@
-//! Build the Compose projects and launch order used by Review and Start.
+//! Resolve Compose projects, determine launch order and capture configuration snapshots.
 //! Record the resolved settings so callers can detect changes before launch.
 //! Generated recording paths compare relative to each run's artifact directory.
 use super::{ComposeRun, preparation, projects::LaunchInput};
@@ -20,20 +20,20 @@ use std::{
 };
 
 /// Snapshot of settings, Compose manifests, service policies, launch order and recording paths.
-/// Compare Review's snapshot with fresh preparation before launch to detect changed inputs.
+/// Compare snapshots from separate resolutions to detect changed inputs before launch.
 /// Generated system-app bind paths and recording paths use artifact-relative locations.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReviewReceipt {
+pub struct ConfigurationSnapshot {
     settings: String,
-    groups: Vec<ReviewedGroup>,
+    groups: Vec<SnapshotGroup>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ReviewedGroup {
-    projects: Vec<ReviewedProject>,
+struct SnapshotGroup {
+    projects: Vec<SnapshotProject>,
     recordings: Vec<(PathBuf, PathBuf)>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct ReviewedProject {
+struct SnapshotProject {
     key: String,
     manifest_sha256: String,
     services: BTreeMap<String, ComposeService>,
@@ -43,13 +43,13 @@ struct ReviewedProject {
 #[derive(Clone, Debug)]
 pub struct ResolvedInputs {
     pub groups: Vec<LaunchInput>,
-    pub receipt: ReviewReceipt,
+    pub snapshot: ConfigurationSnapshot,
 }
 
-/// Prepare selected app and workload manifests in the existing `spec.artifacts` directory.
-/// Returns resolved projects and a snapshot without launching containers or creating mounts.
-/// The caller must compare this snapshot with fresh preparation before launch.
-pub async fn preview(adapter: Rc<DockerAdapter>, spec: &ComposeRun) -> Result<ResolvedInputs> {
+/// Resolve app and workload manifests in the existing `spec.artifacts` directory.
+/// Returns launch groups and a configuration snapshot without creating mounts or containers.
+/// Callers can compare snapshots to reject changed inputs before execution.
+pub async fn resolve(adapter: Rc<DockerAdapter>, spec: &ComposeRun) -> Result<ResolvedInputs> {
     preparation::validate(spec)?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     let system = PrepareSystemApps
@@ -70,7 +70,7 @@ pub async fn preview(adapter: Rc<DockerAdapter>, spec: &ComposeRun) -> Result<Re
     Ok(inputs)
 }
 
-// Start resolves through child steps to track dependencies; Review calls the adapter directly.
+// The callback allows workflow steps to track dependencies and direct callers to use the adapter.
 pub(super) async fn resolve_with<P, F, Fut>(
     spec: &ComposeRun,
     artifacts: &Path,
@@ -133,33 +133,35 @@ where
         vec![],
     ));
     let system_keys: HashSet<_> = system.projects.iter().map(|p| p.key.as_str()).collect();
-    let receipt = receipt(spec, artifacts, &groups, &system_keys).await?;
-    Ok((plans, ResolvedInputs { groups, receipt }))
+    let snapshot = snapshot(spec, artifacts, &groups, &system_keys).await?;
+    Ok((plans, ResolvedInputs { groups, snapshot }))
 }
 
-async fn receipt(
+async fn snapshot(
     spec: &ComposeRun,
     artifacts: &Path,
     groups: &[LaunchInput],
     system_keys: &HashSet<&str>,
-) -> Result<ReviewReceipt> {
+) -> Result<ConfigurationSnapshot> {
     let settings = digest(&serde_json::to_vec(&serde_json::json!({
         "system_apps": spec.system_apps, "filesystem": spec.filesystem,
         "readiness_seconds": spec.readiness_seconds, "stop_seconds": spec.stop_seconds,
     }))?);
-    let mut reviewed = Vec::new();
+    let mut captured = Vec::new();
     for group in groups {
         let mut projects = Vec::new();
         for plan in &group.projects {
             let bytes = tokio::fs::read(&plan.manifest).await?;
             if digest(&bytes) != plan.sha256 {
-                return Err(invalid("frozen Compose manifest changed during review"));
+                return Err(invalid(
+                    "frozen Compose manifest changed while capturing configuration",
+                ));
             }
             let mut model: serde_json::Value = serde_json::from_slice(&bytes)?;
             if system_keys.contains(plan.key.as_str()) {
                 relocate_artifact_binds(&mut model, artifacts);
             }
-            projects.push(ReviewedProject {
+            projects.push(SnapshotProject {
                 key: plan.key.clone(),
                 manifest_sha256: digest(&serde_json::to_vec(&model)?),
                 services: plan.services.clone(),
@@ -176,14 +178,14 @@ async fn receipt(
             .iter()
             .map(|r| Ok((relative(&r.stream)?, relative(&r.recording)?)))
             .collect::<Result<_>>()?;
-        reviewed.push(ReviewedGroup {
+        captured.push(SnapshotGroup {
             projects,
             recordings,
         });
     }
-    Ok(ReviewReceipt {
+    Ok(ConfigurationSnapshot {
         settings,
-        groups: reviewed,
+        groups: captured,
     })
 }
 
@@ -234,7 +236,7 @@ mod tests {
     fn spec(root: &Path) -> ComposeRun {
         ComposeRun {
             filesystem: Some(Default::default()),
-            id: "review".into(),
+            id: "initial".into(),
             artifacts: root.to_owned(),
             recovery_anchor_dir: None,
             projects: vec![project(root, "workload")],
@@ -328,15 +330,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn receipt_covers_every_project_and_preserves_launch_groups_across_relocation() {
+    async fn snapshot_covers_all_projects_and_ignores_artifact_directory_changes() {
         // Arrange
-        let review = tempfile::tempdir().unwrap();
+        let initial = tempfile::tempdir().unwrap();
         let launch = tempfile::tempdir().unwrap();
         // Act
-        let reviewed = inputs(review.path(), "original", "image:original").await;
+        let captured = inputs(initial.path(), "original", "image:original").await;
         let fresh = inputs(launch.path(), "original", "image:original").await;
         // Assert
-        assert_eq!(reviewed.receipt, fresh.receipt);
+        assert_eq!(captured.snapshot, fresh.snapshot);
         assert_eq!(
             fresh
                 .groups
@@ -353,21 +355,21 @@ mod tests {
                 vec!["workload"]
             ]
         );
-        // Act / Assert: a non-first app's command or pinned image invalidates review.
+        // Act / Assert: changing another app's command or image changes the snapshot.
         let changed = inputs(launch.path(), "changed", "image:original").await;
-        assert_ne!(reviewed.receipt, changed.receipt);
+        assert_ne!(captured.snapshot, changed.snapshot);
         let retagged = inputs(launch.path(), "original", "image:new").await;
-        assert_ne!(reviewed.receipt, retagged.receipt);
+        assert_ne!(captured.snapshot, retagged.snapshot);
     }
 
     #[tokio::test]
-    async fn receipt_preserves_foreign_binds_commands_and_group_order() {
+    async fn snapshot_detects_changed_binds_commands_and_group_order() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
         let spec = spec(root.path());
         let prepared = inputs(root.path(), "original", "image:original").await;
         let keys = HashSet::from(["system-a", "system-b"]);
-        let baseline = prepared.receipt;
+        let baseline = prepared.snapshot;
         let mut groups = prepared.groups;
         // Act: explicit completion policy is runtime input even with an unchanged manifest.
         let mut changed_policy = groups.clone();
@@ -379,7 +381,7 @@ mod tests {
         // Assert
         assert_ne!(
             baseline,
-            receipt(&spec, root.path(), &changed_policy, &keys)
+            snapshot(&spec, root.path(), &changed_policy, &keys)
                 .await
                 .unwrap()
         );
@@ -388,7 +390,7 @@ mod tests {
         // Assert
         assert_ne!(
             baseline,
-            receipt(&spec, root.path(), &groups, &keys).await.unwrap()
+            snapshot(&spec, root.path(), &groups, &keys).await.unwrap()
         );
         groups.swap(0, 1);
         // Act: foreign binds remain exact even when they point inside run artifacts.
@@ -402,13 +404,13 @@ mod tests {
         // Assert
         assert_ne!(
             baseline,
-            receipt(&spec, root.path(), &groups, &keys).await.unwrap()
+            snapshot(&spec, root.path(), &groups, &keys).await.unwrap()
         );
         // Act / Assert: tampering with a frozen manifest is an explicit failure.
         tokio::fs::write(&groups[0].projects[0].manifest, b"{}")
             .await
             .unwrap();
-        assert!(receipt(&spec, root.path(), &groups, &keys).await.is_err());
+        assert!(snapshot(&spec, root.path(), &groups, &keys).await.is_err());
     }
 
     #[tokio::test]

@@ -87,17 +87,17 @@ cpu_monitor {
 }
 ```
 
-Review and Start use [`resolution`](../src/workflows/recorded_compose/resolution.rs)
-to build the same projects in the same launch order. Each returns a `ReviewReceipt`:
-a snapshot of settings, Compose manifests, selected images, replica counts,
-completion rules, volume-removal settings and recording paths.
+[`resolution::resolve`](../src/workflows/recorded_compose/resolution.rs) resolves
+app and workload manifests and determines launch order without creating mounts or
+containers. `PrepareRun` uses the same resolution code during execution and also
+captures fresh filesystem baselines and recovery metadata.
 
-The caller compares the reviewed snapshot with fresh preparation before launch.
-Console performs this check in its preflight callback (#14) and rejects changed
-inputs so the user can review again. For example, changing a command or replacing
-an image after Review rejects Start. Moving generated recording files from the
-review directory to the run directory preserves their relative paths and passes.
-Execution still captures fresh filesystem baselines and recovery metadata.
+Both paths return a `ConfigurationSnapshot` containing hashes of Compose manifests, selected
+image IDs, replica counts, completion rules, volume-removal settings, launch order,
+recording paths and run settings. Callers can compare snapshots in a preflight
+callback to reject changed inputs before mounts or launch. Changing a command or
+image changes the snapshot. Generated recording paths compare relative to the
+artifact directory, so using a different artifact directory preserves equality.
 
 `PrepareRun` validates inputs, resolves every project, captures a baseline and
 freezes recovery identities. `PrepareOverlays` supplies optional execution mounts.
