@@ -13,8 +13,8 @@ use workload_docker::{compose::*, workflows::recorded_compose::*};
 fn project(root: &Path, key: &str) -> ComposeProject {
     ComposeProject {
         key: key.into(),
-        directory: root.into(),
-        files: vec![format!("{key}.json").into()],
+        directory: root.to_string_lossy().into_owned(),
+        files: vec![format!("{key}.json")],
         env_files: vec![],
         environment: BTreeMap::new(),
         profiles: vec![],
@@ -417,7 +417,15 @@ async fn multi_project_lifecycle() {
         )
         .unwrap();
         assert_eq!(beta.services.len(), index + 1);
-        assert!(adapter.inspect(&beta).await.unwrap().containers.is_empty());
+        assert!(
+            adapter
+                .project(&beta)
+                .inspect()
+                .await
+                .unwrap()
+                .containers
+                .is_empty()
+        );
         let raw = std::fs::read_to_string(request.artifacts.join("alpha.compose.json")).unwrap();
         assert!(raw.contains("value$$not_interpolated"));
         assert!(!raw.contains("missing-image-not-used"));
@@ -522,15 +530,7 @@ async fn multi_project_lifecycle() {
         monitor_sessions.push(audit_recording(&request.artifacts));
         reports.push(report);
         // Act: teardown a second time.
-        let repeated = adapter
-            .stop(StopInput {
-                services: vec![],
-                allow_volume_deletion: true,
-                plan: beta,
-                stop_seconds: 3,
-            })
-            .await
-            .unwrap();
+        let repeated = adapter.project(&beta).stop(3, true).await.unwrap();
         // Assert
         assert!(
             repeated.verified && repeated.diagnostics.is_empty(),
@@ -880,7 +880,15 @@ async fn direct_session_lifecycle_and_recovery() {
             result = &mut run => panic!("session ended before readiness: {result:?}"),
         };
         // Assert: a ready session is actually running and uses existing mounts.
-        assert!(DockerAdapter::ready(&adapter.inspect(&plans[0]).await.unwrap()).unwrap());
+        assert!(
+            adapter
+                .project(&plans[0])
+                .inspect()
+                .await
+                .unwrap()
+                .ready()
+                .unwrap()
+        );
         assert!(!artifacts.join("overlays").exists());
         assert!(!artifacts.join("system-services.yaml").exists());
         if mode == 2 {
@@ -910,12 +918,8 @@ async fn direct_session_lifecycle_and_recovery() {
                 stop.send(()).unwrap();
             } else {
                 adapter
-                    .quiesce(StopInput {
-                        services: vec![],
-                        allow_volume_deletion: false,
-                        plan: plans[0].clone(),
-                        stop_seconds: 3,
-                    })
+                    .project(&plans[0].clone())
+                    .quiesce(&[], 3)
                     .await
                     .unwrap();
             }
@@ -932,7 +936,8 @@ async fn direct_session_lifecycle_and_recovery() {
         }
         assert!(
             adapter
-                .inspect(&plans[0])
+                .project(&plans[0])
+                .inspect()
                 .await
                 .unwrap()
                 .containers
@@ -1022,7 +1027,14 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
         assert!(report.boundary_clean, "{report:?}");
         assert!(!runner.blocked());
         assert!(shared.join("alpha-stopped").is_file() && shared.join("beta-stopped").is_file());
-        assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+        assert!(
+            adapter
+                .resources()
+                .discover_runs(&id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
         let events = events.borrow();
         // Assert: collection and removal retain their explicit workflow barriers,
         // including when a parallel workload failed during startup.
@@ -1219,7 +1231,13 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
 
     // Act: collection succeeds, but network removal fails after its container is gone.
     let partial = reconcile_group(adapter.clone(), group(1)).await;
-    let first_gone = adapter.inspect(first).await.unwrap().containers.is_empty();
+    let first_gone = adapter
+        .project(first)
+        .inspect()
+        .await
+        .unwrap()
+        .containers
+        .is_empty();
     let detached = docker(&["rm", "-f", &blocker]);
     assert!(
         detached.status.success(),
@@ -1236,7 +1254,12 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
     // Act: a corrupt checkpoint must not authorize removal on a retry.
     std::fs::write(&checkpoint, b"invalid").unwrap();
     let corrupt = reconcile_group(adapter.clone(), group(2)).await;
-    let retained = !adapter.discover_runs(&id).await.unwrap().is_empty();
+    let retained = !adapter
+        .resources()
+        .discover_runs(&id)
+        .await
+        .unwrap()
+        .is_empty();
     std::fs::write(&checkpoint, saved).unwrap();
 
     // Act: retry with the intact saved evidence, without recollecting missing containers.
@@ -1246,5 +1269,12 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
     assert!(corrupt.is_err());
     assert!(retained);
     assert!(retry.is_ok(), "{retry:?}");
-    assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+    assert!(
+        adapter
+            .resources()
+            .discover_runs(&id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

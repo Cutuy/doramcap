@@ -28,8 +28,7 @@ pub struct Flow {
 }
 impl Flow {
     fn checkpoint(&self, suffix: &str) -> std::path::PathBuf {
-        self.plan
-            .manifest
+        Path::new(&self.plan.manifest)
             .parent()
             .unwrap()
             .join(format!("{}.dora-{suffix}.json", self.plan.key))
@@ -38,12 +37,8 @@ impl Flow {
         let mut command = vec!["/usr/local/bin/dora".into()];
         command.extend(args.iter().map(|s| (*s).to_owned()));
         adapter
-            .exec(
-                &self.plan,
-                &self.config.service,
-                &command,
-                Duration::from_secs(35),
-            )
+            .project(&self.plan)
+            .exec(&self.config.service, &command, Duration::from_secs(35))
             .await
     }
     async fn nodes(&self, adapter: &DockerAdapter) -> Result<Vec<Value>> {
@@ -71,8 +66,8 @@ impl Flow {
     }
     async fn fetch(&self, adapter: &DockerAdapter, url: &str) -> Result<String> {
         adapter
+            .project(&self.plan)
             .exec(
-                &self.plan,
                 &self.config.service,
                 &[
                     "curl".into(),
@@ -488,8 +483,7 @@ fn published_count(logs: &str) -> Result<u64> {
 /// Missing checkpoints mean no managed flow started; incomplete shutdown is an
 /// error retained by the caller while Docker teardown still proceeds.
 pub(crate) async fn recover(adapter: &DockerAdapter, plan: &ResolvedComposeProject) -> Result<()> {
-    let path = plan
-        .manifest
+    let path = Path::new(&plan.manifest)
         .parent()
         .unwrap()
         .join(format!("{}.dora-started.json", plan.key));

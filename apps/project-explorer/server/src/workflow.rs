@@ -91,7 +91,7 @@ pub async fn run(
                 match plans {
                     Ok(plans) => {
                         let endpoint = match (app.port, plans.iter().find(|plan| plan.key == app.id)) {
-                            (Some(port), Some(plan)) => adapter.endpoint(plan, &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
+                            (Some(port), Some(plan)) => adapter.project(plan).endpoint(&app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
                             (None, _) => Ok(None),
                             _ => Err("ready workflow has no app project".into()),
                         };
@@ -693,7 +693,7 @@ async fn stop_and_verify_nested(
 }
 
 async fn verify_no_nested_resources(adapter: &DockerAdapter, run: &str, report: &mut StopReport) {
-    match adapter.discover_runs(&format!("{run}-")).await {
+    match adapter.resources().discover_runs(&format!("{run}-")).await {
         Ok(resources) if resources.is_empty() => {}
         Ok(_) => {
             report.cleanup_verified = false;

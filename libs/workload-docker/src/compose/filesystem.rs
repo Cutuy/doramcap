@@ -489,7 +489,7 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
     .await?;
     // Verify every attempted project before scanning shared storage.
     for plan in &input.projects {
-        let state = adapter.inspect(plan).await?;
+        let state = adapter.project(plan).inspect().await?;
         if state
             .containers
             .iter()

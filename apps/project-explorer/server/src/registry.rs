@@ -345,8 +345,12 @@ impl Registration {
         }
         Ok(ComposeProject {
             key: self.id.clone(),
-            directory: self.directory.clone(),
-            files: vec![self.compose_file.clone().into()],
+            directory: self
+                .directory
+                .to_str()
+                .ok_or("registration directory is not UTF-8")?
+                .to_owned(),
+            files: vec![self.compose_file.clone()],
             env_files: vec![],
             environment,
             profiles: vec![],

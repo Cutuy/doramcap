@@ -43,7 +43,7 @@ impl Manager {
         docker: &DockerAdapter,
         idle_timeout: Duration,
     ) -> workload_docker::compose::Result<Self> {
-        let resources = docker.discover_runs("gal-").await?;
+        let resources = docker.resources().discover_runs("gal-").await?;
         Ok(Self::from_resources_at(
             registry,
             idle_timeout,
@@ -59,7 +59,7 @@ impl Manager {
         idle_timeout: Duration,
         data: &Path,
     ) -> workload_docker::compose::Result<Self> {
-        let resources = docker.discover_runs("gal-").await?;
+        let resources = docker.resources().discover_runs("gal-").await?;
         Ok(Self::from_resources_at(
             registry,
             idle_timeout,
@@ -85,7 +85,7 @@ impl Manager {
         let mut ambiguous = Vec::new();
         for resource in resources {
             if let (Some(root), Some(artifacts)) = (data, resource.artifacts.as_deref())
-                && !artifacts.starts_with(root)
+                && !Path::new(artifacts).starts_with(root)
             {
                 continue;
             }
@@ -97,7 +97,8 @@ impl Manager {
                             .strip_prefix("gal-")
                             .and_then(|id| id.get(..32))
                             .is_some_and(|id| {
-                                artifacts.starts_with(root.join(format!("{}-{id}", app.id)))
+                                Path::new(artifacts)
+                                    .starts_with(root.join(format!("{}-{id}", app.id)))
                             })
                     })
                 })
@@ -208,7 +209,7 @@ mod tests {
             artifacts: None,
             run: "gal-0123".into(),
             project: Some("dc-gal-0123-activity-demo".into()),
-            kind: "container",
+            kind: "container".into(),
             id: "old-container".into(),
         }];
         let manager = Manager::from_resources(registry, Duration::from_secs(120), &resources);
@@ -229,10 +230,10 @@ mod tests {
         // Arrange
         let registry = Registry::new(&workspace()).unwrap();
         let resources = [OwnedResource {
-            artifacts: Some(PathBuf::from("/other-repository/data/run")),
+            artifacts: Some("/other-repository/data/run".into()),
             run: "gal-0123".into(),
             project: Some("dc-gal-0123-activity-demo".into()),
-            kind: "container",
+            kind: "container".into(),
             id: "other-container".into(),
         }];
         let manager = Manager::from_resources_at(
@@ -257,7 +258,7 @@ mod tests {
             artifacts: None,
             run: "gal-0123".into(),
             project: None,
-            kind: "network",
+            kind: "network".into(),
             id: "orphan".into(),
         }];
         let manager = Manager::from_resources(registry, Duration::from_secs(120), &resources);
@@ -278,10 +279,17 @@ mod tests {
         let run = format!("gal-{token}-1");
         let generation = data.join(format!("activity-demo-{token}"));
         let mut resources = vec![OwnedResource {
-            artifacts: Some(generation.join("private/telemetry").join(&run)),
+            artifacts: Some(
+                generation
+                    .join("private/telemetry")
+                    .join(&run)
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            ),
             run: run.clone(),
             project: Some(format!("dc-{run}-demo")),
-            kind: "volume",
+            kind: "volume".into(),
             id: "nested-volume".into(),
         }];
 

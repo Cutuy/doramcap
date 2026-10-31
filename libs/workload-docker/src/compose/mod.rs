@@ -9,8 +9,9 @@ pub(crate) mod error;
 pub mod filesystem;
 mod model;
 pub mod overlay;
+mod state;
 mod steps;
-pub use adapter::DockerAdapter;
+pub use adapter::{ComposeConfiguration, ComposeExecution, DockerAdapter, OwnedResources};
 pub use error::{Error, Result};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,

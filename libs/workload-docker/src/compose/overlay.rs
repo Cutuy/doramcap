@@ -130,7 +130,7 @@ impl Step for PrepareOverlays {
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))?;
         for project in &set.projects {
-            if let Err(error) = self.adapter.validate_execution(project).await {
+            if let Err(error) = self.adapter.project(project).validate_execution().await {
                 let mut errors = vec![error.to_string()];
                 for tree in set.trees.iter().rev() {
                     if let Err(e) = unmount(&tree.merged).await {
@@ -488,9 +488,12 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                 }
             }
             let bytes = serde_json::to_vec_pretty(model)?;
-            project.manifest = artifacts.join(format!("{}.execution.json", project.key));
+            project.manifest = artifacts
+                .join(format!("{}.execution.json", project.key))
+                .to_string_lossy()
+                .into_owned();
             project.sha256 = digest(&bytes);
-            private_write(&project.manifest, &bytes).await?;
+            private_write(Path::new(&project.manifest), &bytes).await?;
         }
         private_write(
             &directory.join("prepared.json"),
