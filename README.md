@@ -1,66 +1,42 @@
 # doramcap
 
-A workspace of reusable telemetry libraries and independently runnable applications.
-Each component owns its documentation, tests, examples, and benchmarks.
+We help robotics teams diagnose and fix performance failures on onboard computers,
+starting with NVIDIA Jetson.
 
-Source is available under [PolyForm Noncommercial 1.0.0](LICENSE), permitting
-personal, research, and other noncommercial use as defined by that license.
-Commercial use outside its permitted purposes requires a separate agreement
-with the copyright holders. The two Linux eBPF programs use GPL-2.0-only;
-see [licensing scope](NOTICE).
+When perception, control, and recording share a computer, a missed deadline can
+come from CPU contention, a delayed message, or a storage backlog. doramcap is an
+open-source runtime in development that connects execution policy, traces, and
+recordings so engineers can understand what happened and test a fix.
 
-Browse apps, crates, documentation and dependencies with the
-[project explorer](apps/project-explorer/).
+The goal: **configured policy, measured reality, actionable evidence.**
 
-| Component | Purpose |
-|---|---|
-| [session](libs/session/) | Session identity and experiment evidence contracts (concept scaffold) |
-| [pbtxt-config](libs/pbtxt-config/) | Typed pbtxt composition, app registry, provenance, and deployment fingerprints |
-| [resource-policy](libs/resources/resource-policy/) | Composable Protobuf CPU/RT goals and caller enforcement |
-| [cgroup-bpf](libs/resources/cgroup-bpf/) | Native per-CPU cgroup accounting |
-| [task-accounting](libs/resources/task-accounting/) | Experimental kernel-thread runtime accounting |
-| [activity-tracing](libs/activity-tracing/) | Bounded activity capture and embedded MCAP/live/OTel outputs |
-| [fault](libs/fault/) | Reporting, aggregation, shared schema and wire translation crates |
-| [monitor-core](libs/resources/monitor-core/) | Bounded snapshot buffers and collection handoff |
-| [telemetry-protocol](libs/telemetry/protocol/) | Protobuf schemas, codecs, and descriptors |
-| [telemetry-mcap](libs/telemetry/mcap/) | Reusable MCAP recording sink |
-| [storage-persistence](libs/storage-persistence/) | Bounded io_uring MCAP writer, aligned buffer pool, combining and rotation |
-| [system-monitor](apps/system-monitor/) | Standalone collector with an optional DORA publisher |
-| [dataflow-tracing](apps/dataflow-tracing/) | Four-node Dora pipeline, linked dataflow/activity timelines, and measured latency |
-| [activity-demo](apps/activity-demo/) | Thread pub/sub simulator and live TypeScript trace viewer |
-| [cpu-viewer](apps/cpu-viewer/) | Demo web server and React dashboard |
-| [storage-demo](apps/storage-demo/) | Live io_uring, write-combining and MCAP tail web inspector |
-| [mcap-recorder](apps/mcap-recorder/) | Independent DORA-to-MCAP recording process |
+- **See where time went.** Inspect CPU activity, message lineage, and processing
+  latency through live timelines.
+- **Keep evidence from a run.** Capture telemetry and activity traces in MCAP for
+  later investigation.
+- **Compare intent with execution.** Build on typed resource policies, workload
+  supervision, and fault reporting to investigate behavior under competing load.
 
-## Build
+The project currently provides reusable Rust libraries and runnable Linux demos.
+Jetson qualification and integrated runtime capabilities follow the
+[platform roadmap](docs/roadmap.md).
 
-Run from the repository root. Rust is pinned in `rust-toolchain.toml` and
-Cargo dependencies are locked. Component READMEs document launch and validation.
+## Explore a run
 
-```sh
-cargo build --locked --workspace
-cargo test --locked --workspace
-# Native Linux eBPF support requires Clang, libelf/zlib and Linux headers:
-cargo build --locked --workspace --all-features
-```
+The [dataflow tracing demo](apps/dataflow-tracing/) follows inputs through a
+four-node Dora pipeline. Select an output, inspect the inputs that produced it,
+and compare processing spans with measured latency on linked timelines.
 
-## Formatting and linting
+Explore [live CPU activity](apps/cpu-viewer/docs/running.md) or
+[recording and storage behavior](apps/storage-demo/) for a closer look at resource
+contention and capture. Each demo includes its own setup and validation guide.
 
-VS Code formats Rust on save and runs Clippy through rust-analyzer.
-All workspace crates inherit the default Clippy rules from the root manifest.
-CI checks formatting and treats compiler and Clippy warnings as errors for
-both default and all-feature configurations.
+## Build with doramcap
 
-```sh
-cargo fmt --all
-cargo fmt --all -- --check
-cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
-cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings
-```
+Use the [project explorer](apps/project-explorer/) to browse applications,
+libraries, documentation, and dependencies. Start with the
+[library guide](libs/README.md) to find an integration point.
 
-Start with the [live dashboard guide](apps/cpu-viewer/docs/running.md).
-For new apps, follow the [Docker-hostable app guide](apps/project-explorer/server/docs/docker-hostable-apps.md).
-See [repository layout conventions](docs/repository-layout.md), the
-[platform roadmap](docs/roadmap.md), and [CI operations](scripts/ci/README.md).
-
-[Library groups and responsibilities](libs/README.md).
+[Architecture and roadmap](docs/roadmap.md) ·
+[Repository conventions](docs/repository-layout.md) ·
+[CI and validation](scripts/ci/README.md)
