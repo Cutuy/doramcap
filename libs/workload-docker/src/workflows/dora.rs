@@ -10,6 +10,7 @@ pub(crate) fn services(runtime: &DoraRuntime) -> serde_json::Value {
     let service = |args: Vec<String>| {
         serde_json::json!({
             "image":runtime.image, "network_mode":"host", "stop_signal":"SIGINT",
+            "ulimits":{"memlock":{"soft":runtime.memlock_bytes,"hard":runtime.memlock_bytes}},
             "user":format!("{}:{}",runtime.participant_uid.unwrap(),runtime.participant_gid.unwrap()),
             "working_dir":runtime.runtime_directory, "environment":{"HOME":runtime.runtime_directory,"DORA_DAEMON_LOCAL_LISTEN_PORT":runtime.daemon_port.to_string()},
             "entrypoint":["/usr/local/bin/dora"], "command":args,

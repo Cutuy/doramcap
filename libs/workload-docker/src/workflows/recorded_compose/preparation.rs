@@ -1,7 +1,9 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
+mod model;
+
 use super::{ComposeRun, observation};
 use crate::compose::{
-    adapter::{digest, private_write, validate_name},
+    adapter::{digest, private_write},
     error::invalid,
     filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline},
     overlay::OverlaySet,
@@ -11,7 +13,7 @@ use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -50,9 +52,8 @@ impl PrepareRun {
         // Resolve runtime settings and validate the request.
         super::super::shared_dora::resolve(&mut spec.dora, &spec.artifacts)?;
         super::super::shared_dora::validate_endpoints(&spec.dora)?;
-        validate(&spec)?;
-        let mut builder = tokio::fs::DirBuilder::new();
-        builder.mode(0o700).create(&spec.artifacts).await?;
+        model::validate(&spec)?;
+        crate::evidence::create_private_dir(&spec.artifacts).await?;
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
         observation::snapshot(&artifacts, "before").await?;
         if spec.filesystem.is_some() {
@@ -64,66 +65,23 @@ impl PrepareRun {
         let mut system_services = Vec::new();
         let mut user_services = Vec::new();
         let mut diagnostics = Vec::new();
-        for (system, apps) in [(true, &spec.first_party), (false, &spec.projects)] {
+        for (apps, services) in [
+            (&spec.first_party, &mut system_services),
+            (&spec.projects, &mut user_services),
+        ] {
             for app in apps {
-                let mut app = app.clone();
-                // Normalize every app with the final internal project identity, retaining its own cwd/env.
-                let key = app.key.clone();
-                app.key = "experiment".into();
-                if app
-                    .environment
-                    .insert(
-                        "DORAMCAP_DORA_RUNTIME_DIR".into(),
-                        dora.runtime_directory.clone(),
-                    )
-                    .is_some_and(|old| old != dora.runtime_directory)
-                {
-                    return Err(invalid("conflicting Dora interpolation setting"));
-                }
                 let normalized = self
                     .adapter
                     .normalize(&ResolveInput {
                         run: spec.id.clone(),
                         artifacts: artifacts.clone(),
-                        project: app.clone(),
+                        project: model::app_input(app, &dora)?,
                     })
                     .await?;
-                let mut part = normalized.model;
-                if part["services"]
-                    .as_object()
-                    .unwrap()
-                    .values()
-                    .any(|service| {
-                        service["labels"]
-                            .get(crate::compose::adapter::DIRECTORY_OWNER_LABEL)
-                            .is_some()
-                    })
-                {
-                    return Err(invalid("reserved directory-owner label"));
-                }
-                if let Some(volumes) = part.get_mut("volumes").and_then(Value::as_object_mut) {
-                    for volume in volumes.values_mut().filter(|v| v["external"] != true) {
-                        if volume["labels"].get("io.doramcap.remove-volume").is_some() {
-                            return Err(invalid("reserved volume-removal policy label"));
-                        }
-                        volume["labels"]["io.doramcap.remove-volume"] =
-                            app.remove_volumes.to_string().into();
-                    }
-                }
-                let names = part["services"]
-                    .as_object()
-                    .ok_or_else(|| invalid("Compose input has no services"))?
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>();
-                if system {
-                    system_services.extend(names);
-                } else {
-                    user_services.extend(names);
-                }
-                let warnings = merge(&mut model, part)?;
+                let warnings =
+                    model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
                 private_write(
-                    &artifacts.join(format!("{key}.inputs.json")),
+                    &artifacts.join(format!("{}.inputs.json", app.key)),
                     &serde_json::to_vec(
                         &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
                     )?,
@@ -132,97 +90,20 @@ impl PrepareRun {
                 diagnostics.extend(warnings);
             }
         }
-        // Add Dora services and connect every container to the shared IPC namespace.
-        {
-            let d = &dora;
-            let reserved = super::super::dora::services(d);
-            diagnostics.extend(merge(&mut model, json!({"services":reserved}))?);
-            let services = model["services"].as_object_mut().unwrap();
-            for (name, service) in services.iter_mut() {
-                let daemon = name == super::super::shared_dora::DAEMON;
-                if !daemon {
-                    service["ipc"] =
-                        format!("service:{}", super::super::shared_dora::DAEMON).into();
-                    service.as_object_mut().unwrap().remove("shm_size");
-                }
-                service["ulimits"]["memlock"] =
-                    json!({"soft":d.memlock_bytes,"hard":d.memlock_bytes});
-                if name == super::super::shared_dora::DAEMON
-                    || name == super::super::shared_dora::COORDINATOR
-                {
-                    continue;
-                }
-                let env = service
-                    .as_object_mut()
-                    .unwrap()
-                    .entry("environment")
-                    .or_insert_with(|| json!({}))
-                    .as_object_mut()
-                    .ok_or_else(|| invalid("invalid Compose environment"))?;
-                for (key, value) in
-                    dora_app::environment::settings(name, d.daemon_port, &d.zenoh_overlay)
-                {
-                    if key == dora_app::environment::NODE_ID && env.contains_key(key) {
-                        continue;
-                    }
-                    env.insert(key.into(), value.into());
-                }
-                let mounts = service
-                    .as_object_mut()
-                    .unwrap()
-                    .entry("volumes")
-                    .or_insert_with(|| json!([]))
-                    .as_array_mut()
-                    .ok_or_else(|| invalid("invalid Compose volumes"))?;
-                if mounts.iter().any(|v| {
-                    v["target"].as_str().is_some_and(|t| {
-                        ["/", "/dev", "/dev/shm"].contains(&t) || t == d.zenoh_overlay
-                    })
-                }) {
-                    return Err(invalid(
-                        "app mount overrides shared IPC or reserved Dora settings",
-                    ));
-                }
-                mounts.push(json!({"type":"bind","source":d.zenoh_overlay,"target":d.zenoh_overlay,"read_only":true}));
-                if service["network_mode"] != "host" {
-                    diagnostics.push(format!("{name}: IPC silos: Compose networking is preserved; Dora 1.1 nodes need host networking to reach the daemon on localhost. IPC and /dev/shm are shared."));
-                }
-            }
-            if !d.graph.is_empty() {
-                let graph = super::super::shared_dora::graph(
-                    d,
-                    &crate::evidence::read_regular(Path::new(&d.graph), 2 * 1024 * 1024).await?,
-                )?;
-                for node in &graph.nodes {
-                    let name = node.id.as_ref();
-                    let service = services.get(name).ok_or_else(|| {
-                        invalid(format!(
-                            "Dora node {name} requires a Compose service with the same name"
-                        ))
-                    })?;
-                    if service["network_mode"] != "host" {
-                        return Err(invalid(format!(
-                            "Dora node {name} requires host networking"
-                        )));
-                    }
-                }
-            }
+        // Configure shared IPC, then validate graph bindings and startup dependencies.
+        diagnostics.extend(model::configure_dora(
+            &mut model,
+            &dora,
+            crate::compose::adapter::directory_owner(&artifacts)?,
+        )?);
+        if !dora.graph.is_empty() {
+            let graph = super::super::shared_dora::graph(
+                &dora,
+                &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+            )?;
+            model::validate_graph(&model, &graph)?;
         }
-        // Assign directory ownership and enforce first-party startup dependencies.
-        model["services"][super::super::shared_dora::DAEMON]["container_name"] =
-            crate::compose::adapter::directory_owner(&artifacts)?.into();
-        model["services"][super::super::shared_dora::DAEMON]["labels"]
-            [crate::compose::adapter::DIRECTORY_OWNER_LABEL] = "true".into();
-        for name in &system_services {
-            if model["services"][name]["depends_on"]
-                .as_object()
-                .is_some_and(|deps| deps.keys().any(|dep| user_services.contains(dep)))
-            {
-                return Err(invalid(
-                    "first-party apps cannot depend on adopted apps during startup",
-                ));
-            }
-        }
+        model::validate_dependencies(&model, &system_services, &user_services)?;
         // Snapshot file inputs and resolve one project with pinned images.
         freeze_files(&mut model, &artifacts).await?;
         let manifest = artifacts.join("experiment.input.json");
@@ -287,37 +168,6 @@ impl PrepareRun {
     }
 }
 
-/// Merge supported sections and return warnings for omitted top-level fields.
-fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
-    let Value::Object(mut part) = part else {
-        return Err(invalid("Compose input must be an object"));
-    };
-    let model = model.as_object_mut().unwrap();
-    for kind in ["services", "networks", "volumes", "configs", "secrets"] {
-        if let Some(Value::Object(entries)) = part.remove(kind) {
-            let target = model
-                .entry(kind)
-                .or_insert_with(|| json!({}))
-                .as_object_mut()
-                .unwrap();
-            for (key, value) in entries {
-                if target.contains_key(&key) {
-                    if kind == "networks" && key == "default" && target[&key] == value {
-                        continue;
-                    }
-                    return Err(invalid(format!("Compose naming conflict: {kind}/{key}")));
-                }
-                target.insert(key, value);
-            }
-        }
-    }
-    // Project name is assigned separately; version is Compose metadata.
-    Ok(part
-        .keys()
-        .filter(|key| !matches!(key.as_str(), "name" | "version"))
-        .map(|field| format!("unsupported Compose top-level field '{field}' is ignored"))
-        .collect())
-}
 async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     let source = tokio::fs::canonicalize(source).await?;
     let bytes = crate::evidence::read_regular(&source, 256 * 1024 * 1024).await?;
@@ -332,8 +182,7 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
 }
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.mode(0o700).create(&directory).await?;
+    crate::evidence::create_private_dir(&directory).await?;
     for service in model["services"].as_object_mut().unwrap().values_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
             for mount in mounts {
@@ -359,84 +208,5 @@ async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
-    validate_name(&spec.id)?;
-    super::validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
-    if !spec.artifacts.is_absolute() || (spec.projects.is_empty() && spec.first_party.is_empty()) {
-        return Err(invalid(
-            "require an absolute artifact directory, app inputs and positive lifecycle budgets",
-        ));
-    }
-    if spec
-        .recovery_anchor_dir
-        .as_ref()
-        .is_some_and(|p| !p.is_absolute())
-    {
-        return Err(invalid("recovery anchor must be absolute"));
-    }
-    let mut keys = HashSet::new();
-    for p in spec.first_party.iter().chain(&spec.projects) {
-        validate_name(&p.key)?;
-        if !p.directory.is_absolute() || !keys.insert(&p.key) {
-            return Err(invalid("app directories must be absolute and keys unique"));
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
-        // Arrange
-        let mut model = json!({"services":{}});
-        let mut diagnostics = Vec::new();
-        let service = json!({"image":"app:local", "x-app-setting":"retained"});
-        let input = json!({
-            "name":"input-project", "version":"3.9",
-            "services":{"app":service.clone()},
-            "networks":{"default":{}}, "volumes":{"data":{}},
-            "configs":{"settings":{"file":"settings.txt"}},
-            "secrets":{"token":{"file":"token.txt"}},
-            "future-section":{"option":true}, "x-project-setting":"omitted"
-        });
-
-        // Act
-        diagnostics.extend(merge(&mut model, input).unwrap());
-
-        // Assert
-        assert_eq!(model["services"]["app"], service);
-        assert!(model["volumes"]["data"].is_object());
-        assert!(model["configs"]["settings"].is_object());
-        assert!(model["secrets"]["token"].is_object());
-        diagnostics.sort();
-        assert_eq!(
-            diagnostics,
-            [
-                "unsupported Compose top-level field 'future-section' is ignored",
-                "unsupported Compose top-level field 'x-project-setting' is ignored",
-            ]
-        );
-        assert!(model.get("future-section").is_none());
-
-        // Act: identical default networks remain shareable across app inputs.
-        diagnostics.extend(merge(&mut model, json!({"networks":{"default":{}}})).unwrap());
-
-        // Assert
-        assert_eq!(model["networks"]["default"], json!({}));
-        assert_eq!(diagnostics.len(), 2);
-
-        // Act: duplicate service names still fail.
-        let result = merge(&mut model, json!({"services":{"app":service}}));
-
-        // Assert
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Compose naming conflict: services/app")
-        );
-    }
-}
+mod tests;

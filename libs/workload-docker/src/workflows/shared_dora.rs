@@ -122,14 +122,9 @@ pub fn graph(runtime: &DoraRuntime, bytes: &[u8]) -> Result<Descriptor> {
 /// Freeze the expanded graph and SHM settings into the private run directory.
 pub(crate) async fn prepare(runtime: &DoraRuntime, artifacts: &Path) -> Result<DoraRuntime> {
     let directory = artifacts.join("dora");
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.mode(0o700).create(&directory).await?;
+    crate::evidence::create_private_dir(&directory).await?;
     if !Path::new(&runtime.runtime_directory).exists() {
-        let mut builder = tokio::fs::DirBuilder::new();
-        builder
-            .mode(0o700)
-            .create(&runtime.runtime_directory)
-            .await?;
+        crate::evidence::create_private_dir(Path::new(&runtime.runtime_directory)).await?;
     }
     let mut frozen = runtime.clone();
     if !runtime.graph.is_empty() {

@@ -31,6 +31,7 @@
   <rect x="60" y="289" width="610" height="92" rx="9" class="run"/>
   <text x="80" y="321" class="file">preparation.rs</text>
   <text x="80" y="351" class="body">Merge inputs · shared IPC · frozen plan and graph</text>
+  <text x="80" y="374" class="label">preparation/model.rs · rules     preparation/tests.rs · tests</text>
   <path d="M365 381V408" class="line"/>
 
   <rect x="60" y="410" width="610" height="158" rx="9" class="run"/>

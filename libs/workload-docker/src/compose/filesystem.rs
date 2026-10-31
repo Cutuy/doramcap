@@ -328,9 +328,7 @@ async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathB
 }
 async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<FilesystemBaseline> {
     let directory = input.artifacts.join("filesystem");
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.mode(0o700);
-    builder.create(&directory).await?;
+    crate::evidence::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
     for plan in input.projects {
         let bytes = tokio::fs::read(&plan.manifest).await?;

@@ -382,9 +382,7 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             )));
         }
     }
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.mode(0o700);
-    builder.create(&directory).await?;
+    crate::evidence::create_private_dir(&directory).await?;
     let mut set = OverlaySet {
         directory: directory.clone(),
         trees: vec![],

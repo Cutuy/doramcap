@@ -460,11 +460,7 @@ async fn recover_session(
     if preserve_only {
         return Ok(report);
     }
-    match tokio::fs::DirBuilder::new()
-        .mode(0o700)
-        .create(evidence)
-        .await
-    {
+    match crate::evidence::create_private_dir(evidence).await {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e.to_string()),
@@ -498,9 +494,7 @@ async fn recover_session(
                 }
             }
             baseline.directory = evidence.join(format!("recovery-{attempt:032x}"));
-            tokio::fs::DirBuilder::new()
-                .mode(0o700)
-                .create(&baseline.directory)
+            crate::evidence::create_private_dir(&baseline.directory)
                 .await
                 .map_err(|e| e.to_string())?;
             executor
