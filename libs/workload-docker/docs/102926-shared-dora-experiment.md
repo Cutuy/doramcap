@@ -281,5 +281,6 @@ default/all-feature Clippy, doctests, storage without defaults and snapshot
 tests passed. Both workspace test modes fail the same 11 Console registration
 cases: schema changes precede their pbtxt/graph migration. With matching inputs
 from #29/#15, all 35 Console tests pass in both modes. The 44 library tests,
-3 protobuf-contract tests, Rustdoc and focused native Docker checks pass.
+3 protobuf-contract tests, 12 native OverlayFS tests, Rustdoc and focused
+native Docker checks pass.
 The standalone PR remains blocked on those deployment inputs; ARM64 is deferred.
