@@ -2,7 +2,7 @@
 
 # Shared Dora daemon per experiment
 
-Created: 2026-10-29. Status: implementation assembled; final split validation pending. ARM64 deferred.
+Created: 2026-10-29. Status: M1–M6 complete. PR39 ARM64 passes; topology ARM64 deferred.
 Acceptance requires **strictly fewer production-code LOC than main**.
 
 ## Contract
@@ -73,9 +73,9 @@ and mixed volume policies pass. System Monitor uses ordinary app inputs.
 
 ## M3 — Explicit startup, drain and cleanup: complete
 
-Evidence (2026-10-31): seven public-workflow tests pass in 153.51 s: startup,
-20-message drain, cancellation, failed launch, daemon death, forced stop and launcher
-kills during startup/execution/removal. M6 replaces the separate recovery API.
+Evidence (2026-10-31): public workflow tests pass: exact 20-message drain,
+cancellation, failed launch, daemon death, forced-stop incompleteness and launcher
+kills at three boundaries. The native group passes in 118 s.
 
 **Work items**
 
@@ -84,7 +84,7 @@ kills during startup/execution/removal. M6 replaces the separate recovery API.
 - [x] Supply daemon settings, default node IDs and IPC/SHM to every adopted app.
   Preserve declared IDs, commands, health checks and dependencies; Dora use is optional.
 - [x] Apply the contract's shutdown order; keep the IPC owner until its users stop.
-  M6 uses saved identity for pre-run reset.
+  M6 resets the repository ownership scope before the next run.
 
 **Validation**
 
@@ -98,27 +98,26 @@ kills during startup/execution/removal. M6 replaces the separate recovery API.
 
 ## M4 — Deployments and final acceptance: complete
 
-Evidence (2026-10-31): full local CI passes on source `c1d6ce9`: boundaries,
+Evidence (2026-10-31): standalone local CI passes: boundaries,
 formatting, default/all-feature Clippy and workspace tests (87 executables each),
-doctests, storage without defaults (13 executables), examples/binaries, snapshot
-tests and Rustdoc. Native reset, drain, shared IPC/SHM, volume and Console tests pass.
-All six gallery deployments pass in 56.66 s with rebuilt images. ARM64 is deferred by request.
+doctests, storage without defaults (13 executables), builds and snapshots.
+Six gallery deployment profiles pass in 62.43 s. Public runtime, volume, reset
+and interrupted-copy-back tests pass. PR39 also passes ARM64 worker job 535.
 
-Open-stack deltas versus remote main `d105d65`; inherited changes are excluded:
+Complete four-PR feature versus starting main `d105d65`:
 
 | Category | LOC delta |
 | --- | ---: |
-| Production Rust | −858 |
-| Production TypeScript | −48 |
-| Protobuf schema code | −38 |
-| Production total | **−944** |
-| Tests/tooling | Rust +1,601; Python +26 |
-| Deployment/configuration, excluding schemas | −190 |
-| Documentation | −684 |
+| Production Rust | −694 |
+| Production TypeScript | −43 |
+| Protobuf schema code | −21 |
+| Production total | **−758** |
+| Tests/tooling | +3,507 |
+| Deployment/build configuration | −181 |
+| Documentation | −668 |
 
-Production excludes tests/examples, build tooling, generated/vendor code, comments and blanks.
-Other categories use nonblank lines. The full feature versus pre-stack main
-`7966a1e` also reduces production code: **−638 LOC**, including schemas.
+Production excludes tests/examples, build tooling, generated/vendor code, comments
+and blanks. Other categories count nonblank lines; inherited edits are excluded.
 
 **Work items**
 
@@ -140,7 +139,7 @@ Other categories use nonblank lines. The full feature versus pre-stack main
   shipped helper. Moving/compressing code or deleting tests cannot satisfy this.
 - [x] Report production, tests, deployment/configuration and docs separately;
   exclude unrelated inherited work.
-- [ ] Run final public workflow tests and full local CI from `AGENTS.md`, including
+- [x] Run final public workflow tests and full local CI from `AGENTS.md`, including
   affected Rustdoc. ARM64 is deferred.
 - [x] Commit/rebase onto current main; preserve inherited edits and account for the goal branch.
 
@@ -162,7 +161,7 @@ partial-removal reset tests replace the old recovery retests.
 
 - [x] Test protobuf/step serialization and missing/invalid input rejection.
 - [x] Test deletion permission defaults, per-volume policy and incomplete-scan retention.
-- [ ] Run startup/drain, experiment exclusion, shared IPC tests and full local CI.
+- [x] Run startup/drain, experiment exclusion, shared IPC tests and full local CI.
 - [x] Recheck direct/partial-removal cleanup through M6 reset tests. ARM64 deferred.
 
 ## M6 — Idempotent pre-run cleanup: complete
@@ -171,13 +170,13 @@ partial-removal reset tests replace the old recovery retests.
 
 Pre-run cleanup discards previous uppers. Users salvage old data before starting.
 
-Evidence (2026-10-31): strict reset retries, process/repository exclusion, isolated
-retained volumes and launcher kills pass. Interrupted real rsync leaves its first
-host directory changed and its second unchanged; repeated discard preserves both.
-Previous integrated local CI passes; all 14 OverlayFS cases, volume policies, Zenoh
-SHM and two sequential Console runs pass. All six gallery deployments pass in
-56.66 s using current images and the required monitor features.
-The gallery retains failure diagnostics and admits the next attempt through reset.
+Evidence (2026-10-31): strict reset retries, same-repository exclusion,
+concurrent repositories, isolated reset and retained-volume policies pass.
+Launcher kills at three boundaries reset successfully. Interrupted real rsync
+changes the first host directory; repeated discard leaves the second unchanged.
+Six gallery deployment profiles finalize results and leave no owned containers,
+networks or volumes. Full local CI passes; earlier tests cover full OverlayFS
+and Console runs.
 
 **Work items**
 
@@ -209,5 +208,5 @@ The gallery retains failure diagnostics and admits the next attempt through rese
 - [x] Test absent/partly removed resources, stopped writers and strict unmounts;
   failed cleanup blocks launch. Preserve host files, outputs and unrelated resources.
 - [x] Retest normal copy-back, volume policies, sequential Console and gallery runs.
-- [ ] Show production LOC reduction; run focused checks first and full local CI on
+- [x] Show production LOC reduction; run focused checks first and full local CI on
   final source. ARM64 deferred.
