@@ -14,6 +14,10 @@ Module relationships and execution barriers:
 
 ![Workflow modules](docs/workflow-modules.svg)
 
+Console integration and step execution boundaries:
+
+![Console integration](docs/103026-console-compose-steps.svg)
+
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
 use std::rc::Rc;

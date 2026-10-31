@@ -25,13 +25,21 @@ use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
 use tokio::sync::oneshot;
 
-/// Optional typed notifications owned by one run.
+/// Compose-specific notifications to an in-process listener; delivery never controls the run.
 #[derive(Default)]
 pub struct RunSignals {
-    /// Send ready plans; a closed receiver triggers orderly teardown.
+    /// Notify after all projects are ready; a closed receiver is harmless.
     pub ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
-    /// Signal before stopping writers; a closed receiver does not affect cleanup.
+    /// Notify when teardown begins, before stopping writers; delivery does not confirm shutdown.
     pub quiescing: Option<oneshot::Sender<()>>,
+}
+
+impl RunSignals {
+    fn notify_ready(&mut self, plans: Vec<ResolvedComposeProject>) {
+        if let Some(ready) = self.ready.take() {
+            let _ = ready.send(plans);
+        }
+    }
 }
 
 /// Single-session runner with concurrent independent Compose operations.
@@ -92,8 +100,8 @@ impl ComposeRunner {
     }
 
     /// Run a session and notify the caller after every project becomes ready.
-    /// A closed receiver at notification triggers teardown. Continue awaiting
-    /// this future for cleanup; plans remain valid only during the run.
+    /// A closed receiver is harmless. Continue awaiting this future for cleanup;
+    /// plans remain valid only during the run.
     pub async fn run_with_ready(
         &mut self,
         spec: ComposeRun,
@@ -128,8 +136,9 @@ impl ComposeRunner {
         .await
     }
 
-    /// Run with typed readiness and quiescence notifications plus preflight validation.
-    /// Quiescence is signaled before stopping writers, including automatic shutdown.
+    /// Run with Compose notifications and preflight validation.
+    /// Teardown is signaled before stopping writers, including automatic shutdown.
+    /// Notifications are best-effort; use `stop` to request orderly shutdown.
     pub async fn run_with_signals(
         &mut self,
         spec: ComposeRun,
@@ -330,11 +339,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
         }
     }
     fn ready(&mut self) -> std::result::Result<(), String> {
-        if let Some(ready) = self.signals.ready.take() {
-            ready
-                .send(self.plans.clone())
-                .map_err(|_| "readiness receiver dropped".to_string())?;
-        }
+        self.signals.notify_ready(self.plans.clone());
         Ok(())
     }
     async fn inspect(&mut self) -> std::result::Result<(), String> {
@@ -566,6 +571,44 @@ impl ComposeRunReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropped_readiness_listener_does_not_interrupt_workflow() {
+        // Arrange
+        let (sender, receiver) = oneshot::channel();
+        let mut signals = RunSignals {
+            ready: Some(sender),
+            ..Default::default()
+        };
+        drop(receiver);
+
+        // Act
+        signals.notify_ready(Vec::new());
+
+        // Assert
+        assert!(signals.ready.is_none());
+    }
+
+    #[test]
+    fn readiness_is_delivered_once() {
+        // Arrange
+        let (sender, mut receiver) = oneshot::channel();
+        let mut signals = RunSignals {
+            ready: Some(sender),
+            ..Default::default()
+        };
+
+        // Act
+        signals.notify_ready(Vec::new());
+
+        // Assert
+        assert!(receiver.try_recv().unwrap().is_empty());
+        assert!(signals.ready.is_none());
+
+        // Act / Assert: repeated notification is harmless.
+        signals.notify_ready(Vec::new());
+    }
+
     #[test]
     fn supporting_apps_allow_monitor_only_and_empty_runs_reject() {
         // Arrange
