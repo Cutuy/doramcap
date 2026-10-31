@@ -1,0 +1,19 @@
+services:
+  cpu-monitor:
+    image: doramcap/system-monitor:local
+    entrypoint: [/usr/local/bin/system-monitor]
+    command: [--backend, bpf, --dora, --records, '4096', --queue-slots, '8', --task-capacity, '0']
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [BPF, PERFMON, SYSLOG, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    cgroup: host
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    volumes:
+      - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
+      - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}

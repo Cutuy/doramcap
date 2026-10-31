@@ -161,11 +161,13 @@ async fn serve_socket(socket: WebSocket, mut feed: Feed) {
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
+    let mut headless = false;
     let mut port = 8080u16;
     let mut bind = std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
     let mut assets = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist");
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            "--headless" => headless = true,
             "--bind" => {
                 bind = args
                     .next()
@@ -186,14 +188,14 @@ async fn main() -> Result<()> {
             }
             "--help" | "-h" => {
                 println!(
-                    "cpu-viewer [--bind 127.0.0.1] [--port 8080] [--assets apps/cpu-viewer/frontend/dist]"
+                    "cpu-viewer [--bind 127.0.0.1] [--port 8080] [--headless | --assets PATH]"
                 );
                 return Ok(());
             }
             _ => bail!("unknown argument: {arg}"),
         }
     }
-    if !assets.join("index.html").is_file() {
+    if !headless && !assets.join("index.html").is_file() {
         bail!(
             "missing frontend assets: run npm ci && npm run build in apps/cpu-viewer/frontend, or set --assets"
         );
@@ -207,13 +209,8 @@ async fn main() -> Result<()> {
             let result = receive(sender);
             let _ = shutdown.send(result);
         })?;
-    let app = Router::new()
-        .route("/stream", get(stream))
-        .route("/clock", get(clock_sample))
-        .route("/health/ready", get(ready))
-        .with_state(feed)
-        .fallback_service(ServeDir::new(assets));
-    println!("CPU viewer: http://{}", listener.local_addr()?);
+    let app = router(feed, (!headless).then_some(assets));
+    println!("CPU feed: http://{}", listener.local_addr()?);
     // Stop/error terminates this node too; no orphan server after dora stop.
     tokio::select! {
         result = axum::serve(listener, app) => result?,
@@ -223,6 +220,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Serve the bounded CPU feed, optionally adding the standalone gallery frontend.
+fn router(feed: Feed, assets: Option<PathBuf>) -> Router {
+    let app = Router::new()
+        .route("/stream", get(stream))
+        .route("/clock", get(clock_sample))
+        .route("/health/ready", get(ready))
+        .with_state(feed);
+    match assets {
+        Some(path) => app.fallback_service(ServeDir::new(path)),
+        None => app,
+    }
+}
+
 fn receive(sender: watch::Sender<Latest>) -> Result<()> {
     let (_node, mut events) = dora_app::environment::connect()?;
     dora_app::environment::ready()?;
@@ -230,35 +240,12 @@ fn receive(sender: watch::Sender<Latest>) -> Result<()> {
     let origin = Instant::now();
     while let Some(event) = events.recv() {
         match event {
-            Event::Input { id, data, .. } if id.as_str() == "snapshots" => {
-                // Timestamp immediately on dequeue, before binary decoding.
-                let elapsed = origin.elapsed().as_secs_f64();
-                let received_ns = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .ok()
-                    .and_then(|d| u64::try_from(d.as_nanos()).ok());
+            Event::Input { id, data, .. } if matches!(id.as_str(), "snapshots" | "dictionary") => {
                 if data.null_count() != 0 {
-                    bail!("snapshot contains null bytes");
+                    bail!("{} contains null bytes", id);
                 }
                 let bytes: &[u8] = (&data).try_into()?;
-                let frame = telemetry_protocol::decode(bytes)?;
-                let metrics = ingress.observe(
-                    bytes.len(),
-                    elapsed,
-                    received_ns,
-                    Some(frame.snapshot.capture_unix_ns),
-                );
-                let encoded = delivery::encode_snapshot(frame, metrics)?;
-                sender.send_modify(|latest| latest.snapshot = Some(Arc::new(encoded)));
-            }
-            Event::Input { id, data, .. } if id.as_str() == "dictionary" => {
-                if data.null_count() != 0 {
-                    bail!("dictionary contains null bytes");
-                }
-                let bytes: &[u8] = (&data).try_into()?;
-                telemetry_protocol::decode_dictionary(bytes)?;
-                ingress.observe_dictionary(bytes.len());
-                sender.send_modify(|latest| latest.dictionary = Some(Arc::new(bytes.to_vec())));
+                ingest(id.as_str(), bytes, &sender, &mut ingress, origin)?;
             }
             Event::InputClosed { id } if id.as_str() == "snapshots" => break,
             Event::Stop(_) => break,
@@ -269,9 +256,122 @@ fn receive(sender: watch::Sender<Latest>) -> Result<()> {
     Ok(())
 }
 
+fn ingest(
+    input: &str,
+    bytes: &[u8],
+    sender: &watch::Sender<Latest>,
+    ingress: &mut IngressMetrics,
+    origin: Instant,
+) -> Result<()> {
+    match input {
+        "snapshots" => {
+            // Timestamp on dequeue, before decoding.
+            let elapsed = origin.elapsed().as_secs_f64();
+            let received_ns = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .ok()
+                .and_then(|d| u64::try_from(d.as_nanos()).ok());
+            let frame = telemetry_protocol::decode(bytes)?;
+            let metrics = ingress.observe(
+                bytes.len(),
+                elapsed,
+                received_ns,
+                Some(frame.snapshot.capture_unix_ns),
+            );
+            let encoded = delivery::encode_snapshot(frame, metrics)?;
+            sender.send_modify(|latest| latest.snapshot = Some(Arc::new(encoded)));
+        }
+        "dictionary" => {
+            telemetry_protocol::decode_dictionary(bytes)?;
+            ingress.observe_dictionary(bytes.len());
+            sender.send_modify(|latest| latest.dictionary = Some(Arc::new(bytes.to_vec())));
+        }
+        _ => bail!("unknown CPU input: {input}"),
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn headless_http_serves_feed_routes_without_frontend_files() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // Arrange
+        let (_sender, receiver) = watch::channel(Latest::default());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router(receiver, None)).await.unwrap();
+        });
+        // Act / Assert
+        for (path, expected) in [("/health/ready", "503"), ("/clock", "200"), ("/", "404")] {
+            let mut socket = tokio::net::TcpStream::connect(address).await.unwrap();
+            socket
+                .write_all(
+                    format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            let mut response = Vec::new();
+            socket.read_to_end(&mut response).await.unwrap();
+            assert!(
+                String::from_utf8(response)
+                    .unwrap()
+                    .starts_with(&format!("HTTP/1.1 {expected}"))
+            );
+        }
+        server.abort();
+    }
+
+    #[test]
+    fn stalled_and_disconnected_consumers_keep_latest_dictionary_and_loss_counters() {
+        use prost::Message;
+        // Arrange
+        let (sender, receiver) = watch::channel(Latest::default());
+        let mut ingress = IngressMetrics::default();
+        let origin = Instant::now();
+        let dictionary =
+            telemetry_protocol::dictionary_packet(&telemetry_protocol::DictionaryFrame {
+                version: telemetry_protocol::VERSION,
+                session_id: "fixture".into(),
+                revision: 1,
+                overflow: 7,
+                entries: Vec::<telemetry_protocol::DictionaryEntry>::new(),
+                capture_unix_ns: 17,
+            })
+            .encode_to_vec();
+        let original = include_bytes!("../../frontend/src/fixtures/snapshot-v2.pb");
+        let mut frame = telemetry_protocol::decode(original).unwrap();
+        // Act: the consumer does not poll while validated producer messages arrive.
+        ingest("dictionary", &dictionary, &sender, &mut ingress, origin).unwrap();
+        for sequence in 0..1000 {
+            frame.snapshot.sequence = sequence;
+            frame.snapshot.dropped_batches = 13;
+            let packet = telemetry_protocol::snapshot_packet(&frame).encode_to_vec();
+            ingest("snapshots", &packet, &sender, &mut ingress, origin).unwrap();
+        }
+        // Assert: only the latest snapshot is retained, together with its dictionary.
+        let latest = receiver.borrow().clone();
+        assert_eq!(latest.dictionary.as_ref().unwrap().as_slice(), dictionary);
+        let decoded = telemetry_protocol::decode(latest.snapshot.as_ref().unwrap()).unwrap();
+        assert_eq!(decoded.snapshot.sequence, 999);
+        assert_eq!(decoded.snapshot.dropped_batches, 13);
+        assert_eq!(ingress.total_messages, 1000);
+        // Act: the browser disconnects; ingestion continues and rejects invalid telemetry.
+        drop(receiver);
+        ingest("snapshots", original, &sender, &mut ingress, origin).unwrap();
+        let retained = sender.borrow().snapshot.clone();
+        assert!(ingest("snapshots", b"invalid", &sender, &mut ingress, origin).is_err());
+        // Assert
+        assert_eq!(ingress.total_messages, 1001);
+        assert!(Arc::ptr_eq(
+            retained.as_ref().unwrap(),
+            sender.borrow().snapshot.as_ref().unwrap()
+        ));
+    }
+
     #[tokio::test]
     async fn readiness_requires_snapshot_and_dictionary() {
         // Arrange

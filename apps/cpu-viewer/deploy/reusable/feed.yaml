@@ -1,0 +1,12 @@
+services:
+  cpu-feed:
+    image: doramcap/cpu-feed:local
+    entrypoint: [/usr/local/bin/cpu-viewer]
+    command: [--headless, --bind, 127.0.0.1, --port, '8080']
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 30s

@@ -1,0 +1,12 @@
+services:
+  cpu-recorder:
+    image: doramcap/mcap-recorder-only:local
+    entrypoint: [/usr/local/bin/mcap-recorder]
+    command: [/results/cpu.mcap]
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 30s
