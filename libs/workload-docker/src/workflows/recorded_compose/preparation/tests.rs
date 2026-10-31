@@ -458,3 +458,13 @@ fn malformed_app_environment_and_mounts_return_errors() {
         assert!(result.unwrap_err().to_string().contains("invalid Compose"));
     }
 }
+
+#[test]
+fn dora_wiring_preserves_an_absent_network_section() {
+    // Arrange
+    let mut model = json!({"services":{"app":{"network_mode":"host"}}});
+    // Act
+    configure_dora(&mut model, &runtime(), "owner".into()).unwrap();
+    // Assert: Compose requires an absent optional section to stay absent.
+    assert!(model.get("networks").is_none());
+}

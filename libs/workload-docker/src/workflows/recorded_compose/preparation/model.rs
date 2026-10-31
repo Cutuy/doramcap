@@ -103,7 +103,7 @@ pub(super) fn configure_dora(
         .to_str()
         .ok_or_else(|| invalid("controller path is not UTF-8"))?;
     for section in ["services", "networks"] {
-        if let Some(resources) = model[section].as_object_mut() {
+        if let Some(resources) = model.get_mut(section).and_then(Value::as_object_mut) {
             for resource in resources.values_mut().filter(|r| r["external"] != true) {
                 if resource["labels"].get(CONTROLLER_LABEL).is_some() {
                     return Err(invalid("reserved experiment-controller label"));
