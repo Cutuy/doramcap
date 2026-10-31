@@ -10,7 +10,9 @@ Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, b
 
 ## Configuration
 
-Prefer protobuf schemas and protobuf text format (pbtxt) for application configuration. Avoid JSON configuration when a protobuf schema can express it. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
+Favor strongly typed protobuf messages over untyped JSON for internal models and application configuration; use protobuf text format (pbtxt) for configuration files. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
+
+Favor TypeScript for dynamic configuration processing. Use protobuf contracts to decouple TypeScript configuration processing from Rust execution. Preserve arbitrary third-party configuration in its native format at integration boundaries.
 
 Environment-based application configuration is highly discouraged. Every new environment configuration input or extension of an existing environment contract requires the user's explicit approval. Encapsulate approved exceptions behind a named interface with an explicit list of supported variables; the Dora bridge is `dora_app::environment`.
 
