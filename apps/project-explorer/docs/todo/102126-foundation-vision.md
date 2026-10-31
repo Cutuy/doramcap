@@ -35,7 +35,7 @@ existing building blocks and future work.
 
 | Illustrative scenario | Capabilities | Example components |
 |---|---|---|
-| Run a perception pipeline | Shared data, tracing, recording | cuda-dora-shm, activity-tracing, provenance-demo, mcap-recorder |
+| Run a perception pipeline | Shared data, tracing, recording | cuda-dora-shm, activity-tracing, dataflow-tracing, mcap-recorder |
 | Explain a missed deadline | Resource accounting, ancestry, recording | cgroup-bpf, step-provenance, system-monitor, storage-persistence |
 | Respond to a fault | Fault reports, liveness, evidence | fault-reporter, fault-aggregation, fault-watchdog, fault-demo |
 

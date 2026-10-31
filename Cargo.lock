@@ -1255,6 +1255,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
+name = "dataflow-tracing"
+version = "0.1.0"
+dependencies = [
+ "activity-tracing",
+ "axum",
+ "crossbeam-channel",
+ "dora-node-api",
+ "eyre",
+ "futures-util",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "protoc-bin-vendored",
+ "serde_json",
+ "step-provenance",
+ "tokio",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "defmt"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3871,27 +3892,6 @@ name = "protoc-bin-vendored-win32"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "263a3f48f01e7309e857138bd47f785585b4a005e8e56c6d2824ce91195999c3"
-
-[[package]]
-name = "provenance-demo"
-version = "0.1.0"
-dependencies = [
- "activity-tracing",
- "axum",
- "crossbeam-channel",
- "dora-node-api",
- "eyre",
- "futures-util",
- "prost",
- "prost-build",
- "prost-reflect",
- "protoc-bin-vendored",
- "serde_json",
- "step-provenance",
- "tokio",
- "tower-http",
- "tracing",
-]
 
 [[package]]
 name = "psm"

@@ -1,5 +1,5 @@
 [package]
-name = "provenance-demo"
+name = "dataflow-tracing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,8 +1,8 @@
-![Provenance demo architecture](102026-provenance-demo.svg)
+![Dataflow tracing architecture](102026-dataflow-tracing.svg)
 
 ![Pipeline node internals](102026-provenance-node.svg)
 
-# Dora provenance lab
+# Dora dataflow tracing
 
 Created: 2026-10-20. Implementation uses the agreed two-process architecture.
 

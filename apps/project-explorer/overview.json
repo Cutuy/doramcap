@@ -69,7 +69,7 @@
         "crates/step-provenance",
         "crates/telemetry-protocol",
         "apps/activity-demo",
-        "apps/provenance-demo",
+        "apps/dataflow-tracing",
         "apps/cpu-viewer"
       ],
       "integrations": [
@@ -220,7 +220,7 @@
       "components": [
         "crates/cuda-dora-shm",
         "apps/system-monitor",
-        "apps/provenance-demo",
+        "apps/dataflow-tracing",
         "apps/mcap-recorder"
       ],
       "evidence": [
@@ -309,7 +309,7 @@
       ],
       "components": [
         "apps/cuda-shm-demo",
-        "apps/provenance-demo",
+        "apps/dataflow-tracing",
         "apps/mcap-recorder",
         "crates/cuda-dora-shm",
         "crates/activity-tracing",
@@ -318,7 +318,7 @@
       ],
       "evidence": [
         "apps/cuda-shm-demo/README.md",
-        "apps/provenance-demo/README.md",
+        "apps/dataflow-tracing/README.md",
         "apps/mcap-recorder/README.md"
       ]
     },
@@ -342,7 +342,7 @@
         "apps/system-monitor",
         "apps/cpu-viewer",
         "apps/activity-demo",
-        "apps/provenance-demo",
+        "apps/dataflow-tracing",
         "crates/cgroup-bpf",
         "crates/step-provenance",
         "crates/activity-tracing",
@@ -350,7 +350,7 @@
       ],
       "evidence": [
         "apps/cpu-viewer/README.md",
-        "apps/provenance-demo/README.md",
+        "apps/dataflow-tracing/README.md",
         "libs/activity-tracing/README.md"
       ]
     },

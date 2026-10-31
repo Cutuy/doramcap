@@ -5,7 +5,7 @@ use eyre::{Result, bail};
 use prost::Message;
 #[allow(clippy::large_enum_variant)] // Generated protobuf wire representation.
 pub mod pb {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.provenance_demo.v1.rs"));
+    include!(concat!(env!("OUT_DIR"), "/doramcap.dataflow_tracing.v1.rs"));
 }
 pub const MAX_FRAME: usize = 1 << 20;
 pub fn publish(node: &mut DoraNode, topic: &str, message: &impl Message) -> Result<()> {
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
         Some("pipeline") => pipeline::run(&args[1..]),
         Some("monitor") => monitor::run(&args[1..]).await,
         _ => bail!(
-            "usage: provenance-demo pipeline [--duration N] [--drop-every N] [--report-delay-ms N] | monitor [--port N] [--assets PATH] [--measurements PATH]"
+            "usage: dataflow-tracing pipeline [--duration N] [--drop-every N] [--report-delay-ms N] | monitor [--port N] [--assets PATH] [--measurements PATH]"
         ),
     }
 }

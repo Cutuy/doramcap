@@ -1,49 +1,49 @@
 nodes:
-- id: provenance-hosted-camera
+- id: dataflow-tracing-hosted-camera
   path: dynamic
   outputs:
   - data
   - telemetry
-- id: provenance-hosted-lidar
+- id: dataflow-tracing-hosted-lidar
   path: dynamic
   outputs:
   - data
   - telemetry
-- id: provenance-hosted-detect
+- id: dataflow-tracing-hosted-detect
   path: dynamic
   inputs:
     camera:
-      source: provenance-hosted-camera/data
+      source: dataflow-tracing-hosted-camera/data
       queue_size: 512
     lidar:
-      source: provenance-hosted-lidar/data
+      source: dataflow-tracing-hosted-lidar/data
       queue_size: 512
   outputs:
   - data
   - telemetry
-- id: provenance-hosted-control
+- id: dataflow-tracing-hosted-control
   path: dynamic
   inputs:
     objects:
-      source: provenance-hosted-detect/data
+      source: dataflow-tracing-hosted-detect/data
       queue_size: 512
   outputs:
   - data
   - telemetry
-- id: provenance-hosted-monitor
+- id: dataflow-tracing-hosted-monitor
   path: dynamic
   inputs:
     camera:
-      source: provenance-hosted-camera/telemetry
+      source: dataflow-tracing-hosted-camera/telemetry
       queue_size: 512
     lidar:
-      source: provenance-hosted-lidar/telemetry
+      source: dataflow-tracing-hosted-lidar/telemetry
       queue_size: 512
     detect:
-      source: provenance-hosted-detect/telemetry
+      source: dataflow-tracing-hosted-detect/telemetry
       queue_size: 512
     control:
-      source: provenance-hosted-control/telemetry
+      source: dataflow-tracing-hosted-control/telemetry
       queue_size: 512
     keepalive:
       source: dora/timer/millis/1000

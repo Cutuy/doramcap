@@ -49,7 +49,7 @@ def validate(s, dropped=False):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--dora', default=shutil.which('dora'))
-    parser.add_argument('--binary', type=Path, default=ROOT/'target/debug/provenance-demo')
+    parser.add_argument('--binary', type=Path, default=ROOT/'target/debug/dataflow-tracing')
     parser.add_argument('--assets', type=Path, default=APP/'frontend/dist')
     parser.add_argument('--port', type=int, default=8090)
     parser.add_argument('--duration', type=int, default=3600)
@@ -63,7 +63,7 @@ def main():
     env={**os.environ, 'PROVENANCE_PREFIX':prefix}
     subprocess.run([args.dora,'up'],check=True,timeout=30)
     processes=[]
-    with tempfile.TemporaryDirectory(prefix='provenance-demo-') as tmp:
+    with tempfile.TemporaryDirectory(prefix='dataflow-tracing-') as tmp:
         flow=Path(tmp)/'flow.yml';flow.write_text(descriptor(prefix))
         logs=[]
         started=False
@@ -74,7 +74,7 @@ def main():
                                   ('pipeline',['--duration',str(args.duration),'--drop-every',str(args.drop_every),'--report-delay-ms',str(args.report_delay_ms)])]:
                 log=open(Path(tmp)/(role+'.log'),'w+');logs.append(log)
                 processes.append(subprocess.Popen([str(args.binary.resolve()),role,*options],env=env,stdout=log,stderr=subprocess.STDOUT))
-            print(f'Provenance lab: http://127.0.0.1:{args.port} · logs {tmp}',flush=True)
+            print(f'Dataflow Tracing: http://127.0.0.1:{args.port} · logs {tmp}',flush=True)
             deadline=time.monotonic()+args.duration+30
             while processes[1].poll() is None:
                 if processes[0].poll() is not None: raise RuntimeError('monitor exited early')

@@ -3,11 +3,27 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { TopCpuStreams } from '../frontend/src/stream';
 import { decodeSnapshot, StreamDecoder } from '../frontend/src/protocol';
-const base = process.argv[2] ?? 'http://127.0.0.1:8080';
+// Arrange: accept either the standalone root or a gallery generation URL.
+const base = new URL(process.argv[2] ?? 'http://127.0.0.1:8080');
+if (!base.pathname.endsWith('/')) base.pathname += '/';
+// Act
 const page = await fetch(base);
+// Assert: the page and its frontend assets work within the supplied app path.
 assert.equal(page.status, 200);
-assert.match(await page.text(), /<title>DORA CPU activity<\/title>/);
-const url = new URL('/stream', base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+const html = await page.text();
+assert.match(html, /<title>DORA CPU activity<\/title>/);
+// Resolve assets as the browser does, including the gallery's generation path.
+const assets = [...html.matchAll(/(?:src|href)="([^"\s]+\.(?:js|css))"/g)];
+assert.ok(assets.length > 0, 'expected frontend assets');
+for (const [, path] of assets) {
+ const asset = new URL(path, base);
+ assert.equal(asset.origin, base.origin);
+ assert.ok(asset.pathname.startsWith(base.pathname), `asset escapes app path: ${asset}`);
+ const response = await fetch(asset);
+ assert.equal(response.status, 200, `missing frontend asset: ${asset}`);
+ assert.match(response.headers.get('content-type') ?? '', path.endsWith('.css') ? /text\/css/ : /javascript/);
+}
+const url = new URL('stream', base); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
 const model = new TopCpuStreams();
 const decoder = new StreamDecoder();
 let count = 0, first = 0, last = 0, active = false, finalBytes = new Uint8Array(), source = '';
@@ -57,4 +73,4 @@ await new Promise<void>((resolve,reject)=>{
 });
 if(process.argv[3])writeFileSync(process.argv[3],finalBytes);
 const latest=decodeSnapshot(finalBytes);
-console.log(JSON.stringify({result:'PASS',source,snapshots:count,dictionaryPackets:decoder.dictionaryPackets,binaryFrameBytes:finalBytes.length,ingress:latest.viewer_ingress,checks:'binary decode, rates, 30s expiry, reconnect names'}));
+console.log(JSON.stringify({result:'PASS',source,snapshots:count,dictionaryPackets:decoder.dictionaryPackets,binaryFrameBytes:finalBytes.length,ingress:latest.viewer_ingress,checks:'frontend assets, binary decode, rates, 30s expiry, reconnect names'}));
