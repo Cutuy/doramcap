@@ -11,7 +11,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dora_node_api::{DoraNode, Event};
+use dora_node_api::Event;
 use eyre::{Result, bail};
 use futures_util::{SinkExt, StreamExt};
 
@@ -224,7 +224,8 @@ async fn main() -> Result<()> {
 }
 
 fn receive(sender: watch::Sender<Latest>) -> Result<()> {
-    let (_node, mut events) = DoraNode::init_from_env_force()?;
+    let (_node, mut events) = dora_app::environment::connect()?;
+    dora_app::environment::ready()?;
     let mut ingress = IngressMetrics::default();
     let origin = Instant::now();
     while let Some(event) = events.recv() {

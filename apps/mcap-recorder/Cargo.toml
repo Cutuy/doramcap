@@ -5,9 +5,18 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dora-app = { path = "../../libs/dora-app" }
 telemetry-mcap = { path = "../../libs/telemetry/mcap" }
 dora-node-api = { version = "=1.1.0", default-features = false }
 eyre = "0.6"
+
+[dev-dependencies]
+prost = "0.14"
+telemetry-protocol = { path = "../../libs/telemetry/protocol" }
+
+[[example]]
+name = "dora_attachment_fixture"
+test = true
 
 [lints]
 workspace = true

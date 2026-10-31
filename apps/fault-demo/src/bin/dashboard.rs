@@ -6,7 +6,7 @@ use axum::{
     response::Html,
     routing::{get, post},
 };
-use dora_node_api::{DoraNode, Event, futures::StreamExt};
+use dora_node_api::{Event, futures::StreamExt};
 use eyre::Result;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -17,7 +17,7 @@ struct App {
 }
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
-    let (mut node, mut events) = DoraNode::init_from_env_force()?;
+    let (mut node, mut events) = dora_app::environment::connect()?;
     let (commands, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
     let state = App {
         view: Default::default(),
@@ -39,6 +39,7 @@ async fn main() -> Result<()> {
         std::env::var("FAULT_DEMO_LISTEN").unwrap_or_else(|_| "127.0.0.1:8088".into()),
     )
     .await?;
+    dora_app::environment::ready()?;
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
     // Keep the subscription alive while forwarding controls between selects.
     let shutdown = tokio::signal::ctrl_c();

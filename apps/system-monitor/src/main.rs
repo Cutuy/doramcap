@@ -20,6 +20,7 @@ struct Options {
     slots: usize,
     tasks: usize,
     dora: bool,
+    published_count: Option<PathBuf>,
     check: bool,
     check_bpf: bool,
     output: Option<PathBuf>,
@@ -37,6 +38,7 @@ impl Options {
             slots: 8,
             tasks: 0,
             dora: false,
+            published_count: None,
             check: false,
             check_bpf: false,
             output: None,
@@ -66,6 +68,7 @@ impl Options {
                 "--record-rotate-bytes" => {
                     opts.record_rotate_bytes = value(&mut args, &arg)?.parse()?
                 }
+                "--published-count" => opts.published_count = Some(value(&mut args, &arg)?.into()),
                 "--dora" => opts.dora = true,
                 "--check" => opts.check = true,
                 "--check-bpf" => {
@@ -361,7 +364,7 @@ fn run(opts: Options) -> Result<()> {
     };
     #[cfg(feature = "dora")]
     let mut publisher = if opts.dora {
-        Some(system_monitor_dora::Publisher::new_from_env()?)
+        Some(system_monitor_dora::Publisher::new()?)
     } else {
         None
     };
@@ -369,6 +372,7 @@ fn run(opts: Options) -> Result<()> {
     if opts.dora {
         bail!("--dora requires --features dora");
     }
+    dora_app::environment::ready()?;
     let mut output: Option<Box<dyn Write>> = if let Some(path) = opts.output.as_ref() {
         Some(Box::new(BufWriter::new(File::create(path)?)))
     } else if !opts.dora && opts.record.is_none() {
@@ -604,6 +608,9 @@ fn run(opts: Options) -> Result<()> {
         .map_err(|e| eyre!(e));
     publish_result?;
     let (collected, dropped) = collected?;
+    if let Some(path) = &opts.published_count {
+        fs::write(path, format!("{published}\n"))?;
+    }
     eprintln!("session complete: collected={collected} published={published} dropped={dropped}");
     Ok(())
 }

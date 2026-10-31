@@ -1,0 +1,17 @@
+[package]
+name = "dora-app"
+description = "Compose-owned Dora node attachment and app readiness"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["node"]
+node = ["dep:dora-node-api", "dep:eyre"]
+
+[dependencies]
+dora-node-api = { version = "=1.1.0", default-features = false, optional = true }
+eyre = { version = "0.6", optional = true }
+
+[lints]
+workspace = true

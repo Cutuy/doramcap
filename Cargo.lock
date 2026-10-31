@@ -991,6 +991,7 @@ name = "cpu-viewer"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dora-app",
  "dora-node-api",
  "eyre",
  "futures-util",
@@ -1394,6 +1395,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dora-app"
+version = "0.1.0"
+dependencies = [
+ "dora-node-api",
+ "eyre",
+]
+
+[[package]]
 name = "dora-arrow-convert"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1651,6 +1660,7 @@ name = "fault-demo"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dora-app",
  "dora-node-api",
  "eyre",
  "fault-aggregation",
@@ -1696,6 +1706,7 @@ name = "fault-watchdog"
 version = "0.1.0"
 dependencies = [
  "crossbeam-channel",
+ "dora-app",
  "dora-node-api",
  "eyre",
  "fault-aggregation",
@@ -2942,9 +2953,12 @@ dependencies = [
 name = "mcap-recorder"
 version = "0.1.0"
 dependencies = [
+ "dora-app",
  "dora-node-api",
  "eyre",
+ "prost",
  "telemetry-mcap",
+ "telemetry-protocol",
 ]
 
 [[package]]
@@ -5029,6 +5043,7 @@ version = "0.1.0"
 dependencies = [
  "cgroup-bpf",
  "ctrlc",
+ "dora-app",
  "eyre",
  "mcap",
  "monitor-core",
@@ -5044,6 +5059,7 @@ dependencies = [
 name = "system-monitor-dora"
 version = "0.1.0"
 dependencies = [
+ "dora-app",
  "dora-node-api",
  "eyre",
  "prost",

@@ -10,6 +10,7 @@ mcap = ["dep:storage-persistence"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:futures-executor"]
 
 [dependencies]
+dora-app = { path = "../../libs/dora-app" }
 fault-reporter = { path = "../../libs/fault/reporter" }
 fault-aggregation = { path = "../../libs/fault/aggregation" }
 fault-protocol = { path = "../../libs/fault/protocol" }

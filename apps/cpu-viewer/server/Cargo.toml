@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dora-app = { path = "../../../libs/dora-app" }
 prost = "0.14"
 telemetry-protocol = { path = "../../../libs/telemetry/protocol" }
 axum = { version = "0.8", features = ["ws"] }

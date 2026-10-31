@@ -30,7 +30,7 @@ message ArtifactCollection {
   ResultFormat format = 13;
 }
 
-// Operator-controlled registration loaded from apps/<app>/deploy/registration.pbtxt.
+// Operator-controlled registration loaded from `apps/<app>/deploy/registration.pbtxt`.
 // Paths are relative to that deployment directory. Browser requests select only id.
 // Semantic validation rejects unsafe paths and inconsistent result/runtime policies.
 message AppRegistration {
