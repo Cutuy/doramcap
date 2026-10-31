@@ -87,18 +87,6 @@ cpu_monitor {
 }
 ```
 
-[`resolution::resolve`](../src/workflows/recorded_compose/resolution.rs) resolves
-app and workload manifests and determines launch order without creating mounts or
-containers. `PrepareRun` uses the same resolution code during execution and also
-captures fresh filesystem baselines and recovery metadata.
-
-Both paths return a `ConfigurationSnapshot` containing hashes of Compose manifests, selected
-image IDs, replica counts, completion rules, volume-removal settings, launch order,
-recording paths and run settings. Callers can compare snapshots in a preflight
-callback to reject changed inputs before mounts or launch. Changing a command or
-image changes the snapshot. Generated recording paths compare relative to the
-artifact directory, so using a different artifact directory preserves equality.
-
 `PrepareRun` validates inputs, resolves every project, captures a baseline and
 freezes recovery identities. `PrepareOverlays` supplies optional execution mounts.
 `LaunchProjects` starts each independent group and checks configured system-app
