@@ -272,6 +272,7 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
     }
     for part in [
         json!({"app":{"labels":{"io.doramcap.experiment-owner":"true"}}}),
+        json!({"app":{"labels":{"io.doramcap.controller":"foreign"}}}),
         json!({"dora-daemon":{}}),
         json!({"dora-coordinator":{}}),
     ] {

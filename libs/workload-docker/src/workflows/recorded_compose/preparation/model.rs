@@ -1,6 +1,6 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
-use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
+use crate::compose::adapter::{CONTROLLER_LABEL, EXPERIMENT_OWNER_LABEL, validate_name};
 use crate::workflows::{dora, shared_dora::DAEMON};
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
@@ -98,6 +98,20 @@ pub(super) fn configure_dora(
     diagnostics.extend(merge(model, json!({"services":dora::services(d)}))?);
     model["services"][DAEMON]["container_name"] = owner.into();
     model["services"][DAEMON]["labels"][EXPERIMENT_OWNER_LABEL] = "true".into();
+    let scope = super::super::reset::directory();
+    let scope = scope
+        .to_str()
+        .ok_or_else(|| invalid("controller path is not UTF-8"))?;
+    for section in ["services", "networks"] {
+        if let Some(resources) = model[section].as_object_mut() {
+            for resource in resources.values_mut().filter(|r| r["external"] != true) {
+                if resource["labels"].get(CONTROLLER_LABEL).is_some() {
+                    return Err(invalid("reserved experiment-controller label"));
+                }
+                resource["labels"][CONTROLLER_LABEL] = scope.into();
+            }
+        }
+    }
     Ok(diagnostics)
 }
 

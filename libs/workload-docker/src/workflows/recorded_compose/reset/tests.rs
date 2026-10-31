@@ -1,18 +1,5 @@
 use super::*;
-use crate::compose::adapter::tests::test_engine;
-
-fn plan(directory: &Path, project: &str) -> ResolvedComposeProject {
-    ResolvedComposeProject {
-        run: "previous".into(),
-        key: "experiment".into(),
-        name: project.into(),
-        manifest: directory.join("experiment.compose.json"),
-        sha256: String::new(),
-        services: Default::default(),
-        diagnostics: vec![],
-        remove_volumes: false,
-    }
-}
+use crate::compose::adapter::tests::test_engine_status;
 
 #[test]
 fn one_controller_excludes_different_repositories_and_releases_on_drop() {
@@ -27,39 +14,95 @@ fn one_controller_excludes_different_repositories_and_releases_on_drop() {
     assert!(Controller::in_directory(root.path().join("repo-b"), directory).is_ok());
 }
 
-#[tokio::test]
-async fn published_identity_survives_a_partial_new_record_and_clear_is_repeatable() {
-    // Arrange
-    let root = tempfile::tempdir().unwrap();
-    let controller =
-        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap();
-    let expected = plan(root.path(), &controller.project());
-    controller.save(&expected).await.unwrap();
-    // Act: model a launcher exiting before its next atomic publication.
-    std::fs::write(controller.directory.join("pending.json"), b"partial").unwrap();
-    // Assert
-    assert_eq!(
-        controller.previous().await.unwrap().unwrap().name,
-        expected.name
-    );
-    // Act / Assert
-    controller.clear().await.unwrap();
-    controller.clear().await.unwrap();
-    assert!(controller.previous().await.unwrap().is_none());
+fn empty_scope() -> Vec<(&'static str, u16, serde_json::Value)> {
+    use serde_json::json;
+    vec![
+        (
+            "/containers/doramcap-experiment/json",
+            404,
+            json!({"message":"absent"}),
+        ),
+        ("/containers/json", 200, json!([])),
+        ("/containers/json", 200, json!([])),
+        ("/containers/json", 200, json!([])),
+        ("/containers/json", 200, json!([])),
+        ("/networks", 200, json!([])),
+        ("/networks", 200, json!([])),
+        ("/containers/json", 200, json!([])),
+        ("/containers/json", 200, json!([])),
+        ("/networks", 200, json!([])),
+    ]
 }
 
 #[tokio::test]
-async fn malformed_previous_identity_blocks_reset_and_preserves_upper_data() {
+async fn reset_is_the_same_operation_for_absent_dirty_partial_and_clean_workspaces() {
+    for state in ["absent", "dirty", "partial", "clean"] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let controller = Rc::new(
+            Controller::in_directory(root.path().to_owned(), root.path().join("controller"))
+                .unwrap(),
+        );
+        let workspace = controller.workspace();
+        let output = root.path().join("recording.mcap");
+        std::fs::write(&output, b"retained output").unwrap();
+        // Obsolete history files cannot influence reset.
+        std::fs::write(controller.directory.join("current.json"), b"malformed").unwrap();
+        if state != "absent" {
+            std::fs::create_dir(&workspace).unwrap();
+            if state != "clean" {
+                for name in ["upper", "work", "merged"] {
+                    std::fs::create_dir_all(workspace.join("0").join(name)).unwrap();
+                }
+                std::fs::write(workspace.join("0/upper/data"), b"unfinished").unwrap();
+                if state == "partial" {
+                    std::fs::remove_dir(workspace.join("0/work")).unwrap();
+                }
+            }
+        }
+        let (adapter, server) =
+            test_engine_status(root.path(), [empty_scope(), empty_scope()].concat());
+        let mut reset = ResetExperiment {
+            adapter: Rc::new(adapter),
+            controller,
+            stop_seconds: 3,
+        };
+        // Act / Assert: repeat the identical reset with no saved experiment identity.
+        for _ in 0..2 {
+            reset.run(()).await.unwrap();
+            assert!(!workspace.exists());
+            assert_eq!(std::fs::read(&output).unwrap(), b"retained output");
+        }
+        server.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn engine_inspection_failure_preserves_upper_data() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
         Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
     );
-    std::fs::write(controller.directory.join("current.json"), b"invalid").unwrap();
-    let upper = root.path().join("upper");
-    std::fs::write(&upper, b"untouched").unwrap();
-    let (adapter, server) = test_engine(root.path(), vec![]);
-    let mut reset = ResetPreviousProject {
+    let upper = controller.workspace().join("0/upper");
+    std::fs::create_dir_all(&upper).unwrap();
+    std::fs::write(upper.join("data"), b"unfinished").unwrap();
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        vec![
+            (
+                "/containers/doramcap-experiment/json",
+                404,
+                serde_json::json!({"message":"absent"}),
+            ),
+            (
+                "/containers/json",
+                200,
+                serde_json::json!({"invalid":"container list"}),
+            ),
+        ],
+    );
+    let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
         controller,
         stop_seconds: 3,
@@ -68,58 +111,80 @@ async fn malformed_previous_identity_blocks_reset_and_preserves_upper_data() {
     let result = reset.run(()).await;
     // Assert
     assert!(result.is_err());
-    assert_eq!(std::fs::read(upper).unwrap(), b"untouched");
+    assert_eq!(std::fs::read(upper.join("data")).unwrap(), b"unfinished");
     server.await.unwrap();
 }
 
-#[test]
-fn repository_projects_are_distinct() {
-    // Arrange
-    let first = Path::new("/repositories/first");
-    let second = Path::new("/repositories/second");
-    // Act / Assert
-    assert_ne!(
-        project_name("experiment", first),
-        project_name("experiment", second)
-    );
-}
-
 #[tokio::test]
-async fn engine_inspection_failure_preserves_previous_state_and_upper_data() {
+async fn a_foreign_machine_reservation_blocks_reset() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
         Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
     );
-    let previous = plan(root.path(), &controller.project());
-    controller.save(&previous).await.unwrap();
-    let upper = root.path().join("overlays/0/upper");
-    std::fs::create_dir_all(&upper).unwrap();
-    std::fs::write(upper.join("data"), b"unfinished").unwrap();
-    let (adapter, server) = test_engine(
+    let workspace = controller.workspace();
+    std::fs::create_dir(&workspace).unwrap();
+    let (adapter, server) = test_engine_status(
         root.path(),
-        vec![
-            (
-                "/containers/doramcap-experiment/json",
-                serde_json::json!({"Config":{"Labels":{"com.docker.compose.project":previous.name}}}),
-            ),
-            (
-                "/containers/json",
-                serde_json::json!({"invalid":"container list"}),
-            ),
-        ],
+        vec![(
+            "/containers/doramcap-experiment/json",
+            200,
+            serde_json::json!({"Config":{"Labels":{}}}),
+        )],
     );
-    let mut reset = ResetPreviousProject {
+    let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
-        controller: controller.clone(),
+        controller,
         stop_seconds: 3,
     };
     // Act
     let result = reset.run(()).await;
     // Assert
     assert!(result.is_err());
-    assert_eq!(std::fs::read(upper.join("data")).unwrap(), b"unfinished");
-    assert!(controller.previous().await.unwrap().is_some());
+    assert!(workspace.exists());
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn an_unverified_writer_blocks_workspace_deletion() {
+    use crate::compose::adapter::CONTROLLER_LABEL;
+    use serde_json::json;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let controller = Rc::new(
+        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+    );
+    let upper = controller.workspace().join("0/upper");
+    std::fs::create_dir_all(&upper).unwrap();
+    let containers = json!([{"Id":"writer","Labels":{CONTROLLER_LABEL:controller.directory}}]);
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        vec![
+            (
+                "/containers/doramcap-experiment/json",
+                404,
+                json!({"message":"absent"}),
+            ),
+            ("/containers/json", 200, containers.clone()),
+            ("/containers/writer/stop", 204, json!(null)),
+            ("/containers/json", 200, containers),
+            (
+                "/containers/writer/json",
+                200,
+                json!({"State":{"Pid":123,"Running":true,"Status":"running"}}),
+            ),
+        ],
+    );
+    let mut reset = ResetExperiment {
+        adapter: Rc::new(adapter),
+        controller,
+        stop_seconds: 3,
+    };
+    // Act
+    let result = reset.run(()).await;
+    // Assert
+    assert!(result.is_err());
+    assert!(upper.is_dir());
     server.await.unwrap();
 }
 

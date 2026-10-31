@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
+pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 const PROJECT_LABEL: &str = "com.docker.compose.project";
 type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
@@ -729,58 +730,34 @@ impl DockerAdapter {
         }
     }
 
-    pub(crate) async fn check_machine_owner(&self, project: &str, recorded: bool) -> Result<()> {
+    pub(crate) async fn quiesce_scope(&self, scope: &str, seconds: u64) -> Result<()> {
         match self
             .docker
             .inspect_container(crate::workflows::shared_dora::MACHINE_OWNER, None)
             .await
         {
-            Ok(container) => {
-                let labels = container.config.and_then(|c| c.labels).unwrap_or_default();
-                if !recorded || labels.get(PROJECT_LABEL).map(String::as_str) != Some(project) {
-                    return Err(invalid(
-                        "machine experiment reservation belongs to another controller",
-                    ));
-                }
-                Ok(())
-            }
-            Err(e) if absent(&e) => Ok(()),
-            Err(e) => Err(engine("inspect experiment reservation", e)),
-        }
-    }
-
-    pub(crate) async fn verify_project_empty(&self, project: &str) -> Result<()> {
-        if !self.project_containers(project).await?.is_empty()
-            || !self.project_networks(project).await?.is_empty()
-        {
-            return Err(invalid("previous project still has containers or networks"));
-        }
-        Ok(())
-    }
-
-    pub(crate) async fn stop_for_reset(
-        &self,
-        plan: &ResolvedComposeProject,
-        seconds: u64,
-    ) -> Result<()> {
-        // Verify the full project before mutating it; never infer ownership from names.
-        for summary in self.project_containers(&plan.name).await? {
-            let labels = summary.labels.unwrap_or_default();
-            if labels.get(RUN_LABEL) != Some(&plan.run)
-                || labels.get(ARTIFACTS_LABEL).map(Path::new) != plan.manifest.parent()
+            Ok(ref container)
+                if container
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.labels.as_ref())
+                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                    .map(String::as_str)
+                    != Some(scope) =>
             {
-                return Err(invalid("unexpected ownership in previous experiment"));
+                return Err(invalid(
+                    "machine experiment reservation belongs to another controller",
+                ));
             }
+            Ok(_) => {}
+            Err(e) if absent(&e) => {}
+            Err(e) => return Err(engine("inspect experiment reservation", e)),
         }
-        if !self.resources_owned(plan).await? {
-            return Err(invalid("unowned previous experiment resources"));
-        }
-        let state = self.inspect(plan).await?;
-        for container in state.containers.iter().filter(|c| c.pid != 0) {
+        for container in self.scope_containers(scope).await? {
             match self
                 .docker
                 .stop_container(
-                    &container.id,
+                    container.id.as_deref().unwrap(),
                     Some(StopContainerOptions {
                         t: Some(seconds as i32),
                         ..Default::default()
@@ -798,18 +775,143 @@ impl DockerAdapter {
                                 ..
                             }
                         ) => {}
-                Err(e) => return Err(engine("stop previous writer", e)),
+                Err(e) => return Err(engine("stop experiment writer", e)),
             }
         }
-        let state = self.inspect(plan).await?;
-        if state
-            .containers
-            .iter()
-            .any(|c| c.pid != 0 || !matches!(c.status.as_str(), "exited" | "created"))
-        {
-            return Err(invalid("previous experiment still has live writers"));
+        self.verify_scope_stopped(scope).await
+    }
+
+    async fn scope_containers(
+        &self,
+        scope: &str,
+    ) -> Result<Vec<bollard::models::ContainerSummary>> {
+        let containers = self
+            .docker
+            .list_containers(Some(ListContainersOptions {
+                all: true,
+                filters: scope_filters(scope),
+                ..Default::default()
+            }))
+            .await
+            .map_err(|e| engine("list experiment containers", e))?;
+        if containers.iter().any(|c| {
+            c.id.as_deref().is_none_or(str::is_empty)
+                || c.labels
+                    .as_ref()
+                    .and_then(|l| l.get(CONTROLLER_LABEL))
+                    .map(String::as_str)
+                    != Some(scope)
+        }) {
+            return Err(invalid("invalid experiment container ownership"));
+        }
+        Ok(containers)
+    }
+
+    async fn scope_networks(&self, scope: &str) -> Result<Vec<bollard::models::Network>> {
+        let networks = self
+            .docker
+            .list_networks(Some(ListNetworksOptions {
+                filters: scope_filters(scope),
+            }))
+            .await
+            .map_err(|e| engine("list experiment networks", e))?;
+        if networks.iter().any(|n| {
+            n.id.as_deref().is_none_or(str::is_empty)
+                || n.labels
+                    .as_ref()
+                    .and_then(|l| l.get(CONTROLLER_LABEL))
+                    .map(String::as_str)
+                    != Some(scope)
+        }) {
+            return Err(invalid("invalid experiment network ownership"));
+        }
+        Ok(networks)
+    }
+
+    async fn verify_scope_stopped(&self, scope: &str) -> Result<()> {
+        for container in self.scope_containers(scope).await? {
+            match self
+                .docker
+                .inspect_container(container.id.as_deref().unwrap(), None)
+                .await
+            {
+                Ok(container) => {
+                    let state = container
+                        .state
+                        .ok_or_else(|| invalid("experiment container state missing"))?;
+                    if state.pid != Some(0)
+                        || state.running != Some(false)
+                        || !state
+                            .status
+                            .is_some_and(|s| matches!(s.to_string().as_str(), "created" | "exited"))
+                    {
+                        return Err(invalid("experiment still has live or unverified writers"));
+                    }
+                }
+                Err(e) if absent(&e) => {}
+                Err(e) => return Err(engine("inspect experiment writer", e)),
+            }
         }
         Ok(())
+    }
+
+    pub(crate) async fn remove_scope(&self, scope: &str) -> Result<()> {
+        self.verify_scope_stopped(scope).await?;
+        let mut owner = None;
+        // Keep the daemon reservation until all other disposable resources are gone.
+        for container in self.scope_containers(scope).await? {
+            let id = container.id.unwrap();
+            if container
+                .labels
+                .is_some_and(|l| l.contains_key(EXPERIMENT_OWNER_LABEL))
+            {
+                if owner.replace(id).is_some() {
+                    return Err(invalid("multiple experiment IPC owners"));
+                }
+            } else {
+                self.remove_scope_container(&id).await?;
+            }
+        }
+        for network in self.scope_networks(scope).await? {
+            if let Err(e) = self
+                .docker
+                .remove_network(network.id.as_deref().unwrap())
+                .await
+                && !absent(&e)
+            {
+                return Err(engine("remove experiment network", e));
+            }
+        }
+        if !self.scope_networks(scope).await?.is_empty()
+            || self
+                .scope_containers(scope)
+                .await?
+                .iter()
+                .any(|c| c.id != owner)
+        {
+            return Err(invalid("experiment resources remain after reset"));
+        }
+        if let Some(id) = owner {
+            self.remove_scope_container(&id).await?;
+        }
+        if !self.scope_containers(scope).await?.is_empty()
+            || !self.scope_networks(scope).await?.is_empty()
+        {
+            return Err(invalid("experiment resources remain after reset"));
+        }
+        Ok(())
+    }
+
+    async fn remove_scope_container(&self, id: &str) -> Result<()> {
+        match self
+            .docker
+            .remove_container(id, None::<RemoveContainerOptions>)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(e) if absent(&e) => Ok(()),
+            Err(e) => Err(engine("remove experiment container", e)),
+        }
     }
 
     /// Create the named IPC owner without starting it, before workload side effects.
@@ -911,17 +1013,6 @@ impl DockerAdapter {
         )
         .await
         .map(|(out, _)| out)
-    }
-
-    pub(crate) async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
-        let networks = self.project_networks(&plan.name).await?;
-        let volumes = self.project_volumes(plan).await?;
-        Ok(networks
-            .iter()
-            .all(|n| n.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&plan.run))
-            && volumes
-                .iter()
-                .all(|v| v.labels.get(RUN_LABEL) == Some(&plan.run)))
     }
 
     // Share image, health and replica checks between endpoint routing and command execution.
@@ -1394,6 +1485,13 @@ async fn config_arguments(
     Ok((directory, args, sources))
 }
 
+fn scope_filters(scope: &str) -> Option<HashMap<String, Vec<String>>> {
+    Some(HashMap::from([(
+        "label".into(),
+        vec![format!("{CONTROLLER_LABEL}={scope}")],
+    )]))
+}
+
 fn project_filters(project: &str) -> Option<HashMap<String, Vec<String>>> {
     Some(HashMap::from([(
         "label".into(),
@@ -1613,6 +1711,19 @@ pub(crate) mod tests {
         root: &Path,
         responses: Vec<(&'static str, Value)>,
     ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+        test_engine_status(
+            root,
+            responses
+                .into_iter()
+                .map(|(path, body)| (path, 200, body))
+                .collect(),
+        )
+    }
+
+    pub(crate) fn test_engine_status(
+        root: &Path,
+        responses: Vec<(&'static str, u16, Value)>,
+    ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
         use tokio::io::{AsyncBufReadExt, BufReader};
         let socket = root.join("engine.sock");
         let listener = tokio::net::UnixListener::bind(&socket).unwrap();
@@ -1627,7 +1738,7 @@ pub(crate) mod tests {
             starting: Default::default(),
         };
         let server = tokio::spawn(async move {
-            for (path, response) in responses {
+            for (path, status, response) in responses {
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut stream = BufReader::new(stream);
                 let mut line = String::new();
@@ -1640,9 +1751,13 @@ pub(crate) mod tests {
                         break;
                     }
                 }
-                let body = response.to_string();
+                let body = if status == 204 {
+                    String::new()
+                } else {
+                    response.to_string()
+                };
                 stream.get_mut().write_all(format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+                    "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
                 ).as_bytes()).await.unwrap();
             }
         });

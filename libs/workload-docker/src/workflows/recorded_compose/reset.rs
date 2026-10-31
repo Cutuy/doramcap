@@ -1,10 +1,5 @@
 //! Exclusive experiment admission and strict, repeatable pre-run cleanup.
-use crate::compose::{
-    DockerAdapter, ResolvedComposeProject, Result, StopInput,
-    adapter::{private_write, project_name, validate_name},
-    error::invalid,
-    overlay,
-};
+use crate::compose::{DockerAdapter, Result, error::invalid, overlay};
 use orchestrator::Step;
 use std::{
     fs::File,
@@ -31,9 +26,7 @@ impl Controller {
             return Err(invalid("repository root must be a directory"));
         }
         // Each host user shares one controller across repositories and Console workers.
-        let directory = PathBuf::from(format!("/tmp/doramcap-experiments-{}", unsafe {
-            libc::geteuid()
-        }));
+        let directory = directory();
         Self::in_directory(repository, directory)
     }
     fn in_directory(repository: PathBuf, directory: PathBuf) -> Result<Self> {
@@ -75,61 +68,25 @@ impl Controller {
             _lock: lock,
         })
     }
-    pub fn project(&self) -> String {
-        project_name("experiment", &self.repository)
-    }
-    pub async fn previous(&self) -> Result<Option<ResolvedComposeProject>> {
-        let path = self.directory.join("current.json");
-        let bytes = match crate::evidence::read_regular(&path, 2 * 1024 * 1024).await {
-            Ok(bytes) => bytes,
-            Err(crate::compose::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(None);
-            }
-            Err(e) => return Err(e),
-        };
-        let plan: ResolvedComposeProject = serde_json::from_slice(&bytes)?;
-        validate_name(&plan.run)?;
-        if !plan.name.starts_with("dc-") || plan.key != "experiment" || !plan.manifest.is_absolute()
-        {
-            return Err(invalid("invalid saved experiment identity"));
-        }
-        Ok(Some(plan))
-    }
-    pub async fn clear(&self) -> Result<()> {
-        for name in ["current.json", "pending.json"] {
-            match tokio::fs::remove_file(self.directory.join(name)).await {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e.into()),
-            }
-        }
-        tokio::fs::File::open(&self.directory)
-            .await?
-            .sync_all()
-            .await?;
-        Ok(())
-    }
-    pub async fn save(&self, plan: &ResolvedComposeProject) -> Result<()> {
-        let pending = self.directory.join("pending.json");
-        private_write(&pending, &serde_json::to_vec(plan)?).await?;
-        tokio::fs::File::open(&pending).await?.sync_all().await?;
-        tokio::fs::rename(pending, self.directory.join("current.json")).await?;
-        tokio::fs::File::open(&self.directory)
-            .await?
-            .sync_all()
-            .await?;
-        Ok(())
+    pub fn workspace(&self) -> PathBuf {
+        self.directory.join("overlays")
     }
 }
 
-pub struct ResetPreviousProject {
+pub(super) fn directory() -> PathBuf {
+    PathBuf::from(format!("/tmp/doramcap-experiments-{}", unsafe {
+        libc::geteuid()
+    }))
+}
+
+pub struct ResetExperiment {
     pub(super) adapter: Rc<DockerAdapter>,
     pub(super) controller: Rc<Controller>,
     pub(super) stop_seconds: u64,
 }
-impl Step for ResetPreviousProject {
+impl Step for ResetExperiment {
     const ID: Option<&'static str> = Some("compose.reset");
-    const DISPLAY_NAME: Option<&'static str> = Some("Reset previous experiment");
+    const DISPLAY_NAME: Option<&'static str> = Some("Reset experiment");
     type Input = ();
     type Output = ();
     async fn run(&mut self, (): ()) -> orchestrator::Result<()> {
@@ -138,44 +95,19 @@ impl Step for ResetPreviousProject {
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
 }
-impl ResetPreviousProject {
+impl ResetExperiment {
     async fn reset(&self) -> Result<()> {
         super::validate_budgets(1, self.stop_seconds)?;
-        let previous = self.controller.previous().await?;
-        let project = self.controller.project();
-        let owner = previous
-            .as_ref()
-            .map_or(project.as_str(), |plan| plan.name.as_str());
-        self.adapter
-            .check_machine_owner(owner, previous.is_some())
-            .await?;
-        if let Some(plan) = previous {
-            // Stop every writer before unmounting or deleting any upper data.
-            self.adapter
-                .stop_for_reset(&plan, self.stop_seconds)
-                .await?;
-            let artifacts = plan
-                .manifest
-                .parent()
-                .ok_or_else(|| invalid("saved artifact directory missing"))?;
-            overlay::discard(&artifacts.join("overlays")).await?;
-            let cleanup = self
-                .adapter
-                .remove(StopInput {
-                    plan,
-                    services: vec![],
-                    allow_volume_deletion: false,
-                    stop_seconds: self.stop_seconds,
-                })
-                .await?;
-            if !cleanup.verified || !cleanup.diagnostics.is_empty() {
-                return Err(invalid(format!(
-                    "previous experiment cleanup failed: {cleanup:?}"
-                )));
-            }
-        }
-        self.adapter.verify_project_empty(&project).await?;
-        self.controller.clear().await
+        let scope = self
+            .controller
+            .directory
+            .to_str()
+            .ok_or_else(|| invalid("controller path is not UTF-8"))?;
+        // Stop and verify every writer before touching the fixed overlay workspace.
+        self.adapter.quiesce_scope(scope, self.stop_seconds).await?;
+        overlay::discard(&self.controller.workspace()).await?;
+        // Empty containers/networks and an absent workspace are the success conditions.
+        self.adapter.remove_scope(scope).await
     }
 }
 

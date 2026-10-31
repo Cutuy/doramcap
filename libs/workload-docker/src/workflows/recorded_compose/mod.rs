@@ -167,7 +167,7 @@ impl ComposeRunner {
         let stop_seconds = spec.stop_seconds;
         let mut executor =
             Rc::try_unwrap(executor).map_err(|_| invalid("executor already shared"))?;
-        executor.register::<reset::ResetPreviousProject>(move || reset::ResetPreviousProject {
+        executor.register::<reset::ResetExperiment>(move || reset::ResetExperiment {
             adapter: backend.clone(),
             controller: reset_controller.clone(),
             stop_seconds,
@@ -175,7 +175,7 @@ impl ComposeRunner {
         executor.validate_steps().map_err(step_error)?;
         let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
         executor
-            .run::<reset::ResetPreviousProject>(())
+            .run::<reset::ResetExperiment>(())
             .await
             .map_err(step_error)?;
         self.blocked = false;
@@ -187,7 +187,6 @@ impl ComposeRunner {
         let artifacts = prepared.value().artifacts.clone();
 
         self.blocked = true;
-        controller.save(&prepared.value().plan).await?;
         self.adapter
             .reserve(
                 &prepared.value().plan,
@@ -201,6 +200,7 @@ impl ComposeRunner {
                     .run::<PrepareOverlays>(
                         Input::new(PrepareInput {
                             artifacts: artifacts.clone(),
+                            workspace: controller.workspace(),
                             projects: vec![prepared.value().plan.clone()],
                             policy: policy.clone(),
                         })

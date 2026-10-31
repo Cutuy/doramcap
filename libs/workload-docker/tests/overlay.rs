@@ -61,6 +61,7 @@ async fn serial_overlay_isolation_and_harvest() {
         let original_bytes = std::fs::read(&original.manifest).unwrap();
         // Act: prepare shared views; writes through the same source have one upper tree.
         let set = prepare(PrepareInput {
+            workspace: artifacts.join("views"),
             artifacts,
             projects: vec![original.clone()],
             policy: OverlayPolicy {
@@ -198,6 +199,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
         std::fs::create_dir(&artifacts).unwrap();
         let cleanup = MountCleanup(artifacts.clone());
         let set = prepare(PrepareInput {
+            workspace: artifacts.join("views"),
             projects: vec![plan(&artifacts, &source)],
             artifacts,
             policy: Default::default(),
@@ -251,6 +253,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
     let _cleanup = MountCleanup(root.clone());
     // Act
     let error = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![first, second],
         artifacts: artifacts.clone(),
         policy: Default::default(),
@@ -286,6 +289,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     project.sha256 = hex::encode(Sha256::digest(&bytes));
     // Act
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         artifacts,
         projects: vec![project],
         policy: Default::default(),
@@ -311,6 +315,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     std::fs::create_dir(&artifacts).unwrap();
     // Act
     let error = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts: artifacts.clone(),
         policy: Default::default(),
@@ -346,6 +351,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     std::fs::create_dir(&artifacts).unwrap();
     // Act
     let error = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts: artifacts.clone(),
         policy: Default::default(),
@@ -382,6 +388,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -462,9 +469,10 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
         std::fs::read(source.join("unchanged")).unwrap(),
         b"large model untouched"
     );
-    assert!(!tree.upper.parent().unwrap().join("stage.log").exists());
+    assert!(!tree.baseline.parent().unwrap().join("stage.log").exists());
     use prost::Message;
-    let action_bytes = std::fs::read(tree.upper.parent().unwrap().join("apply-plan.pb")).unwrap();
+    let action_bytes =
+        std::fs::read(tree.baseline.parent().unwrap().join("apply-plan.pb")).unwrap();
     let mut action_stream = action_bytes.as_slice();
     let mut actions = Vec::new();
     while !action_stream.is_empty() {
@@ -490,7 +498,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
             .iter()
             .any(|a| a.kind == 2 && a.path == b"non-utf8-\xff")
     );
-    let log = std::fs::read_to_string(tree.upper.parent().unwrap().join("apply.log")).unwrap();
+    let log = std::fs::read_to_string(tree.baseline.parent().unwrap().join("apply.log")).unwrap();
     assert!(log.contains("same-time"));
     assert!(!log.contains("unchanged"));
     assert!(tree.upper.join("same-time").exists());
@@ -510,6 +518,7 @@ async fn hardlinks_fail_before_any_source_is_modified() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -543,6 +552,7 @@ async fn newly_created_hardlink_is_rejected() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -582,6 +592,7 @@ async fn unsupported_upper_entries_reject_before_any_writeback() {
         let mut second = plan(&other, &root.join("b"));
         second.key = "second".into();
         let set = prepare(PrepareInput {
+            workspace: artifacts.join("views"),
             projects: vec![first, second],
             artifacts,
             policy: Default::default(),
@@ -648,6 +659,7 @@ async fn xattr_whiteout_deletes_and_opaque_x_preserves_other_children() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -733,6 +745,7 @@ async fn two_serial_writebacks_inherit_prior_results() {
         let artifacts = root.join(format!("run-{index}"));
         std::fs::create_dir(&artifacts).unwrap();
         let set = prepare(PrepareInput {
+            workspace: artifacts.join("views"),
             projects: vec![plan(&artifacts, &source)],
             artifacts,
             policy: Default::default(),
@@ -788,6 +801,7 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -813,7 +827,7 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
     assert!(!set.directory.join("results.json").exists());
     assert!(
         set.trees[0]
-            .upper
+            .baseline
             .parent()
             .unwrap()
             .join("apply.log")
@@ -836,6 +850,7 @@ async fn opaque_upper_root_hides_lower_children_without_copying_internal_xattrs(
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -896,6 +911,7 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
         policy: Default::default(),
@@ -919,7 +935,7 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
         vec![3u8; 8 * 1024 * 1024]
     );
     let log =
-        std::fs::read_to_string(set.trees[0].upper.parent().unwrap().join("apply.log")).unwrap();
+        std::fs::read_to_string(set.trees[0].baseline.parent().unwrap().join("apply.log")).unwrap();
     assert!(log.contains("recording"));
     assert!(!log.contains("model"));
     assert!(

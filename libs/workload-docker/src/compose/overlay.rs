@@ -79,6 +79,8 @@ pub struct MountMapping {
 pub struct OverlaySet {
     /// Private artifact directory for ownership and result records.
     pub directory: PathBuf,
+    /// Fixed mutable workspace; reset discards its contents after stopping writers.
+    pub workspace: PathBuf,
     /// Non-overlapping shared directory views.
     pub trees: Vec<OverlayTree>,
     /// Pinned Compose manifests, rewritten in the preparation result.
@@ -93,6 +95,8 @@ pub struct OverlaySet {
 pub struct PrepareInput {
     /// Existing fresh run directory, outside all lower trees.
     pub artifacts: PathBuf,
+    /// Fresh mutable workspace with an existing canonical parent, outside all source trees.
+    pub workspace: PathBuf,
     /// Pinned Compose manifests, rewritten in the preparation result.
     pub projects: Vec<ResolvedComposeProject>,
     /// Filesystem disposition selected for this run.
@@ -252,6 +256,19 @@ fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf
 pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
     let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
     let directory = artifacts.join("overlays");
+    let workspace = input.workspace;
+    let parent = workspace
+        .parent()
+        .ok_or_else(|| invalid("workspace parent missing"))?;
+    if !workspace.is_absolute()
+        || tokio::fs::canonicalize(parent).await? != parent
+        || workspace.starts_with(&directory)
+        || artifacts.starts_with(&workspace)
+    {
+        return Err(invalid(
+            "overlay workspace must be canonical and separate from records",
+        ));
+    }
     let mut models = Vec::new();
     let mut writable = BTreeSet::new();
     let mut mappings = Vec::new();
@@ -277,6 +294,9 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                         .ok_or_else(|| invalid("bind source missing"))?,
                 )
                 .await?;
+                if source.starts_with(&workspace) || workspace.starts_with(&source) {
+                    return Err(invalid("overlay source overlaps the mutable workspace"));
+                }
                 let ro = bind["read_only"] == true;
                 let meta = tokio::fs::symlink_metadata(&source).await?;
                 let owned = source.starts_with(&artifacts);
@@ -381,8 +401,10 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         }
     }
     crate::evidence::create_private_dir(&directory).await?;
+    crate::evidence::create_private_dir(&workspace).await?;
     let mut set = OverlaySet {
         directory: directory.clone(),
+        workspace: workspace.clone(),
         trees: vec![],
         projects: input.projects,
         mappings,
@@ -391,11 +413,13 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
     for (i, source) in roots.into_iter().enumerate() {
         let base = directory.join(i.to_string());
         tokio::fs::create_dir(&base).await?;
+        let view = workspace.join(i.to_string());
+        tokio::fs::create_dir(&view).await?;
         let tree = OverlayTree {
             source,
-            upper: base.join("upper"),
-            work: base.join("work"),
-            merged: base.join("merged"),
+            upper: view.join("upper"),
+            work: view.join("work"),
+            merged: view.join("merged"),
             baseline: base.join("baseline.pb"),
         };
         for path in [&tree.upper, &tree.work, &tree.merged] {
@@ -590,8 +614,9 @@ async fn check_lower(tree: &OverlayTree) -> Result<()> {
     }
     Ok(())
 }
-/// Unmount owned views and delete their upper/work data; missing paths are done.
-/// Writers must already be stopped. Unexpected mounts, symlinks and I/O errors fail.
+/// Unmount and discard the owned mutable workspace; an absent workspace succeeds.
+/// Writers must be stopped. Per-run records belong outside this directory.
+/// Unexpected mounts, symlinks and I/O errors fail.
 pub async fn discard(directory: &Path) -> Result<()> {
     let metadata = match tokio::fs::symlink_metadata(directory).await {
         Ok(metadata) => metadata,
@@ -637,7 +662,7 @@ pub async fn discard(directory: &Path) -> Result<()> {
     }
     let disposable: Vec<_> = trees
         .iter()
-        .flat_map(|tree| ["upper", "work", "merged", "staged"].map(|name| tree.join(name)))
+        .flat_map(|tree| ["upper", "work", "merged"].map(|name| tree.join(name)))
         .collect();
     for path in &disposable {
         match tokio::fs::symlink_metadata(path).await {
@@ -664,6 +689,10 @@ pub async fn discard(directory: &Path) -> Result<()> {
     {
         return Err(invalid("mounted view remains after overlay cleanup"));
     }
+    tokio::fs::remove_dir_all(directory).await?;
+    if tokio::fs::try_exists(directory).await? {
+        return Err(invalid("overlay workspace remains after reset"));
+    }
     Ok(())
 }
 
@@ -672,7 +701,7 @@ pub async fn discard(directory: &Path) -> Result<()> {
 /// Application is non-atomic and is never replayed by pre-run cleanup.
 pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     if set.policy.disposition == Disposition::Discard {
-        discard(&set.directory).await?;
+        discard(&set.workspace).await?;
     } else {
         for tree in &set.trees {
             check_lower(tree).await?;
@@ -683,7 +712,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         if mounts()
             .await?
             .iter()
-            .any(|path| path.starts_with(&set.directory))
+            .any(|path| path.starts_with(&set.workspace))
         {
             return Err(invalid("overlay remains mounted after unmount"));
         }
@@ -704,7 +733,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             plans.push(plan);
         }
         for (tree, plan) in set.trees.iter().zip(&plans) {
-            let base = tree.upper.parent().unwrap();
+            let base = tree.baseline.parent().unwrap();
             let actions = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -746,7 +775,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         private_write(&set.directory.join("metadata-coverage.txt"), b"Basic rsync archive attributes; ACLs, xattrs, capabilities and hardlinks are not qualified.\n").await?;
         for (tree, plan) in set.trees.iter().zip(plans) {
             check_lower(tree).await?;
-            let base = tree.upper.parent().unwrap();
+            let base = tree.baseline.parent().unwrap();
             let mut journal = tokio::fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)

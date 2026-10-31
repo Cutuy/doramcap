@@ -813,8 +813,13 @@ async fn multi_project_lifecycle() {
     assert!(report.filesystem_changes.is_some() && report.filesystem_results.is_none());
     assert!(!host.join("busy-result").exists());
     assert!(
-        root.join(&report.id)
-            .join("overlays/0/upper/busy-result")
+        serde_json::from_slice::<overlay::OverlaySet>(
+            &std::fs::read(root.join(&report.id).join("overlays/prepared.json")).unwrap()
+        )
+        .unwrap()
+        .trees[0]
+            .upper
+            .join("busy-result")
             .exists()
     );
     assert!(
@@ -1370,4 +1375,88 @@ async fn active_experiment_excludes_same_and_different_repositories() {
     .unwrap();
     assert_ne!(resolution["plan"]["name"], plan.name);
     assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker, OverlayFS capabilities and the prepared Dora image"]
+async fn reset_discards_fixed_workspace_without_launch_history() {
+    // Arrange: leave a live experiment and its isolated writes without teardown.
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("original"), b"unchanged").unwrap();
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let mut app = service(&image);
+    app["volumes"] = serde_json::json!([{"type":"bind","source":source,"target":"/data"}]);
+    app["command"] = serde_json::json!([
+        "printf unfinished > /data/result; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
+    ]);
+    app["healthcheck"] = serde_json::json!({"test":["CMD","test","-s","/data/result"],"interval":"200ms","timeout":"1s","retries":30});
+    write(
+        &root.path().join("app.json"),
+        serde_json::json!({"services":{"app":app}}),
+    );
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let original = ComposeRun {
+        id: "abandoned".into(),
+        artifacts: root.path().join("first"),
+        repository_root: root.path().into(),
+        filesystem: Some(Default::default()),
+        projects: vec![project(root.path(), "app")],
+        system_apps: vec![],
+        dora: Default::default(),
+        recordings: vec![],
+        readiness_seconds: 15,
+        stop_seconds: 3,
+    };
+    let (ready, started) = tokio::sync::oneshot::channel();
+    let mut run = Box::pin(runner.run_with_ready(
+        original.clone(),
+        std::future::pending(),
+        |_: &orchestrator::Event| {},
+        Some(ready),
+    ));
+    let plan = tokio::select! { plan=started=>plan.unwrap(), result=&mut run=>panic!("startup failed: {result:?}") };
+    let records = original.artifacts.join("overlays");
+    let set: overlay::OverlaySet =
+        serde_json::from_slice(&std::fs::read(records.join("prepared.json")).unwrap()).unwrap();
+    std::fs::write(original.artifacts.join("user-output"), b"retain").unwrap();
+    assert!(!source.join("result").exists());
+    assert!(set.trees[0].upper.join("result").exists());
+    drop(run);
+    // Remove old launch metadata; reset must address the ownership scope directly.
+    std::fs::remove_file(&plan.manifest).unwrap();
+    std::fs::remove_file(original.artifacts.join("experiment.resolution.json")).unwrap();
+    let other_repository = root.path().join("other-repository");
+    std::fs::create_dir(&other_repository).unwrap();
+    for attempt in 0..2 {
+        let request = ComposeRun {
+            id: format!("next-{attempt}"),
+            artifacts: root.path().join(format!("next-{attempt}")),
+            repository_root: other_repository.clone(),
+            filesystem: None,
+            ..original.clone()
+        };
+        // Act: the same reset works from another repo, then again on the empty slot.
+        reset_probe(adapter.clone(), request).await.unwrap();
+        // Assert: only the fixed mutable workspace and owned Docker resources disappear.
+        assert!(!set.workspace.exists());
+        assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+        assert_eq!(
+            std::fs::read(source.join("original")).unwrap(),
+            b"unchanged"
+        );
+        assert!(!source.join("result").exists());
+        assert_eq!(
+            std::fs::read(original.artifacts.join("user-output")).unwrap(),
+            b"retain"
+        );
+        assert!(records.join("prepared.json").is_file());
+        assert!(set.trees[0].baseline.is_file());
+    }
 }
