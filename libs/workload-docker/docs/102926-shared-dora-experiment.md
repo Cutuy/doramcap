@@ -123,7 +123,7 @@ Full feature deltas versus pre-stack main `7966a1e`; inherited changes are exclu
 | Production total | **−13** |
 | Tests/tooling | Rust +2,831; Python +24 |
 | Deployment/configuration, excluding schemas | −77 |
-| Documentation | −675 |
+| Documentation | −671 |
 
 Production counts include Rust and protobuf schemas, excluding comments/blanks,
 tests and generated/vendor code. Other categories use nonblank lines.
@@ -207,6 +207,9 @@ replays write-back or reconstructs old reports. Users salvage old data before st
 - [ ] Add `ResetPreviousProject` before preparation: stop/verify owned writers,
   unmount owned overlays, delete old upper/work directories, remove disposable Docker
   resources and release the old reservation. Already absent resources are done.
+- [ ] Require old containers, disposable networks, overlay mounts and upper/work
+  directories to be absent before success. Keep permitted outputs/volumes. Any
+  unexpected action or inspection error returns failure and blocks preparation.
 - [ ] Reuse normal cleanup primitives. Keep copy-back for compatibility; pre-run
   cleanup selects discard regardless of the previous policy. Remove full-tree `Retain`.
   Future per-mount preservation selects copy-back; no new diff-export format.
@@ -220,6 +223,7 @@ replays write-back or reconstructs old reports. Users salvage old data before st
 **Validation**
 
 - [ ] Test concurrent starts within/across repos; only one experiment starts.
+- [ ] Test clean, dirty and skipped prior teardown; repeating reset reaches the same state.
 - [ ] Kill the launcher during startup, copy-back and removal. The next start discards
   remaining uppers without replaying host writes. Repeated reset is harmless.
 - [ ] Test absent/partly removed resources, stopped writers and strict unmounts;
