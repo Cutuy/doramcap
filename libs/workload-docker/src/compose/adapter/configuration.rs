@@ -246,8 +246,21 @@ impl ComposeConfiguration<'_> {
             }
             if let Some(fixed) = service["container_name"].as_str() {
                 match self.adapter.docker.inspect_container(fixed, None).await {
-                    Ok(_) => {
-                        return Err(invalid(format!("container name already occupied: {fixed}")));
+                    Ok(container) => {
+                        let labels = container
+                            .config
+                            .as_ref()
+                            .and_then(|config| config.labels.as_ref());
+                        let owned = scope.as_ref().is_some_and(|scope| {
+                            labels
+                                .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                                .is_some_and(|label| label == &scope.to_string_lossy())
+                        });
+                        if !owned {
+                            return Err(invalid(format!(
+                                "container name already occupied: {fixed}"
+                            )));
+                        }
                     }
                     Err(e) if absent(&e) => {}
                     Err(e) => return Err(engine("check fixed container name", e)),

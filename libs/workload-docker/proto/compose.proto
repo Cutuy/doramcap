@@ -160,3 +160,14 @@ message Shutdown {
   // All inspected owned containers are stopped; containers have not been removed.
   bool stopped = 3;
 }
+
+// Comparable experiment configuration, independent of generated artifact locations.
+message ConfigurationSnapshot {
+  string manifest_sha256 = 1;
+  repeated string system_services = 2;
+  repeated string user_services = 3;
+  string settings_sha256 = 4;
+  string graph_sha256 = 5;
+  map<string, ComposeService> services = 6;
+  bool remove_volumes = 7;
+}

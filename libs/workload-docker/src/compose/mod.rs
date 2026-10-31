@@ -15,8 +15,8 @@ pub use adapter::{ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
 pub(crate) use model::{BindMount, ResourceLimit, RuntimeService};
 pub use model::{
-    Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
-    ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
+    Cleanup, ComposeProject, ComposeProjectState, ComposeService, ConfigurationSnapshot, Container,
+    Diagnostic, ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,
