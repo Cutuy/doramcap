@@ -2,11 +2,12 @@ syntax = "proto3";
 package doramcap.compose.planner.v1;
 
 import "compose.proto";
+import "compose_model.proto";
 import "dora.proto";
 
 // Proposed pure planner interface. Rust owns all Docker and filesystem operations.
-// Native Compose JSON stays opaque in protobuf; its numbers must round-trip exactly.
-// Required presence, absolute paths and complete fact sets are validated by callers.
+// Native Compose input is parsed into the typed output model by TypeScript.
+// Implementations validate required presence, absolute paths and complete fact sets.
 
 // Already normalized by native Compose; settings supply app identity and lifecycle policy.
 message ComposeDocument {
@@ -76,24 +77,17 @@ message CompleteInput {
 }
 
 // File-backed mount metadata for Rust filesystem/overlay consumers.
-// Volume names are resolved Docker names. Host paths are absolute UTF-8.
+// Volume sources use resolved Docker names; bind sources are absolute UTF-8 paths.
 message ServiceMount {
   string service = 1;
-  string target = 2;
-  bool read_only = 3;
-  oneof source {
-    string bind_path = 4;
-    string volume_name = 5;
-  }
-  string bind_propagation = 6;
-  optional string bind_selinux = 7;
+  doramcap.compose.v1.ComposeMount mount = 2;
 }
 
 // Complete applies pinned images, input snapshots and experiment execution policies.
-// Rust validates/publishes/hashes the manifest, then constructs ResolvedComposeProject.
+// The typed model supports either TS or Rust export to Docker's native JSON format.
 // Diagnostics include analysis warnings and applied policy changes.
 message CompleteOutput {
-  bytes compose_json = 1;
+  doramcap.compose.v1.ComposeModel compose = 1;
   map<string, doramcap.compose.v1.ComposeService> services = 2;
   repeated string system_services = 3;
   repeated string adopted_services = 4;

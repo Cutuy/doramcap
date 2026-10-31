@@ -1,0 +1,175 @@
+syntax = "proto3";
+package doramcap.compose.v1;
+
+// Effective Compose configuration after native input normalization and planner policies.
+// Named fields describe processed settings; native_fields preserve other foreign settings.
+// Docker JSON export handles field presence, command forms and numeric encoding explicitly.
+message ComposeModel {
+  optional string name = 1;
+  map<string, ComposeServiceDefinition> services = 2;
+  map<string, ComposeNetwork> networks = 3;
+  map<string, ComposeVolume> volumes = 4;
+  map<string, ComposeFileResource> configs = 5;
+  map<string, ComposeFileResource> secrets = 6;
+  map<string, NativeValue> native_fields = 7;
+}
+
+// Container configuration. Build/profile/pull/restart policies are resolved before output.
+// Optional scalars preserve omission independently of explicit empty/false/zero values.
+// This supersedes the owned-service-only RuntimeService model when its callers migrate.
+message ComposeServiceDefinition {
+  string image = 1;
+  optional string container_name = 2;
+  optional string network_mode = 3;
+  optional string ipc = 4;
+  optional uint64 shm_size = 5;
+  optional string restart = 6;
+  optional bool privileged = 7;
+  map<string, EnvironmentValue> environment = 8;
+  map<string, string> labels = 9;
+  map<string, ComposeUlimit> ulimits = 10;
+  map<string, ComposeNetworkAttachment> networks = 11;
+  map<string, ComposeDependency> depends_on = 12;
+  repeated ComposeMount volumes = 13;
+  optional uint64 scale = 14;
+  ComposeDeploy deploy = 15;
+  ComposeHealthcheck healthcheck = 16;
+  ComposeCommand command = 17;
+  ComposeCommand entrypoint = 18;
+  optional string stop_signal = 19;
+  optional string user = 20;
+  optional string working_dir = 21;
+  map<string, NativeValue> native_fields = 22;
+}
+
+// An explicit null environment entry differs from an empty string.
+message EnvironmentValue {
+  oneof value {
+    string text = 1;
+    NativeValue.Null unset = 2;
+  }
+}
+
+// Absent message omits the field; null inherits the image default; empty argv overrides it.
+// Shell-form text and argument arrays remain distinct through Docker JSON export.
+message ComposeCommand {
+  oneof form {
+    string text = 1;
+    StringList argv = 2;
+    NativeValue.Null inherit = 3;
+  }
+}
+message StringList { repeated string values = 1; }
+
+message ComposeDependency {
+  optional string condition = 1;
+  optional bool restart = 2;
+  optional bool required = 3;
+  map<string, NativeValue> native_fields = 4;
+}
+
+message ComposeNetworkAttachment {
+  repeated string aliases = 1;
+  optional string ipv4_address = 2;
+  optional string ipv6_address = 3;
+  map<string, NativeValue> native_fields = 4;
+}
+
+// Native Compose mount type/source names; source is absent for tmpfs/anonymous mounts.
+// Resolved output rejects anonymous volumes and retains original access flags.
+message ComposeMount {
+  string type = 1;
+  optional string source = 2;
+  string target = 3;
+  optional bool read_only = 4;
+  ComposeBindOptions bind = 5;
+  ComposeVolumeOptions volume = 6;
+  ComposeTmpfsOptions tmpfs = 7;
+  map<string, NativeValue> native_fields = 8;
+}
+message ComposeBindOptions {
+  optional string propagation = 1;
+  optional string selinux = 2;
+  optional bool create_host_path = 3;
+  map<string, NativeValue> native_fields = 4;
+}
+message ComposeVolumeOptions {
+  optional bool nocopy = 1;
+  optional string subpath = 2;
+  map<string, NativeValue> native_fields = 3;
+}
+message ComposeTmpfsOptions {
+  optional uint64 size = 1;
+  optional uint32 mode = 2;
+  map<string, NativeValue> native_fields = 3;
+}
+
+// Signed limits preserve Docker's -1 unlimited value and scalar/range forms.
+message ComposeUlimit {
+  oneof value {
+    int64 limit = 1;
+    ComposeLimitRange range = 2;
+  }
+}
+message ComposeLimitRange {
+  int64 soft = 1;
+  int64 hard = 2;
+}
+message ComposeDeploy {
+  optional uint64 replicas = 1;
+  // Native fields exclude restart_policy, which the experiment removes.
+  map<string, NativeValue> native_fields = 2;
+}
+message ComposeHealthcheck {
+  ComposeCommand test = 1;
+  optional string interval = 2;
+  optional string timeout = 3;
+  optional string start_period = 4;
+  optional string start_interval = 5;
+  optional uint32 retries = 6;
+  optional bool disable = 7;
+  map<string, NativeValue> native_fields = 8;
+}
+
+message ComposeNetwork {
+  optional string name = 1;
+  optional bool external = 2;
+  optional string driver = 3;
+  map<string, string> driver_opts = 4;
+  map<string, string> labels = 5;
+  map<string, NativeValue> native_fields = 6;
+}
+message ComposeVolume {
+  optional string name = 1;
+  optional bool external = 2;
+  optional string driver = 3;
+  map<string, string> driver_opts = 4;
+  map<string, string> labels = 5;
+  map<string, NativeValue> native_fields = 6;
+}
+message ComposeFileResource {
+  optional string name = 1;
+  optional bool external = 2;
+  optional string file = 3;
+  optional string environment = 4;
+  optional string content = 5;
+  map<string, string> labels = 6;
+  map<string, NativeValue> native_fields = 7;
+}
+
+// Only for foreign fields outside the named model; cannot shadow a named field.
+// number is a validated JSON numeric literal, preserving large integers and decimal precision.
+// Export emits its native value; it never emits this protobuf wrapper into Docker JSON.
+message NativeValue {
+  enum Null { NULL_VALUE = 0; }
+  oneof value {
+    Null null_value = 1;
+    bool bool_value = 2;
+    string string_value = 3;
+    string number = 4;
+    NativeObject object_value = 5;
+    NativeList list_value = 6;
+  }
+}
+message NativeObject { map<string, NativeValue> fields = 1; }
+message NativeList { repeated NativeValue values = 1; }
