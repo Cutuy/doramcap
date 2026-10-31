@@ -22,4 +22,4 @@ gallery workflow, which delegates container lifecycle operations to `ComposeRunn
 
 Caddy forwards app traffic directly to the ready container after authorization.
 The diagram shows hosting control requests. Shared Docker workflow phases are
-shown in the [library module diagram](../../../../libs/workload-docker/docs/workflow-modules.svg).
+shown in the [library module diagram](../../../../libs/workload-docker/src/workflows/recorded_compose/workflow-modules.svg).

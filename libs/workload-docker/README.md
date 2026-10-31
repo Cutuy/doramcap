@@ -12,7 +12,7 @@ binds use shared per-run OverlayFS views with default post-stop write-back.
 
 Module relationships and execution barriers:
 
-![Workflow modules](docs/workflow-modules.svg)
+![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
