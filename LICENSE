@@ -1,0 +1,78 @@
+Doramcap Personal Use License 1.0
+
+Copyright (c) 2026 doramcap contributors. All rights reserved.
+SPDX-License-Identifier: LicenseRef-Doramcap-Personal-Use-1.0
+
+1. Scope
+
+These terms apply to the original code, documentation, configuration, and other
+materials made available under this license (the Software). Each copyright
+holder grants rights only to the material that holder owns or is authorized
+to license. Third-party materials retain their own licenses; these terms do
+not replace or restrict rights granted by those licenses.
+
+The following Linux eBPF programs are separately licensed under GPL-2.0-only
+and are excluded from the personal-use and commercial-use restrictions below:
+
+- libs/resources/cgroup-bpf/src/bpf/monitor.bpf.c
+- libs/resources/task-accounting/src/bpf/tasks.bpf.c
+
+Each program's directory contains the full GPL version 2 text in COPYING.
+Their GPL terms also apply to copies and compiled forms of those programs.
+
+2. Personal-use permission
+
+Subject to these terms, you, as an individual acting solely in your personal
+capacity, may use, reproduce, study, and modify the Software solely for your
+own noncommercial personal purposes, including private study, experimentation,
+and hobby projects. You may share original or modified copies without charge
+solely for recipients' personal use under these same terms.
+
+Personal use excludes use by, for, or on behalf of a business, employer,
+client, government body, nonprofit, educational institution, or other
+organization. An individual's private study is permitted; organizational
+research, teaching, and operations require separate written permission.
+
+3. Commercial use prohibited
+
+You may not use the Software or any modification of it for any commercial
+purpose or anticipated commercial application. Prohibited purposes include:
+
+- Paid employment, consulting, contracting, or other compensated work.
+- Internal business operations, even when the Software is not sold.
+- Developing, testing, evaluating, supporting, or delivering a commercial
+  product or service.
+- Selling, licensing for payment, renting, or monetizing the Software or a
+  product or service incorporating it.
+- Providing the Software's functionality through a commercial hosted or
+  managed service.
+
+Charging no fee does not make an otherwise commercial or organizational use
+permitted. Uses outside section 2 require separate written permission from
+the applicable copyright holders.
+
+4. Sharing conditions
+
+Every copy or substantial portion you share must retain this license and
+applicable copyright and attribution notices. Identify your modifications.
+You may not remove these restrictions, sublicense the Software under other
+terms, or grant recipients broader rights. Recipients obtain their permitted
+rights directly from the applicable copyright holders under this license.
+
+5. Reserved rights and termination
+
+All rights not expressly granted are reserved. No trademark or patent license
+is granted. This license does not restrict rights that applicable law grants
+independently of this license. Your permissions under this license terminate
+automatically if you violate its terms; you must then cease exercising those
+permissions. Termination does not affect recipients who remain in compliance.
+These terms do not revoke rights previously granted under another license.
+
+6. Disclaimer
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS", WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NONINFRINGEMENT. THE COPYRIGHT HOLDERS AND CONTRIBUTORS SHALL NOT BE LIABLE
+FOR ANY CLAIM, DAMAGE, OR OTHER LIABILITY ARISING FROM OR IN CONNECTION WITH
+THE SOFTWARE OR ITS USE, WHETHER IN CONTRACT, TORT, OR OTHERWISE.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 // Minimal CO-RE declarations: actual offsets are relocated against host BTF.
 typedef unsigned long long __u64;
 typedef unsigned int __u32;

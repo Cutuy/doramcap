@@ -3,6 +3,11 @@
 A workspace of reusable telemetry libraries and independently runnable applications.
 Each component owns its documentation, tests, examples, and benchmarks.
 
+Source is available under the [Doramcap Personal Use License](LICENSE).
+Only individual, noncommercial personal use is permitted. Commercial and
+organizational use require separate written permission from the copyright holders.
+The two Linux eBPF programs use GPL-2.0-only; see the exceptions in [LICENSE](LICENSE).
+
 Browse apps, crates, documentation and dependencies with the
 [project explorer](apps/project-explorer/).
 

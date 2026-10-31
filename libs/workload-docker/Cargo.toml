@@ -3,7 +3,7 @@ name = "workload-docker"
 description = "Docker Compose lifecycle steps and recorded-run workflow"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 workload-lifecycle = { path = "../workload-lifecycle" }

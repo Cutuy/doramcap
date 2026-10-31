@@ -1,6 +1,7 @@
 {
   "name": "cuda-shm-viewer",
   "private": true,
+  "license": "SEE LICENSE IN ../../../LICENSE",
   "type": "module",
   "scripts": {
     "build": "npm run generate:proto && vite build --base ./",

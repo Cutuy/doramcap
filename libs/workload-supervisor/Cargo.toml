@@ -3,7 +3,7 @@ name = "workload-supervisor"
 description = "Owned Supervisor System Monitor lifecycle"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 workload-lifecycle = { path = "../workload-lifecycle" }

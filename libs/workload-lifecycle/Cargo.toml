@@ -3,7 +3,7 @@ name = "workload-lifecycle"
 description = "Mechanism-neutral workload lifecycle design and contracts"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 libc = "0.2"
