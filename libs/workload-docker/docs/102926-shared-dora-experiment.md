@@ -266,7 +266,7 @@ Evidence: pending.
 
 **Validation**
 
-- [x] Run affected Rust tests, formatting, strict Clippy and Rustdoc checks.
+- [ ] Pass affected Rust tests, formatting, strict Clippy and Rustdoc checks.
 - [ ] Run real Docker lifecycle, failure/recovery and shared-IPC tests on this host.
   Build unprivileged; elevate only capability-required test executables as allowed.
 - [ ] Verify CPU/BPF apps with real monitoring; qualify CUDA separately if touched.
@@ -276,8 +276,10 @@ Evidence: pending.
 - [ ] Render architecture SVGs and verify links. All checked validations have
   concise milestone-local evidence and no unsupported transport/losslessness claims.
 
-Evidence (2026-10-31): 44 unit and 3 protobuf-contract tests passed serially;
-real Docker tests passed startup failure, cancellation, ordered shutdown and
-pre-run reset. Formatting, strict Clippy for the library and both consumers,
-and library Rustdoc passed. A parallel unit run hit the admission-release
-assertion; workspace CI and ARM64 remain deferred.
+Evidence (2026-10-31, `f447bbe`): full local builds, boundaries, formatting,
+default/all-feature Clippy, doctests, storage without defaults and snapshot
+tests passed. Both workspace test modes fail the same 11 Console registration
+cases: schema changes precede their pbtxt/graph migration. With matching inputs
+from #29/#15, all 35 Console tests pass in both modes. The 44 library tests,
+3 protobuf-contract tests, Rustdoc and focused native Docker checks pass.
+The standalone PR remains blocked on those deployment inputs; ARM64 is deferred.
