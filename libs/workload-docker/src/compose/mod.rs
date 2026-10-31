@@ -4,7 +4,7 @@
 //! frozen execution manifest with run-specific identity. Neither owns running
 //! containers through Rust destruction. Callers explicitly stop attempted launches.
 pub(crate) mod adapter;
-mod command;
+pub(crate) mod command;
 pub(crate) mod error;
 pub mod filesystem;
 mod model;

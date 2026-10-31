@@ -38,6 +38,8 @@ pub async fn cleanup(
     require_layer_evidence: bool,
 ) -> StopReport {
     let input = StopInput {
+        services: vec![],
+        allow_volume_deletion: true,
         plan: plan.clone(),
         stop_seconds,
     };

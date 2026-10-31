@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "ComposeProject.remove_volumes",
         "StartInput.services",
         "StopInput.services",
-        "StopInput.preserve_volumes",
+        "StopInput.allow_volume_deletion",
     ] {
         config.field_attribute(format!(".doramcap.compose.v1.{field}"), "#[serde(default)]");
     }

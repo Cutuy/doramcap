@@ -524,6 +524,8 @@ async fn multi_project_lifecycle() {
         // Act: teardown a second time.
         let repeated = adapter
             .stop(StopInput {
+                services: vec![],
+                allow_volume_deletion: true,
                 plan: beta,
                 stop_seconds: 3,
             })
@@ -909,6 +911,8 @@ async fn direct_session_lifecycle_and_recovery() {
             } else {
                 adapter
                     .quiesce(StopInput {
+                        services: vec![],
+                        allow_volume_deletion: false,
                         plan: plans[0].clone(),
                         stop_seconds: 3,
                     })

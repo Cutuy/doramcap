@@ -218,7 +218,12 @@ pub async fn quiesce_crashed_run(
     for plan in plans {
         let dora_error = super::dora::recover(adapter, &plan).await.err();
         let result = adapter
-            .quiesce(StopInput { plan, stop_seconds })
+            .quiesce(StopInput {
+                services: vec![],
+                allow_volume_deletion: false,
+                plan,
+                stop_seconds,
+            })
             .await
             .map(|mut shutdown| {
                 if let Some(error) = dora_error {
@@ -459,7 +464,14 @@ pub async fn remove_crashed_run(
     }
     let mut results = Vec::new();
     for plan in plans {
-        let cleanup = adapter.remove(StopInput { plan, stop_seconds }).await?;
+        let cleanup = adapter
+            .remove(StopInput {
+                services: vec![],
+                allow_volume_deletion: true,
+                plan,
+                stop_seconds,
+            })
+            .await?;
         let verified = cleanup.verified && cleanup.diagnostics.is_empty();
         results.push(cleanup);
         if !verified {
