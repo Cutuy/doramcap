@@ -47,6 +47,7 @@ impl Step for PrepareRun {
 }
 impl PrepareRun {
     async fn prepare(&self, mut spec: ComposeRun) -> Result<PreparedRun> {
+        // Resolve runtime settings and validate the request.
         super::super::shared_dora::resolve(&mut spec.dora, &spec.artifacts)?;
         super::super::shared_dora::validate_endpoints(&spec.dora)?;
         validate(&spec)?;
@@ -57,6 +58,7 @@ impl PrepareRun {
         if spec.filesystem.is_some() {
             self.adapter.verify_overlay_namespace().await?;
         }
+        // Freeze Dora inputs and merge apps while recording their startup stages.
         let dora = super::super::shared_dora::prepare(&spec.dora, &artifacts).await?;
         let mut model = json!({"services":{}});
         let mut system_services = Vec::new();
@@ -128,6 +130,7 @@ impl PrepareRun {
                 merge(&mut model, part)?;
             }
         }
+        // Add Dora services and connect every container to the shared IPC namespace.
         let mut diagnostics = Vec::new();
         {
             let d = &dora;
@@ -204,6 +207,7 @@ impl PrepareRun {
                 }
             }
         }
+        // Assign directory ownership and enforce first-party startup dependencies.
         model["services"][super::super::shared_dora::DAEMON]["container_name"] =
             crate::compose::adapter::directory_owner(&artifacts)?.into();
         model["services"][super::super::shared_dora::DAEMON]["labels"]
@@ -218,6 +222,7 @@ impl PrepareRun {
                 ));
             }
         }
+        // Snapshot file inputs and resolve one project with pinned images.
         freeze_files(&mut model, &artifacts).await?;
         let manifest = artifacts.join("experiment.input.json");
         private_write(&manifest, &serde_json::to_vec(&model)?).await?;
@@ -252,6 +257,7 @@ impl PrepareRun {
             eprintln!("warning: {warning}");
         }
         plan.diagnostics.extend(diagnostics);
+        // Capture the filesystem baseline and optional crash-recovery anchor.
         let executor = self
             .executor
             .upgrade()
