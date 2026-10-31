@@ -1,4 +1,6 @@
-//! Shared review/execution resolution and relocation-aware private review receipts.
+//! Build the Compose projects and launch order used by Review and Start.
+//! Record the resolved settings so callers can detect changes before launch.
+//! Generated recording paths compare relative to each run's artifact directory.
 use super::{ComposeRun, preparation, projects::LaunchInput};
 use crate::{
     compose::{adapter::digest, error::invalid, *},
@@ -17,7 +19,9 @@ use std::{
     rc::Rc,
 };
 
-/// Private evidence binding selected configuration, ordered projects and output contracts.
+/// Snapshot of settings, Compose manifests, service policies, launch order and recording paths.
+/// Compare Review's snapshot with fresh preparation before launch to detect changed inputs.
+/// Generated system-app bind paths and recording paths use artifact-relative locations.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReviewReceipt {
     settings: String,
@@ -35,15 +39,16 @@ struct ReviewedProject {
     services: BTreeMap<String, ComposeService>,
     remove_volumes: bool,
 }
-/// Resolved launch groups without runtime resources or filesystem baselines.
+/// Projects in launch order, with a snapshot for comparison before launch.
 #[derive(Clone, Debug)]
 pub struct ResolvedInputs {
     pub groups: Vec<LaunchInput>,
     pub receipt: ReviewReceipt,
 }
 
-/// Resolve the selected app/workload inputs into an existing private review directory.
-/// Writes manifests only; execution must freshly resolve and compare the receipt.
+/// Prepare selected app and workload manifests in the existing `spec.artifacts` directory.
+/// Returns resolved projects and a snapshot without launching containers or creating mounts.
+/// The caller must compare this snapshot with fresh preparation before launch.
 pub async fn preview(adapter: Rc<DockerAdapter>, spec: &ComposeRun) -> Result<ResolvedInputs> {
     preparation::validate(spec)?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
@@ -65,7 +70,7 @@ pub async fn preview(adapter: Rc<DockerAdapter>, spec: &ComposeRun) -> Result<Re
     Ok(inputs)
 }
 
-// The resolver callback preserves execution's child-step lineage and review's typed errors.
+// Start resolves through child steps to track dependencies; Review calls the adapter directly.
 pub(super) async fn resolve_with<P, F, Fut>(
     spec: &ComposeRun,
     artifacts: &Path,
@@ -98,7 +103,7 @@ where
     }))
     .await;
     // Every independent resolution completes before propagating the first error.
-    // An empty selection is an input-shape rejection, before dependent image failures.
+    // Report an empty service selection before image errors so the caller can request profiles.
     if results
         .iter()
         .any(|result| matches!(result, Err(Error::EmptySelection)))
@@ -182,7 +187,8 @@ async fn receipt(
     })
 }
 
-// Only generated system-app bind sources relocate; commands, environment and foreign binds stay exact.
+// Compare generated system-app binds under the artifact directory by relative path.
+// Preserve commands, environment values and binds outside that directory exactly.
 fn relocate_artifact_binds(model: &mut serde_json::Value, artifacts: &Path) {
     if let Some(services) = model
         .get_mut("services")

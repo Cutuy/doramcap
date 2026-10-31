@@ -1,4 +1,4 @@
-//! Side-effect-free Docker preflight and private run metadata preparation.
+//! Prepare Compose inputs, filesystem baselines and recovery metadata before launch.
 use super::super::system_apps::{self, PrepareSystemApps};
 use super::{
     ComposeRun, observation,
@@ -26,6 +26,7 @@ pub struct PreparedRun {
     pub artifacts: PathBuf,
     pub groups: Vec<LaunchInput>,
     pub baseline: FilesystemBaseline,
+    /// Snapshot to compare with Review before creating mounts or launching containers.
     pub receipt: ReviewReceipt,
 }
 impl PreparedRun {

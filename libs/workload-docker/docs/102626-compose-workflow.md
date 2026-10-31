@@ -87,10 +87,17 @@ cpu_monitor {
 }
 ```
 
-Review and execution share project resolution and launch-group assembly in
-[`resolution`](../src/workflows/recorded_compose/resolution.rs). A private receipt
-covers complete manifest identities, service lifecycle policy, ordered groups and
-recording outputs. Start compares a fresh receipt before mounts or launch.
+Review and Start use [`resolution`](../src/workflows/recorded_compose/resolution.rs)
+to build the same projects in the same launch order. Each returns a `ReviewReceipt`:
+a snapshot of settings, Compose manifests, selected images, replica counts,
+completion rules, volume-removal settings and recording paths.
+
+The caller compares the reviewed snapshot with fresh preparation before launch.
+Console performs this check in its preflight callback (#14) and rejects changed
+inputs so the user can review again. For example, changing a command or replacing
+an image after Review rejects Start. Moving generated recording files from the
+review directory to the run directory preserves their relative paths and passes.
+Execution still captures fresh filesystem baselines and recovery metadata.
 
 `PrepareRun` validates inputs, resolves every project, captures a baseline and
 freezes recovery identities. `PrepareOverlays` supplies optional execution mounts.
