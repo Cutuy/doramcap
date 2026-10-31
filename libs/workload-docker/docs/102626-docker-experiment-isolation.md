@@ -102,7 +102,8 @@ the full merged view under its artifact directory before unmount. This deliberat
 copies unchanged files too, so retained results remain independent of later source
 changes. OverlayFS alone does not freeze its lower tree.
 
-Explicit per-mount exceptions remain future work; unsupported writable sources fail closed. The procedural Rust workflow consumes
+Explicit per-mount exceptions and kernel-managed mount passthrough remain future
+work; unsupported writable sources fail closed. The procedural Rust workflow consumes
 prepared inputs and resolved Compose mounts; service additions require no new steps.
 
 ## Cooperation and compatibility
@@ -356,6 +357,32 @@ contracts; container shutdown alone cannot establish it.
 Suggested sequence: filesystem overlays → process/IPC/recording qualification →
 host configuration restoration → device/external-service hooks → measurement baselines.
 
+## M4a — Preserve kernel-managed mount semantics
+
+### Work items
+
+- [ ] Classify resolved bind sources using Linux mount information in the Docker
+  daemon's verified mount namespace. Investigate `mountinfo` and `statfs` together
+  for filesystem type, bind aliases and nested mounts; record the chosen mechanism.
+- [ ] Pass qualified device and kernel-interface mounts through unchanged, including
+  their access flags. Exclude them from overlay, harvest and metadata traversal;
+  retain their original source and passthrough disposition in the run evidence.
+- [ ] Keep ordinary user files subject to the selected isolation policy. `tmpfs`
+  alone is not a kernel-interface classification: it may contain user data.
+  Handle unknown or mixed nested mounts explicitly without silent reclassification.
+- [ ] Preserve existing host networking, GPU requests and privileged settings;
+  honor the working upstream Compose configuration.
+
+### Validation
+
+- [ ] `/dev` and `/proc` binds and qualified alternate-location aliases preserve
+  original source, target and flags without being overlaid or scanned.
+- [ ] Ordinary writable directories, including a user-data `tmpfs`, retain the
+  selected overlay behavior. Nested mounts and unsupported sources are reported.
+- [ ] A real Docker fixture reaches the declared device or kernel-interface mount
+  during execution and exits cleanly. Unrelated mounts remain untouched.
+- [ ] Record classification results, unsupported cases and host prerequisites.
+
 ## M4 — Further filesystem and hardware qualification
 
 ### Work items
@@ -363,7 +390,11 @@ host configuration restoration → device/external-service hooks → measurement
 - [ ] Measure large-model copy-up, staging cost, peak metadata memory and disk usage.
 - [ ] Qualify additional backing filesystems and rootless/private-namespace daemons.
 - [ ] Add explicit policies for single-file/device binds and live host readers.
-- [ ] Qualify vEDGAR/AnywhereVLA workloads on their required GPU/robot hardware.
+- [ ] Establish release-only Docker nginx-golang adoption on a clean GPU-less VM;
+  see the [baseline plan](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m4--release-only-adoption-on-a-clean-vm).
+  Then qualify OpenPI LIBERO on a supported GPU host; see the
+  [robotics plan](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m5--later-robotics-qualification-openpi-libero).
+  Qualify vEDGAR/AnywhereVLA separately on their required GPU/robot hardware.
 
 ### Validation
 
