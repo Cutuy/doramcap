@@ -363,7 +363,7 @@ pub(crate) fn start(
     let store = state.store.clone();
     let check_store = store.clone();
     let check_run = run_id.clone();
-    let expected_receipt = prepared.receipt.clone();
+    let expected_snapshot = prepared.snapshot.clone();
     tokio::task::spawn_local(async move {
         let observer_for_runner = observer.clone();
         let (result, blocked) = {
@@ -388,7 +388,7 @@ pub(crate) fn start(
                     move |prepared_run| {
                         let rejection = if latch.get() {
                             Some(CommandError::Stopped)
-                        } else if prepared_run.receipt != expected_receipt {
+                        } else if prepared_run.snapshot != expected_snapshot {
                             Some(CommandError::StaleReview)
                         } else {
                             None

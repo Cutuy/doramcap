@@ -307,14 +307,14 @@ async fn review_resolves_selected_profiles_and_changed_environment() {
     let mut launch_request = first.run.clone();
     launch_request.artifacts = root.path().join("fresh-resolution");
     std::fs::create_dir(&launch_request.artifacts).unwrap();
-    let fresh = workload_docker::workflows::recorded_compose::resolution::preview(
+    let fresh = workload_docker::workflows::recorded_compose::resolution::resolve(
         adapter.clone(),
         &launch_request,
     )
     .await
     .unwrap();
     // Assert
-    assert_eq!(first.receipt, fresh.receipt);
+    assert_eq!(first.snapshot, fresh.snapshot);
     let launch_dir = root.path().join("launch-resolution");
     std::fs::create_dir(&launch_dir).unwrap();
     let unchanged = adapter

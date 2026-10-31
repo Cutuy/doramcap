@@ -13,7 +13,7 @@ use workload_docker::{
     compose::{ComposeProject, DockerAdapter},
     workflows::recorded_compose::{
         ComposeRun,
-        resolution::{self, ReviewReceipt},
+        resolution::{self, ConfigurationSnapshot},
     },
 };
 
@@ -21,7 +21,7 @@ use workload_docker::{
 pub struct PreparedReview {
     pub review: Review,
     pub run: ComposeRun,
-    pub receipt: ReviewReceipt,
+    pub snapshot: ConfigurationSnapshot,
 }
 
 impl PreparedReview {
@@ -140,7 +140,7 @@ async fn resolve(
         readiness_seconds: u64::from(runtime.readiness_seconds.unwrap()),
         stop_seconds: u64::from(runtime.stop_seconds.unwrap()),
     };
-    let resolved = resolution::preview(adapter, &run).await?;
+    let resolved = resolution::resolve(adapter, &run).await?;
     let workload = resolved
         .groups
         .iter()
@@ -170,7 +170,7 @@ async fn resolve(
     Ok(PreparedReview {
         review,
         run,
-        receipt: resolved.receipt,
+        snapshot: resolved.snapshot,
     })
 }
 
