@@ -483,9 +483,13 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                 }
             }
             let bytes = serde_json::to_vec_pretty(model)?;
-            project.manifest = artifacts.join(format!("{}.execution.json", project.key));
+            project.manifest = artifacts
+                .join(format!("{}.execution.json", project.key))
+                .to_str()
+                .ok_or_else(|| invalid("manifest path is not UTF-8"))?
+                .into();
             project.sha256 = digest(&bytes);
-            private_write(&project.manifest, &bytes).await?;
+            private_write(Path::new(&project.manifest), &bytes).await?;
         }
         private_write(
             &directory.join("prepared.json"),

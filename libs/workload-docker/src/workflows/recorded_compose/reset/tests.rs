@@ -6,7 +6,11 @@ fn plan(directory: &Path, project: &str) -> ResolvedComposeProject {
         run: "previous".into(),
         key: "experiment".into(),
         name: project.into(),
-        manifest: directory.join("experiment.compose.json"),
+        manifest: directory
+            .join("experiment.compose.json")
+            .to_str()
+            .unwrap()
+            .into(),
         sha256: String::new(),
         services: Default::default(),
         diagnostics: vec![],

@@ -13,7 +13,6 @@ use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -55,6 +54,9 @@ impl PrepareRun {
         model::validate(&spec)?;
         crate::evidence::create_private_dir(&spec.artifacts).await?;
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
+        let artifact_path = artifacts
+            .to_str()
+            .ok_or_else(|| invalid("artifact path is not UTF-8"))?;
         observation::snapshot(&artifacts, "before").await?;
         if spec.filesystem.is_some() {
             self.adapter.verify_overlay_namespace().await?;
@@ -73,11 +75,8 @@ impl PrepareRun {
                 let normalized = self
                     .adapter
                     .normalize(
-                        &ResolveInput {
-                            run: spec.id.clone(),
-                            artifacts: artifacts.clone(),
-                            project: model::app_input(app, &dora)?,
-                        },
+                        &spec.id,
+                        &model::app_input(app, &dora)?,
                         &crate::compose::adapter::project_name("experiment", &spec.repository_root),
                     )
                     .await?;
@@ -116,21 +115,27 @@ impl PrepareRun {
             .adapter
             .resolve(ResolveInput {
                 run: spec.id.clone(),
-                artifacts: artifacts.clone(),
-                project: ComposeProject {
+                artifacts: artifact_path.into(),
+                project: Some(ComposeProject {
                     key: "experiment".into(),
-                    directory: spec.repository_root.clone(),
-                    files: vec![manifest],
-                    env_files: vec![],
-                    environment: BTreeMap::new(),
-                    profiles: vec![],
-                    services: vec![],
+                    directory: spec
+                        .repository_root
+                        .to_str()
+                        .ok_or_else(|| invalid("repository path is not UTF-8"))?
+                        .into(),
+                    files: vec![
+                        manifest
+                            .to_str()
+                            .ok_or_else(|| invalid("manifest path is not UTF-8"))?
+                            .into(),
+                    ],
                     completed_services: apps
                         .clone()
                         .flat_map(|p| p.completed_services.clone())
                         .collect(),
                     remove_volumes: apps.clone().all(|p| p.remove_volumes),
-                },
+                    ..Default::default()
+                }),
             })
             .await?;
         for warning in &diagnostics {

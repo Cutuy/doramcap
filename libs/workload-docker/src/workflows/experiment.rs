@@ -139,10 +139,15 @@ impl ExperimentOwner {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(self.stop_seconds);
         loop {
             let mut state = self.adapter.inspect(&self.plan).await?;
-            state.plan.services.retain(|name, service| {
-                service.completed = true;
-                nodes.iter().any(|node| node.id.as_ref() == name)
-            });
+            state
+                .plan
+                .as_mut()
+                .ok_or_else(|| invalid("Compose state plan missing"))?
+                .services
+                .retain(|name, service| {
+                    service.completed = true;
+                    nodes.iter().any(|node| node.id.as_ref() == name)
+                });
             if DockerAdapter::ready(&state)? {
                 return Ok(());
             }

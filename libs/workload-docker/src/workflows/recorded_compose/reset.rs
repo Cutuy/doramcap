@@ -89,7 +89,9 @@ impl Controller {
         };
         let plan: ResolvedComposeProject = serde_json::from_slice(&bytes)?;
         validate_name(&plan.run)?;
-        if !plan.name.starts_with("dc-") || plan.key != "experiment" || !plan.manifest.is_absolute()
+        if !plan.name.starts_with("dc-")
+            || plan.key != "experiment"
+            || !Path::new(&plan.manifest).is_absolute()
         {
             return Err(invalid("invalid saved experiment identity"));
         }
@@ -154,15 +156,14 @@ impl ResetPreviousProject {
             self.adapter
                 .stop_for_reset(&plan, self.stop_seconds)
                 .await?;
-            let artifacts = plan
-                .manifest
+            let artifacts = Path::new(&plan.manifest)
                 .parent()
                 .ok_or_else(|| invalid("saved artifact directory missing"))?;
             overlay::discard(&artifacts.join("overlays")).await?;
             let cleanup = self
                 .adapter
                 .remove(StopInput {
-                    plan,
+                    plan: Some(plan),
                     services: vec![],
                     allow_volume_deletion: false,
                     stop_seconds: self.stop_seconds,

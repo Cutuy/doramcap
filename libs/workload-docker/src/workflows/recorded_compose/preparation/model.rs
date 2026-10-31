@@ -184,7 +184,7 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     let mut keys = HashSet::new();
     for p in spec.system_apps.iter().chain(&spec.projects) {
         validate_name(&p.key)?;
-        if !p.directory.is_absolute() || !keys.insert(&p.key) {
+        if !Path::new(&p.directory).is_absolute() || !keys.insert(&p.key) {
             return Err(invalid("app directories must be absolute and keys unique"));
         }
     }

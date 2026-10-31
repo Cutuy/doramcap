@@ -170,10 +170,10 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let plan = adapter
         .resolve(ResolveInput {
             run: format!("shm-{}", std::process::id()),
-            artifacts: root.clone(),
-            project: ComposeProject {
+            artifacts: root.to_str().unwrap().into(),
+            project: Some(ComposeProject {
                 key: "experiment".into(),
-                directory: root.clone(),
+                directory: root.to_str().unwrap().into(),
                 files: vec!["compose.json".into()],
                 env_files: vec![],
                 environment: BTreeMap::new(),
@@ -181,7 +181,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 services: vec![],
                 completed_services: vec![],
                 remove_volumes: true,
-            },
+            }),
         })
         .await
         .unwrap();
@@ -197,7 +197,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let result: std::result::Result<(), String> = async {
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["daemon".into(), "coordinator".into()],
                 readiness_seconds: 15,
             })
@@ -243,7 +243,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         }
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["recorder".into(), "source".into()],
                 readiness_seconds: 20,
             })
@@ -271,7 +271,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         .map_err(|e| e.to_string())?;
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["adopted".into()],
                 readiness_seconds: 10,
             })
@@ -378,7 +378,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         .stop(StopInput {
             allow_volume_deletion: true,
             services: vec![],
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             stop_seconds: 5,
         })
         .await
@@ -400,10 +400,10 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let plan = adapter
         .resolve(ResolveInput {
             run: plan.run.clone(),
-            artifacts: cancel_dir,
-            project: ComposeProject {
+            artifacts: cancel_dir.to_str().unwrap().into(),
+            project: Some(ComposeProject {
                 key: "cancellation".into(),
-                directory: root.clone(),
+                directory: root.to_str().unwrap().into(),
                 files: vec!["compose.json".into()],
                 env_files: vec![],
                 environment: BTreeMap::new(),
@@ -411,13 +411,13 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 services: vec![],
                 completed_services: vec![],
                 remove_volumes: true,
-            },
+            }),
         })
         .await
         .unwrap();
     executor
         .run::<StartCompose>(StartInput {
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             services: vec!["daemon".into(), "coordinator".into()],
             readiness_seconds: 15,
         })
@@ -428,7 +428,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let cancelled = tokio::time::timeout(
         Duration::from_millis(300),
         executor.run::<StartCompose>(StartInput {
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             services: vec!["recorder".into()],
             readiness_seconds: 15,
         }),
@@ -439,7 +439,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         .stop(StopInput {
             allow_volume_deletion: true,
             services: vec![],
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             stop_seconds: 5,
         })
         .await
@@ -473,7 +473,7 @@ async fn cleanup_interrupted_shared_ipc_test() {
         .stop(StopInput {
             allow_volume_deletion: true,
             services: vec![],
-            plan,
+            plan: Some(plan),
             stop_seconds: 5,
         })
         .await

@@ -68,7 +68,7 @@ impl ExperimentOwner {
     pub(super) async fn start_runtime(&self) -> Result<()> {
         self.adapter
             .start(StartInput {
-                plan: self.plan.clone(),
+                plan: Some(self.plan.clone()),
                 services: vec![DAEMON.into(), COORDINATOR.into()],
                 readiness_seconds: self.startup_seconds,
             })
@@ -123,7 +123,7 @@ impl ExperimentOwner {
             .quiesce(StopInput {
                 allow_volume_deletion: false,
                 services: vec![COORDINATOR.into(), DAEMON.into()],
-                plan: self.plan.clone(),
+                plan: Some(self.plan.clone()),
                 stop_seconds: self.stop_seconds,
             })
             .await?;

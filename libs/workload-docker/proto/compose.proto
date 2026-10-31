@@ -34,7 +34,7 @@ message ResolvedComposeProject {
   string run = 1;
   // Prepared project key.
   string key = 2;
-  // Generated Docker Compose project name, scoped to the artifact directory.
+  // Generated Docker Compose project name, stable for its repository/key.
   string name = 3;
   // Private resolved execution manifest path; can contain secrets.
   string manifest = 4;
