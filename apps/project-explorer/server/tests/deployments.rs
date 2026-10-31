@@ -91,9 +91,7 @@ async fn qualify(app: &str, registration: &str) {
             .await
             .unwrap(),
     );
-    let manager = Manager::discover_at(registry, &adapter, Duration::from_secs(300), &data)
-        .await
-        .unwrap();
+    let manager = Manager::new(registry, Duration::from_secs(300));
     // SAFETY: UID/GID access has no side effects.
     let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
     let collector = if registration.contains("otel") {
