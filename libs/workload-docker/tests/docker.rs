@@ -2163,6 +2163,38 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
     // Assert
     assert!(error.to_string().contains("naming conflict"), "{error}");
     support::assert_no_run_resources(&adapter, &conflict.id).await;
+
+    for kind in ["services", "networks", "volumes"] {
+        // Arrange: adopted input cannot supply labels used to identify experiment resources.
+        let mut input = serde_json::json!({"services":{"adopted":{"image":image}}});
+        input[kind]["adopted"]["labels"] =
+            serde_json::json!({"io.doramcap.controller":"foreign-repository"});
+        match kind {
+            "networks" => input["services"]["adopted"][kind] = serde_json::json!(["adopted"]),
+            "volumes" => input["services"]["adopted"][kind] = serde_json::json!(["adopted:/data"]),
+            _ => {}
+        }
+        write(&root.join("reserved.json"), input);
+        let mut reserved = spec.clone();
+        reserved.id.push_str(&format!("-reserved-{kind}"));
+        reserved.artifacts = root.join(format!("reserved-{kind}"));
+        reserved.projects = vec![project(&root, "reserved")];
+
+        // Act
+        let error = executor
+            .run::<preparation::PrepareRun>(reserved.clone())
+            .await
+            .unwrap_err();
+
+        // Assert: resolver rejection happens before any runtime resources are created.
+        assert!(
+            error
+                .to_string()
+                .contains("reserved experiment-controller label"),
+            "{kind}: {error}"
+        );
+        support::assert_no_run_resources(&adapter, &reserved.id).await;
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
 
