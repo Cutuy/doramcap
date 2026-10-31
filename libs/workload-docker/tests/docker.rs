@@ -1,7 +1,12 @@
 //! Explicitly opt-in real Engine validation. The harness builds unprivileged and
 //! elevates only this executable. Every scenario owns distinct named resources.
+use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
+use workload_docker::workflows::recorded_compose::{
+    finalization::FinalizeRun,
+    projects::{QuiesceProjects, RemoveProjects},
+};
 use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
 use workload_docker::{compose::*, workflows::recorded_compose::*};
 
@@ -259,7 +264,7 @@ async fn multi_project_lifecycle() {
                 },
                 move |event: &orchestrator::Event| {
                     sink.borrow_mut().push(event.clone());
-                    if event.invocation.step.ends_with("InspectCompose")
+                    if event.invocation.step == InspectCompose::ID.unwrap()
                         && matches!(event.state, orchestrator::State::Succeeded)
                     {
                         let views: overlay::OverlaySet = serde_json::from_slice(
@@ -453,21 +458,21 @@ async fn multi_project_lifecycle() {
             let quiesced = events
                 .iter()
                 .find(|e| {
-                    e.invocation.step.ends_with("QuiesceProjects")
+                    e.invocation.step == QuiesceProjects::ID.unwrap()
                         && e.state == orchestrator::State::Succeeded
                 })
                 .unwrap();
             let finalized = events
                 .iter()
                 .find(|e| {
-                    e.invocation.step.ends_with("FinalizeRun")
+                    e.invocation.step == FinalizeRun::ID.unwrap()
                         && e.state == orchestrator::State::Succeeded
                 })
                 .unwrap();
             let removing = events
                 .iter()
                 .find(|e| {
-                    e.invocation.step.ends_with("RemoveProjects")
+                    e.invocation.step == RemoveProjects::ID.unwrap()
                         && e.state == orchestrator::State::Started
                 })
                 .unwrap();
@@ -758,7 +763,7 @@ async fn multi_project_lifecycle() {
             request,
             tokio::time::sleep(Duration::from_secs(5)),
             move |event: &orchestrator::Event| {
-                if event.invocation.step.ends_with("PrepareOverlays")
+                if event.invocation.step == overlay::PrepareOverlays::ID.unwrap()
                     && matches!(event.state, orchestrator::State::Succeeded)
                 {
                     let set: overlay::OverlaySet = serde_json::from_slice(
@@ -1020,12 +1025,12 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
                 })
                 .unwrap()
         };
-        let quiesced = completed("QuiesceProjects");
-        let finalized = completed("FinalizeRun");
+        let quiesced = completed(QuiesceProjects::ID.unwrap());
+        let finalized = completed(FinalizeRun::ID.unwrap());
         let removing = events
             .iter()
             .position(|e| {
-                e.invocation.step.ends_with("RemoveProjects")
+                e.invocation.step == RemoveProjects::ID.unwrap()
                     && e.state == orchestrator::State::Started
             })
             .unwrap();

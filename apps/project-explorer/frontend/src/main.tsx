@@ -55,14 +55,12 @@ function Gallery({ kind, route }: { kind: Kind; route: Route }) {
 function Launch({ component }: { component: Component }) {
   const [availability, setAvailability] = useState<'loading' | 'enabled' | 'disabled' | 'error'>('loading');
   const [ready, setReady] = useState(false);
-  const [headless, setHeadless] = useState(false);
   const base = new URL(import.meta.env.BASE_URL, document.baseURI);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     setAvailability('loading');
     setReady(false);
-    setHeadless(false);
     if (component.kind !== 'apps' || component.name === 'project-explorer') return;
     async function refresh() {
       try {
@@ -77,7 +75,6 @@ function Launch({ component }: { component: Component }) {
           const value = await status.json();
           if (active) {
             setReady(value.state === 'ready');
-            setHeadless(value.headless === true);
           }
         }
         if (active) setAvailability(enabled ? 'enabled' : 'disabled');
@@ -92,7 +89,6 @@ function Launch({ component }: { component: Component }) {
   }, [component.kind, component.name, base.href]);
   if (component.kind !== 'apps') return null;
   if (component.name === 'project-explorer') return <span className="launch-status">Current app</span>;
-  if (headless) return <span className="launch-status">Headless</span>;
   if (availability !== 'enabled') return <span className="launch-unavailable"><button className="launch-link" disabled>Start</button><span>{availability === 'loading' ? 'Checking availability…' : availability === 'error' ? 'Hosting unavailable; retrying…' : 'Not enabled on this host'}</span></span>;
   return <a className="launch-link" href={new URL(`running/${encodeURIComponent(component.name)}/`, base).href}>{ready ? 'Open' : 'Start'} <ArrowUpRight size={14} /></a>;
 }

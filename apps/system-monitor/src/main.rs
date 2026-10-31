@@ -372,7 +372,6 @@ fn run(opts: Options) -> Result<()> {
     if opts.dora {
         bail!("--dora requires --features dora");
     }
-    dora_app::environment::ready()?;
     let mut output: Option<Box<dyn Write>> = if let Some(path) = opts.output.as_ref() {
         Some(Box::new(BufWriter::new(File::create(path)?)))
     } else if !opts.dora && opts.record.is_none() {
@@ -459,6 +458,7 @@ fn run(opts: Options) -> Result<()> {
     let mut published = 0u64;
     let mut dictionary_sent_at: Option<Instant> = None;
     let publish_result = (|| -> Result<()> {
+        dora_app::environment::ready()?;
         loop {
             if let Some(recorder) = recorder.as_mut() {
                 recorder.poll()?;

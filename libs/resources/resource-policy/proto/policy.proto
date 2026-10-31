@@ -7,6 +7,8 @@ message Placement {
 }
 // Presence is significant during composition. A selection replaces its predecessor.
 message Policy {
+  reserved 2;
+  reserved "cpus", "inherit_cpus";
   Placement placement = 1;
   optional uint32 rt_priority = 3; // 0: OTHER; 1..99: RR.
 }
