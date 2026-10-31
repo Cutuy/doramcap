@@ -1,0 +1,175 @@
+{
+  "model": {
+    "services": {
+      "monitor": {
+        "network_mode": "host",
+        "ipc": "service:dora-daemon",
+        "ulimits": {
+          "nofile": 8192,
+          "memlock": {
+            "soft": 67108864,
+            "hard": 67108864
+          }
+        },
+        "environment": {
+          "CUSTOM": "kept",
+          "DORA_NODE_ID": "monitor",
+          "DORA_DAEMON_LOCAL_LISTEN_PORT": "54002",
+          "DORA_ZENOH_CONFIG_OVERLAY": "/run/experiment/zenoh.json5"
+        },
+        "volumes": [
+          {
+            "type": "bind",
+            "source": "/run/experiment/zenoh.json5",
+            "target": "/run/experiment/zenoh.json5",
+            "read_only": true
+          }
+        ],
+        "labels": {
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
+      },
+      "adopted": {
+        "networks": {
+          "users": {}
+        },
+        "environment": {
+          "DORA_NODE_ID": "app-chosen",
+          "DORA_DAEMON_LOCAL_LISTEN_PORT": "54002",
+          "DORA_ZENOH_CONFIG_OVERLAY": "/run/experiment/zenoh.json5"
+        },
+        "volumes": [
+          {
+            "type": "volume",
+            "source": "data",
+            "target": "/data"
+          },
+          {
+            "type": "bind",
+            "source": "/run/experiment/zenoh.json5",
+            "target": "/run/experiment/zenoh.json5",
+            "read_only": true
+          }
+        ],
+        "ipc": "service:dora-daemon",
+        "ulimits": {
+          "memlock": {
+            "soft": 67108864,
+            "hard": 67108864
+          }
+        },
+        "labels": {
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
+      },
+      "dora-coordinator": {
+        "image": "dora:test",
+        "network_mode": "host",
+        "stop_signal": "SIGINT",
+        "ulimits": {
+          "memlock": {
+            "soft": 67108864,
+            "hard": 67108864
+          }
+        },
+        "user": "1000:1000",
+        "working_dir": "/run/experiment",
+        "environment": {
+          "HOME": "/run/experiment",
+          "DORA_DAEMON_LOCAL_LISTEN_PORT": "54002"
+        },
+        "entrypoint": [
+          "/usr/local/bin/dora"
+        ],
+        "command": [
+          "coordinator",
+          "--interface",
+          "127.0.0.1",
+          "--port",
+          "54001",
+          "--store",
+          "memory"
+        ],
+        "volumes": [
+          {
+            "type": "bind",
+            "source": "/run/experiment",
+            "target": "/run/experiment"
+          },
+          {
+            "type": "bind",
+            "source": "/run/experiment/zenoh.json5",
+            "target": "/run/experiment/zenoh.json5",
+            "read_only": true
+          }
+        ],
+        "ipc": "service:dora-daemon",
+        "labels": {
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
+      },
+      "dora-daemon": {
+        "image": "dora:test",
+        "network_mode": "host",
+        "stop_signal": "SIGINT",
+        "ulimits": {
+          "memlock": {
+            "soft": 67108864,
+            "hard": 67108864
+          }
+        },
+        "user": "1000:1000",
+        "working_dir": "/run/experiment",
+        "environment": {
+          "HOME": "/run/experiment",
+          "DORA_DAEMON_LOCAL_LISTEN_PORT": "54002"
+        },
+        "entrypoint": [
+          "/usr/local/bin/dora"
+        ],
+        "command": [
+          "daemon",
+          "--coordinator-port",
+          "54001",
+          "--local-listen-port",
+          "54002",
+          "--zenoh-config-overlay",
+          "/run/experiment/zenoh.json5"
+        ],
+        "volumes": [
+          {
+            "type": "bind",
+            "source": "/run/experiment",
+            "target": "/run/experiment"
+          },
+          {
+            "type": "bind",
+            "source": "/run/experiment/zenoh.json5",
+            "target": "/run/experiment/zenoh.json5",
+            "read_only": true
+          }
+        ],
+        "ipc": "shareable",
+        "shm_size": 134217728,
+        "container_name": "experiment-owner",
+        "labels": {
+          "io.doramcap.experiment-owner": "true",
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
+      }
+    },
+    "networks": {
+      "users": {
+        "labels": {
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
+      }
+    },
+    "volumes": {
+      "data": {}
+    }
+  },
+  "warnings": [
+    "adopted: IPC silos: Compose networking is preserved; Dora 1.1 nodes need host networking to reach the daemon on localhost. IPC and /dev/shm are shared."
+  ]
+}

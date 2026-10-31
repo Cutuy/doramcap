@@ -1,0 +1,38 @@
+{
+  "services": {
+    "monitor": {
+      "network_mode": "host",
+      "ipc": "private",
+      "shm_size": 1,
+      "ulimits": {
+        "nofile": 8192
+      },
+      "environment": {
+        "CUSTOM": "kept"
+      }
+    },
+    "adopted": {
+      "networks": {
+        "users": {}
+      },
+      "environment": {
+        "DORA_NODE_ID": "app-chosen",
+        "DORA_DAEMON_LOCAL_LISTEN_PORT": "wrong",
+        "DORA_ZENOH_CONFIG_OVERLAY": "wrong"
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "source": "data",
+          "target": "/data"
+        }
+      ]
+    }
+  },
+  "networks": {
+    "users": {}
+  },
+  "volumes": {
+    "data": {}
+  }
+}

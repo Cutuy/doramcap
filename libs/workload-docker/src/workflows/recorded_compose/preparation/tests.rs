@@ -183,74 +183,21 @@ fn app_merge_rejects_reserved_volume_policy_and_missing_services() {
 #[test]
 fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() {
     // Arrange
-    let mut model = json!({"services":{
-        "monitor":{"network_mode":"host","ipc":"private","shm_size":1,
-            "ulimits":{"nofile":8192},"environment":{"CUSTOM":"kept"}},
-        "adopted":{"networks":{"users":{}},"environment":{"DORA_NODE_ID":"app-chosen",
-            "DORA_DAEMON_LOCAL_LISTEN_PORT":"wrong","DORA_ZENOH_CONFIG_OVERLAY":"wrong"},
-            "volumes":[{"type":"volume","source":"data","target":"/data"}]}
-    },"networks":{"users":{}},"volumes":{"data":{}}});
+    let mut model: Value =
+        serde_json::from_str(include_str!("fixtures/dora-wiring.input.json")).unwrap();
+    // The controller scope varies with the host user; all other expected values are literal.
+    let scope = super::super::reset::directory();
+    let expected: Value = serde_json::from_str(
+        &include_str!("fixtures/dora-wiring.expected.json")
+            .replace("{{controller_scope}}", scope.to_str().unwrap()),
+    )
+    .unwrap();
 
     // Act
     let warnings = configure_dora(&mut model, &runtime(), "experiment-owner".into()).unwrap();
 
     // Assert
-    for name in ["monitor", "adopted", "dora-coordinator"] {
-        assert_eq!(model["services"][name]["ipc"], "service:dora-daemon");
-        assert!(model["services"][name].get("shm_size").is_none());
-    }
-    for service in model["services"].as_object().unwrap().values() {
-        assert_eq!(
-            service["ulimits"]["memlock"],
-            json!({"soft":67108864,"hard":67108864})
-        );
-    }
-    assert_eq!(model["services"]["dora-daemon"]["ipc"], "shareable");
-    assert_eq!(model["services"]["dora-daemon"]["shm_size"], 134217728);
-    assert_eq!(
-        model["services"]["dora-daemon"]["container_name"],
-        "experiment-owner"
-    );
-    assert!(
-        model["services"]["dora-daemon"]["environment"]
-            .get("DORA_NODE_ID")
-            .is_none()
-    );
-    assert_eq!(model["services"]["monitor"]["ulimits"]["nofile"], 8192);
-    assert_eq!(
-        model["services"]["monitor"]["environment"]["CUSTOM"],
-        "kept"
-    );
-    assert_eq!(
-        model["services"]["monitor"]["environment"]["DORA_NODE_ID"],
-        "monitor"
-    );
-    assert_eq!(
-        model["services"]["adopted"]["environment"]["DORA_NODE_ID"],
-        "app-chosen"
-    );
-    assert_eq!(
-        model["services"]["adopted"]["environment"]["DORA_DAEMON_LOCAL_LISTEN_PORT"],
-        "54002"
-    );
-    assert_eq!(
-        model["services"]["adopted"]["environment"]["DORA_ZENOH_CONFIG_OVERLAY"],
-        "/run/experiment/zenoh.json5"
-    );
-    assert_eq!(
-        model["services"]["adopted"]["networks"],
-        json!({"users":{}})
-    );
-    assert_eq!(
-        model["services"]["adopted"]["volumes"][0]["target"],
-        "/data"
-    );
-    assert_eq!(
-        model["services"]["adopted"]["volumes"][1],
-        json!({"type":"bind","source":"/run/experiment/zenoh.json5","target":"/run/experiment/zenoh.json5","read_only":true})
-    );
-    assert_eq!(warnings.len(), 1);
-    assert!(warnings[0].contains("adopted: IPC silos"));
+    assert_eq!(json!({"model":model,"warnings":warnings}), expected);
 }
 
 #[test]
