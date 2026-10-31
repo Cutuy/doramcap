@@ -58,3 +58,9 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - Plans: lead with an embedded architecture SVG. A short high-level plan may precede the detailed milestones.
 - Plans: give each milestone its own clearly labeled section containing both **Work items** and **Validation** checklists. Keep acceptance checks beside the work they verify; a separate global validation list does not replace per-milestone validation.
 - Plans: record evidence in the relevant milestone before checking an item. Mark a milestone complete only when its work items and validations are complete.
+
+## Pull request descriptions
+
+- Use the first two lines for a brief summary and a single-line validation summary. Put detailed explanations afterward.
+- Favor small paragraphs and bullet points for detail. Favor architectural graphs.
+- For complex PRs, explain the idea without listing too many component names.
