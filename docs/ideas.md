@@ -1,20 +1,17 @@
-Single-node high-perf runtime
-Lifecycle: persisted (systemd), transient
-Failure: built-in heartbeat and watchdogs
-CPU placement/scheduling: affinity, rtprio, and observability out of configured prio vs reality (the CPU workload distribution plot), scheduling delay eBPFs
-CPU/GPU scheduling/isolation: cores/SM, green context
-Observability: OT, stdout/journal
-Recording: Efficient DMA-based MCAP (CPU/GPU->NVMe/PCIe SSD)
-Transport: PCIe, networking, CXL?
-Latency mon: chain of msgs or seq ids, execution traces
-Profiling/benchmarking:
-Agentic debug interface:
-Graph-less: post-mortem analysis & tracing for graphs
-Multi-node assembling in a process
-Copy-free iGPU buffers
-Cross containers/sessions/users (agentic isolation)
-Config layer: yaml, proto, CLI flags
+# Research backlog
 
-Dora/MCap/Scheduling/SMM/LMM/Blackbox/Watchdog/CommsRelay
+Unscheduled directions beyond the [current roadmap](roadmap.md). Component plans
+own implementation details and validation evidence.
 
-Applications: high-perf AV/robotics; “local” agentic?
+| Direction | Questions to resolve |
+|---|---|
+| GPU scheduling | Green contexts, hardware partitions, admission and effective allocation |
+| GPU-to-storage recording | DMA paths, buffer lifetime, fallback copies and durability |
+| Transport | PCIe endpoints, cross-machine correlation and deployment-driven CXL support |
+| Composition | Bounded multithreaded executors, inbox policy and component failure domains |
+| Diagnostics | Permissioned local agent APIs, profiler budgets and audited remediation |
+| Deployment | Persistent boot policy, broader process adoption and fleet-system integration |
+| Platform integration | NvSci/NvMedia SDK selection and Jetson qualification |
+
+The [original architecture sketch](image.png) records early module labels.
+SMM, LMM and CommsRelay still need agreed public meanings before becoming APIs.

@@ -1,22 +1,28 @@
-doramcap is your starter pack for running workloads on an entire SoC system, typically resource constrained and requiring high performance and reliability.
+# Vision
 
-I have seen virtually every robotics/agentic startup trying to hire systems/runtime/middlware experts to build their in-house solutions. Instead of reinventing wheels, maybe we could start from something comprehensive, easy to use, and of high quality with a proven record (see below). 
+doramcap is a personal research workspace for running and diagnosing workloads
+on a single compute system, especially resource-constrained robotics platforms.
+The goal is to connect configured execution policy with measured behavior and
+recorded evidence.
 
-This project encodes my years of experience and learnings in building such solutions at work, which led to a commerical deployment-ready production-quality system that powers the entire level-4 autonomous driving system with strong reliability. 
+## Available today
 
-The goal of this project is to provide clean interface and impls that powers your project or company from Day 1, while allowing you to deeply customize in your way as your product marches through production quality. I do welcome contributing back though.
+- Reusable Rust libraries for CPU policy/accounting, tracing, fault handling,
+  MCAP recording, storage and CUDA-accessible memory.
+- Compose experiment workflows and a Supervisor-backed System Monitor runner,
+  with readiness, recording checks and cleanup evidence.
+- Independently runnable apps and browser demos for inspecting those components.
+  Dora provides messaging for integrated apps.
 
-To achieve that, balancing performance and ease of use is important. 
+See the [roadmap](roadmap.md) for capability status and remaining qualification.
 
-## What doramcap provides
+## Direction
 
-- Performance: efficient monitoring of resource usage
-- Recording: efficient recording of data in MCAP
+- Let existing applications adopt lifecycle management and observability incrementally.
+- Keep essential execution, recording and inspection local.
+- Bound instrumentation and storage costs; expose overload and incomplete evidence.
+- Share typed Protobuf contracts and compose application configuration in pbtxt.
+- Qualify CPU, GPU, memory and storage behavior under competing workloads.
 
-## What doramcap depends on
-
-DORA underpins the IPC. In fact the project name comes from dora + mcap.
-
-## Recommended configurations
-
-NVIDIA Jetson Orin/Thor, Ubuntu 24.04
+NVIDIA Jetson Orin/Thor with Ubuntu 24.04 are target platforms. A published
+Jetson hardware/software qualification profile remains future work.
