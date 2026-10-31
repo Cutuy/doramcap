@@ -1,7 +1,7 @@
 {
   "name": "cuda-shm-viewer",
   "private": true,
-  "license": "SEE LICENSE IN ../../../LICENSE",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "type": "module",
   "scripts": {
     "build": "npm run generate:proto && vite build --base ./",
