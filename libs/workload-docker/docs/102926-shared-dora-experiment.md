@@ -105,7 +105,7 @@ Six gallery deployment profiles pass in 62.43 s. Public runtime, volume, reset
 and interrupted-copy-back tests pass. PR39 also passes ARM64 worker job 535.
 
 Review: [library foundation #41](https://github.com/Cutuy/doramcap/pull/41),
-then application cutover.
+then [application cutover #45](https://github.com/Cutuy/doramcap/pull/45).
 
 Complete feature versus starting main `d105d65`:
 
@@ -137,7 +137,7 @@ and blanks. Other categories count nonblank lines; inherited edits are excluded.
 
 - [x] All six gallery registrations pass live data, controls, downloads, finalized
   MCAP/OTLP outputs, join/idle-stop/restart and leak-free failed startup.
-- [x] Production LOC is **strictly below current main** with identical counting:
+- [x] Production LOC is **strictly below starting main `d105d65`** with identical counting:
   exclude tests, generated/vendor code, docs, blanks and comments; count every
   shipped helper. Moving/compressing code or deleting tests cannot satisfy this.
 - [x] Report production, tests, deployment/configuration and docs separately;
