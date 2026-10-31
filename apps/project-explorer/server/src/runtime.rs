@@ -436,7 +436,7 @@ impl Worker {
         let (stop, stopped) = oneshot::channel();
         let (ready, mut started) = oneshot::channel();
         self.running.borrow_mut().insert(key.clone(), stop);
-        let completion = workflow::run(
+        let mut completion = Box::pin(workflow::run(
             self.adapter.clone(),
             &app,
             generation,
@@ -444,8 +444,7 @@ impl Worker {
             (self.uid, self.gid),
             ready,
             stopped,
-        );
-        tokio::pin!(completion);
+        ));
         let report = tokio::select! {
             report = &mut completion => report,
             endpoint = &mut started => {

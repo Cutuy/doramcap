@@ -117,9 +117,9 @@ fn error(error: Error) -> (StatusCode, Json<Value>) {
             Json(json!({"error":"server shutting down"})),
         ),
         Error::Blocked(message) => (StatusCode::CONFLICT, Json(json!({"error":message}))),
-        Error::Conflict { owner, resource } => (
+        Error::Busy { owner } => (
             StatusCode::CONFLICT,
-            Json(json!({"error":format!("resource {resource} is occupied by {owner}")})),
+            Json(json!({"error":format!("{owner} has an active or unresolved experiment")})),
         ),
     }
 }
