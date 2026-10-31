@@ -123,7 +123,7 @@ Full feature deltas versus pre-stack main `7966a1e`; inherited changes are exclu
 | Production total | **−13** |
 | Tests/tooling | Rust +2,831; Python +24 |
 | Deployment/configuration, excluding schemas | −77 |
-| Documentation | −677 |
+| Documentation | −675 |
 
 Production counts include Rust and protobuf schemas, excluding comments/blanks,
 tests and generated/vendor code. Other categories use nonblank lines.
@@ -192,36 +192,38 @@ Full local CI and startup/drain pass; SHM passed before gate removal; ARM64 defe
 - [ ] Recheck direct/partial-removal recovery after native Compose deadline failures.
   ARM64 remains deferred.
 
-## M6 — One repeatable teardown path: planned
+## M6 — Idempotent pre-run cleanup: planned
 
-![Unified pre-run and post-run teardown](103126-crash-handling-comparison.svg)
+![Pre-run discard and normal teardown](103126-crash-handling-comparison.svg)
 
-Design (2026-10-31): normal completion and pre-run cleanup use the same steps and
-saved policies. Existing write-back is non-atomic; retry safety is work remaining.
+Design (2026-10-31): pre-run cleanup always discards previous uppers. It never
+replays write-back or reconstructs old reports. Users salvage old data before starting.
 
 **Work items**
 
 - [ ] Use an explicit repository root for a stable Compose project; keep per-run outputs.
-- [ ] Hold exclusive controller ownership across pre-run teardown, execution and teardown;
+- [ ] Hold exclusive controller ownership across cleanup, execution and teardown;
   reserve the actual daemon under one machine-wide Docker container name.
-- [ ] Add `EnsureProjectStopped` before preparation and reuse it after execution:
-  stop/verify writers, collect reports, finalize filesystems, remove owned resources.
-- [ ] Use the saved filesystem/volume policies in both calls. Default write-back applies
-  upper changes; upper/output directories remain. Volume deletion still requires its
-  configured policy and complete evidence. Full-tree `Retain` remains explicit opt-in.
-- [ ] Make shared teardown retry-safe after partial writes/removal; reuse completed
-  results and reject conflicting source changes. Already absent resources are done.
-- [ ] Target the saved previous project using exact ownership labels. Remove the
-  separate recovery engine/command and naming inference; keep minimal shared state.
+- [ ] Add `ResetPreviousProject` before preparation: stop/verify owned writers,
+  unmount owned overlays, delete old upper/work directories, remove disposable Docker
+  resources and release the old reservation. Already absent resources are done.
+- [ ] Reuse normal cleanup primitives. Keep copy-back for compatibility; pre-run
+  cleanup selects discard regardless of the previous policy. Remove full-tree `Retain`.
+  Future per-mount preservation selects copy-back; no new diff-export format.
+- [ ] Reset leaves original host files, output directories and retained volumes alone.
+  Interrupted copy-back may have changed host files; reset neither finishes nor undoes it.
+- [ ] Use exact saved project/ownership labels and owned overlay paths. Delete the
+  separate recovery engine/command, anchors, report reconstruction and naming inference.
 - [ ] Keep Console hosting outside the experiment slot; inner runs and gallery
   experiments use the same workflow. Interrupted runs never become successful runs.
 
 **Validation**
 
 - [ ] Test concurrent starts within/across repos; only one experiment starts.
-- [ ] Kill the launcher during startup, write-back and removal; the next start
-  completes shared teardown. Repeating cleanup is harmless; failed cleanup blocks launch.
-- [ ] Test unchanged write-back/volume policies, retained artifacts, conflicting source
-  changes and unrelated Docker resources. Retest sequential Console and gallery runs.
-- [ ] Show a production LOC reduction; run focused checks first and full local CI on
-  final source. ARM64 remains deferred. No implementation checks run for this plan edit.
+- [ ] Kill the launcher during startup, copy-back and removal. The next start discards
+  remaining uppers without replaying host writes. Repeated reset is harmless.
+- [ ] Test absent/partly removed resources, stopped writers and strict unmounts;
+  failed cleanup blocks launch. Preserve host files, outputs and unrelated resources.
+- [ ] Retest normal copy-back, volume policies, sequential Console and gallery runs.
+- [ ] Show production LOC reduction; run focused checks first and full local CI on
+  final source. ARM64 deferred. Implementation checks remain pending.
