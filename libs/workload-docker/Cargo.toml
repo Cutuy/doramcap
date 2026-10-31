@@ -21,6 +21,7 @@ hex = "0.4"
 futures-util = "0.3"
 libc = "0.2"
 rustix = { version = "1.1.5", features = ["fs"] }
+tempfile = "3"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt", "signal", "sync", "time"] }
 
 [build-dependencies]
@@ -28,7 +29,6 @@ prost-build = "0.14"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
-tempfile = "3"
 mcap = { version = "=0.26.0", default-features = false }
 telemetry-protocol = { path = "../telemetry/protocol" }
 

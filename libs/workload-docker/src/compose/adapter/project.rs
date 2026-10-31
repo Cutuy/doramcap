@@ -513,7 +513,7 @@ impl ComposeExecution<'_> {
                                 Path::new(&self.plan.manifest).parent().unwrap(),
                                 &self.plan.key,
                                 &id,
-                                &serde_json::to_vec_pretty(&stopped)?,
+                                serde_json::to_vec_pretty(&stopped)?,
                             )
                             .await
                             {
@@ -690,24 +690,29 @@ fn project_filters(project: &str) -> Option<HashMap<String, Vec<String>>> {
     )]))
 }
 
+/// Atomically replace one container's private diagnostic snapshot after a complete write.
+/// Write or rename failures preserve the previous snapshot and remove the temporary file.
 async fn save_stopped_inspection(
     directory: &Path,
     key: &str,
     id: &str,
-    bytes: &[u8],
+    bytes: Vec<u8>,
 ) -> Result<()> {
-    for attempt in 0..1024 {
-        let name = if attempt == 0 {
-            format!("{key}-{id}.stopped.json")
-        } else {
-            format!("{key}-{id}.stopped.{attempt}.json")
-        };
-        match private_write(&directory.join(name), bytes).await {
-            Ok(()) => return Ok(()),
-            Err(crate::compose::Error::Io(error))
-                if error.kind() == std::io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Err(invalid("too many stopped inspection attempts"))
+    let directory = directory.to_owned();
+    let destination = directory.join(format!("{key}-{id}.stopped.json"));
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        use std::io::Write;
+        let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+        temporary.write_all(&bytes)?;
+        temporary.as_file().sync_all()?;
+        temporary
+            .persist(destination)
+            .map_err(|error| error.error)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| invalid(format!("stopped inspection writer: {error}")))?
 }
+
+#[cfg(test)]
+mod tests;
