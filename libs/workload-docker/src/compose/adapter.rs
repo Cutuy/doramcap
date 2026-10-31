@@ -839,12 +839,7 @@ impl DockerAdapter {
                     let state = container
                         .state
                         .ok_or_else(|| invalid("experiment container state missing"))?;
-                    if state.pid != Some(0)
-                        || state.running != Some(false)
-                        || !state
-                            .status
-                            .is_some_and(|s| matches!(s.to_string().as_str(), "created" | "exited"))
-                    {
+                    if state.pid != Some(0) || state.running != Some(false) {
                         return Err(invalid("experiment still has live or unverified writers"));
                     }
                 }
@@ -1891,6 +1886,29 @@ pub(crate) mod tests {
 
         // Assert
         assert!(matches!(error, Error::Invalid(message) if message.contains("image changed")));
+        server.await.unwrap();
+    }
+    #[tokio::test]
+    async fn dead_container_with_no_process_is_quiescent() {
+        // Arrange: Docker can retain a dead container after interrupted teardown.
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                (
+                    "/containers/json",
+                    json!([{"Id":"dead-writer","Labels":{CONTROLLER_LABEL:"scope"}}]),
+                ),
+                (
+                    "/containers/dead-writer/json",
+                    json!({"State":{"Pid":0,"Running":false,"Status":"dead"}}),
+                ),
+            ],
+        );
+        // Act
+        let result = adapter.verify_scope_stopped("scope").await;
+        // Assert: process absence allows reset to continue, regardless of the failure status.
+        assert!(result.is_ok());
         server.await.unwrap();
     }
 }
