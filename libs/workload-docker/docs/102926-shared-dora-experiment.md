@@ -2,13 +2,13 @@
 
 # Shared Dora daemon per experiment
 
-Created: 2026-10-29. Status: M1–M4 complete; M5 recovery retests pending. ARM64 deferred.
+Created: 2026-10-29. Status: M1–M4 complete; M5 retests pending; M6 planned. ARM64 deferred.
 Acceptance requires **strictly fewer production-code LOC than main**.
 
 ## Contract
 
 - Keep user-supplied `compose.yml` inputs. Assemble **one Compose project per
-  experiment**, with a directory-scoped generated identity; reject naming conflicts.
+  repository**, with identity derived from its explicit canonical root; reject naming conflicts.
 - Every experiment supplies coordinator/daemon; apps may ignore Dora.
 - Steps own startup: **coordinator/daemon ready → system apps ready/stable →
   adopted user apps**. Control selected services within the shared project.
@@ -19,8 +19,8 @@ Acceptance requires **strictly fewer production-code LOC than main**.
 - Applications retain their Compose commands, mounts, dependencies and health checks.
   The Dora setup step owns communication services; workload steps own all app services.
 - Stop adopted apps, stop system producers, await consumer drain, stop Dora, then
-  finalize filesystems, remove resources and release directory admission. Independent
-  directories can run concurrently. Forced stops leave recording status incomplete.
+  finalize filesystems, remove resources and release machine-wide admission. Only
+  one experiment runs at a time. Forced stops leave recording status incomplete.
 - Preserve protobuf/pbtxt settings, native Dora graphs, immutable inputs, embedded
   recording and the MCAP writer's `seccomp=unconfined` setting.
 
@@ -123,7 +123,7 @@ Full feature deltas versus pre-stack main `7966a1e`; inherited changes are exclu
 | Production total | **−13** |
 | Tests/tooling | Rust +2,831; Python +24 |
 | Deployment/configuration, excluding schemas | −77 |
-| Documentation | −760 |
+| Documentation | −677 |
 
 Production counts include Rust and protobuf schemas, excluding comments/blanks,
 tests and generated/vendor code. Other categories use nonblank lines.
@@ -191,3 +191,37 @@ Full local CI and startup/drain pass; SHM passed before gate removal; ARM64 defe
 - [x] Run startup/drain, concurrent-directory and shared IPC tests and full local CI.
 - [ ] Recheck direct/partial-removal recovery after native Compose deadline failures.
   ARM64 remains deferred.
+
+## M6 — One repeatable teardown path: planned
+
+![Unified pre-run and post-run teardown](103126-crash-handling-comparison.svg)
+
+Design (2026-10-31): normal completion and pre-run cleanup use the same steps and
+saved policies. Existing write-back is non-atomic; retry safety is work remaining.
+
+**Work items**
+
+- [ ] Use an explicit repository root for a stable Compose project; keep per-run outputs.
+- [ ] Hold exclusive controller ownership across pre-run teardown, execution and teardown;
+  reserve the actual daemon under one machine-wide Docker container name.
+- [ ] Add `EnsureProjectStopped` before preparation and reuse it after execution:
+  stop/verify writers, collect reports, finalize filesystems, remove owned resources.
+- [ ] Use the saved filesystem/volume policies in both calls. Default write-back applies
+  upper changes; upper/output directories remain. Volume deletion still requires its
+  configured policy and complete evidence. Full-tree `Retain` remains explicit opt-in.
+- [ ] Make shared teardown retry-safe after partial writes/removal; reuse completed
+  results and reject conflicting source changes. Already absent resources are done.
+- [ ] Target the saved previous project using exact ownership labels. Remove the
+  separate recovery engine/command and naming inference; keep minimal shared state.
+- [ ] Keep Console hosting outside the experiment slot; inner runs and gallery
+  experiments use the same workflow. Interrupted runs never become successful runs.
+
+**Validation**
+
+- [ ] Test concurrent starts within/across repos; only one experiment starts.
+- [ ] Kill the launcher during startup, write-back and removal; the next start
+  completes shared teardown. Repeating cleanup is harmless; failed cleanup blocks launch.
+- [ ] Test unchanged write-back/volume policies, retained artifacts, conflicting source
+  changes and unrelated Docker resources. Retest sequential Console and gallery runs.
+- [ ] Show a production LOC reduction; run focused checks first and full local CI on
+  final source. ARM64 remains deferred. No implementation checks run for this plan edit.
