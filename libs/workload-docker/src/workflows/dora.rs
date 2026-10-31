@@ -2,76 +2,9 @@
 use super::experiment::ExperimentOwner;
 use super::shared_dora::{COORDINATOR, DAEMON};
 use crate::compose::{error::invalid, *};
-use std::{collections::BTreeMap, time::Duration};
+use std::time::Duration;
 
-include!(concat!(env!("OUT_DIR"), "/doramcap.dora.v1.rs"));
-
-/// Build typed Compose declarations for the owned coordinator and daemon.
-pub(crate) fn services(runtime: &DoraRuntime) -> BTreeMap<String, RuntimeService> {
-    let bind = |source: &str, read_only| BindMount {
-        r#type: "bind".into(),
-        source: source.into(),
-        target: source.into(),
-        read_only,
-    };
-    let service = |command| RuntimeService {
-        image: runtime.image.clone(),
-        network_mode: "host".into(),
-        stop_signal: "SIGINT".into(),
-        ulimits: BTreeMap::from([(
-            "memlock".into(),
-            ResourceLimit {
-                soft: runtime.memlock_bytes,
-                hard: runtime.memlock_bytes,
-            },
-        )]),
-        user: format!(
-            "{}:{}",
-            runtime.participant_uid.unwrap(),
-            runtime.participant_gid.unwrap()
-        ),
-        working_dir: runtime.runtime_directory.clone(),
-        environment: BTreeMap::from([
-            ("HOME".into(), runtime.runtime_directory.clone()),
-            (
-                "DORA_DAEMON_LOCAL_LISTEN_PORT".into(),
-                runtime.daemon_port.to_string(),
-            ),
-        ]),
-        entrypoint: vec!["/usr/local/bin/dora".into()],
-        command,
-        volumes: vec![
-            bind(&runtime.runtime_directory, None),
-            bind(&runtime.zenoh_overlay, Some(true)),
-        ],
-        ipc: "shareable".into(),
-        shm_size: None,
-    };
-    let mut daemon = service(vec![
-        "daemon".into(),
-        "--coordinator-port".into(),
-        runtime.coordinator_port.to_string(),
-        "--local-listen-port".into(),
-        runtime.daemon_port.to_string(),
-        "--zenoh-config-overlay".into(),
-        runtime.zenoh_overlay.clone(),
-    ]);
-    daemon.shm_size = Some(runtime.shm_bytes);
-    let mut coordinator = service(vec![
-        "coordinator".into(),
-        "--interface".into(),
-        "127.0.0.1".into(),
-        "--port".into(),
-        runtime.coordinator_port.to_string(),
-        "--store".into(),
-        "memory".into(),
-    ]);
-    coordinator.ipc = format!("service:{DAEMON}");
-    if !runtime.graph.is_empty() {
-        coordinator.volumes.push(bind(&runtime.graph, Some(true)));
-    }
-    BTreeMap::from([(COORDINATOR.into(), coordinator), (DAEMON.into(), daemon)])
-}
+pub use crate::proto::doramcap::dora::v1::*;
 
 impl ExperimentOwner {
     pub(crate) async fn cli(&self, args: &[&str]) -> Result<String> {

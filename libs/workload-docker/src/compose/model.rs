@@ -1,2 +1,2 @@
-//! Generated Compose launch, execution, observation and cleanup contracts.
-include!(concat!(env!("OUT_DIR"), "/doramcap.compose.v1.rs"));
+//! Generated Compose configuration and execution contracts.
+pub use crate::proto::doramcap::compose::v1::*;

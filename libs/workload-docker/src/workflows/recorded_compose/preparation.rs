@@ -1,18 +1,20 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
-mod model;
+mod validation;
 
 use super::{ComposeRun, observation};
 use crate::compose::{
-    adapter::{digest, private_write},
+    adapter::private_write,
     error::invalid,
     filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline},
     overlay::OverlaySet,
+    planner::{AnalyzeInput, ComposeDocument, DoraEnvironment},
     *,
 };
 use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
@@ -51,7 +53,7 @@ impl PrepareRun {
         // Resolve runtime settings and validate the request.
         super::super::shared_dora::resolve(&mut spec.dora, &spec.artifacts)?;
         super::super::shared_dora::validate_endpoints(&spec.dora)?;
-        model::validate(&spec)?;
+        validation::validate(&spec)?;
         crate::evidence::create_private_dir(&spec.artifacts).await?;
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
         observation::snapshot(&artifacts, "before").await?;
@@ -60,13 +62,48 @@ impl PrepareRun {
         }
         // Freeze Dora inputs and merge apps while recording their startup stages.
         let dora = super::super::shared_dora::prepare(&spec.dora, &artifacts).await?;
-        let mut model = json!({"services":{}});
-        let mut system_services = Vec::new();
-        let mut user_services = Vec::new();
-        let mut diagnostics = Vec::new();
-        for (apps, services) in [
-            (&spec.system_apps, &mut system_services),
-            (&spec.projects, &mut user_services),
+        let mut input = AnalyzeInput {
+            run: spec.id.clone(),
+            project_name: crate::compose::adapter::project_name(
+                "experiment",
+                &spec.repository_root,
+            ),
+            artifacts: artifacts
+                .to_str()
+                .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                .into(),
+            controller_scope: super::reset::directory().to_string_lossy().into_owned(),
+            owner_container_name: super::super::shared_dora::MACHINE_OWNER.into(),
+            dora: Some(dora.clone()),
+            environment: Some(DoraEnvironment {
+                node_id_variable: dora_app::environment::NODE_ID.into(),
+                forced_values: dora_app::environment::settings(
+                    "",
+                    dora.daemon_port,
+                    &dora.zenoh_overlay,
+                )
+                .into_iter()
+                .filter(|(k, _)| *k != dora_app::environment::NODE_ID)
+                .map(|(k, v)| (k.into(), v))
+                .collect(),
+                runtime_values: BTreeMap::from([(
+                    dora_app::environment::DAEMON_PORT.into(),
+                    dora.daemon_port.to_string(),
+                )]),
+            }),
+            ..Default::default()
+        };
+        if !dora.graph.is_empty() {
+            let graph = super::super::shared_dora::graph(
+                &dora,
+                &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+            )?;
+            input.dora_node_ids = graph.nodes.iter().map(|n| n.id.to_string()).collect();
+        }
+        // Native Compose resolves each app; the planner owns all document transformations.
+        for (apps, documents) in [
+            (&spec.system_apps, &mut input.system_apps),
+            (&spec.projects, &mut input.adopted_apps),
         ] {
             for app in apps {
                 let normalized = self
@@ -74,76 +111,36 @@ impl PrepareRun {
                     .configuration()
                     .normalize(
                         &spec.id,
-                        &model::app_input(app, &dora)?,
-                        &crate::compose::adapter::project_name("experiment", &spec.repository_root),
+                        &validation::app_input(app, &dora)?,
+                        &input.project_name,
                     )
                     .await?;
-                let warnings =
-                    model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
                 private_write(
                     &artifacts.join(format!("{}.inputs.json", app.key)),
-                    &serde_json::to_vec(
-                        &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
-                    )?,
+                    &serde_json::to_vec(&json!({
+                        "sources": normalized.input_hashes,
+                        "diagnostics": normalized.stderr,
+                        "compose_version": normalized.compose_version,
+                    }))?,
                 )
                 .await?;
-                diagnostics.extend(warnings);
+                documents.push(ComposeDocument {
+                    settings: Some(app.clone()),
+                    compose_json: normalized.model,
+                });
             }
         }
-        // Configure shared IPC, then validate graph bindings and startup dependencies.
-        diagnostics.extend(model::configure_dora(
-            &mut model,
-            &dora,
-            super::super::shared_dora::MACHINE_OWNER.into(),
-        )?);
-        if !dora.graph.is_empty() {
-            let graph = super::super::shared_dora::graph(
-                &dora,
-                &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
-            )?;
-            model::validate_graph(&model, &graph)?;
-        }
-        model::validate_dependencies(&model, &system_services, &user_services)?;
-        // Snapshot file inputs and resolve one project with pinned images.
-        freeze_files(&mut model, &artifacts).await?;
-        let manifest = artifacts.join("experiment.input.json");
-        private_write(&manifest, &serde_json::to_vec(&model)?).await?;
-        let apps = spec.system_apps.iter().chain(&spec.projects);
-        let mut plan = self
+        let planned = self
             .adapter
             .configuration()
-            .resolve(ResolveInput {
-                run: spec.id.clone(),
-                artifacts: artifacts
-                    .to_str()
-                    .ok_or_else(|| invalid("artifact path is not UTF-8"))?
-                    .into(),
-                project: Some(ComposeProject {
-                    key: "experiment".into(),
-                    directory: spec
-                        .repository_root
-                        .to_str()
-                        .ok_or_else(|| invalid("repository path is not UTF-8"))?
-                        .into(),
-                    files: vec![
-                        manifest
-                            .to_str()
-                            .ok_or_else(|| invalid("manifest path is not UTF-8"))?
-                            .into(),
-                    ],
-                    completed_services: apps
-                        .clone()
-                        .flat_map(|p| p.completed_services.clone())
-                        .collect(),
-                    remove_volumes: apps.clone().all(|p| p.remove_volumes),
-                    ..Default::default()
-                }),
-            })
+            .plan(input, "experiment")
             .await?;
-        for warning in &diagnostics {
+        let plan = planned.project;
+        let system_services = planned.configuration.system_services;
+        let user_services = planned.configuration.adopted_services;
+        for warning in &plan.diagnostics {
             eprintln!("warning: {warning}");
         }
-        plan.diagnostics.extend(diagnostics);
         // Capture the filesystem baseline for normal completion.
         let executor = self
             .executor
@@ -166,46 +163,6 @@ impl PrepareRun {
             dora,
         })
     }
-}
-
-async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
-    let source = tokio::fs::canonicalize(source).await?;
-    let bytes = crate::evidence::read_regular(&source, 256 * 1024 * 1024).await?;
-    use std::os::unix::fs::PermissionsExt;
-    let permissions = tokio::fs::metadata(&source).await?.permissions();
-    let destination = directory.join(format!("{}-{:o}", digest(&bytes), permissions.mode()));
-    if !destination.exists() {
-        private_write(&destination, &bytes).await?;
-        tokio::fs::set_permissions(&destination, permissions).await?;
-    }
-    Ok(destination.to_string_lossy().into_owned())
-}
-async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
-    let directory = artifacts.join("inputs");
-    crate::evidence::create_private_dir(&directory).await?;
-    for service in model["services"].as_object_mut().unwrap().values_mut() {
-        if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
-            for mount in mounts {
-                if mount["type"] == "bind"
-                    && mount["read_only"] == true
-                    && let Some(source) = mount["source"].as_str()
-                    && tokio::fs::metadata(source).await?.is_file()
-                {
-                    mount["source"] = snapshot_file(source, &directory).await?.into();
-                }
-            }
-        }
-    }
-    for kind in ["configs", "secrets"] {
-        if let Some(items) = model.get_mut(kind).and_then(Value::as_object_mut) {
-            for item in items.values_mut() {
-                if let Some(source) = item["file"].as_str() {
-                    item["file"] = snapshot_file(source, &directory).await?.into();
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
