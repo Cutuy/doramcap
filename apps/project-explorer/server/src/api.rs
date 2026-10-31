@@ -135,7 +135,6 @@ fn status_value(status: Status) -> Value {
         Status::Stopping { generation } => {
             json!({"state":"stopping","generation":format!("{generation:032x}")})
         }
-        Status::Blocked { error } => json!({"state":"blocked","error":error}),
     }
 }
 async fn viewer() -> Html<&'static str> {

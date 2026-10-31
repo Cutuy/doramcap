@@ -131,7 +131,6 @@ async fn run(options: Options) -> Result<()> {
     let outcomes = service.shutdown().await;
     for (app, status) in outcomes {
         match status {
-            Status::Blocked { error } => eprintln!("{app}: cleanup unverified: {error}"),
             Status::Stopped { error: Some(error) } => {
                 eprintln!("{app}: finalization failed: {error}")
             }

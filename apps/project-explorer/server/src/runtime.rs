@@ -94,9 +94,9 @@ impl Service {
                             if let Err(error) = task.await {
                                 guard.fail(generation).await;
                                 guard
-                                    .cleaned(
+                                    .completed(
                                         generation,
-                                        Err(format!(
+                                        Some(format!(
                                             "startup task failed: {error}; cleanup unverified"
                                         )),
                                     )
@@ -146,9 +146,9 @@ impl Service {
                 entry.lifecycle.fail(launch.generation).await;
                 entry
                     .lifecycle
-                    .cleaned(
+                    .completed(
                         launch.generation,
-                        Ok(Some("startup supervisor unavailable".into())),
+                        Some("startup supervisor unavailable".into()),
                     )
                     .await;
                 return Err(Error::Blocked("startup supervisor unavailable".into()));
@@ -372,7 +372,7 @@ impl Service {
                 .is_err()
         {
             lifecycle
-                .cleaned(generation, Err("cleanup supervisor unavailable".into()))
+                .completed(generation, Some("cleanup supervisor unavailable".into()))
                 .await;
         }
     }
@@ -462,13 +462,10 @@ impl Worker {
         lifecycle.fail(generation).await;
         let diagnostic = (!report.errors.is_empty()).then(|| report.errors.join("; "));
         lifecycle
-            .cleaned(
+            .completed(
                 generation,
-                if report.cleanup_verified {
-                    Ok(diagnostic)
-                } else {
-                    Err(diagnostic.unwrap_or_else(|| "cleanup unverified".into()))
-                },
+                diagnostic
+                    .or_else(|| (!report.cleanup_verified).then(|| "cleanup unverified".into())),
             )
             .await;
     }
@@ -543,7 +540,7 @@ mod tests {
         });
         tokio::task::yield_now().await;
         assert!(!waiting.is_finished());
-        app.lifecycle.cleaned(launch.generation, Ok(None)).await;
+        app.lifecycle.completed(launch.generation, None).await;
         let next = waiting.await.unwrap().unwrap();
 
         // Assert
@@ -599,7 +596,7 @@ mod tests {
         });
         tokio::task::yield_now().await;
         assert!(!shutting_down.is_finished());
-        app.lifecycle.cleaned(first.generation, Ok(None)).await;
+        app.lifecycle.completed(first.generation, None).await;
 
         // Assert: the waiting request cannot queue a replacement workflow.
         assert!(matches!(

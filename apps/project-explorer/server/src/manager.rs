@@ -68,9 +68,6 @@ impl Manager {
         let mut accepted_at = now;
         loop {
             let admission = self.admission.lock().await;
-            if let Status::Blocked { error } = app.lifecycle.status().await {
-                return Err(Error::Blocked(error));
-            }
             for other in self.iter().filter(|other| other.registration.id != id) {
                 if !matches!(other.lifecycle.status().await, Status::Stopped { .. }) {
                     return Err(Error::Busy {
@@ -80,7 +77,6 @@ impl Manager {
             }
             match app.lifecycle.try_launch(accepted_at).await {
                 Attempt::Accepted(launch) => return Ok(launch),
-                Attempt::Blocked(error) => return Err(Error::Blocked(error)),
                 Attempt::Stopping => {
                     drop(admission);
                     app.lifecycle.wait_until_not_stopping().await;
@@ -114,6 +110,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unfinished_cleanup_allows_the_next_workflow_to_reset() {
+        // Arrange
+        let manager = Manager::new(
+            Registry::new(&workspace()).unwrap(),
+            Duration::from_secs(120),
+        );
+        let first = manager
+            .launch("activity-demo", Instant::now())
+            .await
+            .unwrap();
+        let app = manager.get("activity-demo").unwrap();
+        app.lifecycle.fail(first.generation).await;
+        // Act
+        app.lifecycle
+            .completed(first.generation, Some("cleanup unverified".into()))
+            .await;
+        // Assert: retain the error while allowing a fresh reset attempt.
+        assert_eq!(
+            app.lifecycle.status().await,
+            Status::Stopped {
+                error: Some("cleanup unverified".into())
+            }
+        );
+        let next = manager
+            .launch("activity-demo", Instant::now())
+            .await
+            .unwrap();
+        assert!(next.start);
+        assert_ne!(first.generation, next.generation);
+    }
+
+    #[tokio::test]
     async fn conflicting_concurrent_launches_are_serialized_until_cleanup() {
         // Arrange
         let registry = Registry::load(&workspace(), &["storage-demo".into()]).unwrap();
@@ -142,7 +170,7 @@ mod tests {
         let lifecycle = &manager.get(owner).unwrap().lifecycle;
         lifecycle.fail(accepted.generation).await;
         let during_cleanup = manager.launch(other, Instant::now()).await;
-        lifecycle.cleaned(accepted.generation, Ok(None)).await;
+        lifecycle.completed(accepted.generation, None).await;
         let after_cleanup = manager.launch(other, Instant::now()).await;
 
         // Assert
@@ -175,7 +203,7 @@ mod tests {
             manager.launch("storage-demo", Instant::now()),
         )
         .await;
-        lifecycle.cleaned(first.generation, Ok(None)).await;
+        lifecycle.completed(first.generation, None).await;
         let resumed = waiter.await.unwrap();
 
         // Assert
