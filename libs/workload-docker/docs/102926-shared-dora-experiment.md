@@ -2,9 +2,8 @@
 
 # Shared Dora daemon per experiment
 
-Created: 2026-10-29. Status: shared library ready; application cutover pending. PR39 ARM64 passes; topology ARM64 deferred.
+Created: 2026-10-29. Status: M1–M6 complete. PR39 ARM64 passes; topology ARM64 deferred.
 Acceptance requires **strictly fewer production-code LOC than main**.
-The app-migration PR switches gallery callers and deletes the existing runner.
 
 ## Contract
 
@@ -27,8 +26,8 @@ The app-migration PR switches gallery callers and deletes the existing runner.
 
 ## M1 — One project and shared IPC test: complete
 
-Evidence (2026-10-31): `tests/shared_dora_ipc.rs::one_project_qualifies_zenoh_shm_and_adopted_ipc`
-passed locally in 11.7 s. Five containers shared their IPC namespace and shm mount;
+Evidence (2026-10-30): `tests/shared_ipc.rs::one_project_qualifies_zenoh_shm_and_adopted_ipc`
+passed locally in 13.05 s. Five containers shared their IPC namespace and shm mount;
 20 payloads ≥256 KiB used `/dev/shm` and finalized MCAP in order (0–19).
 An adopted app opened the same segment. Endpoint ownership rejection, interrupted
 startup and verified cleanup passed. Dora 1.1 uses its daemon/TCP path for backpressure
@@ -50,7 +49,7 @@ routes; the SHM test uses `drop_oldest`. Recording routes retain backpressure.
   sequence and finalize MCAP. A successful TCP fallback does not satisfy this check.
 - [x] Verify setup ordering, endpoint collision rejection, cancellation and cleanup.
 
-## M2 — Ordinary apps and one resolved experiment
+## M2 — Ordinary apps and one resolved experiment: complete
 
 Evidence: native Compose inputs, immutable files, image pins, conflict rejection
 and mixed volume policies pass. System Monitor uses ordinary app inputs.
@@ -59,7 +58,7 @@ and mixed volume policies pass. System Monitor uses ordinary app inputs.
 
 - [x] Resolve supplied Compose inputs with their own paths/environment, assemble a
   single experiment model and reject service/resource naming conflicts before launch.
-- [ ] Remove `CpuMonitor`, special `PrepareSystemApps` handling and hidden monitor
+- [x] Remove `CpuMonitor`, special `PrepareSystemApps` handling and hidden monitor
   injection. Supply System Monitor through the ordinary system app list.
 - [x] Remove the extra participant roles/phases/bindings, host process manager and
   duplicated validation/recovery. Use native graph and Compose service identities.
@@ -97,35 +96,55 @@ kills at three boundaries. The native group passes in 118 s.
 - [x] Interrupted runs preserve ownership and outputs; M6 resets their disposable
   resources before another experiment starts.
 
-## M4 — Deployments and final acceptance
+## M4 — Deployments and final acceptance: complete
 
-Evidence: complete target `2b624fff` passed standalone local CI and all six
-gallery profiles. Current apps retain their existing deployments until cutover;
-final production reduction is checked after legacy removal.
+Evidence (2026-10-31): standalone local CI passes: boundaries,
+formatting, default/all-feature Clippy and workspace tests (87 executables each),
+doctests, storage without defaults (13 executables), builds and snapshots.
+Six gallery deployment profiles pass in 62.43 s. Public runtime, volume, reset
+and interrupted-copy-back tests pass. PR39 also passes ARM64 worker job 535.
+
+Review: [library foundation #41](https://github.com/Cutuy/doramcap/pull/41),
+then application cutover.
+
+Complete feature versus starting main `d105d65`:
+
+| Category | LOC delta |
+| --- | ---: |
+| Production Rust | −694 |
+| Production TypeScript | −43 |
+| Protobuf schema code | −21 |
+| Production total | **−758** |
+| Tests/tooling | +3,510 |
+| Deployment/build configuration | −181 |
+| Documentation | −666 |
+
+Production excludes tests/examples, build tooling, generated/vendor code, comments
+and blanks. Other categories count nonblank lines; inherited edits are excluded.
 
 **Work items**
 
-- [ ] Integrate CPU Viewer, MCAP Recorder, Fault Demo and Watchdog variants as
+- [x] Integrate CPU Viewer, MCAP Recorder, Fault Demo and Watchdog variants as
   ordinary app inputs. Preserve embedded recording, controls, viewers and results.
-- [ ] Remove stale deployment/runtime paths and align code docs and diagrams.
-- [ ] Reserve the actual daemon before mounts/startup. Hold exclusive controller
+- [x] Remove stale deployment/runtime paths and align code docs and diagrams.
+- [x] Reserve the actual daemon before mounts/startup. Hold exclusive controller
   ownership through cleanup and execution; use the stable repository project.
   Remove the disabled-Dora branch.
-- [ ] Run shared-Dora/reset scenarios through the local test launcher;
+- [x] Run shared-Dora/reset scenarios through the local test launcher;
   preserve failed-run outputs and volumes.
 
 **Validation**
 
-- [ ] All six gallery registrations pass live data, controls, downloads, finalized
+- [x] All six gallery registrations pass live data, controls, downloads, finalized
   MCAP/OTLP outputs, join/idle-stop/restart and leak-free failed startup.
-- [ ] Production LOC is **strictly below current main** with identical counting:
+- [x] Production LOC is **strictly below current main** with identical counting:
   exclude tests, generated/vendor code, docs, blanks and comments; count every
   shipped helper. Moving/compressing code or deleting tests cannot satisfy this.
-- [ ] Report production, tests, deployment/configuration and docs separately;
+- [x] Report production, tests, deployment/configuration and docs separately;
   exclude unrelated inherited work.
-- [ ] Run final public workflow tests and full local CI from `AGENTS.md`, including
+- [x] Run final public workflow tests and full local CI from `AGENTS.md`, including
   affected Rustdoc. ARM64 is deferred.
-- [ ] Commit/rebase onto current main; preserve inherited edits and account for the goal branch.
+- [x] Commit/rebase onto current main; preserve inherited edits and account for the goal branch.
 
 ## M5 — Generated Compose contracts
 
@@ -194,21 +213,3 @@ and Console runs.
 - [x] Retest normal copy-back, volume policies, sequential Console and gallery runs.
 - [x] Show production LOC reduction; run focused checks first and full local CI on
   final source. ARM64 deferred.
-
-## M7 — Independent library and app PRs
-
-**Work items**
-
-- [x] Introduce the shared runtime under `workflows::shared` while gallery callers keep the existing runner.
-- [ ] Migrate app registrations, Compose files, graphs and callers; delete old runner code/schema/tests.
-
-**Validation**
-
-- [x] Both runners pass standalone Rust and native lifecycle tests without input overlays.
-- [ ] The app cutover restores the tested complete target and retains production LOC reduction.
-
-Evidence (2026-10-31): both feature modes pass 74 library, 37 gallery, 3 contract
-and 4 worker tests, including shared admission before side effects. Legacy direct
-and parallel lifecycles pass; the shared runtime passes five outcomes and launcher
-kills at three boundaries. Full local CI passes: 86 executables in each feature mode, storage without
-defaults (13 executables), Clippy, formatting, boundaries, builds and snapshots.

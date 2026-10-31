@@ -52,8 +52,8 @@ fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
     );
 }
 
-fn runtime() -> crate::workflows::shared::dora::DoraRuntime {
-    crate::workflows::shared::dora::DoraRuntime {
+fn runtime() -> crate::workflows::dora::DoraRuntime {
+    crate::workflows::dora::DoraRuntime {
         image: "dora:test".into(),
         coordinator_port: 54001,
         daemon_port: 54002,
@@ -74,7 +74,7 @@ fn coordinator_mounts_the_frozen_graph_beside_writable_session_output() {
     settings.graph = "/private/evidence/graph.yml".into();
 
     // Act
-    let services = crate::workflows::shared::dora::services(&settings);
+    let services = crate::workflows::dora::services(&settings);
     let coordinator = &services["dora-coordinator"];
 
     // Assert
@@ -256,8 +256,8 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
 #[test]
 fn graph_bindings_require_matching_services_and_host_networking() {
     // Arrange
-    let graph = crate::workflows::shared::shared_dora::graph(
-        &crate::workflows::shared::dora::DoraRuntime {
+    let graph = crate::workflows::shared_dora::graph(
+        &crate::workflows::dora::DoraRuntime {
             graph: "/flow.yml".into(),
             ..runtime()
         },

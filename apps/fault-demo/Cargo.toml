@@ -23,3 +23,7 @@ path = "src/bin/source.rs"
 [[bin]]
 name = "fault-demo-dashboard"
 path = "src/bin/dashboard.rs"
+
+[[bin]]
+name = "fault-demo-controls"
+path = "src/bin/controls.rs"

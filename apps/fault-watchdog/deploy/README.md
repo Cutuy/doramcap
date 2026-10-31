@@ -1,26 +1,8 @@
-# Fault Watchdog wrapper
+# Fault Watchdog deployment
 
-Runs an independent watchdog, synthetic reporters and the Fault Demo dashboard.
-Each generation retains `state.json`; container diagnostics remain private.
+Fault Watchdog runs reporters and a dashboard. MCAP and OTLP variants provide
+additional outputs through their matching Compose and registration files.
+Build the same four native binaries as Fault Demo. The gallery starts shared Dora
+before these app services; the MCAP writer keeps `seccomp=unconfined`.
 
-Stage the binaries and files as in the [Fault Demo wrapper](../../fault-demo/deploy/README.md),
-using this directory's `flow.yml` and `Dockerfile`. Tag the image
-`doramcap/fault-watchdog:local` and enable `--enable-app fault-watchdog`.
-
-For MCAP, build with `--features mcap`, stage `watchdog-mcap.pbtxt` as
-`watchdog.pbtxt`, and use `compose.mcap.yaml` and `registration.mcap.pbtxt`.
-The MCAP profile uses `seccomp=unconfined` for io_uring and rotates at 16 MiB.
-
-For OTLP, build with `--features otel`, configure a container-reachable collector
-URL in a private copy of `watchdog-otel.pbtxt`, and use `compose.otel.yaml` and
-`registration.otel.pbtxt`. Tag the images `:mcap` or `:otel`, respectively. Install
-one trusted registration as `registration.pbtxt` before starting the manager.
-
-Compose runs foreground Dora coordinator/daemon services. The registration declares
-node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.
-
-Port `8088` is private to this project's Docker network. The dashboard's
-`FAULT_DEMO_LISTEN` in `flow.yml`, the registration's `port` and its loopback
-readiness/snapshot URLs must agree. The daemon shares the coordinator's network
-namespace; the gallery proxies to that container IP. No host port is published,
-so independent apps can reuse the same internal port.
+[Shared lifecycle and test results](../../../libs/workload-docker/docs/102926-shared-dora-experiment.md).

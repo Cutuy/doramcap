@@ -6,22 +6,32 @@ use axum::{
     response::Html,
     routing::{get, post},
 };
-use dora_node_api::{Event, futures::StreamExt};
+use dora_node_api::{Event, StopCause, futures::StreamExt};
 use eyre::Result;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 struct App {
     view: Arc<Mutex<fault_demo::Display>>,
-    commands: tokio::sync::mpsc::Sender<Vec<u8>>,
+    controls: Arc<tokio::net::UnixDatagram>,
+    control_path: std::path::PathBuf,
 }
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<()> {
-    let (mut node, mut events) = dora_app::environment::connect()?;
-    let (commands, mut receiver) = tokio::sync::mpsc::channel::<Vec<u8>>(16);
+    let mut args = std::env::args().skip(1);
+    let state_file = args.next().unwrap_or_else(|| "state.json".into());
+    let control_path = args
+        .next()
+        .unwrap_or_else(|| "/tmp/fault-demo-controls.sock".into())
+        .into();
+    let (_node, mut events) = dora_app::environment::connect()?;
+    if args.next().is_some() {
+        eyre::bail!("unexpected argument");
+    }
     let state = App {
         view: Default::default(),
-        commands,
+        controls: Arc::new(tokio::net::UnixDatagram::unbound()?),
+        control_path,
     };
     let view = state.view.clone();
     let router = Router::new()
@@ -46,12 +56,15 @@ async fn main() -> Result<()> {
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
-            event=events.next()=>match event{Some(Event::Input{data,..})=>{if let Ok(bytes)=<&[u8]>::try_from(&data){match fault_protocol::decode_aggregation(bytes,Default::default()){Ok(frame)=>view.lock().unwrap().apply(frame),Err(e)=>eprintln!("invalid publication: {e}")}}},Some(Event::Stop(_))|None=>break,_=>{}},
-            Some(bytes)=receiver.recv()=>{node.send_output_raw("controls".into(),Default::default(),bytes.len(),|b|b.copy_from_slice(&bytes))?;},
+            event=events.next()=>match event{Some(Event::Input{data,..})=>{if let Ok(bytes)=<&[u8]>::try_from(&data){match fault_protocol::decode_aggregation(bytes,Default::default()){Ok(frame)=>view.lock().unwrap().apply(frame),Err(e)=>eprintln!("invalid publication: {e}")}}},Some(Event::InputClosed{..})|Some(Event::Stop(StopCause::AllInputsClosed))=>{},Some(Event::Stop(_))|None=>break,_=>{}},
             _=&mut shutdown=>break,
         }
     }
     server.abort();
+    std::fs::write(
+        state_file,
+        serde_json::to_vec(&view.lock().unwrap().json())?,
+    )?;
     Ok(())
 }
 async fn control(State(app): State<App>, Json(value): Json<Value>) -> StatusCode {
@@ -63,7 +76,7 @@ async fn control(State(app): State<App>, Json(value): Json<Value>) -> StatusCode
         return StatusCode::BAD_REQUEST;
     }
     let bytes = serde_json::to_vec(&serde_json::json!({"source":source,"mode":mode})).unwrap();
-    if app.commands.try_send(bytes).is_ok() {
+    if app.controls.try_send_to(&bytes, &app.control_path).is_ok() {
         app.view.lock().unwrap().command(source, mode);
         StatusCode::ACCEPTED
     } else {

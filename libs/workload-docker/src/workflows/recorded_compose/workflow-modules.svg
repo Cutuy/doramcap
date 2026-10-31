@@ -21,7 +21,7 @@
   <text x="40" y="86" class="body">libs/workload-docker/src/</text>
 
   <rect x="40" y="140" width="580" height="950" rx="16" fill="#edf4ff" stroke="#afc9eb" stroke-width="2"/>
-  <text x="65" y="182" class="heading">shared/recorded_compose/</text>
+  <text x="65" y="182" class="heading">workflows/recorded_compose/</text>
   <text x="65" y="213" class="body">Experiment sequence and policy</text>
 
   <rect x="65" y="245" width="530" height="100" rx="10" class="card"/>

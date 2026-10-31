@@ -11,30 +11,33 @@ use std::collections::HashMap;
 pub(crate) struct ExperimentResources<'a> {
     pub(super) adapter: &'a DockerAdapter,
     pub(super) scope: &'a str,
-    pub(super) owner: Option<&'a str>,
+    pub(super) owner: &'a str,
 }
 impl ExperimentResources<'_> {
     /// Stop and verify every writer; foreign reservations or Engine failures abort reset.
     pub(crate) async fn quiesce(&self, seconds: u64) -> Result<()> {
-        if let Some(owner) = self.owner {
-            match self.adapter.docker.inspect_container(owner, None).await {
-                Ok(ref container)
-                    if container
-                        .config
-                        .as_ref()
-                        .and_then(|c| c.labels.as_ref())
-                        .and_then(|labels| labels.get(CONTROLLER_LABEL))
-                        .map(String::as_str)
-                        != Some(self.scope) =>
-                {
-                    return Err(invalid(
-                        "repository experiment reservation belongs to another controller",
-                    ));
-                }
-                Ok(_) => {}
-                Err(e) if absent(&e) => {}
-                Err(e) => return Err(engine("inspect experiment reservation", e)),
+        match self
+            .adapter
+            .docker
+            .inspect_container(self.owner, None)
+            .await
+        {
+            Ok(ref container)
+                if container
+                    .config
+                    .as_ref()
+                    .and_then(|c| c.labels.as_ref())
+                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                    .map(String::as_str)
+                    != Some(self.scope) =>
+            {
+                return Err(invalid(
+                    "repository experiment reservation belongs to another controller",
+                ));
             }
+            Ok(_) => {}
+            Err(e) if absent(&e) => {}
+            Err(e) => return Err(engine("inspect experiment reservation", e)),
         }
         for container in self.containers().await? {
             match self

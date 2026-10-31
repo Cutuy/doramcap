@@ -1,19 +1,57 @@
+x-runtime: &runtime
+  type: bind
+  source: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+  target: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+x-results: &results
+  type: bind
+  source: ${FAULT_DEMO_RESULTS_DIR:?}
+  target: /results
+x-node: &node
+  image: doramcap/fault-demo:local
+  user: ${FAULT_DEMO_UID:?}:${FAULT_DEMO_GID:?}
+  network_mode: host
+  working_dir: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+  ulimits:
+    memlock: {soft: 268435456, hard: 268435456}
+  volumes: [*runtime, *results]
 services:
-  coordinator:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: coordinator
-    image: doramcap/fault-demo:local
-    user: ${FAULT_DEMO_UID:?}:${FAULT_DEMO_GID:?}
-  dashboard:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: daemon
-    image: doramcap/fault-demo:local
-    user: ${FAULT_DEMO_UID:?}:${FAULT_DEMO_GID:?}
-    security_opt:
-    - no-new-privileges:true
+  controls:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/controls.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/controls.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {source-a: {condition: service_healthy}, source-b: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/fault-demo-controls]
+    command: ["controls.sock"]
+  source-a:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-a.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-a.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {watchdog: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/fault-demo-source]
+    command: ["a"]
+  source-b:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-b.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/source-b.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {watchdog: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/fault-demo-source]
+    command: ["b"]
+  watchdog:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/watchdog.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/watchdog.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {dashboard: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/fault-watchdog]
+    command: ["/opt/fault-demo/watchdog.pbtxt"]
     volumes:
-    - type: bind
-      source: ${FAULT_DEMO_RESULTS_DIR:?}
-      target: /results
+      - *runtime
+      - *results
+      - {type: bind, source: ../../fault-watchdog/config/default.pbtxt, target: /opt/fault-demo/watchdog.pbtxt, read_only: true}
+  dashboard:
+    <<: *node
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/dashboard.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    entrypoint: [/usr/local/bin/fault-demo-dashboard]
+    command: ["/results/state.json", "controls.sock"]
+    environment:
+      DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/dashboard.ready"
+      FAULT_DEMO_LISTEN: 127.0.0.1:8088

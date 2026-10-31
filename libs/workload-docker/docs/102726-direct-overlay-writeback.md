@@ -16,12 +16,10 @@ attributes use rsync archive mode. Advanced metadata fidelity is explicitly
 unqualified and does not itself fail a run. Unsupported filesystem semantics fail
 loudly before lower mutation. No custom metadata reconstruction is required.
 
-Current implementation/research: [backend design](102726-overlay-writeback.md).
-The default write-back path now uses this implementation. Retain mode continues to
-stage a full merged view.
-This revision supersedes the earlier merged-view inspection and hardlink-reconstruction plan.
+Default write-back uses this implementation. `Discard` deletes upper data.
+[Pre-run reset](102926-shared-dora-experiment.md) discards stale uppers after an interruption.
 
-## Proposed flow
+## Write-back flow
 
 1. Stop and verify all writers; keep original host sources stable through finalization.
 2. Strictly unmount all owned overlays and verify absence.
@@ -29,7 +27,7 @@ This revision supersedes the earlier merged-view inspection and hardlink-reconst
    Use targeted lower lookups for existing object types, path safety and hardlink checks.
 4. Apply deletions/type replacements, create directories, and rsync selected ordinary
    upper entries directly to their original host paths.
-5. Record disposition; admit the next run only after successful application and cleanup.
+5. Record disposition and cleanup. The next run resets any interrupted state.
 
 Upper/work remain accessible after unmount. Runtime merge planning does not inspect
 the merged view, enumerate lower to discover changes, or read/hash file payloads.
@@ -99,13 +97,12 @@ list; do not introduce entry/depth/time cutoffs. Warning previews remain bounded
 - Cooperative/exclusive source access remains required. Metadata checks cannot
   detect every content edit or eliminate races with external writers.
 - Apply is non-atomic. Errors/cancellation preserve upper, action records and logs,
-  mark disposition incomplete, and block the next run. No automatic retry/resume.
+  mark disposition incomplete. Pre-run reset discards the remaining upper.
 - Preserved upper contains changed payloads; it cannot restore already deleted
   lower-only files. Old upper/work must not be remounted over the modified lower.
 - Metadata observation stays separate, with host-bind/container-layer/volume categories.
   Optional future streaming consumers do not become application prerequisites.
-- Current retain mode still materializes a full independent view; changing its
-  lifetime/storage model is outside this MVP. Reclamation remains explicit.
+- Full-tree retained output was replaced with discard in the shared-Dora workflow.
 
 ## M1 — Validate upper and build a small action list
 
@@ -166,7 +163,7 @@ untouched files; staging is empty. Invocation uses `-aS --numeric-ids --super
 
 - [x] Wire direct apply into existing finalization with no new customer configuration.
 - [x] Update demo/docs with upper-driven phases, metadata coverage and unsupported cases.
-- [x] Preserve current retain behavior and separate filesystem-diff categories.
+- [x] Preserve separate filesystem-diff categories; shared-Dora replaces retain with discard.
 
 ### Validation
 

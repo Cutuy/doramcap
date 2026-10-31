@@ -26,16 +26,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .type_attribute(".doramcap.compose.v1.ComposeProject", "#[serde(deny_unknown_fields)]")
         .file_descriptor_set_path(out.join("workflow_config.bin"))
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
-        .type_attribute(".doramcap.system_apps.v1", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(default, deny_unknown_fields)]")
         .type_attribute(".doramcap.dora.v1", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(default, deny_unknown_fields)]")
         .compile_protos(
-            &["proto/filesystem.proto", "proto/dora.proto", "proto/compose.proto", "proto/compose_runtime.proto", "proto/system_apps.proto"],
+            &["proto/filesystem.proto", "proto/dora.proto", "proto/compose.proto", "proto/compose_runtime.proto"],
             &["proto"],
         )?;
     println!("cargo:rerun-if-changed=proto/compose.proto");
     println!("cargo:rerun-if-changed=proto/compose_runtime.proto");
     println!("cargo:rerun-if-changed=proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/dora.proto");
-    println!("cargo:rerun-if-changed=proto/system_apps.proto");
     Ok(())
 }
