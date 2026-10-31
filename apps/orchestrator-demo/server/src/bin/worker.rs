@@ -11,7 +11,7 @@ use tokio::{
     net::UnixStream,
     sync::{mpsc, watch},
 };
-use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
+use workload_docker::workflows::recorded_compose::Recording;
 use workload_docker::{
     compose::{
         ComposeProject, DockerAdapter,
@@ -47,9 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut index = 0;
     let docker_socket = std::env::var("ORCHESTRATOR_DOCKER_SOCKET")
         .unwrap_or_else(|_| "/var/run/docker.sock".into());
-    let monitor = CpuMonitor {
-        image: args[2].clone(),
-    };
+    let monitor = args[2].clone();
     let run_prefix = std::env::var("ORCHESTRATOR_RUN_PREFIX").ok();
     let private_telemetry =
         std::env::var_os("ORCHESTRATOR_PRIVATE_TELEMETRY").is_some_and(|value| value == "1");
@@ -185,7 +183,7 @@ fn session_id(
 /// Fixed fixture only: browser requests cannot choose commands, mounts or files.
 async fn recorded_demo(
     runner: &mut ComposeRunner,
-    monitor: &CpuMonitor,
+    monitor: &str,
     root: &Path,
     session: &str,
     inject: bool,
@@ -202,9 +200,33 @@ async fn recorded_demo(
     tokio::fs::write(host.join("settings.txt"), b"before run\n").await?;
     tokio::fs::write(host.join("obsolete.txt"), b"delete during run\n").await?;
     let command = "printf 'host output\n' > /workspace/result.txt; printf 'after run\n' > /workspace/settings.txt; /bin/rm /workspace/obsolete.txt; printf 'container output\n' > /container-result.txt; printf changed > /seed-mod; /bin/rm /seed-delete; printf 'volume output\n' > /results/result.txt; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done";
-    let fixture = json!({"services":{"writer":{"image":monitor.image,"entrypoint":["/bin/sh","-c"],"command":[command],"volumes":[format!("{}:/workspace",host.display()),"results:/results"],"healthcheck":{"test":["CMD",if inject {"/bin/false"} else {"/bin/true"}],"interval":"100ms","timeout":"1s","retries":1}}},"volumes":{"results":{}}});
+    let fixture = json!({"services":{"writer":{"image":monitor,"entrypoint":["/bin/sh","-c"],"command":[command],"volumes":[format!("{}:/workspace",host.display()),"results:/results"],"healthcheck":{"test":["CMD",if inject {"/bin/false"} else {"/bin/true"}],"interval":"100ms","timeout":"1s","retries":1}}},"volumes":{"results":{}}});
     let file = workspace.join("compose.json");
     tokio::fs::write(&file, serde_json::to_vec_pretty(&fixture)?).await?;
+    let monitor_file = workspace.join("monitor.yaml");
+    tokio::fs::write(
+        &monitor_file,
+        include_bytes!("../../../../system-monitor/deploy/recording.yaml"),
+    )
+    .await?;
+    let artifacts = root.join(session);
+    let collector = ComposeProject {
+        key: "monitor".into(),
+        directory: workspace.clone(),
+        files: vec![monitor_file],
+        env_files: vec![],
+        environment: BTreeMap::from([
+            ("DORAMCAP_MONITOR_IMAGE".into(), monitor.into()),
+            (
+                "DORAMCAP_ARTIFACTS".into(),
+                artifacts.to_string_lossy().into_owned(),
+            ),
+        ]),
+        profiles: vec![],
+        services: vec![],
+        completed_services: vec![],
+        remove_volumes: true,
+    };
     Ok(runner
         .run(
             ComposeRun {
@@ -224,11 +246,12 @@ async fn recorded_demo(
                     completed_services: vec![],
                     remove_volumes: true,
                 }],
-                first_party: vec![],
-                system_apps: SystemAppsConfig {
-                    cpu_monitor: Some(monitor.clone()),
-                    ..Default::default()
-                },
+                first_party: vec![collector],
+                dora: Default::default(),
+                recordings: vec![Recording {
+                    stream: artifacts.join("cpu.pb"),
+                    recording: artifacts.join("cpu.mcap"),
+                }],
                 readiness_seconds: 10,
                 stop_seconds: 5,
             },

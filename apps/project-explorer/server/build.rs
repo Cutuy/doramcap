@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.recovery.v1.RecoveryProject",
             "::workload_docker::workflows::recovery::RecoveryProject",
         )
-        .extern_path(".doramcap.system_apps.v1", "::workload_docker::workflows::system_apps")
+        .extern_path(".doramcap.dora.v1", "::workload_docker::workflows::dora")
         // Serde is used only for existing private recovery checkpoints.
         .type_attribute(".doramcap.hosting.v1.ArtifactCollection", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]")
         .type_attribute(".doramcap.hosting.v1.ResultFormat", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(rename_all = \"snake_case\")]")
@@ -18,6 +18,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     println!("cargo:rerun-if-changed=proto/registration.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/recovery.proto");
-    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/system_apps.proto");
+    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/dora.proto");
     Ok(())
 }

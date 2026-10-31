@@ -71,29 +71,26 @@ pub async fn run(
             project.environment.insert(app.environment_key("DOCKER_SOCKET"), path.to_str().ok_or("Docker socket path is not UTF-8")?.into());
             project.environment.insert(app.environment_key("DOCKER_GID"), metadata.gid().to_string());
         }
-        let mut system_apps = app.system_apps.clone().unwrap_or_default();
-        for flow in &mut system_apps.dora_flows { flow.results_directory = results.to_str().ok_or("results path is not UTF-8")?.into(); }
+        let dora = app.resolve_dora(uid, gid)?;
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
-            filesystem: None, system_apps, recovery_anchor_dir: None,
-            projects: vec![project], first_party: vec![],
+            filesystem: None, dora, recordings:vec![], recovery_anchor_dir: None,
+            projects: vec![], first_party: vec![project],
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
         let (started, receiver) = oneshot::channel();
         let (cancel, cancelled) = oneshot::channel::<()>();
-        let completion = runner.run_with_ready(spec, async {
+        let mut completion = Box::pin(runner.run_with_ready(spec, async {
             tokio::select! { _ = stop => {}, _ = cancelled => {} }
-        }, |_: &orchestrator::Event| {}, Some(started));
-        tokio::pin!(completion);
+        }, |_: &orchestrator::Event| {}, Some(started)));
         let endpoint_error = tokio::select! {
             result = &mut completion => return result.map_err(|e| e.to_string()),
             plans = receiver => {
                 match plans {
-                    Ok(plans) => {
-                        let endpoint = match (app.port, plans.iter().find(|plan| plan.key == app.id)) {
-                            (Some(port), Some(plan)) => adapter.endpoint(plan, &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
-                            (None, _) => Ok(None),
-                            _ => Err("ready workflow has no app project".into()),
+                    Ok(plan) => {
+                        let endpoint = match app.port {
+                            Some(port) => adapter.endpoint(&plan, &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
+                            None => Ok(None),
                         };
                         match endpoint {
                             Ok(endpoint) => ready.send(endpoint).err().map(|_| "readiness receiver dropped".to_owned()),
@@ -112,6 +109,11 @@ pub async fn run(
     }.await;
     match result {
         Ok(outcome) => {
+            if !outcome.recording_finalized {
+                report
+                    .errors
+                    .push("recording did not complete cleanly".into());
+            }
             report.quiesced = outcome.writers_stopped;
             report.cleanup_verified = outcome.boundary_clean;
             report.changes = outcome.filesystem_changes;
@@ -119,8 +121,8 @@ pub async fn run(
             report.errors.extend(
                 outcome
                     .cleanup
+                    .diagnostics
                     .iter()
-                    .flat_map(|cleanup| &cleanup.diagnostics)
                     .map(|d| format!("{}: {}", d.operation, d.message)),
             );
             report.errors.extend(
@@ -185,21 +187,12 @@ pub async fn recover(
     if app.nested_runs && read("nested-policy.json")? != serde_json::json!(app.nested_projects) {
         return Err("nested project policy changed".into());
     }
-    // Older generations stored Docker metadata directly beside app policy.
-    let docker = if metadata
-        .join("docker")
-        .try_exists()
-        .map_err(|e| e.to_string())?
-    {
-        metadata.join("docker")
-    } else {
-        metadata
-    };
+    let docker = metadata.join("docker");
     let mut report = recover_project(
         adapter.clone(),
         &docker,
         &format!("gal-{generation:032x}"),
-        &app.id,
+        "experiment",
         false,
         app.stop_seconds,
     )
@@ -220,7 +213,7 @@ async fn finish(
             &adapter,
             directory,
             &format!("gal-{generation:032x}"),
-            &app.nested_projects,
+            &app.nested_projects[0],
             app.stop_seconds,
             report,
         )
@@ -676,7 +669,7 @@ async fn stop_and_verify_nested(
     adapter: &Rc<DockerAdapter>,
     generation: &Path,
     run: &str,
-    policy: &[NestedProject],
+    policy: &NestedProject,
     stop_seconds: u64,
     report: &mut StopReport,
 ) {
@@ -715,7 +708,7 @@ async fn reconcile_nested(
     adapter: Rc<DockerAdapter>,
     generation: &Path,
     parent_run: &str,
-    policy: &[NestedProject],
+    policy: &NestedProject,
     stop_seconds: u64,
     preserve_only: bool,
 ) -> Result<(), String> {

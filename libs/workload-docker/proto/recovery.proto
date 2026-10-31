@@ -1,7 +1,7 @@
 syntax = "proto3";
 package doramcap.recovery.v1;
 
-// Frozen child-project policy. Repeated entries specify shutdown order.
+// Frozen ownership policy for one child experiment project.
 message RecoveryProject {
   string key = 1;
   bool remove_volumes = 2;

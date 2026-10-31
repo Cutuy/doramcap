@@ -224,8 +224,8 @@ impl DockerAdapter {
         validate_name(&input.run)?;
         validate_name(&input.project.key)?;
         let project = &input.project;
-        tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key);
+        let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
+        let name = project_name(&input.run, &project.key, &artifacts);
         let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
@@ -265,7 +265,7 @@ impl DockerAdapter {
         let mut model = normalized.model;
         let project = &input.project;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key);
+        let name = project_name(&input.run, &project.key, &artifacts);
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
@@ -715,6 +715,31 @@ impl DockerAdapter {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
+    }
+
+    /// Create the named IPC owner without starting it, before workload side effects.
+    /// Native Compose creates its pinned configuration; Docker rejects another
+    /// experiment claiming the same directory-derived container name.
+    pub(crate) async fn reserve(
+        &self,
+        plan: &ResolvedComposeProject,
+        service: &str,
+        seconds: u64,
+    ) -> Result<()> {
+        self.verify_manifest(plan).await?;
+        let mut args = Self::args(plan);
+        args.extend(
+            [
+                "create",
+                "--no-build",
+                "--pull",
+                "never",
+                "--no-recreate",
+                service,
+            ]
+            .map(str::to_owned),
+        );
+        self.project_command(plan, args, seconds).await
     }
 
     async fn project_command(
@@ -1316,9 +1341,25 @@ async fn save_stopped_inspection(
     }
     Err(invalid("too many stopped inspection attempts"))
 }
-/// Internal Compose identity for one run and project key.
-pub(crate) fn project_name(run: &str, key: &str) -> String {
-    format!("dc-{run}-{key}")
+/// Internal identity scoped to the canonical private run directory.
+pub(crate) fn project_name(run: &str, key: &str, artifacts: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    format!(
+        "dc-{run}-{}-{key}",
+        &digest(artifacts.as_os_str().as_bytes())[..16]
+    )
+}
+/// Stable Docker ownership name shared by runs under one canonical output parent.
+pub(crate) fn directory_owner(artifacts: &Path) -> Result<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let parent = artifacts
+        .parent()
+        .ok_or_else(|| invalid("artifact directory has no parent"))?;
+    let parent = std::fs::canonicalize(parent)?;
+    Ok(format!(
+        "doramcap-dir-{}",
+        digest(parent.as_os_str().as_bytes())
+    ))
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -1364,7 +1405,7 @@ pub(crate) mod tests {
         let project = discovery_project(root.path());
         for run in ["review-a", "review-b"] {
             // Act
-            let name = project_name(run, &project.key);
+            let name = project_name(run, &project.key, root.path());
             let (_, args, _) = config_arguments(&project, &name).await.unwrap();
             // Assert
             let names: Vec<_> = args

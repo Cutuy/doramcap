@@ -19,11 +19,16 @@ pub(super) struct EventCapture {
     task: tokio::task::JoinHandle<Result<()>>,
 }
 impl EventCapture {
-    pub fn start(docker: bollard::Docker, run: String, path: std::path::PathBuf) -> Self {
+    pub fn start(
+        docker: bollard::Docker,
+        run: String,
+        project: String,
+        path: std::path::PathBuf,
+    ) -> Self {
         let (finish, finished) = watch::channel(false);
         let (fault_tx, fault) = watch::channel(None);
         let task = tokio::spawn(async move {
-            let result = record_events(docker, run, &path, finished).await;
+            let result = record_events(docker, run, project, &path, finished).await;
             if let Err(error) = &result {
                 let _ = fault_tx.send(Some(error.to_string()));
             }
@@ -72,6 +77,7 @@ pub(super) async fn snapshot(root: &Path, phase: &str) -> Result<()> {
 async fn record_events(
     docker: bollard::Docker,
     run: String,
+    project: String,
     path: &Path,
     mut finish: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -90,7 +96,10 @@ async fn record_events(
         since: Some(since),
         filters: Some(HashMap::from([(
             "label".into(),
-            vec![format!("{RUN_LABEL}={run}")],
+            vec![
+                format!("{RUN_LABEL}={run}"),
+                format!("com.docker.compose.project={project}"),
+            ],
         )])),
         ..Default::default()
     }));

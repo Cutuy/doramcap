@@ -6,9 +6,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dora-app = { path = "../dora-app", default-features = false }
 workload-lifecycle = { path = "../workload-lifecycle" }
 orchestrator = { path = "../orchestrator" }
 prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+dora-core = { version = "=1.1.0", default-features = false }
 bollard = { version = "=0.21.1", default-features = false, features = ["http", "pipe"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

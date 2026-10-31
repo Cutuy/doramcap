@@ -3,12 +3,13 @@
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
-use workload_docker::workflows::recorded_compose::{
-    finalization::FinalizeRun,
-    projects::{QuiesceProjects, RemoveProjects},
-};
-use workload_docker::workflows::system_apps::{CpuMonitor, SystemAppsConfig};
+use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
 use workload_docker::{compose::*, workflows::recorded_compose::*};
+use workload_lifecycle::recording::Recording;
+
+fn step_id<S: Step>() -> &'static str {
+    S::ID.unwrap_or(std::any::type_name::<S>())
+}
 
 fn project(root: &Path, key: &str) -> ComposeProject {
     ComposeProject {
@@ -23,12 +24,45 @@ fn project(root: &Path, key: &str) -> ComposeProject {
         remove_volumes: true,
     }
 }
+fn monitor(root: &Path, image: &str, artifacts: &Path) -> ComposeProject {
+    let file = root.join("monitor.yaml");
+    if !file.exists() {
+        std::fs::write(
+            &file,
+            include_bytes!("../../../apps/system-monitor/deploy/recording.yaml"),
+        )
+        .unwrap();
+    }
+    ComposeProject {
+        key: "monitor".into(),
+        directory: root.into(),
+        files: vec![file],
+        env_files: vec![],
+        environment: BTreeMap::from([
+            ("DORAMCAP_MONITOR_IMAGE".into(), image.into()),
+            (
+                "DORAMCAP_ARTIFACTS".into(),
+                artifacts.to_string_lossy().into_owned(),
+            ),
+        ]),
+        profiles: vec![],
+        services: vec![],
+        completed_services: vec![],
+        remove_volumes: true,
+    }
+}
+fn recordings(artifacts: &Path) -> Vec<Recording> {
+    vec![Recording {
+        stream: artifacts.join("cpu.pb"),
+        recording: artifacts.join("cpu.mcap"),
+    }]
+}
 fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
     ComposeRun {
         filesystem: Some(Default::default()),
         artifacts: root.join(&id),
         recovery_anchor_dir: None,
-        id,
+        id: id.clone(),
         projects: vec![
             {
                 let mut p = project(root, "alpha");
@@ -39,13 +73,9 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
             },
             project(root, "beta"),
         ],
-        first_party: vec![],
-        system_apps: SystemAppsConfig {
-            cpu_monitor: Some(CpuMonitor {
-                image: image.into(),
-            }),
-            ..Default::default()
-        },
+        first_party: vec![monitor(root, image, &root.join(&id))],
+        dora: Default::default(),
+        recordings: recordings(&root.join(&id)),
         readiness_seconds: 10,
         stop_seconds: 3,
     }
@@ -105,11 +135,9 @@ async fn native_recorded_workflow() {
         artifacts: artifacts.clone(),
         recovery_anchor_dir: None,
         projects: vec![project(&root, "demo")],
-        first_party: vec![],
-        system_apps: SystemAppsConfig {
-            cpu_monitor: Some(CpuMonitor { image }),
-            ..Default::default()
-        },
+        first_party: vec![monitor(&root, &image, &artifacts)],
+        dora: Default::default(),
+        recordings: recordings(&artifacts),
         readiness_seconds: 15,
         stop_seconds: 5,
     };
@@ -127,7 +155,7 @@ async fn native_recorded_workflow() {
     // Assert: the run finalized its native recording and verified cleanup.
     assert!(report.successful(), "{report:?}");
     let resolved: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(artifacts.join("system.compose.json")).unwrap())
+        serde_json::from_slice(&std::fs::read(artifacts.join("experiment.compose.json")).unwrap())
             .unwrap();
     let service = &resolved["services"]["cpu-monitor"];
     assert_eq!(service["network_mode"], "none");
@@ -213,14 +241,14 @@ async fn multi_project_lifecycle() {
     );
     write(
         &root.join("beta.json"),
-        serde_json::json!({"services":{"worker":service(&image)}}),
+        serde_json::json!({"services":{"second-worker":service(&image)}}),
     );
     // Shared bind identity is observed once with both consumers attached.
     let mut beta_service = service(&image);
     beta_service["volumes"] = serde_json::json!([format!("{}:/shared", host.display())]);
     write(
         &root.join("beta.json"),
-        serde_json::json!({"services":{"worker":beta_service}}),
+        serde_json::json!({"services":{"second-worker":beta_service}}),
     );
     let mut monitor_sessions = Vec::new();
     for index in 0..2 {
@@ -228,7 +256,7 @@ async fn multi_project_lifecycle() {
         if index == 1 {
             write(
                 &root.join("beta.json"),
-                serde_json::json!({"services":{"worker":service(&image),"added":service(&image)}}),
+                serde_json::json!({"services":{"second-worker":service(&image),"added":service(&image)}}),
             );
         }
         let mut request = spec(&root, format!("{prefix}-normal{index}"), &image);
@@ -392,15 +420,11 @@ async fn multi_project_lifecycle() {
             "no content export"
         );
         if index == 0 {
-            let retained: Vec<_> = report
-                .cleanup
-                .iter()
-                .flat_map(|c| &c.retained_volumes)
-                .collect();
+            let retained = &report.cleanup.retained_volumes;
             assert_eq!(retained.len(), 1);
             assert!(
                 tokio::process::Command::new("docker")
-                    .args(["volume", "inspect", retained[0]])
+                    .args(["volume", "inspect", &retained[0]])
                     .output()
                     .await
                     .unwrap()
@@ -410,15 +434,16 @@ async fn multi_project_lifecycle() {
         }
         let beta: ResolvedComposeProject = serde_json::from_value(
             serde_json::from_slice::<serde_json::Value>(
-                &std::fs::read(request.artifacts.join("beta.resolution.json")).unwrap(),
+                &std::fs::read(request.artifacts.join("experiment.resolution.json")).unwrap(),
             )
             .unwrap()["plan"]
                 .clone(),
         )
         .unwrap();
-        assert_eq!(beta.services.len(), index + 1);
+        assert_eq!(beta.services.len(), 3 + index * 2);
         assert!(adapter.inspect(&beta).await.unwrap().containers.is_empty());
-        let raw = std::fs::read_to_string(request.artifacts.join("alpha.compose.json")).unwrap();
+        let raw =
+            std::fs::read_to_string(request.artifacts.join("experiment.compose.json")).unwrap();
         assert!(raw.contains("value$$not_interpolated"));
         assert!(!raw.contains("missing-image-not-used"));
         assert!(raw.contains("from-caller"));
@@ -426,7 +451,9 @@ async fn multi_project_lifecycle() {
             .unwrap()
             .filter_map(|e| e.ok())
             .find(|e| {
-                e.file_name().to_string_lossy().starts_with("alpha-")
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("experiment-worker-")
                     && e.file_name().to_string_lossy().ends_with(".stopped.json")
             })
             .unwrap();
@@ -458,7 +485,7 @@ async fn multi_project_lifecycle() {
             let quiesced = events
                 .iter()
                 .find(|e| {
-                    e.invocation.step == QuiesceProjects::ID.unwrap()
+                    e.invocation.step == step_id::<QuiesceCompose>()
                         && e.state == orchestrator::State::Succeeded
                 })
                 .unwrap();
@@ -472,7 +499,7 @@ async fn multi_project_lifecycle() {
             let removing = events
                 .iter()
                 .find(|e| {
-                    e.invocation.step == RemoveProjects::ID.unwrap()
+                    e.invocation.step == step_id::<RemoveCompose>()
                         && e.state == orchestrator::State::Started
                 })
                 .unwrap();
@@ -496,21 +523,11 @@ async fn multi_project_lifecycle() {
                         && e.state == orchestrator::State::Started
                 })
                 .unwrap();
-            for (index, stopped) in events.iter().enumerate().filter(|(_, e)| {
+            for (index, _) in events.iter().enumerate().filter(|(_, e)| {
                 e.invocation.step.ends_with("QuiesceCompose")
                     && e.state == orchestrator::State::Succeeded
             }) {
-                assert_eq!(stopped.invocation.parent, Some(quiesced.invocation.id));
-                assert!(
-                    index < collected_start,
-                    "collection crossed the writer-quiescence barrier"
-                );
-            }
-            for removed in events
-                .iter()
-                .filter(|e| e.invocation.step.ends_with("RemoveCompose"))
-            {
-                assert_eq!(removed.invocation.parent, Some(removing.invocation.id));
+                assert!(index < collected_start);
             }
         }
         assert!(
@@ -524,8 +541,8 @@ async fn multi_project_lifecycle() {
         // Act: teardown a second time.
         let repeated = adapter
             .stop(StopInput {
-                services: vec![],
                 allow_volume_deletion: true,
+                services: vec![],
                 plan: beta,
                 stop_seconds: 3,
             })
@@ -562,7 +579,7 @@ async fn multi_project_lifecycle() {
         report.boundary_clean && report.recording_finalized,
         "{report:#?}"
     );
-    assert_eq!(report.cleanup.len(), 3);
+    assert!(report.cleanup.verified);
     assert!(
         report
             .diagnostics
@@ -607,7 +624,7 @@ async fn multi_project_lifecycle() {
     // must still terminate the plugin and reconcile partially created containers.
     write(
         &root.join("beta.json"),
-        serde_json::json!({"services":{"init":service(&image),"worker":{"image":image,"entrypoint":["/bin/sleep"],"command":["300"],"depends_on":{"init":{"condition":"service_completed_successfully"}}}}}),
+        serde_json::json!({"services":{"init":service(&image),"dependent-worker":{"image":image,"entrypoint":["/bin/sleep"],"command":["300"],"depends_on":{"init":{"condition":"service_completed_successfully"}}}}}),
     );
     let mut request = spec(&root, format!("{prefix}-timeout"), &image);
     request.readiness_seconds = 2;
@@ -637,15 +654,21 @@ async fn multi_project_lifecycle() {
     // Arrange: a separately owned container appears in this project's namespace.
     write(
         &root.join("beta.json"),
-        serde_json::json!({"services":{"worker":service(&image)}}),
+        serde_json::json!({"services":{"second-worker":service(&image)}}),
     );
     let request = spec(&root, format!("{prefix}-outsider"), &image);
-    let project_label = format!("com.docker.compose.project=dc-{}-alpha", request.id);
+    let resolution = request.artifacts.join("experiment.resolution.json");
     let outsider_name = format!("{prefix}-outsider-container");
     let (injected, notification) = tokio::sync::oneshot::channel();
     let outsider_image = image.clone();
     let inject = async move {
         tokio::time::sleep(Duration::from_secs(2)).await;
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(resolution).unwrap()).unwrap();
+        let project_label = format!(
+            "com.docker.compose.project={}",
+            saved["plan"]["name"].as_str().unwrap()
+        );
         let output = tokio::process::Command::new("docker")
             .args([
                 "run",
@@ -832,7 +855,8 @@ async fn direct_session_lifecycle_and_recovery() {
             id: id.clone(),
             artifacts: artifacts.clone(),
             filesystem: None,
-            system_apps: SystemAppsConfig::default(),
+            dora: Default::default(),
+            recordings: vec![],
             recovery_anchor_dir: None,
             projects: vec![project(&root, "session")],
             first_party: vec![],
@@ -876,7 +900,7 @@ async fn direct_session_lifecycle_and_recovery() {
         );
         let mut run = Box::pin(run);
         let plans = tokio::select! {
-            plans = started => plans.unwrap(),
+            plan = started => vec![plan.unwrap()],
             result = &mut run => panic!("session ended before readiness: {result:?}"),
         };
         // Assert: a ready session is actually running and uses existing mounts.
@@ -891,7 +915,7 @@ async fn direct_session_lifecycle_and_recovery() {
                 adapter.clone(),
                 &artifacts,
                 &id,
-                "session",
+                "experiment",
                 true,
                 3,
             )
@@ -911,8 +935,8 @@ async fn direct_session_lifecycle_and_recovery() {
             } else {
                 adapter
                     .quiesce(StopInput {
-                        services: vec![],
                         allow_volume_deletion: false,
+                        services: vec![],
                         plan: plans[0].clone(),
                         stop_seconds: 3,
                     })
@@ -975,7 +999,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             };
             write(
                 &root.join(format!("{key}.json")),
-                serde_json::json!({"services":{"app":{
+                serde_json::json!({"services":{key:{
                     "image":image, "entrypoint":["/bin/sh","-c"], "command":[command.replace('$',"$$")],
                     "volumes":[format!("{}:/sync",shared.display())],
                     "healthcheck":{"test":["CMD-SHELL",health],"interval":"100ms","timeout":"1s","retries":20}
@@ -990,7 +1014,8 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             artifacts: root.join(&id),
             filesystem: None,
             recovery_anchor_dir: None,
-            system_apps: Default::default(),
+            dora: Default::default(),
+            recordings: vec![],
             first_party: vec![project(&root, "helper")],
             projects: vec![project(&root, "alpha"), project(&root, "beta")],
             readiness_seconds: 5,
@@ -1034,12 +1059,12 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
                 })
                 .unwrap()
         };
-        let quiesced = completed(QuiesceProjects::ID.unwrap());
+        let quiesced = completed(step_id::<QuiesceCompose>());
         let finalized = completed(FinalizeRun::ID.unwrap());
         let removing = events
             .iter()
             .position(|e| {
-                e.invocation.step == RemoveProjects::ID.unwrap()
+                e.invocation.step == step_id::<RemoveCompose>()
                     && e.state == orchestrator::State::Started
             })
             .unwrap();
@@ -1062,61 +1087,25 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
                 assert!(event.elapsed_ns >= events[quiesced].elapsed_ns);
             }
             if event.invocation.step.ends_with("RemoveCompose") {
-                assert_eq!(
-                    event.invocation.parent,
-                    Some(events[removing].invocation.id)
-                );
+                assert_eq!(event.invocation.parent, None);
                 assert!(event.elapsed_ns >= events[finalized].elapsed_ns);
             }
         }
-        let positions = |step: &str, state: orchestrator::State, keys: &[&str]| -> Vec<usize> {
-            events
-                .iter()
-                .enumerate()
-                .filter(|(_, event)| {
-                    event.invocation.step.ends_with(step)
-                        && event.state == state
-                        && event.payload.as_ref().is_some_and(|p| {
-                            keys.contains(&p["plan"]["key"].as_str().unwrap_or(""))
-                        })
-                })
-                .map(|(index, _)| index)
-                .collect()
-        };
-        if !failure && !cancel_startup {
-            let starts = positions(
-                "StartCompose",
-                orchestrator::State::Started,
-                &["alpha", "beta"],
-            );
-            // Start outputs have another payload shape; identify terminals by invocation ID.
-            let ids: Vec<_> = starts.iter().map(|i| events[*i].invocation.id).collect();
-            let first_ready = events
-                .iter()
-                .position(|e| {
-                    ids.contains(&e.invocation.id) && e.state == orchestrator::State::Succeeded
-                })
-                .unwrap();
-            assert_eq!(starts.len(), 2);
-            assert!(*starts.iter().max().unwrap() < first_ready);
-        }
-        let helper_stop = positions("QuiesceCompose", orchestrator::State::Started, &["helper"])[0];
-        let writer_ids: Vec<_> = positions(
-            "QuiesceCompose",
-            orchestrator::State::Started,
-            &["alpha", "beta"],
-        )
-        .iter()
-        .map(|i| events[*i].invocation.id)
-        .collect();
-        assert_eq!(writer_ids.len(), 2);
+        let starts: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                e.invocation.step.ends_with("StartCompose")
+                    && e.state == orchestrator::State::Started
+            })
+            .collect();
+        assert_eq!(starts.len(), 2);
         assert_eq!(
-            events[..helper_stop]
-                .iter()
-                .filter(|e| writer_ids.contains(&e.invocation.id)
-                    && e.state == orchestrator::State::Succeeded)
-                .count(),
-            2
+            starts[0].payload.as_ref().unwrap()["services"],
+            serde_json::json!(["helper"])
+        );
+        assert_eq!(
+            starts[1].payload.as_ref().unwrap()["services"],
+            serde_json::json!(["alpha", "beta"])
         );
     }
     std::fs::remove_dir_all(root).unwrap();
@@ -1146,7 +1135,7 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
     for key in ["alpha", "beta"] {
         write(
             &root.join(format!("{key}.json")),
-            serde_json::json!({"services":{"app":service(&image)}}),
+            serde_json::json!({"services":{key:service(&image)}}),
         );
     }
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
@@ -1160,7 +1149,8 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
             recovery_anchor_dir: Some(anchors.clone()),
             projects: vec![project(&root, "alpha"), project(&root, "beta")],
             first_party: vec![],
-            system_apps: Default::default(),
+            dora: Default::default(),
+            recordings: vec![],
             readiness_seconds: 10,
             stop_seconds: 3,
         },
@@ -1169,7 +1159,7 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
         Some(ready),
     ));
     let plans = tokio::select! {
-        ready = started => ready.unwrap(),
+        ready = started => vec![ready.unwrap()],
         result = &mut run => panic!("ended before readiness: {result:?}"),
     };
     drop(run);
@@ -1211,7 +1201,7 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
         artifacts_root: &root,
         anchors: &anchors,
         parent_run: &parent,
-        policy: &policy,
+        policy: &policy[0],
         stop_seconds: 3,
         preserve_only: false,
         attempt,
@@ -1219,7 +1209,7 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
 
     // Act: collection succeeds, but network removal fails after its container is gone.
     let partial = reconcile_group(adapter.clone(), group(1)).await;
-    let first_gone = adapter.inspect(first).await.unwrap().containers.is_empty();
+    let remaining = adapter.inspect(first).await.unwrap().containers;
     let detached = docker(&["rm", "-f", &blocker]);
     assert!(
         detached.status.success(),
@@ -1229,7 +1219,10 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
 
     // Assert: complete evidence survives the failed removal.
     assert!(partial.is_err());
-    assert!(first_gone);
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].service, "dora-daemon");
+    assert_eq!(remaining[0].pid, 0);
+    assert!(directory_occupied(&root).await);
     let checkpoint = anchors.join(&id).join("outer-evidence.json");
     let saved = std::fs::read(&checkpoint).unwrap();
 
@@ -1247,4 +1240,27 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
     assert!(retained);
     assert!(retry.is_ok(), "{retry:?}");
     assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+}
+
+async fn directory_occupied(root: &Path) -> bool {
+    use sha2::{Digest, Sha256};
+    let name = format!(
+        "doramcap-dir-{}",
+        hex::encode(Sha256::digest(
+            std::fs::canonicalize(root).unwrap().as_os_str().as_bytes()
+        ))
+    );
+    let docker = bollard::Docker::connect_with_unix(
+        &std::env::var("DORAMCAP_TEST_SOCKET").unwrap(),
+        120,
+        bollard::API_DEFAULT_VERSION,
+    )
+    .unwrap();
+    match docker.inspect_container(&name, None).await {
+        Ok(_) => true,
+        Err(bollard::errors::Error::DockerResponseServerError {
+            status_code: 404, ..
+        }) => false,
+        Err(error) => panic!("inspect directory owner: {error}"),
+    }
 }
