@@ -5,6 +5,8 @@ use dora_core::config::InputMapping;
 use orchestrator::Step;
 use std::{rc::Rc, time::Duration};
 
+/// Owns one experiment's Dora runtime control and registered graph identity.
+/// Starts and monitors the runtime, registers the graph, and drains system services.
 pub struct ExperimentOwner {
     identity: Option<String>,
     attempted: bool,
