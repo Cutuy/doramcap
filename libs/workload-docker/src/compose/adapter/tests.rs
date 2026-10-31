@@ -482,3 +482,48 @@ async fn dead_container_with_no_process_is_quiescent() {
     assert!(result.is_ok());
     server.await.unwrap();
 }
+
+#[tokio::test]
+async fn planner_facts_freeze_file_bytes_and_permissions_while_directory_inputs_stay_live() {
+    use std::os::unix::fs::PermissionsExt;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let directory = root.path().join("directory");
+    let snapshots = root.path().join("snapshots");
+    std::fs::write(&source, b"original").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::create_dir(&directory).unwrap();
+    std::fs::create_dir(&snapshots).unwrap();
+    // Act
+    let file = super::configuration::freeze_source(source.to_str().unwrap(), &snapshots)
+        .await
+        .unwrap();
+    let live = super::configuration::freeze_source(directory.to_str().unwrap(), &snapshots)
+        .await
+        .unwrap();
+    let repeated = super::configuration::freeze_source(source.to_str().unwrap(), &snapshots)
+        .await
+        .unwrap();
+    std::fs::write(&source, b"changed").unwrap();
+    // Assert
+    assert_eq!(
+        file.kind,
+        crate::compose::planner::input_source_fact::Kind::File as i32
+    );
+    assert_eq!(std::fs::read(&file.effective_source).unwrap(), b"original");
+    assert_eq!(
+        std::fs::metadata(&file.effective_source)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755
+    );
+    assert_eq!(file, repeated);
+    assert_eq!(live.effective_source, directory.to_str().unwrap());
+    assert_eq!(
+        live.kind,
+        crate::compose::planner::input_source_fact::Kind::Directory as i32
+    );
+}
