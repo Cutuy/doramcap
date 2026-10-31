@@ -1,5 +1,9 @@
 ![Console responsibilities](102926-console-boundary.svg)
 
+Compose workflow and step execution boundaries:
+
+![Compose integration](103026-console-compose-steps.svg)
+
 # Console MVP — engineering plan
 
 Created: 2026-10-29. Status: implementation pending. Paths marked **new** below
