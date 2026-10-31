@@ -52,12 +52,10 @@ impl ExperimentOwner {
             .chain(args.iter().copied())
             .map(str::to_owned)
             .collect();
-        if !args.contains(&"--version") {
-            command.extend([
-                "--coordinator-port".into(),
-                self.settings.coordinator_port.to_string(),
-            ]);
-        }
+        command.extend([
+            "--coordinator-port".into(),
+            self.settings.coordinator_port.to_string(),
+        ]);
         self.adapter
             .exec(
                 &self.plan,
@@ -75,10 +73,6 @@ impl ExperimentOwner {
                 readiness_seconds: self.startup_seconds,
             })
             .await?;
-        let version = self.cli(&["--version"]).await?;
-        if version.trim() != "dora-cli 1.1.0" {
-            return Err(invalid("Dora image must provide CLI version 1.1.0"));
-        }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(self.startup_seconds);
         loop {
             if self.inspect_runtime().await.is_ok()
