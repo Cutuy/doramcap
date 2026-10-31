@@ -57,7 +57,7 @@ impl PrepareRun {
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
         observation::snapshot(&artifacts, "before").await?;
         if spec.filesystem.is_some() {
-            self.adapter.verify_overlay_namespace().await?;
+            overlay::verify_namespace(self.adapter.socket_path()).await?;
         }
         // Freeze Dora inputs and merge apps while recording their startup stages.
         let dora = super::super::shared_dora::prepare(&spec.dora, &artifacts).await?;
@@ -72,6 +72,7 @@ impl PrepareRun {
             for app in apps {
                 let normalized = self
                     .adapter
+                    .configuration()
                     .normalize(
                         &ResolveInput {
                             run: spec.id.clone(),
@@ -114,6 +115,7 @@ impl PrepareRun {
         let apps = spec.system_apps.iter().chain(&spec.projects);
         let mut plan = self
             .adapter
+            .configuration()
             .resolve(ResolveInput {
                 run: spec.id.clone(),
                 artifacts: artifacts.clone(),

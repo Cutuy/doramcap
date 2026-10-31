@@ -26,6 +26,40 @@ use std::{
 };
 use tokio::io::AsyncWriteExt;
 
+/// Require the local Docker socket peer to share this process's mount namespace.
+/// Overlay binds must resolve there; proxies require separate namespace guarantees.
+pub(crate) async fn verify_namespace(socket: &Path) -> Result<()> {
+    use std::os::fd::AsRawFd;
+    let stream = tokio::net::UnixStream::connect(socket).await?;
+    let mut cred = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: destination and length point to correctly sized live storage.
+    if unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut cred as *mut libc::ucred).cast(),
+            &mut len,
+        )
+    } != 0
+    {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let ours = tokio::fs::read_link("/proc/self/ns/mnt").await?;
+    let theirs = tokio::fs::read_link(format!("/proc/{}/ns/mnt", cred.pid)).await?;
+    if ours != theirs {
+        return Err(invalid(
+            "Docker peer and manager mount namespaces differ; host overlay visibility is unqualified",
+        ));
+    }
+    Ok(())
+}
+
 /// Disposition after all writers stop. Default reproduces persistent host output.
 /// Retaining results uses `WriteBack` to the configured host source.
 /// Prefer a per-experiment source directory for isolated retained results.
@@ -134,7 +168,7 @@ impl Step for PrepareOverlays {
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))?;
         for project in &set.projects {
-            if let Err(error) = self.adapter.validate_execution(project).await {
+            if let Err(error) = self.adapter.project(project).validate_execution().await {
                 let mut errors = vec![error.to_string()];
                 for tree in set.trees.iter().rev() {
                     if let Err(e) = unmount(&tree.merged).await {

@@ -188,11 +188,8 @@ impl ComposeRunner {
 
         self.blocked = true;
         self.adapter
-            .reserve(
-                &prepared.value().plan,
-                super::shared_dora::DAEMON,
-                spec.readiness_seconds,
-            )
+            .project(&prepared.value().plan)
+            .reserve(super::shared_dora::DAEMON, spec.readiness_seconds)
             .await?;
         let overlays = if let Some(policy) = &spec.filesystem {
             Some(
@@ -389,7 +386,8 @@ impl ComposePhases {
                 .await?
                 .into_value();
             state.plan.services.retain(|name, _| system.contains(name));
-            if !DockerAdapter::ready(&state)
+            if !state
+                .ready()
                 .map_err(|e| orchestrator::Error::message(e.to_string()))?
             {
                 return Err(orchestrator::Error::message("system apps lost readiness"));
@@ -457,7 +455,9 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
                 .executor
                 .run::<InspectCompose>(self.plan.clone())
                 .await?;
-            if !DockerAdapter::ready(state.value())
+            if !state
+                .value()
+                .ready()
                 .map_err(|e| orchestrator::Error::message(e.to_string()))?
             {
                 return Err(orchestrator::Error::message("experiment lost readiness"));

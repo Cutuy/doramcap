@@ -108,7 +108,7 @@ impl ExperimentOwner {
         )
         .await?;
         let graph = super::shared_dora::graph(&self.settings, &bytes)?;
-        let state = self.adapter.inspect(&self.plan).await?;
+        let state = self.adapter.project(&self.plan).inspect().await?;
         let nodes: Vec<_> = graph
             .nodes
             .iter()
@@ -140,12 +140,12 @@ impl ExperimentOwner {
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(self.stop_seconds);
         loop {
-            let mut state = self.adapter.inspect(&self.plan).await?;
+            let mut state = self.adapter.project(&self.plan).inspect().await?;
             state.plan.services.retain(|name, service| {
                 service.completed = true;
                 nodes.iter().any(|node| node.id.as_ref() == name)
             });
-            if DockerAdapter::ready(&state)? {
+            if state.ready()? {
                 return Ok(());
             }
             if tokio::time::Instant::now() >= deadline {

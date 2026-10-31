@@ -9,12 +9,13 @@ pub(crate) mod error;
 pub mod filesystem;
 mod model;
 pub mod overlay;
+mod state;
 mod steps;
-pub use adapter::DockerAdapter;
+pub use adapter::{ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
-    OwnedResource, ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
+    ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,

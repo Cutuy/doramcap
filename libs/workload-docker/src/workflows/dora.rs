@@ -57,8 +57,8 @@ impl ExperimentOwner {
             self.settings.coordinator_port.to_string(),
         ]);
         self.adapter
+            .project(&self.plan)
             .exec(
-                &self.plan,
                 COORDINATOR,
                 &command,
                 Duration::from_secs(self.startup_seconds),
@@ -67,11 +67,8 @@ impl ExperimentOwner {
     }
     pub(super) async fn start_runtime(&self) -> Result<()> {
         self.adapter
-            .start(StartInput {
-                plan: self.plan.clone(),
-                services: vec![DAEMON.into(), COORDINATOR.into()],
-                readiness_seconds: self.startup_seconds,
-            })
+            .project(&self.plan)
+            .start(&[DAEMON.into(), COORDINATOR.into()], self.startup_seconds)
             .await?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(self.startup_seconds);
         loop {
@@ -95,7 +92,8 @@ impl ExperimentOwner {
             (DAEMON, self.settings.daemon_port),
         ] {
             self.adapter
-                .endpoint(&self.plan, name, "host", port as u16)
+                .project(&self.plan)
+                .endpoint(name, "host", port as u16)
                 .await?;
         }
         Ok(())
@@ -104,12 +102,8 @@ impl ExperimentOwner {
     pub(super) async fn stop_runtime(&self) -> Result<Shutdown> {
         if self
             .adapter
-            .endpoint(
-                &self.plan,
-                COORDINATOR,
-                "host",
-                self.settings.coordinator_port as u16,
-            )
+            .project(&self.plan)
+            .endpoint(COORDINATOR, "host", self.settings.coordinator_port as u16)
             .await
             .is_ok()
             && let Err(error) = self.cli(&["down", "--force"]).await
@@ -120,12 +114,8 @@ impl ExperimentOwner {
         }
         let stopped = self
             .adapter
-            .quiesce(StopInput {
-                allow_volume_deletion: false,
-                services: vec![COORDINATOR.into(), DAEMON.into()],
-                plan: self.plan.clone(),
-                stop_seconds: self.stop_seconds,
-            })
+            .project(&self.plan)
+            .quiesce(&[COORDINATOR.into(), DAEMON.into()], self.stop_seconds)
             .await?;
         if !stopped.stopped {
             return Err(invalid(format!(

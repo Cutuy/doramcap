@@ -1,5 +1,6 @@
 //! Explicitly opt-in real Engine validation. The harness builds unprivileged and
 //! elevates only this executable. Every scenario owns distinct named resources.
+mod support;
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
@@ -441,7 +442,15 @@ async fn multi_project_lifecycle() {
         )
         .unwrap();
         assert_eq!(beta.services.len(), 3 + index * 2);
-        assert!(adapter.inspect(&beta).await.unwrap().containers.is_empty());
+        assert!(
+            adapter
+                .project(&beta)
+                .inspect()
+                .await
+                .unwrap()
+                .containers
+                .is_empty()
+        );
         let raw =
             std::fs::read_to_string(request.artifacts.join("experiment.compose.json")).unwrap();
         assert!(raw.contains("value$$not_interpolated"));
@@ -539,15 +548,18 @@ async fn multi_project_lifecycle() {
         monitor_sessions.push(audit_recording(&request.artifacts));
         reports.push(report);
         // Act: teardown a second time.
-        let repeated = adapter
-            .stop(StopInput {
-                allow_volume_deletion: true,
-                services: vec![],
-                plan: beta,
-                stop_seconds: 3,
-            })
-            .await
-            .unwrap();
+        let repeated = StopCompose {
+            adapter: adapter.clone(),
+            diagnostics: Default::default(),
+        }
+        .run(StopInput {
+            allow_volume_deletion: true,
+            services: vec![],
+            plan: beta,
+            stop_seconds: 3,
+        })
+        .await
+        .unwrap();
         // Assert
         assert!(
             repeated.verified && repeated.diagnostics.is_empty(),
@@ -909,7 +921,15 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             result = &mut run => panic!("session ended before readiness: {result:?}"),
         };
         // Assert: a ready session is actually running and uses existing mounts.
-        assert!(DockerAdapter::ready(&adapter.inspect(&plans[0]).await.unwrap()).unwrap());
+        assert!(
+            adapter
+                .project(&plans[0])
+                .inspect()
+                .await
+                .unwrap()
+                .ready()
+                .unwrap()
+        );
         assert!(!artifacts.join("overlays").exists());
         assert!(!artifacts.join("system-services.yaml").exists());
         if mode == 2 {
@@ -929,15 +949,18 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             if mode == 0 {
                 stop.send(()).unwrap();
             } else {
-                adapter
-                    .quiesce(StopInput {
-                        allow_volume_deletion: false,
-                        services: vec![],
-                        plan: plans[0].clone(),
-                        stop_seconds: 3,
-                    })
-                    .await
-                    .unwrap();
+                QuiesceCompose {
+                    adapter: adapter.clone(),
+                    diagnostics: Default::default(),
+                }
+                .run(StopInput {
+                    allow_volume_deletion: false,
+                    services: vec![],
+                    plan: plans[0].clone(),
+                    stop_seconds: 3,
+                })
+                .await
+                .unwrap();
             }
             let report = tokio::time::timeout(Duration::from_secs(20), run)
                 .await
@@ -952,7 +975,8 @@ async fn direct_session_lifecycle_and_prerun_reset() {
         }
         assert!(
             adapter
-                .inspect(&plans[0])
+                .project(&plans[0])
+                .inspect()
                 .await
                 .unwrap()
                 .containers
@@ -1043,7 +1067,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
         assert!(report.boundary_clean, "{report:?}");
         assert!(!runner.blocked());
         assert!(shared.join("alpha-stopped").is_file() && shared.join("beta-stopped").is_file());
-        assert!(adapter.discover_runs(&id).await.unwrap().is_empty());
+        support::assert_no_run_resources(&adapter, &id).await;
         let events = events.borrow();
         // Assert: collection and removal retain their explicit workflow barriers,
         // including when a parallel workload failed during startup.
@@ -1213,7 +1237,7 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
     assert!(failed.is_err());
     assert!(!probe.artifacts.exists());
     assert!(original.artifacts.exists());
-    let remaining = adapter.inspect(&plan).await.unwrap();
+    let remaining = adapter.project(&plan).inspect().await.unwrap();
     assert!(remaining.containers.iter().all(|c| c.pid == 0));
     assert!(
         remaining
@@ -1225,7 +1249,15 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
     assert!(docker(&["rm", "-f", &blocker]).status.success());
     reset_probe(adapter.clone(), probe).await.unwrap();
     // Assert: the old project is fully removed; its output directory remains.
-    assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+    assert!(
+        adapter
+            .project(&plan)
+            .inspect()
+            .await
+            .unwrap()
+            .containers
+            .is_empty()
+    );
     assert!(original.artifacts.exists());
     // Act / Assert: a clean previous teardown is also harmless.
     let mut clean = original;
@@ -1362,7 +1394,15 @@ async fn active_experiment_excludes_same_and_different_repositories() {
         assert!(reset_probe(adapter.clone(), next.clone()).await.is_err());
         assert!(!next.artifacts.exists());
     }
-    assert!(DockerAdapter::ready(&adapter.inspect(&plan).await.unwrap()).unwrap());
+    assert!(
+        adapter
+            .project(&plan)
+            .inspect()
+            .await
+            .unwrap()
+            .ready()
+            .unwrap()
+    );
     // Act: finish the owner, then start preparation in the other repository.
     stop.send(()).unwrap();
     assert!(run.await.unwrap().boundary_clean);
@@ -1374,7 +1414,15 @@ async fn active_experiment_excludes_same_and_different_repositories() {
     )
     .unwrap();
     assert_ne!(resolution["plan"]["name"], plan.name);
-    assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+    assert!(
+        adapter
+            .project(&plan)
+            .inspect()
+            .await
+            .unwrap()
+            .containers
+            .is_empty()
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1446,7 +1494,15 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
         reset_probe(adapter.clone(), request).await.unwrap();
         // Assert: only the fixed mutable workspace and owned Docker resources disappear.
         assert!(!set.workspace.exists());
-        assert!(adapter.inspect(&plan).await.unwrap().containers.is_empty());
+        assert!(
+            adapter
+                .project(&plan)
+                .inspect()
+                .await
+                .unwrap()
+                .containers
+                .is_empty()
+        );
         assert_eq!(
             std::fs::read(source.join("original")).unwrap(),
             b"unchanged"

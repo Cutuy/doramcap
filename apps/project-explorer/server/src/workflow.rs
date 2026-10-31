@@ -82,7 +82,7 @@ pub async fn run(
                 match plans {
                     Ok(plan) => {
                         let endpoint = match app.port {
-                            Some(port) => adapter.endpoint(&plan, &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
+                            Some(port) => adapter.project(&plan).endpoint( &app.service, &app.network, port as u16).await.map(Some).map_err(|e| e.to_string()),
                             None => Ok(None),
                         };
                         match endpoint {
