@@ -1,0 +1,103 @@
+syntax = "proto3";
+package doramcap.compose.planner.v1;
+
+import "compose.proto";
+import "dora.proto";
+
+// Proposed pure planner interface. Rust owns all Docker and filesystem operations.
+// Native Compose JSON stays opaque in protobuf; its numbers must round-trip exactly.
+// Required presence, absolute paths and complete fact sets are validated by callers.
+
+// Already normalized by native Compose; settings supply app identity and lifecycle policy.
+message ComposeDocument {
+  doramcap.compose.v1.ComposeProject settings = 1;
+  bytes compose_json = 2;
+}
+
+// Constructed by Rust from dora_app::environment's explicitly approved contract.
+// Preserve an existing node ID; otherwise use the service name. Always apply forced values.
+message DoraEnvironment {
+  string node_id_variable = 1;
+  map<string, string> forced_values = 2;
+}
+
+// Analyze merges documents, adds Dora wiring and validates startup dependencies.
+// Native Dora graph parsing/validation has already succeeded in Rust.
+message AnalyzeInput {
+  string run = 1;
+  string project_name = 2;
+  string artifacts = 3;
+  string controller_scope = 4;
+  string owner_container_name = 5;
+  doramcap.dora.v1.DoraRuntime dora = 6;
+  repeated ComposeDocument system_apps = 7;
+  repeated ComposeDocument adopted_apps = 8;
+  repeated string dora_node_ids = 9;
+  DoraEnvironment environment = 10;
+}
+
+// Deduplicated requirements. Missing images, inaccessible inputs and occupied names fail preparation.
+// Input sources include read-only bind files/directories and Compose config/secret files.
+message AnalyzeOutput {
+  repeated string image_references = 1;
+  repeated string input_sources = 2;
+  repeated string container_names = 3;
+  repeated doramcap.compose.v1.Diagnostic diagnostics = 4;
+}
+
+// Engine inspection for one requested image; declared volumes are container paths.
+message ImageFact {
+  string reference = 1;
+  string image_id = 2;
+  repeated string declared_volumes = 3;
+}
+
+// Files are snapshotted privately with permissions preserved. Directories remain live.
+// effective_source is the snapshot path for files and the original source for directories.
+message InputSourceFact {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    FILE = 1;
+    DIRECTORY = 2;
+  }
+  string source = 1;
+  Kind kind = 2;
+  string effective_source = 3;
+}
+
+// Complete deterministically repeats analysis using the same immutable input.
+// Every requirement needs exactly one matching fact; conflicting facts fail.
+// Container-name absence is a snapshot; Docker still enforces conflicts at creation.
+message CompleteInput {
+  AnalyzeInput input = 1;
+  repeated ImageFact images = 2;
+  repeated InputSourceFact sources = 3;
+  repeated string available_container_names = 4;
+}
+
+// File-backed mount metadata for Rust filesystem/overlay consumers.
+// Volume names are resolved Docker names. Host paths are absolute UTF-8.
+message ServiceMount {
+  string service = 1;
+  string target = 2;
+  bool read_only = 3;
+  oneof source {
+    string bind_path = 4;
+    string volume_name = 5;
+  }
+  string bind_propagation = 6;
+  optional string bind_selinux = 7;
+}
+
+// Complete applies pinned images, input snapshots and experiment execution policies.
+// Rust validates/publishes/hashes the manifest, then constructs ResolvedComposeProject.
+// Diagnostics include analysis warnings and applied policy changes.
+message CompleteOutput {
+  bytes compose_json = 1;
+  map<string, doramcap.compose.v1.ComposeService> services = 2;
+  repeated string system_services = 3;
+  repeated string adopted_services = 4;
+  repeated ServiceMount mounts = 5;
+  repeated doramcap.compose.v1.Diagnostic diagnostics = 6;
+  bool remove_volumes = 7;
+}
