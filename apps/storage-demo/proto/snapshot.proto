@@ -1,13 +1,11 @@
 syntax = "proto3";
 package doramcap.storage.v1;
-// Field tags are stable. Preserve scalar presence for unavailable measurements.
+// Scalar presence distinguishes unavailable measurements.
 message Snapshot {
   uint32 version = 1;
   string status = 2;
   string session = 3;
   string error = 4;
-  reserved 5, 8, 11, 12, 19;
-  reserved "backend", "cpu", "input_drops", "last_cpu", "timing";
   bool direct = 6;
   uint64 elapsed_ms = 7;
   uint64 heartbeats = 9;

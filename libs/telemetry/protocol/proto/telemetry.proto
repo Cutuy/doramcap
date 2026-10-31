@@ -1,6 +1,5 @@
 syntax = "proto3";
 package doramcap.telemetry.v1;
-// Stable field numbers are the compatibility contract. Never reuse removed tags.
 // Runtime/capture values are nanoseconds; IDs and counters retain uint64 precision.
 message Packet {
   oneof body {

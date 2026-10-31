@@ -9,7 +9,7 @@ The runner defaults to 4 KiB slot alignment; `--slot-alignment 64` selects a com
 ## Interactive viewer
 
 ```sh
-cargo build -p cuda-shm-demo
+cargo build --release --locked -p cuda-shm-demo
 npm --prefix apps/cuda-shm-demo/frontend ci
 npm --prefix apps/cuda-shm-demo/frontend run build
 npm --prefix apps/cuda-shm-demo/frontend run build:server
@@ -26,7 +26,7 @@ checksums. Each run saves activity MCAP/Protobuf and logs under
 ## Command-line validation
 
 ```sh
-cargo build -p cuda-shm-demo
+cargo build --release --locked -p cuda-shm-demo
 node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora
 node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --failure stall
 node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --failure duplicate
@@ -44,7 +44,7 @@ and slot reuse. Failure modes must fail for the expected reason.
 ## Content regression tests
 
 ```sh
-cargo test -p cuda-shm-demo
+cargo test --release --locked -p cuda-shm-demo
 python3 apps/cuda-shm-demo/tests/content_e2e.py --dora /path/to/dora
 node apps/cuda-shm-demo/build/run.mjs --dora /path/to/dora --seed 0xdeadbeef --checksum
 ```

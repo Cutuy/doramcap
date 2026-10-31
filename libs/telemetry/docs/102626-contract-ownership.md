@@ -10,7 +10,7 @@ pass addresses the two telemetry ownership findings from that review.
 - [x] Extract resource-independent workflow schema and codec into `workflow-protocol`.
   Evidence: repository dependency checker passes the executor/resource prohibition.
 - [x] Move viewer ingress and delivery contracts into `apps/cpu-viewer/server`.
-  Evidence: application schema owns field 11; producer schema reserves it.
+  Evidence: viewer ingress uses the application delivery schema.
 - [x] Enforce dependency direction in hosted and ARM64 worker CI.
   Evidence: repository checker and its four behavioral fixtures pass locally.
 - [x] Complete Rust/frontend compatibility, lint and ARM64 validation below.
@@ -31,8 +31,8 @@ browser clients receive the same bytes, with ingress at field 11. The adapter
 explicitly transfers every producer envelope field; schema additions require
 updating that transfer. No public aliases preserve the old coupling.
 
-The shared schema reserves tag 11/name `viewer_ingress`. Existing producer
-packets, dictionary packets and recording payloads retain their layout. Historical
+Producer packets, dictionary packets and recording payloads retain their layout.
+Historical
 MCAP files retain their embedded schemas. Core decoding accepts legacy viewer
 annotations as unknown fields. Its Rust Frame no longer exposes those annotations;
 viewer consumers use the application delivery contract. The browser fixture

@@ -23,11 +23,40 @@ def usage(path):
     return int(dict(line.split() for line in (path / 'cpu.stat').read_text().splitlines())['usage_usec']) * 1000
 
 
+
+def validate_readiness(monitor):
+    # Arrange: output initialization failures must not leave a readiness marker.
+    with tempfile.TemporaryDirectory(prefix='monitor-readiness-') as temporary:
+        directory = Path(temporary)
+        ready = directory / 'ready'
+        existing = directory / 'existing.mcap'
+        existing.write_bytes(b'existing recording')
+        environment = dict(os.environ, DORAMCAP_READY_FILE=str(ready))
+        for arguments in (['--output', str(directory)], ['--record', str(existing)]):
+            # Act
+            result = subprocess.run([str(monitor), '--samples', '1', *arguments],
+                                    env=environment, capture_output=True, timeout=15)
+            # Assert
+            assert result.returncode != 0, result.stderr
+            assert not ready.exists(), 'failed initialization published readiness'
+            assert existing.read_bytes() == b'existing recording'
+        # Act: successful initialization publishes readiness and records one sample.
+        output = directory / 'snapshots.pb'
+        result = subprocess.run([str(monitor), '--samples', '1', '--output', str(output)],
+                                env=environment, capture_output=True, timeout=15)
+        # Assert
+        assert result.returncode == 0, result.stderr
+        assert ready.read_text() == 'ready\n'
+        assert len(framed(output.read_bytes())) == 1
+    print('PASS System Monitor initialization gates readiness', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--monitor', required=True, type=Path)
     args = parser.parse_args()
     assert os.geteuid() == 0, 'native validation requires privilege'
+    validate_readiness(args.monitor)
     # The approved worker launcher runs this aggregate native suite. Build remains unprivileged.
     policy_suite = Path(__file__).resolve().parents[3] / 'libs/resources/resource-policy/tests/validate_native.py'
     if policy_suite.exists():
