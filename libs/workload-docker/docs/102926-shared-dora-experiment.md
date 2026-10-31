@@ -255,6 +255,8 @@ Evidence: pending.
 - [x] Replace `ComposePhases` with sequential execution and local step outputs.
 - [x] Use generated protobuf contracts and owned service declarations; preserve
   adopted Compose documents through native Compose normalization.
+- [x] Move Compose merging, IPC wiring and policies into the embedded TypeScript
+  planner, with generated protobuf output and native Docker JSON export.
 - [ ] Keep meaningful lifecycle/transport regressions in existing Rust test suites.
   Remove disposable feasibility tooling; add no maintained deployment scripts.
 - [ ] Update workflow SVGs, API docs and minimal app deployment instructions to
@@ -266,6 +268,8 @@ Evidence: pending.
 
 **Validation**
 
+- [x] Test TypeScript rules and the embedded protobuf boundary, including
+  native null networks, exact numbers, file snapshots, cancellation and limits.
 - [ ] Pass affected Rust tests, formatting, strict Clippy and Rustdoc checks.
 - [ ] Run real Docker lifecycle, failure/recovery and shared-IPC tests on this host.
   Build unprivileged; elevate only capability-required test executables as allowed.
@@ -276,11 +280,11 @@ Evidence: pending.
 - [ ] Render architecture SVGs and verify links. All checked validations have
   concise milestone-local evidence and no unsupported transport/losslessness claims.
 
-Evidence (2026-10-31, `f447bbe`): full local builds, boundaries, formatting,
-default/all-feature Clippy, doctests, storage without defaults and snapshot
-tests passed. Both workspace test modes fail the same 11 Console registration
-cases: schema changes precede their pbtxt/graph migration. With matching inputs
-from #29/#15, all 35 Console tests pass in both modes. The 44 library tests,
-3 protobuf-contract tests, 12 native OverlayFS tests, Rustdoc and focused
-native Docker checks pass.
-The standalone PR remains blocked on those deployment inputs; ARM64 is deferred.
+Evidence (2026-10-31): 14 TypeScript tests and bundle synchronization pass;
+46 library and 3 protobuf-contract tests pass in default/all-feature modes.
+Affected library/caller Clippy, Rustdoc, formatting and boundaries pass. Native
+Docker startup/reset and Dora SHM/adopted-IPC tests pass on the final implementation.
+Production Rust decreases by 210 lines; maintained production source is 404 lines
+below `origin/main`, including TypeScript/protobuf and excluding tests/generated code.
+Full workspace CI and ARM64 were deferred. The last full run's 11 Console failures
+still require the separate registration/graph inputs from #29/#15.

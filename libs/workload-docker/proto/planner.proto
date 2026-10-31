@@ -5,7 +5,7 @@ import "compose.proto";
 import "compose_model.proto";
 import "dora.proto";
 
-// Proposed pure planner interface. Rust owns all Docker and filesystem operations.
+// Pure planner interface. Rust owns all Docker and filesystem operations.
 // Native Compose input is parsed into the typed output model by TypeScript.
 // Implementations validate required presence, absolute paths and complete fact sets.
 
@@ -20,6 +20,8 @@ message ComposeDocument {
 message DoraEnvironment {
   string node_id_variable = 1;
   map<string, string> forced_values = 2;
+  // Existing coordinator/daemon environment, supplied by the same approved Rust interface.
+  map<string, string> runtime_values = 3;
 }
 
 // Analyze merges documents, adds Dora wiring and validates startup dependencies.
