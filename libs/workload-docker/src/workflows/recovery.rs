@@ -878,4 +878,70 @@ mod tests {
         assert!(inside.is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
+
+    #[tokio::test]
+    async fn recovery_accepts_produced_identity_and_rejects_a_changed_identity() {
+        // Arrange: use the actual naming producer and the actual recovery verifier.
+        use crate::compose::adapter::{digest, project_name, tests::test_engine};
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("run");
+        std::fs::create_dir(&artifacts).unwrap();
+        let artifacts = std::fs::canonicalize(artifacts).unwrap();
+        let manifest = artifacts.join("app.compose.json");
+        std::fs::write(&manifest, b"{}").unwrap();
+        let mut plan: ResolvedComposeProject = serde_json::from_value(serde_json::json!({
+            "run":"run", "key":"app", "name":project_name("run","app"),
+            "manifest":manifest,"sha256":digest(b"{}"),"services":{},"diagnostics":[],"remove_volumes":false
+        })).unwrap();
+        let resolution = artifacts.join("app.resolution.json");
+        std::fs::write(
+            &resolution,
+            serde_json::to_vec(&serde_json::json!({"plan":plan})).unwrap(),
+        )
+        .unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                ("/containers/json", serde_json::json!([])),
+                ("/networks", serde_json::json!([])),
+                ("/volumes", serde_json::json!({"Volumes":[]})),
+                ("/containers/json", serde_json::json!([])),
+                ("/networks", serde_json::json!([])),
+                ("/volumes", serde_json::json!({"Volumes":[]})),
+            ],
+        );
+        let hash = digest(&std::fs::read(&resolution).unwrap());
+        let expected = super::ExpectedProject {
+            key: "app",
+            remove_volumes: false,
+            resolution_sha256: &hash,
+        };
+
+        // Act / Assert: this crosses the naming producer / recovery consumer boundary.
+        let recovered =
+            super::verified_plans(&adapter, &artifacts, "run", std::slice::from_ref(&expected))
+                .await
+                .unwrap();
+        let recovered = &recovered[0];
+        assert_eq!(recovered.name, plan.name);
+        server.await.unwrap();
+
+        // Act / Assert: a changed stored name fails before contacting Engine.
+        plan.name.push_str("-altered");
+        std::fs::write(
+            &resolution,
+            serde_json::to_vec(&serde_json::json!({"plan":plan})).unwrap(),
+        )
+        .unwrap();
+        let hash = digest(&std::fs::read(&resolution).unwrap());
+        let expected = super::ExpectedProject {
+            key: "app",
+            remove_volumes: false,
+            resolution_sha256: &hash,
+        };
+        let error = super::verified_plans(&adapter, &artifacts, "run", &[expected])
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("identity or manifest changed"));
+    }
 }

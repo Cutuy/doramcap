@@ -19,7 +19,7 @@ pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
 pub(crate) const DIRECTORY_OWNER_LABEL: &str = "io.doramcap.directory-owner";
 const PROJECT_LABEL: &str = "com.docker.compose.project";
-type StartupCommand = tokio::task::JoinHandle<Result<(String, String)>>;
+type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
 
 /// Rendered Compose configuration and the inputs used to produce it.
 pub(crate) struct NormalizedCompose {
@@ -43,7 +43,7 @@ pub(crate) struct NormalizedCompose {
 pub struct DockerAdapter {
     pub(crate) docker: Docker,
     socket: String,
-    starting: Arc<tokio::sync::Mutex<BTreeMap<String, StartupCommand>>>,
+    starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
     /// Return the configured Unix socket path for trusted deployment wiring.
@@ -224,8 +224,8 @@ impl DockerAdapter {
         validate_name(&input.run)?;
         validate_name(&input.project.key)?;
         let project = &input.project;
-        let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key, &artifacts);
+        tokio::fs::canonicalize(&input.artifacts).await?;
+        let name = project_name(&input.run, &project.key);
         let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
@@ -265,7 +265,7 @@ impl DockerAdapter {
         let mut model = normalized.model;
         let project = &input.project;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = project_name(&input.run, &project.key, &artifacts);
+        let name = project_name(&input.run, &project.key);
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
@@ -738,9 +738,9 @@ impl DockerAdapter {
         }
         starting.insert(
             plan.name.clone(),
-            tokio::spawn(async move {
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
                 compose(&socket, &directory, &BTreeMap::new(), &args, budget).await
-            }),
+            })))),
         );
         drop(starting);
         let (out, err) = self
@@ -753,12 +753,17 @@ impl DockerAdapter {
     // Keep the native up request alive across cancellation; shutdown joins it
     // before inspecting resources, so delayed container creation cannot escape cleanup.
     async fn finish_start(&self, project: &str) -> Result<Option<(String, String)>> {
-        let mut starting = self.starting.lock().await;
-        let Some(command) = starting.get_mut(project) else {
+        let command = self.starting.lock().await.get(project).cloned();
+        let Some(command) = command else {
             return Ok(None);
         };
-        let result = command.await;
-        starting.remove(project);
+        let mut command = command.lock().await;
+        let Some(pending) = command.as_mut() else {
+            return Ok(None);
+        };
+        let result = pending.await;
+        command.take();
+        self.starting.lock().await.remove(project);
         result
             .map_err(|e| invalid(format!("Compose startup task: {e}")))?
             .map(Some)
@@ -773,17 +778,7 @@ impl DockerAdapter {
         timeout: Duration,
     ) -> Result<String> {
         self.verify_manifest(plan).await?;
-        let state = self.inspect(plan).await?;
-        if !plan.services.contains_key(service)
-            || state
-                .containers
-                .iter()
-                .filter(|c| c.service == service && c.pid != 0)
-                .count()
-                != 1
-        {
-            return Err(invalid("exec requires one running owned service"));
-        }
+        Self::running_service(self.inspect(plan).await?, service)?;
         let mut args = Self::args(plan);
         args.extend(["exec".into(), "--no-TTY".into(), service.into()]);
         args.extend_from_slice(command);
@@ -809,6 +804,24 @@ impl DockerAdapter {
                 .all(|v| v.labels.get(RUN_LABEL) == Some(&plan.run)))
     }
 
+    // Share image, health and replica checks between endpoint routing and command execution.
+    fn running_service(mut state: ComposeProjectState, service: &str) -> Result<Container> {
+        state.plan.services.retain(|name, _| name == service);
+        if state.plan.services.is_empty() || !Self::ready(&state)? {
+            return Err(invalid("service is not ready"));
+        }
+        let mut containers = state
+            .containers
+            .into_iter()
+            .filter(|c| c.service == service);
+        match (containers.next(), containers.next()) {
+            (Some(container), None) if container.pid > 0 && container.status == "running" => {
+                Ok(container)
+            }
+            _ => Err(invalid("expected one running service container")),
+        }
+    }
+
     /// Resolve the single ready service's IPv4 endpoint on one project-owned
     /// network. `network` is the Compose network key and `port` is server-owned
     /// registration data. Missing, ambiguous, unhealthy or unowned resources fail
@@ -825,18 +838,7 @@ impl DockerAdapter {
         if port == 0 {
             return Err(invalid("endpoint port must be positive"));
         }
-        let mut state = self.inspect(plan).await?;
-        state.plan.services.retain(|name, _| name == service);
-        if state.plan.services.is_empty() || !Self::ready(&state)? {
-            return Err(invalid("endpoint service is not ready"));
-        }
-        let mut containers = state.containers.iter().filter(|c| c.service == service);
-        let container = containers
-            .next()
-            .ok_or_else(|| invalid("endpoint service absent"))?;
-        if containers.next().is_some() {
-            return Err(invalid("endpoint service has multiple containers"));
-        }
+        let container = Self::running_service(self.inspect(plan).await?, service)?;
         let info = self
             .docker
             .inspect_container(&container.id, None)
@@ -1314,13 +1316,9 @@ async fn save_stopped_inspection(
     }
     Err(invalid("too many stopped inspection attempts"))
 }
-/// Internal identity scoped to the canonical private run directory.
-pub(crate) fn project_name(run: &str, key: &str, artifacts: &Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
-    format!(
-        "dc-{run}-{}-{key}",
-        &digest(artifacts.as_os_str().as_bytes())[..16]
-    )
+/// Internal Compose identity for one run and project key.
+pub(crate) fn project_name(run: &str, key: &str) -> String {
+    format!("dc-{run}-{key}")
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -1338,7 +1336,7 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::compose::Error;
 
@@ -1366,7 +1364,7 @@ mod tests {
         let project = discovery_project(root.path());
         for run in ["review-a", "review-b"] {
             // Act
-            let name = format!("dc-{run}-{}", project.key);
+            let name = project_name(run, &project.key);
             let (_, args, _) = config_arguments(&project, &name).await.unwrap();
             // Assert
             let names: Vec<_> = args
@@ -1374,7 +1372,7 @@ mod tests {
                 .filter(|pair| pair[0] == "--project-name")
                 .map(|pair| pair[1].as_str())
                 .collect();
-            assert_eq!(names, [format!("dc-{run}-workload")]);
+            assert_eq!(names, [name.as_str()]);
             assert!(project.environment.is_empty());
         }
     }
@@ -1488,5 +1486,175 @@ mod tests {
         state.plan.services.get_mut("worker").unwrap().replicas = 2;
         // Act / Assert
         assert!(!DockerAdapter::ready(&state).unwrap());
+    }
+
+    pub(crate) fn test_engine(
+        root: &Path,
+        responses: Vec<(&'static str, Value)>,
+    ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let socket = root.join("engine.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let adapter = DockerAdapter {
+            docker: Docker::connect_with_unix(
+                socket.to_str().unwrap(),
+                1,
+                bollard::API_DEFAULT_VERSION,
+            )
+            .unwrap(),
+            socket: socket.to_string_lossy().into_owned(),
+            starting: Default::default(),
+        };
+        let server = tokio::spawn(async move {
+            for (path, response) in responses {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                assert!(line.contains(path), "unexpected Engine request: {line}");
+                loop {
+                    line.clear();
+                    assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let body = response.to_string();
+                stream.get_mut().write_all(format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+                ).as_bytes()).await.unwrap();
+            }
+        });
+        (adapter, server)
+    }
+
+    #[tokio::test]
+    async fn independent_startups_progress_and_duplicate_starts_are_rejected() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        let plan: ResolvedComposeProject = serde_json::from_value(json!({
+            "run":"run","key":"slow","name":"slow","manifest":root.path().join("manifest.json"),
+            "sha256":"", "services":{},"diagnostics":[],"remove_volumes":false
+        }))
+        .unwrap();
+        adapter.starting.lock().await.insert(
+            plan.name.clone(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("slow".into(), String::new()))
+            })))),
+        );
+        adapter.starting.lock().await.insert(
+            "fast".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async {
+                Ok(("fast".into(), String::new()))
+            })))),
+        );
+        let mut slow = Box::pin(adapter.finish_start(&plan.name));
+        assert!(futures_util::poll!(&mut slow).is_pending());
+
+        // Act / Assert: a different project completes while the first remains blocked.
+        let fast = tokio::time::timeout(Duration::from_secs(1), adapter.finish_start("fast"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fast.unwrap().0, "fast");
+        let duplicate = tokio::time::timeout(
+            Duration::from_secs(1),
+            adapter.project_command(&plan, vec![], 1),
+        )
+        .await
+        .unwrap();
+        assert!(
+            duplicate
+                .unwrap_err()
+                .to_string()
+                .contains("unfinished startup")
+        );
+
+        // Act / Assert: the original startup still completes and releases its entry.
+        release.send(()).unwrap();
+        assert_eq!(slow.await.unwrap().unwrap().0, "slow");
+        assert!(adapter.starting.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        adapter.starting.lock().await.insert(
+            "run".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("finished".into(), String::new()))
+            })))),
+        );
+        let mut cancelled = Box::pin(adapter.finish_start("run"));
+        assert!(futures_util::poll!(&mut cancelled).is_pending());
+
+        // Act / Assert: cancellation leaves an unfinished command available for cleanup.
+        drop(cancelled);
+        let mut first = Box::pin(adapter.finish_start("run"));
+        let mut second = Box::pin(adapter.finish_start("run"));
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        release.send(()).unwrap();
+        let (first, second) = tokio::join!(first, second);
+        let outputs: Vec<_> = [first.unwrap(), second.unwrap()]
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(outputs, [("finished".into(), String::new())]);
+        assert!(adapter.starting.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn exec_rejects_a_replaced_image_before_launching_a_command() {
+        // Arrange: Engine reports an owned, running replica with a different image.
+        let root = tempfile::tempdir().unwrap();
+        let manifest = root.path().join("manifest.json");
+        std::fs::write(&manifest, b"{}").unwrap();
+        let plan: ResolvedComposeProject = serde_json::from_value(json!({
+            "run":"run","key":"app","name":"project","manifest":manifest,
+            "sha256":digest(b"{}"),"services":{"worker":{"image_id":"pinned","replicas":1,"completed":false}},
+            "diagnostics":[],"remove_volumes":false
+        })).unwrap();
+        let labels =
+            json!({RUN_LABEL:"run",PROJECT_LABEL:plan.name,"com.docker.compose.service":"worker"});
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                (
+                    "/containers/json",
+                    json!([{"Id":"container","Labels":labels}]),
+                ),
+                (
+                    "/containers/container/json",
+                    json!({"Id":"container","Image":"replacement",
+                "Config":{"Labels":labels},"State":{"Pid":123,"Status":"running","ExitCode":0},"RestartCount":0}),
+                ),
+            ],
+        );
+
+        // Act
+        let error = adapter
+            .exec(
+                &plan,
+                "worker",
+                &["should-not-run".into()],
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap_err();
+
+        // Assert
+        assert!(matches!(error, Error::Invalid(message) if message.contains("image changed")));
+        server.await.unwrap();
     }
 }
