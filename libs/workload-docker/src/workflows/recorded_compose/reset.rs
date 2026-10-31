@@ -68,6 +68,7 @@ impl Controller {
             _lock: lock,
         })
     }
+    /// Fixed temporary OverlayFS root, supplied automatically by the runner when overlays are enabled.
     pub fn workspace(&self) -> PathBuf {
         self.directory.join("overlays")
     }

@@ -115,7 +115,8 @@ pub struct MountMapping {
 pub struct OverlaySet {
     /// Private artifact directory for ownership and result records.
     pub directory: PathBuf,
-    /// Fixed mutable workspace; reset discards its contents after stopping writers.
+    /// Temporary OverlayFS root containing each tree's `upper`, `work` and `merged` directories.
+    /// Reset discards it after stopping writers; retained artifacts live outside this root.
     pub workspace: PathBuf,
     /// Non-overlapping shared directory views.
     pub trees: Vec<OverlayTree>,
@@ -131,7 +132,8 @@ pub struct OverlaySet {
 pub struct PrepareInput {
     /// Existing fresh run directory, outside all lower trees.
     pub artifacts: PathBuf,
-    /// Fresh mutable workspace with an existing canonical parent, outside all source trees.
+    /// Temporary OverlayFS root for each tree's `upper`, `work` and `merged` directories.
+    /// Must be fresh, outside source trees, and have an existing canonical parent.
     pub workspace: PathBuf,
     /// Pinned Compose manifests, rewritten in the preparation result.
     pub projects: Vec<ResolvedComposeProject>,
