@@ -1,0 +1,173 @@
+syntax = "proto3";
+package doramcap.compose.v1;
+
+// Paths are UTF-8; relative input paths resolve against ComposeProject.directory.
+// Callers validate required message presence and semantic constraints before side effects.
+
+// Launch settings; files and env-files resolve in supplied order against directory.
+message ComposeProject {
+  // Caller-selected key, unique across this run; used in artifact and Docker project names.
+  string key = 1;
+  // Absolute Compose project directory; relative file paths are resolved here.
+  string directory = 2;
+  // Compose files in merge order; at least one file is required.
+  repeated string files = 3;
+  // Interpolation environment files in precedence order, relative to `directory`.
+  repeated string env_files = 4;
+  // Explicit interpolation variables; overrides env-file values. Docker/Compose control variables are rejected.
+  map<string, string> environment = 5;
+  // Compose profiles to activate; empty uses the default profile selection.
+  repeated string profiles = 6;
+  // Explicit Compose service targets; empty selects all enabled services.
+  repeated string services = 7;
+  // Services whose successful exit is expected. Compose completion dependencies
+  // are also recognized. Other services must remain running until explicit stop.
+  repeated string completed_services = 8;
+  // Delete experiment-owned named volumes at teardown. Default retains them
+  // as isolated artifacts; external volumes are always retained.
+  bool remove_volumes = 9;
+}
+
+// Frozen execution identity; verify the private manifest digest before launching.
+message ResolvedComposeProject {
+  // Run ownership label assigned by the caller.
+  string run = 1;
+  // Prepared project key.
+  string key = 2;
+  // Generated Docker Compose project name, scoped to the artifact directory.
+  string name = 3;
+  // Private resolved execution manifest path; can contain secrets.
+  string manifest = 4;
+  // Digest used to reject changes to the execution manifest.
+  string sha256 = 5;
+  // Selected service names mapped to expected image and lifecycle state.
+  map<string, ComposeService> services = 6;
+  // Resolution warnings and applied policy changes.
+  repeated string diagnostics = 7;
+  // Whether teardown removes owned named volumes.
+  bool remove_volumes = 8;
+}
+
+// Pinned image and expected container count/completion policy.
+message ComposeService {
+  // Pinned local Docker image ID.
+  string image_id = 1;
+  // Expected positive number of service containers.
+  uint64 replicas = 2;
+  // Whether exit code zero is an accepted completion state.
+  bool completed = 3;
+}
+
+// Prepare one Compose input and save its private resolution evidence.
+message ResolveInput {
+  // Run identity used to namespace and label Docker resources.
+  string run = 1;
+  // Existing directory receiving the manifest and resolution evidence.
+  string artifacts = 2;
+  // Prepared launch settings for one Compose project.
+  ComposeProject project = 3;
+}
+
+// Start selected services; an empty selection starts the entire project.
+message StartInput {
+  // Explicit service targets; empty starts the whole project.
+  repeated string services = 1;
+  // Resolved project whose manifest digest is verified before launch.
+  ResolvedComposeProject plan = 2;
+  // Timeout budget for startup/readiness operations, in seconds.
+  uint64 readiness_seconds = 3;
+}
+
+// Stop selected services; removal requires the whole project.
+message StopInput {
+  // Retain every volume when filesystem evidence is incomplete.
+  bool preserve_volumes = 1;
+  // Services to quiesce; empty selects every service. Removal requires empty.
+  repeated string services = 2;
+  // Owned project to stop and inspect.
+  ResolvedComposeProject plan = 3;
+  // Grace period passed to shutdown operations, in seconds.
+  uint64 stop_seconds = 4;
+}
+
+// Bounded operation evidence; capture limits and timeouts are reported explicitly.
+message Diagnostic {
+  // Operation that failed.
+  string operation = 1;
+  // Machine-readable error category.
+  string kind = 2;
+  // Human-readable error details.
+  string message = 3;
+  // CLI exit code or Engine HTTP status when available.
+  optional int64 status = 4;
+  // Captured CLI stdout when available; subject to the runner limit.
+  optional string stdout = 5;
+  // Captured CLI stderr when available; subject to the runner limit.
+  optional string stderr = 6;
+}
+
+// Observed Engine state for an owned container.
+message Container {
+  // Exact Docker container ID.
+  string id = 1;
+  // Compose service name.
+  string service = 2;
+  // Actual image ID reported by Engine.
+  string image_id = 3;
+  // Host PID reported by Engine; zero when stopped.
+  int64 pid = 4;
+  // Engine container lifecycle status.
+  string status = 5;
+  // Configured health-check status, if present.
+  optional string health = 6;
+  // Exit status when the container has terminated.
+  optional int64 exit_code = 7;
+  // Engine-reported restart count.
+  int64 restart_count = 8;
+}
+
+// Observed containers and their frozen execution identity.
+message ComposeProjectState {
+  // Resolved project identity used for this inspection.
+  ResolvedComposeProject plan = 1;
+  // Containers verified as belonging to the project and run.
+  repeated Container containers = 2;
+}
+
+// Resource removal evidence; diagnostics remain available after a successful retry.
+message Cleanup {
+  // Generated Compose project name.
+  string project = 1;
+  // Shutdown/removal errors retained even when later cleanup succeeds.
+  repeated Diagnostic diagnostics = 2;
+  // Resource identities or unresolved checks preventing clean teardown.
+  repeated string remaining = 3;
+  // Owned named volumes intentionally retained as artifacts.
+  repeated string retained_volumes = 4;
+  // Whether the final resource checks establish a clean boundary.
+  bool verified = 5;
+}
+
+// Quiescence evidence collected before container removal.
+message Shutdown {
+  // Compose runtime project name.
+  string project = 1;
+  // Stop failures, including forced termination, retained for reporting.
+  repeated Diagnostic diagnostics = 2;
+  // All inspected owned containers are stopped; containers have not been removed.
+  bool stopped = 3;
+}
+
+// An Engine resource carrying a doramcap run ownership label.
+message OwnedResource {
+  // Canonical private artifact directory recorded on owned Docker resources.
+  optional string artifacts = 1;
+  // Run identity from the ownership label.
+  string run = 2;
+  // Compose project label, when present.
+  optional string project = 3;
+  // Engine resource category: container, network, or volume.
+  string kind = 4;
+  // Docker resource ID or volume name.
+  string id = 5;
+}
