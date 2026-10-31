@@ -27,8 +27,6 @@ The [dataflow tracing demo](apps/dataflow-tracing/) follows inputs through a
 four-node Dora pipeline. Select an output, inspect the inputs that produced it,
 and compare processing spans with measured latency on linked timelines.
 
-![Dataflow tracing architecture](apps/dataflow-tracing/docs/102026-dataflow-tracing.svg)
-
 Explore [live CPU activity](apps/cpu-viewer/docs/running.md) or
 [recording and storage behavior](apps/storage-demo/) for a closer look at resource
 contention and capture. Each demo includes its own setup and validation guide.
