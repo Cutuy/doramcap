@@ -64,9 +64,8 @@ receipt. Browser capture latency uses a calibrated server-clock mapping from
 `/clock`, with uncertainty and freshness checks. The viewer's
 [delivery schema](../../../../apps/cpu-viewer/server/proto/delivery.proto) owns
 `viewer_ingress`. Its Packet and SnapshotFrame preserve the legacy browser field
-layout, with shared measurement messages imported from this crate. Producer
-SnapshotFrame reserves former field 11 and its name. Byte rates include both
-DORA topics; message rates and latency refer to numeric snapshots.
+layout, with shared measurement messages imported from this crate. Byte rates
+include both DORA topics; message rates and latency refer to numeric snapshots.
 
 ## MCAP and compatibility
 
@@ -78,9 +77,7 @@ a recording from its embedded schema. Channel metadata identifies
 capture timestamps and the low 32 bits of sequence; payloads preserve full u64
 sequences. Recording remains an optional DORA subscriber.
 
-Protobuf accepts unknown additive fields. Keep field numbers/types stable and
-reserve deleted fields; incompatible changes require a new protocol version and
-coordinated deployment. Decoders check version, body and a 128 MiB packet limit.
+Decoders check version, body and a 128 MiB packet limit.
 Old MessagePack/JSON recordings require their corresponding legacy reader.
 
 JavaScript decoding uses Long-backed uint64 fields, then exact decimal strings

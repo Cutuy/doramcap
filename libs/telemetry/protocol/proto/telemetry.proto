@@ -1,6 +1,5 @@
 syntax = "proto3";
 package doramcap.telemetry.v1;
-// Stable field numbers are the compatibility contract. Never reuse removed tags.
 // Runtime/capture values are nanoseconds; IDs and counters retain uint64 precision.
 message Packet {
   oneof body {
@@ -62,9 +61,6 @@ message SnapshotFrame {
   bool dictionary_full = 8;
   uint64 dictionary_overflow = 9;
   repeated DictionaryEntry dictionary = 10;
-  // Viewer delivery owns this legacy annotation slot.
-  reserved 11;
-  reserved "viewer_ingress";
 }
 message DictionaryFrame {
   uint32 version = 1;
