@@ -323,16 +323,18 @@ async fn independent_startups_progress_and_duplicate_starts_are_rejected() {
     .unwrap();
     adapter.starting.lock().await.insert(
         plan.name.clone(),
-        Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
-            waiting.await.unwrap();
-            Ok(("slow".into(), String::new()))
-        })))),
+        Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+            tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("slow".into(), String::new()))
+            }),
+        )))),
     );
     adapter.starting.lock().await.insert(
         "fast".into(),
-        Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async {
-            Ok(("fast".into(), String::new()))
-        })))),
+        Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+            tokio::spawn(async { Ok(("fast".into(), String::new())) }),
+        )))),
     );
     let slow_project = adapter.project(&plan);
     let mut slow = Box::pin(slow_project.finish_start());
@@ -374,10 +376,12 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
     let (release, waiting) = tokio::sync::oneshot::channel();
     adapter.starting.lock().await.insert(
         "run".into(),
-        Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
-            waiting.await.unwrap();
-            Ok(("finished".into(), String::new()))
-        })))),
+        Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+            tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("finished".into(), String::new()))
+            }),
+        )))),
     );
     let plan = ResolvedComposeProject {
         name: "run".into(),
@@ -401,6 +405,57 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
         .collect();
     assert_eq!(outputs, [("finished".into(), String::new())]);
     assert!(adapter.starting.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn cancelled_completed_startup_retains_outcome_until_entry_removal() {
+    for failed in [false, true] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        let (finished, completion) = tokio::sync::oneshot::channel();
+        adapter.starting.lock().await.insert(
+            "run".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(StartupOutcome::Running(
+                tokio::spawn(async move {
+                    waiting.await.unwrap();
+                    finished.send(()).unwrap();
+                    if failed {
+                        Err(super::invalid("startup failed"))
+                    } else {
+                        Ok(("finished".into(), String::new()))
+                    }
+                }),
+            )))),
+        );
+        let plan = ResolvedComposeProject {
+            name: "run".into(),
+            ..state().plan.unwrap()
+        };
+        let project = adapter.project(&plan);
+        let mut cancelled = Box::pin(project.finish_start());
+        assert!(futures_util::poll!(&mut cancelled).is_pending());
+        let entries = adapter.starting.lock().await;
+
+        // Act: complete the task, then cancel its waiter while map removal is blocked.
+        release.send(()).unwrap();
+        completion.await.unwrap();
+        assert!(futures_util::poll!(&mut cancelled).is_pending());
+        drop(cancelled);
+        drop(entries);
+        let result = project.finish_start().await;
+
+        // Assert: cleanup receives the original outcome and removes the startup barrier.
+        if failed {
+            assert_eq!(result.unwrap_err().to_string(), "startup failed");
+        } else {
+            assert_eq!(result.unwrap(), Some(("finished".into(), String::new())));
+        }
+        assert!(adapter.starting.lock().await.is_empty());
+        assert!(project.finish_start().await.unwrap().is_none());
+    }
 }
 
 #[tokio::test]
