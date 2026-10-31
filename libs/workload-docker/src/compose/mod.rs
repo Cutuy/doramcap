@@ -11,11 +11,11 @@ mod model;
 pub mod overlay;
 mod state;
 mod steps;
-pub use adapter::{ComposeConfiguration, ComposeExecution, DockerAdapter, OwnedResources};
+pub use adapter::{ComposeConfiguration, ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, Container, Diagnostic,
-    OwnedResource, ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
+    ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,

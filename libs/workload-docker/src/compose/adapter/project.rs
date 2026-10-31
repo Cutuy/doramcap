@@ -83,11 +83,17 @@ impl ComposeExecution<'_> {
         self.adapter
             .docker
             .list_volumes(Some(ListVolumesOptions {
-                filters: project_filters(&self.plan.name),
+                filters: Some(HashMap::from([(
+                    "label".into(),
+                    vec![
+                        format!("{PROJECT_LABEL}={}", self.plan.name),
+                        format!("{RUN_LABEL}={}", self.plan.run),
+                    ],
+                )])),
             }))
             .await
             .map(|volumes| volumes.volumes.unwrap_or_default())
-            .map_err(|error| engine("list project volumes", error))
+            .map_err(|e| engine("list project volumes", e))
     }
     fn owned(&self, summary: &bollard::models::ContainerSummary) -> bool {
         summary.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&self.plan.run)
@@ -259,17 +265,6 @@ impl ComposeExecution<'_> {
         .await
         .map(|(out, _)| out)
     }
-    pub(crate) async fn resources_owned(&self) -> Result<bool> {
-        let networks = self.networks().await?;
-        let volumes = self.volumes().await?;
-        Ok(networks
-            .iter()
-            .all(|n| n.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&self.plan.run))
-            && volumes
-                .iter()
-                .all(|v| v.labels.get(RUN_LABEL) == Some(&self.plan.run)))
-    }
-
     // Share image, health and replica checks between endpoint routing and command execution.
     fn running_service(mut state: ComposeProjectState, service: &str) -> Result<Container> {
         let plan = state

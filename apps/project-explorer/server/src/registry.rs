@@ -10,7 +10,6 @@ mod proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.hosting.v1.rs"));
 }
 pub use proto::{AppRegistration, ArtifactCollection, RecordingCount, ResultFormat};
-pub use workload_docker::workflows::recovery::RecoveryProject as NestedProject;
 
 // Keep the existing private checkpoint representation during configuration migration.
 mod result_format_serde {
@@ -91,6 +90,8 @@ impl ArtifactCollection {
 #[derive(Clone, Debug)]
 pub struct Registration {
     pub directory: PathBuf,
+    /// Canonical app directory defining this gallery app's independent experiment scope.
+    pub repository_root: PathBuf,
     pub config: AppRegistration,
 }
 impl std::ops::Deref for Registration {
@@ -123,7 +124,11 @@ impl Registration {
             .map_err(|e| e.to_string())?
             .transcode_to()
             .map_err(|e| e.to_string())?;
-        Ok(Self { directory, config })
+        Ok(Self {
+            repository_root: directory.parent().unwrap_or(&directory).to_owned(),
+            directory,
+            config,
+        })
     }
 }
 
@@ -263,20 +268,6 @@ impl Registration {
             })
             || self.readiness_seconds == 0
             || self.stop_seconds == 0
-            || (self.nested_runs && !self.docker_socket)
-            || (self.nested_runs == self.nested_projects.is_empty())
-            || self.nested_projects.len() > 8
-            || self
-                .nested_projects
-                .iter()
-                .any(|p| !identifier(&p.key) || p.key.len() > 40)
-            || self
-                .nested_projects
-                .iter()
-                .map(|p| &p.key)
-                .collect::<BTreeSet<_>>()
-                .len()
-                != self.nested_projects.len()
             || self.private_directories.len() > 4
             || self.private_directories.iter().any(|name| {
                 name.is_empty()
@@ -394,7 +385,7 @@ impl Registry {
             .retain(|id, app| !app.requires_explicit_enable || enabled.contains(id.as_str()));
         Ok(registry)
     }
-    /// Load all registrations for recovery, including apps requiring opt-in.
+    /// Load all registrations, including apps requiring opt-in.
     pub fn load_all(workspace: &Path) -> Result<Self, String> {
         if !workspace.is_absolute() {
             return Err("workspace path must be absolute".into());
@@ -422,8 +413,9 @@ impl Registry {
                 ));
             }
             let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let app = Registration::parse(&text, directory)
+            let mut app = Registration::parse(&text, directory)
                 .map_err(|e| format!("{}: {e}", path.display()))?;
+            app.repository_root = fs::canonicalize(entry.path()).map_err(|e| e.to_string())?;
             app.validate()
                 .map_err(|e| format!("{}: {e}", path.display()))?;
             let id = app.id.clone();
@@ -453,6 +445,37 @@ mod tests {
             .unwrap()
             .to_owned()
     }
+    #[test]
+    fn gallery_apps_have_independent_canonical_repository_roots() {
+        // Arrange
+        let root =
+            std::env::temp_dir().join(format!("gallery-app-roots-{:032x}", rand::random::<u128>()));
+        for id in ["first", "second"] {
+            let deploy = root.as_path().join("apps").join(id).join("deploy");
+            fs::create_dir_all(&deploy).unwrap();
+            fs::write(deploy.join("registration.pbtxt"), format!(
+                "id: \"{id}\" compose_file: \"compose.yaml\" service: \"app\" network: \"default\" headless: true readiness_seconds: 1 stop_seconds: 1 result_file: \"result.mcap\" env_prefix: \"APP\""
+            )).unwrap();
+        }
+
+        // Act
+        let registry = Registry::load(root.as_path(), &[]).unwrap();
+
+        // Assert
+        let first = registry.get("first").unwrap();
+        let second = registry.get("second").unwrap();
+        assert_eq!(
+            first.repository_root,
+            fs::canonicalize(root.as_path().join("apps/first")).unwrap()
+        );
+        assert_eq!(
+            second.repository_root,
+            fs::canonicalize(root.as_path().join("apps/second")).unwrap()
+        );
+        assert_ne!(first.repository_root, second.repository_root);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn protobuf_registrations_preserve_defaults_and_reject_invalid_fields() {
         // Arrange
@@ -750,30 +773,6 @@ mod tests {
                 .iter()
                 .any(|c| c.matches("run.log"))
         );
-    }
-    #[test]
-    fn pending_orchestrator_registration_limits_private_wiring_and_exports() {
-        // Arrange
-        let text = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../orchestrator-demo/deploy/registration.pending.pbtxt"
-        ));
-        let mut app = Registration::parse(text, PathBuf::new()).unwrap();
-
-        // Act
-        let valid = app.validate();
-        let collection = &app.artifact_collections[0];
-
-        // Assert
-        assert!(valid.is_ok());
-        assert!(app.docker_socket);
-        assert!(app.nested_runs);
-        assert_eq!(app.private_directories, ["socket", "recovery"]);
-        assert!(collection.matches("cpu.mcap"));
-        assert!(!collection.matches("report.json"));
-        assert!(!collection.matches("worker.log"));
-        app.docker_socket = false;
-        assert!(app.validate().is_err());
     }
     #[test]
     fn loads_independent_manifest_and_rejects_duplicate_and_unsafe_entries() {

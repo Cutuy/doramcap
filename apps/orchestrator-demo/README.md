@@ -22,8 +22,8 @@ the server binary. Set `ORCHESTRATOR_BIND` to an IP address for container hostin
 the default remains `127.0.0.1`. `/health/ready` succeeds while a worker is attached.
 The worker accepts `ORCHESTRATOR_DOCKER_SOCKET` for trusted deployment configuration.
 `ORCHESTRATOR_RUN_PREFIX` can scope nested runs to a gallery generation.
-`ORCHESTRATOR_RECOVERY_DIRECTORY` optionally selects a private directory outside
-workload mounts for pre-launch recovery anchors.
+The worker requires `SOCKET IMAGE ARTIFACT_DIRECTORY REPOSITORY_ROOT`; the canonical
+repository root defines admission and strict pre-run cleanup.
 `ORCHESTRATOR_PRIVATE_TELEMETRY=1` sends lifecycle summaries without detailed
 payloads or filesystem paths; full reports remain in the run directory.
 

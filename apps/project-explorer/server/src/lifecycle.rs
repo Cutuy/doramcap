@@ -28,7 +28,6 @@ pub enum Status {
     Starting { generation: Token },
     Ready { generation: Token },
     Stopping { generation: Token },
-    Blocked { error: String },
 }
 
 #[derive(Debug)]
@@ -47,22 +46,12 @@ enum State {
     Stopping {
         generation: Token,
     },
-    Blocked {
-        error: String,
-    },
-}
-
-/// Returned when accepting a launch is unsafe.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LaunchError {
-    Blocked(String),
 }
 
 /// Immediate admission outcome; stopping must be awaited outside manager locks.
 pub(crate) enum Attempt {
     Accepted(Launch),
     Stopping,
-    Blocked(String),
 }
 
 /// Instructions for the caller after startup or session expiry.
@@ -77,8 +66,8 @@ pub enum Action {
 /// `idle_timeout` is measured using monotonic [`Instant`] values. The caller
 /// periodically calls `expire` and starts cleanup when it returns `Stop`.
 /// Callers must finish every started generation, including failed startup, and
-/// report whether cleanup was verified. A dropped lifecycle operation is not
-/// automatically cleaned up by this type.
+/// report workflow completion. New workflows reset unfinished resources.
+/// A dropped lifecycle operation does not perform cleanup.
 #[derive(Clone)]
 pub struct AppLifecycle {
     state: Arc<Mutex<State>>,
@@ -95,21 +84,12 @@ impl AppLifecycle {
             idle_timeout,
         }
     }
-    /// Create a blocked coordinator when restart discovery finds owned resources.
-    pub fn blocked(idle_timeout: Duration, error: String) -> Self {
-        let app = Self::new(idle_timeout);
-        *app.state.try_lock().expect("new coordinator is unlocked") = State::Blocked { error };
-        app
-    }
-    /// Accept a viewer, joining the current generation. A stopping generation is
-    /// awaited until the cleanup result is known. Cancellation before acceptance
-    /// creates no session; cleanup failure returns [`LaunchError::Blocked`].
-    pub async fn launch(&self, now: Instant) -> Result<Launch, LaunchError> {
+    #[cfg(test)]
+    async fn launch(&self, now: Instant) -> Launch {
         let mut accepted_at = now;
         loop {
             match self.try_launch(accepted_at).await {
-                Attempt::Accepted(launch) => return Ok(launch),
-                Attempt::Blocked(error) => return Err(LaunchError::Blocked(error)),
+                Attempt::Accepted(launch) => return launch,
                 Attempt::Stopping => {
                     self.wait_until_not_stopping().await;
                     accepted_at = Instant::now();
@@ -155,7 +135,6 @@ impl AppLifecycle {
                     start: false,
                 })
             }
-            State::Blocked { error } => Attempt::Blocked(error.clone()),
             State::Stopping { .. } => Attempt::Stopping,
         }
     }
@@ -225,8 +204,8 @@ impl AppLifecycle {
             Action::None
         }
     }
-    /// Begin cleanup after startup or runtime failure. Records no success until
-    /// `cleaned` verifies the cleanup boundary.
+    /// Begin teardown after startup or runtime failure.
+    /// The caller awaits workflow completion before reporting `completed`.
     pub async fn fail(&self, generation: Token) -> Action {
         let mut state = self.state.lock().await;
         if matches!(&*state, State::Starting { generation: g, .. } | State::Ready { generation: g, .. } if *g == generation)
@@ -279,21 +258,14 @@ impl AppLifecycle {
             _ => Action::None,
         }
     }
-    /// Complete cleanup for the matching generation. Unverified cleanup blocks
-    /// future launches and retains its diagnostic. Stale completions do nothing.
-    pub async fn cleaned(
-        &self,
-        generation: Token,
-        outcome: Result<Option<String>, String>,
-    ) -> bool {
+    /// Finish a generation and retain its diagnostic. Stale completions do nothing.
+    /// The next workflow resets unfinished resources before starting workloads.
+    pub async fn completed(&self, generation: Token, error: Option<String>) -> bool {
         let mut state = self.state.lock().await;
         if !matches!(&*state, State::Stopping { generation: current } if *current == generation) {
             return false;
         }
-        *state = match outcome {
-            Ok(error) => State::Stopped { error },
-            Err(error) => State::Blocked { error },
-        };
+        *state = State::Stopped { error };
         drop(state);
         self.changed.notify_waiters();
         true
@@ -313,9 +285,6 @@ impl AppLifecycle {
             State::Stopping { generation } => Status::Stopping {
                 generation: *generation,
             },
-            State::Blocked { error } => Status::Blocked {
-                error: error.clone(),
-            },
         }
     }
 }
@@ -332,8 +301,6 @@ mod tests {
 
         // Act
         let (first, second) = tokio::join!(app.launch(now), app.launch(now));
-        let first = first.unwrap();
-        let second = second.unwrap();
 
         // Assert
         assert_eq!(first.generation, second.generation);
@@ -389,11 +356,11 @@ mod tests {
         // Arrange
         let app = AppLifecycle::new(Duration::from_secs(10));
         let now = Instant::now();
-        let first = app.launch(now).await.unwrap();
+        let first = app.launch(now).await;
         app.started(first.generation, now).await;
 
         // Act
-        let reconnected = app.launch(now + Duration::from_secs(9)).await.unwrap();
+        let reconnected = app.launch(now + Duration::from_secs(9)).await;
         let expired = app
             .heartbeat(
                 first.generation,
@@ -421,11 +388,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn launch_waits_for_verified_cleanup_and_stale_completion_is_ignored() {
+    async fn launch_waits_for_workflow_completion_and_stale_completion_is_ignored() {
         // Arrange
         let app = AppLifecycle::new(Duration::from_secs(1));
         let now = Instant::now();
-        let first = app.launch(now).await.unwrap();
+        let first = app.launch(now).await;
         app.started(first.generation, now).await;
         assert_eq!(
             app.expire(now + Duration::from_secs(1)).await,
@@ -441,14 +408,11 @@ mod tests {
 
         // Assert
         assert!(!waiting.is_finished());
-        assert!(
-            !app.cleaned(first.generation.wrapping_add(1), Ok(None))
-                .await
-        );
+        assert!(!app.completed(first.generation.wrapping_add(1), None).await);
 
         // Act
-        assert!(app.cleaned(first.generation, Ok(None)).await);
-        let second = waiting.await.unwrap().unwrap();
+        assert!(app.completed(first.generation, None).await);
+        let second = waiting.await.unwrap();
 
         // Assert
         assert!(second.start);
@@ -460,37 +424,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cleanup_failure_blocks_waiters_and_preserves_diagnostic() {
+    async fn unfinished_cleanup_preserves_diagnostic_and_allows_a_fresh_attempt() {
         // Arrange
         let app = AppLifecycle::new(Duration::from_secs(120));
-        let first = app.launch(Instant::now()).await.unwrap();
+        let first = app.launch(Instant::now()).await;
         assert_eq!(
             app.fail(first.generation).await,
             Action::Stop(first.generation)
         );
-        let waiting = tokio::spawn({
-            let app = app.clone();
-            async move { app.launch(Instant::now()).await }
-        });
-        tokio::task::yield_now().await;
-
         // Act
         assert!(
-            app.cleaned(first.generation, Err("cleanup unverified".into()))
+            app.completed(first.generation, Some("cleanup unverified".into()))
                 .await
         );
-
         // Assert
         assert_eq!(
-            waiting.await.unwrap(),
-            Err(LaunchError::Blocked("cleanup unverified".into()))
-        );
-        assert_eq!(
             app.status().await,
-            Status::Blocked {
-                error: "cleanup unverified".into()
+            Status::Stopped {
+                error: Some("cleanup unverified".into())
             }
         );
+        // Act: a fresh attempt must reach the workflow's strict pre-run reset.
+        let next = app.launch(Instant::now()).await;
+        // Assert
+        assert!(next.start);
+        assert_ne!(next.generation, first.generation);
     }
 
     #[tokio::test]
@@ -498,7 +456,7 @@ mod tests {
         // Arrange
         let app = AppLifecycle::new(Duration::from_secs(2));
         let now = Instant::now();
-        let launch = app.launch(now).await.unwrap();
+        let launch = app.launch(now).await;
 
         // Act
         assert_eq!(app.expire(now + Duration::from_secs(2)).await, Action::None);
@@ -511,7 +469,7 @@ mod tests {
 
         // Act
         assert!(
-            app.cleaned(launch.generation, Ok(Some("startup failed".into())))
+            app.completed(launch.generation, Some("startup failed".into()))
                 .await
         );
 
@@ -522,23 +480,5 @@ mod tests {
                 error: Some("startup failed".into())
             }
         );
-    }
-
-    #[tokio::test]
-    async fn independent_apps_and_restart_discovery_do_not_share_state() {
-        // Arrange
-        let first = AppLifecycle::blocked(Duration::from_secs(120), "owned resources found".into());
-        let second = AppLifecycle::new(Duration::from_secs(120));
-
-        // Act
-        let (blocked, accepted) =
-            tokio::join!(first.launch(Instant::now()), second.launch(Instant::now()));
-
-        // Assert
-        assert_eq!(
-            blocked,
-            Err(LaunchError::Blocked("owned resources found".into()))
-        );
-        assert!(accepted.unwrap().start);
     }
 }

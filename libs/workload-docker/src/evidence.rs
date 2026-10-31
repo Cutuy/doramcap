@@ -3,6 +3,11 @@ use rustix::fs::{Mode, OFlags, ResolveFlags, openat2};
 use std::{fs::File, io, os::unix::fs::OpenOptionsExt, path::Path};
 use tokio::io::AsyncReadExt;
 
+/// Create a fresh owner-only directory; existing paths and missing parents fail.
+pub(crate) async fn create_private_dir(path: &Path) -> io::Result<()> {
+    tokio::fs::DirBuilder::new().mode(0o700).create(path).await
+}
+
 /// Read bounded private metadata without following its final component.
 /// Rejects non-regular files and growth beyond `limit`; parents are caller-owned.
 pub(crate) async fn read_regular(path: &Path, limit: u64) -> crate::compose::Result<Vec<u8>> {
@@ -14,12 +19,12 @@ pub(crate) async fn read_regular(path: &Path, limit: u64) -> crate::compose::Res
         .await?;
     let metadata = file.metadata().await?;
     if !metadata.is_file() || metadata.len() > limit {
-        return Err(invalid("recovery metadata is not a bounded regular file"));
+        return Err(invalid("workflow metadata is not a bounded regular file"));
     }
     let mut bytes = Vec::new();
     file.take(limit + 1).read_to_end(&mut bytes).await?;
     if bytes.len() as u64 > limit {
-        return Err(invalid("recovery metadata exceeds its size limit"));
+        return Err(invalid("workflow metadata exceeds its size limit"));
     }
     Ok(bytes)
 }

@@ -69,6 +69,7 @@ async fn discovery_and_resolution_reject_invalid_identity_before_io() {
         let resolution = adapter
             .configuration()
             .resolve(ResolveInput {
+                repository_root: None,
                 run: run.into(),
                 artifacts: "/nonexistent-artifacts".into(),
                 project: Some(project),
@@ -175,6 +176,19 @@ pub(crate) fn test_engine(
     root: &Path,
     responses: Vec<(&'static str, Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+    test_engine_status(
+        root,
+        responses
+            .into_iter()
+            .map(|(path, body)| (path, 200, body))
+            .collect(),
+    )
+}
+
+pub(crate) fn test_engine_status(
+    root: &Path,
+    responses: Vec<(&'static str, u16, Value)>,
+) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let socket = root.join("engine.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
@@ -189,7 +203,7 @@ pub(crate) fn test_engine(
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {
-        for (path, response) in responses {
+        for (path, status, response) in responses {
             let (stream, _) = listener.accept().await.unwrap();
             let mut stream = BufReader::new(stream);
             let mut line = String::new();
@@ -202,10 +216,14 @@ pub(crate) fn test_engine(
                     break;
                 }
             }
-            let body = response.to_string();
+            let body = if status == 204 {
+                String::new()
+            } else {
+                response.to_string()
+            };
             stream.get_mut().write_all(format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
-                ).as_bytes()).await.unwrap();
+                "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+            ).as_bytes()).await.unwrap();
         }
     });
     (adapter, server)

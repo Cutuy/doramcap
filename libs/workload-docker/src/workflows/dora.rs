@@ -479,31 +479,6 @@ fn published_count(logs: &str) -> Result<u64> {
     }
     Ok(counts[1])
 }
-/// Recover workflow-owned Dora shutdown before the surrounding Compose cleanup.
-/// Missing checkpoints mean no managed flow started; incomplete shutdown is an
-/// error retained by the caller while Docker teardown still proceeds.
-pub(crate) async fn recover(adapter: &DockerAdapter, plan: &ResolvedComposeProject) -> Result<()> {
-    let path = Path::new(&plan.manifest)
-        .parent()
-        .unwrap()
-        .join(format!("{}.dora-started.json", plan.key));
-    let bytes = match read_regular(&path, 2 * 1024 * 1024).await {
-        Ok(bytes) => bytes,
-        Err(crate::compose::Error::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(());
-        }
-        Err(e) => return Err(e),
-    };
-    let mut flow: Flow = serde_json::from_slice(&bytes)?;
-    if flow.plan.run != plan.run || flow.plan.key != plan.key || flow.plan.sha256 != plan.sha256 {
-        return Err(invalid("Dora checkpoint ownership changed"));
-    }
-    flow.plan = plan.clone();
-    tokio::time::timeout(Duration::from_secs(60), stop(adapter, flow))
-        .await
-        .map_err(|_| invalid("Dora recovery shutdown deadline exceeded"))?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

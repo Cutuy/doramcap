@@ -117,10 +117,6 @@ fn error(error: Error) -> (StatusCode, Json<Value>) {
             Json(json!({"error":"server shutting down"})),
         ),
         Error::Blocked(message) => (StatusCode::CONFLICT, Json(json!({"error":message}))),
-        Error::Busy { owner } => (
-            StatusCode::CONFLICT,
-            Json(json!({"error":format!("{owner} has an active or unresolved experiment")})),
-        ),
     }
 }
 fn status_value(status: Status) -> Value {
@@ -135,7 +131,6 @@ fn status_value(status: Status) -> Value {
         Status::Stopping { generation } => {
             json!({"state":"stopping","generation":format!("{generation:032x}")})
         }
-        Status::Blocked { error } => json!({"state":"blocked","error":error}),
     }
 }
 async fn viewer() -> Html<&'static str> {

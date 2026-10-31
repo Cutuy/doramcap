@@ -172,6 +172,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let plan = adapter
         .configuration()
         .resolve(ResolveInput {
+            repository_root: None,
             run: format!("shm-{}", std::process::id()),
             artifacts: root.to_string_lossy().into_owned(),
             project: Some(ComposeProject {
@@ -391,14 +392,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let cleanup = adapter.project(&plan.clone()).stop(5, true).await.unwrap();
     assert!(cleanup.verified, "{cleanup:?}");
     assert!(
-        adapter
-            .resources()
-            .discover_runs(&plan.run)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
         result.is_ok(),
         "{}; artifacts: {}",
         result.unwrap_err(),
@@ -413,6 +406,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let plan = adapter
         .configuration()
         .resolve(ResolveInput {
+            repository_root: None,
             run: plan.run.clone(),
             artifacts: cancel_dir.to_string_lossy().into_owned(),
             project: Some(ComposeProject {
@@ -455,14 +449,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     assert!(!matches!(cancelled, Ok(Ok(_))));
     assert!(!state.containers.iter().any(|c| c.service == "adopted"));
     assert!(cleanup.verified, "{cleanup:?}");
-    assert!(
-        adapter
-            .resources()
-            .discover_runs(&plan.run)
-            .await
-            .unwrap()
-            .is_empty()
-    );
     std::fs::remove_dir_all(root).unwrap();
 }
 

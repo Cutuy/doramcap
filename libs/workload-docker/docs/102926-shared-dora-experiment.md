@@ -6,7 +6,7 @@ Created: 2026-10-29. Status: agreed architecture; implementation pending.
 
 ## Contract
 
-One host runs one experiment at a time. Each experiment owns one Dora coordinator
+Each canonical repository runs one experiment at a time. Each experiment owns one Dora coordinator
 and daemon, shared by all its Dora participants, including host and container
 processes. The shared Docker workflow owns their lifecycle. The gallery calls
 that workflow and owns browser sessions and inactivity policy.
@@ -35,9 +35,9 @@ production shell supervisor, custom broker, or new general workflow framework.
 | Identity | Explicit experiment, participant and node IDs; reject duplicates |
 | Routing | Explicit edges in one experiment graph; shared IPC alone creates no routes |
 | Recording | Experiment-owned recording outputs and observable finalization |
-| Admission | Host-wide cooperative exclusive lock plus unresolved-run check |
-| Gallery | One active hosted experiment; additional viewers may join that same run |
-| Concurrent app starts | Different experiment requests receive a clear busy response |
+| Admission | Canonical repository lock and strict pre-run reset |
+| Gallery | Each app has its own repository scope; viewers join its active run |
+| Concurrent app starts | Different app repositories may run concurrently |
 | Multiple apps | Declare them as participants of one prepared experiment |
 | Out of scope | Live graph editing, automatic discovery, distributed Docker, global recorder |
 
@@ -174,7 +174,7 @@ Evidence: pending.
 
 Evidence: pending.
 
-## M4 — Observable drain, shutdown and recovery
+## M4 — Observable drain, shutdown and reset
 
 **Work items**
 
@@ -188,26 +188,29 @@ Evidence: pending.
   startup readiness does not require output from a user producer not yet launched.
 - [ ] Keep deadlines explicit. Forced termination or missing drain acknowledgement
   marks recording incomplete; never write a clean-completion marker on timeout.
-- [ ] Capture runtime, graph and process identities in existing private recovery
-  records. Validate ownership against PID reuse and unrelated Dora processes.
-- [ ] Adapt `workflows/recovery.rs` to perform the same ordered shutdown after a
-  launcher crash. Recovery is idempotent and retains incomplete artifacts.
+- [x] Reset the canonical repository scope before preparation: stop and verify
+  writers, discard temporary upper data, remove containers/networks, verify absence.
+- [x] Remove recovery checkpoints and discovery; preserve outputs and volumes.
 - [ ] Feed stopped-writer/finalization outcomes into existing filesystem gates.
   Preserve OverlayFS capture/write-back implementation and its failure policies.
-- [ ] Release admission after cleanup is verified; retain unresolved ownership
-  records when cleanup cannot be proven complete.
+- [x] Hold repository admission through the workflow; subsequent runs must pass
+  reset before preparation, including after incomplete teardown.
 
 **Validation**
 
 - [ ] A finite producer emits a known sequence; immediate stop still yields every
   accepted message in the finalized MCAP, with explicitly reported drops/failures.
 - [ ] A stalled consumer hits its deadline and reports incomplete recording.
-- [ ] Recovery works after failures at runtime start, participant launch, drain,
-  and partial removal; repeat recovery does not touch unrelated resources.
+- [x] Reset handles first, clean, dirty and skipped teardown plus partial removal;
+  repeated reset leaves other repositories and retained volumes untouched.
 - [ ] Runtime stays alive until recording completion. Filesystem finalization
   starts only after writers stop and retains its existing write-back guarantees.
 
-Evidence: pending.
+Evidence (2026-10-31): 39 library, 37 gallery and 3 contract tests pass.
+Five native Docker/OverlayFS cases pass: abandoned run, partial removal/retry,
+retained-volume isolation, concurrent repositories and dirty workspace disposal.
+Focused all-target/all-feature Clippy passes; full CI and ARM64 deferred.
+
 
 ## M5 — Migrate application deployments and gallery
 

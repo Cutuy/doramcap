@@ -95,7 +95,7 @@ async fn run(options: Options) -> Result<()> {
     let _lease = ManagerLease::acquire(&root)?;
     let registry = Registry::load(&workspace, &options.enabled_apps)?;
     let docker = Rc::new(DockerAdapter::connect(options.socket).await?);
-    let manager = Manager::discover_at(registry, &docker, options.idle, &root).await?;
+    let manager = Manager::new(registry, options.idle);
     // SAFETY: geteuid/getegid have no arguments or side effects.
     let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
     let service = Service::spawn_local(manager, docker, root, uid, gid);
@@ -130,12 +130,8 @@ async fn run(options: Options) -> Result<()> {
     maintenance.abort();
     let outcomes = service.shutdown().await;
     for (app, status) in outcomes {
-        match status {
-            Status::Blocked { error } => eprintln!("{app}: cleanup unverified: {error}"),
-            Status::Stopped { error: Some(error) } => {
-                eprintln!("{app}: finalization failed: {error}")
-            }
-            _ => {}
+        if let Status::Stopped { error: Some(error) } = status {
+            eprintln!("{app}: finalization failed: {error}");
         }
     }
     result?;

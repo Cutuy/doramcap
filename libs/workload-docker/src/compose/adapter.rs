@@ -1,6 +1,6 @@
 mod configuration;
 mod project;
-mod resources;
+mod scope;
 use super::{
     ResolvedComposeProject, Result,
     error::{engine, invalid},
@@ -8,12 +8,13 @@ use super::{
 use bollard::Docker;
 pub use configuration::ComposeConfiguration;
 pub use project::ComposeExecution;
-pub use resources::OwnedResources;
+use scope::ExperimentResources;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
+pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 pub(crate) const DIRECTORY_OWNER_LABEL: &str = "io.doramcap.directory-owner";
 type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
 /// Shared Docker connection providing configuration, execution and ownership capabilities.
@@ -62,9 +63,11 @@ impl DockerAdapter {
             plan,
         }
     }
-    /// Borrow read-only discovery of labeled runtime resources.
-    pub fn resources(&self) -> OwnedResources<'_> {
-        OwnedResources { adapter: self }
+    pub(crate) fn experiment_resources<'a>(&'a self, scope: &'a str) -> ExperimentResources<'a> {
+        ExperimentResources {
+            adapter: self,
+            scope,
+        }
     }
 }
 pub(crate) fn validate_name(name: &str) -> Result<()> {
@@ -83,6 +86,22 @@ pub(crate) fn validate_name(name: &str) -> Result<()> {
 
 pub(crate) fn project_name(run: &str, key: &str) -> String {
     format!("dc-{run}-{key}")
+}
+/// Stable project identity for one canonical repository/key.
+pub(crate) fn repository_project_name(key: &str, repository: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    format!(
+        "dc-{}-{key}",
+        &digest(repository.as_os_str().as_bytes())[..16]
+    )
+}
+/// Private admission and temporary OverlayFS directory for one repository.
+pub(crate) fn repository_scope(repository: &Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!(
+        "/tmp/doramcap-experiments-{}-{}",
+        unsafe { libc::geteuid() },
+        repository_project_name("experiment", repository)
+    ))
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))

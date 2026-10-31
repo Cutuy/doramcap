@@ -46,15 +46,26 @@ pub(super) fn executor(
     observer: impl Observer + 'static,
     label: &str,
 ) -> Rc<LocalExecutor> {
+    attach(
+        LocalExecutor::new(observer)
+            .with_label(label)
+            .capture_payloads(true),
+        adapter,
+        diagnostics,
+    )
+}
+
+pub(super) fn attach(
+    mut executor: LocalExecutor,
+    adapter: Rc<DockerAdapter>,
+    diagnostics: Diagnostics,
+) -> Rc<LocalExecutor> {
     use super::{
         recorded_compose::{finalization::*, preparation::PrepareRun, projects::*},
         system_apps::*,
     };
     use crate::compose::overlay::{FinalizeOverlays, PrepareOverlays};
     Rc::new_cyclic(|weak: &Weak<LocalExecutor>| {
-        let mut executor = LocalExecutor::new(observer)
-            .with_label(label)
-            .capture_payloads(true);
         register(&mut executor, adapter.clone(), diagnostics.clone());
         super::dora::register(&mut executor, adapter.clone());
         let dependency = adapter.clone();
