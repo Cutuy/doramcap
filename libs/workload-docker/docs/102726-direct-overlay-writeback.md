@@ -16,12 +16,10 @@ attributes use rsync archive mode. Advanced metadata fidelity is explicitly
 unqualified and does not itself fail a run. Unsupported filesystem semantics fail
 loudly before lower mutation. No custom metadata reconstruction is required.
 
-Current implementation/research: [backend design](102726-overlay-writeback.md).
-The default write-back path now uses this implementation. Retain mode continues to
-stage a full merged view.
-This revision supersedes the earlier merged-view inspection and hardlink-reconstruction plan.
+Default write-back uses this implementation. Retain mode materializes a full
+merged view.
 
-## Proposed flow
+## Write-back flow
 
 1. Stop and verify all writers; keep original host sources stable through finalization.
 2. Strictly unmount all owned overlays and verify absence.

@@ -102,6 +102,6 @@ choices as ordinary reviewed preparation data. Keep filesystem privileges, Docke
 execution and cleanup in the trusted server. No generated workflow code or pipeline
 YAML is needed. Multi-host execution remains future work.
 
-Related: [Compose workflow](../../../../libs/workload-docker/docs/102626-compose-workflow.md),
+Related: [Compose workflow](../../../../libs/workload-docker/README.md),
 [filesystem isolation](../../../../libs/workload-docker/docs/102626-docker-experiment-isolation.md),
 [adoption candidates](../../../../libs/workload-lifecycle/docs/102626-adoption-candidates.md).

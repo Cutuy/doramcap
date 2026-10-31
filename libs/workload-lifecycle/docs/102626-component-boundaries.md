@@ -19,7 +19,7 @@ request, CPU monitor policy, runner and result. Both compile with all targets.
 | `workload-lifecycle` | Mechanism-neutral lifecycle design and eventual shared contracts | No runtime API yet |
 | `workload-docker::compose` | Compose resolution, resource ownership, Docker inspection and teardown | `ComposeProject`, `ResolvedComposeProject`, lifecycle steps |
 | `workload-docker::workflows::recorded_compose` | Procedural run with recording and ordered project shutdown | `ComposeRun`, `ComposeRunner`, `ComposeRunReport` |
-| `workload-docker::workflows::system_apps` | Supporting-service configuration and recording probes | `SystemAppsConfig`, `CpuMonitor`, `DoraFlow` |
+| `workload-docker::workflows::system_apps` | Supporting-service configuration and recording probes | `SystemAppsConfig`, `CpuMonitor`, `DoraExperiment` |
 
 A workflow is ordinary Rust code that calls steps. Concrete policy belongs to its
 own implementation; there is no generic workflow object or experiment type.

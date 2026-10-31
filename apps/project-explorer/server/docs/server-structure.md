@@ -20,5 +20,5 @@ gallery workflow, which delegates container lifecycle operations to `ComposeRunn
 | [lease.rs](../src/lease.rs) | Hold the exclusive manager lock for the data directory |
 
 Caddy forwards app traffic directly to the ready container after authorization.
-The diagram shows hosting control requests. Shared Docker workflow phases are
-shown in the [library module diagram](../../../../libs/workload-docker/src/workflows/recorded_compose/workflow-modules.svg).
+The diagram shows hosting control requests. See the
+[Docker workflow](../../../../libs/workload-docker/README.md) for container lifecycle ownership.

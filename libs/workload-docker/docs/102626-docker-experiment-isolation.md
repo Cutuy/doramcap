@@ -377,7 +377,7 @@ host configuration restoration → device/external-service hooks → measurement
 - [Linux OverlayFS semantics and backing-filesystem requirements](https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html)
 - [Docker overlay storage and copy-up behavior](https://docs.docker.com/engine/storage/drivers/overlayfs-driver/)
 - [Docker bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)
-- [Current Compose workflow and validation](102626-compose-workflow.md)
+- [Docker workflow](../README.md)
 
 - [Docker container changes](https://docs.docker.com/reference/cli/docker/container/diff/)
 - [systemd execution environment](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)

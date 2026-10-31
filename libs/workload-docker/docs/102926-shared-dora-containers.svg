@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="1070" viewBox="0 0 1320 1070" role="img" aria-labelledby="title desc">
+<title id="title">Today on main versus planned experiment containers and shared IPC</title>
+<desc id="desc">Today on main each app input gets a separate Compose project. The optional injected System Monitor writes files without Dora. CPU Viewer's coordinator is one container; its daemon launches System Monitor, CPU Viewer and recorder processes inside another container, sharing that container's dev shm. Adopted app containers have their own dev shm. Planned: one experiment Compose project, with steps starting coordinator and daemon, ordinary system app containers, then adopted user containers. All containers join one IPC namespace and the same dev shm; user Dora attachment is optional. Every experiment supplies coordinator and daemon. A directory-derived daemon container name reserves ownership through verified cleanup.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#3266ac"/></marker></defs>
+<rect width="1320" height="1070" fill="#f7f9fc"/><g font-family="Arial,sans-serif" fill="#19324b">
+<text x="30" y="42" font-size="30" font-weight="bold">Containers and IPC: today → planned</text>
+<text x="30" y="76" font-size="19">Example: CPU Viewer + an adopted app, on one Linux host</text>
+<text x="30" y="126" font-size="25" font-weight="bold">TODAY · main</text>
+<text x="680" y="126" font-size="25" font-weight="bold">PLANNED · agreed target</text>
+<text x="30" y="153" font-size="17">App inputs become separate Compose projects.</text>
+<text x="680" y="153" font-size="17">One experiment project. Steps control selected services.</text>
+<rect x="30" y="174" width="600" height="175" rx="11" fill="#edf1f7" stroke="#94a9be"/>
+<text x="48" y="203" font-size="19" font-weight="bold">Project: dc-run-system · optional injected monitor</text>
+<rect x="50" y="220" width="560" height="108" rx="11" fill="#fff" stroke="#94a9be"/>
+<text x="68" y="249" font-size="20" font-weight="bold">System Monitor container</text>
+<text x="68" y="280" font-size="17">cpu-monitor · Dora OFF · writes cpu.pb / cpu.mcap</text>
+<text x="68" y="309" font-size="17" fill="#946126">Own IPC namespace and /dev/shm</text>
+<rect x="30" y="369" width="600" height="344" rx="11" fill="#edf1f7" stroke="#94a9be"/>
+<text x="48" y="400" font-size="19" font-weight="bold">Project: dc-run-cpu-viewer</text>
+<rect x="50" y="423" width="185" height="122" rx="11" fill="#e0ebfa" stroke="#94a9be"/>
+<text x="65" y="454" font-size="20" font-weight="bold">Coordinator</text>
+<text x="65" y="484" font-size="16">dora coordinator</text>
+<text x="65" y="519" font-size="16" fill="#946126">Own /dev/shm</text>
+<rect x="285" y="423" width="325" height="269" rx="11" fill="#e0ebfa" stroke="#94a9be"/>
+<text x="302" y="454" font-size="19" font-weight="bold">Viewer / daemon container</text>
+<text x="302" y="484" font-size="17">dora daemon launches:</text>
+<rect x="301" y="499" width="293" height="36" rx="6" fill="#fff" stroke="#94a9be"/>
+<text x="313" y="523" font-size="17">System Monitor process</text>
+<rect x="301" y="545" width="293" height="36" rx="6" fill="#fff" stroke="#94a9be"/>
+<text x="313" y="569" font-size="17">CPU Viewer process</text>
+<rect x="301" y="591" width="293" height="36" rx="6" fill="#fff" stroke="#94a9be"/>
+<text x="313" y="615" font-size="17">MCAP Recorder process</text>
+<rect x="301" y="644" width="293" height="32" rx="6" fill="#d6eee5" stroke="#24816a"/>
+<text x="314" y="666" font-size="16" fill="#176a56">One /dev/shm for these processes</text>
+<path d="M236 472H277" fill="none" stroke="#3266ac" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="241" y="455" font-size="14" fill="#3266ac">TCP</text>
+<rect x="30" y="733" width="600" height="122" rx="11" fill="#edf1f7" stroke="#94a9be"/>
+<text x="48" y="762" font-size="19" font-weight="bold">Project: dc-run-user-app</text>
+<rect x="50" y="778" width="560" height="59" rx="11" fill="#fff" stroke="#94a9be"/>
+<text x="68" y="803" font-size="18" font-weight="bold">Adopted user app container</text>
+<text x="68" y="825" font-size="16">Own /dev/shm · shared Dora access not provisioned</text>
+<rect x="680" y="174" width="610" height="681" rx="11" fill="#edf2f9" stroke="#94a9be"/>
+<text x="698" y="205" font-size="21" font-weight="bold">Project: dc-run-experiment</text>
+<text x="700" y="242" font-size="20" font-weight="bold">STEP 1 · Dora setup · always</text>
+<rect x="700" y="257" width="220" height="90" rx="11" fill="#e0ebfa" stroke="#94a9be"/>
+<text x="718" y="290" font-size="18" font-weight="bold">Coordinator container</text>
+<text x="718" y="322" font-size="17">dora coordinator</text>
+<rect x="1005" y="257" width="235" height="90" rx="11" fill="#e0ebfa" stroke="#94a9be"/>
+<text x="1023" y="290" font-size="18" font-weight="bold">Daemon container</text>
+<text x="1023" y="322" font-size="16">Directory + IPC owner</text>
+<path d="M922 299H997" fill="none" stroke="#3266ac" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="943" y="286" font-size="15" fill="#3266ac">TCP</text>
+<text x="700" y="410" font-size="20" font-weight="bold">STEP 2 · Ordinary system apps</text>
+<rect x="700" y="428" width="172" height="104" rx="11" fill="#e1f1e7" stroke="#94a9be"/>
+<text x="713" y="466" font-size="18" font-weight="bold">System Monitor</text>
+<text x="713" y="500" font-size="17">container</text>
+<rect x="890" y="428" width="172" height="104" rx="11" fill="#e1f1e7" stroke="#94a9be"/>
+<text x="903" y="466" font-size="18" font-weight="bold">Recorder</text>
+<text x="903" y="500" font-size="17">container</text>
+<rect x="1080" y="428" width="172" height="104" rx="11" fill="#e1f1e7" stroke="#94a9be"/>
+<text x="1093" y="466" font-size="18" font-weight="bold">CPU Viewer</text>
+<text x="1093" y="500" font-size="17">container</text>
+<text x="700" y="592" font-size="20" font-weight="bold">STEP 3 · Adopted user apps</text>
+<rect x="700" y="615" width="550" height="93" rx="11" fill="#fff0dc" stroke="#b99b65"/>
+<text x="718" y="646" font-size="20" font-weight="bold">User app container(s)</text>
+<text x="718" y="679" font-size="17">Same daemon access · using Dora is optional</text>
+<path d="M810 348V368H1264M1120 348V368M1264 368V760" fill="none" stroke="#24816a" stroke-width="3"/>
+<path d="M786 533V552H1264M976 533V552M1166 533V552M1251 660H1264" fill="none" stroke="#24816a" stroke-width="3"/>
+<rect x="700" y="760" width="565" height="69" rx="11" fill="#d6eee5" stroke="#24816a"/>
+<text x="720" y="790" font-size="21" font-weight="bold" fill="#176a56">ONE IPC NAMESPACE + ONE /dev/shm</text>
+<text x="720" y="816" font-size="17" fill="#176a56">Zenoh SHM enabled · shared by every container</text>
+<text x="30" y="900" font-size="20" font-weight="bold" fill="#946126">Private IPC per container.</text>
+<text x="30" y="931" font-size="17">CPU Viewer works within its daemon container.</text>
+<text x="680" y="900" font-size="20" font-weight="bold" fill="#176a56">Shared IPC across all experiment containers.</text>
+<text x="680" y="931" font-size="17">System Monitor follows the ordinary system app path.</text>
+<rect x="30" y="958" width="1260" height="65" rx="11" fill="#fff" stroke="#94a9be"/>
+<text x="48" y="985" font-size="18">Project borders = Docker resource grouping. Green connections = common IPC and /dev/shm.</text>
+<text x="48" y="1010" font-size="17">Startup: Dora ready → system apps stable → user apps. Shutdown keeps the IPC owner until apps stop.</text>
+</g></svg>

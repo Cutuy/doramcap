@@ -285,7 +285,7 @@
       ],
       "evidence": [
         "apps/orchestrator-demo/README.md",
-        "libs/workload-docker/docs/102626-compose-workflow.md",
+        "libs/workload-docker/README.md",
         "libs/workload-docker/docs/102626-filesystem-metadata.md"
       ]
     },
@@ -407,7 +407,7 @@
       "evidence": [
         "apps/orchestrator-demo/README.md",
         "libs/workload-docker/docs/102626-filesystem-metadata.md",
-        "libs/workload-docker/docs/102626-compose-workflow.md"
+        "libs/workload-docker/README.md"
       ]
     }
   ],

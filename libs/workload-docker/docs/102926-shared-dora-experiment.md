@@ -1,276 +1,193 @@
-![Experiment ownership and lifecycle](102926-shared-dora-experiment.svg)
+![Current and planned containers and shared IPC](102926-shared-dora-containers.svg)
 
-# Shared Dora runtime per experiment
+# Shared Dora daemon per experiment
 
-Created: 2026-10-29. Status: agreed architecture; implementation pending.
+Created: 2026-10-29. Status: M1–M4 complete; M5 recovery retests pending. ARM64 deferred.
+Acceptance requires **strictly fewer production-code LOC than main**.
 
 ## Contract
 
-One host runs one experiment at a time. Each experiment owns one Dora coordinator
-and daemon, shared by all its Dora participants, including host and container
-processes. The shared Docker workflow owns their lifecycle. The gallery calls
-that workflow and owns browser sessions and inactivity policy.
+- Keep user-supplied `compose.yml` inputs. Assemble **one Compose project per
+  experiment**, with a directory-scoped generated identity; reject naming conflicts.
+- Every experiment supplies coordinator/daemon; apps may ignore Dora.
+- Steps own startup: **coordinator/daemon ready → system apps ready/stable →
+  adopted user apps**. Control selected services within the shared project.
+- System Monitor is an ordinary system app supplied through its deployment
+  Compose file. Remove its special configuration, preparation and launch path.
+- Every container joins one IPC namespace and the same `/dev/shm` backing store.
+  Enable Zenoh SHM. Give all apps the same daemon connection settings; use is optional.
+- Applications retain their Compose commands, mounts, dependencies and health checks.
+  The Dora setup step owns communication services; workload steps own all app services.
+- Stop adopted apps, stop system producers, await consumer drain, stop Dora, then
+  finalize filesystems, remove resources and release directory admission. Independent
+  directories can run concurrently. Forced stops leave recording status incomplete.
+- Preserve protobuf/pbtxt settings, native Dora graphs, immutable inputs, embedded
+  recording and the MCAP writer's `seccomp=unconfined` setting.
 
-Participants use explicit node IDs and snapshotable launch settings. Prefer CLI
-arguments and read-only configuration files over environment variables. Keep
-foreign applications unchanged; small initialization changes in our Dora nodes
-are permitted. Ordinary Compose applications need no Dora integration to run
-and be observed, but their internal messages require explicit integration.
+## M1 — One project and shared IPC test: complete
 
-Start Dora, then recording/support services, then user workloads. Stop users,
-then remaining producers, drain/finalize recorders, and stop Dora. Existing
-filesystem finalization, write-back and resource removal follow this barrier.
-
-Use the existing Rust executor and dependencies. Keep independent operations
-concurrent with awaited futures inside each dependency phase. No detached cleanup,
-production shell supervisor, custom broker, or new general workflow framework.
-
-## Scope decisions
-
-| Concern | Initial implementation |
-|---|---|
-| Runtime | Host coordinator and daemon; qualify one local Linux arrangement |
-| Lifetime | One prepared experiment; no cross-experiment runtime sharing |
-| Membership | Resolve the complete participant graph before launch |
-| Identity | Explicit experiment, participant and node IDs; reject duplicates |
-| Routing | Explicit edges in one experiment graph; shared IPC alone creates no routes |
-| Recording | Experiment-owned recording outputs and observable finalization |
-| Admission | Host-wide cooperative exclusive lock plus unresolved-run check |
-| Gallery | One active hosted experiment; additional viewers may join that same run |
-| Concurrent app starts | Different experiment requests receive a clear busy response |
-| Multiple apps | Declare them as participants of one prepared experiment |
-| Out of scope | Live graph editing, automatic discovery, distributed Docker, global recorder |
-
-The gallery mapping deliberately avoids an indefinitely growing experiment. If
-interactive addition of unrelated apps to a running experiment is required later,
-design that separately. Preserve independent application binaries and images.
-
-Host networking is a candidate for Dora participants because the pinned dynamic
-node client connects to localhost. Select it only after M1 qualifies port handling,
-shared-memory access and proxy reachability. Foreign services retain their existing
-networking unless they explicitly participate in Dora. Shared IPC means a working
-common communication domain; do not claim zero-copy from namespace settings alone.
-
-## Execution rules for implementers
-
-- Read repository instructions, acquire/reuse a lease, and preserve existing edits.
-- Inspect the actual branch before applying this plan: the source currently has
-  uncommitted workflow regrouping and recovery fixes that must be retained.
-- Complete milestones in order. M1 is a feasibility gate, not permission to build
-  around an unsupported Dora behavior with a new broker or environment hack.
-- Before adding a dependency or custom infrastructure, present suitable maintained
-  libraries as required by AGENTS.md. Prefer reuse of existing dependencies.
-- Update work and validation checklists separately. Record concise acceptance
-  evidence in the relevant milestone before checking it; omit raw logs/history.
-- Keep API contracts in Rustdoc and configuration in generated protobuf types.
-- Commit by milestone or coherent concern; do not mix unrelated cleanup.
-
-## M1 — Qualify external attachment and common IPC
+Evidence (2026-10-30): `tests/shared_ipc.rs::one_project_qualifies_zenoh_shm_and_adopted_ipc`
+passed locally in 13.05 s. Five containers shared their IPC namespace and shm mount;
+20 payloads ≥256 KiB used `/dev/shm` and finalized MCAP in order (0–19).
+An adopted app opened the same segment. Endpoint ownership rejection, interrupted
+startup and verified cleanup passed. Dora 1.1 uses its daemon/TCP path for backpressure
+routes; the SHM test uses `drop_oldest`. Recording routes retain backpressure.
 
 **Work items**
 
-- [ ] Inspect pinned Dora 1.1.0 source and deployed CLI version together. Verify
-  dynamic-node configuration, endpoint selection, startup barriers, input closure,
-  reconnect behavior and shared-memory implementation; do not rely on newer docs.
-- [ ] Build a minimal host producer, container consumer and recording consumer
-  using existing crates. Give each an explicit node ID and daemon port through
-  arguments/configuration. Avoid `DORA_NODE_CONFIG` as our integration contract.
-- [ ] Register the complete graph before launching its externally owned processes.
-  Confirm that a waiting user producer does not prevent system consumers becoming
-  ready. Separate graph registration, attachment readiness and data readiness.
-- [ ] Qualify the host network/IPC/shared-memory arrangement. Record exact Compose
-  fields, mount paths, UID/GID permissions, capacity and endpoint bindings here.
-  Host IPC alone must not be assumed to share the required POSIX SHM files.
-- [ ] Check host-network port collisions and Caddy connectivity. Resolve required
-  service ports explicitly in the prepared plan; bind Dora control endpoints to
-  the qualified local interface and detect pre-existing listeners.
-- [ ] Identify the smallest supported node initialization change. If the public
-  API cannot express required settings explicitly, report the precise gap before
-  introducing patched Dora, hand-built internal configuration or a proxy.
+- [x] Test one native Compose project with coordinator, daemon, a system
+  producer/consumer pair and an adopted container. Start each group through steps.
+- [x] Use a shareable IPC owner, join every app to it, size `/dev/shm` once and
+  enable Zenoh SHM. Preserve matched permissions, memlock and backpressure.
+- [x] Test this placement before replacing application launch paths.
 
 **Validation**
 
-- [ ] Host→container, container→host and container→container exchange succeeds
-  through the same experiment runtime with explicit IDs and routes.
-- [ ] Large-payload testing identifies the actual transport; shared-memory behavior
-  is demonstrated if claimed, including cleanup of experiment-owned allocations.
-- [ ] Two consumers attach before producer launch without a startup deadlock.
-- [ ] Producer exit yields observable input closure; recorder drains queued input
-  and finalizes a readable file with known message counts.
-- [ ] Duplicate ID, occupied endpoint and incompatible permissions fail clearly.
-- [ ] Record the selected topology and any unavoidable upstream environment use,
-  including its derivation from snapshotted settings. No silent fallback transport.
+- [x] All containers have the same IPC namespace and shared-memory backing;
+  an adopted container sees and opens a segment created by a system container.
+- [x] Prove actual Zenoh shared-memory payload delivery, retain the full accepted
+  sequence and finalize MCAP. A successful TCP fallback does not satisfy this check.
+- [x] Verify setup ordering, endpoint collision rejection, cancellation and cleanup.
 
-Evidence: pending.
+## M2 — Ordinary apps and one resolved experiment: complete
 
-## M2 — Explicit configuration, snapshots and admission
+Evidence (2026-10-30): native-input, concurrent-directory startup/recovery,
+private input snapshots, image pins and conflict rejection passed. Mixed volume
+removal and evidence preservation passed in 5.36 s. Gallery tests use System
+Monitor through ordinary app inputs.
 
 **Work items**
 
-- [ ] Replace the container-service-bound `DoraFlow` contract in
-  `proto/system_apps.proto` with experiment runtime and participant configuration.
-  Use generated types directly; introduce no parallel configuration structs.
-- [ ] Define runtime executable/version, explicit endpoints, graph path, deadlines,
-  shared-memory settings and private runtime/artifact paths. Pin resolved binaries
-  and container image identities using existing preparation conventions.
-- [ ] Define participant ID, node IDs, role, host/Compose launch binding, arguments,
-  configuration files, readiness condition, shutdown phase and output ownership.
-  A process may contain multiple nodes only when explicitly declared.
-- [ ] Resolve app-owned descriptor fragments into a frozen experiment graph with
-  deterministic IDs and validated routes. Reject dangling edges, duplicate IDs,
-  cyclic shutdown dependencies and contradictory launch ownership before launch.
-- [ ] Snapshot the effective pbtxt, native Dora descriptor, arguments, resolved
-  Compose manifests and allocated paths/ports privately before side effects.
-  Native Dora YAML remains valid upstream input; avoid a redundant schema for it.
-- [ ] Acquire one host-wide cooperative experiment lock before resource mutation.
-  Use one documented lock location shared by gallery and standalone callers.
-  Check unresolved ownership records before admitting a new run after a crash.
-- [ ] Reuse existing file locking facilities where appropriate; document scope,
-  permissions and limitations against unrelated Docker clients. Do not create
-  persistent system configuration automatically.
+- [x] Resolve supplied Compose inputs with their own paths/environment, assemble a
+  single experiment model and reject service/resource naming conflicts before launch.
+- [x] Remove `CpuMonitor`, special `PrepareSystemApps` handling and hidden monitor
+  injection. Supply System Monitor through the ordinary system app list.
+- [x] Remove the extra participant roles/phases/bindings, host process manager and
+  duplicated validation/recovery. Use native graph and Compose service identities.
+- [x] Preserve private input snapshots and existing filesystem/removal gates.
 
 **Validation**
 
-- [ ] Invalid configuration fails before any process, container or mount starts.
-- [ ] Effective settings are reconstructible from private snapshots without reading
-  the launcher's environment. Necessary foreign-app environment remains captured.
-- [ ] Two independent caller processes cannot start simultaneous experiments.
-- [ ] A crashed owner releases its OS lock but unresolved resources still block
-  admission until verified recovery. A stale PID alone proves no ownership.
+- [x] Native Compose files, overrides, relative paths, environment, networks and
+  volumes preserve their declared behavior; conflicts fail without side effects.
+- [x] Inputs are immutable and images pinned. System Monitor follows the same
+  preparation, launch, readiness and shutdown operations as another system app.
 
-Evidence: pending.
+## M3 — Explicit startup, drain and recovery: complete
 
-## M3 — Reusable runtime and lifecycle steps
+Evidence (2026-10-30): the public workflow suite passed in 101.35 s: slow startup,
+20-message drain, cancellation, failed app start, daemon death, forced writer stop
+and repeated crash recovery. Three additional cancellation runs passed after
+joining pending Compose starts before cleanup. Partial-removal recovery reused
+saved evidence; its stopped daemon reserved the directory until cleanup completed.
+Forced stops retain recording files with incomplete status.
 
 **Work items**
 
-- [ ] Refactor `src/workflows/dora.rs` into focused runtime/graph operations under
-  a small module directory if needed. Keep `recorded_compose/mod.rs` procedural.
-- [ ] Add or adapt reusable steps for runtime start/readiness, graph registration,
-  participant attachment checks, runtime inspection and runtime stop. Register
-  factories through `workflows/steps.rs` and reuse `LocalExecutor`.
-- [ ] Launch host coordinator/daemon with explicit arguments, working directories
-  and private logs. Establish recoverable ownership before acknowledging readiness;
-  account for crashes between spawn and checkpoint publication.
-- [ ] Integrate phases in `recorded_compose/{preparation,projects,observation}.rs`:
-  preparation → runtime → graph → consumers/support → users → observation.
-  Keep filesystem preparation before affected processes start.
-- [ ] Await independent sibling starts/stops concurrently. Preserve every attempted
-  resource for cleanup even when another sibling fails or cancellation arrives.
-- [ ] Observe host runtime and participant/container health. Daemon failure fails
-  the experiment; do not transparently restart and claim continuous recording.
-- [ ] Plain Compose callers without Dora participants retain a simple path without
-  an unnecessary Dora process. Mixed experiments use the one shared runtime.
+- [x] Launch selected Dora services, register the native graph, launch/stabilize
+  system services, then launch user services. Await attempted starts on failure.
+- [x] Supply daemon settings, default node IDs and IPC/SHM to every adopted app.
+  Preserve declared IDs, commands, health checks and dependencies; Dora use is optional.
+- [x] Apply the contract's shutdown order and reuse saved experiment identity for
+  crash recovery; keep the IPC owner until its users have stopped.
 
 **Validation**
 
-- [ ] Step events show runtime readiness before participant attachment and system
-  readiness before user launch. Independent starts overlap within each phase.
-- [ ] Partial launch, unavailable runtime, participant early exit and cooperative
-  cancellation all enter awaited cleanup and preserve individual failures.
-- [ ] Killing the daemon produces an explicit failed result and cleans or retains
-  owned resources consistently; no false successful recording status.
-- [ ] A non-Dora Compose experiment still works without Dora installed/running.
+- [x] Events prove daemon ready → every system app stable → user starts, including
+  slow startup. Earlier-stage failure/cancellation prevents user startup.
+- [x] Plain Compose apps and apps that ignore Dora run and stop normally.
+- [x] Final accepted messages survive drain. Forced workload stop and daemon death
+  report incomplete recording and await cleanup.
+- [x] Repeated crash/partial-removal recovery preserves ownership and filesystem
+  evidence; admission releases only after verified cleanup.
 
-Evidence: pending.
+## M4 — Deployments and final acceptance: complete
 
-## M4 — Observable drain, shutdown and recovery
+Evidence (2026-10-30): all six gallery registrations passed in 58.11 s.
+The local harness passed public startup/drain/failure tests, concurrent-directory
+runs, stopped-owner exclusion, crash/partial-removal recovery, immutable inputs,
+conflict rejection and mixed volume policies. Full local CI passed after rebasing
+onto main `4f1bb84`: boundaries,
+formatting, default/all-feature Clippy and workspace tests (86 executables each),
+doctests, storage without defaults, examples/binaries, snapshot tests and Rustdoc.
+ARM64 is deferred by request.
+For the directory-discovery test edit, registry tests and Clippy passed;
+full CI was deferred.
+
+Full feature deltas versus pre-stack main `7966a1e`; inherited changes are excluded:
+
+| Category | LOC delta |
+| --- | ---: |
+| Production Rust | −84 |
+| Protobuf schema code | +71 |
+| Production total | **−13** |
+| Tests/tooling | Rust +2,831; Python +24 |
+| Deployment/configuration, excluding schemas | −77 |
+| Documentation | −760 |
+
+Production counts include Rust and protobuf schemas, excluding comments/blanks,
+tests and generated/vendor code. Other categories use nonblank lines.
 
 **Work items**
 
-- [ ] Replace the current all-flow-stop-before-project-stop behavior in
-  `recorded_compose/projects.rs` with participant dependency barriers: users,
-  remaining producers, draining consumers, runtime, existing finalization/removal.
-- [ ] Define consumer completion as input closure plus queue consumption and
-  successful writer finalization. Reuse existing recorder behavior where sound;
-  add a minimal explicit completion result if process exit alone is ambiguous.
-- [ ] Distinguish attached, ready, quiesced, finalized and failed states. Ensure
-  startup readiness does not require output from a user producer not yet launched.
-- [ ] Keep deadlines explicit. Forced termination or missing drain acknowledgement
-  marks recording incomplete; never write a clean-completion marker on timeout.
-- [ ] Capture runtime, graph and process identities in existing private recovery
-  records. Validate ownership against PID reuse and unrelated Dora processes.
-- [ ] Adapt `workflows/recovery.rs` to perform the same ordered shutdown after a
-  launcher crash. Recovery is idempotent and retains incomplete artifacts.
-- [ ] Feed stopped-writer/finalization outcomes into existing filesystem gates.
-  Preserve OverlayFS capture/write-back implementation and its failure policies.
-- [ ] Release admission after cleanup is verified; retain unresolved ownership
-  records when cleanup cannot be proven complete.
+- [x] Integrate CPU Viewer, MCAP Recorder, Fault Demo and Watchdog variants as
+  ordinary app inputs. Preserve embedded recording, controls, viewers and results.
+- [x] Remove stale deployment/runtime paths and align code docs and diagrams.
+- [x] Replace admission/crash markers with Docker container ownership scoped to
+  the canonical output directory. Remove the disabled-Dora branch.
+  Create the owner before mounts/startup; retain it through stopped-process checks,
+  saved evidence and resource cleanup.
+- [x] Replace the stale local test launcher with the shared-Dora suite; retain
+  failed-run resources and evidence for recovery.
 
 **Validation**
 
-- [ ] A finite producer emits a known sequence; immediate stop still yields every
-  accepted message in the finalized MCAP, with explicitly reported drops/failures.
-- [ ] A stalled consumer hits its deadline and reports incomplete recording.
-- [ ] Recovery works after failures at runtime start, participant launch, drain,
-  and partial removal; repeat recovery does not touch unrelated resources.
-- [ ] Runtime stays alive until recording completion. Filesystem finalization
-  starts only after writers stop and retains its existing write-back guarantees.
+- [x] All six gallery registrations pass live data, controls, downloads, finalized
+  MCAP/OTLP outputs, join/idle-stop/restart and leak-free failed startup.
+- [x] Production LOC is **strictly below current main** with identical counting:
+  exclude tests, generated/vendor code, docs, blanks and comments; count every
+  shipped helper. Moving/compressing code or deleting tests cannot satisfy this.
+- [x] Report production, tests, deployment/configuration and docs separately;
+  exclude unrelated inherited work.
+- [x] Run final public workflow tests and full local CI from `AGENTS.md`, including
+  affected Rustdoc. ARM64 is deferred.
+- [x] Commit/rebase onto current main; preserve the active lease and inherited
+  `Cargo.lock`.
 
-Evidence: pending.
+## M5 — Generated Compose contracts
 
-## M5 — Migrate application deployments and gallery
+Evidence (2026-10-30): generated contracts pass protobuf text/binary and local-step
+serialization tests, including uint64 counts and present-zero status. Missing
+project/plan fields fail before I/O. Full local CI passes (87 executables per
+workspace feature set). Startup/drain, concurrent-directory and actual Zenoh SHM
+tests pass. Direct/partial-removal recovery retests hit native Compose launch
+(10 s) and stop (22 s) deadlines; artifacts are retained. Observer-ID fixes remain
+outside this change.
+Volume cleanup (2026-10-30): full local CI and two Docker tests pass. Deletion
+defaults off; incomplete volume scans retain data for every run. Serialization
+tests cover protobuf text/binary and local-step defaults. ARM64 remains deferred.
+Review regressions (2026-10-30): three ordinary tests fail before the #30 fix
+and pass afterward: produced identity recovery, independent startup progress and
+pinned-image command rejection. Cancellation and shared-waiter coverage also passes.
+Compose merge (2026-10-30): omitted top-level fields warn and are saved per app.
+Merge regression coverage and full local CI pass; ARM64 remains deferred.
+Explicit launch (2026-10-30): `system_apps` readiness/stability precedes adopted apps.
+Cancellation unit test, Docker startup/cancellation/barrier tests and full local CI pass.
+Preparation rules (2026-10-30): twelve ordinary tests cover app policies, shared IPC,
+graph/stage validation and frozen files. Full local CI and native input/startup tests pass.
+Runtime setup (2026-10-31): default workers and no exact CLI-version gate. Build pins remain.
+Full local CI and startup/drain pass; SHM passed before gate removal; ARM64 deferred.
 
 **Work items**
 
-- [ ] CPU Viewer: split monitor, viewer and recorder into explicit process/container
-  participants. Keep BPF capabilities and host observation mounts on the monitor.
-  Preserve snapshots/dictionary routes and recorder backpressure settings.
-- [ ] MCAP Recorder: preserve its application logic; add explicit attachment inputs
-  and finalized-output status needed by M4. Exercise its standalone deployment.
-- [ ] Fault Demo and Fault Watchdog: migrate every existing Dora registration,
-  including OTEL and MCAP profiles, and preserve their routes and result behavior.
-- [ ] System Monitor: explicitly distinguish its existing embedded recording mode
-  from Dora publication. Do not duplicate CPU collectors or record the same stream
-  twice accidentally. Keep ordinary embedded recording available where used.
-- [ ] Inventory all `dora_flows`, `dora.yaml` and forced-env initialization references
-  before declaring migration complete. Other apps retain their deployment behavior.
-- [ ] Keep Compose and registration files in each app's `deploy/`. Launch app
-  binaries directly; remove bundled per-app coordinator/daemon services.
-- [ ] Update gallery registry/workflow/runtime integration to pass prepared settings
-  into shared workflow steps. Remove gallery-owned Dora or namespace setup.
-- [ ] Surface host busy state clearly; multiple viewers may share the active run,
-  while launching a different experiment waits for explicit completion/cleanup.
-  Preserve session idle-stop behavior and generation-safe browser URLs.
-- [ ] Delete obsolete `libs/workload-docker/deploy/dora.yaml` and container-exec
-  flow management only after all callers migrate. Remove obsolete proto fields
-  and app-specific log parsing where explicit completion replaces it.
+- [x] Define the Compose model types in protobuf and use generated Rust directly.
+- [x] Preserve launch, readiness, recovery and cleanup behavior; remove handwritten models.
+- [x] Default volume deletion off; require complete saved volume-change reports before workflow deletion.
 
 **Validation**
 
-- [ ] Launch migrated apps through their app-owned deployments and the gallery;
-  verify real UI data, routes, downloads and readable finalized results.
-- [ ] A mixed host/container multi-app experiment uses exactly one coordinator
-  and daemon and shows intended cross-participant message delivery.
-- [ ] Concurrent gallery start requests cannot bypass shared host admission.
-- [ ] Browser disconnect/idle expiry triggers the complete ordered shutdown.
-- [ ] A representative unchanged foreign Compose workload runs and stops correctly.
-
-Evidence: pending.
-
-## M6 — Qualification and concise documentation
-
-**Work items**
-
-- [ ] Keep meaningful lifecycle/transport regressions in existing Rust test suites.
-  Remove disposable feasibility tooling; add no maintained deployment scripts.
-- [ ] Update workflow SVGs, API docs and minimal app deployment instructions to
-  show the qualified topology, explicit configuration and one-experiment rule.
-- [ ] Replace the older target section in `102626-compose-workflow.md` with a short
-  link to the implemented contract; avoid contradictory parallel designs.
-- [ ] Review diff for duplicated lifecycle logic, stale per-app infrastructure,
-  hidden environment configuration and unused dependencies.
-
-**Validation**
-
-- [ ] Run affected Rust tests, formatting, strict Clippy and Rustdoc checks.
-- [ ] Run real Docker lifecycle, failure/recovery and shared-IPC tests on this host.
-  Build unprivileged; elevate only capability-required test executables as allowed.
-- [ ] Verify CPU/BPF apps with real monitoring; qualify CUDA separately if touched.
-  ARM64 remains deferred by user instruction; never claim CUDA on that worker.
-- [ ] Host the SPA and verify migrated UI apps in a browser, including busy state,
-  stop/restart, recordings and absence of leaked processes/containers.
-- [ ] Render architecture SVGs and verify links. All checked validations have
-  concise milestone-local evidence and no unsupported transport/losslessness claims.
-
-Evidence: pending.
+- [x] Test protobuf/step serialization and missing/invalid input rejection.
+- [x] Test deletion permission defaults, per-volume policy and incomplete-scan retention without a recovery anchor.
+- [x] Run startup/drain, concurrent-directory and shared IPC tests and full local CI.
+- [ ] Recheck direct/partial-removal recovery after native Compose deadline failures.
+  ARM64 remains deferred.

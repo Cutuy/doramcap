@@ -1,34 +1,43 @@
+x-runtime: &runtime
+  type: bind
+  source: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+  target: ${DORAMCAP_DORA_RUNTIME_DIR:?}
+x-results: &results
+  type: bind
+  source: ${CPU_VIEWER_RESULTS_DIR:?}
+  target: /results
+x-node: &node
+  image: doramcap/cpu-viewer:local
+  user: ${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}
+  network_mode: host
+  ulimits:
+    memlock: {soft: 268435456, hard: 268435456}
+  volumes: [*runtime, *results]
 services:
-  coordinator:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: coordinator
-    image: doramcap/cpu-viewer:local
-    user: ${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}
-  viewer:
-    extends:
-      file: ../../../libs/workload-docker/deploy/dora.yaml
-      service: daemon
-    image: doramcap/cpu-viewer:local
-    user: ${CPU_VIEWER_UID:?}:${CPU_VIEWER_GID:?}
-    cap_add:
-    - BPF
-    - PERFMON
-    - SYSLOG
+  monitor:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    depends_on: {recorder: {condition: service_healthy}, viewer: {condition: service_healthy}}
+    entrypoint: [/usr/local/bin/system-monitor]
+    cap_add: [BPF, PERFMON, SYSLOG]
+    security_opt: [seccomp=unconfined]
     cgroup: host
-    ulimits:
-      memlock:
-        soft: 268435456
-        hard: 268435456
     volumes:
-    - type: bind
-      source: /sys/fs/cgroup
-      target: /sys/fs/cgroup
-      read_only: true
-    - type: bind
-      source: /sys/kernel/btf
-      target: /sys/kernel/btf
-      read_only: true
-    - type: bind
-      source: ${CPU_VIEWER_RESULTS_DIR:?}
-      target: /results
+      - *runtime
+      - *results
+      - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
+      - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
+    command: ["--backend", "bpf", "--dora", "--published-count", "/results/published.count", "--task-capacity", "32768"]
+  recorder:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    entrypoint: [/usr/local/bin/mcap-recorder]
+    command: ["/results/cpu.mcap"]
+  viewer:
+    <<: *node
+    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"}
+    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"], interval: 200ms, timeout: 1s, retries: 150}
+    entrypoint: [/usr/local/bin/cpu-viewer]
+    command: ["--bind", "127.0.0.1", "--port", "8080", "--assets", "/opt/cpu-viewer/dist"]

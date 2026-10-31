@@ -62,10 +62,8 @@ the trusted external origin.
 3. Finalize recordings, flush results and retain diagnostic evidence.
 4. Stop and reap owned child processes, then exit with the appropriate status.
 
-Dora apps declare their node groups in `registration.pbtxt` under `system_apps`.
-The shared Rust workflow starts and inspects the flow, stops workloads before
-producers, and waits for recorders to drain. Compose runs foreground coordinator
-and daemon services using the [shared definitions](../../../../libs/workload-docker/deploy/dora.yaml).
+Dora app migration to the shared runtime is tracked in the
+[experiment plan](../../../../libs/workload-docker/docs/102926-shared-dora-experiment.md).
 
 Own and reap application child processes. Declare Dora and nested Docker resources
 in the shared workflow. Set
@@ -88,7 +86,7 @@ load it; a supported registration does not require rebuilding the manager.
 | Headless | Set `headless: true` and omit `port`. |
 | Paths | Nested collections require Linux `openat2`; symlinks and traversal are rejected. |
 | Finite jobs | Supervision expects a service to remain ready; one-shot completion needs additional support. |
-| Native resources | Declare device, capability and namespace needs and `exclusive_resources`; keep hardware profiles opt-in. |
+| Native resources | Declare device, capability and namespace needs; keep hardware profiles opt-in. One host experiment is admitted at a time. |
 | Nested Docker | Declare trusted projects and preserve ownership for recovery; see [M7](102727-remaining-apps.md#m7--orchestrator-lab-planned). |
 
 ## Checklist before enabling an app
