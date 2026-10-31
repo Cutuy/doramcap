@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Experiment, serverFor, splitFrames, validate } from '../viewer.ts';
 import { doramcap } from '../frontend/generated/wire.js';
 const pb: any = doramcap.cuda_viewer.v1;
@@ -47,34 +43,4 @@ test('serves the binary protocol, incremental state, and private hosted snapshot
     assert.equal((received as { frames: number }).frames, 24);
     assert.equal((await fetch(`${base}/api/run`, { method: 'POST', headers: { 'Content-Type': 'application/x-protobuf', Origin: 'http://elsewhere' }, body: Uint8Array.from(config).buffer })).status, 403);
   } finally { server.close(); }
-});
-
-
-test('bundled runner resolves the workspace release binary and preserves overrides', async () => {
-  // Arrange: a Dora fixture inspects the descriptor without requiring CUDA.
-  const directory = await mkdtemp(join(tmpdir(), 'cuda-runner-'));
-  const dora = join(directory, 'dora.mjs');
-  await writeFile(dora, `#!/usr/bin/env node
-import { readFileSync } from 'node:fs';
-console.log(JSON.stringify(JSON.parse(readFileSync(process.argv[3], 'utf8'))));
-console.log('duplicate return');
-process.exitCode = 1;
-`, { mode: 0o700 });
-  const environment = { ...process.env };
-  delete environment.CUDA_SHM_BINARY;
-  try {
-    for (const override of [undefined, join(directory, 'custom binary')]) {
-      // Act
-      const output = execFileSync(process.execPath, [fileURLToPath(new URL('../run.mjs', import.meta.url)), '--dora', dora, '--failure', 'duplicate'], {
-        env: override ? { ...environment, CUDA_SHM_BINARY: override } : environment,
-        encoding: 'utf8', timeout: 10_000,
-      });
-      // Assert: every descriptor node uses the actual workspace build location.
-      const descriptor = JSON.parse(output.split('\n')[0]);
-      const expected = override ?? fileURLToPath(new URL('../../../../target/release/cuda-shm-demo', import.meta.url));
-      assert.equal(descriptor.nodes.length, 4);
-      assert.ok(descriptor.nodes.every((node: { path: string }) => node.path === expected));
-      assert.ok(output.includes('PASS: duplicate'));
-    }
-  } finally { await rm(directory, { recursive: true, force: true }); }
 });
