@@ -104,12 +104,15 @@ impl ResetExperiment {
             .ok_or_else(|| invalid("controller path is not UTF-8"))?;
         // Stop and verify this repository's writers before touching its overlay workspace.
         self.adapter
-            .experiment_resources(scope)
+            .experiment_resources(scope, None)
             .quiesce(self.stop_seconds)
             .await?;
         overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.
-        self.adapter.experiment_resources(scope).remove().await
+        self.adapter
+            .experiment_resources(scope, None)
+            .remove()
+            .await
     }
 }
 

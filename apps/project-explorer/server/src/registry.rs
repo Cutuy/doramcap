@@ -203,7 +203,7 @@ impl Registration {
         }
         if self
             .port
-            .is_some_and(|port| port == 0 || port > u16::MAX.into())
+            .is_some_and(|port| port == 0 || port > u32::from(u16::MAX))
             || ResultFormat::try_from(self.result_format).is_err()
             || (!self.headless && self.port.is_none())
             || (self.headless && self.port.is_some())

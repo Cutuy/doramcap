@@ -121,7 +121,7 @@ pub struct CategoryChanges {
     pub manifest: PathBuf,
     pub counts: ChangeCounts,
     /// Whether every in-scope source was scanned completely. Missing in older
-    /// reports defaults to false, so recovery does not infer complete coverage.
+    /// reports defaults to false, so callers cannot infer complete coverage.
     #[serde(default)]
     pub coverage_complete: bool,
     /// Source exceptions and incomplete scans, distinct from file changes.
@@ -320,9 +320,7 @@ async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathB
 }
 async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<FilesystemBaseline> {
     let directory = input.artifacts.join("filesystem");
-    let mut builder = tokio::fs::DirBuilder::new();
-    builder.mode(0o700);
-    builder.create(&directory).await?;
+    crate::evidence::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
     for plan in input.projects {
         let bytes = tokio::fs::read(&plan.manifest).await?;

@@ -1,0 +1,28 @@
+syntax = "proto3";
+package doramcap.compose.v1;
+
+// Compose fields emitted for doramcap-owned runtime services.
+// Adopted application declarations remain native Compose documents.
+message RuntimeService {
+  string image = 1;
+  string network_mode = 2;
+  string stop_signal = 3;
+  map<string, ResourceLimit> ulimits = 4;
+  string user = 5;
+  string working_dir = 6;
+  map<string, string> environment = 7;
+  repeated string entrypoint = 8;
+  repeated string command = 9;
+  repeated BindMount volumes = 10;
+  string ipc = 11;
+  optional uint64 shm_size = 12;
+}
+
+message ResourceLimit { uint64 soft = 1; uint64 hard = 2; }
+
+message BindMount {
+  string type = 1;
+  string source = 2;
+  string target = 3;
+  optional bool read_only = 4;
+}

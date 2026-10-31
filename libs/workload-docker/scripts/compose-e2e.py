@@ -15,6 +15,8 @@ def main():
     subprocess.run(['cargo','build','--profile',args.profile,'--locked','-p','system-monitor','--features','bpf'],cwd=ROOT,check=True)
     built=subprocess.run(['cargo','test','--profile',args.profile,'--locked','-p','workload-docker','--test','docker','--no-run','--message-format=json'],cwd=ROOT,check=True,capture_output=True,text=True)
     executable=next(json.loads(line)['executable'] for line in built.stdout.splitlines() if json.loads(line).get('executable'))
+    # Keep child-process restarts valid while another Cargo command replaces its outputs.
+    stable_executable=output/'native-tests';shutil.copy2(executable,stable_executable);executable=str(stable_executable)
     target=Path(json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1'],cwd=ROOT))['target_directory'])/('debug' if args.profile=='dev' else args.profile)
     prefix=f'cmp-{os.getpid()}-{int(time.time())}'
     image=f'doramcap-compose-test:{prefix}'
