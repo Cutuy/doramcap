@@ -468,10 +468,10 @@ pub(crate) fn register(executor: &mut LocalExecutor, state: State) {
     register!(Inspect);
     register!(Quiesce);
     register!(Remove);
-    executor.register::<workload_lifecycle::recording::WaitForSystemApps>(|| {
-        workload_lifecycle::recording::WaitForSystemApps
+    executor.register::<workload_lifecycle::recording::WaitForRecordings>(|| {
+        workload_lifecycle::recording::WaitForRecordings
     });
-    executor.register::<workload_lifecycle::recording::FinalizeSystemApps>(|| {
-        workload_lifecycle::recording::FinalizeSystemApps
+    executor.register::<workload_lifecycle::recording::FinalizeRecordings>(|| {
+        workload_lifecycle::recording::FinalizeRecordings
     });
 }

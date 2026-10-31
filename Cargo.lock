@@ -6170,6 +6170,7 @@ name = "workload-lifecycle"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "libc",
  "orchestrator",
  "serde",
  "tokio",

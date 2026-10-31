@@ -63,8 +63,8 @@ pub(super) fn executor(
         });
         executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
         executor.register::<PrepareSystemApps>(|| PrepareSystemApps);
-        executor.register::<WaitForSystemApps>(|| WaitForSystemApps);
-        executor.register::<FinalizeSystemApps>(|| FinalizeSystemApps);
+        executor.register::<WaitForRecordings>(|| WaitForRecordings);
+        executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
         let dependency = adapter.clone();
         let child = weak.clone();
         executor.register::<PrepareRun>(move || PrepareRun {

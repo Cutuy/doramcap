@@ -1,0 +1,17 @@
+syntax = "proto3";
+package doramcap.dora.v1;
+
+// Communication services owned by the Dora setup step. Apps remain Compose-owned.
+message DoraRuntime {
+  string image = 1; // Prebuilt image containing /usr/local/bin/dora; pinned during resolution.
+  uint32 coordinator_port = 3; // Loopback; zero selects an available local port.
+  uint32 daemon_port = 4;
+  string graph = 5; // Native dynamic-node graph; optional for apps that ignore Dora.
+  string runtime_directory = 6; // Private app readiness and control directory.
+  uint64 shm_bytes = 10; // Capacity of the experiment's common /dev/shm.
+  uint64 memlock_bytes = 11;
+  string zenoh_overlay = 12; // Generated, read-only native Zenoh overlay.
+  optional uint32 participant_uid = 14;
+  optional uint32 participant_gid = 15;
+  string graph_sha256 = 19; // Frozen native graph digest.
+}

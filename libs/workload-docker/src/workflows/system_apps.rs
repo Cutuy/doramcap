@@ -5,7 +5,7 @@ use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
 pub use workload_lifecycle::recording::{
-    FinalizeSystemApps, ReadinessInput, Recording, WaitForSystemApps,
+    FinalizeRecordings, ReadinessInput, Recording, WaitForRecordings,
 };
 
 include!(concat!(env!("OUT_DIR"), "/doramcap.system_apps.v1.rs"));
