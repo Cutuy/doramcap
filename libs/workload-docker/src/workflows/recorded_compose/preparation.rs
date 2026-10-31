@@ -174,12 +174,11 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     for flow in &spec.system_apps.dora_flows {
         dora::validate_runtime(flow)?;
     }
+    super::validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
     if !spec.artifacts.is_absolute()
         || (spec.projects.is_empty()
             && spec.first_party.is_empty()
             && spec.system_apps.cpu_monitor.is_none())
-        || spec.readiness_seconds == 0
-        || !(1..=300).contains(&spec.stop_seconds)
     {
         return Err(invalid(
             "require absolute new artifact directory, a workload or supporting app, positive readiness and stop_seconds 1..300",
