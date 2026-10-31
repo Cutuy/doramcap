@@ -1,4 +1,5 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
+mod execution;
 pub mod finalization;
 mod observation;
 pub mod preparation;
@@ -150,6 +151,7 @@ impl ComposeRunner {
         signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
+        // Reset the fixed ownership scope before preparing this run's immutable inputs.
         validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
         let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
         self.blocked = true;
@@ -186,6 +188,7 @@ impl ComposeRunner {
         check(prepared.value())?;
         let artifacts = prepared.value().artifacts.clone();
 
+        // Reserve the daemon and prepare optional filesystem views before application launch.
         self.blocked = true;
         self.adapter
             .project(&prepared.value().plan)
@@ -233,390 +236,190 @@ impl ComposeRunner {
             plan.name.clone(),
             artifacts.join("docker-events.jsonl"),
         );
-        let mut phases = ComposePhases {
-            executor: executor.clone(),
-            spec: spec.clone(),
-            artifacts: artifacts.clone(),
-            prepared,
-            overlays,
-            plan,
-            resources,
-            diagnostics: diagnostics.clone(),
-            consumers_ready: false,
-            dora_clean: true,
-            dora_finalized: false,
-            events: Some(events),
-            last_launch: None,
-            shutdown: None,
-            finalized: None,
-            cleanup: None,
-            signals,
-            event_result: Ok(()),
-        };
-        let outcome = workload_lifecycle::recorded_run::run(&mut phases, stop).await;
-        for error in &outcome.completion_errors {
+        // Race startup and observation against stop; teardown runs outside this boundary.
+        let mut signals = signals;
+        let mut last_launch = None;
+        let mut applications_started = false;
+        let execution_error = execution::until_stop(stop, events.failure(), async {
+            execution::launch_apps(
+                &executor,
+                &spec,
+                &prepared,
+                &plan,
+                overlays.as_ref(),
+                &mut last_launch,
+            )
+            .await?;
+            applications_started = true;
+            // Give a concurrent stop request priority over publishing readiness.
+            tokio::task::yield_now().await;
+            signals.notify_ready(plan.clone());
+            execution::monitor(&executor, &plan, &resources).await
+        })
+        .await;
+
+        // Stop adopted apps, drain system apps, then stop the shared Dora runtime.
+        if let Some(quiescing) = signals.quiescing.take() {
+            let _ = quiescing.send(());
+        }
+        let adopted_clean = execution::quiesce_services(
+            &executor,
+            &plan,
+            &prepared.value().user_services,
+            spec.stop_seconds,
+            &diagnostics,
+        )
+        .await;
+        let drained = resources
+            .lock()
+            .await
+            .shutdown(&prepared.value().system_services)
+            .await;
+        if let Err(error) = &drained {
+            execution::record_failure(&diagnostics, "workload drain", error);
+        }
+        let systems_clean = execution::quiesce_services(
+            &executor,
+            &plan,
+            &prepared.value().system_services,
+            spec.stop_seconds,
+            &diagnostics,
+        )
+        .await;
+        let runtime_shutdown = executor.run::<super::experiment::StopDoraRuntime>(()).await;
+        let runtime_stopped = runtime_shutdown
+            .as_ref()
+            .is_ok_and(|output| output.value().stopped);
+        let runtime_exit_clean = runtime_shutdown
+            .as_ref()
+            .is_ok_and(|output| output.value().diagnostics.is_empty());
+        match runtime_shutdown {
+            Ok(stopped) => diagnostics
+                .borrow_mut()
+                .extend(stopped.into_value().diagnostics),
+            Err(error) => execution::record_failure(&diagnostics, "Dora shutdown", error),
+        }
+
+        // Finalization and removal require stopped writers and durable filesystem evidence.
+        let completion = async {
+            let mut input = Input::new(StopInput {
+                allow_volume_deletion: false,
+                services: vec![],
+                plan: Some(plan.clone()),
+                stop_seconds: spec.stop_seconds,
+            })
+            .after(&prepared);
+            if let Some(launched) = &last_launch {
+                input = input.after(launched);
+            }
+            let shutdown = executor
+                .run::<QuiesceCompose>(input)
+                .await
+                .map_err(step_error)?;
             diagnostics
                 .borrow_mut()
-                .push(invalid(error.clone()).diagnostic("completion"));
+                .extend(shutdown.value().diagnostics.clone());
+            let mut writer_evidence = shutdown.value().clone();
+            writer_evidence.stopped &= runtime_stopped;
+            let finalized = executor
+                .run::<FinalizeRun>(
+                    Input::new(FinalizeInput {
+                        id: spec.id.clone(),
+                        artifacts: artifacts.clone(),
+                        baseline: prepared.value().baseline.clone(),
+                        overlays: overlays.map(|output| output.into_value()),
+                        shutdown: writer_evidence,
+                        project: plan.clone(),
+                        recordings: spec.recordings.clone(),
+                    })
+                    .after(&prepared)
+                    .after(&shutdown),
+                )
+                .await
+                .map_err(step_error)?;
+            if !finalized.value().recording_finalized {
+                execution::record_failure(
+                    &diagnostics,
+                    "completion",
+                    "recording finalization failed",
+                );
+            }
+            let cleanup = if runtime_stopped && finalized.value().can_remove {
+                match executor
+                    .run::<RemoveCompose>(
+                        Input::new(StopInput {
+                            allow_volume_deletion: !finalized.value().preserve_volumes,
+                            services: vec![],
+                            plan: Some(plan.clone()),
+                            stop_seconds: spec.stop_seconds,
+                        })
+                        .after(&shutdown)
+                        .after(&finalized),
+                    )
+                    .await
+                {
+                    Ok(cleanup) => Some(cleanup.into_value()),
+                    Err(error) => {
+                        execution::record_failure(&diagnostics, "completion", error);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+            .unwrap_or_else(|| Cleanup {
+                project: plan.name.clone(),
+                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
+                ..Default::default()
+            });
+            let finalized = finalized.into_value();
+            let boundary_clean = runtime_stopped
+                && finalized.can_remove
+                && cleanup.verified
+                && cleanup.diagnostics.is_empty()
+                && (!finalized.preserve_volumes || cleanup.retained_volumes.is_empty());
+            Ok::<_, Error>(ComposeRunReport {
+                id: spec.id,
+                execution_error: execution_error.clone(),
+                diagnostics: Vec::new(),
+                cleanup,
+                boundary_clean,
+                writers_stopped: shutdown.value().stopped && runtime_stopped,
+                recording_finalized: finalized.recording_finalized
+                    && runtime_exit_clean
+                    && applications_started
+                    && adopted_clean
+                    && drained.is_ok()
+                    && systems_clean
+                    && execution_error.is_none(),
+                event_stream_healthy: false,
+                filesystem_changes: finalized.filesystem_changes,
+                filesystem_results: finalized.filesystem_results,
+            })
+        }
+        .await;
+
+        // Finish event capture even when shutdown or finalization could not produce evidence.
+        let event_result = events.finish().await;
+        if let Err(error) = &event_result {
+            execution::record_failure(&diagnostics, "completion", error);
+        }
+        if let Err(error) = &completion {
+            execution::record_failure(&diagnostics, "completion", error);
         }
         if executor.observer_failures() != 0 {
-            diagnostics
-                .borrow_mut()
-                .push(invalid("workflow observer lost events").diagnostic("observer"));
+            execution::record_failure(&diagnostics, "observer", "workflow observer lost events");
         }
-        let finalized = phases
-            .finalized
-            .as_ref()
-            .ok_or_else(|| invalid("finalization evidence absent; manager blocked"))?;
-        let cleanup = phases
-            .cleanup
-            .as_ref()
-            .map(|o| o.value().clone())
-            .unwrap_or_else(|| Cleanup {
-                project: phases.plan.name.clone(),
-                diagnostics: vec![],
-                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
-                retained_volumes: vec![],
-                verified: false,
-            });
-        let shutdown = phases
-            .shutdown
-            .as_ref()
-            .ok_or_else(|| invalid("shutdown evidence absent; manager blocked"))?;
-        let event_result = &phases.event_result;
-        let finalized = finalized.value();
-        let boundary_clean = phases.dora_clean
-            && finalized.can_remove
-            && cleanup.verified
-            && cleanup.diagnostics.is_empty()
-            && (!finalized.preserve_volumes || cleanup.retained_volumes.is_empty());
+        let mut report = completion?;
+        report.event_stream_healthy = event_result.is_ok();
+        let boundary_clean = report.boundary_clean;
+        // Publish the final report before reopening admission for another experiment.
         let report = executor
-            .run::<WriteRunReport>(
-                Input::new(ReportInput {
-                    artifacts,
-                    report: ComposeRunReport {
-                        id: spec.id,
-                        execution_error: outcome.execution_error.clone(),
-                        diagnostics: Vec::new(),
-                        cleanup: cleanup.clone(),
-                        boundary_clean,
-                        writers_stopped: shutdown.value().stopped && phases.dora_clean,
-                        recording_finalized: finalized.recording_finalized
-                            && phases.dora_finalized
-                            && outcome.execution_error.is_none(),
-                        event_stream_healthy: event_result.is_ok(),
-                        filesystem_changes: finalized.filesystem_changes.clone(),
-                        filesystem_results: finalized.filesystem_results.clone(),
-                    },
-                })
-                .after(&phases.prepared),
-            )
+            .run::<WriteRunReport>(Input::new(ReportInput { artifacts, report }).after(&prepared))
             .await
             .map_err(step_error)?;
         self.blocked = !boundary_clean;
         Ok(report.into_value())
-    }
-}
-
-struct ComposePhases {
-    executor: Rc<orchestrator::LocalExecutor>,
-    spec: ComposeRun,
-    artifacts: PathBuf,
-    prepared: orchestrator::Output<preparation::PreparedRun>,
-    overlays: Option<orchestrator::Output<crate::compose::overlay::OverlaySet>>,
-    plan: ResolvedComposeProject,
-    resources: super::experiment::SharedExperiment,
-    diagnostics: Diagnostics,
-    consumers_ready: bool,
-    dora_clean: bool,
-    dora_finalized: bool,
-    events: Option<EventCapture>,
-    last_launch: Option<orchestrator::Output<ComposeProjectState>>,
-    shutdown: Option<orchestrator::Output<Shutdown>>,
-    finalized: Option<orchestrator::Output<finalization::FinalizedRun>>,
-    cleanup: Option<orchestrator::Output<Cleanup>>,
-    signals: RunSignals,
-
-    event_result: Result<()>,
-}
-impl ComposePhases {
-    async fn start_services(
-        &mut self,
-        services: Vec<String>,
-        graph: &orchestrator::Output<()>,
-    ) -> orchestrator::Result<()> {
-        let mut input = Input::new(StartInput {
-            plan: Some(self.plan.clone()),
-            services,
-            readiness_seconds: self.spec.readiness_seconds,
-        })
-        .after(graph);
-        if let Some(overlays) = &self.overlays {
-            input = input.after(overlays);
-        }
-        if let Some(previous) = &self.last_launch {
-            input = input.after(previous);
-        }
-        self.last_launch = Some(self.executor.run::<StartCompose>(input).await?);
-        Ok(())
-    }
-
-    async fn start_system_apps(
-        &mut self,
-        graph: &orchestrator::Output<()>,
-    ) -> orchestrator::Result<()> {
-        let system = self.prepared.value().system_services.clone();
-        if system.is_empty() {
-            return Ok(());
-        }
-        self.start_services(system.clone(), graph).await?;
-        self.executor
-            .run::<workload_lifecycle::recording::WaitForRecordings>(
-                workload_lifecycle::recording::ReadinessInput {
-                    recordings: self.spec.recordings.clone(),
-                    timeout_seconds: self.spec.readiness_seconds,
-                },
-            )
-            .await?;
-        if !self.prepared.value().user_services.is_empty() {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let mut state = self
-                .executor
-                .run::<InspectCompose>(self.plan.clone())
-                .await?
-                .into_value();
-            state
-                .plan
-                .as_mut()
-                .ok_or_else(|| orchestrator::Error::message("Compose state plan missing"))?
-                .services
-                .retain(|name, _| system.contains(name));
-            if !state
-                .ready()
-                .map_err(|e| orchestrator::Error::message(e.to_string()))?
-            {
-                return Err(orchestrator::Error::message("system apps lost readiness"));
-            }
-        }
-        Ok(())
-    }
-
-    async fn launch_apps(&mut self) -> orchestrator::Result<()> {
-        let daemon = self
-            .executor
-            .run::<super::experiment::StartDoraRuntime>(Input::new(()).after(&self.prepared))
-            .await?;
-        let graph = self
-            .executor
-            .run::<super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
-            .await?;
-        self.start_system_apps(&graph).await?;
-        let adopted = self.prepared.value().user_services.clone();
-        if !adopted.is_empty() {
-            self.start_services(adopted, &graph).await?;
-        }
-        self.consumers_ready = true;
-        Ok(())
-    }
-
-    async fn quiesce_services(&self, services: &[String]) -> bool {
-        if services.is_empty() {
-            return true;
-        }
-        let Ok(stopped) = self
-            .executor
-            .run::<QuiesceCompose>(StopInput {
-                plan: Some(self.plan.clone()),
-                services: services.to_vec(),
-                allow_volume_deletion: false,
-                stop_seconds: self.spec.stop_seconds,
-            })
-            .await
-        else {
-            return false;
-        };
-        let stopped = stopped.into_value();
-        let clean = stopped.stopped && stopped.diagnostics.is_empty();
-        self.diagnostics.borrow_mut().extend(stopped.diagnostics);
-        clean
-    }
-}
-impl workload_lifecycle::recorded_run::Phases for ComposePhases {
-    async fn launch(&mut self) -> std::result::Result<(), String> {
-        let failure = self.events.as_ref().unwrap().failure();
-        tokio::select! {
-            result = self.launch_apps() => result.map_err(|e| e.to_string()),
-            error = failure => Err(error),
-        }
-    }
-    fn ready(&mut self) -> std::result::Result<(), String> {
-        self.signals.notify_ready(self.plan.clone());
-
-        Ok(())
-    }
-    async fn inspect(&mut self) -> std::result::Result<(), String> {
-        let inspect = async {
-            let state = self
-                .executor
-                .run::<InspectCompose>(self.plan.clone())
-                .await?;
-            if !state
-                .value()
-                .ready()
-                .map_err(|e| orchestrator::Error::message(e.to_string()))?
-            {
-                return Err(orchestrator::Error::message("experiment lost readiness"));
-            }
-            self.resources
-                .lock()
-                .await
-                .inspect()
-                .await
-                .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-            Ok::<(), orchestrator::Error>(())
-        };
-        tokio::select! {
-            result = inspect => result.map_err(|e| e.to_string()),
-            error = self.events.as_mut().unwrap().failure() => Err(error),
-        }
-    }
-    async fn quiesce(&mut self) -> std::result::Result<bool, String> {
-        if let Some(quiescing) = self.signals.quiescing.take() {
-            let _ = quiescing.send(());
-        }
-        let resources = &self.resources;
-        let executor = &self.executor;
-        let diagnostics = &self.diagnostics;
-        let dora_clean;
-        let mut dora_finalized = self.consumers_ready;
-        dora_finalized &= self
-            .quiesce_services(&self.prepared.value().user_services)
-            .await;
-        {
-            let drained = resources
-                .lock()
-                .await
-                .shutdown(&self.prepared.value().system_services)
-                .await;
-            match drained {
-                Ok(()) => {}
-                Err(error) => {
-                    dora_finalized = false;
-                    diagnostics
-                        .borrow_mut()
-                        .push(error.diagnostic("workload drain"));
-                }
-            }
-            dora_finalized &= self
-                .quiesce_services(&self.prepared.value().system_services)
-                .await;
-            match executor.run::<super::experiment::StopDoraRuntime>(()).await {
-                Ok(stopped) => {
-                    dora_clean = stopped.value().stopped;
-                    dora_finalized &= stopped.value().diagnostics.is_empty();
-                    diagnostics
-                        .borrow_mut()
-                        .extend(stopped.value().diagnostics.clone());
-                }
-                Err(error) => {
-                    dora_clean = false;
-                    dora_finalized = false;
-                    diagnostics
-                        .borrow_mut()
-                        .push(invalid(error.to_string()).diagnostic("Dora shutdown"));
-                }
-            }
-        }
-        self.dora_clean = dora_clean;
-        self.dora_finalized = dora_finalized;
-        // Stop all writer roles before collecting filesystems or removing infrastructure.
-        let mut input = Input::new(StopInput {
-            allow_volume_deletion: false,
-            services: vec![],
-            plan: Some(self.plan.clone()),
-            stop_seconds: self.spec.stop_seconds,
-        })
-        .after(&self.prepared);
-        if let Some(launched) = &self.last_launch {
-            input = input.after(launched);
-        }
-        let shutdown = self
-            .executor
-            .run::<QuiesceCompose>(input)
-            .await
-            .map_err(|e| e.to_string())?;
-        self.diagnostics
-            .borrow_mut()
-            .extend(shutdown.value().diagnostics.clone());
-        let stopped = shutdown.value().stopped;
-        self.shutdown = Some(shutdown);
-        Ok(stopped)
-    }
-    async fn finalize(&mut self, _writers_stopped: bool) -> std::result::Result<(), String> {
-        let mut shutdown = self
-            .shutdown
-            .as_ref()
-            .ok_or("quiescence evidence absent")?
-            .value()
-            .clone();
-        shutdown.stopped &= self.dora_clean;
-        let finalized = self
-            .executor
-            .run::<FinalizeRun>(
-                Input::new(FinalizeInput {
-                    id: self.spec.id.clone(),
-                    artifacts: self.artifacts.clone(),
-                    baseline: self.prepared.value().baseline.clone(),
-                    overlays: self.overlays.as_ref().map(|o| o.value().clone()),
-                    shutdown,
-                    project: self.plan.clone(),
-                    recordings: self.spec.recordings.clone(),
-                })
-                .after(&self.prepared)
-                .after(self.shutdown.as_ref().ok_or("quiescence evidence absent")?),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        let valid = finalized.value().recording_finalized;
-        self.finalized = Some(finalized);
-        if valid {
-            Ok(())
-        } else {
-            Err("recording finalization failed".into())
-        }
-    }
-    async fn remove(&mut self) -> std::result::Result<bool, String> {
-        let finalized = self
-            .finalized
-            .as_ref()
-            .ok_or("finalization evidence absent; resources retained")?;
-        if !self.dora_clean || !finalized.value().can_remove {
-            return Ok(false);
-        }
-        let cleanup = self
-            .executor
-            .run::<RemoveCompose>(
-                Input::new(StopInput {
-                    allow_volume_deletion: !finalized.value().preserve_volumes,
-                    services: vec![],
-                    plan: Some(self.plan.clone()),
-                    stop_seconds: self.spec.stop_seconds,
-                })
-                .after(self.shutdown.as_ref().ok_or("shutdown evidence absent")?)
-                .after(finalized),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        let verified = cleanup.value().verified;
-        self.cleanup = Some(cleanup);
-        Ok(verified)
-    }
-    async fn finish(&mut self) -> std::result::Result<(), String> {
-        self.event_result = self.events.take().unwrap().finish().await;
-        self.event_result
-            .as_ref()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
     }
 }
 
@@ -724,7 +527,7 @@ impl ComposeRunReport {
 mod tests {
     use super::*;
 
-    fn ready_plan() -> ResolvedComposeProject {
+    pub(super) fn ready_plan() -> ResolvedComposeProject {
         ResolvedComposeProject {
             run: "run".into(),
             key: "experiment".into(),

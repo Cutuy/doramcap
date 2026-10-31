@@ -252,6 +252,9 @@ Evidence: pending.
 
 **Work items**
 
+- [x] Replace `ComposePhases` with sequential execution and local step outputs.
+- [x] Use generated protobuf contracts and owned service declarations; preserve
+  adopted Compose documents through native Compose normalization.
 - [ ] Keep meaningful lifecycle/transport regressions in existing Rust test suites.
   Remove disposable feasibility tooling; add no maintained deployment scripts.
 - [ ] Update workflow SVGs, API docs and minimal app deployment instructions to
@@ -263,7 +266,7 @@ Evidence: pending.
 
 **Validation**
 
-- [ ] Run affected Rust tests, formatting, strict Clippy and Rustdoc checks.
+- [x] Run affected Rust tests, formatting, strict Clippy and Rustdoc checks.
 - [ ] Run real Docker lifecycle, failure/recovery and shared-IPC tests on this host.
   Build unprivileged; elevate only capability-required test executables as allowed.
 - [ ] Verify CPU/BPF apps with real monitoring; qualify CUDA separately if touched.
@@ -273,4 +276,8 @@ Evidence: pending.
 - [ ] Render architecture SVGs and verify links. All checked validations have
   concise milestone-local evidence and no unsupported transport/losslessness claims.
 
-Evidence: pending.
+Evidence (2026-10-31): 44 unit and 3 protobuf-contract tests passed serially;
+real Docker tests passed startup failure, cancellation, ordered shutdown and
+pre-run reset. Formatting, strict Clippy for the library and both consumers,
+and library Rustdoc passed. A parallel unit run hit the admission-release
+assertion; workspace CI and ARM64 remain deferred.
