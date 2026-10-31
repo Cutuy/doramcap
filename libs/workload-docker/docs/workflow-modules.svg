@@ -1,110 +1,99 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1130" viewBox="0 0 1280 1130" role="img" aria-labelledby="title desc">
-  <title id="title">workload-docker workflow modules</title>
-  <desc id="desc">ComposeRunner in recorded_compose orders preparation, optional overlays, launch, observation, quiescence, finalization, removal and reporting. Supporting modules supply system-app and Dora steps, event capture, shared Docker operations and explicit crash recovery. Solid arrows show execution order; dashed arrows show module calls. Independent siblings use cooperative async concurrency.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1110" viewBox="0 0 1440 1110" role="img" aria-labelledby="title desc">
+  <title id="title">Docker workflow modules — shared Dora experiment</title>
+  <desc id="desc">ComposeRunner prepares one Compose project, starts Dora then first-party and adopted apps, monitors the run, drains workloads, stops Dora and finalizes outputs. The recorded_compose directory contains preparation, phase orchestration, observation and finalization. Dora configuration, runtime control, graph ownership, step registration, filesystem checkpoints and crash recovery are supporting modules.</desc>
   <defs>
-    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8" fill="#475569"/></marker>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0 0L9 4.5L0 9" fill="#64748b"/></marker>
     <style>
-      text { font-family: sans-serif; fill: #17324d; }
-      .title { font-size: 24px; font-weight: 700; }
-      .heading { font-size: 17px; font-weight: 700; }
-      .body { font-size: 15px; }
-      .small { font-size: 14px; }
-      .module { font-family: monospace; font-size: 16px; font-weight: 700; }
-      .phase { fill: #eff6ff; stroke: #94a3b8; }
-      .support { fill: #f0fdf4; stroke: #94a3b8; }
-      .flow { fill: none; stroke: #475569; stroke-width: 1.6; marker-end: url(#arrow); }
-      .call { fill: none; stroke: #475569; stroke-width: 1.4; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+      text { font-family: ui-sans-serif, system-ui, sans-serif; fill: #18324a; }
+      .title { font-size: 30px; font-weight: 750; }
+      .heading { font-size: 21px; font-weight: 700; }
+      .file { font-family: ui-monospace, monospace; font-size: 20px; font-weight: 650; }
+      .body { font-size: 19px; }
+      .label { font-size: 16px; fill: #53677c; }
+      .group { fill: #f6f9fd; stroke: #cbd5e1; stroke-width: 1.5; }
+      .run { fill: white; stroke: #a8c4e8; stroke-width: 1.5; }
+      .dora { fill: white; stroke: #96c8bd; stroke-width: 1.5; }
+      .line { fill: none; stroke: #64748b; stroke-width: 1.8; marker-end: url(#arrow); }
     </style>
   </defs>
-  <rect width="1280" height="1130" fill="white"/>
-  <text x="30" y="35" class="title">workload-docker: workflow modules</text>
-  <text x="30" y="61" class="body">All files below are modules in one Rust crate. Paths are relative to src/workflows/.</text>
+  <rect width="1440" height="1110" fill="#ffffff"/>
+  <text x="40" y="47" class="title">One experiment · workflow modules</text>
+  <text x="40" y="79" class="body">libs/workload-docker/src/workflows/</text>
 
-  <rect x="30" y="82" width="1220" height="78" rx="8" fill="#e2e8f0"/>
-  <text x="50" y="109" class="module">recorded_compose/mod.rs → ComposeRunner</text>
-  <text x="50" y="134" class="body">Orders phases, races execution against stop/failure, retains attempted plans and gates the next run.</text>
-  <text x="30" y="191" class="heading">Execution: recorded_compose/</text>
-  <text x="720" y="191" class="heading">Supporting modules / dependencies</text>
+  <rect x="40" y="108" width="1360" height="88" rx="12" fill="#183b60"/>
+  <text x="64" y="143" class="file" style="fill:white">recorded_compose/mod.rs · ComposeRunner</text>
+  <text x="64" y="175" class="body" style="fill:#e5effb">ComposeRun → one Compose project → ComposeRunReport</text>
+  <path d="M365 196V228" class="line"/>
 
-  <g class="phase">
-    <rect x="30" y="210" width="590" height="90" rx="7"/>
-    <rect x="30" y="325" width="590" height="65" rx="7"/>
-    <rect x="30" y="415" width="590" height="100" rx="7"/>
-    <rect x="30" y="540" width="590" height="75" rx="7"/>
-    <rect x="30" y="640" width="590" height="100" rx="7"/>
-    <rect x="30" y="765" width="590" height="100" rx="7"/>
-    <rect x="30" y="890" width="590" height="65" rx="7"/>
-    <rect x="30" y="980" width="590" height="65" rx="7"/>
+  <rect x="40" y="230" width="650" height="554" rx="12" class="group"/>
+  <text x="62" y="267" class="heading">recorded_compose/</text>
+
+  <rect x="60" y="289" width="610" height="92" rx="9" class="run"/>
+  <text x="80" y="321" class="file">preparation.rs</text>
+  <text x="80" y="351" class="body">Merge inputs · shared IPC · frozen plan and graph</text>
+  <path d="M365 381V408" class="line"/>
+
+  <rect x="60" y="410" width="610" height="158" rx="9" class="run"/>
+  <text x="80" y="442" class="file">mod.rs · ComposePhases</text>
+  <text x="80" y="476" class="body">Start: Dora → first-party stable → adopted apps</text>
+  <text x="80" y="510" class="body">Monitor: container health + Dora graph</text>
+  <text x="80" y="544" class="body">Stop: adopted apps → first-party drain → Dora</text>
+  <path d="M365 568V595" class="line"/>
+
+  <rect x="60" y="597" width="610" height="86" rx="9" class="run"/>
+  <text x="80" y="629" class="file">finalization.rs</text>
+  <text x="80" y="659" class="body">Recordings · filesystem changes · removal gates · report</text>
+
+  <rect x="60" y="706" width="610" height="60" rx="9" class="run"/>
+  <text x="80" y="733" class="file">observation.rs</text>
+  <text x="360" y="748" class="label">Docker events · host snapshots</text>
+
+  <rect x="770" y="230" width="630" height="554" rx="12" fill="#f3faf7" stroke="#c5dcd3" stroke-width="1.5"/>
+  <text x="792" y="267" class="heading">Dora control and step registration</text>
+
+  <rect x="790" y="289" width="590" height="92" rx="9" class="dora"/>
+  <text x="810" y="321" class="file">shared_dora.rs</text>
+  <text x="810" y="351" class="body">Ports · graph validation · frozen graph + Zenoh config</text>
+  <path d="M790 335H672" class="line"/>
+  <text x="705" y="323" class="label">inputs</text>
+
+  <rect x="790" y="410" width="590" height="88" rx="9" class="dora"/>
+  <text x="810" y="442" class="file">dora.rs</text>
+  <text x="810" y="474" class="body">Coordinator + daemon containers · start / inspect / stop</text>
+  <path d="M790 454H672" class="line"/>
+  <text x="697" y="442" class="label">runtime</text>
+
+  <rect x="790" y="528" width="590" height="108" rx="9" class="dora"/>
+  <text x="810" y="560" class="file">experiment.rs · ExperimentOwner</text>
+  <text x="810" y="591" class="body">Register graph · track identity · stop roots and drain</text>
+  <text x="810" y="618" class="label">dora.rs also implements methods on this owner</text>
+  <path d="M790 550H730V524H672" class="line"/>
+  <text x="688" y="512" class="label">graph</text>
+
+  <rect x="790" y="666" width="590" height="100" rx="9" class="dora"/>
+  <text x="810" y="699" class="file">steps.rs</text>
+  <text x="810" y="730" class="body">Register step factories and shared dependencies</text>
+  <text x="810" y="754" class="label">Docker · Dora · preparation · finalization</text>
+
+  <text x="40" y="828" class="heading">Saved checkpoints and crash recovery</text>
+  <rect x="40" y="848" width="650" height="96" rx="10" fill="#fff8ed" stroke="#dcc7a0" stroke-width="1.5"/>
+  <text x="62" y="881" class="file">compose_lifecycle.rs</text>
+  <text x="62" y="915" class="body">StopReport · durable filesystem checkpoints</text>
+  <rect x="770" y="848" width="630" height="96" rx="10" fill="#fff8ed" stroke="#dcc7a0" stroke-width="1.5"/>
+  <text x="792" y="881" class="file">recovery.rs</text>
+  <text x="792" y="915" class="body">Verify saved ownership → stop → collect → remove</text>
+  <path d="M770 898H692" class="line"/>
+
+  <text x="40" y="987" class="heading">Shared execution and Docker operations</text>
+  <g fill="#eef2f6" stroke="#cbd5e1" stroke-width="1.5">
+    <rect x="40" y="1007" width="430" height="77" rx="9"/>
+    <rect x="505" y="1007" width="430" height="77" rx="9"/>
+    <rect x="970" y="1007" width="430" height="77" rx="9"/>
   </g>
-  <text x="48" y="236" class="module">preparation.rs · PrepareRun</text>
-  <text x="48" y="262" class="body">Validate → prepare system apps → resolve projects concurrently</text>
-  <text x="48" y="284" class="body">Capture filesystem baseline; save optional recovery anchor</text>
-  <text x="48" y="351" class="module">compose::overlay · PrepareOverlays (optional)</text>
-  <text x="48" y="376" class="body">Mount per-run views; substitute execution manifests</text>
-  <text x="48" y="441" class="module">projects.rs · LaunchProjects / LaunchDoraFlows</text>
-  <text x="48" y="467" class="body">Supporting groups → ordered first-party groups → workloads</text>
-  <text x="48" y="491" class="body">Concurrent siblings per group; then start Dora flows concurrently</text>
-  <text x="48" y="566" class="module">projects.rs · ObserveProjects</text>
-  <text x="48" y="592" class="body">Poll Compose + Dora concurrently until stop or runtime failure</text>
-  <text x="48" y="666" class="module">projects.rs · QuiesceProjects</text>
-  <text x="48" y="692" class="body">Dora shutdown stages: workloads → producers → recorder drain</text>
-  <text x="48" y="716" class="body">Then stop Compose groups in reverse order; concurrent siblings</text>
-  <text x="48" y="791" class="module">finalization.rs · FinalizeRun</text>
-  <text x="48" y="817" class="body">Verify recordings + collect filesystem changes concurrently</text>
-  <text x="48" y="841" class="body">Persist evidence; finalize overlays/write-back; gate removal</text>
-  <text x="48" y="916" class="module">projects.rs · RemoveProjects</text>
-  <text x="48" y="941" class="body">Remove eligible projects concurrently; verify cleanup</text>
-  <text x="48" y="1006" class="module">finalization.rs · WriteRunReport</text>
-  <text x="48" y="1031" class="body">Finish event capture; save post-state, report and admission state</text>
-
-  <g class="flow">
-    <path d="M325 160V210"/>
-    <path d="M325 300V325"/><path d="M325 390V415"/>
-    <path d="M325 515V540"/><path d="M325 615V640"/>
-    <path d="M325 740V765"/><path d="M325 865V890"/>
-    <path d="M325 955V980"/>
-  </g>
-
-  <g class="support">
-    <rect x="720" y="210" width="530" height="110" rx="7"/>
-    <rect x="720" y="350" width="530" height="100" rx="7"/>
-    <rect x="720" y="480" width="530" height="100" rx="7"/>
-    <rect x="720" y="610" width="530" height="90" rx="7"/>
-    <rect x="720" y="730" width="530" height="145" rx="7"/>
-    <rect x="720" y="905" width="530" height="140" rx="7"/>
-  </g>
-  <text x="738" y="237" class="module">steps.rs + orchestrator::LocalExecutor</text>
-  <text x="738" y="263" class="body">Register step factories, shared adapter and diagnostics.</text>
-  <text x="738" y="286" class="body">Phase steps invoke child steps through this executor.</text>
-  <text x="738" y="308" class="small">Concurrency is explicit join_all / join! on the async task.</text>
-  <text x="738" y="377" class="module">system_apps.rs</text>
-  <text x="738" y="403" class="body">Generated config; prepare supporting Compose projects.</text>
-  <text x="738" y="426" class="body">Probe recording readiness and validate finalized recordings.</text>
-  <text x="738" y="507" class="module">dora.rs</text>
-  <text x="738" y="533" class="body">Bind, start, inspect and stop configured Dora flows.</text>
-  <text x="738" y="556" class="body">CLI runs in owned Compose services; checkpoint flow IDs.</text>
-  <text x="738" y="637" class="module">recorded_compose/observation.rs</text>
-  <text x="738" y="663" class="body">Before/after host snapshots; Docker event stream.</text>
-  <text x="738" y="686" class="body">Runner watches stream failure throughout execution.</text>
-  <text x="738" y="757" class="module">compose::* (outside workflows/)</text>
-  <text x="738" y="783" class="body">Resolve / start / inspect / quiesce / remove steps</text>
-  <text x="738" y="806" class="body">Filesystem baseline + changes; overlay prepare + finalize</text>
-  <text x="738" y="829" class="body">DockerAdapter → Compose CLI + Docker Engine</text>
-  <text x="738" y="855" class="small">Used by phase steps and the recovery path below.</text>
-  <text x="738" y="932" class="module">recovery.rs → compose_lifecycle.rs</text>
-  <text x="738" y="958" class="body">Explicit entry points after an interrupted run.</text>
-  <text x="738" y="981" class="body">Verify identity → recover Dora → stop → collect → remove.</text>
-  <text x="738" y="1004" class="body">Checkpoint evidence; reuse it after partial removal.</text>
-  <text x="738" y="1027" class="small">Direct-mount recovery retains runs needing overlay finalization.</text>
-
-  <g class="call">
-    <path d="M620 255H720"/>
-    <path d="M620 280L720 388"/>
-    <path d="M620 465L720 520"/>
-    <path d="M620 578L720 548"/>
-    <path d="M620 690L720 568"/>
-    <path d="M620 815H720"/>
-  </g>
-  <text x="30" y="1082" class="small">Solid arrows: phase order. Dashed arrows: selected module calls; supporting boxes describe the remaining shared uses.</text>
-  <text x="30" y="1106" class="small">Stop / startup failure enters quiescence with every attempted plan. Failed evidence or cleanup can retain resources and block admission.</text>
+  <text x="60" y="1038" class="file">orchestrator</text>
+  <text x="60" y="1067" class="body">Execute steps · record step events</text>
+  <text x="525" y="1038" class="file">workload-lifecycle</text>
+  <text x="525" y="1067" class="body">Common run phases · recording checks</text>
+  <text x="990" y="1038" class="file">compose/ · DockerAdapter</text>
+  <text x="990" y="1067" class="body">Docker Engine · Compose · filesystem</text>
 </svg>
