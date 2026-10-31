@@ -1,0 +1,11 @@
+# The experiment supplies user, output bind mount and approved Dora connection.
+services:
+  mcap-recorder:
+    image: doramcap/mcap-recorder-only:local
+    entrypoint: [/usr/local/bin/mcap-recorder]
+    command: [/results/cpu.mcap]
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]

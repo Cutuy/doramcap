@@ -1,0 +1,15 @@
+# The assembler sets node ID and connects these to a selected CPU producer.
+# Bounded backpressure can stall publication; collection reports its own losses.
+nodes:
+  - id: cpu-recorder
+    path: /usr/local/bin/mcap-recorder
+    args: /results/cpu.mcap
+    inputs:
+      snapshots:
+        source: system-monitor/snapshots
+        queue_size: 64
+        queue_policy: backpressure
+      dictionary:
+        source: system-monitor/dictionary
+        queue_size: 4
+        queue_policy: backpressure
