@@ -80,8 +80,9 @@ message StartInput {
 
 // Stop selected services; removal requires the whole project.
 message StopInput {
-  // Retain every volume when filesystem evidence is incomplete.
-  bool preserve_volumes = 1;
+  // Default false retains all volumes. True permits deleting owned volumes selected by policy.
+  // Workflows enable this only after saving a complete volume-change report.
+  bool allow_volume_deletion = 1;
   // Services to quiesce; empty selects every service. Removal requires empty.
   repeated string services = 2;
   // Owned project to stop and inspect.

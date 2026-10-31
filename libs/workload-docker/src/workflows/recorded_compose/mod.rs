@@ -409,7 +409,6 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
                         .iter()
                         .flat_map(|g| g.recordings.clone())
                         .collect(),
-                    require_volume_evidence: self.spec.recovery_anchor_dir.is_some(),
                 })
                 .after(&self.prepared)
                 .after(self.shutdown.as_ref().ok_or("quiescence evidence absent")?),

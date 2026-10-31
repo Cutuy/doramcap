@@ -10,12 +10,24 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::io::AsyncWriteExt;
 
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
+pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
+pub(crate) const DIRECTORY_OWNER_LABEL: &str = "io.doramcap.directory-owner";
 const PROJECT_LABEL: &str = "com.docker.compose.project";
+type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
+
+/// Rendered Compose configuration and the inputs used to produce it.
+pub(crate) struct NormalizedCompose {
+    pub(crate) model: Value,
+    pub(crate) compose_version: String,
+    pub(crate) input_hashes: BTreeMap<String, String>,
+    pub(crate) stderr: String,
+}
 
 /// Local Engine and Compose delegate, explicitly injected into project steps.
 /// Both interfaces use the same absolute Unix socket. Calls retain Engine error
@@ -31,6 +43,7 @@ const PROJECT_LABEL: &str = "com.docker.compose.project";
 pub struct DockerAdapter {
     pub(crate) docker: Docker,
     socket: String,
+    starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
     /// Return the configured Unix socket path for trusted deployment wiring.
@@ -53,7 +66,11 @@ impl DockerAdapter {
             .negotiate_version()
             .await
             .map_err(|e| engine("negotiate", e))?;
-        Ok(Self { docker, socket })
+        Ok(Self {
+            docker,
+            socket,
+            starting: Default::default(),
+        })
     }
 
     /// Require a local socket peer sharing the caller's mount namespace.
@@ -118,6 +135,7 @@ impl DockerAdapter {
             if let Some(run) = labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
                 found.push(OwnedResource {
                     run: run.clone(),
+                    artifacts: labels.get(ARTIFACTS_LABEL).map(Into::into),
                     project: labels.get(PROJECT_LABEL).cloned(),
                     kind: "container",
                     id: item
@@ -138,6 +156,7 @@ impl DockerAdapter {
             if let Some(run) = labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
                 found.push(OwnedResource {
                     run: run.clone(),
+                    artifacts: labels.get(ARTIFACTS_LABEL).map(Into::into),
                     project: labels.get(PROJECT_LABEL).cloned(),
                     kind: "network",
                     id: item
@@ -155,6 +174,7 @@ impl DockerAdapter {
             if let Some(run) = item.labels.get(RUN_LABEL).filter(|s| s.starts_with(prefix)) {
                 found.push(OwnedResource {
                     run: run.clone(),
+                    artifacts: item.labels.get(ARTIFACTS_LABEL).map(Into::into),
                     project: item.labels.get(PROJECT_LABEL).cloned(),
                     kind: "volume",
                     id: item.name,
@@ -167,7 +187,9 @@ impl DockerAdapter {
     /// Discover profiles for explicit `run` and project identities using resolution
     /// inputs. Invalid identities fail before file or process access; diagnostics stay private.
     pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
-        let name = project_name(run, &project.key)?;
+        validate_name(run)?;
+        validate_name(&project.key)?;
+        let name = format!("dc-{run}-{}", project.key);
         let mut discovery = project.clone();
         discovery.profiles.clear();
         discovery.services.clear();
@@ -195,24 +217,15 @@ impl DockerAdapter {
         Ok(profiles)
     }
 
-    /// Resolve supplied files, freeze local image IDs, and write a private launch
-    /// manifest. No Docker resources are created. Host mounts remain live inputs.
-    ///
-    /// # Parameters and return value
-    ///
-    /// `input` supplies a run ID, existing artifact directory and prepared project.
-    /// Returns a pinned [`ResolvedComposeProject`]; writes private manifest and resolution evidence.
-    ///
-    /// # Errors
-    ///
-    /// Invalid settings, unsupported resources, ownership collisions, missing local
-    /// images, filesystem failures and Compose/Engine failures return errors.
-    /// Partially written artifacts may remain; input files are not modified.
-    pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+    /// Render Compose inputs and collect the CLI version, source-file hashes and stderr.
+    /// No runtime resources or manifests are created. Relative paths use the input directory.
+    /// Invalid settings, missing files or Compose failures return errors.
+    pub(crate) async fn normalize(&self, input: &ResolveInput) -> Result<NormalizedCompose> {
+        validate_name(&input.run)?;
+        validate_name(&input.project.key)?;
         let project = &input.project;
-        let name = project_name(&input.run, &project.key)?;
-        let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let manifest = artifacts.join(format!("{}.compose.json", project.key));
+        tokio::fs::canonicalize(&input.artifacts).await?;
+        let name = project_name(&input.run, &project.key);
         let (directory, mut args, sources) = config_arguments(project, &name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
@@ -227,7 +240,7 @@ impl DockerAdapter {
         if stderr.contains("variable is not set") {
             return Err(invalid(format!("unresolved Compose environment: {stderr}")));
         }
-        let mut model: Value = serde_json::from_str(&stdout)?;
+        let model: Value = serde_json::from_str(&stdout)?;
         let (version, _) = compose(
             &self.socket,
             &directory,
@@ -236,10 +249,28 @@ impl DockerAdapter {
             Duration::from_secs(10),
         )
         .await?;
+        Ok(NormalizedCompose {
+            model,
+            compose_version: version,
+            input_hashes: sources,
+            stderr,
+        })
+    }
+
+    /// Freeze supplied Compose inputs and pinned image IDs into private launch artifacts.
+    /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
+    /// Host mounts stay live; callers explicitly own container startup and cleanup.
+    pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+        let normalized = self.normalize(&input).await?;
+        let mut model = normalized.model;
+        let project = &input.project;
+        let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
+        let name = project_name(&input.run, &project.key);
+        let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
-        if !stderr.trim().is_empty() {
-            diagnostics.push(stderr);
+        if !normalized.stderr.trim().is_empty() {
+            diagnostics.push(normalized.stderr);
         }
         // Explicit resource names escape Compose project namespacing. External
         // resources are deliberately retained; internal resources must be scoped.
@@ -266,10 +297,11 @@ impl DockerAdapter {
                             .or_insert_with(|| json!({}))
                             .as_object_mut()
                             .ok_or_else(|| invalid("invalid resource labels"))?;
-                        if labels.contains_key(RUN_LABEL) {
+                        if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
                             return Err(invalid("reserved resource ownership label"));
                         }
                         labels.insert(RUN_LABEL.into(), json!(input.run));
+                        labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
                     }
                 }
             }
@@ -393,10 +425,11 @@ impl DockerAdapter {
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
                 .ok_or_else(|| invalid("labels did not normalize to an object"))?;
-            if labels.contains_key(RUN_LABEL) {
+            if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
                 return Err(invalid(format!("reserved label {RUN_LABEL}")));
             }
             labels.insert(RUN_LABEL.into(), json!(input.run));
+            labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
             services.insert(
                 service_name.clone(),
                 ComposeService {
@@ -419,26 +452,8 @@ impl DockerAdapter {
         if !self.project_containers(&plan).await?.is_empty() {
             return Err(invalid("runtime project name already exists"));
         }
-        let filters = Some(HashMap::from([(
-            "label".into(),
-            vec![format!("{PROJECT_LABEL}={}", plan.name)],
-        )]));
-        if !self
-            .docker
-            .list_networks(Some(ListNetworksOptions {
-                filters: filters.clone(),
-            }))
-            .await
-            .map_err(|e| engine("preflight networks", e))?
-            .is_empty()
-            || !self
-                .docker
-                .list_volumes(Some(ListVolumesOptions { filters }))
-                .await
-                .map_err(|e| engine("preflight volumes", e))?
-                .volumes
-                .unwrap_or_default()
-                .is_empty()
+        if !self.project_networks(&plan).await?.is_empty()
+            || !self.project_volumes(&plan).await?.is_empty()
         {
             return Err(invalid("runtime project resources already exist"));
         }
@@ -463,7 +478,7 @@ impl DockerAdapter {
         private_write(
             &artifacts.join(format!("{}.resolution.json", project.key)),
             &serde_json::to_vec_pretty(
-                &json!({"compose_version":version.trim(),"sources":sources,"request":project,"plan":plan,"policy_changes":policy_changes}),
+                &json!({"compose_version":normalized.compose_version.trim(),"sources":normalized.input_hashes,"request":project,"plan":plan,"policy_changes":policy_changes}),
             )?,
         )
         .await?;
@@ -513,14 +528,34 @@ impl DockerAdapter {
         self.docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
-                filters: Some(HashMap::from([(
-                    "label".into(),
-                    vec![format!("{PROJECT_LABEL}={}", plan.name)],
-                )])),
+                filters: project_filters(plan),
                 ..Default::default()
             }))
             .await
             .map_err(|e| engine("list project containers", e))
+    }
+    async fn project_networks(
+        &self,
+        plan: &ResolvedComposeProject,
+    ) -> Result<Vec<bollard::models::Network>> {
+        self.docker
+            .list_networks(Some(ListNetworksOptions {
+                filters: project_filters(plan),
+            }))
+            .await
+            .map_err(|e| engine("list project networks", e))
+    }
+    async fn project_volumes(
+        &self,
+        plan: &ResolvedComposeProject,
+    ) -> Result<Vec<bollard::models::Volume>> {
+        self.docker
+            .list_volumes(Some(ListVolumesOptions {
+                filters: project_filters(plan),
+            }))
+            .await
+            .map(|volumes| volumes.volumes.unwrap_or_default())
+            .map_err(|e| engine("list project volumes", e))
     }
     fn owned(summary: &bollard::models::ContainerSummary, plan: &ResolvedComposeProject) -> bool {
         summary.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&plan.run)
@@ -643,28 +678,36 @@ impl DockerAdapter {
     ///
     /// Manifest changes, CLI/Engine errors, timeout and invalid container state
     /// return errors. Resources may already exist. Dropping the future does not
-    /// stop Docker workloads; always retain the plan for [`Self::stop`].
+    /// stop Docker workloads. Pending native startup is joined by quiescence/removal;
+    /// retain the plan and await [`Self::stop`] to establish the cleanup boundary.
     pub async fn start(&self, input: StartInput) -> Result<ComposeProjectState> {
         self.verify_manifest(&input.plan).await?;
         let mut args = Self::args(&input.plan);
         args.extend(["up", "--detach", "--no-build", "--pull", "never"].map(str::to_owned));
-        let (out, err) = compose(
-            &self.socket,
-            input.plan.manifest.parent().unwrap(),
-            &BTreeMap::new(),
-            &args,
-            Duration::from_secs(input.readiness_seconds),
-        )
-        .await?;
-        private_write(
-            &input.plan.manifest.with_extension("launch.log"),
-            format!("{out}\n{err}").as_bytes(),
-        )
-        .await?;
+        if !input.services.is_empty() {
+            if input
+                .services
+                .iter()
+                .any(|service| !input.plan.services.contains_key(service))
+            {
+                return Err(invalid("unknown selected Compose service"));
+            }
+            args.push("--no-recreate".into());
+            args.extend(input.services.clone());
+        }
+        self.project_command(&input.plan, args, input.readiness_seconds)
+            .await?;
         let deadline = Instant::now() + Duration::from_secs(input.readiness_seconds);
         loop {
             let state = self.inspect(&input.plan).await?;
-            if Self::ready(&state)? {
+            let mut selected = state.clone();
+            if !input.services.is_empty() {
+                selected
+                    .plan
+                    .services
+                    .retain(|name, _| input.services.contains(name));
+            }
+            if Self::ready(&selected)? {
                 return Ok(state);
             }
             if Instant::now() >= deadline {
@@ -674,38 +717,60 @@ impl DockerAdapter {
         }
     }
 
-    pub(crate) async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
-        let filters = Some(HashMap::from([(
-            "label".into(),
-            vec![format!("{PROJECT_LABEL}={}", plan.name)],
-        )]));
-        let networks = self
-            .docker
-            .list_networks(Some(ListNetworksOptions {
-                filters: filters.clone(),
-            }))
-            .await
-            .map_err(|e| engine("inspect network ownership", e))?;
-        let volumes = self
-            .docker
-            .list_volumes(Some(ListVolumesOptions { filters }))
-            .await
-            .map_err(|e| engine("inspect volume ownership", e))?;
-        Ok(networks
-            .iter()
-            .all(|n| n.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&plan.run))
-            && volumes
-                .volumes
-                .unwrap_or_default()
-                .iter()
-                .all(|v| v.labels.get(RUN_LABEL) == Some(&plan.run)))
+    async fn project_command(
+        &self,
+        plan: &ResolvedComposeProject,
+        args: Vec<String>,
+        seconds: u64,
+    ) -> Result<()> {
+        let log = plan.manifest.with_extension(format!(
+            "launch-{}.log",
+            &digest(&serde_json::to_vec(&args)?)[..16]
+        ));
+        let socket = self.socket.clone();
+        let directory = plan.manifest.parent().unwrap().to_path_buf();
+        let budget = Duration::from_secs(seconds);
+        let mut starting = self.starting.lock().await;
+        if starting.contains_key(&plan.name) {
+            return Err(invalid(
+                "project has an unfinished startup; quiesce it first",
+            ));
+        }
+        starting.insert(
+            plan.name.clone(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
+                compose(&socket, &directory, &BTreeMap::new(), &args, budget).await
+            })))),
+        );
+        drop(starting);
+        let (out, err) = self
+            .finish_start(&plan.name)
+            .await?
+            .ok_or_else(|| invalid("startup command already consumed"))?;
+        private_write(&log, format!("{out}\n{err}").as_bytes()).await
     }
 
-    /// Execute a trusted argument vector in one owned, running service replica.
-    /// Verifies the frozen manifest, ownership and pinned image before delegating
-    /// to Compose. Uses no shell; output limits and cancellation follow `compose`.
-    /// A cancelled exec can continue until its container is quiesced by the caller.
-    pub(crate) async fn exec_service(
+    // Keep the native up request alive across cancellation; shutdown joins it
+    // before inspecting resources, so delayed container creation cannot escape cleanup.
+    async fn finish_start(&self, project: &str) -> Result<Option<(String, String)>> {
+        let command = self.starting.lock().await.get(project).cloned();
+        let Some(command) = command else {
+            return Ok(None);
+        };
+        let mut command = command.lock().await;
+        let Some(pending) = command.as_mut() else {
+            return Ok(None);
+        };
+        let result = pending.await;
+        command.take();
+        self.starting.lock().await.remove(project);
+        result
+            .map_err(|e| invalid(format!("Compose startup task: {e}")))?
+            .map(Some)
+    }
+
+    /// Execute a command in one owned service; cancellation terminates the CLI client.
+    pub(crate) async fn exec(
         &self,
         plan: &ResolvedComposeProject,
         service: &str,
@@ -713,34 +778,48 @@ impl DockerAdapter {
         timeout: Duration,
     ) -> Result<String> {
         self.verify_manifest(plan).await?;
-        let state = self.inspect(plan).await?;
-        let replicas: Vec<_> = state
-            .containers
-            .iter()
-            .filter(|c| c.service == service)
-            .collect();
-        let expected = plan
-            .services
-            .get(service)
-            .ok_or_else(|| invalid("exec service absent from plan"))?;
-        if replicas.len() != 1
-            || replicas[0].status != "running"
-            || replicas[0].image_id != expected.image_id
-        {
-            return Err(invalid("exec requires one running, pinned service replica"));
-        }
+        Self::running_service(self.inspect(plan).await?, service)?;
         let mut args = Self::args(plan);
-        args.extend(["exec".into(), "-T".into(), service.into()]);
+        args.extend(["exec".into(), "--no-TTY".into(), service.into()]);
         args.extend_from_slice(command);
-        let (stdout, _) = compose(
+        compose(
             &self.socket,
             plan.manifest.parent().unwrap(),
             &BTreeMap::new(),
             &args,
             timeout,
         )
-        .await?;
-        Ok(stdout)
+        .await
+        .map(|(out, _)| out)
+    }
+
+    pub(crate) async fn resources_owned(&self, plan: &ResolvedComposeProject) -> Result<bool> {
+        let networks = self.project_networks(plan).await?;
+        let volumes = self.project_volumes(plan).await?;
+        Ok(networks
+            .iter()
+            .all(|n| n.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&plan.run))
+            && volumes
+                .iter()
+                .all(|v| v.labels.get(RUN_LABEL) == Some(&plan.run)))
+    }
+
+    // Share image, health and replica checks between endpoint routing and command execution.
+    fn running_service(mut state: ComposeProjectState, service: &str) -> Result<Container> {
+        state.plan.services.retain(|name, _| name == service);
+        if state.plan.services.is_empty() || !Self::ready(&state)? {
+            return Err(invalid("service is not ready"));
+        }
+        let mut containers = state
+            .containers
+            .into_iter()
+            .filter(|c| c.service == service);
+        match (containers.next(), containers.next()) {
+            (Some(container), None) if container.pid > 0 && container.status == "running" => {
+                Ok(container)
+            }
+            _ => Err(invalid("expected one running service container")),
+        }
     }
 
     /// Resolve the single ready service's IPv4 endpoint on one project-owned
@@ -759,22 +838,40 @@ impl DockerAdapter {
         if port == 0 {
             return Err(invalid("endpoint port must be positive"));
         }
-        let state = self.inspect(plan).await?;
-        if !Self::ready(&state)? {
-            return Err(invalid("project is not ready"));
-        }
-        let mut containers = state.containers.iter().filter(|c| c.service == service);
-        let container = containers
-            .next()
-            .ok_or_else(|| invalid("endpoint service absent"))?;
-        if containers.next().is_some() {
-            return Err(invalid("endpoint service has multiple containers"));
-        }
+        let container = Self::running_service(self.inspect(plan).await?, service)?;
         let info = self
             .docker
             .inspect_container(&container.id, None)
             .await
             .map_err(|e| engine("inspect endpoint container", e))?;
+        if info
+            .host_config
+            .as_ref()
+            .and_then(|config| config.network_mode.as_deref())
+            == Some("host")
+        {
+            super::command::verify_listener(
+                container
+                    .pid
+                    .try_into()
+                    .map_err(|_| invalid("invalid endpoint PID"))?,
+                port,
+            )
+            .await?;
+            let current = self
+                .docker
+                .inspect_container(&container.id, None)
+                .await
+                .map_err(|e| engine("recheck endpoint container", e))?;
+            if !current.state.is_some_and(|state| {
+                state.running == Some(true) && state.pid == Some(container.pid)
+            }) {
+                return Err(invalid(
+                    "endpoint container changed while checking its listener",
+                ));
+            }
+            return Ok((std::net::Ipv4Addr::LOCALHOST, port).into());
+        }
         let network_name = format!("{}_{}", plan.name, network);
         let networks = info
             .network_settings
@@ -826,6 +923,11 @@ impl DockerAdapter {
     /// Cancellation can leave partial cleanup; retain the plan and retry teardown.
     /// Final evidence files remain in the caller-owned artifact directory.
     pub async fn stop(&self, input: StopInput) -> Result<Cleanup> {
+        if !input.services.is_empty() {
+            return Err(invalid(
+                "selected services use quiesce; removal owns the whole experiment",
+            ));
+        }
         let stopped = self.quiesce(input.clone()).await?;
         if !stopped.stopped {
             return Err(invalid("project failed to quiesce"));
@@ -842,13 +944,30 @@ impl DockerAdapter {
     /// No filesystem contents are exported. Caller must collect evidence and remove
     /// resources explicitly; cancellation cannot complete that sequence.
     pub async fn quiesce(&self, input: StopInput) -> Result<Shutdown> {
+        let services = input.services.clone();
         let plan = &input.plan;
         let mut result = Shutdown {
             project: plan.name.clone(),
             diagnostics: Vec::new(),
             stopped: false,
         };
-        let before = self.project_containers(plan).await?;
+        match self.finish_start(&plan.name).await {
+            Ok(Some((out, err))) => {
+                if let Err(error) = private_write(
+                    &plan.manifest.with_extension("launch-interrupted.log"),
+                    format!("{out}\n{err}").as_bytes(),
+                )
+                .await
+                {
+                    result
+                        .diagnostics
+                        .push(error.diagnostic("startup evidence"));
+                }
+            }
+            Ok(None) => {}
+            Err(error) => result.diagnostics.push(error.diagnostic("pending startup")),
+        }
+        let mut before = self.project_containers(plan).await?;
         let all_owned = before.iter().all(|c| Self::owned(c, plan));
         // Preserve dependency-order stop semantics through Compose, with a bounded
         // grace period. Fall back to per-container Engine operations on CLI error.
@@ -858,6 +977,21 @@ impl DockerAdapter {
             "--timeout".into(),
             input.stop_seconds.to_string(),
         ]);
+        if !services.is_empty() {
+            if services
+                .iter()
+                .any(|name| !plan.services.contains_key(name))
+            {
+                return Err(invalid("unknown selected Compose service"));
+            }
+            args.extend(services.iter().cloned());
+            before.retain(|c| {
+                c.labels
+                    .as_ref()
+                    .and_then(|labels| labels.get("com.docker.compose.service"))
+                    .is_some_and(|name| services.contains(name))
+            });
+        }
         if all_owned && self.verify_manifest(plan).await.is_ok() {
             if let Err(e) = compose(
                 &self.socket,
@@ -948,17 +1082,20 @@ impl DockerAdapter {
             .await?
             .containers
             .iter()
+            .filter(|c| services.is_empty() || services.contains(&c.service))
             .all(|c| c.pid == 0 && matches!(c.status.as_str(), "exited" | "created"));
         Ok(result)
     }
 
-    /// Remove an already stopped project after its evidence has been collected.
-    ///
-    /// Refuses live or unowned containers. Returns independent cleanup diagnostics;
-    /// inspect `verified` even on success. Retains volumes unless explicitly selected
-    /// for deletion. Cancellation leaves the caller responsible for reconciliation.
+    /// Remove stopped owned resources after the caller saves their file-change report.
+    /// Volume deletion requires explicit permission and a matching retention policy.
+    /// Inspect `verified` and diagnostics; cancellation requires reconciliation.
     pub async fn remove(&self, input: StopInput) -> Result<Cleanup> {
         let plan = &input.plan;
+        if !input.services.is_empty() {
+            return Err(invalid("removal requires the whole experiment"));
+        }
+        self.finish_start(&plan.name).await?;
         let state = self.inspect(plan).await?;
         if state
             .containers
@@ -974,35 +1111,20 @@ impl DockerAdapter {
             retained_volumes: vec![],
             verified: false,
         };
-        let current = self.project_containers(plan).await?;
-        if current.iter().all(|c| Self::owned(c, plan))
-            && self.verify_manifest(plan).await.is_ok()
-            && self.resources_owned(plan).await?
-        {
-            let mut args = Self::args(plan);
-            args.extend([
-                "down".into(),
-                "--remove-orphans".into(),
-                "--timeout".into(),
-                input.stop_seconds.to_string(),
-            ]);
-            if plan.remove_volumes {
-                args.push("--volumes".into());
-            }
-            if let Err(e) = compose(
-                &self.socket,
-                plan.manifest.parent().unwrap(),
-                &BTreeMap::new(),
-                &args,
-                Duration::from_secs(30 + input.stop_seconds),
-            )
-            .await
-            {
-                result.diagnostics.push(e.diagnostic("compose down"));
-            }
-        }
-        // Docker can outlive the CLI. Reconcile independently, preserving unowned resources.
+        let mut directory_owner = None;
+        // Keep the stopped IPC owner until all other owned resources are removed.
         for summary in self.project_containers(plan).await? {
+            if summary
+                .labels
+                .as_ref()
+                .and_then(|labels| labels.get(DIRECTORY_OWNER_LABEL))
+                .is_some()
+            {
+                if Self::owned(&summary, plan) {
+                    directory_owner = summary.id;
+                }
+                continue;
+            }
             if Self::owned(&summary, plan)
                 && let Some(id) = summary.id
                 && let Err(e) = self
@@ -1023,17 +1145,7 @@ impl DockerAdapter {
                     .push(engine(format!("remove {id}"), e).diagnostic("remove"));
             }
         }
-        let filters = Some(HashMap::from([(
-            "label".into(),
-            vec![format!("{PROJECT_LABEL}={}", plan.name)],
-        )]));
-        let networks = self
-            .docker
-            .list_networks(Some(ListNetworksOptions {
-                filters: filters.clone(),
-            }))
-            .await
-            .map_err(|e| engine("verify networks", e))?;
+        let networks = self.project_networks(plan).await?;
         for network in networks {
             if let Some(id) = network.id {
                 // Compose-scoped names were validated before launch; unknown names
@@ -1051,14 +1163,14 @@ impl DockerAdapter {
                 }
             }
         }
-        let volumes = self
-            .docker
-            .list_volumes(Some(ListVolumesOptions { filters }))
-            .await
-            .map_err(|e| engine("verify volumes", e))?;
-        for volume in volumes.volumes.unwrap_or_default() {
+        for volume in self.project_volumes(plan).await? {
             if volume.labels.get(RUN_LABEL) == Some(&plan.run) {
-                if !plan.remove_volumes {
+                let remove = input.allow_volume_deletion
+                    && volume
+                        .labels
+                        .get("io.doramcap.remove-volume")
+                        .map_or(plan.remove_volumes, |v| v == "true");
+                if !remove {
                     result.retained_volumes.push(volume.name);
                     continue;
                 }
@@ -1077,26 +1189,44 @@ impl DockerAdapter {
                 result.remaining.push(format!("volume:{}", volume.name));
             }
         }
-        for c in self.project_containers(plan).await? {
-            result
-                .remaining
-                .push(format!("container:{}", c.id.unwrap_or_default()));
-        }
-        let networks = self
-            .docker
-            .list_networks(Some(ListNetworksOptions {
-                filters: Some(HashMap::from([(
-                    "label".into(),
-                    vec![format!("{PROJECT_LABEL}={}", plan.name)],
-                )])),
-            }))
-            .await
-            .map_err(|e| engine("final network inspection", e))?;
         result.remaining.extend(
-            networks
+            self.project_networks(plan)
+                .await?
                 .into_iter()
                 .filter_map(|n| n.id)
                 .map(|id| format!("network:{id}")),
+        );
+        result.remaining.extend(
+            self.project_containers(plan)
+                .await?
+                .into_iter()
+                .filter(|c| c.id != directory_owner)
+                .map(|c| format!("container:{}", c.id.unwrap_or_default())),
+        );
+        if result.remaining.is_empty()
+            && result.diagnostics.is_empty()
+            && (input.allow_volume_deletion || result.retained_volumes.is_empty())
+            && let Some(id) = directory_owner
+            && let Err(error) = self
+                .docker
+                .remove_container(&id, None::<RemoveContainerOptions>)
+                .await
+            && !absent(&error)
+        {
+            result
+                .diagnostics
+                .push(engine("release directory owner", error).diagnostic("cleanup"));
+        }
+        result.remaining.extend(
+            self.project_containers(plan)
+                .await?
+                .into_iter()
+                .filter(|c| {
+                    c.labels
+                        .as_ref()
+                        .is_some_and(|l| l.contains_key(DIRECTORY_OWNER_LABEL))
+                })
+                .map(|c| format!("container:{}", c.id.unwrap_or_default())),
         );
         result.verified = result.remaining.is_empty();
         Ok(result)
@@ -1145,10 +1275,11 @@ async fn config_arguments(
     Ok((directory, args, sources))
 }
 
-fn project_name(run: &str, key: &str) -> Result<String> {
-    validate_name(run)?;
-    validate_name(key)?;
-    Ok(format!("dc-{run}-{key}"))
+fn project_filters(plan: &ResolvedComposeProject) -> Option<HashMap<String, Vec<String>>> {
+    Some(HashMap::from([(
+        "label".into(),
+        vec![format!("{PROJECT_LABEL}={}", plan.name)],
+    )]))
 }
 
 pub(crate) fn validate_name(name: &str) -> Result<()> {
@@ -1185,6 +1316,10 @@ async fn save_stopped_inspection(
     }
     Err(invalid("too many stopped inspection attempts"))
 }
+/// Internal Compose identity for one run and project key.
+pub(crate) fn project_name(run: &str, key: &str) -> String {
+    format!("dc-{run}-{key}")
+}
 pub(crate) fn digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -1201,7 +1336,7 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::compose::Error;
 
@@ -1229,7 +1364,7 @@ mod tests {
         let project = discovery_project(root.path());
         for run in ["review-a", "review-b"] {
             // Act
-            let name = project_name(run, &project.key).unwrap();
+            let name = project_name(run, &project.key);
             let (_, args, _) = config_arguments(&project, &name).await.unwrap();
             // Assert
             let names: Vec<_> = args
@@ -1237,7 +1372,7 @@ mod tests {
                 .filter(|pair| pair[0] == "--project-name")
                 .map(|pair| pair[1].as_str())
                 .collect();
-            assert_eq!(names, [format!("dc-{run}-workload")]);
+            assert_eq!(names, [name.as_str()]);
             assert!(project.environment.is_empty());
         }
     }
@@ -1256,6 +1391,7 @@ mod tests {
             )
             .unwrap(),
             socket: socket.to_string_lossy().into_owned(),
+            starting: Default::default(),
         };
         for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
             let mut project = discovery_project(Path::new("/nonexistent-project"));
@@ -1350,5 +1486,175 @@ mod tests {
         state.plan.services.get_mut("worker").unwrap().replicas = 2;
         // Act / Assert
         assert!(!DockerAdapter::ready(&state).unwrap());
+    }
+
+    pub(crate) fn test_engine(
+        root: &Path,
+        responses: Vec<(&'static str, Value)>,
+    ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        let socket = root.join("engine.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        let adapter = DockerAdapter {
+            docker: Docker::connect_with_unix(
+                socket.to_str().unwrap(),
+                1,
+                bollard::API_DEFAULT_VERSION,
+            )
+            .unwrap(),
+            socket: socket.to_string_lossy().into_owned(),
+            starting: Default::default(),
+        };
+        let server = tokio::spawn(async move {
+            for (path, response) in responses {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let mut line = String::new();
+                stream.read_line(&mut line).await.unwrap();
+                assert!(line.contains(path), "unexpected Engine request: {line}");
+                loop {
+                    line.clear();
+                    assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let body = response.to_string();
+                stream.get_mut().write_all(format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+                ).as_bytes()).await.unwrap();
+            }
+        });
+        (adapter, server)
+    }
+
+    #[tokio::test]
+    async fn independent_startups_progress_and_duplicate_starts_are_rejected() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        let plan: ResolvedComposeProject = serde_json::from_value(json!({
+            "run":"run","key":"slow","name":"slow","manifest":root.path().join("manifest.json"),
+            "sha256":"", "services":{},"diagnostics":[],"remove_volumes":false
+        }))
+        .unwrap();
+        adapter.starting.lock().await.insert(
+            plan.name.clone(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("slow".into(), String::new()))
+            })))),
+        );
+        adapter.starting.lock().await.insert(
+            "fast".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async {
+                Ok(("fast".into(), String::new()))
+            })))),
+        );
+        let mut slow = Box::pin(adapter.finish_start(&plan.name));
+        assert!(futures_util::poll!(&mut slow).is_pending());
+
+        // Act / Assert: a different project completes while the first remains blocked.
+        let fast = tokio::time::timeout(Duration::from_secs(1), adapter.finish_start("fast"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fast.unwrap().0, "fast");
+        let duplicate = tokio::time::timeout(
+            Duration::from_secs(1),
+            adapter.project_command(&plan, vec![], 1),
+        )
+        .await
+        .unwrap();
+        assert!(
+            duplicate
+                .unwrap_err()
+                .to_string()
+                .contains("unfinished startup")
+        );
+
+        // Act / Assert: the original startup still completes and releases its entry.
+        release.send(()).unwrap();
+        assert_eq!(slow.await.unwrap().unwrap().0, "slow");
+        assert!(adapter.starting.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(root.path(), vec![]);
+        server.await.unwrap();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        adapter.starting.lock().await.insert(
+            "run".into(),
+            Arc::new(tokio::sync::Mutex::new(Some(tokio::spawn(async move {
+                waiting.await.unwrap();
+                Ok(("finished".into(), String::new()))
+            })))),
+        );
+        let mut cancelled = Box::pin(adapter.finish_start("run"));
+        assert!(futures_util::poll!(&mut cancelled).is_pending());
+
+        // Act / Assert: cancellation leaves an unfinished command available for cleanup.
+        drop(cancelled);
+        let mut first = Box::pin(adapter.finish_start("run"));
+        let mut second = Box::pin(adapter.finish_start("run"));
+        assert!(futures_util::poll!(&mut first).is_pending());
+        assert!(futures_util::poll!(&mut second).is_pending());
+        release.send(()).unwrap();
+        let (first, second) = tokio::join!(first, second);
+        let outputs: Vec<_> = [first.unwrap(), second.unwrap()]
+            .into_iter()
+            .flatten()
+            .collect();
+        assert_eq!(outputs, [("finished".into(), String::new())]);
+        assert!(adapter.starting.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn exec_rejects_a_replaced_image_before_launching_a_command() {
+        // Arrange: Engine reports an owned, running replica with a different image.
+        let root = tempfile::tempdir().unwrap();
+        let manifest = root.path().join("manifest.json");
+        std::fs::write(&manifest, b"{}").unwrap();
+        let plan: ResolvedComposeProject = serde_json::from_value(json!({
+            "run":"run","key":"app","name":"project","manifest":manifest,
+            "sha256":digest(b"{}"),"services":{"worker":{"image_id":"pinned","replicas":1,"completed":false}},
+            "diagnostics":[],"remove_volumes":false
+        })).unwrap();
+        let labels =
+            json!({RUN_LABEL:"run",PROJECT_LABEL:plan.name,"com.docker.compose.service":"worker"});
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                (
+                    "/containers/json",
+                    json!([{"Id":"container","Labels":labels}]),
+                ),
+                (
+                    "/containers/container/json",
+                    json!({"Id":"container","Image":"replacement",
+                "Config":{"Labels":labels},"State":{"Pid":123,"Status":"running","ExitCode":0},"RestartCount":0}),
+                ),
+            ],
+        );
+
+        // Act
+        let error = adapter
+            .exec(
+                &plan,
+                "worker",
+                &["should-not-run".into()],
+                Duration::from_secs(1),
+            )
+            .await
+            .unwrap_err();
+
+        // Assert
+        assert!(matches!(error, Error::Invalid(message) if message.contains("image changed")));
+        server.await.unwrap();
     }
 }

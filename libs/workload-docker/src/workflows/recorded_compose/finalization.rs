@@ -20,7 +20,6 @@ pub struct FinalizeInput {
     pub overlays: Option<OverlaySet>,
     pub shutdown: QuiescedProjects,
     pub recordings: Vec<Recording>,
-    pub require_volume_evidence: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizedRun {
@@ -29,7 +28,7 @@ pub struct FinalizedRun {
     pub recording_finalized: bool,
     /// Writers stopped, filesystem evidence durable, and overlays finalized.
     pub can_remove: bool,
-    /// Recovery-backed runs retain volumes whose metadata could not be collected.
+    /// Retain all volumes if their before/after metadata scans are incomplete.
     pub preserve_volumes: bool,
 }
 
@@ -120,10 +119,9 @@ impl Step for FinalizeRun {
                 None
             };
         let filesystem_changes = changes.map(|c| c.into_value());
-        let preserve_volumes = input.require_volume_evidence
-            && filesystem_changes
-                .as_ref()
-                .is_some_and(|c| !c.named_volumes.coverage_complete);
+        let preserve_volumes = filesystem_changes
+            .as_ref()
+            .is_none_or(|c| !c.named_volumes.coverage_complete);
         if preserve_volumes {
             self.failure(
                 "filesystem changes",

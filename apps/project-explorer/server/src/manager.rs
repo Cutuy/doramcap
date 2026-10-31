@@ -286,6 +286,7 @@ mod tests {
         // Arrange
         let registry = Registry::new(&workspace()).unwrap();
         let resources = vec![OwnedResource {
+            artifacts: None,
             run: "gal-0123".into(),
             project: Some("dc-gal-0123-activity-demo".into()),
             kind: "container",
@@ -309,6 +310,7 @@ mod tests {
         // Arrange
         let registry = Registry::new(&workspace()).unwrap();
         let resources = vec![OwnedResource {
+            artifacts: None,
             run: "gal-0123".into(),
             project: None,
             kind: "network",
@@ -351,6 +353,7 @@ mod tests {
             .join(format!("{run}.json"));
         std::fs::write(&anchor_path, serde_json::to_vec(&anchor).unwrap()).unwrap();
         let resources = vec![OwnedResource {
+            artifacts: None,
             run: run.clone(),
             project: Some(format!("dc-{run}-demo")),
             kind: "volume",

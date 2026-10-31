@@ -38,7 +38,7 @@ impl Flow {
         let mut command = vec!["/usr/local/bin/dora".into()];
         command.extend(args.iter().map(|s| (*s).to_owned()));
         adapter
-            .exec_service(
+            .exec(
                 &self.plan,
                 &self.config.service,
                 &command,
@@ -71,7 +71,7 @@ impl Flow {
     }
     async fn fetch(&self, adapter: &DockerAdapter, url: &str) -> Result<String> {
         adapter
-            .exec_service(
+            .exec(
                 &self.plan,
                 &self.config.service,
                 &[

@@ -46,7 +46,7 @@ pub struct ResolvedComposeProject {
     pub run: String,
     /// Prepared project key.
     pub key: String,
-    /// Generated Docker Compose project name: `dc-{run}-{key}`.
+    /// Generated Docker Compose project name, scoped to the artifact directory.
     pub name: String,
     /// Private resolved execution manifest path; can contain secrets.
     pub manifest: PathBuf,
@@ -79,6 +79,9 @@ pub struct ResolveInput {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StartInput {
+    /// Explicit service targets; empty starts the whole project.
+    #[serde(default)]
+    pub services: Vec<String>,
     /// Resolved project whose manifest digest is verified before launch.
     pub plan: ResolvedComposeProject,
     /// Timeout budget for startup/readiness operations, in seconds.
@@ -86,6 +89,12 @@ pub struct StartInput {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StopInput {
+    /// Default false retains all volumes; true applies each owned volume's deletion policy.
+    #[serde(default)]
+    pub allow_volume_deletion: bool,
+    /// Services to quiesce; empty selects every service. Removal requires empty.
+    #[serde(default)]
+    pub services: Vec<String>,
     /// Owned project to stop and inspect.
     pub plan: ResolvedComposeProject,
     /// Grace period passed to shutdown operations, in seconds.
@@ -163,6 +172,8 @@ pub struct Shutdown {
 /// An Engine resource carrying a doramcap run ownership label.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedResource {
+    /// Canonical private artifact directory recorded on owned Docker resources.
+    pub artifacts: Option<PathBuf>,
     /// Run identity from the ownership label.
     pub run: String,
     /// Compose project label, when present.

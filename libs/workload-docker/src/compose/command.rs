@@ -19,7 +19,10 @@ impl Drop for ProcessGroup {
         }
     }
 }
-async fn capture(reader: impl AsyncRead + Unpin, stream: &'static str) -> Result<String> {
+pub(crate) async fn capture(
+    reader: impl AsyncRead + Unpin,
+    stream: &'static str,
+) -> Result<String> {
     let mut bytes = Vec::new();
     reader
         .take(16 * 1024 * 1024 + 1)
@@ -104,4 +107,70 @@ pub(crate) async fn compose(
             })
         }
     }
+}
+
+/// Verify the sole listener on `port` is IPv4 loopback and belongs to `pid`.
+/// The caller must recheck its owned container PID after this snapshot.
+pub(crate) async fn verify_listener(pid: u32, port: u16) -> Result<()> {
+    use std::collections::HashSet;
+    if pid == 0 || port == 0 {
+        return Err(invalid("Dora listener PID and port must be nonzero"));
+    }
+    let mut sockets = HashSet::new();
+    for (path, loopback) in [("/proc/net/tcp", "0100007F"), ("/proc/net/tcp6", "")] {
+        let file = tokio::fs::File::open(path).await?;
+        let mut data = Vec::new();
+        file.take(4 * 1024 * 1024 + 1)
+            .read_to_end(&mut data)
+            .await?;
+        if data.len() > 4 * 1024 * 1024 {
+            return Err(invalid("Dora listener table exceeds its size limit"));
+        }
+        let table =
+            std::str::from_utf8(&data).map_err(|_| invalid("invalid TCP listener table"))?;
+        for row in table.lines().skip(1) {
+            let fields: Vec<_> = row.split_whitespace().collect();
+            if fields.len() < 10 {
+                return Err(invalid("malformed TCP listener table"));
+            }
+            if fields[3] != "0A" {
+                continue;
+            }
+            let (address, raw_port) = fields[1]
+                .split_once(':')
+                .ok_or_else(|| invalid("invalid TCP listener address"))?;
+            let listener_port = u16::from_str_radix(raw_port, 16)
+                .map_err(|_| invalid("invalid TCP listener port"))?;
+            if listener_port != port {
+                continue;
+            }
+            if address != loopback {
+                return Err(invalid("Dora port has a non-loopback or IPv6 listener"));
+            }
+            sockets.insert(fields[9].to_owned());
+        }
+    }
+    if sockets.len() != 1 {
+        return Err(invalid(
+            "Dora port does not have exactly one loopback listener",
+        ));
+    }
+    let mut descriptors = tokio::fs::read_dir(format!("/proc/{pid}/fd")).await?;
+    while let Some(entry) = descriptors.next_entry().await? {
+        match tokio::fs::read_link(entry.path()).await {
+            Ok(target) => {
+                let name = target.to_string_lossy();
+                if name
+                    .strip_prefix("socket:[")
+                    .and_then(|value| value.strip_suffix(']'))
+                    .is_some_and(|inode| sockets.contains(inode))
+                {
+                    return Ok(());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(invalid("Dora listener belongs to another process"))
 }

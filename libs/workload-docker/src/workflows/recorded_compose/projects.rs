@@ -35,6 +35,7 @@ impl Step for LaunchProjects {
             .ok_or_else(|| orchestrator::Error::message("project executor dropped"))?;
         let started = join_all(input.projects.into_iter().map(|plan| {
             executor.run::<StartCompose>(StartInput {
+                services: vec![],
                 plan,
                 readiness_seconds: input.readiness_seconds,
             })
@@ -196,6 +197,8 @@ impl Step for QuiesceProjects {
         for group in input.groups.into_iter().rev() {
             let stopped = join_all(group.iter().map(|plan| {
                 let mut stop = Input::new(StopInput {
+                    services: vec![],
+                    allow_volume_deletion: true,
                     plan: plan.clone(),
                     stop_seconds: input.stop_seconds,
                 });
@@ -254,6 +257,8 @@ impl Step for RemoveProjects {
                 }
                 match executor
                     .run::<RemoveCompose>(StopInput {
+                        services: vec![],
+                        allow_volume_deletion: !input.preserve_volumes,
                         plan: plan.clone(),
                         stop_seconds: input.stop_seconds,
                     })
