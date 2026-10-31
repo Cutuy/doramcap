@@ -1,17 +1,9 @@
 nodes:
-  - id: system-monitor
-    path: /usr/local/bin/system-monitor
-    args: --backend bpf --dora
+  - id: monitor
+    path: dynamic
     outputs: [snapshots, dictionary]
   - id: recorder
-    path: /usr/local/bin/mcap-recorder
-    args: /results/recording.mcap
+    path: dynamic
     inputs:
-      snapshots:
-        source: system-monitor/snapshots
-        queue_size: 64
-        queue_policy: backpressure
-      dictionary:
-        source: system-monitor/dictionary
-        queue_size: 4
-        queue_policy: backpressure
+      snapshots: {source: monitor/snapshots, queue_size: 64, queue_policy: backpressure}
+      dictionary: {source: monitor/dictionary, queue_size: 4, queue_policy: backpressure}

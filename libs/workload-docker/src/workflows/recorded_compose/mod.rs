@@ -3,19 +3,14 @@ mod execution;
 pub mod finalization;
 mod observation;
 pub mod preparation;
-pub mod projects;
 pub mod reset;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
     observation::EventCapture,
     preparation::PrepareRun,
-    projects::{
-        LaunchDoraFlows, LaunchFlowsInput, LaunchProjects, ObserveInput, ObserveProjects,
-        QuiesceInput, QuiesceProjects, RemoveInput, RemoveProjects,
-    },
 };
-use super::{dora, system_apps::SystemAppsConfig};
+use super::dora::DoraRuntime;
 use crate::compose::{
     error::invalid,
     filesystem::FilesystemChanges,
@@ -26,27 +21,28 @@ use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
 use tokio::sync::oneshot;
+pub use workload_lifecycle::recording::Recording;
 
 /// Compose-specific notifications to an in-process listener; delivery never controls the run.
 #[derive(Default)]
 pub struct RunSignals {
     /// Notify after all projects are ready; a closed receiver is harmless.
-    pub ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+    pub ready: Option<oneshot::Sender<ResolvedComposeProject>>,
     /// Notify when teardown begins, before stopping writers; delivery does not confirm shutdown.
     pub quiescing: Option<oneshot::Sender<()>>,
 }
 
 impl RunSignals {
-    fn notify_ready(&mut self, plans: Vec<ResolvedComposeProject>) {
+    fn notify_ready(&mut self, plan: ResolvedComposeProject) {
         if let Some(ready) = self.ready.take() {
-            let _ = ready.send(plans);
+            let _ = ready.send(plan);
         }
     }
 }
 
-/// Run prepared Compose projects with repository-scoped admission and reset.
-/// Signal stop and await completion for cleanup. A later run resets resources
-/// left by cancellation or incomplete teardown before launching new workloads.
+/// Run one exclusive experiment per repository in a stable Compose project.
+/// Signal stop and await completion for cleanup; dropping the future leaves the
+/// next run responsible for resetting owned Docker and upper-layer resources.
 pub struct ComposeRunner {
     adapter: Rc<DockerAdapter>,
     blocked: bool,
@@ -82,8 +78,8 @@ impl ComposeRunner {
     ///
     /// # Ownership and cancellation
     ///
-    /// A canonical repository lock serializes managers and processes.
-    /// Ordinary runtime failures await teardown; later runs first reset the scope.
+    /// An exclusive controller lease and reserved daemon name exclude overlapping
+    /// experiments. Pre-run reset discards previous uppers without replaying writes.
     /// Dropping the future cannot await cleanup and can leave resources alive and
     /// this manager blocked. Signal `stop` and await completion for orderly shutdown.
     pub async fn run(
@@ -95,15 +91,15 @@ impl ComposeRunner {
         self.run_with_ready(spec, stop, observer, None).await
     }
 
-    /// Run a session and notify the caller after every project becomes ready.
-    /// A closed receiver is harmless. Continue awaiting this future for cleanup;
-    /// plans remain valid only during the run.
+    /// Notify after the experiment application stages become ready.
+    /// A closed receiver is harmless. Await completion for cleanup; the resolved
+    /// plan remains valid only during this run.
     pub async fn run_with_ready(
         &mut self,
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        ready: Option<oneshot::Sender<ResolvedComposeProject>>,
     ) -> Result<ComposeRunReport> {
         self.run_with_preflight(spec, stop, observer, ready, |_| Ok(()))
             .await
@@ -116,7 +112,7 @@ impl ComposeRunner {
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        ready: Option<oneshot::Sender<Vec<ResolvedComposeProject>>>,
+        ready: Option<oneshot::Sender<ResolvedComposeProject>>,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
         self.run_with_signals(
@@ -152,10 +148,10 @@ impl ComposeRunner {
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        mut signals: RunSignals,
+        signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
-        // Serialize this repository and reset its fixed resource scope before preparation.
+        // Reset the fixed ownership scope before preparing this run's immutable inputs.
         validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
         let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
         self.blocked = true;
@@ -168,14 +164,14 @@ impl ComposeRunner {
             observer,
             &spec.id,
         );
+        let backend = self.adapter.clone();
+        let reset_controller = controller.clone();
+        let stop_seconds = spec.stop_seconds;
         let mut executor =
             Rc::try_unwrap(executor).map_err(|_| invalid("executor already shared"))?;
-        let backend = self.adapter.clone();
-        let scope = controller.clone();
-        let stop_seconds = spec.stop_seconds;
         executor.register::<reset::ResetExperiment>(move || reset::ResetExperiment {
             adapter: backend.clone(),
-            controller: scope.clone(),
+            controller: reset_controller.clone(),
             stop_seconds,
         });
         executor.validate_steps().map_err(step_error)?;
@@ -192,8 +188,12 @@ impl ComposeRunner {
         check(prepared.value())?;
         let artifacts = prepared.value().artifacts.clone();
 
-        // Mounts cross the side-effect boundary; dropping this run now blocks admission.
+        // Reserve the daemon and prepare optional filesystem views before application launch.
         self.blocked = true;
+        self.adapter
+            .project(&prepared.value().plan)
+            .reserve(super::shared_dora::DAEMON, spec.readiness_seconds)
+            .await?;
         let overlays = if let Some(policy) = &spec.filesystem {
             Some(
                 executor
@@ -201,7 +201,7 @@ impl ComposeRunner {
                         Input::new(PrepareInput {
                             artifacts: artifacts.clone(),
                             workspace: controller.workspace(),
-                            projects: prepared.value().projects(),
+                            projects: vec![prepared.value().plan.clone()],
                             policy: policy.clone(),
                         })
                         .after(&prepared),
@@ -212,175 +212,210 @@ impl ComposeRunner {
         } else {
             None
         };
-        let groups = prepared
+        let plan = prepared
             .value()
-            .launch_groups(overlays.as_ref().map(|o| o.value()));
-        let plans: Vec<_> = groups.iter().flat_map(|g| g.projects.clone()).collect();
-        let mut flows = dora::bind(&spec.system_apps.dora_flows, &plans)?;
-        let mut events = EventCapture::start(
+            .execution_plan(overlays.as_ref().map(|o| o.value()));
+        let resources = Rc::new(tokio::sync::Mutex::new(
+            super::experiment::ExperimentOwner::new(
+                prepared.value().dora.clone(),
+                self.adapter.clone(),
+                plan.clone(),
+                spec.readiness_seconds,
+                spec.stop_seconds,
+            ),
+        ));
+        let executor = super::steps::bind_experiment(
+            executor,
+            self.adapter.clone(),
+            diagnostics.clone(),
+            resources.clone(),
+        )?;
+        let events = EventCapture::start(
             self.adapter.docker.clone(),
             spec.id.clone(),
+            plan.name.clone(),
             artifacts.join("docker-events.jsonl"),
         );
-        let mut attempted = Vec::new();
-        let mut launches = Vec::new();
-        let mut flow_start = None;
-        let execution = async {
-            // Retain each attempted group before awaiting startup so cancellation can stop it.
-            for group in &groups {
-                attempted.push(group.projects.clone());
-                let mut input = Input::new(group.clone()).after(&prepared);
-                if let Some(overlays) = &overlays {
-                    input = input.after(overlays);
-                }
-                if let Some(previous) = launches.last() {
-                    input = input.after(previous);
-                }
-                launches.push(executor.run::<LaunchProjects>(input).await?);
-            }
-            let mut input = Input::new(LaunchFlowsInput {
-                flows: flows.clone(),
-                readiness_seconds: spec.readiness_seconds,
-            })
-            .after(&prepared);
-            if let Some(launched) = launches.last() {
-                input = input.after(launched);
-            }
-            let started = executor.run::<LaunchDoraFlows>(input).await?;
-            flows = started.value().clone();
-            flow_start = Some(started);
-
-            // Yield before notifying readiness so a stop made ready during startup wins.
+        // Race startup and observation against stop; teardown runs outside this boundary.
+        let mut signals = signals;
+        let mut last_launch = None;
+        let mut applications_started = false;
+        let execution_error = execution::until_stop(stop, events.failure(), async {
+            execution::launch_apps(
+                &executor,
+                &spec,
+                &prepared,
+                &plan,
+                overlays.as_ref(),
+                &mut last_launch,
+            )
+            .await?;
+            applications_started = true;
+            // Give a concurrent stop request priority over publishing readiness.
             tokio::task::yield_now().await;
-            signals.notify_ready(plans.clone());
-            loop {
-                let mut input = Input::new(ObserveInput {
-                    projects: plans.clone(),
-                    flows: flows.clone(),
-                })
-                .after(&prepared);
-                if let Some(launched) = launches.last() {
-                    input = input.after(launched);
-                }
-                if let Some(started) = &flow_start {
-                    input = input.after(started);
-                }
-                executor.run::<ObserveProjects>(input).await?;
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-            #[allow(unreachable_code)]
-            Ok::<(), orchestrator::Error>(())
-        };
-        let execution_error = execution::until_stop(stop, events.failure(), execution).await;
+            signals.notify_ready(plan.clone());
+            execution::monitor(&executor, &plan, &resources).await
+        })
+        .await;
 
-        // Completion is independent of cancellation and keeps every evidence gate intact.
+        // Stop adopted apps, drain system apps, then stop the shared Dora runtime.
         if let Some(quiescing) = signals.quiescing.take() {
             let _ = quiescing.send(());
         }
-        let mut input = Input::new(QuiesceInput {
-            groups: attempted,
-            flows,
-            stop_seconds: spec.stop_seconds,
-        })
-        .after(&prepared);
-        for launched in &launches {
-            input = input.after(launched);
+        let adopted_clean = execution::quiesce_services(
+            &executor,
+            &plan,
+            &prepared.value().user_services,
+            spec.stop_seconds,
+            &diagnostics,
+        )
+        .await;
+        let drained = resources
+            .lock()
+            .await
+            .shutdown(&prepared.value().system_services)
+            .await;
+        if let Err(error) = &drained {
+            execution::record_failure(&diagnostics, "workload drain", error);
         }
-        if let Some(started) = &flow_start {
-            input = input.after(started);
+        let systems_clean = execution::quiesce_services(
+            &executor,
+            &plan,
+            &prepared.value().system_services,
+            spec.stop_seconds,
+            &diagnostics,
+        )
+        .await;
+        let runtime_shutdown = executor.run::<super::experiment::StopDoraRuntime>(()).await;
+        let runtime_stopped = runtime_shutdown
+            .as_ref()
+            .is_ok_and(|output| output.value().stopped);
+        let runtime_exit_clean = runtime_shutdown
+            .as_ref()
+            .is_ok_and(|output| output.value().diagnostics.is_empty());
+        match runtime_shutdown {
+            Ok(stopped) => diagnostics
+                .borrow_mut()
+                .extend(stopped.into_value().diagnostics),
+            Err(error) => execution::record_failure(&diagnostics, "Dora shutdown", error),
         }
-        let shutdown = executor.run::<QuiesceProjects>(input).await;
-        let finalized = async {
-            let shutdown = shutdown.as_ref().map_err(step_error)?;
-            executor
+
+        // Finalization and removal require stopped writers and durable filesystem evidence.
+        let completion = async {
+            let mut input = Input::new(StopInput {
+                allow_volume_deletion: false,
+                services: vec![],
+                plan: Some(plan.clone()),
+                stop_seconds: spec.stop_seconds,
+            })
+            .after(&prepared);
+            if let Some(launched) = &last_launch {
+                input = input.after(launched);
+            }
+            let shutdown = executor
+                .run::<QuiesceCompose>(input)
+                .await
+                .map_err(step_error)?;
+            diagnostics
+                .borrow_mut()
+                .extend(shutdown.value().diagnostics.clone());
+            let mut writer_evidence = shutdown.value().clone();
+            writer_evidence.stopped &= runtime_stopped;
+            let finalized = executor
                 .run::<FinalizeRun>(
                     Input::new(FinalizeInput {
                         id: spec.id.clone(),
                         artifacts: artifacts.clone(),
                         baseline: prepared.value().baseline.clone(),
-                        overlays: overlays.as_ref().map(|o| o.value().clone()),
-                        shutdown: shutdown.value().clone(),
-                        recordings: groups.iter().flat_map(|g| g.recordings.clone()).collect(),
+                        overlays: overlays.map(|output| output.into_value()),
+                        shutdown: writer_evidence,
+                        project: plan.clone(),
+                        recordings: spec.recordings.clone(),
                     })
                     .after(&prepared)
-                    .after(shutdown),
+                    .after(&shutdown),
                 )
                 .await
-                .map_err(step_error)
+                .map_err(step_error)?;
+            if !finalized.value().recording_finalized {
+                execution::record_failure(
+                    &diagnostics,
+                    "completion",
+                    "recording finalization failed",
+                );
+            }
+            let cleanup = if runtime_stopped && finalized.value().can_remove {
+                match executor
+                    .run::<RemoveCompose>(
+                        Input::new(StopInput {
+                            allow_volume_deletion: !finalized.value().preserve_volumes,
+                            services: vec![],
+                            plan: Some(plan.clone()),
+                            stop_seconds: spec.stop_seconds,
+                        })
+                        .after(&shutdown)
+                        .after(&finalized),
+                    )
+                    .await
+                {
+                    Ok(cleanup) => Some(cleanup.into_value()),
+                    Err(error) => {
+                        execution::record_failure(&diagnostics, "completion", error);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+            .unwrap_or_else(|| Cleanup {
+                project: plan.name.clone(),
+                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
+                ..Default::default()
+            });
+            let finalized = finalized.into_value();
+            let boundary_clean = runtime_stopped
+                && finalized.can_remove
+                && cleanup.verified
+                && cleanup.diagnostics.is_empty()
+                && (!finalized.preserve_volumes || cleanup.retained_volumes.is_empty());
+            Ok::<_, Error>(ComposeRunReport {
+                id: spec.id,
+                execution_error: execution_error.clone(),
+                diagnostics: Vec::new(),
+                cleanup,
+                boundary_clean,
+                writers_stopped: shutdown.value().stopped && runtime_stopped,
+                recording_finalized: finalized.recording_finalized
+                    && runtime_exit_clean
+                    && applications_started
+                    && adopted_clean
+                    && drained.is_ok()
+                    && systems_clean
+                    && execution_error.is_none(),
+                event_stream_healthy: false,
+                filesystem_changes: finalized.filesystem_changes,
+                filesystem_results: finalized.filesystem_results,
+            })
         }
         .await;
-        let cleanup = async {
-            let shutdown = shutdown.as_ref().map_err(step_error)?;
-            let finalized = finalized.as_ref().map_err(step_error)?;
-            executor
-                .run::<RemoveProjects>(
-                    Input::new(RemoveInput {
-                        projects: shutdown.value().projects.clone(),
-                        stop_seconds: spec.stop_seconds,
-                        can_remove: finalized.value().can_remove,
-                        preserve_volumes: finalized.value().preserve_volumes,
-                    })
-                    .after(shutdown)
-                    .after(finalized),
-                )
-                .await
-                .map_err(step_error)
-        }
-        .await;
-        // Stop event capture even when a completion step cannot produce its evidence.
+
+        // Finish event capture even when shutdown or finalization could not produce evidence.
         let event_result = events.finish().await;
-        for error in [
-            shutdown.as_ref().err().map(ToString::to_string),
-            finalized.as_ref().err().map(ToString::to_string),
-            finalized
-                .as_ref()
-                .ok()
-                .filter(|output| !output.value().recording_finalized)
-                .map(|_| "recording finalization failed".to_owned()),
-            cleanup.as_ref().err().map(ToString::to_string),
-            event_result.as_ref().err().map(ToString::to_string),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            diagnostics
-                .borrow_mut()
-                .push(invalid(error).diagnostic("completion"));
+        if let Err(error) = &event_result {
+            execution::record_failure(&diagnostics, "completion", error);
+        }
+        if let Err(error) = &completion {
+            execution::record_failure(&diagnostics, "completion", error);
         }
         if executor.observer_failures() != 0 {
-            diagnostics
-                .borrow_mut()
-                .push(invalid("workflow observer lost events").diagnostic("observer"));
+            execution::record_failure(&diagnostics, "observer", "workflow observer lost events");
         }
-        let finalized = finalized.as_ref().map_err(step_error)?;
-        let cleanup = cleanup.as_ref().map_err(step_error)?;
-        let shutdown = shutdown.as_ref().map_err(step_error)?;
-        let finalized = finalized.value();
-        let boundary_clean = finalized.can_remove
-            && cleanup.value().iter().all(|c| {
-                c.verified
-                    && c.diagnostics.is_empty()
-                    && (!finalized.preserve_volumes || c.retained_volumes.is_empty())
-            });
+        let mut report = completion?;
+        report.event_stream_healthy = event_result.is_ok();
+        let boundary_clean = report.boundary_clean;
+        // Publish the final report before reopening admission for another experiment.
         let report = executor
-            .run::<WriteRunReport>(
-                Input::new(ReportInput {
-                    artifacts,
-                    report: ComposeRunReport {
-                        id: spec.id,
-                        execution_error,
-                        diagnostics: Vec::new(),
-                        cleanup: cleanup.value().clone(),
-                        boundary_clean,
-                        writers_stopped: shutdown.value().writers_stopped,
-                        recording_finalized: finalized.recording_finalized,
-                        event_stream_healthy: event_result.is_ok(),
-                        filesystem_changes: finalized.filesystem_changes.clone(),
-                        filesystem_results: finalized.filesystem_results.clone(),
-                    },
-                })
-                .after(cleanup),
-            )
+            .run::<WriteRunReport>(Input::new(ReportInput { artifacts, report }).after(&prepared))
             .await
             .map_err(step_error)?;
         self.blocked = !boundary_clean;
@@ -402,21 +437,24 @@ pub struct ComposeRun {
     /// supplied mounts directly. Omitted JSON retains the default write-back policy.
     #[serde(default = "default_filesystem")]
     pub filesystem: Option<OverlayPolicy>,
-    /// Caller-selected run identifier used in Docker ownership labels and project names.
+    /// Caller-selected run identifier used in Docker ownership labels and output names.
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
     pub artifacts: PathBuf,
-    /// Canonical repository defining exclusive admission, reset and project identity.
+    /// Repository root defining exclusive admission, reset scope and stable Compose identity.
     pub repository_root: PathBuf,
-    /// Foreign Compose projects owned by this run; may be empty with supporting apps.
+    /// Adopted Compose app inputs whose services join the experiment project.
     pub projects: Vec<ComposeProject>,
-    /// Additional prepared first-party projects, such as a configured DORA/ROS
-    /// subscriber. Started before foreign projects and stopped after them.
+    /// Ordinary system app inputs, started and stabilized before adopted apps.
+    /// Their services stop after the adopted apps.
     #[serde(default)]
-    pub first_party: Vec<ComposeProject>,
-    /// Supporting-app configuration, interpreted by the dedicated system-app steps.
+    pub system_apps: Vec<ComposeProject>,
+    /// Communication setup; application containers remain ordinary Compose inputs.
     #[serde(default)]
-    pub system_apps: SystemAppsConfig,
+    pub dora: DoraRuntime,
+    /// Explicit ordinary app recordings, checked after writers stop.
+    #[serde(default)]
+    pub recordings: Vec<Recording>,
     /// Positive startup/readiness budget in seconds; default 60.
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,
@@ -458,8 +496,8 @@ pub struct ComposeRunReport {
     pub execution_error: Option<String>,
     /// Structured workflow and step failure evidence.
     pub diagnostics: Vec<Diagnostic>,
-    /// Independent teardown results for attempted projects.
-    pub cleanup: Vec<Cleanup>,
+    /// Experiment resource-removal evidence.
+    pub cleanup: Cleanup,
     /// Whether owned runtime resources were verified cleaned up.
     pub boundary_clean: bool,
     /// All attempted project writers stopped, independently of evidence or removal.
@@ -481,13 +519,26 @@ impl ComposeRunReport {
             && self.recording_finalized
             && self.event_stream_healthy
             && self.diagnostics.is_empty()
-            && self.cleanup.iter().all(|x| x.diagnostics.is_empty())
+            && self.cleanup.diagnostics.is_empty()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub(super) fn ready_plan() -> ResolvedComposeProject {
+        ResolvedComposeProject {
+            run: "run".into(),
+            key: "experiment".into(),
+            name: "experiment".into(),
+            manifest: "/tmp/manifest".into(),
+            sha256: String::new(),
+            services: Default::default(),
+            diagnostics: vec![],
+            remove_volumes: false,
+        }
+    }
 
     #[test]
     fn dropped_readiness_listener_does_not_interrupt_workflow() {
@@ -500,7 +551,7 @@ mod tests {
         drop(receiver);
 
         // Act
-        signals.notify_ready(Vec::new());
+        signals.notify_ready(ready_plan());
 
         // Assert
         assert!(signals.ready.is_none());
@@ -516,73 +567,13 @@ mod tests {
         };
 
         // Act
-        signals.notify_ready(Vec::new());
+        signals.notify_ready(ready_plan());
 
         // Assert
-        assert!(receiver.try_recv().unwrap().is_empty());
+        assert_eq!(receiver.try_recv().unwrap().key, "experiment");
         assert!(signals.ready.is_none());
 
         // Act / Assert: repeated notification is harmless.
-        signals.notify_ready(Vec::new());
-    }
-
-    #[test]
-    fn supporting_apps_allow_monitor_only_and_empty_runs_reject() {
-        // Arrange
-        let mut spec: ComposeRun = serde_json::from_value(serde_json::json!({
-            "id":"monitor", "repository_root":"/tmp", "artifacts":"/tmp/new-monitor-run", "projects":[], "filesystem":null
-        }))
-        .unwrap();
-        // Act / Assert
-        assert!(preparation::validate(&spec).is_err());
-        // Arrange
-        spec.system_apps.cpu_monitor = Some(super::super::system_apps::CpuMonitor {
-            image: "local-monitor".into(),
-        });
-        // Act / Assert
-        assert!(preparation::validate(&spec).is_ok());
-    }
-
-    #[test]
-    fn filesystem_policy_default_and_direct_mount_opt_out() {
-        // Arrange
-        let mut config = serde_json::json!({"id":"run", "repository_root":"/tmp", "artifacts":"/tmp/example", "projects":[{
-            "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
-        }]});
-        // Act / Assert
-        let defaulted: ComposeRun = serde_json::from_value(config.clone()).unwrap();
-        assert!(defaulted.filesystem.is_some());
-        assert!(super::preparation::validate(&defaulted).is_ok());
-        config["filesystem"] = serde_json::Value::Null;
-        let direct: ComposeRun = serde_json::from_value(config).unwrap();
-        assert!(direct.filesystem.is_none());
-        assert!(super::preparation::validate(&direct).is_ok());
-    }
-
-    #[test]
-    fn preflight_requires_complete_dora_runtime_paths() {
-        // Arrange: registration loading permits a path supplied by the run owner.
-        let mut spec: ComposeRun = serde_json::from_value(serde_json::json!({
-            "id":"run", "repository_root":"/tmp", "artifacts":"/tmp/example", "projects":[{
-                "key":"workload", "directory":"/tmp", "files":["compose.yaml"]
-            }], "system_apps":{"dora_flows":[{
-                "project":"workload", "service":"daemon", "name":"flow",
-                "descriptor":"/opt/flow.yml", "shutdown":[{"nodes":["source"]}]
-            }]}
-        }))
-        .unwrap();
-        assert!(dora::validate(&spec.system_apps.dora_flows[0]).is_ok());
-
-        // Act / Assert: runtime preflight rejects missing and relative paths.
-        for path in ["", "relative/results"] {
-            spec.system_apps.dora_flows[0].results_directory = path.into();
-            assert!(preparation::validate(&spec).is_err());
-        }
-
-        // Act: the caller supplies the absolute results directory before preparation.
-        spec.system_apps.dora_flows[0].results_directory = "/tmp/results".into();
-
-        // Assert
-        assert!(preparation::validate(&spec).is_ok());
+        signals.notify_ready(ready_plan());
     }
 }

@@ -1,29 +1,15 @@
 id: "cpu-viewer"
 compose_file: "compose.yaml"
-service: "coordinator"
-network: "default"
+service: "viewer"
+network: "host"
 port: 8080
 readiness_seconds: 90
 stop_seconds: 50
 result_file: "cpu.mcap"
-shutdown_marker: "shutdown.complete"
 recording_count {
   count_file: "published.count"
   topic: "doramcap/snapshots"
 }
 env_prefix: "CPU_VIEWER"
 requires_explicit_enable: true
-
-system_apps { dora_flows {
-  project: "cpu-viewer"
-  service: "viewer"
-  descriptor: "/opt/dora-flow/flow.yml"
-  name: "hosted"
-  shutdown { nodes: "cpu-viewer" }
-  shutdown { nodes: "system-monitor" }
-  shutdown { nodes: "recorder" drain: true }
-  readiness_url: "http://127.0.0.1:8080/health/ready"
-  count_node: "system-monitor"
-  count_file: "published.count"
-  completion_file: "shutdown.complete"
-} }
+dora { graph: "flow.yml" shm_bytes: 134217728 memlock_bytes: 268435456 }

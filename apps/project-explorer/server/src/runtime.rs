@@ -58,7 +58,7 @@ impl Service {
             .ok_or(Error::UnknownApp)
     }
     /// Start the local supervisor within a running Tokio `LocalSet`. The caller
-    /// supplies per-app repository identities for strict workflow reset. External workflow
+    /// must already have performed manager startup discovery. External workflow
     /// futures are owned by spawned local tasks, independent of request lifetime.
     pub fn spawn_local(
         manager: Manager,

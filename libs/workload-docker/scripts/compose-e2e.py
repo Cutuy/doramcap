@@ -1,56 +1,100 @@
 #!/usr/bin/env python3
-"""Opt-in native Docker tests. Build unprivileged; elevate only Docker and test binary."""
-import argparse, json, os, re, shutil, subprocess, tempfile, time
+"""Run shared-Dora workflow tests using a prebuilt doramcap/dora:local image."""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[3]
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--output',type=Path,required=True);p.add_argument('--profile',default='ci');args=p.parse_args()
-    output=args.output.absolute();output.mkdir(parents=True,exist_ok=False)
-    main_checkout=Path(subprocess.check_output(['git','worktree','list','--porcelain'],cwd=ROOT,text=True).splitlines()[0].removeprefix('worktree '))
-    credential=main_checkout/'.sudo-password'
-    if not credential.is_file() or credential.stat().st_mode&0o777 != 0o600:raise SystemExit('Provision main .sudo-password locally, mode 0600')
-    subprocess.run(['git','check-ignore','-q','.sudo-password'],cwd=main_checkout,check=True)
-    def elevated(command,**kw):
-        with credential.open('rb') as secret:return subprocess.run(['sudo','-S','-p','','--',*command],stdin=secret,check=True,**kw)
-    subprocess.run(['cargo','build','--profile',args.profile,'--locked','-p','system-monitor','--features','bpf'],cwd=ROOT,check=True)
-    built=subprocess.run(['cargo','test','--profile',args.profile,'--locked','-p','workload-docker','--test','docker','--no-run','--message-format=json'],cwd=ROOT,check=True,capture_output=True,text=True)
-    executable=next(json.loads(line)['executable'] for line in built.stdout.splitlines() if json.loads(line).get('executable'))
-    target=Path(json.loads(subprocess.check_output(['cargo','metadata','--no-deps','--format-version','1'],cwd=ROOT))['target_directory'])/('debug' if args.profile=='dev' else args.profile)
-    prefix=f'cmp-{os.getpid()}-{int(time.time())}'
-    image=f'doramcap-compose-test:{prefix}'
-    with tempfile.TemporaryDirectory(prefix='compose-image-') as tmp:
-        stage=Path(tmp);fs=stage/'rootfs';fs.mkdir()
-        # Include a tiny local shell toolset for foreign test services; no registry pull.
-        for source,dest in [(target/'system-monitor','system-monitor'),(Path('/bin/sh'),'bin/sh'),(Path('/bin/sleep'),'bin/sleep'),(Path('/bin/true'),'bin/true'),(Path('/bin/false'),'bin/false'),(Path('/bin/rm'),'bin/rm'),(Path('/bin/touch'),'bin/touch')]:
-            destination=fs/dest;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,destination)
-            for line in subprocess.check_output(['ldd',str(source)],text=True).splitlines():
-                match=re.search(r'(?:=>\s+)?(/\S+)',line)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--profile', default='ci')
+    parser.add_argument('--socket', type=Path, default=Path('/var/run/docker.sock'))
+    args = parser.parse_args()
+    socket = args.socket.absolute()
+    docker = ['docker', '--host', f'unix://{socket}']
+    output = args.output.absolute()
+    output.mkdir(parents=True, exist_ok=False)
+    repository = ROOT if (ROOT / ".git").exists() else Path.cwd()
+    main_checkout = Path(subprocess.check_output(
+        ['git', 'worktree', 'list', '--porcelain'], cwd=repository, text=True,
+    ).splitlines()[0].removeprefix('worktree '))
+    credential = main_checkout / '.sudo-password'
+    if not credential.is_file() or credential.stat().st_mode & 0o777 != 0o600:
+        raise SystemExit('Provision main .sudo-password locally, mode 0600')
+    subprocess.run(['git', 'check-ignore', '-q', '.sudo-password'], cwd=main_checkout, check=True)
+
+    def elevated(command, **kwargs):
+        with credential.open('rb') as secret:
+            return subprocess.run(['sudo', '-S', '-p', '', '--', *command], stdin=secret, check=True, **kwargs)
+
+    cargo = ['cargo', '--locked', '--profile', args.profile]
+    subprocess.run([cargo[0], 'build', *cargo[1:], '-p', 'mcap-recorder', '--bins', '--examples'], cwd=ROOT, check=True)
+    built = subprocess.run([cargo[0], 'test', *cargo[1:], '-p', 'workload-docker', '--test', 'docker',
+                            '--no-run', '--message-format=json'], cwd=ROOT, check=True, capture_output=True, text=True)
+    executable = next(item['executable'] for item in map(json.loads, built.stdout.splitlines()) if item.get('executable'))
+    metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--locked', '--no-deps', '--format-version', '1'], cwd=ROOT))
+    target = Path(metadata['target_directory']) / ('debug' if args.profile == 'dev' else args.profile)
+    fixture = target / 'examples/dora_attachment_fixture'
+    recorder = target / 'mcap-recorder'
+    image = f'doramcap-compose-test:shared-{os.getpid()}'
+    with tempfile.TemporaryDirectory(prefix='compose-image-', dir=output) as temporary:
+        stage = Path(temporary)
+        filesystem = stage / 'rootfs'
+        filesystem.mkdir()
+        programs = [recorder, fixture, *map(Path, ['/bin/sh', '/bin/sleep', '/bin/true', '/bin/false', '/bin/rm', '/bin/touch', '/usr/bin/test'])]
+        for source in programs:
+            if source not in (recorder, fixture):
+                destination = filesystem / 'bin' / source.name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, destination)
+            for line in subprocess.check_output(['ldd', str(source)], text=True).splitlines():
+                match = re.search(r'(?:=>\s+)?(/\S+)', line)
                 if match:
-                    lib=Path(match.group(1));out=fs/lib.relative_to('/') if 'ld-linux' in lib.name else fs/'lib'/lib.name
-                    out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(lib,out)
-        (fs/'seed-mod').write_text('original');(fs/'seed-delete').write_text('original')
-        (fs/'recordings').mkdir();(stage/'Dockerfile').write_text('FROM scratch\nCOPY rootfs /\nENTRYPOINT ["/system-monitor"]\n')
-        elevated(['docker','build','--network=none','-t',image,str(stage)])
-    try:
-        elevated(['env',f'DORAMCAP_TEST_IMAGE={image}',f'DORAMCAP_TEST_PREFIX={prefix}',f'DORAMCAP_TEST_OUTPUT={output}','DORAMCAP_TEST_SOCKET=/var/run/docker.sock',executable,'--ignored','--nocapture','--test-threads=1'])
-    finally:
-        # Test panic cleanup is scoped to this harness's exact generated run IDs.
-        for suffix in ['normal0','normal1','partial','unhealthy','timeout','outsider','diff-failure','busy-overlay']:
-            run=f'{prefix}-{suffix}'
-            ids=elevated(['docker','ps','-aq','--filter',f'label=io.doramcap.run={run}'],capture_output=True,text=True).stdout.split()
-            if ids:elevated(['docker','rm','-fv',*ids])
-            for kind in ['network','volume']:
-                ids=elevated(['docker',kind,'ls','-q','--filter',f'label=io.doramcap.run={run}'],capture_output=True,text=True).stdout.split()
-                if ids:elevated(['docker',kind,'rm',*ids])
-        outsider=elevated(['docker','ps','-aq','--filter',f'name=^/{prefix}-outsider-container$'],capture_output=True,text=True).stdout.split()
-        if outsider:elevated(['docker','rm','-f',*outsider])
-        # Failed evidence tests intentionally retain mounts; release only this
-        # harness's overlay mountpoints after its containers have been removed.
-        mountpoints = [line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines()]
-        for mountpoint in reversed(mountpoints):
-            path = Path(mountpoint)
-            if path.is_relative_to(output) and path.name == 'merged' and 'overlays' in path.parts:
-                elevated(['umount', str(path)])
-        elevated(['docker','image','rm',image])
-    print(f'PASS: multi-project native Compose workflow; evidence {output}')
-if __name__=='__main__':main()
+                    library = Path(match.group(1))
+                    destination = filesystem / library.relative_to('/')
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(library, destination)
+        (filesystem / 'tmp').mkdir()
+        (stage / 'Dockerfile').write_text('FROM scratch\nCOPY rootfs /\nENV HOME=/tmp\nENTRYPOINT ["/bin/sh"]\n')
+        subprocess.run([*docker, 'build', '--network=none', '-t', image, str(stage)], check=True)
+    environment = ['env', f'TMPDIR={output}', f'DORAMCAP_TEST_IMAGE={image}',
+                   f'DORAMCAP_TEST_SOCKET={socket}', f'DORAMCAP_TEST_DORA_NODE={fixture}',
+                   f'DORAMCAP_TEST_MCAP_RECORDER={recorder}']
+    cases = [
+        ('public_dora_', 7),
+        ('direct_session_lifecycle_and_prerun_reset', 1),
+        ('parallel_projects_preserve_readiness_and_shutdown_barriers', 1),
+        ('active_experiments_are_exclusive_per_repository_and_independent_between_repositories', 1),
+        ('reset_failure_blocks_preparation_and_retries_after_partial_removal', 1),
+        ('stable_project_keeps_retained_volumes_isolated_between_experiments', 1),
+        ('reset_discards_fixed_workspace_without_launch_history', 1),
+        ('shared_experiment_preserves_native_inputs_and_rejects_conflicts', 1),
+        ('mixed_volume_policies_and_evidence_preservation', 1),
+        ('incomplete_volume_scan_retains_volumes', 1),
+    ]
+    for case, expected in cases:
+        log = output / f'{case}.log'
+        try:
+            with log.open('wb') as stream:
+                elevated([*environment, executable, case, '--ignored', '--nocapture', '--test-threads=1'],
+                         stdout=stream, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError:
+            raise SystemExit(f'FAIL: {case}; evidence and owned resources retained; see {log}') from None
+        results = re.findall(r'^test result: ok\. (\d+) passed;', log.read_text(), re.MULTILINE)
+        if not results or int(results[-1]) != expected:
+            raise SystemExit(f'FAIL: {case} did not run {expected} tests; see {log}')
+        print(f'PASS: {case}', flush=True)
+    subprocess.run([*docker, 'image', 'rm', image], check=True)
+    print(f'PASS: shared-Dora workflow; evidence {output}')
+
+
+if __name__ == '__main__':
+    main()

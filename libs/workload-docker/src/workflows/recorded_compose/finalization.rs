@@ -1,6 +1,5 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
-use super::super::system_apps::{FinalizeRecordings, Recording};
-use super::{ComposeRunReport, observation, projects::QuiescedProjects};
+use super::{ComposeRunReport, observation};
 use crate::compose::{
     Diagnostics,
     adapter::private_write,
@@ -11,6 +10,7 @@ use crate::compose::{
 use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, rc::Weak};
+use workload_lifecycle::recording::{FinalizeRecordings, Recording};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeInput {
@@ -18,7 +18,8 @@ pub struct FinalizeInput {
     pub artifacts: PathBuf,
     pub baseline: FilesystemBaseline,
     pub overlays: Option<OverlaySet>,
-    pub shutdown: QuiescedProjects,
+    pub shutdown: crate::compose::Shutdown,
+    pub project: crate::compose::ResolvedComposeProject,
     pub recordings: Vec<Recording>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,16 +60,11 @@ impl Step for FinalizeRun {
                 .flat_map(|o| &o.trees)
                 .map(|t| (t.source.clone(), t.merged.clone()))
                 .collect(),
-            projects: input
-                .shutdown
-                .projects
-                .iter()
-                .map(|p| p.plan.clone())
-                .collect(),
+            projects: vec![input.project],
         };
         let (recording, changes) = tokio::join!(
             async {
-                if !input.shutdown.writers_stopped {
+                if !input.shutdown.stopped {
                     return Err(orchestrator::Error::message(
                         "recording writers not quiescent",
                     ));
@@ -76,7 +72,7 @@ impl Step for FinalizeRun {
                 executor.run::<FinalizeRecordings>(input.recordings).await
             },
             async {
-                if !input.shutdown.writers_stopped {
+                if !input.shutdown.stopped {
                     return None;
                 }
                 match executor.run::<CollectFilesystemChanges>(collect).await {
@@ -91,7 +87,7 @@ impl Step for FinalizeRun {
         if let Err(error) = &recording {
             self.failure("finalize recording", error);
         }
-        let mut evidence_durable = input.shutdown.writers_stopped && changes.is_some();
+        let mut evidence_durable = input.shutdown.stopped && changes.is_some();
         if input.overlays.is_none()
             && let Some(changes) = &changes
             && let Err(error) = super::super::compose_lifecycle::save_outer_evidence(
@@ -134,7 +130,7 @@ impl Step for FinalizeRun {
             filesystem_changes,
             filesystem_results,
             preserve_volumes,
-            recording_finalized: recording.is_ok() && input.shutdown.dora_finalized,
+            recording_finalized: recording.is_ok(),
         })
     }
 }

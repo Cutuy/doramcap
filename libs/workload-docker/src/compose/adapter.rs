@@ -1,24 +1,28 @@
 mod configuration;
 mod project;
 mod scope;
+use configuration::ComposeConfiguration;
+pub use project::ComposeExecution;
+use scope::ExperimentResources;
+
 use super::{
     ResolvedComposeProject, Result,
     error::{engine, invalid},
 };
 use bollard::Docker;
-pub use configuration::ComposeConfiguration;
-pub use project::ComposeExecution;
-use scope::ExperimentResources;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
+
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
 pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
 pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
-pub(crate) const DIRECTORY_OWNER_LABEL: &str = "io.doramcap.directory-owner";
+pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;
-/// Shared Docker connection providing configuration, execution and ownership capabilities.
+
+/// Shared local Docker connection used by Compose configuration and workflow steps.
 /// Clones share pending startup commands; callers serialize conflicting lifecycle operations.
+/// Project views borrow a frozen plan; resources survive cancellation and adapter destruction.
 #[derive(Clone)]
 pub struct DockerAdapter {
     pub(crate) docker: Docker,
@@ -30,11 +34,8 @@ impl DockerAdapter {
     pub fn socket_path(&self) -> &Path {
         Path::new(&self.socket)
     }
-    /// Connect to `socket` and negotiate the Engine API version.
-    ///
-    /// Returns an adapter using the absolute Unix socket for both Engine and CLI
-    /// operations. Engine requests use a 120-second timeout. Relative paths return
-    /// a validation error; connection/negotiation failures retain Engine details.
+    /// Connect to an absolute Unix socket and negotiate the Engine API version.
+    /// Engine and Compose share this socket; connection errors retain Engine diagnostics.
     pub async fn connect(socket: impl Into<String>) -> Result<Self> {
         let socket = socket.into();
         if !Path::new(&socket).is_absolute() {
@@ -51,22 +52,27 @@ impl DockerAdapter {
             starting: Default::default(),
         })
     }
-
-    /// Borrow configuration processing; no resource ownership is transferred.
-    pub fn configuration(&self) -> ComposeConfiguration<'_> {
-        ComposeConfiguration { adapter: self }
-    }
-    /// Borrow execution operations for one immutable plan; dropping the view changes no resources.
+    /// Borrow the runtime view for a frozen project; no Docker resources are created.
     pub fn project<'a>(&'a self, plan: &'a ResolvedComposeProject) -> ComposeExecution<'a> {
         ComposeExecution {
             adapter: self,
             plan,
         }
     }
-    pub(crate) fn experiment_resources<'a>(&'a self, scope: &'a str) -> ExperimentResources<'a> {
+
+    pub(crate) fn configuration(&self) -> ComposeConfiguration<'_> {
+        ComposeConfiguration { adapter: self }
+    }
+
+    pub(crate) fn experiment_resources<'a>(
+        &'a self,
+        scope: &'a str,
+        owner: &'a str,
+    ) -> ExperimentResources<'a> {
         ExperimentResources {
             adapter: self,
             scope,
+            owner,
         }
     }
 }
@@ -84,23 +90,19 @@ pub(crate) fn validate_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn project_name(run: &str, key: &str) -> String {
-    format!("dc-{run}-{key}")
-}
-/// Stable project identity for one canonical repository/key.
-pub(crate) fn repository_project_name(key: &str, repository: &Path) -> String {
+/// Stable identity for one repository/project key; run IDs remain ownership labels.
+pub(crate) fn project_name(key: &str, repository: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     format!(
         "dc-{}-{key}",
         &digest(repository.as_os_str().as_bytes())[..16]
     )
 }
-/// Private admission and temporary OverlayFS directory for one repository.
 pub(crate) fn repository_scope(repository: &Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!(
         "/tmp/doramcap-experiments-{}-{}",
         unsafe { libc::geteuid() },
-        repository_project_name("experiment", repository)
+        project_name("experiment", repository)
     ))
 }
 pub(crate) fn digest(bytes: &[u8]) -> String {

@@ -1,21 +1,7 @@
 # MCAP Recorder deployment
 
-Runs independent System Monitor and MCAP Recorder binaries in Dora 1.1.0. Each
-headless generation retains `recording.mcap` using native BPF CPU telemetry.
+The headless recorder captures System Monitor telemetry to MCAP.
+The Dockerfile takes `mcap-recorder` and `system-monitor`, built with monitor
+features `bpf,dora`. The gallery uses `registration.pbtxt` and starts shared Dora first.
 
-```sh
-cargo build --release --locked -p mcap-recorder -p system-monitor --features system-monitor/dora,system-monitor/bpf
-dora --version  # must report dora-cli 1.1.0
-stage=$(mktemp -d)
-cp "$(command -v dora)" "$stage/dora"
-cp target/release/system-monitor target/release/mcap-recorder "$stage/"
-cp apps/mcap-recorder/deploy/flow.yml "$stage/"
-docker build -t doramcap/mcap-recorder:local -f apps/mcap-recorder/deploy/Dockerfile "$stage"
-rm -r "$stage"
-```
-
-Enable with `--enable-app mcap-recorder`. The shared Rust workflow drains the recorder and
-checks published counts before releasing its result. See [remaining work](../../project-explorer/server/docs/102727-remaining-apps.md#m2--mcap-recorder-complete).
-
-Compose runs foreground Dora coordinator/daemon services. The registration declares
-node groups; the shared Rust workflow owns launch, readiness, ordered stop and drain.
+[Shared lifecycle and test results](../../../libs/workload-docker/docs/102926-shared-dora-experiment.md).

@@ -5,6 +5,7 @@
 Created: 2026-10-26. Implementation updated: 2026-10-27.
 Local Linux directory-bind overlays are implemented; qualification is recorded below.
 Scope: preventing unintended state carryover between serial experiments.
+Current teardown/reset policy is in the [shared-Dora plan](102926-shared-dora-experiment.md).
 
 [Direct upper write-back](102726-direct-overlay-writeback.md) uses rsync after
 strict unmount. Advanced metadata is unqualified and ambiguous hardlinks fail.
@@ -377,7 +378,7 @@ host configuration restoration → device/external-service hooks → measurement
 - [Linux OverlayFS semantics and backing-filesystem requirements](https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html)
 - [Docker overlay storage and copy-up behavior](https://docs.docker.com/engine/storage/drivers/overlayfs-driver/)
 - [Docker bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)
-- [Current Compose workflow and validation](102626-compose-workflow.md)
+- [Docker workflow](../README.md)
 
 - [Docker container changes](https://docs.docker.com/reference/cli/docker/container/diff/)
 - [systemd execution environment](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)

@@ -1,20 +1,17 @@
 # Docker workload lifecycle
 
-Run one experiment over prepared Compose projects. The workflow orders reusable
-preparation, launch, observation, quiescence, finalization and removal steps.
-Independent projects run concurrently on the local async task. Each run supplies
-its canonical repository root; a strict pre-run reset stops previous writers and
-removes that repository's containers, networks and temporary OverlayFS workspace.
-Dora-backed apps declare node groups in `SystemAppsConfig`; shared Rust steps launch, inspect and drain those flows before Compose teardown.
-Compose handles project
-semantics; Bollard inspects Engine state and verifies cleanup. Writable host-directory
-binds use shared per-run OverlayFS views with default post-stop write-back.
+Run one experiment per repository in a stable Compose project. Independent
+repositories may run concurrently.
+Pre-run reset stops old writers, unmounts overlays and discards old uppers before
+preparation. Unexpected cleanup errors block launch. Per-run outputs and retained
+named volumes remain separate; reset never replays interrupted host writes.
 
-![Workflow](docs/102626-compose-workflow.svg)
+Compose handles configuration and container launch; Bollard verifies ownership,
+readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 
 Module relationships and execution barriers:
 
-![Workflow modules](docs/workflow-modules.svg)
+![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
@@ -32,7 +29,7 @@ assert!(report.successful());
 # Ok(()) }
 ```
 
-[Prepared input and validation](docs/102626-compose-workflow.md) ·
+[Prepared input and validation](docs/102926-shared-dora-experiment.md) ·
 [System Monitor Compose](../../apps/system-monitor/deploy/recording.yaml) ·
 [Runnable example](examples/compose_experiment.rs) ·
 [Robotics qualification](../workload-lifecycle/docs/102626-adoption-candidates.md) ·
@@ -46,4 +43,5 @@ Real native Docker tests: `python3 libs/workload-docker/scripts/compose-e2e.py -
 Host overlays require Linux CAP_SYS_ADMIN, a local daemon sharing the manager mount
 namespace, and rsync. Direct write-back rejects ambiguous hardlinks and overlay
 redirect/metacopy features; ACL/xattr/capability fidelity is unqualified. Use
-`filesystem.disposition: "discard"` to delete the stopped upper changes. Named volumes retain their separate declared policy.
+`filesystem.disposition: "discard"` to delete upper data without changing original
+host directories. Named volumes retain their separate declared policy.

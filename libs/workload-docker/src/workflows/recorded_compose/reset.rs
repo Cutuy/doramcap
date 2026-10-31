@@ -102,14 +102,18 @@ impl ResetExperiment {
             .directory
             .to_str()
             .ok_or_else(|| invalid("controller path is not UTF-8"))?;
+        let owner = super::super::shared_dora::owner(&self.controller.repository);
         // Stop and verify this repository's writers before touching its overlay workspace.
         self.adapter
-            .experiment_resources(scope)
+            .experiment_resources(scope, &owner)
             .quiesce(self.stop_seconds)
             .await?;
         overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.
-        self.adapter.experiment_resources(scope).remove().await
+        self.adapter
+            .experiment_resources(scope, &owner)
+            .remove()
+            .await
     }
 }
 

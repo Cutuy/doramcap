@@ -1,4 +1,6 @@
 //! Native Compose qualification before migrating the recorded workflow.
+mod support;
+use orchestrator::Step;
 use prost::Message;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt, path::Path, rc::Rc, time::Duration};
 use workload_docker::compose::*;
@@ -103,8 +105,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 coordinator.to_string(),
                 "--local-listen-port".into(),
                 daemon.to_string(),
-                "--worker-threads".into(),
-                "2".into(),
                 "--zenoh-config-overlay".into(),
                 overlay.to_str().unwrap().into(),
             ],
@@ -169,26 +169,28 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             .await
             .unwrap(),
     );
-    let plan = adapter
-        .configuration()
-        .resolve(ResolveInput {
-            repository_root: None,
-            run: format!("shm-{}", std::process::id()),
-            artifacts: root.to_string_lossy().into_owned(),
-            project: Some(ComposeProject {
-                key: "experiment".into(),
-                directory: root.to_string_lossy().into_owned(),
-                files: vec!["compose.json".into()],
-                env_files: vec![],
-                environment: BTreeMap::new(),
-                profiles: vec![],
-                services: vec![],
-                completed_services: vec![],
-                remove_volumes: true,
-            }),
-        })
-        .await
-        .unwrap();
+    let plan = ResolveCompose {
+        adapter: adapter.clone(),
+        diagnostics: Default::default(),
+    }
+    .run(ResolveInput {
+        repository_root: None,
+        run: format!("shm-{}", std::process::id()),
+        artifacts: root.to_str().unwrap().into(),
+        project: Some(ComposeProject {
+            key: "experiment".into(),
+            directory: root.to_str().unwrap().into(),
+            files: vec!["compose.json".into()],
+            env_files: vec![],
+            environment: BTreeMap::new(),
+            profiles: vec![],
+            services: vec![],
+            completed_services: vec![],
+            remove_volumes: true,
+        }),
+    })
+    .await
+    .unwrap();
     let mut executor = orchestrator::LocalExecutor::default();
     let backend = adapter.clone();
     executor.register::<StartCompose>(move || StartCompose {
@@ -389,8 +391,20 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         }
     }
     let _ = cli(&executable, coordinator, &["down"]).await;
-    let cleanup = adapter.project(&plan.clone()).stop(5, true).await.unwrap();
+    let cleanup = StopCompose {
+        adapter: adapter.clone(),
+        diagnostics: Default::default(),
+    }
+    .run(StopInput {
+        allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan.clone()),
+        stop_seconds: 5,
+    })
+    .await
+    .unwrap();
     assert!(cleanup.verified, "{cleanup:?}");
+    support::assert_no_run_resources(&adapter, &plan.run).await;
     assert!(
         result.is_ok(),
         "{}; artifacts: {}",
@@ -403,26 +417,28 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     }
     let cancel_dir = root.join("cancel");
     std::fs::create_dir(&cancel_dir).unwrap();
-    let plan = adapter
-        .configuration()
-        .resolve(ResolveInput {
-            repository_root: None,
-            run: plan.run.clone(),
-            artifacts: cancel_dir.to_string_lossy().into_owned(),
-            project: Some(ComposeProject {
-                key: "cancellation".into(),
-                directory: root.to_string_lossy().into_owned(),
-                files: vec!["compose.json".into()],
-                env_files: vec![],
-                environment: BTreeMap::new(),
-                profiles: vec![],
-                services: vec![],
-                completed_services: vec![],
-                remove_volumes: true,
-            }),
-        })
-        .await
-        .unwrap();
+    let plan = ResolveCompose {
+        adapter: adapter.clone(),
+        diagnostics: Default::default(),
+    }
+    .run(ResolveInput {
+        repository_root: None,
+        run: plan.run.clone(),
+        artifacts: cancel_dir.to_str().unwrap().into(),
+        project: Some(ComposeProject {
+            key: "cancellation".into(),
+            directory: root.to_str().unwrap().into(),
+            files: vec!["compose.json".into()],
+            env_files: vec![],
+            environment: BTreeMap::new(),
+            profiles: vec![],
+            services: vec![],
+            completed_services: vec![],
+            remove_volumes: true,
+        }),
+    })
+    .await
+    .unwrap();
     executor
         .run::<StartCompose>(StartInput {
             plan: Some(plan.clone()),
@@ -443,12 +459,24 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     )
     .await;
     let state = adapter.project(&plan).inspect().await.unwrap();
-    let cleanup = adapter.project(&plan.clone()).stop(5, true).await.unwrap();
+    let cleanup = StopCompose {
+        adapter: adapter.clone(),
+        diagnostics: Default::default(),
+    }
+    .run(StopInput {
+        allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan.clone()),
+        stop_seconds: 5,
+    })
+    .await
+    .unwrap();
 
     // Assert
     assert!(!matches!(cancelled, Ok(Ok(_))));
     assert!(!state.containers.iter().any(|c| c.service == "adopted"));
     assert!(cleanup.verified, "{cleanup:?}");
+    support::assert_no_run_resources(&adapter, &plan.run).await;
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -468,7 +496,18 @@ async fn cleanup_interrupted_shared_ipc_test() {
     let adapter = DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
         .await
         .unwrap();
-    let cleaned = adapter.project(&plan).stop(5, true).await.unwrap();
+    let cleaned = StopCompose {
+        adapter: Rc::new(adapter.clone()),
+        diagnostics: Default::default(),
+    }
+    .run(StopInput {
+        allow_volume_deletion: true,
+        services: vec![],
+        plan: Some(plan),
+        stop_seconds: 5,
+    })
+    .await
+    .unwrap();
     assert!(cleaned.verified, "{cleaned:?}");
 }
 
@@ -528,11 +567,13 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
     };
 
     // Act / Assert: omission retains even a volume explicitly marked disposable.
-    let retained = adapter
-        .project(&plan)
-        .remove(input(&plan, None).allow_volume_deletion)
-        .await
-        .unwrap();
+    let retained = RemoveCompose {
+        adapter: Rc::new(adapter.clone()),
+        diagnostics: Default::default(),
+    }
+    .run(input(&plan, None))
+    .await
+    .unwrap();
     assert!(retained.verified, "{retained:?}");
     assert_eq!(retained.retained_volumes.len(), 3);
     for name in &names {
@@ -540,11 +581,13 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
     }
 
     // Act / Assert: permission applies the individual policy and project default.
-    let removed = adapter
-        .project(&plan)
-        .remove(input(&plan, Some(true)).allow_volume_deletion)
-        .await
-        .unwrap();
+    let removed = RemoveCompose {
+        adapter: Rc::new(adapter.clone()),
+        diagnostics: Default::default(),
+    }
+    .run(input(&plan, Some(true)))
+    .await
+    .unwrap();
     assert!(removed.verified, "{removed:?}");
     assert_eq!(removed.retained_volumes.len(), 2);
     assert!(matches!(
@@ -559,11 +602,13 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
 
     // Act / Assert: an enabled project default still preserves an explicit keep policy.
     plan.remove_volumes = true;
-    let removed = adapter
-        .project(&plan)
-        .remove(input(&plan, Some(true)).allow_volume_deletion)
-        .await
-        .unwrap();
+    let removed = RemoveCompose {
+        adapter: Rc::new(adapter.clone()),
+        diagnostics: Default::default(),
+    }
+    .run(input(&plan, Some(true)))
+    .await
+    .unwrap();
     assert!(removed.verified, "{removed:?}");
     assert_eq!(removed.retained_volumes, vec![names[1].clone()]);
     assert!(matches!(

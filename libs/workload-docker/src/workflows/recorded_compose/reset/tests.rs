@@ -60,11 +60,14 @@ fn controllers_exclude_the_same_canonical_repository_and_allow_other_repositorie
 fn empty_scope() -> Vec<(&'static str, u16, serde_json::Value)> {
     use serde_json::json;
     vec![
+        ("/containers/dc-", 404, json!({"message":"absent"})),
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/networks", 200, json!([])),
+        ("/networks", 200, json!([])),
+        ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/networks", 200, json!([])),
     ]
@@ -125,11 +128,18 @@ async fn engine_inspection_failure_preserves_upper_data() {
     std::fs::write(upper.join("data"), b"unfinished").unwrap();
     let (adapter, server) = test_engine_status(
         root.path(),
-        vec![(
-            "/containers/json",
-            200,
-            serde_json::json!({"invalid":"container list"}),
-        )],
+        vec![
+            (
+                "/containers/dc-",
+                404,
+                serde_json::json!({"message":"absent"}),
+            ),
+            (
+                "/containers/json",
+                200,
+                serde_json::json!({"invalid":"container list"}),
+            ),
+        ],
     );
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
@@ -141,6 +151,36 @@ async fn engine_inspection_failure_preserves_upper_data() {
     // Assert
     assert!(result.is_err());
     assert_eq!(std::fs::read(upper.join("data")).unwrap(), b"unfinished");
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_foreign_reservation_for_this_repository_blocks_reset() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let controller = Rc::new(
+        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+    );
+    let workspace = controller.workspace();
+    std::fs::create_dir(&workspace).unwrap();
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        vec![(
+            "/containers/dc-",
+            200,
+            serde_json::json!({"Config":{"Labels":{}}}),
+        )],
+    );
+    let mut reset = ResetExperiment {
+        adapter: Rc::new(adapter),
+        controller,
+        stop_seconds: 3,
+    };
+    // Act
+    let result = reset.run(()).await;
+    // Assert
+    assert!(result.is_err());
+    assert!(workspace.exists());
     server.await.unwrap();
 }
 
@@ -159,6 +199,7 @@ async fn an_unverified_writer_blocks_workspace_deletion() {
     let (adapter, server) = test_engine_status(
         root.path(),
         vec![
+            ("/containers/dc-", 404, json!({"message":"absent"})),
             ("/containers/json", 200, containers.clone()),
             ("/containers/writer/stop", 204, json!(null)),
             ("/containers/json", 200, containers),

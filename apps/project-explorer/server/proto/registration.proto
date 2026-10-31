@@ -1,7 +1,7 @@
 syntax = "proto3";
 package doramcap.hosting.v1;
 
-import "system_apps.proto";
+import "dora.proto";
 
 // Verification for published results. MCAP is the default.
 enum ResultFormat { MCAP = 0; FILE = 1; }
@@ -51,10 +51,9 @@ message AppRegistration {
   repeated ArtifactCollection artifact_collections = 14;
   optional string shutdown_marker = 15;
   RecordingCount recording_count = 16;
-  repeated string exclusive_resources = 17;
   repeated string private_directories = 18;
   bool docker_socket = 19;
   string env_prefix = 22;
   bool requires_explicit_enable = 24;
-  doramcap.system_apps.v1.SystemAppsConfig system_apps = 25;
+  doramcap.dora.v1.DoraRuntime dora = 25;
 }

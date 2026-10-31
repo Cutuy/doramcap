@@ -35,7 +35,7 @@ async fn stop_during_startup_drops_the_launch_and_suppresses_readiness() {
         let _launch = Dropped(&dropped);
         started.send(()).unwrap();
         std::future::pending::<()>().await;
-        signals.notify_ready(Vec::new());
+        signals.notify_ready(super::super::tests::ready_plan());
         Ok(())
     };
     // Act

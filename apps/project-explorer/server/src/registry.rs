@@ -106,9 +106,28 @@ impl std::ops::DerefMut for Registration {
     }
 }
 impl Registration {
+    /// Resolve app-owned graph paths and the container identity for one generation.
+    pub(crate) fn resolve_dora(
+        &self,
+        uid: u32,
+        gid: u32,
+    ) -> Result<workload_docker::workflows::dora::DoraRuntime, String> {
+        let mut runtime = self.dora.clone().unwrap_or_default();
+        if !runtime.graph.is_empty() {
+            runtime.graph = fs::canonicalize(self.directory.join(&runtime.graph))
+                .map_err(|e| e.to_string())?
+                .to_str()
+                .ok_or("graph path is not UTF-8")?
+                .into();
+        }
+        runtime.participant_uid = Some(uid);
+        runtime.participant_gid = Some(gid);
+        Ok(runtime)
+    }
+
     /// Parse one protobuf text registration. Unknown fields and malformed text fail.
     /// The caller validates semantic constraints before admitting the registration.
-    fn parse(text: &str, directory: PathBuf) -> Result<Self, String> {
+    fn parse(text: &str, directory: PathBuf, repository_root: PathBuf) -> Result<Self, String> {
         use prost_reflect::{DescriptorPool, DynamicMessage};
         static POOL: std::sync::OnceLock<DescriptorPool> = std::sync::OnceLock::new();
         let pool = POOL.get_or_init(|| {
@@ -125,7 +144,7 @@ impl Registration {
             .transcode_to()
             .map_err(|e| e.to_string())?;
         Ok(Self {
-            repository_root: directory.parent().unwrap_or(&directory).to_owned(),
+            repository_root,
             directory,
             config,
         })
@@ -174,14 +193,6 @@ impl Registration {
     }
 
     fn validate(&self) -> Result<(), String> {
-        if let Some(config) = &self.system_apps {
-            for flow in &config.dora_flows {
-                workload_docker::workflows::dora::validate(flow).map_err(|e| e.to_string())?;
-                if flow.project != self.id || !flow.results_directory.is_empty() {
-                    return Err("Dora bindings must use the registered project and manager-owned results path".into());
-                }
-            }
-        }
         if !identifier(&self.id) {
             return Err("invalid app id".into());
         }
@@ -203,7 +214,7 @@ impl Registration {
         }
         if self
             .port
-            .is_some_and(|port| port == 0 || port > u16::MAX.into())
+            .is_some_and(|port| port == 0 || port > u32::from(u16::MAX))
             || ResultFormat::try_from(self.result_format).is_err()
             || (!self.headless && self.port.is_none())
             || (self.headless && self.port.is_some())
@@ -293,7 +304,6 @@ impl Registration {
                 .env_prefix
                 .bytes()
                 .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
-            || self.exclusive_resources.iter().any(|v| !simple_name(v))
         {
             return Err("invalid port, timeout, environment prefix or resource".into());
         }
@@ -339,23 +349,11 @@ impl Registration {
             directory: self
                 .directory
                 .to_str()
-                .ok_or("registration directory is not UTF-8")?
-                .to_owned(),
+                .ok_or("registration path is not UTF-8")?
+                .into(),
             files: vec![self.compose_file.clone()],
-            env_files: vec![],
             environment,
-            profiles: vec![],
-            services: std::iter::once(self.service.clone())
-                .chain(
-                    self.system_apps.iter().flat_map(|config| {
-                        config.dora_flows.iter().map(|flow| flow.service.clone())
-                    }),
-                )
-                .collect::<std::collections::BTreeSet<_>>()
-                .into_iter()
-                .collect(),
-            completed_services: vec![],
-            remove_volumes: false,
+            ..Default::default()
         })
     }
 }
@@ -413,9 +411,12 @@ impl Registry {
                 ));
             }
             let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let mut app = Registration::parse(&text, directory)
-                .map_err(|e| format!("{}: {e}", path.display()))?;
-            app.repository_root = fs::canonicalize(entry.path()).map_err(|e| e.to_string())?;
+            let app = Registration::parse(
+                &text,
+                directory,
+                fs::canonicalize(entry.path()).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| format!("{}: {e}", path.display()))?;
             app.validate()
                 .map_err(|e| format!("{}: {e}", path.display()))?;
             let id = app.id.clone();
@@ -425,10 +426,12 @@ impl Registry {
         }
         Ok(Self { apps })
     }
+
     /// Find a server-defined registration by its exact public ID.
     pub fn get(&self, id: &str) -> Option<&Registration> {
         self.apps.get(id)
     }
+
     /// Iterate registered applications in stable ID order.
     pub fn iter(&self) -> impl Iterator<Item = &Registration> {
         self.apps.values()
@@ -445,6 +448,32 @@ mod tests {
             .unwrap()
             .to_owned()
     }
+
+    fn registration_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        for app in fs::read_dir(workspace().join("apps")).unwrap() {
+            let directory = app.unwrap().path().join("deploy");
+            if !directory.exists() {
+                continue;
+            }
+            for entry in fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("registration")
+                    && path.extension().and_then(|v| v.to_str()) == Some("pbtxt")
+                {
+                    paths.push(path);
+                }
+            }
+        }
+        paths.sort();
+        assert!(!paths.is_empty(), "no deployment registrations discovered");
+        paths
+    }
+
     #[test]
     fn gallery_apps_have_independent_canonical_repository_roots() {
         // Arrange
@@ -483,7 +512,7 @@ mod tests {
             fs::read_to_string(workspace().join("apps/activity-demo/deploy/registration.pbtxt"))
                 .unwrap();
         // Act
-        let app = Registration::parse(&text, PathBuf::new()).unwrap();
+        let app = Registration::parse(&text, PathBuf::new(), PathBuf::new()).unwrap();
         // Assert
         assert!(app.validate().is_ok());
         assert_eq!(app.result_format(), ResultFormat::Mcap);
@@ -493,7 +522,7 @@ mod tests {
             format!("{text} id: \"duplicate\""),
             text.replace("port: 8088", "port: 4294967296"),
         ] {
-            assert!(Registration::parse(&invalid, PathBuf::new()).is_err());
+            assert!(Registration::parse(&invalid, PathBuf::new(), PathBuf::new()).is_err());
         }
         // Act / Assert: validation rejects unknown enum numbers and invalid ports.
         for invalid in [
@@ -501,33 +530,21 @@ mod tests {
             text.replace("port: 8088", "port: 65536"),
         ] {
             assert!(
-                Registration::parse(&invalid, PathBuf::new())
+                Registration::parse(&invalid, PathBuf::new(), PathBuf::new())
                     .unwrap()
                     .validate()
                     .is_err()
             );
         }
         // Act / Assert: every deployment profile, including pending apps, validates.
-        for app in fs::read_dir(workspace().join("apps")).unwrap() {
-            let directory = app.unwrap().path().join("deploy");
-            let Ok(entries) = fs::read_dir(&directory) else {
-                continue;
-            };
-            for entry in entries {
-                let path = entry.unwrap().path();
-                if path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .starts_with("registration")
-                    && path.extension().and_then(|v| v.to_str()) == Some("pbtxt")
-                {
-                    let app =
-                        Registration::parse(&fs::read_to_string(&path).unwrap(), directory.clone())
-                            .unwrap();
-                    assert!(app.validate().is_ok(), "{}", path.display());
-                }
-            }
+        for path in registration_paths() {
+            let app = Registration::parse(
+                &fs::read_to_string(&path).unwrap(),
+                path.parent().unwrap().into(),
+                PathBuf::new(),
+            )
+            .unwrap();
+            assert!(app.validate().is_ok(), "{}", path.display());
         }
     }
 
@@ -602,47 +619,32 @@ mod tests {
         assert!(app.validate().is_err());
     }
     #[test]
-    fn dora_workflow_services_are_included_with_the_http_endpoint() {
+    fn dora_registrations_use_native_graphs() {
         // Arrange
-        let registry = Registry::load(&workspace(), &["cpu-viewer".into()]).unwrap();
-        let app = registry.get("cpu-viewer").unwrap();
-        // Act
-        let project = app
-            .project(Path::new("/results/generation"), 1000, 1000)
+        let paths = registration_paths();
+        let mut checked = 0;
+        for path in paths {
+            let app = Registration::parse(
+                &fs::read_to_string(&path).unwrap(),
+                path.parent().unwrap().into(),
+                PathBuf::new(),
+            )
             .unwrap();
-        // Assert
-        assert_eq!(project.services, ["coordinator", "viewer"]);
-        assert!(app.exclusive_resources.is_empty());
-        assert_eq!(
-            app.system_apps.as_ref().unwrap().dora_flows[0].project,
-            app.id
-        );
-    }
-    #[test]
-    fn host_monitor_apps_do_not_claim_an_exclusive_bpf_resource() {
-        // Arrange
-        let ids = [
-            "cpu-viewer",
-            "mcap-recorder",
-            "storage-demo",
-            "system-monitor",
-        ];
-        let enabled = ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>();
-
-        // Act
-        let registry = Registry::load(&workspace(), &enabled).unwrap();
-
-        // Assert
-        for id in ids {
-            assert!(
-                !registry
-                    .get(id)
-                    .unwrap()
-                    .exclusive_resources
-                    .iter()
-                    .any(|resource| resource == "host-bpf-monitor")
+            if app.dora.as_ref().is_none_or(|dora| dora.graph.is_empty()) {
+                continue;
+            }
+            // Act
+            let runtime = app.resolve_dora(1000, 1000).unwrap();
+            let graph = workload_docker::workflows::shared_dora::graph(
+                &runtime,
+                &fs::read(&runtime.graph).unwrap(),
             );
+            // Assert
+            assert!(graph.is_ok(), "{}: {graph:?}", path.display());
+            checked += 1;
         }
+        // Assert
+        assert!(checked > 0, "no Dora graph registrations discovered");
     }
     #[test]
     fn headless_registration_omits_http_port() {
@@ -650,7 +652,7 @@ mod tests {
         let text =
             fs::read_to_string(workspace().join("apps/activity-demo/deploy/registration.pbtxt"))
                 .unwrap();
-        let mut app = Registration::parse(&text, PathBuf::new()).unwrap();
+        let mut app = Registration::parse(&text, PathBuf::new(), PathBuf::new()).unwrap();
         // Act
         app.headless = true;
         app.port = None;
@@ -746,7 +748,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../cuda-shm-demo/deploy/registration.pbtxt"
         ));
-        let registration = Registration::parse(text, PathBuf::new()).unwrap();
+        let registration = Registration::parse(text, PathBuf::new(), PathBuf::new()).unwrap();
 
         // Act
         let validated = registration.validate();
@@ -774,6 +776,7 @@ mod tests {
                 .any(|c| c.matches("run.log"))
         );
     }
+
     #[test]
     fn loads_independent_manifest_and_rejects_duplicate_and_unsafe_entries() {
         // Arrange
