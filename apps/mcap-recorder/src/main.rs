@@ -1,6 +1,6 @@
 //! A separate Dora process; collection never calls the MCAP writer.
 use dora_node_api::{
-    DoraNode, Event, Parameter, StopCause,
+    Event, Parameter, StopCause,
     futures::{StreamExt, executor::block_on},
 };
 use eyre::{Result, bail, eyre};
@@ -14,8 +14,9 @@ fn main() -> Result<()> {
     if args.next().is_some() {
         bail!("usage: mcap-recorder OUTPUT.mcap");
     }
-    let (_node, mut events) = DoraNode::init_from_env_force()?;
+    let (_node, mut events) = dora_app::environment::connect()?;
     let mut sink = McapSink::create(path)?;
+    dora_app::environment::ready()?;
     let result = (|| -> Result<()> {
         while let Some(event) = block_on(events.next()) {
             match event {

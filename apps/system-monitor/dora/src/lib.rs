@@ -8,8 +8,9 @@ pub struct Publisher {
     events: EventStream,
 }
 impl Publisher {
-    pub fn new_from_env() -> Result<Self> {
-        let (node, events) = DoraNode::init_from_env_force()?;
+    /// Attach using the app environment and own the native connection.
+    pub fn new() -> Result<Self> {
+        let (node, events) = dora_app::environment::connect()?;
         Ok(Self {
             node: Some(node),
             events,

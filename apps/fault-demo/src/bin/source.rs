@@ -6,7 +6,8 @@ use fault_reporter::{Definition, Mode, Reporter, Text};
 use std::time::{Duration, Instant};
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> Result<()> {
-    let name = std::env::args().nth(1).unwrap_or_else(|| "a".into());
+    let mut args = std::env::args().skip(1);
+    let name = args.next().unwrap_or_else(|| "a".into());
     let (reporter, mut publisher) =
         Reporter::new(fault_watchdog::incarnation()?, Default::default())?;
     let mut definition = Definition::new("demo", &name, "operation")?;
@@ -16,7 +17,11 @@ async fn main() -> Result<()> {
     let mut definition = Definition::new("demo", &name, "event")?;
     definition.policy.mode = Mode::EventOnly;
     let event = reporter.register(definition)?;
-    let (mut node, mut events) = DoraNode::init_from_env_force()?;
+    let (mut node, mut events) = dora_app::environment::connect()?;
+    if args.next().is_some() {
+        eyre::bail!("unexpected argument");
+    }
+    dora_app::environment::ready()?;
     let mut mode = "healthy".to_string();
     let mut ticks = 0u64;
     let mut snapshot = Instant::now();
@@ -29,6 +34,7 @@ async fn main() -> Result<()> {
         tokio::select! {
             input=events.next()=>match input{
                 Some(Event::Input{data,..})=>{if let Ok(bytes)=<&[u8]>::try_from(&data)&& let Ok(command)=serde_json::from_slice::<serde_json::Value>(bytes)&& (command["source"]==name || command["source"]=="all")&& let Some(value)=command["mode"].as_str(){match value{"event"=>{event.failure(Text::new("demo event")?)?;},"healthy"|"fail"|"flap"|"pause"|"flood"=>mode=value.into(),_=>{}}}},
+                Some(Event::InputClosed{..})|Some(Event::Stop(dora_node_api::StopCause::AllInputsClosed))=>{},
                 Some(Event::Stop(_))|None=>break,_=>{},
             },
             _=timer.tick()=>{ticks+=1;match mode.as_str(){"pause"=>{},"fail"=>{check.failure(Text::new("simulated I/O error")?)?;},"flap" if ticks%30<15=>{check.failure(Text::new("intermittent operation")?)?;},"flood"=>{for _ in 0..2000{check.failure(Text::new("burst")?)?;}},_=>{check.success()?;}}},

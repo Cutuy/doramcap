@@ -12,6 +12,8 @@ Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, b
 
 Prefer protobuf schemas and protobuf text format (pbtxt) for application configuration. Avoid JSON configuration when a protobuf schema can express it. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
 
+Environment-based application configuration is highly discouraged. Every new environment configuration input or extension of an existing environment contract requires the user's explicit approval. Encapsulate approved exceptions behind a named interface with an explicit list of supported variables; the Dora bridge is `dora_app::environment`.
+
 ## Third-party crates
 
 Always present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adopting a dependency or implementing a custom solution.

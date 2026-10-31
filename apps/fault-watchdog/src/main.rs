@@ -1,4 +1,4 @@
-use dora_node_api::{DoraNode, Event, futures::StreamExt};
+use dora_node_api::{Event, futures::StreamExt};
 use eyre::Result;
 use fault_watchdog::{
     config,
@@ -9,12 +9,16 @@ use fault_watchdog::{
 use std::time::{Duration, Instant};
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> Result<()> {
-    let path = std::env::args_os()
-        .nth(1)
+    let mut args = std::env::args().skip(1);
+    let path = args
+        .next()
         .ok_or_else(|| eyre::eyre!("usage: fault-watchdog CONFIG.pbtxt"))?;
     let config = config::load(std::path::Path::new(&path))?;
     let mut engine = Engine::new(config.clone(), incarnation()?, incarnation()?)?;
-    let (node, mut events) = DoraNode::init_from_env_force()?;
+    if args.next().is_some() {
+        eyre::bail!("unexpected argument");
+    }
+    let (node, mut events) = dora_app::environment::connect()?;
     let mut outputs = Vec::new();
     let output = config.live_output.clone().unwrap();
     outputs.push(Output::spawn(
@@ -49,6 +53,7 @@ async fn main() -> Result<()> {
             move || Ok(Box::new(fault_watchdog::sinks::otel::Logs::new(c)?)),
         )?);
     }
+    dora_app::environment::ready()?;
     let start = Instant::now();
     // Keep the subscription alive while draining publications between selects.
     let shutdown = tokio::signal::ctrl_c();
@@ -91,6 +96,7 @@ async fn main() -> Result<()> {
                             engine.reject(id.as_str(), &error, start.elapsed())?;
                         }
                     }
+                    Some(Event::Stop(dora_node_api::StopCause::AllInputsClosed)) => {},
                     Some(Event::Stop(_)) | None => break,
                     Some(Event::Error(e)) => engine.reject("transport", &e, start.elapsed())?,
                     _ => {}

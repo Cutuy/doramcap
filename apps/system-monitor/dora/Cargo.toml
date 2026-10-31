@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dora-app = { path = "../../../libs/dora-app" }
 telemetry-protocol = { path = "../../../libs/telemetry/protocol" }
 dora-node-api = { version = "=1.1.0", default-features = false }
 prost = "0.14"
