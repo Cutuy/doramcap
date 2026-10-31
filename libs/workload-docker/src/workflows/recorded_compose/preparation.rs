@@ -16,7 +16,7 @@ use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
 
@@ -77,7 +77,10 @@ impl PrepareRun {
         let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
         observation::snapshot(&artifacts, "before").await?;
         if spec.filesystem.is_some() {
-            self.adapter.verify_overlay_namespace().await?;
+            self.adapter
+                .configuration()
+                .verify_overlay_namespace()
+                .await?;
         }
         let executor = self
             .executor
@@ -107,8 +110,8 @@ impl PrepareRun {
             executor.run::<ResolveCompose>(
                 Input::new(ResolveInput {
                     run: spec.id.clone(),
-                    artifacts: artifacts.clone(),
-                    project,
+                    artifacts: artifacts.to_string_lossy().into_owned(),
+                    project: Some(project),
                 })
                 .after(&system),
             )
@@ -194,7 +197,7 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     let mut keys = HashSet::new();
     for project in spec.first_party.iter().chain(&spec.projects) {
         validate_name(&project.key)?;
-        if !project.directory.is_absolute() || !keys.insert(project.key.clone()) {
+        if !Path::new(&project.directory).is_absolute() || !keys.insert(project.key.clone()) {
             return Err(invalid(
                 "require absolute project directories and unique keys; system is reserved",
             ));

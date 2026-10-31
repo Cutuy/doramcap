@@ -1,4 +1,5 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
+mod execution;
 pub mod finalization;
 mod observation;
 pub mod preparation;
@@ -156,7 +157,7 @@ impl ComposeRunner {
         spec: ComposeRun,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
-        signals: RunSignals,
+        mut signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
         if self.blocked {
@@ -202,55 +203,145 @@ impl ComposeRunner {
             .value()
             .launch_groups(overlays.as_ref().map(|o| o.value()));
         let plans: Vec<_> = groups.iter().flat_map(|g| g.projects.clone()).collect();
-        let flows = dora::bind(&spec.system_apps.dora_flows, &plans)?;
-        let events = EventCapture::start(
+        let mut flows = dora::bind(&spec.system_apps.dora_flows, &plans)?;
+        let mut events = EventCapture::start(
             self.adapter.docker.clone(),
             spec.id.clone(),
             artifacts.join("docker-events.jsonl"),
         );
-        let mut phases = ComposePhases {
-            executor: executor.clone(),
-            spec: spec.clone(),
-            artifacts: artifacts.clone(),
-            prepared,
-            overlays,
-            groups,
-            plans,
-            flows,
-            events: Some(events),
-            attempted: Vec::new(),
-            launches: Vec::new(),
-            flow_start: None,
-            shutdown: None,
-            finalized: None,
-            cleanup: None,
-            signals,
-            event_result: Ok(()),
+        let mut attempted = Vec::new();
+        let mut launches = Vec::new();
+        let mut flow_start = None;
+        let execution = async {
+            // Retain each attempted group before awaiting startup so cancellation can stop it.
+            for group in &groups {
+                attempted.push(group.projects.clone());
+                let mut input = Input::new(group.clone()).after(&prepared);
+                if let Some(overlays) = &overlays {
+                    input = input.after(overlays);
+                }
+                if let Some(previous) = launches.last() {
+                    input = input.after(previous);
+                }
+                launches.push(executor.run::<LaunchProjects>(input).await?);
+            }
+            let mut input = Input::new(LaunchFlowsInput {
+                flows: flows.clone(),
+                readiness_seconds: spec.readiness_seconds,
+            })
+            .after(&prepared);
+            if let Some(launched) = launches.last() {
+                input = input.after(launched);
+            }
+            let started = executor.run::<LaunchDoraFlows>(input).await?;
+            flows = started.value().clone();
+            flow_start = Some(started);
+
+            // Yield before notifying readiness so a stop made ready during startup wins.
+            tokio::task::yield_now().await;
+            signals.notify_ready(plans.clone());
+            loop {
+                let mut input = Input::new(ObserveInput {
+                    projects: plans.clone(),
+                    flows: flows.clone(),
+                })
+                .after(&prepared);
+                if let Some(launched) = launches.last() {
+                    input = input.after(launched);
+                }
+                if let Some(started) = &flow_start {
+                    input = input.after(started);
+                }
+                executor.run::<ObserveProjects>(input).await?;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            #[allow(unreachable_code)]
+            Ok::<(), orchestrator::Error>(())
         };
-        let outcome = workload_lifecycle::recorded_run::run(&mut phases, stop).await;
-        for error in &outcome.completion_errors {
+        let execution_error = execution::until_stop(stop, events.failure(), execution).await;
+
+        // Completion is independent of cancellation and keeps every evidence gate intact.
+        if let Some(quiescing) = signals.quiescing.take() {
+            let _ = quiescing.send(());
+        }
+        let mut input = Input::new(QuiesceInput {
+            groups: attempted,
+            flows,
+            stop_seconds: spec.stop_seconds,
+        })
+        .after(&prepared);
+        for launched in &launches {
+            input = input.after(launched);
+        }
+        if let Some(started) = &flow_start {
+            input = input.after(started);
+        }
+        let shutdown = executor.run::<QuiesceProjects>(input).await;
+        let finalized = async {
+            let shutdown = shutdown.as_ref().map_err(step_error)?;
+            executor
+                .run::<FinalizeRun>(
+                    Input::new(FinalizeInput {
+                        id: spec.id.clone(),
+                        artifacts: artifacts.clone(),
+                        baseline: prepared.value().baseline.clone(),
+                        overlays: overlays.as_ref().map(|o| o.value().clone()),
+                        shutdown: shutdown.value().clone(),
+                        recordings: groups.iter().flat_map(|g| g.recordings.clone()).collect(),
+                    })
+                    .after(&prepared)
+                    .after(shutdown),
+                )
+                .await
+                .map_err(step_error)
+        }
+        .await;
+        let cleanup = async {
+            let shutdown = shutdown.as_ref().map_err(step_error)?;
+            let finalized = finalized.as_ref().map_err(step_error)?;
+            executor
+                .run::<RemoveProjects>(
+                    Input::new(RemoveInput {
+                        projects: shutdown.value().projects.clone(),
+                        stop_seconds: spec.stop_seconds,
+                        can_remove: finalized.value().can_remove,
+                        preserve_volumes: finalized.value().preserve_volumes,
+                    })
+                    .after(shutdown)
+                    .after(finalized),
+                )
+                .await
+                .map_err(step_error)
+        }
+        .await;
+        // Stop event capture even when a completion step cannot produce its evidence.
+        let event_result = events.finish().await;
+        for error in [
+            shutdown.as_ref().err().map(ToString::to_string),
+            finalized.as_ref().err().map(ToString::to_string),
+            finalized
+                .as_ref()
+                .ok()
+                .filter(|output| !output.value().recording_finalized)
+                .map(|_| "recording finalization failed".to_owned()),
+            cleanup.as_ref().err().map(ToString::to_string),
+            event_result.as_ref().err().map(ToString::to_string),
+        ]
+        .into_iter()
+        .flatten()
+        {
             diagnostics
                 .borrow_mut()
-                .push(invalid(error.clone()).diagnostic("completion"));
+                .push(invalid(error).diagnostic("completion"));
         }
         if executor.observer_failures() != 0 {
             diagnostics
                 .borrow_mut()
                 .push(invalid("workflow observer lost events").diagnostic("observer"));
         }
-        let finalized = phases
-            .finalized
-            .as_ref()
-            .ok_or_else(|| invalid("finalization evidence absent; manager blocked"))?;
-        let cleanup = phases
-            .cleanup
-            .as_ref()
-            .ok_or_else(|| invalid("cleanup evidence absent; manager blocked"))?;
-        let shutdown = phases
-            .shutdown
-            .as_ref()
-            .ok_or_else(|| invalid("shutdown evidence absent; manager blocked"))?;
-        let event_result = &phases.event_result;
+        let finalized = finalized.as_ref().map_err(step_error)?;
+        let cleanup = cleanup.as_ref().map_err(step_error)?;
+        let shutdown = shutdown.as_ref().map_err(step_error)?;
         let finalized = finalized.value();
         let boundary_clean = finalized.can_remove
             && cleanup.value().iter().all(|c| {
@@ -264,7 +355,7 @@ impl ComposeRunner {
                     artifacts,
                     report: ComposeRunReport {
                         id: spec.id,
-                        execution_error: outcome.execution_error,
+                        execution_error,
                         diagnostics: Vec::new(),
                         cleanup: cleanup.value().clone(),
                         boundary_clean,
@@ -281,190 +372,6 @@ impl ComposeRunner {
             .map_err(step_error)?;
         self.blocked = !boundary_clean;
         Ok(report.into_value())
-    }
-}
-
-struct ComposePhases {
-    executor: Rc<orchestrator::LocalExecutor>,
-    spec: ComposeRun,
-    artifacts: PathBuf,
-    prepared: orchestrator::Output<preparation::PreparedRun>,
-    overlays: Option<orchestrator::Output<crate::compose::overlay::OverlaySet>>,
-    groups: Vec<projects::LaunchInput>,
-    plans: Vec<ResolvedComposeProject>,
-    flows: Vec<dora::Flow>,
-    events: Option<EventCapture>,
-    attempted: Vec<Vec<ResolvedComposeProject>>,
-    launches: Vec<orchestrator::Output<()>>,
-    flow_start: Option<orchestrator::Output<Vec<dora::Flow>>>,
-    shutdown: Option<orchestrator::Output<projects::QuiescedProjects>>,
-    finalized: Option<orchestrator::Output<finalization::FinalizedRun>>,
-    cleanup: Option<orchestrator::Output<Vec<Cleanup>>>,
-    signals: RunSignals,
-    event_result: Result<()>,
-}
-impl workload_lifecycle::recorded_run::Phases for ComposePhases {
-    async fn launch(&mut self) -> std::result::Result<(), String> {
-        let events = self.events.as_mut().unwrap();
-        let launch = async {
-            // Supporting groups precede workloads. Siblings within a group run concurrently.
-            for group in &self.groups {
-                self.attempted.push(group.projects.clone());
-                let mut input = Input::new(group.clone()).after(&self.prepared);
-                if let Some(overlays) = &self.overlays {
-                    input = input.after(overlays);
-                }
-                if let Some(previous) = self.launches.last() {
-                    input = input.after(previous);
-                }
-                self.launches
-                    .push(self.executor.run::<LaunchProjects>(input).await?);
-            }
-            let mut input = Input::new(LaunchFlowsInput {
-                flows: self.flows.clone(),
-                readiness_seconds: self.spec.readiness_seconds,
-            })
-            .after(&self.prepared);
-            if let Some(launched) = self.launches.last() {
-                input = input.after(launched);
-            }
-            let started = self.executor.run::<LaunchDoraFlows>(input).await?;
-            self.flows = started.value().clone();
-            self.flow_start = Some(started);
-            Ok::<(), orchestrator::Error>(())
-        };
-        tokio::select! {
-            result = launch => result.map_err(|e| e.to_string()),
-            error = events.failure() => Err(error),
-        }
-    }
-    fn ready(&mut self) -> std::result::Result<(), String> {
-        self.signals.notify_ready(self.plans.clone());
-        Ok(())
-    }
-    async fn inspect(&mut self) -> std::result::Result<(), String> {
-        let inspect = async {
-            let mut input = Input::new(ObserveInput {
-                projects: self.plans.clone(),
-                flows: self.flows.clone(),
-            })
-            .after(&self.prepared);
-            if let Some(launched) = self.launches.last() {
-                input = input.after(launched);
-            }
-            if let Some(started) = &self.flow_start {
-                input = input.after(started);
-            }
-            self.executor.run::<ObserveProjects>(input).await?;
-            Ok::<(), orchestrator::Error>(())
-        };
-        tokio::select! {
-            result = inspect => result.map_err(|e| e.to_string()),
-            error = self.events.as_mut().unwrap().failure() => Err(error),
-        }
-    }
-    async fn quiesce(&mut self) -> std::result::Result<bool, String> {
-        if let Some(quiescing) = self.signals.quiescing.take() {
-            let _ = quiescing.send(());
-        }
-        // Stop all writer roles before collecting filesystems or removing infrastructure.
-        let mut input = Input::new(QuiesceInput {
-            groups: self.attempted.clone(),
-            flows: self.flows.clone(),
-            stop_seconds: self.spec.stop_seconds,
-        })
-        .after(&self.prepared);
-        for launched in &self.launches {
-            input = input.after(launched);
-        }
-        if let Some(started) = &self.flow_start {
-            input = input.after(started);
-        }
-        let shutdown = self
-            .executor
-            .run::<QuiesceProjects>(input)
-            .await
-            .map_err(|e| e.to_string())?;
-        let stopped = shutdown.value().writers_stopped;
-        self.shutdown = Some(shutdown);
-        Ok(stopped)
-    }
-    async fn finalize(&mut self, _writers_stopped: bool) -> std::result::Result<(), String> {
-        let finalized = self
-            .executor
-            .run::<FinalizeRun>(
-                Input::new(FinalizeInput {
-                    id: self.spec.id.clone(),
-                    artifacts: self.artifacts.clone(),
-                    baseline: self.prepared.value().baseline.clone(),
-                    overlays: self.overlays.as_ref().map(|o| o.value().clone()),
-                    shutdown: self
-                        .shutdown
-                        .as_ref()
-                        .ok_or("quiescence evidence absent")?
-                        .value()
-                        .clone(),
-                    recordings: self
-                        .groups
-                        .iter()
-                        .flat_map(|g| g.recordings.clone())
-                        .collect(),
-                })
-                .after(&self.prepared)
-                .after(self.shutdown.as_ref().ok_or("quiescence evidence absent")?),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        let valid = finalized.value().recording_finalized;
-        self.finalized = Some(finalized);
-        if valid {
-            Ok(())
-        } else {
-            Err("recording finalization failed".into())
-        }
-    }
-    async fn remove(&mut self) -> std::result::Result<bool, String> {
-        let cleanup = self
-            .executor
-            .run::<RemoveProjects>(
-                Input::new(RemoveInput {
-                    projects: self
-                        .shutdown
-                        .as_ref()
-                        .ok_or("quiescence evidence absent; resources retained")?
-                        .value()
-                        .projects
-                        .clone(),
-                    stop_seconds: self.spec.stop_seconds,
-                    can_remove: self
-                        .finalized
-                        .as_ref()
-                        .ok_or("finalization evidence absent; resources retained")?
-                        .value()
-                        .can_remove,
-                    preserve_volumes: self
-                        .finalized
-                        .as_ref()
-                        .ok_or("finalization evidence absent; resources retained")?
-                        .value()
-                        .preserve_volumes,
-                })
-                .after(self.shutdown.as_ref().unwrap())
-                .after(self.finalized.as_ref().unwrap()),
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let verified = cleanup.value().iter().all(|c| c.verified);
-        self.cleanup = Some(cleanup);
-        Ok(verified)
-    }
-    async fn finish(&mut self) -> std::result::Result<(), String> {
-        self.event_result = self.events.take().unwrap().finish().await;
-        self.event_result
-            .as_ref()
-            .map(|_| ())
-            .map_err(|e| e.to_string())
     }
 }
 

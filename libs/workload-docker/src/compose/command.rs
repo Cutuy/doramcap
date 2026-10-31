@@ -1,7 +1,12 @@
 use super::{Error, Result, error::invalid};
 use std::{
-    collections::BTreeMap, os::unix::process::CommandExt, path::Path, process::Stdio,
-    time::Duration,
+    collections::BTreeMap,
+    io::Write,
+    os::unix::process::{CommandExt, ExitStatusExt},
+    path::Path,
+    process::{ExitStatus, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
@@ -37,18 +42,9 @@ pub(crate) async fn capture(
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Execute Docker Compose directly with bounded diagnostics and a deadline.
-///
-/// `socket` selects Engine, `directory` sets cwd, `environment` supplies explicit
-/// variables, and `args` are passed verbatim after `docker compose`. PATH is inherited;
-/// Compose control variables are fixed here. No shell expansion occurs.
-///
-/// Returns `(stdout, stderr)` decoded lossily on success. Each stream is limited
-/// to 16 MiB. Spawn/I/O failures, excess output, nonzero exit and elapsed `timeout`
-/// return typed errors. Output collection and child waiting run concurrently.
-///
-/// Owns the child process group and kills it on scope exit, including cancellation.
-/// This does not stop Engine-managed containers; the caller owns their teardown.
+/// Execute Compose with explicit environment, bounded output and a deadline.
+/// Logs argv, cwd and outcome to stderr; environment maps and captured output are omitted.
+/// Errors retain diagnostics; cancellation kills the CLI group and leaves Engine cleanup to callers.
 pub(crate) async fn compose(
     socket: &str,
     directory: &Path,
@@ -70,14 +66,26 @@ pub(crate) async fn compose(
         .env("COMPOSE_PROFILES", "")
         .env("COMPOSE_DISABLE_ENV_FILE", "true")
         .env("COMPOSE_ANSI", "never")
-        .env("COMPOSE_PROGRESS", "plain")
+        .env("COMPOSE_PROGRESS", "plain");
+    execute(command, args, timeout, std::io::stderr()).await
+}
+
+async fn execute(
+    mut command: Command,
+    args: &[String],
+    timeout: Duration,
+    writer: impl Write,
+) -> Result<(String, String)> {
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     command.as_std_mut().process_group(0);
+    let mut record = CommandLog::start(command.as_std(), timeout, writer);
     let mut child = command.spawn()?;
     let group = ProcessGroup(child.id().ok_or_else(|| invalid("missing Compose PID"))?);
+    record.outcome = "cancelled";
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
     let operation = async {
@@ -88,24 +96,92 @@ pub(crate) async fn compose(
     let result = tokio::time::timeout(timeout, operation).await;
     drop(group);
     match result {
-        Ok(Ok((stdout, stderr, status))) if status.success() => Ok((stdout, stderr)),
-        Ok(Ok((stdout, stderr, status))) => Err(Error::Command {
-            operation: args.join(" "),
-            status: status.code(),
-            stdout,
-            stderr,
-        }),
+        Ok(Ok((stdout, stderr, status))) => {
+            record.status = Some(status);
+            record.outcome = if status.success() {
+                "success"
+            } else {
+                "failed"
+            };
+            if status.success() {
+                Ok((stdout, stderr))
+            } else {
+                Err(Error::Command {
+                    operation: args.join(" "),
+                    status: status.code(),
+                    stdout,
+                    stderr,
+                })
+            }
+        }
         Ok(Err(error)) => {
-            let _ = child.wait().await;
+            record.outcome = if matches!(error, Error::OutputLimit { .. }) {
+                "output_limit"
+            } else {
+                "io_failed"
+            };
+            record.status = child.wait().await.ok();
             Err(error)
         }
         Err(_) => {
-            let _ = child.wait().await;
+            record.outcome = "timed_out";
+            record.status = child.wait().await.ok();
             Err(Error::Timeout {
                 operation: args.join(" "),
                 seconds: timeout.as_secs(),
             })
         }
+    }
+}
+
+static NEXT_COMMAND_ID: AtomicU64 = AtomicU64::new(1);
+
+// A scoped record emits completion when cancellation drops the command future.
+struct CommandLog<W: Write> {
+    writer: W,
+    id: String,
+    started: Instant,
+    outcome: &'static str,
+    status: Option<ExitStatus>,
+}
+impl<W: Write> CommandLog<W> {
+    fn start(command: &std::process::Command, timeout: Duration, mut writer: W) -> Self {
+        let id = format!(
+            "{}-{}",
+            std::process::id(),
+            NEXT_COMMAND_ID.fetch_add(1, Ordering::Relaxed)
+        );
+        let started = Instant::now();
+        // Debug formatting preserves argument boundaries and escapes embedded newlines.
+        let _ = writeln!(
+            writer,
+            "docker_cli start id={id} program={:?} args={:?} cwd={:?} timeout_ms={}",
+            command.get_program(),
+            command.get_args().collect::<Vec<_>>(),
+            command.get_current_dir(),
+            timeout.as_millis()
+        );
+        Self {
+            writer,
+            id,
+            started,
+            outcome: "start_failed",
+            status: None,
+        }
+    }
+}
+impl<W: Write> Drop for CommandLog<W> {
+    fn drop(&mut self) {
+        // Logging errors must not interrupt process termination or workload teardown.
+        let _ = writeln!(
+            self.writer,
+            "docker_cli finish id={} outcome={} exit_code={:?} signal={:?} duration_ms={}",
+            self.id,
+            self.outcome,
+            self.status.and_then(|status| status.code()),
+            self.status.and_then(|status| status.signal()),
+            self.started.elapsed().as_millis()
+        );
     }
 }
 
@@ -174,3 +250,6 @@ pub(crate) async fn verify_listener(pid: u32, port: u16) -> Result<()> {
     }
     Err(invalid("Dora listener belongs to another process"))
 }
+
+#[cfg(test)]
+mod tests;

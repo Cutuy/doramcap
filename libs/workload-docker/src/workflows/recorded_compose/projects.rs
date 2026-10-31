@@ -36,7 +36,7 @@ impl Step for LaunchProjects {
         let started = join_all(input.projects.into_iter().map(|plan| {
             executor.run::<StartCompose>(StartInput {
                 services: vec![],
-                plan,
+                plan: Some(plan),
                 readiness_seconds: input.readiness_seconds,
             })
         }))
@@ -110,7 +110,7 @@ impl Step for ObserveProjects {
             join_all(input.projects.into_iter().map(|plan| async {
                 let name = plan.key.clone();
                 let state = executor.run::<InspectCompose>(plan).await?;
-                if !DockerAdapter::ready(state.value()).map_err(step_error)? {
+                if !state.value().ready().map_err(step_error)? {
                     return Err(orchestrator::Error::message(format!(
                         "{name} lost readiness or containers"
                     )));
@@ -199,7 +199,7 @@ impl Step for QuiesceProjects {
                 let mut stop = Input::new(StopInput {
                     services: vec![],
                     allow_volume_deletion: true,
-                    plan: plan.clone(),
+                    plan: Some(plan.clone()),
                     stop_seconds: input.stop_seconds,
                 });
                 for dependency in &dependencies {
@@ -259,7 +259,7 @@ impl Step for RemoveProjects {
                     .run::<RemoveCompose>(StopInput {
                         services: vec![],
                         allow_volume_deletion: !input.preserve_volumes,
-                        plan: plan.clone(),
+                        plan: Some(plan.clone()),
                         stop_seconds: input.stop_seconds,
                     })
                     .await

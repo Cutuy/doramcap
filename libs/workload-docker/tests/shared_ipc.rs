@@ -170,12 +170,13 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             .unwrap(),
     );
     let plan = adapter
+        .configuration()
         .resolve(ResolveInput {
             run: format!("shm-{}", std::process::id()),
-            artifacts: root.clone(),
-            project: ComposeProject {
+            artifacts: root.to_string_lossy().into_owned(),
+            project: Some(ComposeProject {
                 key: "experiment".into(),
-                directory: root.clone(),
+                directory: root.to_string_lossy().into_owned(),
                 files: vec!["compose.json".into()],
                 env_files: vec![],
                 environment: BTreeMap::new(),
@@ -183,7 +184,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 services: vec![],
                 completed_services: vec![],
                 remove_volumes: true,
-            },
+            }),
         })
         .await
         .unwrap();
@@ -199,7 +200,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let result: std::result::Result<(), String> = async {
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["daemon".into(), "coordinator".into()],
                 readiness_seconds: 15,
             })
@@ -208,7 +209,8 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         tokio::time::timeout(Duration::from_secs(15), async {
             for (service, port) in [("coordinator", coordinator), ("daemon", daemon)] {
                 while adapter
-                    .endpoint(&plan, service, "host", port)
+                    .project(&plan)
+                    .endpoint(service, "host", port)
                     .await
                     .is_err()
                 {
@@ -245,14 +247,18 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         }
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["recorder".into(), "source".into()],
                 readiness_seconds: 20,
             })
             .await
             .map_err(|e| e.to_string())?;
         wait_file(&root.join("source.done")).await?;
-        let state = adapter.inspect(&plan).await.map_err(|e| e.to_string())?;
+        let state = adapter
+            .project(&plan)
+            .inspect()
+            .await
+            .map_err(|e| e.to_string())?;
         let daemon_pid = state
             .containers
             .iter()
@@ -273,7 +279,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         .map_err(|e| e.to_string())?;
         executor
             .run::<StartCompose>(StartInput {
-                plan: plan.clone(),
+                plan: Some(plan.clone()),
                 services: vec!["adopted".into()],
                 readiness_seconds: 10,
             })
@@ -286,7 +292,11 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             std::fs::read(root.join("adopted.proof")).unwrap(),
             b"shared\n"
         );
-        let state = adapter.inspect(&plan).await.map_err(|e| e.to_string())?;
+        let state = adapter
+            .project(&plan)
+            .inspect()
+            .await
+            .map_err(|e| e.to_string())?;
         let namespace = std::fs::read_link(format!("/proc/{daemon_pid}/ns/ipc")).unwrap();
         let shm = std::fs::metadata(format!("/proc/{daemon_pid}/root/dev/shm")).unwrap();
         for container in &state.containers {
@@ -298,12 +308,14 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             assert_eq!((other.dev(), other.ino()), (shm.dev(), shm.ino()));
         }
         adapter
-            .endpoint(&plan, "daemon", "host", daemon)
+            .project(&plan)
+            .endpoint("daemon", "host", daemon)
             .await
             .map_err(|e| e.to_string())?;
         assert!(
             adapter
-                .endpoint(&plan, "adopted", "host", daemon)
+                .project(&plan)
+                .endpoint("adopted", "host", daemon)
                 .await
                 .is_err()
         );
@@ -361,7 +373,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     }
     .await;
     if result.is_err() {
-        for container in adapter.inspect(&plan).await.unwrap().containers {
+        for container in adapter.project(&plan).inspect().await.unwrap().containers {
             let output = tokio::process::Command::new("docker")
                 .args(["logs", &container.id])
                 .output()
@@ -376,17 +388,16 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         }
     }
     let _ = cli(&executable, coordinator, &["down"]).await;
-    let cleanup = adapter
-        .stop(StopInput {
-            allow_volume_deletion: true,
-            services: vec![],
-            plan: plan.clone(),
-            stop_seconds: 5,
-        })
-        .await
-        .unwrap();
+    let cleanup = adapter.project(&plan.clone()).stop(5, true).await.unwrap();
     assert!(cleanup.verified, "{cleanup:?}");
-    assert!(adapter.discover_runs(&plan.run).await.unwrap().is_empty());
+    assert!(
+        adapter
+            .resources()
+            .discover_runs(&plan.run)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(
         result.is_ok(),
         "{}; artifacts: {}",
@@ -400,12 +411,13 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let cancel_dir = root.join("cancel");
     std::fs::create_dir(&cancel_dir).unwrap();
     let plan = adapter
+        .configuration()
         .resolve(ResolveInput {
             run: plan.run.clone(),
-            artifacts: cancel_dir,
-            project: ComposeProject {
+            artifacts: cancel_dir.to_string_lossy().into_owned(),
+            project: Some(ComposeProject {
                 key: "cancellation".into(),
-                directory: root.clone(),
+                directory: root.to_string_lossy().into_owned(),
                 files: vec!["compose.json".into()],
                 env_files: vec![],
                 environment: BTreeMap::new(),
@@ -413,13 +425,13 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 services: vec![],
                 completed_services: vec![],
                 remove_volumes: true,
-            },
+            }),
         })
         .await
         .unwrap();
     executor
         .run::<StartCompose>(StartInput {
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             services: vec!["daemon".into(), "coordinator".into()],
             readiness_seconds: 15,
         })
@@ -430,28 +442,27 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let cancelled = tokio::time::timeout(
         Duration::from_millis(300),
         executor.run::<StartCompose>(StartInput {
-            plan: plan.clone(),
+            plan: Some(plan.clone()),
             services: vec!["recorder".into()],
             readiness_seconds: 15,
         }),
     )
     .await;
-    let state = adapter.inspect(&plan).await.unwrap();
-    let cleanup = adapter
-        .stop(StopInput {
-            allow_volume_deletion: true,
-            services: vec![],
-            plan: plan.clone(),
-            stop_seconds: 5,
-        })
-        .await
-        .unwrap();
+    let state = adapter.project(&plan).inspect().await.unwrap();
+    let cleanup = adapter.project(&plan.clone()).stop(5, true).await.unwrap();
 
     // Assert
     assert!(!matches!(cancelled, Ok(Ok(_))));
     assert!(!state.containers.iter().any(|c| c.service == "adopted"));
     assert!(cleanup.verified, "{cleanup:?}");
-    assert!(adapter.discover_runs(&plan.run).await.unwrap().is_empty());
+    assert!(
+        adapter
+            .resources()
+            .discover_runs(&plan.run)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -471,15 +482,7 @@ async fn cleanup_interrupted_shared_ipc_test() {
     let adapter = DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
         .await
         .unwrap();
-    let cleaned = adapter
-        .stop(StopInput {
-            allow_volume_deletion: true,
-            services: vec![],
-            plan,
-            stop_seconds: 5,
-        })
-        .await
-        .unwrap();
+    let cleaned = adapter.project(&plan).stop(5, true).await.unwrap();
     assert!(cleaned.verified, "{cleaned:?}");
 }
 
@@ -539,7 +542,11 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
     };
 
     // Act / Assert: omission retains even a volume explicitly marked disposable.
-    let retained = adapter.remove(input(&plan, None)).await.unwrap();
+    let retained = adapter
+        .project(&plan)
+        .remove(input(&plan, None).allow_volume_deletion)
+        .await
+        .unwrap();
     assert!(retained.verified, "{retained:?}");
     assert_eq!(retained.retained_volumes.len(), 3);
     for name in &names {
@@ -547,7 +554,11 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
     }
 
     // Act / Assert: permission applies the individual policy and project default.
-    let removed = adapter.remove(input(&plan, Some(true))).await.unwrap();
+    let removed = adapter
+        .project(&plan)
+        .remove(input(&plan, Some(true)).allow_volume_deletion)
+        .await
+        .unwrap();
     assert!(removed.verified, "{removed:?}");
     assert_eq!(removed.retained_volumes.len(), 2);
     assert!(matches!(
@@ -562,7 +573,11 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
 
     // Act / Assert: an enabled project default still preserves an explicit keep policy.
     plan.remove_volumes = true;
-    let removed = adapter.remove(input(&plan, Some(true))).await.unwrap();
+    let removed = adapter
+        .project(&plan)
+        .remove(input(&plan, Some(true)).allow_volume_deletion)
+        .await
+        .unwrap();
     assert!(removed.verified, "{removed:?}");
     assert_eq!(removed.retained_volumes, vec![names[1].clone()]);
     assert!(matches!(

@@ -45,8 +45,8 @@ async fn prepare(input: PrepareInput) -> Result<PreparedSystemApps> {
     Ok(PreparedSystemApps {
         projects: vec![ComposeProject {
             key: "system".into(),
-            directory: artifacts.clone(),
-            files: vec![system_file],
+            directory: artifacts.to_string_lossy().into_owned(),
+            files: vec![system_file.to_string_lossy().into_owned()],
             env_files: vec![],
             profiles: vec![],
             services: vec![],

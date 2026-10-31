@@ -215,8 +215,8 @@ async fn recorded_demo(
                     .map(PathBuf::from),
                 projects: vec![ComposeProject {
                     key: "demo".into(),
-                    directory: workspace,
-                    files: vec![file],
+                    directory: workspace.to_str().ok_or("workspace is not UTF-8")?.into(),
+                    files: vec![file.to_str().ok_or("Compose path is not UTF-8")?.into()],
                     env_files: vec![],
                     environment: BTreeMap::new(),
                     profiles: vec![],

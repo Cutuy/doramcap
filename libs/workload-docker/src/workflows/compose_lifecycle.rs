@@ -40,7 +40,7 @@ pub async fn cleanup(
     let input = StopInput {
         services: vec![],
         allow_volume_deletion: true,
-        plan: plan.clone(),
+        plan: Some(plan.clone()),
         stop_seconds,
     };
     let mut report = StopReport {
@@ -72,13 +72,13 @@ pub async fn cleanup(
     };
     let mut collected = None;
     if let Some(baseline) = baseline {
-        let complete_replicas = match adapter.inspect(plan).await {
+        let complete_replicas = match adapter.project(plan).inspect().await {
             Ok(state) => plan.services.iter().all(|(service, expected)| {
                 state
                     .containers
                     .iter()
                     .filter(|container| &container.service == service)
-                    .count()
+                    .count() as u64
                     == expected.replicas
             }),
             Err(error) => {
@@ -88,7 +88,7 @@ pub async fn cleanup(
                 return report;
             }
         };
-        let metadata = match plan.manifest.parent() {
+        let metadata = match Path::new(&plan.manifest).parent() {
             Some(path) => path,
             None => {
                 report

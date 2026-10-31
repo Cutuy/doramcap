@@ -1,6 +1,6 @@
 //! Stop a crashed recorded run while retaining its Docker and filesystem evidence.
 use crate::compose::{
-    Cleanup, DockerAdapter, ResolvedComposeProject, Result, Shutdown, StopInput,
+    Cleanup, DockerAdapter, ResolvedComposeProject, Result, Shutdown,
     adapter::{digest, validate_name},
     error::invalid,
     filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
@@ -218,12 +218,8 @@ pub async fn quiesce_crashed_run(
     for plan in plans {
         let dora_error = super::dora::recover(adapter, &plan).await.err();
         let result = adapter
-            .quiesce(StopInput {
-                services: vec![],
-                allow_volume_deletion: false,
-                plan,
-                stop_seconds,
-            })
+            .project(&plan)
+            .quiesce(&[], stop_seconds)
             .await
             .map(|mut shutdown| {
                 if let Some(error) = dora_error {
@@ -278,7 +274,7 @@ async fn verified_plans(
         if plan.run != run
             || plan.key != project.key
             || plan.name != format!("dc-{run}-{}", project.key)
-            || plan.manifest != manifest
+            || Path::new(&plan.manifest) != manifest
             || plan.remove_volumes != project.remove_volumes
             || digest(&read_regular(&manifest, 16 * 1024 * 1024).await?) != plan.sha256
         {
@@ -287,6 +283,7 @@ async fn verified_plans(
         plans.push(plan);
     }
     for resource in adapter
+        .resources()
         .discover_runs(run)
         .await?
         .into_iter()
@@ -300,8 +297,8 @@ async fn verified_plans(
         }
     }
     for plan in &plans {
-        adapter.inspect(plan).await?;
-        if !adapter.resources_owned(plan).await? {
+        adapter.project(plan).inspect().await?;
+        if !adapter.project(plan).resources_owned().await? {
             return Err(invalid("unowned resource in recovery project"));
         }
     }
@@ -352,13 +349,13 @@ pub async fn collect_crashed_run(
     }
     let plans = verified_plans(&adapter, artifacts, &anchor.run, expected).await?;
     for plan in &plans {
-        let state = adapter.inspect(plan).await?;
+        let state = adapter.project(plan).inspect().await?;
         if plan.services.iter().any(|(service, expected)| {
             state
                 .containers
                 .iter()
                 .filter(|container| &container.service == service)
-                .count()
+                .count() as u64
                 != expected.replicas
         }) {
             return Err(invalid(
@@ -453,7 +450,8 @@ pub async fn remove_crashed_run(
     let plans = verified_plans(adapter, artifacts, &anchor.run, expected).await?;
     for plan in &plans {
         if adapter
-            .inspect(plan)
+            .project(plan)
+            .inspect()
             .await?
             .containers
             .iter()
@@ -464,14 +462,7 @@ pub async fn remove_crashed_run(
     }
     let mut results = Vec::new();
     for plan in plans {
-        let cleanup = adapter
-            .remove(StopInput {
-                services: vec![],
-                allow_volume_deletion: true,
-                plan,
-                stop_seconds,
-            })
-            .await?;
+        let cleanup = adapter.project(&plan).remove(true).await?;
         let verified = cleanup.verified && cleanup.diagnostics.is_empty();
         results.push(cleanup);
         if !verified {
@@ -525,6 +516,7 @@ pub async fn reconcile_group(
     } = group;
     let prefix = format!("{parent_run}-");
     let resources = adapter
+        .resources()
         .discover_runs(&prefix)
         .await
         .map_err(|e| e.to_string())?;
@@ -659,6 +651,7 @@ pub async fn reconcile_group(
         return Ok(());
     }
     if !adapter
+        .resources()
         .discover_runs(&prefix)
         .await
         .map_err(|e| e.to_string())?
@@ -710,10 +703,10 @@ pub async fn recover_project(
     if plan.run != run
         || plan.key != key
         || plan.name != format!("dc-{run}-{key}")
-        || plan.manifest != metadata.join(format!("{key}.compose.json"))
+        || Path::new(&plan.manifest) != metadata.join(format!("{key}.compose.json"))
         || plan.remove_volumes != remove_volumes
         || digest(
-            &read_regular(&plan.manifest, 16 * 1024 * 1024)
+            &read_regular(Path::new(&plan.manifest), 16 * 1024 * 1024)
                 .await
                 .map_err(|e| e.to_string())?,
         ) != plan.sha256
@@ -811,7 +804,10 @@ mod tests {
                     run: "run".into(),
                     key: key.into(),
                     name: format!("dc-run-{key}"),
-                    manifest: artifacts.join(format!("{key}.compose.json")),
+                    manifest: artifacts
+                        .join(format!("{key}.compose.json"))
+                        .to_string_lossy()
+                        .into_owned(),
                     sha256: String::new(),
                     services: BTreeMap::new(),
                     diagnostics: vec![],
