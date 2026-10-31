@@ -1,5 +1,5 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
-use super::super::system_apps::{FinalizeSystemApps, Recording};
+use super::super::system_apps::{FinalizeRecordings, Recording};
 use super::{ComposeRunReport, observation, projects::QuiescedProjects};
 use crate::compose::{
     Diagnostics,
@@ -74,7 +74,7 @@ impl Step for FinalizeRun {
                         "recording writers not quiescent",
                     ));
                 }
-                executor.run::<FinalizeSystemApps>(input.recordings).await
+                executor.run::<FinalizeRecordings>(input.recordings).await
             },
             async {
                 if !input.shutdown.writers_stopped {

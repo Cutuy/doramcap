@@ -8,7 +8,7 @@ use prost::Message;
 use std::{cell::RefCell, future::Future, path::Path, rc::Rc};
 use workload_lifecycle::{
     recorded_run::{self, Phases},
-    recording::{FinalizeSystemApps, ReadinessInput, Recording, WaitForSystemApps},
+    recording::{FinalizeRecordings, ReadinessInput, Recording, WaitForRecordings},
 };
 
 include!(concat!(env!("OUT_DIR"), "/doramcap.supervisor.v1.rs"));
@@ -175,7 +175,7 @@ impl Phases for SupervisorPhases {
         })
         .after(self.launched.as_ref().unwrap());
         self.executor
-            .run::<WaitForSystemApps>(input)
+            .run::<WaitForRecordings>(input)
             .await
             .map_err(error)?;
         self.inspect().await
@@ -223,7 +223,7 @@ impl Phases for SupervisorPhases {
             return Err("forced shutdown cannot establish recording success".into());
         }
         self.executor
-            .run::<FinalizeSystemApps>(Input::new(self.recordings()).after(stopped))
+            .run::<FinalizeRecordings>(Input::new(self.recordings()).after(stopped))
             .await
             .map_err(error)?;
         Ok(())

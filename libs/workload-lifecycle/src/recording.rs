@@ -25,8 +25,8 @@ pub struct ReadinessInput {
     pub timeout_seconds: u64,
 }
 /// Await independent application-output readiness probes on the caller's task.
-pub struct WaitForSystemApps;
-impl Step for WaitForSystemApps {
+pub struct WaitForRecordings;
+impl Step for WaitForRecordings {
     type Input = ReadinessInput;
     type Output = ();
     async fn run(&mut self, input: ReadinessInput) -> orchestrator::Result<()> {
@@ -45,8 +45,8 @@ impl Step for WaitForSystemApps {
 }
 /// Verify recordings after their writers stop. Probes run concurrently and never
 /// stop containers or publish artifacts; those remain the enclosing workflow's job.
-pub struct FinalizeSystemApps;
-impl Step for FinalizeSystemApps {
+pub struct FinalizeRecordings;
+impl Step for FinalizeRecordings {
     type Input = Vec<Recording>;
     type Output = ();
     async fn run(&mut self, outputs: Vec<Recording>) -> orchestrator::Result<()> {
@@ -83,8 +83,14 @@ async fn wait_ready(output: &Recording, timeout: u64) -> std::io::Result<()> {
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
 }
-async fn finalized_recording(path: &Path) -> std::io::Result<()> {
-    let mut file = tokio::fs::File::open(path).await?;
+/// Verify the terminal MCAP footer and stable length after its writer exits.
+/// Reject symlinks; the caller retains ownership of the recording path.
+pub async fn finalized_recording(path: &Path) -> std::io::Result<()> {
+    let mut file = tokio::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .await?;
     let len = file.metadata().await?.len();
     if len < 45 {
         return Err(invalid("MCAP is truncated"));

@@ -1,7 +1,7 @@
 //! Cooperative project-group launch, observation and best-effort shutdown steps.
 use super::super::{
     dora,
-    system_apps::{ReadinessInput, Recording, WaitForSystemApps},
+    system_apps::{ReadinessInput, Recording, WaitForRecordings},
 };
 use crate::compose::{error::invalid, *};
 use futures_util::future::join_all;
@@ -47,7 +47,7 @@ impl Step for LaunchProjects {
         for result in started {
             readiness = readiness.after(&result?);
         }
-        executor.run::<WaitForSystemApps>(readiness).await?;
+        executor.run::<WaitForRecordings>(readiness).await?;
         Ok(())
     }
 }
