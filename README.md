@@ -1,5 +1,7 @@
 # doramcap
 
+[![Rust CI](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml)
+
 We help robotics teams diagnose and fix performance failures on onboard computers,
 starting with NVIDIA Jetson.
 
