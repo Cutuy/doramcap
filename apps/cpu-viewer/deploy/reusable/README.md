@@ -37,8 +37,11 @@ existing task-bpf feature and a nonzero `--task-capacity` only when needed.
 `--headless` serves these routes without frontend files. Without it, the existing
 `--assets` gallery mode remains available. The feed binds localhost by default;
 choose another address explicitly when deploying behind a browser-facing proxy.
-Readiness establishes received data, not current producer liveness. Source closure
-or Dora stop ends the server; invalid packets terminate it with an error.
+HTTP readiness establishes received data. Compose startup healthchecks use the
+approved readiness marker after Dora attachment; the recorder also opens its
+output before publishing that marker. The collector waits for both consumers to
+be healthy before it starts. Neither check establishes current producer liveness.
+Source closure or Dora stop ends the server; invalid packets terminate it with an error.
 
 Each connection receives the latest dictionary before the latest snapshot. A
 single shared latest snapshot/dictionary is retained; slow or disconnected
@@ -55,7 +58,13 @@ with separate snapshot/dictionary topics. Workload recording uses another instan
 and destination. This example uses the existing CPU recorder invocation; the new
 configurable recorder can replace its command after that contract lands.
 
-Start consumers before collection. On stop, the workflow stops the producer,
+For workflow startup, use attachment healthchecks before collection and keep HTTP
+data readiness as a post-producer check. The current workflow recording probe
+requires a growing file stream; these Dora-only fragments do not produce one.
+The integration owner must align that probe with sink initialization before using
+these inputs with recording declarations.
+
+On stop, the workflow stops the producer,
 allows consumer input closure/drain, then finalizes and publishes recording
 artifacts. Recorder queues are bounded even with `backpressure`; queue overload
 can lose messages. A finalized footer alone does not establish complete capture.

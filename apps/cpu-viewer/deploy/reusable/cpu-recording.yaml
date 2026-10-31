@@ -4,6 +4,13 @@ services:
     entrypoint: [/usr/local/bin/mcap-recorder]
     command: [/results/cpu.mcap]
     network_mode: host
+    environment:
+      DORAMCAP_READY_FILE: /tmp/cpu-recorder.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/cpu-recorder.ready]
+      interval: 200ms
+      timeout: 1s
+      retries: 150
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

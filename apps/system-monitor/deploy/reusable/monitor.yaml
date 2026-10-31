@@ -4,6 +4,9 @@ services:
     entrypoint: [/usr/local/bin/system-monitor]
     command: [--backend, bpf, --dora, --records, '4096', --queue-slots, '8', --task-capacity, '0']
     network_mode: host
+    depends_on:
+      cpu-feed: {condition: service_healthy}
+      cpu-recorder: {condition: service_healthy}
     read_only: true
     cap_drop: [ALL]
     cap_add: [BPF, PERFMON, SYSLOG, DAC_OVERRIDE]

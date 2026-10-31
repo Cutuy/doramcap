@@ -4,6 +4,13 @@ services:
     entrypoint: [/usr/local/bin/cpu-viewer]
     command: [--headless, --bind, 127.0.0.1, --port, '8080']
     network_mode: host
+    environment:
+      DORAMCAP_READY_FILE: /tmp/cpu-feed.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/cpu-feed.ready]
+      interval: 200ms
+      timeout: 1s
+      retries: 150
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
