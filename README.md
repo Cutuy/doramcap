@@ -1,6 +1,8 @@
 # doramcap
 
 [![Rust CI](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml)
+[![CI architectures: x86_64 + ARM64](https://img.shields.io/badge/CI-x86__64_%2B_ARM64-blue)](https://github.com/Cutuy/doramcap/actions/workflows/ci.yml)
+[![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-orange?logo=rust)](rust-toolchain.toml)
 
 We help robotics teams diagnose and fix performance failures on onboard computers,
 starting with NVIDIA Jetson.
