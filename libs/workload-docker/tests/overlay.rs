@@ -968,7 +968,7 @@ async fn interrupted_copyback_child() {
         projects.push(project);
     }
     let set = prepare(PrepareInput {
-        workspace: artifacts.join("overlays"),
+        workspace: artifacts.join("views"),
         artifacts,
         projects,
         policy: Default::default(),
@@ -1028,7 +1028,7 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     let second = root.path().join("source-b/file");
     assert_eq!(std::fs::read(&first).unwrap(), b"after");
     assert_eq!(std::fs::read(&second).unwrap(), b"before");
-    let overlays = root.path().join("run/overlays");
+    let overlays = root.path().join("run/views");
     assert!(overlays.join("1/upper/file").is_file());
     // Act: reset the interrupted state twice through the pre-run discard primitive.
     for _ in 0..2 {
