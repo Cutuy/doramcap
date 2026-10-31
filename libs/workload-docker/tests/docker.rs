@@ -530,7 +530,18 @@ async fn multi_project_lifecycle() {
         monitor_sessions.push(audit_recording(&request.artifacts));
         reports.push(report);
         // Act: teardown a second time.
-        let repeated = adapter.project(&beta).stop(3, true).await.unwrap();
+        let repeated = StopCompose {
+            adapter: adapter.clone(),
+            diagnostics: Default::default(),
+        }
+        .run(StopInput {
+            plan: Some(beta.clone()),
+            services: vec![],
+            allow_volume_deletion: true,
+            stop_seconds: 3,
+        })
+        .await
+        .unwrap();
         // Assert
         assert!(
             repeated.verified && repeated.diagnostics.is_empty(),
@@ -640,12 +651,14 @@ async fn multi_project_lifecycle() {
         serde_json::json!({"services":{"worker":service(&image)}}),
     );
     let request = spec(&root, format!("{prefix}-outsider"), &image);
-    let project_label = format!("com.docker.compose.project=dc-{}-alpha", request.id);
+    let (ready, started) = tokio::sync::oneshot::channel::<Vec<ResolvedComposeProject>>();
     let outsider_name = format!("{prefix}-outsider-container");
     let (injected, notification) = tokio::sync::oneshot::channel();
     let outsider_image = image.clone();
     let inject = async move {
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let plans = started.await.unwrap();
+        let alpha = plans.iter().find(|plan| plan.key == "alpha").unwrap();
+        let project_label = format!("com.docker.compose.project={}", alpha.name);
         let output = tokio::process::Command::new("docker")
             .args([
                 "run",
@@ -674,36 +687,41 @@ async fn multi_project_lifecycle() {
         id
     };
     // Act
-    let run = manager.run(
+    let run = manager.run_with_ready(
         request,
         async {
             let _ = notification.await;
         },
         |_: &orchestrator::Event| {},
+        Some(ready),
     );
     let (report, id) = tokio::join!(run, inject);
     let report = report.unwrap();
     // Assert: ambiguous ownership preserves stopped resources; the outsider remains and admission blocks.
     assert!(!report.boundary_clean && manager.blocked(), "{report:#?}");
     assert!(!id.is_empty(), "outsider was not created: {report:#?}");
+    // Act: reset removes owned resources, then preparation rejects the foreign project collision.
+    let rejected = manager
+        .run(
+            spec(&root, format!("{prefix}-blocked"), &image),
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+        )
+        .await
+        .unwrap_err();
+    // Assert: the foreign container remains running through the rejected retry.
+    assert!(
+        rejected
+            .to_string()
+            .contains("runtime project name already exists"),
+        "{rejected}"
+    );
     let inspection = tokio::process::Command::new("docker")
         .args(["inspect", "--format", "{{.State.Running}}", &id])
         .output()
         .await
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&inspection.stdout).trim(), "true");
-    assert!(
-        manager
-            .run(
-                spec(&root, format!("{prefix}-blocked"), &image),
-                std::future::pending(),
-                |_: &orchestrator::Event| {}
-            )
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("blocked")
-    );
     // Act: only the test owner removes its outsider.
     assert!(
         tokio::process::Command::new("docker")
@@ -923,11 +941,18 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             if mode == 0 {
                 stop.send(()).unwrap();
             } else {
-                adapter
-                    .project(&plans[0].clone())
-                    .quiesce(&[], 3)
-                    .await
-                    .unwrap();
+                QuiesceCompose {
+                    adapter: adapter.clone(),
+                    diagnostics: Default::default(),
+                }
+                .run(StopInput {
+                    plan: Some(plans[0].clone()),
+                    services: vec![],
+                    allow_volume_deletion: false,
+                    stop_seconds: 3,
+                })
+                .await
+                .unwrap();
             }
             let report = tokio::time::timeout(Duration::from_secs(20), run)
                 .await

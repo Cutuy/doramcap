@@ -1,6 +1,6 @@
 //! Runtime operations bound to one frozen Compose project.
 use super::{
-    DIRECTORY_OWNER_LABEL, DockerAdapter, RUN_LABEL, digest, private_write, validate_name,
+    DockerAdapter, EXPERIMENT_OWNER_LABEL, RUN_LABEL, digest, private_write, validate_name,
 };
 use crate::compose::{
     Cleanup, ComposeProjectState, Container, ResolvedComposeProject, Result, Shutdown,
@@ -153,7 +153,11 @@ impl ComposeExecution<'_> {
     }
     /// Start selected services and wait for the requested readiness budget.
     /// Errors or cancellation can leave resources; quiesce joins pending CLI startup.
-    pub async fn start(&self, services: &[String], seconds: u64) -> Result<ComposeProjectState> {
+    pub(crate) async fn start(
+        &self,
+        services: &[String],
+        seconds: u64,
+    ) -> Result<ComposeProjectState> {
         self.verify_manifest().await?;
         let mut args = self.args();
         args.extend(["up", "--detach", "--no-build", "--pull", "never"].map(str::to_owned));
@@ -188,6 +192,25 @@ impl ComposeExecution<'_> {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
+    }
+    /// Create the named IPC owner without starting it, before workload side effects.
+    /// Native Compose creates its pinned configuration; Docker rejects another
+    /// experiment claiming this repository's experiment container name.
+    pub(crate) async fn reserve(&self, service: &str, seconds: u64) -> Result<()> {
+        self.verify_manifest().await?;
+        let mut args = self.args();
+        args.extend(
+            [
+                "create",
+                "--no-build",
+                "--pull",
+                "never",
+                "--no-recreate",
+                service,
+            ]
+            .map(str::to_owned),
+        );
+        self.command(args, seconds).await
     }
     pub(super) async fn command(&self, args: Vec<String>, seconds: u64) -> Result<()> {
         let log = Path::new(&self.plan.manifest).with_extension(format!(
@@ -372,7 +395,7 @@ impl ComposeExecution<'_> {
     }
     /// Quiesce the whole project, then remove its owned resources.
     /// Retain diagnostics and inspect `verified`; cancellation requires a retry.
-    pub async fn stop(&self, seconds: u64, allow_volume_deletion: bool) -> Result<Cleanup> {
+    pub(crate) async fn stop(&self, seconds: u64, allow_volume_deletion: bool) -> Result<Cleanup> {
         let stopped = self.quiesce(&[], seconds).await?;
         if !stopped.stopped {
             return Err(invalid("project failed to quiesce"));
@@ -383,7 +406,7 @@ impl ComposeExecution<'_> {
     }
     /// Stop selected writers, retaining containers and volumes for evidence collection.
     /// `stopped` confirms process termination; diagnostics retain unsuccessful exits.
-    pub async fn quiesce(&self, services: &[String], seconds: u64) -> Result<Shutdown> {
+    pub(crate) async fn quiesce(&self, services: &[String], seconds: u64) -> Result<Shutdown> {
         let mut result = Shutdown {
             project: self.plan.name.clone(),
             ..Default::default()
@@ -521,7 +544,7 @@ impl ComposeExecution<'_> {
     /// Remove stopped owned resources after the caller saves their file-change report.
     /// Volume deletion requires explicit permission and a matching retention policy.
     /// Inspect `verified` and diagnostics; cancellation requires reconciliation.
-    pub async fn remove(&self, allow_volume_deletion: bool) -> Result<Cleanup> {
+    pub(crate) async fn remove(&self, allow_volume_deletion: bool) -> Result<Cleanup> {
         self.finish_start().await?;
         let state = self.inspect().await?;
         if state
@@ -535,17 +558,17 @@ impl ComposeExecution<'_> {
             project: self.plan.name.clone(),
             ..Default::default()
         };
-        let mut directory_owner = None;
+        let mut experiment_owner = None;
         // Keep the stopped IPC owner until all other owned resources are removed.
         for summary in self.containers().await? {
             if summary
                 .labels
                 .as_ref()
-                .and_then(|labels| labels.get(DIRECTORY_OWNER_LABEL))
+                .and_then(|labels| labels.get(EXPERIMENT_OWNER_LABEL))
                 .is_some()
             {
                 if self.owned(&summary) {
-                    directory_owner = summary.id;
+                    experiment_owner = summary.id;
                 }
                 continue;
             }
@@ -626,13 +649,12 @@ impl ComposeExecution<'_> {
             self.containers()
                 .await?
                 .into_iter()
-                .filter(|c| c.id != directory_owner)
+                .filter(|c| c.id != experiment_owner)
                 .map(|c| format!("container:{}", c.id.unwrap_or_default())),
         );
         if result.remaining.is_empty()
             && result.diagnostics.is_empty()
-            && (allow_volume_deletion || result.retained_volumes.is_empty())
-            && let Some(id) = directory_owner
+            && let Some(id) = experiment_owner
             && let Err(error) = self
                 .adapter
                 .docker
@@ -642,7 +664,7 @@ impl ComposeExecution<'_> {
         {
             result
                 .diagnostics
-                .push(engine("release directory owner", error).diagnostic("cleanup"));
+                .push(engine("release experiment owner", error).diagnostic("cleanup"));
         }
         result.remaining.extend(
             self.containers()
@@ -651,7 +673,7 @@ impl ComposeExecution<'_> {
                 .filter(|c| {
                     c.labels
                         .as_ref()
-                        .is_some_and(|l| l.contains_key(DIRECTORY_OWNER_LABEL))
+                        .is_some_and(|l| l.contains_key(EXPERIMENT_OWNER_LABEL))
                 })
                 .map(|c| format!("container:{}", c.id.unwrap_or_default())),
         );

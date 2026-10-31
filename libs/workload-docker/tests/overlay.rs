@@ -944,3 +944,101 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
     );
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[tokio::test]
+#[ignore = "internal child for interrupted_copyback_discards_remaining_upper_data"]
+async fn interrupted_copyback_child() {
+    let Some(root) = std::env::var_os("DORAMCAP_OVERLAY_CRASH_ROOT") else {
+        return;
+    };
+    // Arrange
+    let root = PathBuf::from(root);
+    let artifacts = root.join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let mut projects = Vec::new();
+    for name in ["a", "b"] {
+        let source = root.join(format!("source-{name}"));
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(source.join("child")).unwrap();
+        std::fs::write(source.join("file"), b"before").unwrap();
+        let input = root.join(format!("input-{name}"));
+        std::fs::create_dir(&input).unwrap();
+        let mut project = plan(&input, &source);
+        project.key = name.into();
+        projects.push(project);
+    }
+    let set = prepare(PrepareInput {
+        workspace: artifacts.join("views"),
+        artifacts,
+        projects,
+        policy: Default::default(),
+    })
+    .await
+    .unwrap();
+    for tree in &set.trees {
+        std::fs::write(tree.merged.join("file"), b"after").unwrap();
+    }
+    // Act: the test rsync wrapper pauses after applying the first tree.
+    finalize(set).await.unwrap();
+    panic!("copy-back should remain paused until the parent kills this child");
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn interrupted_copyback_discards_remaining_upper_data() {
+    use std::process::Command;
+    // Arrange: pause real rsync after one of two host directories has changed.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let bin = root.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    let marker = root.path().join("paused");
+    let wrapper = bin.join("rsync");
+    std::fs::write(&wrapper, format!(
+        "#!/bin/sh\n/usr/bin/rsync \"$@\" || exit \"$?\"\ncase \"$*\" in *changed.paths0*) printf '%s' \"$$\" > '{}'; kill -STOP \"$$\";; esac\n", marker.display())).unwrap();
+    std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "interrupted_copyback_child",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("DORAMCAP_OVERLAY_CRASH_ROOT", root.path())
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !marker.exists()
+        && child.try_wait().unwrap().is_none()
+        && std::time::Instant::now() < deadline
+    {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert!(marker.is_file(), "copy-back did not reach the pause");
+    let wrapper_pid: i32 = std::fs::read_to_string(&marker).unwrap().parse().unwrap();
+    // SAFETY: this PID is the paused wrapper created by this isolated test.
+    assert_eq!(unsafe { libc::kill(wrapper_pid, libc::SIGKILL) }, 0);
+    let first = root.path().join("source-a/file");
+    let second = root.path().join("source-b/file");
+    assert_eq!(std::fs::read(&first).unwrap(), b"after");
+    assert_eq!(std::fs::read(&second).unwrap(), b"before");
+    let overlays = root.path().join("run/views");
+    assert!(overlays.join("1/upper/file").is_file());
+    // Act: reset the interrupted state twice through the pre-run discard primitive.
+    for _ in 0..2 {
+        discard(&overlays).await.unwrap();
+        // Assert: copied changes remain; unapplied changes are discarded without replay.
+        assert_eq!(std::fs::read(&first).unwrap(), b"after");
+        assert_eq!(std::fs::read(&second).unwrap(), b"before");
+        for index in ["0", "1"] {
+            assert!(!overlays.join(index).join("upper").exists());
+            assert!(!overlays.join(index).join("work").exists());
+        }
+    }
+}

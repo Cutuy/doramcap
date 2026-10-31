@@ -1,7 +1,7 @@
-//! Compile adopted Compose files into frozen execution plans.
+//! Compile adopted Compose files into a frozen execution plan.
 use super::{
     ARTIFACTS_LABEL, CONTROLLER_LABEL, DockerAdapter, RUN_LABEL, digest, private_write,
-    project_name, validate_name,
+    project_name, repository_scope, validate_name,
 };
 use crate::compose::{
     ComposeProject, ComposeService, ResolveInput, ResolvedComposeProject, Result,
@@ -10,64 +10,32 @@ use crate::compose::{
 };
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path, time::Duration};
-/// Normalized Compose document and evidence used to freeze its execution plan.
+
+/// Rendered Compose configuration and the inputs used to produce it.
 pub(crate) struct NormalizedCompose {
     pub(crate) model: Value,
     pub(crate) compose_version: String,
     pub(crate) input_hashes: BTreeMap<String, String>,
     pub(crate) stderr: String,
 }
-/// Compiles explicit Compose inputs using the shared Engine and CLI connection.
-pub struct ComposeConfiguration<'a> {
+
+/// Compiles Compose inputs using the adapter's Engine and CLI connection.
+pub(crate) struct ComposeConfiguration<'a> {
     pub(super) adapter: &'a DockerAdapter,
 }
 impl ComposeConfiguration<'_> {
-    /// Discover profiles for explicit `run` and project identities using resolution
-    /// inputs. Invalid identities fail before file or process access; diagnostics stay private.
-    pub async fn profiles(&self, run: &str, project: &ComposeProject) -> Result<Vec<String>> {
-        validate_name(run)?;
-        validate_name(&project.key)?;
-        let name = format!("dc-{run}-{}", project.key);
-        let mut discovery = project.clone();
-        discovery.profiles.clear();
-        discovery.services.clear();
-        let (directory, mut args, _) = config_arguments(&discovery, &name).await?;
-        args.extend(["config".into(), "--profiles".into()]);
-        let (stdout, stderr) = compose(
-            &self.adapter.socket,
-            &directory,
-            &discovery.environment,
-            &args,
-            Duration::from_secs(60),
-        )
-        .await?;
-        if stderr.contains("variable is not set") {
-            return Err(invalid(format!("unresolved Compose environment: {stderr}")));
-        }
-        let mut profiles: Vec<_> = stdout
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned)
-            .collect();
-        profiles.sort();
-        profiles.dedup();
-        Ok(profiles)
-    }
-
     /// Render Compose inputs and collect the CLI version, source-file hashes and stderr.
     /// No runtime resources or manifests are created. Relative paths use the input directory.
     /// Invalid settings, missing files or Compose failures return errors.
-    pub(crate) async fn normalize(&self, input: &ResolveInput) -> Result<NormalizedCompose> {
-        validate_name(&input.run)?;
-        let project = input
-            .project
-            .as_ref()
-            .ok_or_else(|| invalid("Compose project missing"))?;
+    pub(crate) async fn normalize(
+        &self,
+        run: &str,
+        project: &ComposeProject,
+        name: &str,
+    ) -> Result<NormalizedCompose> {
+        validate_name(run)?;
         validate_name(&project.key)?;
-        tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = resolution_name(input, project)?;
-        let (directory, mut args, sources) = config_arguments(project, &name).await?;
+        let (directory, mut args, sources) = config_arguments(project, name).await?;
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
@@ -97,31 +65,48 @@ impl ComposeConfiguration<'_> {
             stderr,
         })
     }
-
     /// Freeze supplied Compose inputs and pinned image IDs into private launch artifacts.
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
-    pub async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
-        let normalized = self.normalize(&input).await?;
-        let mut model = normalized.model;
+    pub(crate) async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+        // Validate identities and normalize Compose under the stable repository project name.
+        validate_name(&input.run)?;
         let project = input
             .project
             .as_ref()
             .ok_or_else(|| invalid("Compose project missing"))?;
+        validate_name(&project.key)?;
+        let directory = input
+            .repository_root
+            .as_deref()
+            .unwrap_or(&project.directory);
+        let identity = tokio::fs::canonicalize(directory).await?;
+        if input.repository_root.is_some()
+            && (!identity.is_dir() || identity != Path::new(directory))
+        {
+            return Err(invalid(
+                "repository root must be an existing canonical absolute directory",
+            ));
+        }
+        let scope = input
+            .repository_root
+            .as_ref()
+            .map(|_| repository_scope(&identity));
+        let name = if input.repository_root.is_some() {
+            project_name(&project.key, &identity)
+        } else {
+            format!("dc-{}-{}", input.run, project.key)
+        };
+        let normalized = self.normalize(&input.run, project, &name).await?;
+        let mut model = normalized.model;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let name = resolution_name(&input, project)?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
         let mut policy_changes = Vec::new();
         if !normalized.stderr.trim().is_empty() {
             diagnostics.push(normalized.stderr);
         }
-        let scope = input
-            .repository_root
-            .as_deref()
-            .map(|root| super::repository_scope(Path::new(root)));
-        // Explicit resource names escape Compose project namespacing. External
-        // resources are deliberately retained; internal resources must be scoped.
+        // Scope and label owned networks and volumes while retaining external resources.
         for kind in ["networks", "volumes"] {
             if let Some(resources) = model.get_mut(kind).and_then(Value::as_object_mut) {
                 for (key, resource) in resources {
@@ -138,7 +123,7 @@ impl ComposeConfiguration<'_> {
                         )));
                     }
                     if resource["external"] != true {
-                        if kind == "volumes" && scope.is_some() {
+                        if kind == "volumes" && input.repository_root.is_some() {
                             resource["name"] = format!("{name}_{}_{key}", input.run).into();
                         }
                         let labels = resource
@@ -172,6 +157,7 @@ impl ComposeConfiguration<'_> {
         if model_services.is_empty() {
             return Err(crate::compose::Error::EmptySelection);
         }
+        // Recognize one-shot services declared explicitly or through completion dependencies.
         let mut completed = project.completed_services.clone();
         for service in model_services.values() {
             if let Some(deps) = service["depends_on"].as_object() {
@@ -187,6 +173,7 @@ impl ComposeConfiguration<'_> {
                 "completed_services refers to an unselected service",
             ));
         }
+        // Pin local images and validate each service's mounts, replicas and container name.
         let mut services = BTreeMap::new();
         for (service_name, service) in model_services.iter_mut() {
             let image = service["image"].as_str().ok_or_else(|| {
@@ -251,6 +238,7 @@ impl ComposeConfiguration<'_> {
             if service.get("healthcheck").is_none() {
                 diagnostics.push(format!("{service_name}: process-level readiness only"));
             }
+            // Freeze execution policy and attach the run's ownership labels.
             let object = service
                 .as_object_mut()
                 .ok_or_else(|| invalid("invalid resolved service"))?;
@@ -305,6 +293,7 @@ impl ComposeConfiguration<'_> {
                 },
             );
         }
+        // Reject existing containers, networks and volumes before publishing the plan.
         let plan = ResolvedComposeProject {
             run: input.run,
             key: project.key.clone(),
@@ -318,22 +307,21 @@ impl ComposeConfiguration<'_> {
             diagnostics,
             remove_volumes: project.remove_volumes,
         };
-        if !self.adapter.project(&plan).containers().await?.is_empty() {
+        let execution = self.adapter.project(&plan);
+        if !execution.containers().await?.is_empty() {
             return Err(invalid("runtime project name already exists"));
         }
-        if !self.adapter.project(&plan).networks().await?.is_empty()
-            || !self.adapter.project(&plan).volumes().await?.is_empty()
-        {
+        if !execution.networks().await?.is_empty() || !execution.volumes().await?.is_empty() {
             return Err(invalid("runtime project resources already exist"));
         }
-        // Compose's config renderer already escapes literal dollars for re-import.
-        // Preserve that representation; escaping again changes commands/environment.
+        // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;
         private_write(Path::new(&plan.manifest), &bytes).await?;
         let plan = ResolvedComposeProject {
             sha256: digest(&bytes),
             ..plan
         };
+        // Validate the frozen manifest through Compose before returning it to the launcher.
         let mut check = self.adapter.project(&plan).args();
         check.extend(["config".into(), "--quiet".into()]);
         compose(
@@ -344,6 +332,7 @@ impl ComposeConfiguration<'_> {
             Duration::from_secs(30),
         )
         .await?;
+        // Record source hashes, resolved settings and policy changes beside the manifest.
         private_write(
             &artifacts.join(format!("{}.resolution.json", project.key)),
             &serde_json::to_vec_pretty(
@@ -395,19 +384,4 @@ pub(super) async fn config_arguments(
         args.extend(["--profile".into(), profile.clone()]);
     }
     Ok((directory, args, sources))
-}
-
-fn resolution_name(input: &ResolveInput, project: &ComposeProject) -> Result<String> {
-    match input.repository_root.as_deref() {
-        Some(root) => {
-            let root = Path::new(root);
-            if !root.is_absolute() || !root.is_dir() || std::fs::canonicalize(root)? != root {
-                return Err(invalid(
-                    "repository root must be an existing canonical absolute directory",
-                ));
-            }
-            Ok(super::repository_project_name(&project.key, root))
-        }
-        None => Ok(project_name(&input.run, &project.key)),
-    }
 }

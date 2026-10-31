@@ -65,6 +65,8 @@ fn empty_scope() -> Vec<(&'static str, u16, serde_json::Value)> {
         ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/networks", 200, json!([])),
+        ("/networks", 200, json!([])),
+        ("/containers/json", 200, json!([])),
         ("/containers/json", 200, json!([])),
         ("/networks", 200, json!([])),
     ]
@@ -263,4 +265,48 @@ async fn discard_rejects_linked_upper_without_deleting_the_link_target() {
     // Assert
     assert!(result.is_err());
     assert_eq!(std::fs::read(outside.join("data")).unwrap(), b"keep");
+}
+
+#[tokio::test]
+async fn legacy_admission_blocks_shared_runner_before_any_side_effects() {
+    use crate::{
+        compose::adapter::tests::test_engine,
+        workflows::shared::recorded_compose::{ComposeRun, ComposeRunner},
+    };
+
+    // Arrange: the current runner holds admission; the Engine accepts no requests.
+    let root = tempfile::tempdir().unwrap();
+    let repository = root.path().join("repo");
+    std::fs::create_dir(&repository).unwrap();
+    let controller = Controller::acquire(&repository).unwrap();
+    let directory = controller.directory.clone();
+    let artifacts = root.path().join("not-created");
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let request: ComposeRun = serde_json::from_value(serde_json::json!({
+        "id": "shared-admission", "filesystem": null, "artifacts": artifacts,
+        "repository_root": repository.join("."), "projects": []
+    }))
+    .unwrap();
+    let mut runner = ComposeRunner::new(Rc::new(adapter));
+
+    // Act
+    let result = runner
+        .run(
+            request,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+        )
+        .await;
+
+    // Assert
+    assert!(
+        matches!(result, Err(crate::compose::Error::Invalid(message))
+        if message.contains("another experiment controller is active"))
+    );
+    assert!(!artifacts.exists());
+    assert!(!controller.workspace().exists());
+    drop(controller);
+    std::fs::remove_file(directory.join("controller.lock")).unwrap();
+    std::fs::remove_dir(directory).unwrap();
 }

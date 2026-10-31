@@ -1,17 +1,15 @@
-use super::configuration::config_arguments;
 use super::project::PROJECT_LABEL;
 use super::*;
 use crate::compose::{
     ComposeProject, ComposeProjectState, ComposeService, Container, Error, ResolveInput,
 };
-use bollard::Docker;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-fn discovery_project(directory: &Path) -> ComposeProject {
+fn input_project(directory: &Path) -> ComposeProject {
     ComposeProject {
         key: "workload".into(),
-        directory: directory.to_string_lossy().into_owned(),
+        directory: directory.to_str().unwrap().into(),
         files: vec!["compose.yaml".into()],
         env_files: vec![],
         environment: BTreeMap::new(),
@@ -23,30 +21,30 @@ fn discovery_project(directory: &Path) -> ComposeProject {
 }
 
 #[tokio::test]
-async fn compose_arguments_pass_explicit_run_and_project_identity() {
+async fn compose_arguments_pass_explicit_project_identity() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     tokio::fs::write(root.path().join("compose.yaml"), b"services: {}")
         .await
         .unwrap();
-    let project = discovery_project(root.path());
-    for run in ["review-a", "review-b"] {
-        // Act
-        let name = project_name(run, &project.key);
-        let (_, args, _) = config_arguments(&project, &name).await.unwrap();
-        // Assert
-        let names: Vec<_> = args
-            .windows(2)
-            .filter(|pair| pair[0] == "--project-name")
-            .map(|pair| pair[1].as_str())
-            .collect();
-        assert_eq!(names, [name.as_str()]);
-        assert!(project.environment.is_empty());
-    }
+    let project = input_project(root.path());
+    // Act
+    let name = project_name(&project.key, root.path());
+    let (_, args, _) = super::configuration::config_arguments(&project, &name)
+        .await
+        .unwrap();
+    // Assert
+    let names: Vec<_> = args
+        .windows(2)
+        .filter(|pair| pair[0] == "--project-name")
+        .map(|pair| pair[1].as_str())
+        .collect();
+    assert_eq!(names, [name.as_str()]);
+    assert!(project.environment.is_empty());
 }
 
 #[tokio::test]
-async fn discovery_and_resolution_reject_invalid_identity_before_io() {
+async fn resolution_rejects_invalid_identity_before_io() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let socket = root.path().join("engine.sock");
@@ -62,10 +60,9 @@ async fn discovery_and_resolution_reject_invalid_identity_before_io() {
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
-        let mut project = discovery_project(Path::new("/nonexistent-project"));
+        let mut project = input_project(Path::new("/nonexistent-project"));
         project.key = key.into();
         // Act
-        let profiles = adapter.configuration().profiles(run, &project).await;
         let resolution = adapter
             .configuration()
             .resolve(ResolveInput {
@@ -76,12 +73,39 @@ async fn discovery_and_resolution_reject_invalid_identity_before_io() {
             })
             .await;
         // Assert
-        for error in [profiles.unwrap_err(), resolution.unwrap_err()] {
-            assert!(
-                matches!(error, Error::Invalid(ref message) if message.starts_with("identity must"))
-            );
-        }
+        let error = resolution.unwrap_err();
+        assert!(
+            matches!(error, Error::Invalid(ref message) if message.starts_with("identity must"))
+        );
     }
+}
+
+#[tokio::test]
+async fn scoped_resolution_rejects_noncanonical_or_nondirectory_roots_before_docker() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("file");
+    let link = root.path().join("linked-repository");
+    std::fs::write(&file, b"not a repository").unwrap();
+    std::os::unix::fs::symlink(root.path(), &link).unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    for repository in [file, link, std::path::PathBuf::from(".")] {
+        // Act
+        let result = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: Some(repository.to_str().unwrap().into()),
+            })
+            .await;
+
+        // Assert
+        assert!(matches!(result, Err(Error::Invalid(message))
+            if message.contains("repository root must be an existing canonical absolute directory")));
+    }
+    server.await.unwrap();
 }
 
 #[test]
@@ -95,6 +119,62 @@ fn digest_preserves_lowercase_sha256_encoding() {
         actual,
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
+}
+
+#[tokio::test]
+async fn absent_protobuf_plans_fail_before_engine_access() {
+    use crate::compose::{
+        QuiesceCompose, RemoveCompose, StartCompose, StartInput, StopCompose, StopInput,
+    };
+    use orchestrator::Step;
+    use std::{cell::RefCell, rc::Rc};
+
+    // Arrange: no Engine is available, and protobuf requests omit their required plan.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let adapter = Rc::new(adapter);
+    let diagnostics = Rc::new(RefCell::new(Vec::new()));
+
+    // Act
+    let errors = [
+        StartCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StartInput::default())
+        .await
+        .err(),
+        StopCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+        QuiesceCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+        RemoveCompose {
+            adapter,
+            diagnostics: diagnostics.clone(),
+        }
+        .run(StopInput::default())
+        .await
+        .err(),
+    ];
+
+    // Assert: invalid requests retain typed diagnostics without attempting Docker operations.
+    assert!(errors.iter().all(Option::is_some));
+    let diagnostics = diagnostics.borrow();
+    assert_eq!(diagnostics.len(), 4);
+    assert!(diagnostics.iter().all(
+        |diagnostic| diagnostic.kind == "validation" && diagnostic.message.contains("missing")
+    ));
 }
 
 fn state() -> ComposeProjectState {
@@ -254,30 +334,24 @@ async fn independent_startups_progress_and_duplicate_starts_are_rejected() {
             Ok(("fast".into(), String::new()))
         })))),
     );
-    let execution = adapter.project(&plan);
-    let mut slow = Box::pin(execution.finish_start());
+    let slow_project = adapter.project(&plan);
+    let mut slow = Box::pin(slow_project.finish_start());
     assert!(futures_util::poll!(&mut slow).is_pending());
 
     // Act / Assert: a different project completes while the first remains blocked.
-    let fast = tokio::time::timeout(
-        Duration::from_secs(1),
-        adapter
-            .project(&ResolvedComposeProject {
-                name: "fast".into(),
-                ..Default::default()
-            })
-            .finish_start(),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let fast_plan = ResolvedComposeProject {
+        name: "fast".into(),
+        ..plan.clone()
+    };
+    let fast_project = adapter.project(&fast_plan);
+    let fast = tokio::time::timeout(Duration::from_secs(1), fast_project.finish_start())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(fast.unwrap().0, "fast");
-    let duplicate = tokio::time::timeout(
-        Duration::from_secs(1),
-        adapter.project(&plan).command(vec![], 1),
-    )
-    .await
-    .unwrap();
+    let duplicate = tokio::time::timeout(Duration::from_secs(1), slow_project.command(vec![], 1))
+        .await
+        .unwrap();
     assert!(
         duplicate
             .unwrap_err()
@@ -307,16 +381,16 @@ async fn cancelled_wait_retains_startup_and_concurrent_waiters_consume_it_once()
     );
     let plan = ResolvedComposeProject {
         name: "run".into(),
-        ..Default::default()
+        ..state().plan.unwrap()
     };
-    let execution = adapter.project(&plan);
-    let mut cancelled = Box::pin(execution.finish_start());
+    let project = adapter.project(&plan);
+    let mut cancelled = Box::pin(project.finish_start());
     assert!(futures_util::poll!(&mut cancelled).is_pending());
 
     // Act / Assert: cancellation leaves an unfinished command available for cleanup.
     drop(cancelled);
-    let mut first = Box::pin(execution.finish_start());
-    let mut second = Box::pin(execution.finish_start());
+    let mut first = Box::pin(project.finish_start());
+    let mut second = Box::pin(project.finish_start());
     assert!(futures_util::poll!(&mut first).is_pending());
     assert!(futures_util::poll!(&mut second).is_pending());
     release.send(()).unwrap();
@@ -336,10 +410,10 @@ async fn exec_rejects_a_replaced_image_before_launching_a_command() {
     let manifest = root.path().join("manifest.json");
     std::fs::write(&manifest, b"{}").unwrap();
     let plan: ResolvedComposeProject = serde_json::from_value(json!({
-            "run":"run","key":"app","name":"project","manifest":manifest,
-            "sha256":digest(b"{}"),"services":{"worker":{"image_id":"pinned","replicas":1,"completed":false}},
-            "diagnostics":[],"remove_volumes":false
-        })).unwrap();
+        "run":"run","key":"app","name":"project","manifest":manifest,
+        "sha256":digest(b"{}"),"services":{"worker":{"image_id":"pinned","replicas":1,"completed":false}},
+        "diagnostics":[],"remove_volumes":false
+    })).unwrap();
     let labels =
         json!({RUN_LABEL:"run",PROJECT_LABEL:plan.name,"com.docker.compose.service":"worker"});
     let (adapter, server) = test_engine(
@@ -352,7 +426,7 @@ async fn exec_rejects_a_replaced_image_before_launching_a_command() {
             (
                 "/containers/container/json",
                 json!({"Id":"container","Image":"replacement",
-                "Config":{"Labels":labels},"State":{"Pid":123,"Status":"running","ExitCode":0},"RestartCount":0}),
+            "Config":{"Labels":labels},"State":{"Pid":123,"Status":"running","ExitCode":0},"RestartCount":0}),
             ),
         ],
     );
@@ -366,5 +440,77 @@ async fn exec_rejects_a_replaced_image_before_launching_a_command() {
 
     // Assert
     assert!(matches!(error, Error::Invalid(message) if message.contains("image changed")));
+    server.await.unwrap();
+}
+#[tokio::test]
+async fn whole_project_teardown_rejects_selected_services_before_engine_access() {
+    use crate::compose::{RemoveCompose, StopCompose, StopInput};
+    use orchestrator::Step;
+    use std::{cell::RefCell, rc::Rc};
+
+    // Arrange: the Engine listener is closed, so any accidental access fails.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    server.await.unwrap();
+    let adapter = Rc::new(adapter);
+    let diagnostics = Rc::new(RefCell::new(Vec::new()));
+    let input = StopInput {
+        plan: state().plan,
+        services: vec!["worker".into()],
+        stop_seconds: 1,
+        allow_volume_deletion: true,
+    };
+
+    // Act
+    let results = [
+        StopCompose {
+            adapter: adapter.clone(),
+            diagnostics: diagnostics.clone(),
+        }
+        .run(input.clone())
+        .await,
+        RemoveCompose {
+            adapter,
+            diagnostics: diagnostics.clone(),
+        }
+        .run(input)
+        .await,
+    ];
+
+    // Assert: both public steps reject selection and preserve validation diagnostics.
+    assert!(results.iter().all(|result| result.is_err()));
+    let diagnostics = diagnostics.borrow();
+    assert_eq!(diagnostics.len(), 2);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.kind == "validation")
+    );
+}
+
+#[tokio::test]
+async fn dead_container_with_no_process_is_quiescent() {
+    // Arrange: Docker can retain a dead container after interrupted teardown.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(
+        root.path(),
+        vec![
+            (
+                "/containers/json",
+                json!([{"Id":"dead-writer","Labels":{CONTROLLER_LABEL:"scope"}}]),
+            ),
+            (
+                "/containers/dead-writer/json",
+                json!({"State":{"Pid":0,"Running":false,"Status":"dead"}}),
+            ),
+        ],
+    );
+    // Act
+    let result = adapter
+        .experiment_resources("scope", Some("owner"))
+        .verify_stopped()
+        .await;
+    // Assert: process absence allows reset to continue, regardless of the failure status.
+    assert!(result.is_ok());
     server.await.unwrap();
 }

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="930" viewBox="0 0 1400 930" role="img" aria-labelledby="title desc">
+<title id="title">Project cleanup with pre-run discard</title>
+<desc id="desc">The previous implementation had normal teardown and a separate explicit crash recovery path. The implemented workflow discards previous uppers before each new run. Normal teardown keeps copy-back compatibility. Both paths reuse cleanup primitives; pre-run cleanup never replays interrupted host writes. A repository-scoped admission guard excludes overlapping experiments within that repository, which has a stable Compose project.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#60748b"/></marker>
+<style>text{font-family:system-ui,sans-serif;fill:#18324a}.title{font-size:31px;font-weight:750}.heading{font-size:24px;font-weight:700}.body{font-size:20px;font-weight:650}.small{font-size:17px;fill:#52677d}.line{fill:none;stroke:#60748b;stroke-width:2;marker-end:url(#arrow)}</style></defs>
+<rect width="1400" height="930" fill="white"/>
+<text x="40" y="48" class="title">Project cleanup with pre-run discard</text>
+
+<rect x="40" y="82" width="630" height="672" rx="12" fill="#f7f9fc" stroke="#bacbdf" stroke-width="1.5"/>
+<rect x="710" y="82" width="650" height="672" rx="12" fill="#f7f9fc" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="64" y="122" class="heading" text-anchor="start">Before</text>
+<text x="734" y="122" class="heading" text-anchor="start">Now</text>
+<rect x="64" y="150" width="582" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="82" y="180" class="body" text-anchor="start">Normal run finishes</text>
+<text x="82" y="207" class="small" text-anchor="start">Stop → report → finalize filesystems → remove</text>
+<path d="M355 226V253" class="line"/>
+<rect x="64" y="257" width="582" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="82" y="287" class="body" text-anchor="start">Next run</text>
+<text x="82" y="314" class="small" text-anchor="start">New project identity</text>
+<rect x="64" y="394" width="582" height="76" rx="12" fill="#fff2df" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="82" y="424" class="body" text-anchor="start">Launcher crashes</text>
+<text x="82" y="451" class="small" text-anchor="start">Containers may keep running</text>
+<path d="M355 470V497" class="line"/>
+<rect x="64" y="501" width="582" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="82" y="531" class="body" text-anchor="start">Explicit recovery command</text>
+<text x="82" y="558" class="small" text-anchor="start">Saved-state checks → reports → Docker cleanup</text>
+<path d="M355 577V604" class="line"/>
+<rect x="64" y="608" width="582" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="82" y="638" class="body" text-anchor="start">OverlayFS run</text>
+<text x="82" y="665" class="small" text-anchor="start">Retained for manual handling</text>
+<rect x="734" y="150" width="602" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="752" y="180" class="body" text-anchor="start">Start requested</text>
+<text x="752" y="207" class="small" text-anchor="start">Hold exclusive controller ownership</text>
+<path d="M1035 226V253" class="line"/>
+<rect x="734" y="257" width="602" height="76" rx="12" fill="#e7f3ef" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="752" y="287" class="body" text-anchor="start">Reset previous project</text>
+<text x="752" y="314" class="small" text-anchor="start">Stop → unmount → delete stale upper/work</text>
+<path d="M1035 333V360" class="line"/>
+<rect x="734" y="364" width="602" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="752" y="394" class="body" text-anchor="start">Run experiment</text>
+<text x="752" y="421" class="small" text-anchor="start">Dora → system apps → adopted apps</text>
+<path d="M1035 440V467" class="line"/>
+<rect x="734" y="471" width="602" height="76" rx="12" fill="#e7f3ef" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="752" y="501" class="body" text-anchor="start">Normal teardown</text>
+<text x="752" y="528" class="small" text-anchor="start">Copy-back compatibility · discard mode</text>
+<path d="M1035 547V574" class="line"/>
+<rect x="734" y="578" width="602" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="752" y="608" class="body" text-anchor="start">Release experiment slot</text>
+<text x="752" y="635" class="small" text-anchor="start">Next experiment may start</text>
+<path d="M1336 402H1348V137H1035V148" class="line"/>
+<text x="1190" y="130" class="small" text-anchor="middle">Next start after crash</text>
+<text x="734" y="710" class="small" text-anchor="start">Stable project per repo · one experiment per repo</text>
+<rect x="40" y="780" width="1320" height="117" rx="12" fill="#edf4fa" stroke="#bacbdf" stroke-width="1.5"/>
+<text x="64" y="817" class="heading" text-anchor="start">Common cleanup</text>
+<text x="64" y="850" class="body" text-anchor="start">Stop writers → unmount owned overlays → remove owned Docker resources</text>
+<text x="64" y="878" class="small" text-anchor="start">Pre-run: discard old uppers    ·    Normal teardown: copy-back or discard    ·    Outputs: kept</text>
+</svg>

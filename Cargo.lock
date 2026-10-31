@@ -6146,14 +6146,16 @@ name = "workload-docker"
 version = "0.1.0"
 dependencies = [
  "bollard",
+ "dora-app",
+ "dora-core",
  "futures-util",
  "hex",
  "libc",
  "mcap",
  "orchestrator",
  "prost",
- "prost-reflect",
  "prost-build",
+ "prost-reflect",
  "protoc-bin-vendored",
  "rustix",
  "serde",
