@@ -9,8 +9,7 @@
       },
       "environment": {
         "CUSTOM": "kept"
-      },
-      "image": "app:test"
+      }
     },
     "adopted": {
       "networks": {
@@ -27,8 +26,7 @@
           "source": "data",
           "target": "/data"
         }
-      ],
-      "image": "app:test"
+      ]
     }
   },
   "networks": {

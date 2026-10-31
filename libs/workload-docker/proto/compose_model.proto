@@ -16,7 +16,7 @@ message ComposeModel {
 
 // Container configuration. Build/profile/pull/restart policies are resolved before output.
 // Optional scalars preserve omission independently of explicit empty/false/zero values.
-// Coordinator, daemon and adopted services use the same model.
+// This supersedes the owned-service-only RuntimeService model when its callers migrate.
 message ComposeServiceDefinition {
   string image = 1;
   optional string container_name = 2;
@@ -69,8 +69,6 @@ message ComposeDependency {
 }
 
 message ComposeNetworkAttachment {
-  // Present for a native null attachment, which selects default network settings.
-  optional NativeValue.Null implicit = 5;
   repeated string aliases = 1;
   optional string ipv4_address = 2;
   optional string ipv6_address = 3;
@@ -165,12 +163,12 @@ message ComposeFileResource {
 message NativeValue {
   enum Null { NULL_VALUE = 0; }
   oneof value {
-    Null null = 1;
-    bool boolean = 2;
-    string text = 3;
+    Null null_value = 1;
+    bool bool_value = 2;
+    string string_value = 3;
     string number = 4;
-    NativeObject object = 5;
-    NativeList list = 6;
+    NativeObject object_value = 5;
+    NativeList list_value = 6;
   }
 }
 message NativeObject { map<string, NativeValue> fields = 1; }

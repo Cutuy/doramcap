@@ -15,6 +15,7 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 use tokio::io::AsyncWriteExt;
 
 pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
+pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
 pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 type StartupCommand = tokio::sync::Mutex<Option<tokio::task::JoinHandle<Result<(String, String)>>>>;

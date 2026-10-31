@@ -2,6 +2,8 @@ use super::Diagnostic;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("selection contains no services")]
+    EmptySelection,
     #[error("{0}")]
     Invalid(String),
     #[error("{operation}: {source}")]
@@ -64,7 +66,7 @@ impl Error {
             Self::OutputLimit { .. } => d.kind = "output_limit".into(),
             Self::Io(_) => d.kind = "io".into(),
             Self::Json(_) => d.kind = "json".into(),
-            Self::Invalid(_) => {}
+            Self::Invalid(_) | Self::EmptySelection => {}
         }
         d
     }

@@ -8,12 +8,9 @@ named volumes remain separate; reset never replays interrupted host writes.
 Compose handles configuration and container launch; Bollard verifies ownership,
 readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 
-TypeScript owns Compose document processing; Rust owns Docker and filesystem operations.
-The planner runs inside embedded QuickJS and exchanges generated protobuf messages.
-
 Module relationships and execution barriers:
 
-![Workflow modules](docs/103126-typescript-planner-modules.svg)
+![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
@@ -38,9 +35,6 @@ assert!(report.successful());
 [Filesystem metadata steps](docs/102626-filesystem-metadata.md) ·
 [Experiment isolation design](docs/102626-docker-experiment-isolation.md) ·
 [Direct write-back plan and coverage](docs/102726-direct-overlay-writeback.md)
-
-Planner development (Node 22): `cd libs/workload-docker/planner && npm ci && npm test`.
-Rust builds embed the checked-in bundle; CI checks that it matches the TypeScript/protobuf sources.
 
 API details: `cargo doc -p workload-docker --no-deps`.
 Real native Docker tests: `python3 libs/workload-docker/scripts/compose-e2e.py --output /tmp/compose-test`.

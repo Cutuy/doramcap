@@ -20,18 +20,14 @@
         "volumes": [
           {
             "type": "bind",
-            "source": "/snapshots/zenoh",
+            "source": "/run/experiment/zenoh.json5",
             "target": "/run/experiment/zenoh.json5",
             "read_only": true
           }
         ],
         "labels": {
-          "io.doramcap.controller": "/controller",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
-        },
-        "image": "sha256:app",
-        "restart": "no"
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
       },
       "adopted": {
         "networks": {
@@ -50,7 +46,7 @@
           },
           {
             "type": "bind",
-            "source": "/snapshots/zenoh",
+            "source": "/run/experiment/zenoh.json5",
             "target": "/run/experiment/zenoh.json5",
             "read_only": true
           }
@@ -63,15 +59,11 @@
           }
         },
         "labels": {
-          "io.doramcap.controller": "/controller",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
-        },
-        "image": "sha256:app",
-        "restart": "no"
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
       },
       "dora-coordinator": {
-        "image": "sha256:dora",
+        "image": "dora:test",
         "network_mode": "host",
         "stop_signal": "SIGINT",
         "ulimits": {
@@ -106,21 +98,18 @@
           },
           {
             "type": "bind",
-            "source": "/snapshots/zenoh",
+            "source": "/run/experiment/zenoh.json5",
             "target": "/run/experiment/zenoh.json5",
             "read_only": true
           }
         ],
         "ipc": "service:dora-daemon",
         "labels": {
-          "io.doramcap.controller": "/controller",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
-        },
-        "restart": "no"
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
       },
       "dora-daemon": {
-        "image": "sha256:dora",
+        "image": "dora:test",
         "network_mode": "host",
         "stop_signal": "SIGINT",
         "ulimits": {
@@ -155,7 +144,7 @@
           },
           {
             "type": "bind",
-            "source": "/snapshots/zenoh",
+            "source": "/run/experiment/zenoh.json5",
             "target": "/run/experiment/zenoh.json5",
             "read_only": true
           }
@@ -165,31 +154,19 @@
         "container_name": "experiment-owner",
         "labels": {
           "io.doramcap.experiment-owner": "true",
-          "io.doramcap.controller": "/controller",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
-        },
-        "restart": "no"
+          "io.doramcap.controller": "{{controller_scope}}"
+        }
       }
     },
     "networks": {
       "users": {
         "labels": {
-          "io.doramcap.controller": "/controller",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
+          "io.doramcap.controller": "{{controller_scope}}"
         }
       }
     },
     "volumes": {
-      "data": {
-        "name": "dc-project_run_data",
-        "labels": {
-          "io.doramcap.remove-volume": "false",
-          "io.doramcap.run": "run",
-          "io.doramcap.artifacts": "/runs/run"
-        }
-      }
+      "data": {}
     }
   },
   "warnings": [

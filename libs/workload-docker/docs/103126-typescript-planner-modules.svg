@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1440" viewBox="0 0 1600 1440" role="img" aria-labelledby="title desc">
-<title id="title">Compose planner source layout with TypeScript configuration planning</title>
-<desc id="desc">The Rust recorded Compose workflow coordinates preparation and lifecycle. Within the Rust compose module, adapter configuration handles native Compose and Engine facts, while scope and project retain Docker lifecycle operations. An embedded QuickJS bridge calls the pure TypeScript planner. Protobuf contracts generate types in both languages. The runtime exposes a pure UTF-8 codec and bounded protobuf byte-buffer calls.</desc>
+<title id="title">Proposed source layout with TypeScript configuration planning</title>
+<desc id="desc">The Rust recorded Compose workflow coordinates preparation and lifecycle. Within the Rust compose module, adapter configuration handles native Compose and Engine facts, while scope and project retain Docker lifecycle operations. A protobuf bridge calls a pure TypeScript planner containing the moved document transformations. Protobuf contracts generate types in both languages. The runner can use an embedded engine or a Node child process.</desc>
 <defs>
 <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52677c"/></marker>
 <marker id="wire-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto-start-reverse"><path d="M0 0L9 4.5L0 9" fill="#bd651b"/></marker>
@@ -9,7 +9,7 @@ text{font-family:'DejaVu Sans',sans-serif;fill:#18324a}.title{font-size:31px;fon
 </style>
 </defs>
 <rect width="1600" height="1440" fill="white"/>
-<text x="40" y="50" class="title">Compose planner source layout · TypeScript planning + Rust execution</text>
+<text x="40" y="50" class="title">Proposed source layout · TypeScript planning + Rust execution</text>
 <text x="40" y="87" class="body">libs/workload-docker/</text>
 
 <rect x="40" y="140" width="560" height="850" rx="16" fill="#edf4ff" stroke="#afc9eb" stroke-width="2"/>
@@ -72,7 +72,7 @@ text{font-family:'DejaVu Sans',sans-serif;fill:#18324a}.title{font-size:31px;fon
 
 <rect x="765" y="750" width="770" height="90" rx="10" fill="#fff4e4" stroke="#d5a368" stroke-width="2"/>
 <text x="785" y="782" class="file">planner.rs · protobuf bridge</text>
-<text x="785" y="816" class="body">Embedded QuickJS · bounded protobuf calls</text>
+<text x="785" y="816" class="body">Run planner · enforce limits · decode typed result</text>
 <path d="M1510 520H1545V795H1537" class="call"/>
 
 <rect x="765" y="875" width="365" height="90" rx="10" class="card"/>
@@ -85,21 +85,20 @@ text{font-family:'DejaVu Sans',sans-serif;fill:#18324a}.title{font-size:31px;fon
 <text x="677" y="913" class="edge">filesystem steps</text>
 
 <path d="M1142 842V1065H490V1118" class="wire"/>
-<text x="600" y="1030" class="body" style="fill:#9d4c0e">Analyze / Complete · binary protobuf</text>
+<text x="600" y="1030" class="body" style="fill:#9d4c0e">PlannerInput / PlannerOutput · binary protobuf</text>
 
 <rect x="40" y="1120" width="900" height="285" rx="16" fill="#edf8f4" stroke="#91c4b0" stroke-width="2"/>
 <text x="65" y="1161" class="heading">planner/</text>
 <text x="285" y="1161" class="body">TypeScript · pure configuration processing</text>
-<text x="65" y="1205" class="file">src/plan.ts + model.ts + generated types</text>
+<text x="65" y="1205" class="file">src/plan.ts + generated protobuf types</text>
 <text x="65" y="1245" class="body">Merge documents · IPC wiring · dependency and graph checks</text>
 <text x="65" y="1282" class="body">Ownership policies · image/file substitutions · diagnostics</text>
-<text x="65" y="1326" class="small">Merge and policy rules · typed Compose projection · native Docker JSON export</text>
+<text x="65" y="1326" class="small">Moves preparation/model.rs and document-editing rules from configuration.rs</text>
 <text x="65" y="1370" class="small">Planner tests and native Compose fixtures live beside the TypeScript code</text>
 
 <rect x="1030" y="1120" width="530" height="205" rx="16" fill="#fff4e4" stroke="#d5a368" stroke-width="2"/>
 <text x="1055" y="1161" class="heading">proto/planner.proto</text>
-<text x="1055" y="1190" class="file">proto/compose_model.proto</text>
-<text x="1055" y="1228" class="body">Typed settings · host facts · diagnostics</text>
-<text x="1055" y="1260" class="body">Typed Compose model + service metadata</text>
-<text x="1055" y="1303" class="small">Generates Rust and TypeScript contract types</text>
+<text x="1055" y="1205" class="body">Typed settings · facts · services · diagnostics</text>
+<text x="1055" y="1245" class="body">Native Compose payload carried as bytes</text>
+<text x="1055" y="1290" class="small">Generates Rust and TypeScript contract types</text>
 </svg>
