@@ -24,8 +24,6 @@ pub(crate) fn services(runtime: &DoraRuntime) -> serde_json::Value {
         runtime.coordinator_port.to_string(),
         "--local-listen-port".into(),
         runtime.daemon_port.to_string(),
-        "--worker-threads".into(),
-        "2".into(),
         "--zenoh-config-overlay".into(),
         runtime.zenoh_overlay.clone(),
     ]);

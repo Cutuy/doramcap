@@ -103,8 +103,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
                 coordinator.to_string(),
                 "--local-listen-port".into(),
                 daemon.to_string(),
-                "--worker-threads".into(),
-                "2".into(),
                 "--zenoh-config-overlay".into(),
                 overlay.to_str().unwrap().into(),
             ],
