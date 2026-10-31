@@ -40,12 +40,14 @@ impl EventCapture {
             task,
         }
     }
-    pub async fn failure(&mut self) -> String {
-        let _ = self.fault.changed().await;
-        self.fault
-            .borrow()
-            .clone()
-            .unwrap_or_else(|| "Docker event stream ended".into())
+    /// Cancelling this wait leaves event capture running and preserves pending failures.
+    pub fn failure(&self) -> impl std::future::Future<Output = String> + use<> {
+        let mut fault = self.fault.clone();
+        async move {
+            let _ = fault.changed().await;
+            let error = fault.borrow().clone();
+            error.unwrap_or_else(|| "Docker event stream ended".into())
+        }
     }
     pub async fn finish(mut self) -> Result<()> {
         let _ = self.finish.send(true);
@@ -128,3 +130,6 @@ async fn record_events(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

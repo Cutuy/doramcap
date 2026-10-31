@@ -227,11 +227,11 @@ impl ComposeRunner {
             plan,
             resources,
             diagnostics: diagnostics.clone(),
-            consumers_ready: std::cell::Cell::new(false),
+            consumers_ready: false,
             dora_clean: true,
             dora_finalized: false,
             events: Some(events),
-            launches: Vec::new(),
+            last_launch: None,
             shutdown: None,
             finalized: None,
             cleanup: None,
@@ -312,11 +312,11 @@ struct ComposePhases {
     plan: ResolvedComposeProject,
     resources: super::experiment::SharedExperiment,
     diagnostics: Diagnostics,
-    consumers_ready: std::cell::Cell<bool>,
+    consumers_ready: bool,
     dora_clean: bool,
     dora_finalized: bool,
     events: Option<EventCapture>,
-    launches: Vec<orchestrator::Output<ComposeProjectState>>,
+    last_launch: Option<orchestrator::Output<ComposeProjectState>>,
     shutdown: Option<orchestrator::Output<Shutdown>>,
     finalized: Option<orchestrator::Output<finalization::FinalizedRun>>,
     cleanup: Option<orchestrator::Output<Cleanup>>,
@@ -325,11 +325,84 @@ struct ComposePhases {
     event_result: Result<()>,
 }
 impl ComposePhases {
+    async fn start_services(
+        &mut self,
+        services: Vec<String>,
+        graph: &orchestrator::Output<()>,
+    ) -> orchestrator::Result<()> {
+        let mut input = Input::new(StartInput {
+            plan: self.plan.clone(),
+            services,
+            readiness_seconds: self.spec.readiness_seconds,
+        })
+        .after(graph);
+        if let Some(overlays) = &self.overlays {
+            input = input.after(overlays);
+        }
+        if let Some(previous) = &self.last_launch {
+            input = input.after(previous);
+        }
+        self.last_launch = Some(self.executor.run::<StartCompose>(input).await?);
+        Ok(())
+    }
+
+    async fn start_first_party(
+        &mut self,
+        graph: &orchestrator::Output<()>,
+    ) -> orchestrator::Result<()> {
+        let system = self.prepared.value().system_services.clone();
+        if system.is_empty() {
+            return Ok(());
+        }
+        self.start_services(system.clone(), graph).await?;
+        self.executor
+            .run::<workload_lifecycle::recording::WaitForRecordings>(
+                workload_lifecycle::recording::ReadinessInput {
+                    recordings: self.spec.recordings.clone(),
+                    timeout_seconds: self.spec.readiness_seconds,
+                },
+            )
+            .await?;
+        if !self.prepared.value().user_services.is_empty() {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let mut state = self
+                .executor
+                .run::<InspectCompose>(self.plan.clone())
+                .await?
+                .into_value();
+            state.plan.services.retain(|name, _| system.contains(name));
+            if !DockerAdapter::ready(&state)
+                .map_err(|e| orchestrator::Error::message(e.to_string()))?
+            {
+                return Err(orchestrator::Error::message("system apps lost readiness"));
+            }
+        }
+        Ok(())
+    }
+
+    async fn launch_apps(&mut self) -> orchestrator::Result<()> {
+        let daemon = self
+            .executor
+            .run::<super::experiment::StartDoraRuntime>(Input::new(()).after(&self.prepared))
+            .await?;
+        let graph = self
+            .executor
+            .run::<super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
+            .await?;
+        self.start_first_party(&graph).await?;
+        let adopted = self.prepared.value().user_services.clone();
+        if !adopted.is_empty() {
+            self.start_services(adopted, &graph).await?;
+        }
+        self.consumers_ready = true;
+        Ok(())
+    }
+
     async fn quiesce_services(&self, services: &[String]) -> bool {
         if services.is_empty() {
             return true;
         }
-        match self
+        let Ok(stopped) = self
             .executor
             .run::<QuiesceCompose>(StopInput {
                 plan: self.plan.clone(),
@@ -338,92 +411,21 @@ impl ComposePhases {
                 stop_seconds: self.spec.stop_seconds,
             })
             .await
-        {
-            Ok(stopped) => {
-                let clean = stopped.value().stopped && stopped.value().diagnostics.is_empty();
-                self.diagnostics
-                    .borrow_mut()
-                    .extend(stopped.value().diagnostics.clone());
-                clean
-            }
-            Err(_) => false,
-        }
+        else {
+            return false;
+        };
+        let stopped = stopped.into_value();
+        let clean = stopped.stopped && stopped.diagnostics.is_empty();
+        self.diagnostics.borrow_mut().extend(stopped.diagnostics);
+        clean
     }
 }
 impl workload_lifecycle::recorded_run::Phases for ComposePhases {
     async fn launch(&mut self) -> std::result::Result<(), String> {
-        let events = self.events.as_mut().unwrap();
-        let executor = &self.executor;
-        let prepared = &self.prepared;
-        let spec = &self.spec;
-        let plan = &self.plan;
-        let overlays = &self.overlays;
-        let launches = &mut self.launches;
-        let consumers_ready = &self.consumers_ready;
-        let launch = async {
-            let daemon = executor
-                .run::<super::experiment::StartDoraRuntime>(Input::new(()).after(prepared))
-                .await?;
-            let graph = executor
-                .run::<super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
-                .await?;
-            for (stage, services) in [
-                &prepared.value().system_services,
-                &prepared.value().user_services,
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                if services.is_empty() {
-                    continue;
-                }
-                if stage == 1 {
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    let mut state = executor
-                        .run::<InspectCompose>(plan.clone())
-                        .await?
-                        .into_value();
-                    state
-                        .plan
-                        .services
-                        .retain(|name, _| prepared.value().system_services.contains(name));
-                    if !DockerAdapter::ready(&state)
-                        .map_err(|e| orchestrator::Error::message(e.to_string()))?
-                    {
-                        return Err(orchestrator::Error::message("system apps lost readiness"));
-                    }
-                }
-                let mut input = Input::new(StartInput {
-                    plan: plan.clone(),
-                    services: services.clone(),
-                    readiness_seconds: spec.readiness_seconds,
-                })
-                .after(prepared);
-                input = input.after(&graph);
-                if let Some(overlays) = overlays {
-                    input = input.after(overlays);
-                }
-                if let Some(previous) = launches.last() {
-                    input = input.after(previous);
-                }
-                launches.push(executor.run::<StartCompose>(input).await?);
-                if stage == 0 {
-                    executor
-                        .run::<workload_lifecycle::recording::WaitForRecordings>(
-                            workload_lifecycle::recording::ReadinessInput {
-                                recordings: spec.recordings.clone(),
-                                timeout_seconds: spec.readiness_seconds,
-                            },
-                        )
-                        .await?;
-                }
-            }
-            consumers_ready.set(true);
-            Ok::<(), orchestrator::Error>(())
-        };
+        let failure = self.events.as_ref().unwrap().failure();
         tokio::select! {
-            result = launch => result.map_err(|e| e.to_string()),
-            error = events.failure() => Err(error),
+            result = self.launch_apps() => result.map_err(|e| e.to_string()),
+            error = failure => Err(error),
         }
     }
     fn ready(&mut self) -> std::result::Result<(), String> {
@@ -460,11 +462,10 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
             let _ = quiescing.send(());
         }
         let resources = &self.resources;
-        let consumers_ready = &self.consumers_ready;
         let executor = &self.executor;
         let diagnostics = &self.diagnostics;
         let dora_clean;
-        let mut dora_finalized = consumers_ready.get();
+        let mut dora_finalized = self.consumers_ready;
         dora_finalized &= self
             .quiesce_services(&self.prepared.value().user_services)
             .await;
@@ -513,7 +514,7 @@ impl workload_lifecycle::recorded_run::Phases for ComposePhases {
             stop_seconds: self.spec.stop_seconds,
         })
         .after(&self.prepared);
-        for launched in &self.launches {
+        if let Some(launched) = &self.last_launch {
             input = input.after(launched);
         }
         let shutdown = self
