@@ -130,11 +130,8 @@ async fn run(options: Options) -> Result<()> {
     maintenance.abort();
     let outcomes = service.shutdown().await;
     for (app, status) in outcomes {
-        match status {
-            Status::Stopped { error: Some(error) } => {
-                eprintln!("{app}: finalization failed: {error}")
-            }
-            _ => {}
+        if let Status::Stopped { error: Some(error) } = status {
+            eprintln!("{app}: finalization failed: {error}");
         }
     }
     result?;
