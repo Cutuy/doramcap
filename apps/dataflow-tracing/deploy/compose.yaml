@@ -1,6 +1,6 @@
 services:
   monitor:
-    image: doramcap/provenance-demo:local
+    image: doramcap/dataflow-tracing:local
     user: "${PROVENANCE_UID:?}:${PROVENANCE_GID:?}"
     init: true
     stop_signal: SIGINT

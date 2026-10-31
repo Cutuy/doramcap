@@ -1,5 +1,5 @@
 import { doramcap } from './generated/demo.js';
-export const Envelope = doramcap.provenance_demo.v1.Envelope;
+export const Envelope = doramcap.dataflow_tracing.v1.Envelope;
 type Ref = doramcap.provenance.v1.IGenerationRef;
 type Integer = number | { toString(): string } | null | undefined;
 export const integer = (n: Integer) => n?.toString() ?? '0';

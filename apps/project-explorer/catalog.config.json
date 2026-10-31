@@ -1,7 +1,7 @@
 {
   "categories": {
     "apps/activity-demo": "Observability",
-    "apps/provenance-demo": "Observability",
+    "apps/dataflow-tracing": "Observability",
     "apps/cpu-viewer": "Resources",
     "apps/system-monitor": "Resources",
     "apps/storage-demo": "Storage",

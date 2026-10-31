@@ -1,5 +1,5 @@
 syntax = "proto3";
-package doramcap.provenance_demo.v1;
+package doramcap.dataflow_tracing.v1;
 import "provenance.proto";
 import "activity.proto";
 message Payload {

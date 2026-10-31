@@ -18,7 +18,7 @@ Ordered by expected implementation and qualification effort.
 | M3 | System Monitor, native BPF | Moderate | Headless status, Protobuf retention, optional embedded recording | M0 artifacts/headless view |
 | M4 | Fault Demo | Moderate | Package four-node flow, controls, final state export | M0 Dora/artifacts |
 | M5 | Fault Watchdog | Moderate after M4 | Independent instance, sink configuration and drain | M4; M0 headless view |
-| M6 | Provenance Lab | Moderate–hard | Dynamic nodes, launcher lifetime, retained summary/logs | M0 Dora/artifacts |
+| M6 | Dataflow Tracing | Moderate–hard | Dynamic nodes, launcher lifetime, retained summary/logs | M0 Dora/artifacts |
 | M7 | Orchestrator Lab | Hard | Docker worker boundary, nested resources and crash recovery | M0 artifacts; native checks in M8 |
 | M8 | Native CPU / monitor / storage modes | Hard | BPF, host namespaces, io_uring and resource conflicts | Native app deployments |
 | M9 | CUDA shared-memory demo | Hardest | GPU/IPC, process-tree shutdown, per-experiment artifacts | M0 Dora/artifacts; qualified GPU host |
@@ -209,9 +209,9 @@ and writes rotated names such as `faults.mcap.000001`.
   watchdog results and leave no owned reporter/subscriber/collector processes.
 - [ ] Resolve the intermittent reporter shutdown stall under flood, shared with M4.
 
-## M6 — Provenance Lab (complete)
+## M6 — Dataflow Tracing (complete)
 
-The [launcher](../../../provenance-demo/run.py) starts dynamic Dora nodes and a
+The [launcher](../../../dataflow-tracing/run.py) starts dynamic Dora nodes and a
 separate monitor. Its standalone pipeline has a finite default duration.
 
 ### Work items

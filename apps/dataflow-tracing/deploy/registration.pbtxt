@@ -1,4 +1,4 @@
-id: "provenance-demo"
+id: "dataflow-tracing"
 compose_file: "compose.yaml"
 service: "monitor"
 network: "default"

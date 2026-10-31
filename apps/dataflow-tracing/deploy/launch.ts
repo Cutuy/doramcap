@@ -3,7 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { openSync, closeSync } from 'node:fs';
 import { copyFile, writeFile } from 'node:fs/promises';
 
-const root = '/opt/provenance', results = '/results', dora = '/usr/local/bin/dora', binary = '/usr/local/bin/provenance-demo', prefix = 'provenance-hosted';
+const root = '/opt/dataflow-tracing', results = '/results', dora = '/usr/local/bin/dora', binary = '/usr/local/bin/dataflow-tracing', prefix = 'dataflow-tracing-hosted';
 /** Environment for children owned by the embedded Dora flow. */
 function embeddedFlowEnvironment(): Record<string, string | undefined> {
   const environment: Record<string, string | undefined> = { ...process.env, PROVENANCE_PREFIX: prefix };

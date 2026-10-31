@@ -54,7 +54,7 @@ steps leave the evaluation count unchanged. [Selector contracts](contracts.md#pr
 
 ## M4 — Dora integration and monitoring
 
-The [demo plan](../../../apps/provenance-demo/docs/102026-provenance-demo.md)
+The [demo plan](../../../apps/dataflow-tracing/docs/102026-dataflow-tracing.md)
 records the approved architecture and implementation evidence.
 
 - [x] Carry output references with application Dora messages; publish protobuf step patches to a collector node.

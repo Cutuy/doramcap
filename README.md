@@ -20,7 +20,7 @@ Browse apps, crates, documentation and dependencies with the
 | [telemetry-mcap](libs/telemetry/mcap/) | Reusable MCAP recording sink |
 | [storage-persistence](libs/storage-persistence/) | Bounded io_uring MCAP writer, aligned buffer pool, combining and rotation |
 | [system-monitor](apps/system-monitor/) | Standalone collector with an optional DORA publisher |
-| [provenance-demo](apps/provenance-demo/) | Four-node Dora pipeline, linked provenance/activity timelines, and measured latency |
+| [dataflow-tracing](apps/dataflow-tracing/) | Four-node Dora pipeline, linked dataflow/activity timelines, and measured latency |
 | [activity-demo](apps/activity-demo/) | Thread pub/sub simulator and live TypeScript trace viewer |
 | [cpu-viewer](apps/cpu-viewer/) | Demo web server and React dashboard |
 | [storage-demo](apps/storage-demo/) | Live io_uring, write-combining and MCAP tail web inspector |

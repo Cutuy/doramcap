@@ -12,7 +12,7 @@ continue to come from the repository.
 |---|---|
 | `version` | Schema version, currently `1`; unsupported versions fail validation |
 | `id` | Stable lowercase slug, unique within its collection; used in deep links |
-| `components` | Exact generated IDs such as `apps/provenance-demo` or `crates/activity-tracing` |
+| `components` | Exact generated IDs such as `apps/dataflow-tracing` or `crates/activity-tracing` |
 | `evidence` | Existing repository Markdown paths supporting the mapping |
 | `capabilities` | Use-case references to declared capability IDs |
 | `integrations` | References to declared third-party integration IDs |
