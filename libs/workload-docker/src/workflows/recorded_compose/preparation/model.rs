@@ -119,7 +119,7 @@ pub(super) fn validate_graph(model: &Value, graph: &Descriptor) -> Result<()> {
     Ok(())
 }
 
-/// Reject first-party startup dependencies on adopted services.
+/// Reject system startup dependencies on adopted services.
 pub(super) fn validate_dependencies(
     model: &Value,
     system: &[String],
@@ -131,7 +131,7 @@ pub(super) fn validate_dependencies(
             .is_some_and(|deps| deps.keys().any(|dep| users.contains(dep)))
         {
             return Err(invalid(
-                "first-party apps cannot depend on adopted apps during startup",
+                "system apps cannot depend on adopted apps during startup",
             ));
         }
     }
@@ -173,7 +173,7 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
 pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     validate_name(&spec.id)?;
     super::super::validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
-    if (spec.projects.is_empty() && spec.first_party.is_empty())
+    if (spec.projects.is_empty() && spec.system_apps.is_empty())
         || std::iter::once(&spec.artifacts)
             .chain(&spec.recovery_anchor_dir)
             .any(|path| !path.is_absolute())
@@ -183,7 +183,7 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
         ));
     }
     let mut keys = HashSet::new();
-    for p in spec.first_party.iter().chain(&spec.projects) {
+    for p in spec.system_apps.iter().chain(&spec.projects) {
         validate_name(&p.key)?;
         if !p.directory.is_absolute() || !keys.insert(&p.key) {
             return Err(invalid("app directories must be absolute and keys unique"));

@@ -78,7 +78,7 @@ fn request() -> ComposeRun {
         artifacts: "/runs/run".into(),
         filesystem: None,
         recovery_anchor_dir: None,
-        first_party: vec![app("system")],
+        system_apps: vec![app("system")],
         projects: vec![app("adopted")],
         dora: runtime(),
         recordings: vec![],
@@ -318,7 +318,7 @@ fn graph_bindings_require_matching_services_and_host_networking() {
 }
 
 #[test]
-fn startup_dependencies_follow_first_party_then_adopted_order() {
+fn startup_dependencies_follow_system_apps_then_adopted_order() {
     // Arrange
     let system = vec!["monitor".into(), "recorder".into()];
     let users = vec!["adopted".into()];
@@ -327,7 +327,7 @@ fn startup_dependencies_follow_first_party_then_adopted_order() {
         "adopted":{"depends_on":{"recorder":{}}}
     }});
 
-    // Act / Assert: same-stage dependencies and adopted-to-first-party dependencies are valid.
+    // Act / Assert: same-stage dependencies and adopted-to-system dependencies are valid.
     assert!(validate_dependencies(&model, &system, &users).is_ok());
     model["services"]["monitor"]["depends_on"] = json!({"adopted":{}});
     assert!(
@@ -346,10 +346,10 @@ fn request_validation_rejects_invalid_paths_keys_and_budgets() {
         |s| s.artifacts = "relative".into(),
         |s| s.recovery_anchor_dir = Some("relative".into()),
         |s| {
-            s.first_party.clear();
+            s.system_apps.clear();
             s.projects.clear();
         },
-        |s| s.projects[0].key = s.first_party[0].key.clone(),
+        |s| s.projects[0].key = s.system_apps[0].key.clone(),
         |s| s.projects[0].directory = "relative".into(),
         |s| s.readiness_seconds = 0,
         |s| s.stop_seconds = 301,

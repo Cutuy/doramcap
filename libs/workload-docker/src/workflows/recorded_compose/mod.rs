@@ -346,7 +346,7 @@ impl ComposePhases {
         Ok(())
     }
 
-    async fn start_first_party(
+    async fn start_system_apps(
         &mut self,
         graph: &orchestrator::Output<()>,
     ) -> orchestrator::Result<()> {
@@ -389,7 +389,7 @@ impl ComposePhases {
             .executor
             .run::<super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
             .await?;
-        self.start_first_party(&graph).await?;
+        self.start_system_apps(&graph).await?;
         let adopted = self.prepared.value().user_services.clone();
         if !adopted.is_empty() {
             self.start_services(adopted, &graph).await?;
@@ -621,10 +621,10 @@ pub struct ComposeRun {
     pub recovery_anchor_dir: Option<PathBuf>,
     /// Adopted Compose app inputs whose services join the experiment project.
     pub projects: Vec<ComposeProject>,
-    /// Ordinary first-party app inputs, started and stabilized before adopted apps.
+    /// Ordinary system app inputs, started and stabilized before adopted apps.
     /// Their services stop after the adopted apps.
     #[serde(default)]
-    pub first_party: Vec<ComposeProject>,
+    pub system_apps: Vec<ComposeProject>,
     /// Communication setup; application containers remain ordinary Compose inputs.
     #[serde(default)]
     pub dora: DoraRuntime,

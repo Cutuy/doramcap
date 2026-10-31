@@ -66,7 +66,7 @@ impl PrepareRun {
         let mut user_services = Vec::new();
         let mut diagnostics = Vec::new();
         for (apps, services) in [
-            (&spec.first_party, &mut system_services),
+            (&spec.system_apps, &mut system_services),
             (&spec.projects, &mut user_services),
         ] {
             for app in apps {
@@ -108,7 +108,7 @@ impl PrepareRun {
         freeze_files(&mut model, &artifacts).await?;
         let manifest = artifacts.join("experiment.input.json");
         private_write(&manifest, &serde_json::to_vec(&model)?).await?;
-        let apps = spec.first_party.iter().chain(&spec.projects);
+        let apps = spec.system_apps.iter().chain(&spec.projects);
         let mut plan = self
             .adapter
             .resolve(ResolveInput {

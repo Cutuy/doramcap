@@ -246,7 +246,7 @@ async fn recorded_demo(
                     completed_services: vec![],
                     remove_volumes: true,
                 }],
-                first_party: vec![collector],
+                system_apps: vec![collector],
                 dora: Default::default(),
                 recordings: vec![Recording {
                     stream: artifacts.join("cpu.pb"),

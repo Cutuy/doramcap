@@ -75,7 +75,7 @@ pub async fn run(
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
             filesystem: None, dora, recordings:vec![], recovery_anchor_dir: None,
-            projects: vec![], first_party: vec![project],
+            projects: vec![], system_apps: vec![project],
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
         let (started, receiver) = oneshot::channel();

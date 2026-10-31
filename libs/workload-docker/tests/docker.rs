@@ -73,7 +73,7 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
             },
             project(root, "beta"),
         ],
-        first_party: vec![monitor(root, image, &root.join(&id))],
+        system_apps: vec![monitor(root, image, &root.join(&id))],
         dora: Default::default(),
         recordings: recordings(&root.join(&id)),
         readiness_seconds: 10,
@@ -135,7 +135,7 @@ async fn native_recorded_workflow() {
         artifacts: artifacts.clone(),
         recovery_anchor_dir: None,
         projects: vec![project(&root, "demo")],
-        first_party: vec![monitor(&root, &image, &artifacts)],
+        system_apps: vec![monitor(&root, &image, &artifacts)],
         dora: Default::default(),
         recordings: recordings(&artifacts),
         readiness_seconds: 15,
@@ -268,7 +268,7 @@ async fn multi_project_lifecycle() {
                 &root.join("auxiliary.json"),
                 serde_json::json!({"services":{"helper":service(&image)}}),
             );
-            request.first_party.push(project(&root, "auxiliary"));
+            request.system_apps.push(project(&root, "auxiliary"));
         }
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
@@ -859,7 +859,7 @@ async fn direct_session_lifecycle_and_recovery() {
             recordings: vec![],
             recovery_anchor_dir: None,
             projects: vec![project(&root, "session")],
-            first_party: vec![],
+            system_apps: vec![],
             readiness_seconds: 10,
             stop_seconds: 3,
         };
@@ -1016,7 +1016,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             recovery_anchor_dir: None,
             dora: Default::default(),
             recordings: vec![],
-            first_party: vec![project(&root, "helper")],
+            system_apps: vec![project(&root, "helper")],
             projects: vec![project(&root, "alpha"), project(&root, "beta")],
             readiness_seconds: 5,
             stop_seconds: 3,
@@ -1148,7 +1148,7 @@ async fn nested_recovery_reuses_evidence_after_partial_removal() {
             filesystem: None,
             recovery_anchor_dir: Some(anchors.clone()),
             projects: vec![project(&root, "alpha"), project(&root, "beta")],
-            first_party: vec![],
+            system_apps: vec![],
             dora: Default::default(),
             recordings: vec![],
             readiness_seconds: 10,
