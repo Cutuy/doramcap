@@ -5,6 +5,7 @@
 Created: 2026-10-26. Implementation updated: 2026-10-27.
 Local Linux directory-bind overlays are implemented; qualification is recorded below.
 Scope: preventing unintended state carryover between serial experiments.
+Current teardown/reset policy is in the [shared-Dora plan](102926-shared-dora-experiment.md).
 
 [Direct upper write-back](102726-direct-overlay-writeback.md) uses rsync after
 strict unmount. Advanced metadata is unqualified and ambiguous hardlinks fail.

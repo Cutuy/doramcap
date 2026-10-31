@@ -87,7 +87,7 @@ load it; a supported registration does not require rebuilding the manager.
 | Paths | Nested collections require Linux `openat2`; symlinks and traversal are rejected. |
 | Finite jobs | Supervision expects a service to remain ready; one-shot completion needs additional support. |
 | Native resources | Declare device, capability and namespace needs; keep hardware profiles opt-in. One host experiment is admitted at a time. |
-| Nested Docker | Declare trusted projects and preserve ownership for recovery; see [M7](102727-remaining-apps.md#m7--orchestrator-lab-planned). |
+| Console | Host web/worker processes; run inner experiments through the shared workflow. |
 
 ## Checklist before enabling an app
 
@@ -104,8 +104,8 @@ load it; a supported registration does not require rebuilding the manager.
   during startup and active work; verify bounded drain and readable finalized output.
 - [ ] Run two sequential generations; retain the first result and verify removal
   of owned containers, networks, children and device resources.
-- [ ] Exercise crash/recovery and compatible/conflicting app combinations. Preserve
-  failures and report incomplete cleanup before allowing replacement.
+- [ ] Exercise pre-run reset and compatible/conflicting app combinations. Preserve
+  outputs and retained volumes; cleanup failures block preparation.
 - [ ] Run required Rust and ARM64 CI checks; run Dora, Docker and hardware-specific
   checks separately. Use lightweight gallery build/schema/visual verification.
 - [ ] Record commands, host capabilities, output paths and results in the app's

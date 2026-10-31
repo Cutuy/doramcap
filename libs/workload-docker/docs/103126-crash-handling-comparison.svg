@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="930" viewBox="0 0 1400 930" role="img" aria-labelledby="title desc">
 <title id="title">Project cleanup with pre-run discard</title>
-<desc id="desc">Current code has normal teardown and a separate explicit crash recovery path. The planned workflow discards previous uppers before each new run. Normal teardown keeps copy-back compatibility. Both paths reuse cleanup primitives; pre-run cleanup never replays interrupted host writes. One machine-wide admission guard excludes overlapping experiments, and each repository has a stable Compose project.</desc>
+<desc id="desc">The previous implementation had normal teardown and a separate explicit crash recovery path. The implemented workflow discards previous uppers before each new run. Normal teardown keeps copy-back compatibility. Both paths reuse cleanup primitives; pre-run cleanup never replays interrupted host writes. One machine-wide admission guard excludes overlapping experiments, and each repository has a stable Compose project.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#60748b"/></marker>
 <style>text{font-family:system-ui,sans-serif;fill:#18324a}.title{font-size:31px;font-weight:750}.heading{font-size:24px;font-weight:700}.body{font-size:20px;font-weight:650}.small{font-size:17px;fill:#52677d}.line{fill:none;stroke:#60748b;stroke-width:2;marker-end:url(#arrow)}</style></defs>
 <rect width="1400" height="930" fill="white"/>
@@ -8,8 +8,8 @@
 
 <rect x="40" y="82" width="630" height="672" rx="12" fill="#f7f9fc" stroke="#bacbdf" stroke-width="1.5"/>
 <rect x="710" y="82" width="650" height="672" rx="12" fill="#f7f9fc" stroke="#bacbdf" stroke-width="1.5"/>
-<text x="64" y="122" class="heading" text-anchor="start">Current</text>
-<text x="734" y="122" class="heading" text-anchor="start">Planned</text>
+<text x="64" y="122" class="heading" text-anchor="start">Before</text>
+<text x="734" y="122" class="heading" text-anchor="start">Now</text>
 <rect x="64" y="150" width="582" height="76" rx="12" fill="#fff" stroke="#bacbdf" stroke-width="1.5"/>
 <text x="82" y="180" class="body" text-anchor="start">Normal run finishes</text>
 <text x="82" y="207" class="small" text-anchor="start">Stop → report → finalize filesystems → remove</text>

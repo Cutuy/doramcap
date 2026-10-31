@@ -2,7 +2,7 @@
 
 # Shared Dora daemon per experiment
 
-Created: 2026-10-29. Status: M1–M4 complete; M5 retests pending; M6 planned. ARM64 deferred.
+Created: 2026-10-29. Status: M1–M6 complete. ARM64 deferred.
 Acceptance requires **strictly fewer production-code LOC than main**.
 
 ## Contract
@@ -51,10 +51,8 @@ routes; the SHM test uses `drop_oldest`. Recording routes retain backpressure.
 
 ## M2 — Ordinary apps and one resolved experiment: complete
 
-Evidence (2026-10-30): native-input, concurrent-directory startup/recovery,
-private input snapshots, image pins and conflict rejection passed. Mixed volume
-removal and evidence preservation passed in 5.36 s. Gallery tests use System
-Monitor through ordinary app inputs.
+Evidence: native Compose inputs, immutable files, image pins, conflict rejection
+and mixed volume policies pass. System Monitor uses ordinary app inputs.
 
 **Work items**
 
@@ -73,14 +71,11 @@ Monitor through ordinary app inputs.
 - [x] Inputs are immutable and images pinned. System Monitor follows the same
   preparation, launch, readiness and shutdown operations as another system app.
 
-## M3 — Explicit startup, drain and recovery: complete
+## M3 — Explicit startup, drain and cleanup: complete
 
-Evidence (2026-10-30): the public workflow suite passed in 101.35 s: slow startup,
-20-message drain, cancellation, failed app start, daemon death, forced writer stop
-and repeated crash recovery. Three additional cancellation runs passed after
-joining pending Compose starts before cleanup. Partial-removal recovery reused
-saved evidence; its stopped daemon reserved the directory until cleanup completed.
-Forced stops retain recording files with incomplete status.
+Evidence (2026-10-31): seven public-workflow tests pass in 153.51 s: startup,
+20-message drain, cancellation, failed launch, daemon death, forced stop and launcher
+kills during startup/execution/removal. M6 replaces the separate recovery API.
 
 **Work items**
 
@@ -88,8 +83,8 @@ Forced stops retain recording files with incomplete status.
   system services, then launch user services. Await attempted starts on failure.
 - [x] Supply daemon settings, default node IDs and IPC/SHM to every adopted app.
   Preserve declared IDs, commands, health checks and dependencies; Dora use is optional.
-- [x] Apply the contract's shutdown order and reuse saved experiment identity for
-  crash recovery; keep the IPC owner until its users have stopped.
+- [x] Apply the contract's shutdown order; keep the IPC owner until its users stop.
+  M6 uses saved identity for pre-run reset.
 
 **Validation**
 
@@ -98,47 +93,43 @@ Forced stops retain recording files with incomplete status.
 - [x] Plain Compose apps and apps that ignore Dora run and stop normally.
 - [x] Final accepted messages survive drain. Forced workload stop and daemon death
   report incomplete recording and await cleanup.
-- [x] Repeated crash/partial-removal recovery preserves ownership and filesystem
-  evidence; admission releases only after verified cleanup.
+- [x] Interrupted runs preserve ownership and outputs; M6 resets their disposable
+  resources before another experiment starts.
 
 ## M4 — Deployments and final acceptance: complete
 
-Evidence (2026-10-30): all six gallery registrations passed in 58.11 s.
-The local harness passed public startup/drain/failure tests, concurrent-directory
-runs, stopped-owner exclusion, crash/partial-removal recovery, immutable inputs,
-conflict rejection and mixed volume policies. Full local CI passed after rebasing
-onto main `4f1bb84`: boundaries,
-formatting, default/all-feature Clippy and workspace tests (86 executables each),
-doctests, storage without defaults, examples/binaries, snapshot tests and Rustdoc.
-ARM64 is deferred by request.
-For the directory-discovery test edit, registry tests and Clippy passed;
-full CI was deferred.
+Evidence (2026-10-31): full local CI passes on source `c1d6ce9`: boundaries,
+formatting, default/all-feature Clippy and workspace tests (87 executables each),
+doctests, storage without defaults (13 executables), examples/binaries, snapshot
+tests and Rustdoc. Native reset, drain, shared IPC/SHM, volume and Console tests pass.
+All six gallery deployments pass in 56.66 s with rebuilt images. ARM64 is deferred by request.
 
-Full feature deltas versus pre-stack main `7966a1e`; inherited changes are excluded:
+Open-stack deltas versus remote main `d105d65`; inherited changes are excluded:
 
 | Category | LOC delta |
 | --- | ---: |
-| Production Rust | −84 |
-| Protobuf schema code | +71 |
-| Production total | **−13** |
-| Tests/tooling | Rust +2,831; Python +24 |
-| Deployment/configuration, excluding schemas | −77 |
-| Documentation | −671 |
+| Production Rust | −858 |
+| Production TypeScript | −48 |
+| Protobuf schema code | −38 |
+| Production total | **−944** |
+| Tests/tooling | Rust +1,601; Python +26 |
+| Deployment/configuration, excluding schemas | −190 |
+| Documentation | −684 |
 
-Production counts include Rust and protobuf schemas, excluding comments/blanks,
-tests and generated/vendor code. Other categories use nonblank lines.
+Production excludes tests/examples, build tooling, generated/vendor code, comments and blanks.
+Other categories use nonblank lines. The full feature versus pre-stack main
+`7966a1e` also reduces production code: **−638 LOC**, including schemas.
 
 **Work items**
 
 - [x] Integrate CPU Viewer, MCAP Recorder, Fault Demo and Watchdog variants as
   ordinary app inputs. Preserve embedded recording, controls, viewers and results.
 - [x] Remove stale deployment/runtime paths and align code docs and diagrams.
-- [x] Replace admission/crash markers with Docker container ownership scoped to
-  the canonical output directory. Remove the disabled-Dora branch.
-  Create the owner before mounts/startup; retain it through stopped-process checks,
-  saved evidence and resource cleanup.
-- [x] Replace the stale local test launcher with the shared-Dora suite; retain
-  failed-run resources and evidence for recovery.
+- [x] Reserve the actual daemon before mounts/startup. Hold exclusive controller
+  ownership through cleanup and execution; use the stable repository project.
+  Remove the disabled-Dora branch.
+- [x] Run shared-Dora/reset scenarios through the local test launcher;
+  preserve failed-run outputs and volumes.
 
 **Validation**
 
@@ -156,78 +147,68 @@ tests and generated/vendor code. Other categories use nonblank lines.
 
 ## M5 — Generated Compose contracts
 
-Evidence (2026-10-30): generated contracts pass protobuf text/binary and local-step
-serialization tests, including uint64 counts and present-zero status. Missing
-project/plan fields fail before I/O. Full local CI passes (87 executables per
-workspace feature set). Startup/drain, concurrent-directory and actual Zenoh SHM
-tests pass. Direct/partial-removal recovery retests hit native Compose launch
-(10 s) and stop (22 s) deadlines; artifacts are retained. Observer-ID fixes remain
-outside this change.
-Volume cleanup (2026-10-30): full local CI and two Docker tests pass. Deletion
-defaults off; incomplete volume scans retain data for every run. Serialization
-tests cover protobuf text/binary and local-step defaults. ARM64 remains deferred.
-Review regressions (2026-10-30): three ordinary tests fail before the #30 fix
-and pass afterward: produced identity recovery, independent startup progress and
-pinned-image command rejection. Cancellation and shared-waiter coverage also passes.
-Compose merge (2026-10-30): omitted top-level fields warn and are saved per app.
-Merge regression coverage and full local CI pass; ARM64 remains deferred.
-Explicit launch (2026-10-30): `system_apps` readiness/stability precedes adopted apps.
-Cancellation unit test, Docker startup/cancellation/barrier tests and full local CI pass.
-Preparation rules (2026-10-30): twelve ordinary tests cover app policies, shared IPC,
-graph/stage validation and frozen files. Full local CI and native input/startup tests pass.
-Runtime setup (2026-10-31): default workers and no exact CLI-version gate. Build pins remain.
-Full local CI and startup/drain pass; SHM passed before gate removal; ARM64 deferred.
+Evidence (2026-10-31): protobuf text/binary/local-step serialization and missing
+input checks pass. Volume deletion defaults off; incomplete scans retain data.
+Preparation, cancellation and ordering tests pass. Default workers and flexible
+runtime versions pass startup/drain; build-time image pins remain. M6's direct and
+partial-removal reset tests replace the old recovery retests.
 
 **Work items**
 
 - [x] Define the Compose model types in protobuf and use generated Rust directly.
-- [x] Preserve launch, readiness, recovery and cleanup behavior; remove handwritten models.
+- [x] Preserve launch, readiness and cleanup behavior; remove handwritten models.
 - [x] Default volume deletion off; require complete saved volume-change reports before workflow deletion.
 
 **Validation**
 
 - [x] Test protobuf/step serialization and missing/invalid input rejection.
-- [x] Test deletion permission defaults, per-volume policy and incomplete-scan retention without a recovery anchor.
-- [x] Run startup/drain, concurrent-directory and shared IPC tests and full local CI.
-- [ ] Recheck direct/partial-removal recovery after native Compose deadline failures.
-  ARM64 remains deferred.
+- [x] Test deletion permission defaults, per-volume policy and incomplete-scan retention.
+- [x] Run startup/drain, experiment exclusion, shared IPC tests and full local CI.
+- [x] Recheck direct/partial-removal cleanup through M6 reset tests. ARM64 deferred.
 
-## M6 — Idempotent pre-run cleanup: planned
+## M6 — Idempotent pre-run cleanup: complete
 
 ![Pre-run discard and normal teardown](103126-crash-handling-comparison.svg)
 
-Design (2026-10-31): pre-run cleanup always discards previous uppers. It never
-replays write-back or reconstructs old reports. Users salvage old data before starting.
+Pre-run cleanup discards previous uppers. Users salvage old data before starting.
+
+Evidence (2026-10-31): strict reset retries, process/repository exclusion, isolated
+retained volumes and launcher kills pass. Interrupted real rsync leaves its first
+host directory changed and its second unchanged; repeated discard preserves both.
+Final local CI passes (`c1d6ce9`); all 14 OverlayFS cases, volume policies, Zenoh
+SHM and two sequential Console runs pass. All six gallery deployments pass in
+56.66 s using current images and the required monitor features.
+The gallery retains failure diagnostics and admits the next attempt through reset.
 
 **Work items**
 
-- [ ] Use an explicit repository root for a stable Compose project; keep per-run outputs.
-- [ ] Hold exclusive controller ownership across cleanup, execution and teardown;
+- [x] Use an explicit repository root for a stable Compose project; keep per-run outputs.
+- [x] Hold exclusive controller ownership across cleanup, execution and teardown;
   reserve the actual daemon under one machine-wide Docker container name.
-- [ ] Add `ResetPreviousProject` before preparation: stop/verify owned writers,
+- [x] Add `ResetPreviousProject` before preparation: stop/verify owned writers,
   unmount owned overlays, delete old upper/work directories, remove disposable Docker
   resources and release the old reservation. Already absent resources are done.
-- [ ] Require old containers, disposable networks, overlay mounts and upper/work
+- [x] Require old containers, disposable networks, overlay mounts and upper/work
   directories to be absent before success. Keep permitted outputs/volumes. Any
   unexpected action or inspection error returns failure and blocks preparation.
-- [ ] Reuse normal cleanup primitives. Keep copy-back for compatibility; pre-run
+- [x] Reuse normal cleanup primitives. Keep copy-back for compatibility; pre-run
   cleanup selects discard regardless of the previous policy. Remove full-tree `Retain`.
   Future per-mount preservation selects copy-back; no new diff-export format.
-- [ ] Reset leaves original host files, output directories and retained volumes alone.
+- [x] Reset leaves original host files, output directories and retained volumes alone.
   Interrupted copy-back may have changed host files; reset neither finishes nor undoes it.
-- [ ] Use exact saved project/ownership labels and owned overlay paths. Delete the
+- [x] Use exact saved project/ownership labels and owned overlay paths. Delete the
   separate recovery engine/command, anchors, report reconstruction and naming inference.
-- [ ] Keep Console hosting outside the experiment slot; inner runs and gallery
+- [x] Keep Console hosting outside the experiment slot; inner runs and gallery
   experiments use the same workflow. Interrupted runs never become successful runs.
 
 **Validation**
 
-- [ ] Test concurrent starts within/across repos; only one experiment starts.
-- [ ] Test clean, dirty and skipped prior teardown; repeating reset reaches the same state.
-- [ ] Kill the launcher during startup, copy-back and removal. The next start discards
-  remaining uppers without replaying host writes. Repeated reset is harmless.
-- [ ] Test absent/partly removed resources, stopped writers and strict unmounts;
+- [x] Test concurrent starts within/across repos; only one experiment starts.
+- [x] Test clean, dirty and skipped prior teardown; repeating reset reaches the same state.
+- [x] Kill the launcher during startup/execution and before removal; interrupt real copy-back.
+  Retry partial removal. Reset discards remaining uppers without replaying writes.
+- [x] Test absent/partly removed resources, stopped writers and strict unmounts;
   failed cleanup blocks launch. Preserve host files, outputs and unrelated resources.
-- [ ] Retest normal copy-back, volume policies, sequential Console and gallery runs.
-- [ ] Show production LOC reduction; run focused checks first and full local CI on
-  final source. ARM64 deferred. Implementation checks remain pending.
+- [x] Retest normal copy-back, volume policies, sequential Console and gallery runs.
+- [x] Show production LOC reduction; run focused checks first and full local CI on
+  final source. ARM64 deferred.
