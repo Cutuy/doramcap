@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -36,32 +37,55 @@ def dirt(path):
 # Explicit repository build outputs; dependency caches and runtime recordings are preserved.
 BUILD_OUTPUTS = (
     'target',
-    'apps/cpu-viewer/frontend/dist',
-    'apps/activity-demo/frontend/dist',
+    'frontend/dist',
+    'apps/*/frontend/dist',
+    'apps/*/frontend/generated',
+    'apps/*/frontend/src/generated',
+    'apps/*/frontend/src/.generated',
+    'apps/*/frontend/.vite',
+    'apps/*/frontend/.vite-temp',
+    'apps/*/frontend/test-results',
+    'apps/*/frontend/playwright-report',
+    'apps/project-explorer/frontend/public/content',
+    'apps/cuda-shm-demo/build',
+    'console/server/build',
+    'console/server/dist',
+    'console/server/src/generated',
 )
 
 
 def clean_build_outputs(path):
+    # Expand the single app-name wildcard explicitly so traversal errors propagate.
+    try:
+        apps = sorted((path / 'apps').iterdir())
+    except FileNotFoundError:
+        apps = []
+    candidates = {
+        path / pattern.replace('*', app.name)
+        for pattern in BUILD_OUTPUTS if '*' in pattern for app in apps
+    }
+    candidates.update(path / pattern for pattern in BUILD_OUTPUTS if '*' not in pattern)
     outputs = []
-    for rel in BUILD_OUTPUTS:
-        output = path / rel
-        # Check each component before following it, including dangling symlinks.
+    for output in sorted(candidates):
+        rel = output.relative_to(path)
+        # Validate every component before deleting any output.
         current = path
-        for part in Path(rel).parts:
+        for part in rel.parts:
             current = current / part
-            if current.is_symlink():
+            try:
+                mode = current.lstat().st_mode
+            except FileNotFoundError:
+                break
+            if stat.S_ISLNK(mode):
                 raise RuntimeError(f'Build output uses a symlink; inspect manually: {current}')
-        if not output.exists():
-            continue
-        if not output.is_dir():
-            raise RuntimeError(f'Build output is not a directory: {output}')
-        if git(path, 'ls-files', '--', rel):
-            raise RuntimeError(f'Build output contains tracked files: {output}')
-        ignored = subprocess.run(
-            ['git', '-C', str(path), 'check-ignore', '-q', '--', rel + '/'])
-        if ignored.returncode != 0:
-            raise RuntimeError(f'Build output is not ignored; inspect manually: {output}')
-        outputs.append(output)
+            if not stat.S_ISDIR(mode):
+                if current != output:
+                    break
+                raise RuntimeError(f'Build output is not a directory: {current}')
+        else:
+            if git(path, 'ls-files', '--', str(rel)):
+                raise RuntimeError(f'Build output contains tracked files: {output}')
+            outputs.append(output)
     for output in outputs:
         print(f'Removing build output: {output}', file=sys.stderr)
         shutil.rmtree(output)
@@ -124,7 +148,12 @@ def main():
             free = [s for s in state['slots'] if s['lease'] is None]
             if not free:
                 raise RuntimeError('Pool exhausted; leases never expire. Wait for an explicit release.')
-            slot = next((s for s in free if not dirt(safe(s))), free[0])
+            slot = free[0]
+            for candidate in free:
+                clean_build_outputs(safe(candidate))
+                if not dirt(safe(candidate)):
+                    slot = candidate
+                    break
             path = safe(slot)
             dirty = dirt(path)
             if dirty:
@@ -163,6 +192,7 @@ def main():
                         dst.symlink_to(os.readlink(src))
                     else:
                         shutil.copy2(src, dst)
+                clean_build_outputs(path)
                 if git(main_root, 'rev-parse', 'HEAD').decode().strip() != head or git(main_root, 'diff', '--binary', 'HEAD', '--') != patch or git(main_root, 'ls-files', '--others', '--exclude-standard', '-z').split(b'\0') != untracked:
                     raise RuntimeError('Main checkout changed during refresh; inspect the reserved slot')
                 slot['lease']['state'] = 'active'
@@ -184,6 +214,7 @@ def main():
             head = git(path, 'rev-parse', 'HEAD').decode().strip()
             if branch != lease['branch']:
                 raise RuntimeError('Worktree branch differs from leased branch')
+            clean_build_outputs(path)
             if dirt(path):
                 raise RuntimeError(f'Worktree has uncommitted changes; commit and integrate them before release:\n{dirt(path)}')
             if args.main:

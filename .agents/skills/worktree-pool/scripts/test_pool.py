@@ -2,6 +2,7 @@
 """Acquisition and release behavior exercised in disposable Git repositories."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -25,7 +26,7 @@ class ReleaseTests(unittest.TestCase):
         self.git('config', 'user.email', 'test@example.com')
         self.git('config', 'user.name', 'Test')
         (self.repo / '.gitignore').write_text(
-            'target/\napps/*/frontend/dist/\nnode_modules/\n.env\n')
+            'target/\napps/*/frontend/dist/\nnode_modules/\n.env\n*.mcap\n')
         self.git('add', '.gitignore')
         self.git('commit', '-m', 'Initial')
         self.command('init')
@@ -59,32 +60,35 @@ class ReleaseTests(unittest.TestCase):
 
     def test_release_cleans_outputs_and_preserves_other_files(self):
         for rel in pool.BUILD_OUTPUTS:
-            self.write(self.worktree, rel + '/artifact')
+            self.write(self.worktree, rel.replace('*', 'demo') + '/artifact')
         cache = self.write(self.worktree, 'node_modules/package/cache')
         secret = self.write(self.worktree, '.env')
+        recording = self.write(self.worktree, 'recordings/session.mcap')
         main_artifact = self.write(self.repo, 'target/artifact')
         result = self.release()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(self.lease())
         for rel in pool.BUILD_OUTPUTS:
-            self.assertFalse((self.worktree / rel).exists())
-        for path in (cache, secret, main_artifact):
+            self.assertFalse((self.worktree / rel.replace('*', 'demo')).exists())
+        for path in (cache, secret, recording, main_artifact):
             self.assertEqual(path.read_text(), 'preserve or clean')
 
-    def test_uncommitted_changes_block_cleanup(self):
+    def test_release_cleans_outputs_but_preserves_uncommitted_source(self):
         artifact = self.write(self.worktree, 'target/artifact')
         self.write(self.worktree, 'source.rs')
         self.assertNotEqual(self.release().returncode, 0)
-        self.assertTrue(artifact.exists())
+        self.assertFalse(artifact.exists())
+        self.assertEqual((self.worktree / 'source.rs').read_text(), 'preserve or clean')
         self.assertEqual(self.lease()['token'], self.token)
 
-    def test_unintegrated_commits_block_cleanup(self):
+    def test_unintegrated_commits_still_block_release(self):
         artifact = self.write(self.worktree, 'target/artifact')
         self.write(self.worktree, 'source.rs')
         self.git('add', 'source.rs', root=self.worktree)
         self.git('commit', '-m', 'Feature', root=self.worktree)
         self.assertNotEqual(self.release().returncode, 0)
-        self.assertTrue(artifact.exists())
+        self.assertFalse(artifact.exists())
+        self.assertEqual((self.worktree / 'source.rs').read_text(), 'preserve or clean')
         self.assertIsNotNone(self.lease())
 
     def test_reacquire_preserves_ignored_files_and_skips_dirty_slots(self):
@@ -111,6 +115,7 @@ class ReleaseTests(unittest.TestCase):
         (self.repo / 'deleted').unlink()
         self.write(self.repo, 'untracked')
         self.write(self.repo, '.env')
+        main_output = self.write(self.repo, 'console/server/dist/main.js')
         main_status = self.git('status', '--porcelain').stdout
         slot = json.loads(self.command(
             'acq', '--owner', 'next', '--branch', 'codex/snapshot').stdout)
@@ -122,6 +127,8 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual((root / 'untracked').read_bytes(),
                          (self.repo / 'untracked').read_bytes())
         self.assertFalse((root / '.env').exists())
+        self.assertFalse((root / 'console/server/dist').exists())
+        self.assertTrue(main_output.exists())
         self.assertEqual(self.git('status', '--porcelain').stdout, main_status)
 
     def test_release_requires_commit_and_cherry_pick(self):
@@ -144,11 +151,101 @@ class ReleaseTests(unittest.TestCase):
     def test_release_rechecks_after_cleanup(self):
         argv = ['pool.py', '--repo', str(self.repo), 'release',
                 '--token', self.token, '--main']
+        calls = iter([False, True])
         with patch.object(sys, 'argv', argv), patch.object(
-                pool, 'clean_build_outputs', side_effect=lambda root: self.write(root, 'late.rs')):
+                pool, 'clean_build_outputs', side_effect=lambda root: self.write(root, 'late.rs') if next(calls) else None):
             with self.assertRaisesRegex(RuntimeError, 'changed during release'):
                 pool.main()
         self.assertIsNotNone(self.lease())
+
+    def test_acquire_clears_ignored_and_unignored_outputs(self):
+        # Arrange
+        self.assertEqual(self.release().returncode, 0)
+        for rel in pool.BUILD_OUTPUTS:
+            self.write(self.worktree, rel.replace('*', 'demo') + '/artifact')
+        cache = self.write(self.worktree, 'node_modules/package/cache')
+        secret = self.write(self.worktree, '.env')
+
+        # Act
+        slot = json.loads(self.command('acq', '--owner', 'next', '--branch', 'codex/clean').stdout)
+
+        # Assert
+        self.assertEqual(slot['id'], 1)
+        for rel in pool.BUILD_OUTPUTS:
+            self.assertFalse((self.worktree / rel.replace('*', 'demo')).exists())
+        self.assertTrue(cache.exists())
+        self.assertTrue(secret.exists())
+
+    def test_acquire_cleanup_failure_preserves_checkout(self):
+        # Arrange
+        self.assertEqual(self.release().returncode, 0)
+        artifact = self.write(self.worktree, 'target/artifact')
+        head = self.git('rev-parse', 'HEAD', root=self.worktree).stdout
+        argv = ['pool.py', '--repo', str(self.repo), 'acq',
+                '--owner', 'next', '--branch', 'codex/failure']
+
+        # Act / Assert
+        with patch.object(sys, 'argv', argv), patch.object(
+                pool.shutil, 'rmtree', side_effect=PermissionError('Test failure')):
+            with self.assertRaises(PermissionError):
+                pool.main()
+        self.assertTrue(artifact.exists())
+        self.assertIsNone(self.lease())
+        self.assertEqual(self.git('rev-parse', 'HEAD', root=self.worktree).stdout, head)
+
+    def test_cleanup_preserves_files_beside_app_directories(self):
+        # Arrange
+        source = self.write(self.worktree, 'apps/README.md')
+        artifact = self.write(self.worktree, 'target/artifact')
+
+        # Act
+        pool.clean_build_outputs(self.worktree)
+
+        # Assert
+        self.assertTrue(source.exists())
+        self.assertFalse(artifact.exists())
+
+    @unittest.skipIf(os.geteuid() == 0, 'Permission checks require an unprivileged user')
+    def test_release_discovery_failure_keeps_lease_and_outputs(self):
+        # Arrange
+        artifact = self.write(self.worktree, 'apps/cpu-viewer/frontend/dist/artifact')
+        other = self.write(self.worktree, 'target/artifact')
+        blocked = artifact.parent.parent
+        blocked.chmod(0)
+        self.addCleanup(blocked.chmod, 0o755)
+
+        # Act
+        result = self.release()
+        blocked.chmod(0o755)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(blocked).encode(), result.stderr)
+        self.assertEqual(self.lease()['token'], self.token)
+        self.assertTrue(artifact.exists())
+        self.assertTrue(other.exists())
+
+    @unittest.skipIf(os.geteuid() == 0, 'Permission checks require an unprivileged user')
+    def test_acquire_discovery_failure_preserves_free_slot(self):
+        # Arrange
+        self.assertEqual(self.release().returncode, 0)
+        artifact = self.write(self.worktree, 'apps/cpu-viewer/frontend/dist/artifact')
+        head = self.git('rev-parse', 'HEAD', root=self.worktree).stdout
+        blocked = self.worktree / 'apps'
+        blocked.chmod(0)
+        self.addCleanup(blocked.chmod, 0o755)
+
+        # Act
+        result = self.command('acq', '--owner', 'next', '--branch',
+                              'codex/discovery-failure', check=False)
+        blocked.chmod(0o755)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(blocked).encode(), result.stderr)
+        self.assertIsNone(self.lease())
+        self.assertTrue(artifact.exists())
+        self.assertEqual(self.git('rev-parse', 'HEAD', root=self.worktree).stdout, head)
 
     def test_acquire_preserves_ignored_collision(self):
         self.assertEqual(self.release().returncode, 0)
@@ -169,9 +266,11 @@ class ReleaseTests(unittest.TestCase):
         self.assertIsNotNone(self.lease())
 
     def test_symlinked_ancestor_blocks_cleanup(self):
+        artifact = self.write(self.repo, 'demo/frontend/dist/artifact')
         (self.worktree / 'apps').symlink_to(self.repo, target_is_directory=True)
         with self.assertRaisesRegex(RuntimeError, 'symlink'):
             pool.clean_build_outputs(self.worktree)
+        self.assertTrue(artifact.exists())
         self.assertIsNotNone(self.lease())
 
     def test_tracked_output_blocks_cleanup(self):
