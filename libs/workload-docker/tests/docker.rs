@@ -1288,7 +1288,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         serde_json::json!({"services":{"app":app},"volumes":{"scratch":{}}}),
     );
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
-    let mut runner = ComposeRunner::new(adapter);
+    let mut runner = ComposeRunner::new(adapter.clone());
     let mut projects = Vec::new();
     let mut volumes = Vec::new();
     for index in 0..2 {
@@ -1311,7 +1311,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         let (stop, stopped) = tokio::sync::oneshot::channel();
         // Act
         let mut run = Box::pin(runner.run_with_ready(
-            input,
+            input.clone(),
             async {
                 let _ = stopped.await;
             },
@@ -1327,6 +1327,18 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         assert!(report.execution_error.is_none(), "{report:?}");
         assert_eq!(report.cleanup.retained_volumes.len(), 1);
         volumes.push(report.cleanup.retained_volumes[0].clone());
+
+        // Act: inspect the same run while its retained volume still exists.
+        let mut inspection = input;
+        inspection.artifacts = root.join(format!("inspection-{index}"));
+        let inspected = preparation::resolve(&adapter, inspection).await.unwrap();
+
+        // Assert
+        assert_eq!(inspected.plan.name, projects[index]);
+        assert_eq!(
+            inspected.plan.run,
+            format!("retained-{}-{index}", std::process::id())
+        );
     }
     assert_eq!(projects[0], projects[1]);
     assert_ne!(volumes[0], volumes[1]);

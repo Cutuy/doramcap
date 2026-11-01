@@ -367,9 +367,11 @@ impl ComposeConfiguration<'_> {
             }
         }
         for volume in execution.volumes().await? {
-            if !owned(Some(&volume.labels)) {
+            if volume.labels.get(RUN_LABEL) != Some(&plan.run)
+                || volume.labels.get(super::project::PROJECT_LABEL) != Some(&plan.name)
+            {
                 return Err(invalid(
-                    "runtime project volume belongs to another controller",
+                    "runtime project volume belongs to another run or project",
                 ));
             }
         }
