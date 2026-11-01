@@ -14,7 +14,7 @@ class Engine implements NativeExecution {
   closed = false;
   update = execution.ExecutionUpdate.create();
   release?: () => void;
-  rejectAdmission = false;
+  rejectAdmission = '';
   profileNames: string[] = [];
   needsProfiles = false;
   async profiles() {
@@ -29,7 +29,7 @@ class Engine implements NativeExecution {
   }
   start(run: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
-    if (this.rejectAdmission) return Promise.reject(new Error('Busy'));
+    if (this.rejectAdmission) return Promise.reject(new Error(this.rejectAdmission));
     this.update = execution.ExecutionUpdate.create({ runId: run.id });
     return new Promise<void>((resolve) => {
       this.release = resolve;
@@ -238,30 +238,51 @@ test('declared recording sizes and downloads are built in the TypeScript view', 
   }
 });
 
-test('native admission failure leaves the Console able to review again', async () => {
-  // Arrange
-  const { root, config, engine, backend, review } = await fixture();
-  engine.rejectAdmission = true;
-  try {
-    // Act / Assert
-    await assert.rejects(
-      backend.start(
-        Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'busy' }).finish()),
-      ),
-      /Busy/,
-    );
-    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
-    const next = wire.Review.decode(
-      await backend.prepare(
-        Buffer.from(wire.PrepareRequest.encode({ directory: join(config.projectRoot, 'project') }).finish()),
-      ),
-    );
-    assert.ok(next.preparedId);
-  } finally {
-    await backend.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
+for (const rejection of ['Busy', 'Closing'])
+  test(`native ${rejection} leaves the Console able to review again`, async () => {
+    // Arrange
+    const { root, config, engine, backend, review } = await fixture();
+    engine.rejectAdmission = rejection;
+    try {
+      // Act / Assert
+      await assert.rejects(
+        backend.start(
+          Buffer.from(
+            wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'busy' }).finish(),
+          ),
+        ),
+        { message: rejection },
+      );
+      assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+      // Act / Assert: preparation also preserves owner availability failures.
+      const profiles = engine.profiles;
+      engine.profiles = async () => {
+        throw new Error(rejection);
+      };
+      await assert.rejects(
+        backend.prepare(
+          Buffer.from(
+            wire.PrepareRequest.encode({
+              directory: join(config.projectRoot, 'project'),
+            }).finish(),
+          ),
+        ),
+        { message: rejection },
+      );
+      engine.profiles = profiles;
+      const next = wire.Review.decode(
+        await backend.prepare(
+          Buffer.from(
+            wire.PrepareRequest.encode({ directory: join(config.projectRoot, 'project') }).finish(),
+          ),
+        ),
+      );
+      assert.ok(next.preparedId);
+    } finally {
+      await backend.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
 test('a profiles-only project returns choices and can then be prepared explicitly', async () => {
   // Arrange
@@ -286,6 +307,45 @@ test('a profiles-only project returns choices and can then be prepared explicitl
     // Assert
     assert.ok(ready.preparedId);
     assert.deepEqual(ready.selectedProfiles, ['optional']);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflight failures return a safe classification and retain private diagnostics', async () => {
+  // Arrange
+  const { root, config, engine, backend, review } = await fixture();
+  const privateReason = 'repository preflight failed at /operator/private/location';
+  engine.start = async (run) => {
+    engine.update = execution.ExecutionUpdate.create({
+      runId: run.id,
+      result: { blocked: false, error: privateReason },
+    });
+    throw new Error(privateReason);
+  };
+  try {
+    // Act / Assert
+    await assert.rejects(
+      backend.start(
+        Buffer.from(
+          wire.StartRequest.encode({
+            preparedId: review.preparedId,
+            requestKey: 'preflight-failure',
+          }).finish(),
+        ),
+      ),
+      { message: 'PreflightRejected' },
+    );
+    const status = wire.Status.decode(await backend.status());
+    assert.equal(status.phase, wire.Phase.IDLE);
+    assert.equal(status.outcome!.execution, 'Failed');
+    const { readdir, readFile } = await import('node:fs/promises');
+    const directory = join(config.dataRoot, 'diagnostics');
+    const notes = await Promise.all(
+      (await readdir(directory)).map((name) => readFile(join(directory, name), 'utf8')),
+    );
+    assert.ok(notes.some((note) => note.includes(privateReason)));
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

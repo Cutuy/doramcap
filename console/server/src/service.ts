@@ -232,7 +232,8 @@ export class ConsoleService implements ConsoleBackend {
       this.snapshot = wire.Status.create({ phase: Phase.IDLE });
       if (workspace) await rm(workspace, { recursive: true, force: true });
       await this.diagnostic(error);
-      throw new Error('InvalidInput');
+      const code = errorCode(error);
+      throw new Error(['Busy', 'Closing'].includes(code) ? code : 'InvalidInput');
     }
   }
   private async runRequest(
@@ -354,14 +355,22 @@ export class ConsoleService implements ConsoleBackend {
       return Buffer.from(wire.StartResponse.encode({ runId: this.startId }).finish());
     } catch (error) {
       await this.diagnostic(error);
+      let preflightFailed = false;
       if (this.executionStarted && !this.accepted) {
         const update = this.engine.poll();
+        preflightFailed = update.runId === this.startId && update.result?.error != null;
         await this.consume(update);
         if (update.runId !== this.startId) this.executionStarted = false;
       }
       if (!this.executionStarted) await this.finish({ blocked: false, error: errorCode(error) });
       const code = errorCode(error) === 'ConfigurationChanged' ? 'StaleReview' : errorCode(error);
-      throw new Error(['StaleReview', 'Stopped', 'Conflict', 'Busy'].includes(code) ? code : 'Internal');
+      throw new Error(
+        ['StaleReview', 'Stopped', 'Conflict', 'Busy', 'Closing'].includes(code)
+          ? code
+          : preflightFailed
+            ? 'PreflightRejected'
+            : 'Internal',
+      );
     } finally {
       this.admissionPending = false;
       await this.ticking;

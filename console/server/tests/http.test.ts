@@ -16,7 +16,7 @@ test('authentication, Origin, size and field validation precede native mutations
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
-    start: async input => { if (wire.StartRequest.decode(input).requestKey === 'stopped') throw new Error('Stopped'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
+    start: async input => { const key = wire.StartRequest.decode(input).requestKey; if (key === 'stopped') throw new Error('Stopped'); if (key === 'rejected') throw new Error('PreflightRejected'); if (key === 'closing') throw new Error('Closing'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
     stop: async () => { stops++; return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish()); },
     status: async () => Buffer.from(wire.Status.encode({ phase: wire.Phase.RUNNING, sequence: '9007199254740993' as never }).finish()),
   };
@@ -55,6 +55,12 @@ test('authentication, Origin, size and field validation precede native mutations
     const stopped = await post('/api/start', '{"preparedId":"run","requestKey":"stopped"}');
     assert.equal(stopped.status, 409);
     assert.equal((await stopped.json() as {error:{code:string}}).error.code, 'Stopped');
+    const rejected = await post('/api/start', '{"preparedId":"run","requestKey":"rejected"}');
+    assert.equal(rejected.status, 409);
+    assert.equal((await rejected.json() as {error:{code:string}}).error.code, 'PreflightRejected');
+    const closing = await post('/api/start', '{"preparedId":"run","requestKey":"closing"}');
+    assert.equal(closing.status, 503);
+    assert.equal((await closing.json() as {error:{code:string}}).error.code, 'Closing');
     const current = await fetch(base + '/api/current', { headers: { authorization: auth } });
     assert.equal((await current.json() as { sequence: string }).sequence, '9007199254740993');
     assert.equal((await fetch(base + '/api/nope', { headers: { authorization: auth } })).status, 404);

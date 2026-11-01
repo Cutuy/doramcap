@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { capabilities } from '../src/native.js';
+import { capabilities, execution, compose } from '../src/native.js';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
@@ -255,5 +255,44 @@ test('unchanged Start passes preflight while changed commands reject before cont
     assert.deepEqual(mutations,[]);
   } finally {
     await handle.close();process.env.PATH=oldPath;engine.close();await once(engine,'close');await rm(root,{recursive:true,force:true});
+  }
+});
+
+
+test('native Start preserves a budget rejection and publishes its terminal facts before rejecting', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-admission-'));
+  const socket = join(root, 'docker.sock');
+  let mutations = 0;
+  const server = createServer((request, response) => {
+    if (request.method !== 'GET') mutations++;
+    response.setHeader('content-type', 'application/json');
+    response.end('{"ApiVersion":"1.45"}');
+  });
+  server.listen(socket);
+  await once(server, 'listening');
+  const owner = await capabilities.open(socket, 1);
+  const run = execution.RunRequest.create({
+    id: 'rejected-budget', repositoryRoot: root, artifacts: join(root, 'artifacts'),
+    readinessSeconds: 0, stopSeconds: 1,
+  });
+  try {
+    // Act
+    let rejection: Error | undefined;
+    await assert.rejects(owner.start(run, compose.ConfigurationSnapshot.create()), (error: Error) => {
+      rejection = error;
+      return /readiness_seconds/.test(error.message);
+    });
+    const update = owner.poll();
+    // Assert
+    assert.equal(update.runId, run.id);
+    assert.equal(update.result!.error, rejection!.message);
+    assert.equal(update.result!.blocked, false);
+    assert.equal(mutations, 0);
+  } finally {
+    await owner.close();
+    server.close();
+    await once(server, 'close');
+    await rm(root, { recursive: true, force: true });
   }
 });
