@@ -4,6 +4,10 @@ Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire
 
 Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
 
+## Simplicity
+
+Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
+
 ## Implementation languages
 
 Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, benchmarks, and development tooling. Do not use Python in the application serving stack. Avoid Python, Bash, and other scripting languages in production environments and workflows unless absolutely necessary.
