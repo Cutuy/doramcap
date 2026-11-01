@@ -46,6 +46,38 @@ impl Step for PrepareRun {
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
 }
+/// Expand native Dora modules relative to their source file for configuration assembly.
+/// Completed graph validation remains part of experiment resolution.
+pub async fn expand_graph(path: &Path) -> Result<Vec<u8>> {
+    use dora_core::descriptor::{Descriptor, DescriptorExt};
+    let bytes = crate::evidence::read_regular(path, 2 * 1024 * 1024).await?;
+    let graph = Descriptor::parse(bytes)
+        .map_err(|error| invalid(error.to_string()))?
+        .expand(
+            path.parent()
+                .ok_or_else(|| invalid("graph parent missing"))?,
+        )
+        .map_err(|error| invalid(error.to_string()))?;
+    Ok(serde_json::to_vec(&graph)?)
+}
+
+/// List profiles using the same repository-scoped Compose identity as execution.
+pub async fn profiles(
+    adapter: &DockerAdapter,
+    run: &str,
+    repository: &Path,
+    project: &ComposeProject,
+) -> Result<Vec<String>> {
+    adapter
+        .configuration()
+        .profiles(
+            run,
+            project,
+            &crate::compose::adapter::project_name("experiment", repository),
+        )
+        .await
+}
+
 impl PrepareRun {
     async fn prepare(&self, mut spec: ComposeRun) -> Result<PreparedRun> {
         // Resolve runtime settings and validate the request.
