@@ -17,3 +17,6 @@ cargo test --release --locked -p console-native
 Start is acknowledged by workflow preflight. Stop uses a separate control queue.
 Poll drains bounded events while retaining completion facts. Close waits for
 workflow cleanup before joining the owner thread.
+
+Start preserves the native preflight failure and publishes terminal facts before
+rejecting. A full mailbox reports `Busy`; an exited owner reports `Closing`.

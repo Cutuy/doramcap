@@ -25,6 +25,12 @@ pub mod protocol {
 fn failure(error: impl std::fmt::Display) -> Error {
     Error::new(Status::GenericFailure, error.to_string())
 }
+fn dispatch_failure(error: runtime::DispatchError) -> Error {
+    failure(match error {
+        runtime::DispatchError::Busy => "Busy",
+        runtime::DispatchError::Closed => "Closing",
+    })
+}
 
 /// Decode protobuf text with the existing parser; configuration policy belongs to TypeScript.
 #[napi]
@@ -128,7 +134,7 @@ impl Execution {
             .as_ref()
             .ok_or_else(|| failure("Closing"))?
             .dispatch(operation)
-            .map_err(|_| failure("Busy"))
+            .map_err(dispatch_failure)
     }
 }
 #[napi]
@@ -217,7 +223,7 @@ impl Execution {
             .as_ref()
             .ok_or_else(|| failure("Closing"))?
             .dispatch_control(move |state| start(state, request))
-            .map_err(|_| failure("Busy"))?;
+            .map_err(dispatch_failure)?;
         AsyncBlockBuilder::new(async move {
             Ok(reply
                 .await
@@ -238,7 +244,7 @@ impl Execution {
             .as_ref()
             .ok_or_else(|| failure("Closing"))?
             .dispatch_control(move |state| state.stop(&run_id))
-            .map_err(|_| failure("Busy"))?;
+            .map_err(dispatch_failure)?;
         reply.await.map_err(failure)?.map_err(failure)
     }
     /// Drain bounded raw events; execution completion remains available on later polls.

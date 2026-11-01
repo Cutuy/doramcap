@@ -241,10 +241,12 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                 ..Default::default()
             },
         };
-        if let Some(reply) = admission.borrow_mut().take() {
-            let _ = reply.send(Err("Internal".into()));
-        }
+        let rejection = result.error.clone().unwrap_or_else(|| "Internal".into());
+        // Publish terminal facts before waking a rejected Start caller.
         updates.lock().unwrap().result = Some(result);
+        if let Some(reply) = admission.borrow_mut().take() {
+            let _ = reply.send(Err(rejection));
+        }
         let _ = done_tx.send(());
     });
     reply

@@ -240,4 +240,32 @@ mod tests {
             owner.close().await.unwrap();
         });
     }
+
+    #[test]
+    fn exited_owner_is_reported_as_closing_on_both_queues() {
+        // Arrange
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let owner = Owner::open(|| async { Ok::<_, String>(()) }).await.unwrap();
+            // Act
+            let interrupted = owner.dispatch(|_| panic!("test owner exit")).unwrap();
+            assert!(interrupted.await.is_err());
+            owner.commands.closed().await;
+            owner.control.closed().await;
+            // Assert
+            let ordinary = owner
+                .dispatch(|_| ())
+                .map_err(crate::dispatch_failure)
+                .unwrap_err();
+            let control = owner
+                .dispatch_control(|_| ())
+                .map_err(crate::dispatch_failure)
+                .unwrap_err();
+            assert_eq!(ordinary.reason, "Closing");
+            assert_eq!(control.reason, "Closing");
+            assert!(owner.close().await.is_err());
+        });
+    }
 }
