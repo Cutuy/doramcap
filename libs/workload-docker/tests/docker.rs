@@ -2009,23 +2009,32 @@ async fn compose_public_run(outcome: &str) {
 async fn independent_inspection_and_preparation_have_equal_configuration_snapshots() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
-    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
-    write(
-        &root.path().join("worker.json"),
-        serde_json::json!({"services":{"worker":{
-            "image":image, "network_mode":"host",
-            "working_dir":"${DORAMCAP_DORA_RUNTIME_DIR:?}",
-            "volumes":["${DORAMCAP_DORA_RUNTIME_DIR:?}:${DORAMCAP_DORA_RUNTIME_DIR:?}"],
-            "environment":{"DORAMCAP_READY_FILE":"${DORAMCAP_DORA_RUNTIME_DIR:?}/worker.ready"},
-            "healthcheck":{"test":["CMD", "test", "-s", "${DORAMCAP_DORA_RUNTIME_DIR:?}/worker.ready"]}
-        }}}),
-    );
+    // Use the shipped app input so runtime wiring evolves with its real consumer.
+    std::fs::write(
+        root.path().join("app.yaml"),
+        include_bytes!("../../../apps/mcap-recorder/deploy/compose.yaml"),
+    )
+    .unwrap();
+    let app = |artifacts: &Path| ComposeProject {
+        key: "recorder".into(),
+        directory: root.path().to_string_lossy().into_owned(),
+        files: vec!["app.yaml".into()],
+        environment: BTreeMap::from([
+            ("MCAP_RECORDER_UID".into(), "1000".into()),
+            ("MCAP_RECORDER_GID".into(), "1000".into()),
+            (
+                "MCAP_RECORDER_RESULTS_DIR".into(),
+                artifacts.to_string_lossy().into_owned(),
+            ),
+        ]),
+        ..Default::default()
+    };
     let spec = ComposeRun {
         id: "inspected".into(),
         artifacts: root.path().join("inspection"),
         filesystem: None,
         repository_root: root.path().into(),
-        system_apps: vec![project(root.path(), "worker")],
+        system_apps: vec![app(&root.path().join("inspection"))],
         projects: vec![],
         dora: Default::default(),
         recordings: vec![],
@@ -2058,6 +2067,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     let mut execution = spec.clone();
     execution.id = "prepared".into();
     execution.artifacts = root.path().join("execution");
+    execution.system_apps = vec![app(&execution.artifacts)];
     let prepared = executor
         .run::<preparation::PrepareRun>(execution)
         .await
@@ -2070,6 +2080,16 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         prepared.dora.runtime_directory
     );
     assert_eq!(inspected.snapshot, prepared.snapshot);
+
+    // Act: a changed runtime budget must invalidate the inspected configuration.
+    let mut changed = spec.clone();
+    changed.artifacts = root.path().join("changed");
+    changed.system_apps = vec![app(&changed.artifacts)];
+    changed.readiness_seconds += 1;
+    let changed = preparation::resolve(&adapter, changed).await.unwrap();
+
+    // Assert
+    assert_ne!(inspected.snapshot, changed.snapshot);
     support::assert_no_run_resources(&adapter, &spec.id).await;
     support::assert_no_run_resources(&adapter, "prepared").await;
 }
