@@ -11,8 +11,8 @@ fn invalid(message: &str) -> std::io::Error {
     std::io::Error::other(message)
 }
 
-/// Prepared application-output paths. A growing stream plus an armed recording
-/// establishes readiness; a terminal MCAP footer establishes finalization.
+/// Recording paths; an empty stream requires an armed regular recording only.
+/// A supplied stream must grow before readiness. Finalization requires an MCAP footer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Recording {
     pub stream: PathBuf,
@@ -67,7 +67,14 @@ async fn wait_ready(output: &Recording, timeout: u64) -> std::io::Result<()> {
     let start = tokio::time::Instant::now();
     let mut previous = None;
     loop {
-        if let Ok(metadata) = tokio::fs::metadata(&output.stream).await {
+        if output.stream.as_os_str().is_empty() {
+            match tokio::fs::symlink_metadata(&output.recording).await {
+                Ok(metadata) if metadata.is_file() => return Ok(()),
+                Ok(_) => return Err(invalid("recording must be a regular file")),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        } else if let Ok(metadata) = tokio::fs::metadata(&output.stream).await {
             if previous.is_some_and(|n| n > 0 && metadata.len() > n)
                 && tokio::fs::try_exists(&output.recording).await?
             {
@@ -117,6 +124,29 @@ pub async fn finalized_recording(path: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn subscriber_recording_can_be_armed_before_its_workload_produces_data() {
+        // Arrange
+        let root = std::env::temp_dir().join(format!(
+            "recording-arm-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        tokio::fs::create_dir(&root).await.unwrap();
+        let path = root.join("workload.mcap");
+        tokio::fs::write(&path, []).await.unwrap();
+        let output = Recording {
+            stream: PathBuf::new(),
+            recording: path.clone(),
+        };
+        // Act / Assert
+        assert!(wait_ready(&output, 0).await.is_ok());
+        tokio::fs::remove_file(&path).await.unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", &path).unwrap();
+        assert!(wait_ready(&output, 0).await.is_err());
+        tokio::fs::remove_dir_all(root).await.unwrap();
+    }
+
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
     #[tokio::test]

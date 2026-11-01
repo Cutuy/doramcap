@@ -212,12 +212,8 @@ pub async fn resolve(adapter: &DockerAdapter, mut spec: ComposeRun) -> Result<Re
 
 impl PrepareRun {
     async fn prepare(&self, spec: ComposeRun) -> Result<PreparedRun> {
-        let filesystem = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
         observation::snapshot(&resolved.artifacts, "before").await?;
-        if filesystem {
-            overlay::verify_namespace(self.adapter.socket_path()).await?;
-        }
         // Capture the filesystem baseline only for execution.
         let executor = self
             .executor

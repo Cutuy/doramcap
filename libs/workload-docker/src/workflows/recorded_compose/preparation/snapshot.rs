@@ -50,7 +50,8 @@ fn manifest(
                         Path::new(source).starts_with(artifacts.join("inputs"))
                     });
                     let attachment = mount["target"] == dora.zenoh_overlay
-                        || mount["source"] == dora.zenoh_overlay;
+                        || mount["source"] == dora.zenoh_overlay
+                        || mount["source"] == dora.runtime_directory;
                     if frozen || runtime || systems.contains(name) || attachment {
                         path_value(&mut mount["source"], artifacts);
                     }
@@ -63,7 +64,10 @@ fn manifest(
                 .get_mut("environment")
                 .and_then(Value::as_object_mut)
             {
-                for value in environment.values_mut() {
+                for (key, value) in environment.iter_mut() {
+                    if key == dora_app::environment::READY_FILE {
+                        path_value(value, artifacts);
+                    }
                     if value == &dora.zenoh_overlay || (runtime && value == &dora.runtime_directory)
                     {
                         path_value(value, artifacts);
@@ -301,5 +305,30 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+    #[test]
+    fn actual_dora_services_and_attachment_paths_survive_artifact_relocation() {
+        fn prepared(root: &str) -> Value {
+            let dora = crate::workflows::dora::DoraRuntime {
+                image: "sha256:dora".into(),
+                coordinator_port: 6000,
+                daemon_port: 6001,
+                runtime_directory: format!("{root}/dora/runtime"),
+                zenoh_overlay: format!("{root}/dora/zenoh.json5"),
+                participant_uid: Some(1000),
+                participant_gid: Some(1000),
+                ..Default::default()
+            };
+            let mut model = json!({"services":{"worker":{"image":"sha256:worker", "environment":{dora_app::environment::READY_FILE:format!("{root}/worker.ready")}}}});
+            crate::workflows::recorded_compose::preparation::model::configure_dora(
+                &mut model,
+                &dora,
+                "owner".into(),
+            )
+            .unwrap();
+            manifest(model, Path::new(root), &["worker".into()], &dora)
+        }
+        // Arrange / Act / Assert
+        assert_eq!(prepared("/review"), prepared("/execution"));
     }
 }

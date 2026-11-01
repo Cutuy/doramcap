@@ -350,11 +350,32 @@ impl ComposeConfiguration<'_> {
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
-        if !execution.containers().await?.is_empty() {
-            return Err(invalid("runtime project name already exists"));
-        }
-        if !execution.networks().await?.is_empty() || !execution.volumes().await?.is_empty() {
-            return Err(invalid("runtime project resources already exist"));
+        let owned = |labels: Option<&std::collections::HashMap<String, String>>| {
+            scope.as_ref().is_some_and(|scope| {
+                labels
+                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                    .is_some_and(|value| value == &scope.to_string_lossy())
+            })
+        };
+        if execution
+            .containers()
+            .await?
+            .iter()
+            .any(|item| !owned(item.labels.as_ref()))
+            || execution
+                .networks()
+                .await?
+                .iter()
+                .any(|item| !owned(item.labels.as_ref()))
+            || execution
+                .volumes()
+                .await?
+                .iter()
+                .any(|item| !owned(Some(&item.labels)))
+        {
+            return Err(invalid(
+                "runtime project has resources owned by another controller",
+            ));
         }
         // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;
