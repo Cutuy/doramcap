@@ -19,8 +19,8 @@ Private repositories use the owner's included Actions minutes and billing policy
 
 [Node CI](../../.github/workflows/node.yml) uses the same ARM64/x86_64 runner matrix
 and the version in `.node-version`. Both GitHub and the ARM64 worker run
-`node scripts/ci/test-node.mts`: locked installs and the six existing `npm test`
-suites (Activity, CPU Viewer, CUDA viewer, Dataflow Tracing, Orchestrator and Storage).
+`node scripts/ci/test-node.mts`: discover `apps/*/frontend/package.json` files
+with a `test` script, then run locked installs and `npm test` in each frontend.
 Live browser, CUDA and Dora qualification remain separate. Project Explorer has no
 `npm test` script. Node workflow paths cover all app, library and CI script changes.
 
