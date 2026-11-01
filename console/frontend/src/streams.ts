@@ -71,6 +71,11 @@ class CpuStreams {
     const frame = packet.snapshot;
     if (!frame?.snapshot) return;
     const previous = this.frames.at(-1);
+    // A restarted monitor begins a new session and sequence; start a new baseline.
+    if (previous && previous.sessionId !== frame.sessionId) {
+      this.frames = [frame];
+      return;
+    }
     if (previous && integer(frame.snapshot.sequence) <= integer(previous.snapshot?.sequence)) return;
     this.frames = [...this.frames, frame].slice(-2);
     if (!previous) return;

@@ -94,6 +94,7 @@ export function App() {
     if (!review?.preparedId || busy) return;
     key.current = requestKey(key.current, createRequestKey);
     generation.current++; expected.current = review.runId; selecting.current = false; setPhase('Run'); setRetry(false); setStopPending(false); setError('');
+    liveModel.current.configure(review.runId, review.liveStreams); setLiveView(liveModel.current.view());
     setSnapshot(wire.Status.create({
       phase: Phase.STARTING, runId: review.runId, recordings: review.recordings, liveStreams: review.liveStreams,
       systemApps: wire.SystemAppSelection.create({ ids: review.systemApps.filter(app => app.selected && !app.required).map(app => app.id) }),
