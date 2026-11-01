@@ -1,0 +1,51 @@
+syntax = "proto3";
+package doramcap.console.execution.v1;
+import "compose.proto";
+import "dora.proto";
+import "workflow.proto";
+
+// Explicit inputs to the existing recorded Compose workflow.
+message RunRequest {
+  string id = 1;
+  string repository_root = 2;
+  string artifacts = 3;
+  repeated doramcap.compose.v1.ComposeProject system_apps = 4;
+  repeated doramcap.compose.v1.ComposeProject projects = 5;
+  doramcap.dora.v1.DoraRuntime dora = 6;
+  repeated Recording recordings = 7;
+  uint64 readiness_seconds = 8;
+  uint64 stop_seconds = 9;
+}
+message Recording { string stream = 1; string recording = 2; }
+message Inspection {
+  doramcap.compose.v1.ResolvedComposeProject plan = 1;
+  doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;
+}
+message ProfilesRequest {
+  string run_id = 1;
+  string repository_root = 2;
+  doramcap.compose.v1.ComposeProject project = 3;
+}
+message Profiles { repeated string names = 1; }
+message StartRequest {
+  RunRequest run = 1;
+  doramcap.compose.v1.ConfigurationSnapshot expected = 2;
+}
+// Execution facts are separate from the Console's phases and display outcomes.
+message ExecutionResult {
+  bool blocked = 1;
+  optional string error = 2;
+  optional bool writers_stopped = 3;
+  optional bool recording_finalized = 4;
+  optional bool boundary_clean = 5;
+  optional bool event_stream_healthy = 6;
+}
+// Completion remains available even when the bounded progress queue overflows.
+message ExecutionUpdate {
+  string run_id = 1;
+  repeated doramcap.workflow.v1.Event events = 2;
+  uint64 dropped_events = 3;
+  bool ready = 4;
+  bool teardown_started = 5;
+  ExecutionResult result = 6;
+}
