@@ -1,0 +1,13 @@
+output_path: "phase0.mcap"
+input {
+  input: "snapshots"
+  topic: "doramcap/cpuacct"
+  message_encoding: "protobuf"
+  validation: CPU_SNAPSHOT
+}
+input {
+  input: "dictionary"
+  topic: "doramcap/cpuacct/dictionary"
+  message_encoding: "protobuf"
+  validation: CPU_DICTIONARY
+}
