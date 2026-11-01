@@ -5,6 +5,8 @@ workflow. Viewers share that generation; it stops when their sessions expire.
 Each app has a separate repository scope; different apps may run concurrently.
 Docker Engine access and independently built app images are required.
 
+[Small ARM64 EC2 deployment](../deploy/ec2/README.md) uses prebuilt artifacts and systemd.
+
 ## Start
 
 From the checkout:
