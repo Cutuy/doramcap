@@ -4,6 +4,7 @@ import { wire, api, ApiError, type Review, type Snapshot } from './api';
 import { RunActivity } from './RunActivity';
 import { Result } from './Result';
 import { RunMetrics } from './RunMetrics';
+import { LiveModel, type LiveView } from './streams';
 import { SystemApps } from './SystemApps';
 import { acceptsSnapshot, canStopRun, createRequestKey, requestKey, toggleProfile as nextProfiles } from './model';
 import { ActionButton } from './ui/ActionButton';
@@ -34,6 +35,8 @@ export function App() {
   const viewingRun = useRef(false);
   const key = useRef('');
   const expected = useRef('');
+  const liveModel = useRef(new LiveModel());
+  const [liveView, setLiveView] = useState<LiveView | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false; let timer: ReturnType<typeof setTimeout>;
@@ -42,11 +45,12 @@ export function App() {
       try {
         await api.live(current => {
           if (!cancelled && acceptsSnapshot(expected.current, current)) {
+            liveModel.current.configure(current.runId, current.liveStreams); setLiveView(liveModel.current.view());
             setSnapshot(current); setUpdated(Date.now()); setDisconnected(false);
             if (active.has(current.phase)) { viewingRun.current = false; expected.current = current.runId; selecting.current = false; setPhase('Run'); }
             else if ([Phase.FINISHED, Phase.BLOCKED].includes(current.phase) && !selecting.current && !viewingRun.current) { setPhase('Result'); setStopPending(false); }
           }
-        }, controller.signal);
+        }, controller.signal, frame => { if (!cancelled && liveModel.current.receive(frame)) setLiveView(liveModel.current.view()); });
       } catch { if (!cancelled) setDisconnected(true); }
       if (!cancelled) timer = setTimeout(connect, 1000);
     };
@@ -91,7 +95,7 @@ export function App() {
     key.current = requestKey(key.current, createRequestKey);
     generation.current++; expected.current = review.runId; selecting.current = false; setPhase('Run'); setRetry(false); setStopPending(false); setError('');
     setSnapshot(wire.Status.create({
-      phase: Phase.STARTING, runId: review.runId, recordings: review.recordings, cpuCaptureEnabled: review.cpuCaptureEnabled,
+      phase: Phase.STARTING, runId: review.runId, recordings: review.recordings, liveStreams: review.liveStreams,
       systemApps: wire.SystemAppSelection.create({ ids: review.systemApps.filter(app => app.selected && !app.required).map(app => app.id) }),
     }));
     try { await api.start(review.preparedId, key.current); }
@@ -120,7 +124,7 @@ export function App() {
     <div className="sr-only" aria-live="polite">{phase} {state === Phase.STOPPING ? 'Stopping run' : ''}</div>
     {phase === 'Project' && <><div className="heading"><div><h1>Choose a project</h1></div></div><div className="columns"><section className="panel"><h2>Project directory</h2><p className="muted">Enter a directory beneath the approved project root.</p><label htmlFor="directory">Directory on this host</label><input id="directory" value={directory} onChange={event => changeDirectory(event.target.value)} placeholder="/projects/my-project" autoComplete="off"/>{available.length > 0 && <fieldset><legend>Optional profiles</legend>{available.map(profile => <label className="checkbox" key={profile}><input type="checkbox" checked={profiles.includes(profile)} onChange={() => toggleProfile(profile)}/>{profile}</label>)}</fieldset>}<div className="actions"><ActionButton disabled={!directory.trim() || busy} onClick={() => void prepare()}>{busy ? 'Checking…' : available.length ? 'Review project' : 'Continue'}</ActionButton></div></section><aside><section className="panel"><h2>Before you start</h2><p>Default Compose files and prebuilt local images required.</p></section></aside></div></>}
     {phase === 'Review' && review && <><div className="heading"><div><h1>Review project</h1></div><ActionButton onClick={() => void start()} disabled={busy || !review.preparedId}>Start run</ActionButton></div><div className="columns"><section className="panel"><div className="panel-heading"><h2>Application</h2><StatusLabel label={busy ? 'Checking…' : review.preparedId ? 'Ready to start' : 'Review required'} tone={review.preparedId && !busy ? 'success' : 'neutral'}/></div><p className="mono break">{directory}</p><h3>Enabled services</h3><table><thead><tr><th>Service</th><th>Local image</th></tr></thead><tbody>{review.services.map(service => <tr key={service.name}><td>{service.name}</td><td className="mono break">{service.imageId}</td></tr>)}</tbody></table>{review.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}<div className="actions"><ActionButton variant="secondary" disabled={busy} onClick={() => { selecting.current = true; setPhase('Project'); }}>Change project</ActionButton>{!busy && !review.preparedId && <ActionButton variant="secondary" onClick={() => void prepare()}>Retry review</ActionButton>}</div></section><aside><SystemApps apps={review.systemApps} busy={busy} toggle={toggleSystemApp}/><section className="panel"><h2>Run settings</h2><p>Profiles</p><p>{profiles.length ? profiles.join(', ') : 'Default'}</p></section></aside></div></>}
-    {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === Phase.STOPPING || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{(snapshot?.projectDirectory || directory) && <>{snapshot?.projectDirectory || directory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton variant="secondary" onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={!canStopRun(snapshot, stopPending)} onClick={() => void stop()}>{state === Phase.STOPPING || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === Phase.STOPPING || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>Recording</h2><StatusLabel label={!recordingEnabled ? 'Disabled' : historical ? (snapshot?.outcome?.recordingFinalized ? 'Saved' : 'Unavailable') : state === Phase.RUNNING ? 'In progress' : 'Waiting for readiness'} tone={recordingEnabled && state === Phase.RUNNING ? 'active' : 'neutral'}/></section><RunMetrics recordingEnabled={recordingEnabled} captureEnabled={snapshot?.cpuCaptureEnabled ?? false} samples={snapshot?.metrics} cpuSnapshots={snapshot?.cpuSnapshots} cpuGroupNames={snapshot?.cpuGroupNames} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/></aside></div></>}
+    {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === Phase.STOPPING || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{(snapshot?.projectDirectory || directory) && <>{snapshot?.projectDirectory || directory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton variant="secondary" onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={!canStopRun(snapshot, stopPending)} onClick={() => void stop()}>{state === Phase.STOPPING || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === Phase.STOPPING || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>Recording</h2><StatusLabel label={!recordingEnabled ? 'Disabled' : historical ? (snapshot?.outcome?.recordingFinalized ? 'Saved' : 'Unavailable') : state === Phase.RUNNING ? 'In progress' : 'Waiting for readiness'} tone={recordingEnabled && state === Phase.RUNNING ? 'active' : 'neutral'}/></section><RunMetrics recordingEnabled={recordingEnabled} samples={snapshot?.metrics} live={liveView} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/></aside></div></>}
     {phase === 'Result' && snapshot && <Result snapshot={snapshot} newRun={newRun} viewRun={() => navigateRun('Run')}/>}
   </PageFrame>;
 }

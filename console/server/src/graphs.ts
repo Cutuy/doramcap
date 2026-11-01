@@ -5,11 +5,12 @@ type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: 
 /** Combine approved native graph fragments; Rust expands modules and validates the result. */
 export class Graphs {
   constructor(private native: {expandGraph(path:string):Promise<Buffer>}, private apps: App[], private base: string) {}
-  async build(requested?: string[]): Promise<Buffer> {
+  /** `extra` adds generated fragments, such as the live bridge node. */
+  async build(requested?: string[], extra: string[] = []): Promise<Buffer> {
     const ids = requested ?? this.apps.filter(app => app.defaultSelected).map(app => app.id!);
     const selected = new Set(ids);
     if (selected.size !== ids.length || ids.some(id => !this.apps.some(app => app.id === id))) throw new Error('InvalidInput');
-    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => app.graph ?? '')].filter(Boolean);
+    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => app.graph ?? ''), ...extra].filter(Boolean);
     if (!paths.length) return Buffer.alloc(0);
     const merged: NativeGraph = {nodes:[]};
     const nodes = new Set<string>();

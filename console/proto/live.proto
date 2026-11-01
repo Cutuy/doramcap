@@ -1,0 +1,18 @@
+syntax = "proto3";
+package doramcap.console.live.v1;
+
+// Meaning of one declared Dora output; the browser selects its decoder and panel by kind.
+// Several kinds may share one payload message.
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  CPU_ACCOUNTING = 1; // doramcap.telemetry.v1.Packet: cgroup CPU snapshots and dictionaries
+  FAULT_PUBLICATION = 2; // doramcap.fault.v1.AggregationPublication
+}
+
+// One Dora input message relayed unmodified by the live bridge.
+message Frame {
+  string stream = 1; // Bridge input ID.
+  uint64 sequence = 2; // Per stream, starting at one; gaps denote skipped frames.
+  uint64 received_unix_ns = 3; // Bridge receive time.
+  bytes payload = 4; // Producer bytes.
+}

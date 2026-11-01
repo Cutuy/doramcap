@@ -23,7 +23,7 @@ import { discover, selectApps, appOptions, outputs, bindOutputs } from './system
 import { Graphs } from './graphs.js';
 import { Store, writeOnce } from './store.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
-import { CpuFeeds, MAX_SNAPSHOTS, MAX_GROUP_NAMES } from './cpu-feed.js';
+import { LIVE_BRIDGE, LiveRelay, bindBridge, liveStreams } from './live.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
 type ExecutionResult = doramcap.console.execution.v1.IExecutionResult;
@@ -31,6 +31,7 @@ type Prepared = {
   review: typeof wire.Review.prototype;
   project: Project;
   apps: App[];
+  live: boolean;
   workspace: string;
   snapshot: doramcap.compose.v1.ConfigurationSnapshot;
 };
@@ -38,6 +39,7 @@ const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
 const MAX_METRICS = 1200;
 const integer = (value: unknown) => BigInt(String(value ?? 0));
+const selectedIds = (apps: App[], live: boolean) => [...(live ? [LIVE_BRIDGE.id] : []), ...apps.map((app) => app.id!)];
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
 
 /** The TypeScript application owns request coordination, browser state and persistence. */
@@ -47,7 +49,7 @@ export class ConsoleService implements ConsoleBackend {
   private prepared?: Prepared;
   private progress = new Progress();
   private graphs: Graphs;
-  private feeds: CpuFeeds;
+  private relay?: LiveRelay;
   private timer: ReturnType<typeof setInterval>;
   private ticking?: Promise<void>;
   private preparing?: Promise<Buffer>;
@@ -71,12 +73,7 @@ export class ConsoleService implements ConsoleBackend {
     private store: Store,
   ) {
     this.graphs = new Graphs(capabilities, config.systemApps, config.dora?.graph ?? '');
-    this.feeds = new CpuFeeds(
-      { status: async () => Buffer.from(wire.Status.encode(this.snapshot).finish()) },
-      config.systemApps
-        .filter((app) => app.cpuFeedUrl)
-        .map((app) => ({ appId: app.id, url: app.cpuFeedUrl })),
-    );
+    if (config.liveBridge) this.relay = new LiveRelay(`ws://127.0.0.1:${config.liveBridge.port}/stream`);
     this.timer = setInterval(
       () =>
         void this.tick().catch(() => {
@@ -126,9 +123,7 @@ export class ConsoleService implements ConsoleBackend {
       saved.runId === marker.runId &&
       saved.phase === marker.phase &&
       saved.steps.length <= MAX_PROGRESS_ROWS &&
-      saved.metrics.length <= MAX_METRICS &&
-      saved.cpuSnapshots.length <= MAX_SNAPSHOTS &&
-      saved.cpuGroupNames.length <= MAX_GROUP_NAMES
+      saved.metrics.length <= MAX_METRICS
     ) {
       for (const row of saved.steps) this.progress.apply(row);
       saved.steps = this.progress.rows;
@@ -162,8 +157,12 @@ export class ConsoleService implements ConsoleBackend {
     const id = randomBytes(16).toString('hex');
     let workspace = '';
     try {
+      const ids = request.systemApps?.ids ?? undefined;
       const project = await discover(this.config.projectRoot, request.directory, request.profiles),
-        apps = selectApps(this.config.systemApps, request.systemApps?.ids ?? undefined);
+        apps = selectApps(this.config.systemApps, this.config.liveBridge ? ids?.filter((id) => id !== LIVE_BRIDGE.id) : ids),
+        selected = this.config.liveBridge ? (ids?.includes(LIVE_BRIDGE.id) ?? true) : undefined,
+        // The bridge runs only when a selected app declares a live output.
+        live = !!selected && liveStreams(apps).length > 0;
       const profiles = (
         await this.engine.profiles(
           execution.ProfilesRequest.create({
@@ -181,7 +180,7 @@ export class ConsoleService implements ConsoleBackend {
       workspace = join(this.config.dataRoot, 'reviews', id);
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
-      const run = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
+      const run = await this.runRequest(id, project, apps, live, workspace, join(workspace, 'resolved'), 'review');
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(run);
@@ -192,7 +191,7 @@ export class ConsoleService implements ConsoleBackend {
           return Buffer.from(
             wire.Review.encode({
               availableProfiles: profiles,
-              systemApps: appOptions(this.config.systemApps, apps),
+              systemApps: appOptions(this.config.systemApps, apps, selected),
               warnings: ['Select a profile to enable at least one service.'],
             }).finish(),
           );
@@ -203,13 +202,13 @@ export class ConsoleService implements ConsoleBackend {
         preparedId: id,
         runId: id,
         availableProfiles: profiles,
-        cpuCaptureEnabled: apps.some(app => !!app.cpuFeedUrl),
+        liveStreams: live ? liveStreams(apps) : [],
         selectedProfiles: request.profiles,
         services: Object.entries(inspected.plan!.services ?? {}).map(([name, service]) => ({
           name,
           imageId: service.imageId,
         })),
-        systemApps: appOptions(this.config.systemApps, apps),
+        systemApps: appOptions(this.config.systemApps, apps, selected),
         recordings: outputs(apps),
         warnings: [],
       });
@@ -217,6 +216,7 @@ export class ConsoleService implements ConsoleBackend {
         review,
         project,
         apps,
+        live,
         workspace,
         snapshot: compose.ConfigurationSnapshot.fromObject(inspected.snapshot!),
       };
@@ -225,8 +225,9 @@ export class ConsoleService implements ConsoleBackend {
         runId: id,
         projectDirectory: project.directory,
         profiles: request.profiles,
-        systemApps: { ids: apps.map((app) => app.id!) },
+        systemApps: { ids: selectedIds(apps, live) },
         recordings: outputs(apps),
+        liveStreams: review.liveStreams,
       });
       return Buffer.from(wire.Review.encode(review).finish());
     } catch (error) {
@@ -241,11 +242,13 @@ export class ConsoleService implements ConsoleBackend {
     id: string,
     project: Project,
     apps: App[],
+    live: boolean,
     workspace: string,
     artifacts: string,
     stage: string,
   ): Promise<Run> {
-    const graph = await this.graphs.build(apps.map((app) => app.id!));
+    const bridge = live ? await bindBridge(this.config, apps, workspace, stage) : undefined;
+    const graph = await this.graphs.build(apps.map((app) => app.id!), bridge ? [bridge.graph] : []);
     const dora = { ...this.config.dora };
     if (graph.length) {
       const path = join(workspace, `${stage}.graph.json`);
@@ -266,6 +269,7 @@ export class ConsoleService implements ConsoleBackend {
       stopSeconds: this.config.runtime!.stopSeconds!,
     });
     await bindOutputs(apps, run, workspace, stage);
+    if (bridge) run.systemApps.push(compose.ComposeProject.create(bridge.project));
     return run;
   }
   start(input: Buffer): Promise<Buffer> {
@@ -306,11 +310,17 @@ export class ConsoleService implements ConsoleBackend {
       artifactReference: request.preparedId,
       projectDirectory: prepared.project.directory,
       profiles: prepared.project.profiles,
-      systemApps: { ids: prepared.apps.map((app) => app.id!) },
+      systemApps: { ids: selectedIds(prepared.apps, prepared.live) },
       recordings: outputs(prepared.apps),
       startAccepted: false,
     });
-    this.snapshot = wire.Status.create({ ...this.marker, phase: Phase.STARTING, metrics: [], steps: [] });
+    this.snapshot = wire.Status.create({
+      ...this.marker,
+      phase: Phase.STARTING,
+      metrics: [],
+      steps: [],
+      liveStreams: prepared.review.liveStreams,
+    });
     this.startPromise = this.startRequest(prepared);
     return this.startPromise;
   }
@@ -334,6 +344,7 @@ export class ConsoleService implements ConsoleBackend {
           this.startId,
           fresh,
           prepared.apps,
+          prepared.live,
           prepared.workspace,
           join(runs, this.startId),
           'execution',
@@ -412,6 +423,8 @@ export class ConsoleService implements ConsoleBackend {
       if (update.teardownStarted) this.snapshot.phase = Phase.STOPPING;
       else if (update.ready && this.snapshot.phase === Phase.STARTING) this.snapshot.phase = Phase.RUNNING;
       await this.sample();
+      if (this.snapshot.phase === Phase.RUNNING && this.snapshot.liveStreams.length) this.relay?.open(this.snapshot.runId);
+      else this.relay?.close();
       if (update.result && !this.admissionPending) await this.finish(update.result);
     }
   }
@@ -420,8 +433,7 @@ export class ConsoleService implements ConsoleBackend {
     if (now - this.lastSample < this.config.runtime!.sampleIntervalMs!) return;
     this.lastSample = now;
     const recordings = this.marker?.recordings ?? [];
-    const cpu = this.feeds.sample(this.snapshot.runId);
-    if (!recordings.length && !cpu) return;
+    if (!recordings.length) return;
     let bytes: bigint | undefined = 0n;
     for (const output of recordings) {
       try {
@@ -439,7 +451,6 @@ export class ConsoleService implements ConsoleBackend {
         break;
       }
     }
-    if (!recordings.length) bytes = undefined;
     const rate =
       bytes != null && this.previous && bytes >= this.previous.bytes
         ? Number(bytes - this.previous.bytes) / Math.max((now - this.previous.time) / 1000, 0.001)
@@ -447,7 +458,6 @@ export class ConsoleService implements ConsoleBackend {
     if (bytes != null) this.previous = { bytes, time: now };
     this.snapshot.metrics.push(
       wire.RunMetric.fromObject({
-        ...cpu,
         elapsedNs: String(process.hrtime.bigint() - this.begun),
         recordingBytes: bytes?.toString() ?? null,
         writeBytesPerSecond: rate,
@@ -500,9 +510,7 @@ export class ConsoleService implements ConsoleBackend {
     }
   }
   private enriched(): Snapshot {
-    const status = wire.Status.fromObject(
-      this.feeds.enrich(wire.Status.toObject(this.snapshot, objectOptions)),
-    );
+    const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
     const terminal = [Phase.FINISHED, Phase.BLOCKED].includes(status.phase);
     status.cpuAvailable =
       terminal &&
@@ -519,13 +527,11 @@ export class ConsoleService implements ConsoleBackend {
   async update(cursor: Buffer) {
     const status = wire.Status.decode(await this.status()),
       position = wire.StreamCursor.decode(cursor);
-    const last = status.metrics.at(-1)?.elapsedNs ?? 0,
-      cpu = status.cpuSnapshots.at(-1)?.sequence ?? 0;
+    const last = status.metrics.at(-1)?.elapsedNs ?? 0;
     const next = wire.StreamCursor.create({
       runId: status.runId,
       sequence: status.sequence,
       metricElapsedNs: last,
-      cpuSequence: cpu,
     });
     if (
       position.runId === status.runId &&
@@ -536,15 +542,15 @@ export class ConsoleService implements ConsoleBackend {
       status.metrics = status.metrics.filter(
         (metric) => integer(metric.elapsedNs) > integer(position.metricElapsedNs),
       );
-      if (integer(cpu) === integer(position.cpuSequence)) {
-        status.cpuSnapshots = [];
-        status.cpuGroupNames = [];
-      }
     }
     return {
       data: Buffer.from(wire.Status.encode(status).finish()),
       cursor: Buffer.from(wire.StreamCursor.encode(next).finish()),
     };
+  }
+  /** Replay the latest frame per stream, then forward bridge frames until unsubscribed. */
+  frames(consume: (frame: Buffer) => void): () => void {
+    return this.relay?.subscribe(consume) ?? (() => {});
   }
   async openArtifact(id: string, kind: string) {
     if (
@@ -580,7 +586,7 @@ export class ConsoleService implements ConsoleBackend {
       await this.tick();
     } finally {
       clearInterval(this.timer);
-      this.feeds.close();
+      this.relay?.close();
       this.closed = true;
       this.store.close();
     }

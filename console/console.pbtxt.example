@@ -5,6 +5,9 @@ data_root: "/absolute/path/to/private-console-data"
 docker_socket: "/var/run/docker.sock"
 dora { image: "doramcap/dora:local" }
 # Optional apps use approved Compose inputs; no gallery demos are injected.
-# system_apps { id: "metrics" label: "CPU monitoring" input { directory: "/apps/cpu" files: "compose.yaml" } }
+# system_apps { id: "metrics" label: "CPU monitoring" input { directory: "/apps/cpu" files: "compose.yaml" }
+#   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING } }
+# Optional live telemetry relay for apps' live_outputs.
+# live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
 # Optional runtime policy; omitted fields preserve these defaults.
 runtime { readiness_seconds: 60 stop_seconds: 15 sample_interval_ms: 100 }

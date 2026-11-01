@@ -2,9 +2,12 @@ import { doramcap } from './console.js';
 
 /** Browser/server transport; payload codecs are generated from console.proto. */
 export const MEDIA_TYPE = 'application/x-protobuf';
+const FRAME_BYTES = 4 * 1024 * 1024;
 export const LIMITS = {
   bodyBytes: 64 * 1024,
-  frameBytes: 4 * 1024 * 1024,
+  frameBytes: FRAME_BYTES,
+  // Largest bridge payload; 1 KiB leaves room for the Frame and LiveMessage wrappers.
+  bridgePayloadBytes: FRAME_BYTES - 1024,
   stringLength: 4096,
   selectionLength: 128,
   liveStreams: 4,
@@ -32,7 +35,7 @@ export const routes = {
   start: { method: 'POST', path: '/api/start', status: 202, request: wire.StartRequest, response: wire.StartResponse },
   stop: { method: 'POST', path: '/api/stop', status: 200, request: wire.StopRequest, response: wire.StopResponse },
   current: { method: 'GET', path: '/api/current', status: 200, response: wire.Status },
-  live: { method: 'GET', path: '/api/live', status: 200, response: wire.Status },
+  live: { method: 'GET', path: '/api/live', status: 200, response: wire.LiveMessage },
   error: wire.ConsoleError,
 } as const;
 export const artifactPath = (runId: string, kind: string) =>

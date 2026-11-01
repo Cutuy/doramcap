@@ -16,6 +16,7 @@ ownership; adapt implementation details to the current upstream contracts.
 | Dora coordinator and daemon | Required, selected and locked | Shared communication services and IPC |
 | Dora MCAP recorder | Optional | Selected workload outputs recorded to MCAP |
 | ROS 2 MCAP recorder | Optional | Selected ROS 2 topics recorded to MCAP |
+| Live bridge | Optional, selected by default | Declared app outputs relayed to Console ([plan](110126-live-bridge.md)) |
 | CPU monitoring and recording | Optional | Live Console metrics and dedicated CPU MCAP |
 | Fault Watchdog | Optional | Fault aggregation, with configurable MCAP/OTLP outputs |
 
@@ -101,7 +102,7 @@ and existing output paths; drain normal closure and report interrupted recording
 Validate the configured queue policy with slow storage. Hand off configuration
 examples, supported encodings, artifact contract and graph wiring requirements.
 
-## Agent B: reusable CPU collection and live feed
+## Agent B: reusable CPU collection
 
 Own `apps/system-monitor`, `apps/cpu-viewer/server` and reusable CPU deployment
 inputs. Agent A owns the recorder and MCAP schema/writer changes.
@@ -111,13 +112,10 @@ server are reusable. The gallery deployment bundles monitor, recorder and viewer
 
 - Reuse one system-monitor producer for live display and dedicated CPU recording.
   Configure backend, capacity, node identity and output locations explicitly.
-- Make the existing CPU feed backend usable without gallery assets. Preserve its
-  telemetry validation and bounded delivery; slow browsers must not block collection.
-- Provide composable monitor/feed inputs using Agent A's recorder contract. Keep
-  BPF privileges on the collector; the recorder and feed must not inherit them.
-- Hand off the live feed endpoint/protocol, readiness and artifact locations.
-  Keep Console transport changes with the integration owner; do not create a
-  second CPU subscriber/HTTP implementation inside Console.
+- Declare the monitor's `snapshots` and `dictionary` outputs as `live_outputs`;
+  the [live bridge](110126-live-bridge.md) delivers them to Console.
+- Provide composable monitor inputs using Agent A's recorder contract. Keep
+  BPF privileges on the collector; the recorder must not inherit them.
 
 Acceptance: one producer feeds both live delivery and a finalized CPU recording;
 a slow/disconnected frontend does not halt collection; required dictionaries and
@@ -187,7 +185,7 @@ upstream dependency is available and the backend contracts are settled.
 - Adapt configuration comparison to the assembled project, startup service stages,
   selected graphs/settings and outputs. Remove `SnapshotGroup`; preserve comparison
   across generated artifact directories without hiding meaningful changes.
-- Consume Agent B's live CPU feed and expose per-app state and per-recording
+- Relay declared live outputs through the live bridge and expose per-app state and per-recording
   status/downloads. Remove fixed CPU file locations and the single-recording limit.
 - Reuse workflow-owned readiness/teardown notifications and final cleanup evidence.
   Notification listener loss never stops execution. Explicit workflow Stop exits

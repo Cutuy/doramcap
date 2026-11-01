@@ -2,6 +2,7 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './store.js';
+import { LIVE_BRIDGE } from './live.js';
 
 const INFRASTRUCTURE = [
   { id: 'dora-coordinator', label: 'Dora coordinator' },
@@ -17,17 +18,19 @@ export function validateApps(apps: App[]) {
       !app.id ||
       !/^[-a-z0-9]{1,40}$/.test(app.id) ||
       ids.has(app.id) ||
-      INFRASTRUCTURE.some((item) => item.id === app.id)
+      INFRASTRUCTURE.some((item) => item.id === app.id) ||
+      app.id === LIVE_BRIDGE.id
     )
       throw new Error('empty, duplicate or reserved system app id');
     ids.add(app.id);
     if (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length)
       throw new Error('system app requires absolute directory and Compose files');
     if (app.graph && !isAbsolute(app.graph)) throw new Error('system app graph must be absolute');
-    if (app.cpuFeedUrl) {
-      const url = new URL(app.cpuFeedUrl);
-      if (url.protocol !== 'ws:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))
-        throw new Error('CPU feed must use a loopback WebSocket endpoint');
+    const sources = new Set<string>();
+    for (const output of app.liveOutputs ?? []) {
+      if (!/^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/.test(output.source ?? '') || sources.has(output.source!) || !output.kind)
+        throw new Error('live output requires a unique node/output source and a kind');
+      sources.add(output.source!);
     }
     for (const mount of app.outputMounts ?? [])
       if (!mount.service || !isAbsolute(mount.target ?? ''))
@@ -52,9 +55,11 @@ export function selectApps(apps: App[], requested?: string[]): App[] {
     throw new Error('InvalidInput');
   return ids.map((id) => apps.find((app) => app.id === id)!);
 }
-export function appOptions(apps: App[], selected: App[]) {
+/** `live` is undefined when no bridge is configured. */
+export function appOptions(apps: App[], selected: App[], live?: boolean) {
   return [
     ...INFRASTRUCTURE.map((app) => ({ ...app, selected: true, required: true })),
+    ...(live === undefined ? [] : [{ ...LIVE_BRIDGE, selected: live, required: false }]),
     ...apps.map((app) => ({
       id: app.id,
       label: app.label,

@@ -924,6 +924,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "console-live-bridge"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "dora-app",
+ "dora-node-api",
+ "eyre",
+ "futures-util",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "tokio",
+]
+
+[[package]]
 name = "console-native"
 version = "0.1.0"
 dependencies = [

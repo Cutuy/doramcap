@@ -5,6 +5,7 @@
     {"from": "telemetry-protocol", "forbid": ["cpu-viewer", "workflow-protocol"]},
     {"from": "workload-lifecycle", "forbid": ["workload-docker", "workload-supervisor", "bollard"]},
     {"from": "workload-supervisor", "forbid": ["workload-docker", "bollard"]},
+    {"from": "console-live-bridge", "forbid": ["cpu-viewer", "fault-*", "telemetry-protocol", "workload-*"]},
     {"from": "console-native", "forbid": ["project-explorer-server", "cpu-viewer", "fault-*", "storage-persistence", "telemetry-protocol"]}
   ]
 }
