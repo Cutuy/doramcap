@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1250" viewBox="0 0 1600 1250" role="img" aria-labelledby="title desc">
   <title id="title">workload-docker directory relationships</title>
-  <desc id="desc">The recorded Compose workflow chooses experiment order and policy. It calls lifecycle steps and Docker adapter capabilities inside the compose module. The adapter directory is nested inside compose and separates configuration, project execution and experiment resource cleanup. Compose commands use a logged CLI runner; Engine operations use Bollard. Filesystem and overlay operations are separate compose capabilities.</desc>
+  <desc id="desc">The recorded Compose workflow chooses experiment order and policy. It calls lifecycle steps and Docker adapter capabilities inside the compose module. The adapter directory is nested inside compose and separates configuration, project execution and experiment resource cleanup. Inspection shares preparation resolution and emits a configuration snapshot; execution compares it at preflight before reservation. Compose commands use a logged CLI runner; Engine operations use Bollard. Filesystem and overlay operations are separate compose capabilities.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52677c"/></marker>
     <style>
@@ -27,7 +27,7 @@
   <rect x="65" y="245" width="530" height="100" rx="10" class="card"/>
   <text x="85" y="278" class="file">mod.rs · ComposeRunner</text>
   <text x="85" y="307" class="body">ComposeRun in · ComposeRunReport out</text>
-  <text x="85" y="333" class="small">Coordinates steps, cancellation and cleanup</text>
+  <text x="85" y="333" class="small">Reset → prepare → preflight → reserve</text>
   <path d="M330 345V373" class="call"/>
 
   <rect x="65" y="375" width="530" height="100" rx="10" class="card"/>
@@ -37,9 +37,9 @@
   <path d="M330 475V533" class="call"/>
 
   <rect x="65" y="535" width="530" height="100" rx="10" class="card"/>
-  <text x="85" y="568" class="file">preparation.rs + preparation/model.rs</text>
-  <text x="85" y="598" class="body">Merge apps · shared IPC · stage validation</text>
-  <text x="85" y="623" class="small">PreparedRun holds the frozen plan and graph</text>
+  <text x="85" y="568" class="file">preparation.rs · resolve()</text>
+  <text x="85" y="598" class="body">Merge apps · validate graph · pin images</text>
+  <text x="85" y="623" class="small">snapshot.rs · ConfigurationSnapshot</text>
   <path d="M330 635V693" class="call"/>
 
   <rect x="65" y="695" width="530" height="155" rx="10" class="card"/>
@@ -116,4 +116,8 @@
   <text x="1410" y="1108" class="edge">Compose</text>
   <path d="M1540 750H1580V1188H1537" class="transport"/>
   <text x="1512" y="1136" class="edge">Bollard API</text>
+  <rect x="65" y="1140" width="530" height="85" rx="10" fill="#fff6df" stroke="#d6bb75" stroke-width="1.5"/>
+  <text x="85" y="1173" class="file">Inspection · preparation::resolve</text>
+  <text x="85" y="1203" class="body">Frozen plan + ConfigurationSnapshot</text>
+  <path d="M65 585H20V1182H63" class="call"/>
 </svg>

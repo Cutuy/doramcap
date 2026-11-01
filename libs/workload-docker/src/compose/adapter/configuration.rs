@@ -125,6 +125,13 @@ impl ComposeConfiguration<'_> {
             .repository_root
             .as_ref()
             .map(|_| repository_scope(&identity));
+        let owned = |labels: Option<&std::collections::HashMap<String, String>>| {
+            scope.as_ref().is_some_and(|scope| {
+                labels
+                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                    .is_some_and(|value| value == &scope.to_string_lossy())
+            })
+        };
         let name = project_name(&project.key, &identity);
         let normalized = self.normalize(&input.run, project, &name).await?;
         let mut model = normalized.model;
@@ -246,8 +253,16 @@ impl ComposeConfiguration<'_> {
             }
             if let Some(fixed) = service["container_name"].as_str() {
                 match self.adapter.docker.inspect_container(fixed, None).await {
-                    Ok(_) => {
-                        return Err(invalid(format!("container name already occupied: {fixed}")));
+                    Ok(container) => {
+                        let labels = container
+                            .config
+                            .as_ref()
+                            .and_then(|config| config.labels.as_ref());
+                        if !owned(labels) {
+                            return Err(invalid(format!(
+                                "container name already occupied: {fixed}"
+                            )));
+                        }
                     }
                     Err(e) if absent(&e) => {}
                     Err(e) => return Err(engine("check fixed container name", e)),
@@ -322,7 +337,7 @@ impl ComposeConfiguration<'_> {
                 },
             );
         }
-        // Reject existing containers, networks and volumes before publishing the plan.
+        // Reject foreign project resources while allowing stale resources owned by this controller.
         let plan = ResolvedComposeProject {
             run: input.run,
             key: project.key.clone(),
@@ -337,11 +352,28 @@ impl ComposeConfiguration<'_> {
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
-        if !execution.containers().await?.is_empty() {
-            return Err(invalid("runtime project name already exists"));
+        for container in execution.containers().await? {
+            if !owned(container.labels.as_ref()) {
+                return Err(invalid(
+                    "runtime project container belongs to another controller",
+                ));
+            }
         }
-        if !execution.networks().await?.is_empty() || !execution.volumes().await?.is_empty() {
-            return Err(invalid("runtime project resources already exist"));
+        for network in execution.networks().await? {
+            if !owned(network.labels.as_ref()) {
+                return Err(invalid(
+                    "runtime project network belongs to another controller",
+                ));
+            }
+        }
+        for volume in execution.volumes().await? {
+            if volume.labels.get(RUN_LABEL) != Some(&plan.run)
+                || volume.labels.get(super::project::PROJECT_LABEL) != Some(&plan.name)
+            {
+                return Err(invalid(
+                    "runtime project volume belongs to another run or project",
+                ));
+            }
         }
         // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;

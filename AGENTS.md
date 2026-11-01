@@ -30,6 +30,10 @@ Test cases should generally use explicit `// Arrange`, `// Act`, and `// Assert`
 sections to separate setup, the operation under test, and verification. For
 stateful scenarios, repeat Act/Assert sections for distinct transitions.
 
+Unit tests must assert documented behavior and observable outcomes. Do not hardcode
+assumptions about implementation details or reproduce the logic being tested; use
+real integration inputs where those contracts already exist.
+
 ## Capability-required tests
 
 Sudo is authorized for tests requiring Linux capabilities. Build unprivileged; elevate only the test executable. System administration and persistent configuration changes require separate approval.

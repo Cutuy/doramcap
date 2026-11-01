@@ -11,9 +11,12 @@ readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 Shutdown stops adopted apps, then system apps, then Dora.
 System services use the same shutdown policy.
 
-Module relationships and execution barriers:
+Inspection and launch preparation share resolution; the caller compares their
+configuration snapshots before reservation and startup.
 
-![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
+![Compose resolution and launch](docs/103126-compose-resolution.svg)
+
+[Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {

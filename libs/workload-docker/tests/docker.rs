@@ -1288,7 +1288,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         serde_json::json!({"services":{"app":app},"volumes":{"scratch":{}}}),
     );
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
-    let mut runner = ComposeRunner::new(adapter);
+    let mut runner = ComposeRunner::new(adapter.clone());
     let mut projects = Vec::new();
     let mut volumes = Vec::new();
     for index in 0..2 {
@@ -1311,7 +1311,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         let (stop, stopped) = tokio::sync::oneshot::channel();
         // Act
         let mut run = Box::pin(runner.run_with_ready(
-            input,
+            input.clone(),
             async {
                 let _ = stopped.await;
             },
@@ -1327,6 +1327,18 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         assert!(report.execution_error.is_none(), "{report:?}");
         assert_eq!(report.cleanup.retained_volumes.len(), 1);
         volumes.push(report.cleanup.retained_volumes[0].clone());
+
+        // Act: inspect the same run while its retained volume still exists.
+        let mut inspection = input;
+        inspection.artifacts = root.join(format!("inspection-{index}"));
+        let inspected = preparation::resolve(&adapter, inspection).await.unwrap();
+
+        // Assert
+        assert_eq!(inspected.plan.name, projects[index]);
+        assert_eq!(
+            inspected.plan.run,
+            format!("retained-{}-{index}", std::process::id())
+        );
     }
     assert_eq!(projects[0], projects[1]);
     assert_ne!(volumes[0], volumes[1]);
@@ -2016,6 +2028,159 @@ async fn compose_public_run(outcome: &str) {
         assert_eq!(message.data.as_ref(), expected.encode_to_vec().as_slice());
     }
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker and prebuilt images; creates no containers"]
+async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_rejects_them() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let listeners = [
+        std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap(),
+        std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap(),
+    ];
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    write(
+        &root.path().join("worker.json"),
+        serde_json::json!({"services":{"worker":service(&image)}}),
+    );
+    let spec = ComposeRun {
+        id: "occupied-ports".into(),
+        artifacts: root.path().join("inspection"),
+        repository_root: root.path().into(),
+        filesystem: None,
+        system_apps: vec![project(root.path(), "worker")],
+        projects: vec![],
+        dora: DoraRuntime {
+            coordinator_port: listeners[0].local_addr().unwrap().port().into(),
+            daemon_port: listeners[1].local_addr().unwrap().port().into(),
+            ..Default::default()
+        },
+        recordings: vec![],
+        readiness_seconds: 10,
+        stop_seconds: 3,
+    };
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+
+    // Act
+    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+
+    // Assert
+    assert_eq!(inspected.dora.coordinator_port, spec.dora.coordinator_port);
+    assert_eq!(inspected.dora.daemon_port, spec.dora.daemon_port);
+
+    // Act
+    let mut execution = spec.clone();
+    execution.artifacts = root.path().join("execution");
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let result = runner
+        .run_with_preflight(
+            execution,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |_| panic!("occupied endpoints must fail before preflight acceptance"),
+        )
+        .await;
+
+    // Assert
+    assert!(result.unwrap_err().to_string().contains("Dora endpoint"));
+    assert!(!runner.blocked());
+    support::assert_no_run_resources(&adapter, &spec.id).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker and prebuilt images; creates no containers"]
+async fn independent_inspection_and_preparation_have_equal_configuration_snapshots() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    // Use the shipped app input so runtime wiring evolves with its real consumer.
+    std::fs::write(
+        root.path().join("app.yaml"),
+        include_bytes!("../../../apps/mcap-recorder/deploy/compose.yaml"),
+    )
+    .unwrap();
+    let app = |artifacts: &Path| ComposeProject {
+        key: "recorder".into(),
+        directory: root.path().to_string_lossy().into_owned(),
+        files: vec!["app.yaml".into()],
+        environment: BTreeMap::from([
+            ("MCAP_RECORDER_UID".into(), "1000".into()),
+            ("MCAP_RECORDER_GID".into(), "1000".into()),
+            (
+                "MCAP_RECORDER_RESULTS_DIR".into(),
+                artifacts.to_string_lossy().into_owned(),
+            ),
+        ]),
+        ..Default::default()
+    };
+    let spec = ComposeRun {
+        id: "inspected".into(),
+        artifacts: root.path().join("inspection"),
+        filesystem: None,
+        repository_root: root.path().into(),
+        system_apps: vec![app(&root.path().join("inspection"))],
+        projects: vec![],
+        dora: Default::default(),
+        recordings: vec![],
+        readiness_seconds: 10,
+        stop_seconds: 3,
+    };
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+    let executor = Rc::new_cyclic(|weak| {
+        let mut executor = orchestrator::LocalExecutor::default();
+        workload_docker::workflows::steps::register(
+            &mut executor,
+            adapter.clone(),
+            Default::default(),
+        );
+        let backend = adapter.clone();
+        let weak = weak.clone();
+        executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
+            adapter: backend.clone(),
+            executor: weak.clone(),
+        });
+        executor
+    });
+
+    // Act
+    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+    let mut execution = spec.clone();
+    execution.id = "prepared".into();
+    execution.artifacts = root.path().join("execution");
+    execution.system_apps = vec![app(&execution.artifacts)];
+    let prepared = executor
+        .run::<preparation::PrepareRun>(execution)
+        .await
+        .unwrap()
+        .into_value();
+
+    // Assert
+    assert_ne!(
+        inspected.dora.runtime_directory,
+        prepared.dora.runtime_directory
+    );
+    assert_eq!(inspected.snapshot, prepared.snapshot);
+
+    // Act: a changed runtime budget must invalidate the inspected configuration.
+    let mut changed = spec.clone();
+    changed.artifacts = root.path().join("changed");
+    changed.system_apps = vec![app(&changed.artifacts)];
+    changed.readiness_seconds += 1;
+    let changed = preparation::resolve(&adapter, changed).await.unwrap();
+
+    // Assert
+    assert_ne!(inspected.snapshot, changed.snapshot);
+    support::assert_no_run_resources(&adapter, &spec.id).await;
+    support::assert_no_run_resources(&adapter, "prepared").await;
 }
 
 #[tokio::test(flavor = "current_thread")]

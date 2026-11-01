@@ -186,6 +186,9 @@ impl ComposeRunner {
             .await
             .map_err(step_error)?;
         check(prepared.value())?;
+        if spec.filesystem.is_some() {
+            overlay::verify_namespace(self.adapter.socket_path()).await?;
+        }
         let artifacts = prepared.value().artifacts.clone();
 
         // Reserve the daemon and prepare optional filesystem views before application launch.
