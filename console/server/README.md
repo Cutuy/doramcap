@@ -10,8 +10,11 @@ on its owner thread and exposes bounded events and safe OS handles.
 npm --prefix console/server ci
 npm --prefix console/server run build:native
 npm --prefix console/server run build
-node console/server/dist/main.js /absolute/console.pbtxt /absolute/frontend/dist
+sudo node console/server/dist/main.js /absolute/console.pbtxt /absolute/frontend/dist
 ```
+
+Build unprivileged; run with sudo on the Docker host for mount-namespace inspection
+and OverlayFS isolation (`CAP_SYS_ADMIN`). See [Console setup](../README.md).
 
 The [execution contract](../proto/execution.proto) carries explicit Compose inputs,
 configuration snapshots and execution facts. The workflow owns repository admission,

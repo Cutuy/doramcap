@@ -12,8 +12,12 @@ npm --prefix console/server run build:native
 npm --prefix console/server run build
 npm --prefix console/frontend ci
 npm --prefix console/frontend run build
-node console/server/dist/main.js /absolute/console.pbtxt /absolute/console/frontend/dist
+sudo node console/server/dist/main.js /absolute/console.pbtxt /absolute/console/frontend/dist
 ```
+
+Build unprivileged; run Console with sudo on the local Docker host. The workflow
+checks Docker's mount namespace and uses `CAP_SYS_ADMIN` for OverlayFS isolation;
+Docker socket access alone is insufficient.
 
 Use Node.js 22 or newer. Build the native addon on the target platform. Configure
 host paths and app inputs in [console.pbtxt.example](console.pbtxt.example) and
