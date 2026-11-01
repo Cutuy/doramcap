@@ -2,11 +2,6 @@ nodes:
   - id: cpu-monitor
     path: dynamic
     outputs: [snapshots, dictionary]
-  - id: cpu-feed
-    path: dynamic
-    inputs:
-      snapshots: {source: cpu-monitor/snapshots, queue_size: 4, queue_policy: drop_oldest}
-      dictionary: {source: cpu-monitor/dictionary, queue_size: 4, queue_policy: drop_oldest}
   - id: cpu-recorder
     path: dynamic
     inputs:

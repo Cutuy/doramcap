@@ -5,7 +5,6 @@ services:
     command: [--backend, bpf, --dora, --records, '4096', --queue-slots, '8', --task-capacity, '0']
     network_mode: host
     depends_on:
-      cpu-feed: {condition: service_healthy}
       cpu-recorder: {condition: service_healthy}
     read_only: true
     cap_drop: [ALL]
