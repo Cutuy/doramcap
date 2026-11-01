@@ -18,25 +18,21 @@ class Engine implements NativeExecution {
   profileNames: string[] = [];
   needsProfiles = false;
   async profiles() {
-    return Buffer.from(execution.Profiles.encode({ names: this.profileNames }).finish());
+    return execution.Profiles.create({ names: this.profileNames });
   }
-  async inspect(input: Buffer) {
-    if (this.needsProfiles && !execution.RunRequest.decode(input).projects[0].profiles?.length)
-      throw new Error('EmptySelection');
-    return Buffer.from(
-      execution.Inspection.encode({
-        plan: { services: { worker: { imageId: 'sha256:approved' } } },
-        snapshot: { manifestSha256: 'approved' },
-      }).finish(),
-    );
+  async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
+    if (this.needsProfiles && !request.projects[0].profiles?.length) throw new Error('EmptySelection');
+    return execution.Inspection.create({
+      plan: { services: { worker: { imageId: 'sha256:approved' } } },
+      snapshot: { manifestSha256: 'approved' },
+    });
   }
-  start(input: Buffer) {
-    const request = execution.StartRequest.decode(input);
+  start(run: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
     if (this.rejectAdmission) return Promise.reject(new Error('Busy'));
-    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
-    return new Promise<Buffer>((resolve) => {
-      this.release = () => resolve(Buffer.alloc(0));
+    this.update = execution.ExecutionUpdate.create({ runId: run.id });
+    return new Promise<void>((resolve) => {
+      this.release = resolve;
     });
   }
   async stop() {
@@ -44,9 +40,9 @@ class Engine implements NativeExecution {
     this.release?.();
   }
   poll() {
-    const bytes = Buffer.from(execution.ExecutionUpdate.encode(this.update).finish());
+    const update = execution.ExecutionUpdate.create(this.update);
     this.update.events = [];
-    return bytes;
+    return update;
   }
   async close() {
     this.closed = true;

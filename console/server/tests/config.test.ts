@@ -7,10 +7,8 @@ import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 const config = (extra = '') =>
-  wire.ConsoleConfig.decode(
-    capabilities.parseConfig(
-      `listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" docker_socket:"/docker.sock" access_secret_file:"/secret" ${extra}`,
-    ),
+  capabilities.parseConfig(
+    `listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" docker_socket:"/docker.sock" access_secret_file:"/secret" ${extra}`,
   );
 
 test('TypeScript applies protobuf configuration defaults and rejects invalid deployment policy', () => {

@@ -7,6 +7,7 @@ import {
   capabilities,
   wire,
   execution,
+  compose,
   objectOptions,
   type Config,
   type NativeExecution,
@@ -31,7 +32,7 @@ type Prepared = {
   project: Project;
   apps: App[];
   workspace: string;
-  snapshot: Inspection['snapshot'];
+  snapshot: doramcap.compose.v1.ConfigurationSnapshot;
 };
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
@@ -163,16 +164,14 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const project = await discover(this.config.projectRoot, request.directory, request.profiles),
         apps = selectApps(this.config.systemApps, request.systemApps?.ids ?? undefined);
-      const profiles = execution.Profiles.decode(
+      const profiles = (
         await this.engine.profiles(
-          Buffer.from(
-            execution.ProfilesRequest.encode({
-              runId: id,
-              repositoryRoot: project.directory,
-              project,
-            }).finish(),
-          ),
-        ),
+          execution.ProfilesRequest.create({
+            runId: id,
+            repositoryRoot: project.directory,
+            project,
+          }),
+        )
       ).names;
       if (
         new Set(request.profiles).size !== request.profiles.length ||
@@ -185,9 +184,7 @@ export class ConsoleService implements ConsoleBackend {
       const run = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
       let inspected: Inspection;
       try {
-        inspected = execution.Inspection.decode(
-          await this.engine.inspect(Buffer.from(execution.RunRequest.encode(run).finish())),
-        );
+        inspected = await this.engine.inspect(run);
       } catch (error) {
         if (errorCode(error) === 'EmptySelection' && profiles.length && !request.profiles.length) {
           await rm(workspace, { recursive: true, force: true });
@@ -215,7 +212,13 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         warnings: [],
       });
-      this.prepared = { review, project, apps, workspace, snapshot: inspected.snapshot };
+      this.prepared = {
+        review,
+        project,
+        apps,
+        workspace,
+        snapshot: compose.ConfigurationSnapshot.fromObject(inspected.snapshot!),
+      };
       this.snapshot = wire.Status.create({
         phase: Phase.REVIEWED,
         runId: id,
@@ -247,7 +250,7 @@ export class ConsoleService implements ConsoleBackend {
       await writeOnce(path, graph);
       dora.graph = path;
     }
-    const run: Run = {
+    const run = execution.RunRequest.create({
       id,
       repositoryRoot: project.directory,
       artifacts,
@@ -259,7 +262,7 @@ export class ConsoleService implements ConsoleBackend {
       })),
       readinessSeconds: this.config.runtime!.readinessSeconds!,
       stopSeconds: this.config.runtime!.stopSeconds!,
-    };
+    });
     await bindOutputs(apps, run, workspace, stage);
     return run;
   }
@@ -338,9 +341,7 @@ export class ConsoleService implements ConsoleBackend {
       }
       if (this.stopped) throw new Error('Stopped');
       this.executionStarted = true;
-      await this.engine.start(
-        Buffer.from(execution.StartRequest.encode({ run, expected: prepared.snapshot }).finish()),
-      );
+      await this.engine.start(run, prepared.snapshot);
       this.accepted = true;
       this.marker!.startAccepted = true;
       try {
@@ -354,7 +355,7 @@ export class ConsoleService implements ConsoleBackend {
     } catch (error) {
       await this.diagnostic(error);
       if (this.executionStarted && !this.accepted) {
-        const update = execution.ExecutionUpdate.decode(this.engine.poll());
+        const update = this.engine.poll();
         await this.consume(update);
         if (update.runId !== this.startId) this.executionStarted = false;
       }
@@ -386,7 +387,7 @@ export class ConsoleService implements ConsoleBackend {
     return this.ticking;
   }
   private async tickInner() {
-    await this.consume(execution.ExecutionUpdate.decode(this.engine.poll()));
+    await this.consume(this.engine.poll());
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {

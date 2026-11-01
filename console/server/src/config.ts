@@ -6,7 +6,7 @@ import { validateApps } from './system-apps.js';
 
 /** Decode pbtxt with the existing parser and validate server-owned deployment policy. */
 export async function loadConfig(path: string): Promise<{ config: Config; secret: string }> {
-  const config = wire.ConsoleConfig.decode(capabilities.parseConfig(await readFile(path, 'utf8')));
+  const config = capabilities.parseConfig(await readFile(path, 'utf8'));
   validateConfig(config);
   const secret = (
     await readFile(config.accessSecretFile, 'utf8').catch((error) => {

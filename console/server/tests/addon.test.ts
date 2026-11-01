@@ -1,16 +1,16 @@
 import { createRequire } from 'node:module';
+import { capabilities } from '../src/native.js';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
 
 const require = createRequire(import.meta.url);
-const addon = require('../build/console.node') as { open(path: string, version: number): Promise<unknown> };
 
 test('rejects an incompatible contract before reading configuration', async () => {
   // Arrange
   const incompatibleVersion = 999;
   // Act / Assert
-  await assert.rejects(addon.open('/does-not-exist', incompatibleVersion), /version mismatch/);
+  await assert.rejects(capabilities.open('/does-not-exist', incompatibleVersion), /version mismatch/);
 });
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';

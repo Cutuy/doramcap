@@ -24,3 +24,7 @@ reset, preflight and cleanup. Console builds the browser-facing status in TypeSc
 Run `npm --prefix console/server test` for server, native transport and OS-helper
 checks. The opt-in `console/server/tests/real-compose.ts` exercises two real
 start/stop cycles; build unprivileged and use the repository capability-test procedure.
+
+The [native client](src/native.ts) accepts and returns generated protobuf messages.
+It keeps N-API byte serialization private; application code uses the
+[typed interface](native/index.d.ts).
