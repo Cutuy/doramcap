@@ -27,8 +27,10 @@ Evidence:
 - ARM worker: Docker 29.9.2, Node 22.23.4, npm 10.9.9, Cargo 1.99.1.
 - Job 548: release manager/Activity Lab build passed; 36 gallery library tests passed.
 - Job 550: both frontend builds and 6 Activity Lab frontend tests passed.
-- Job 551: complete release from `b6fc4ce8248621f52ed845bee067eccad79ba96e`;
-  92 MiB compressed, all images ARM64, pinned Dora CLI 1.1.0.
+- Job 551: complete runtime bundle; all images ARM64, pinned Dora CLI 1.1.0.
+- Job 553: final SPA/config refresh from
+  `d865e887becebe9e64a9472c1f5a3d511396b336` after rebasing onto remote main;
+  native source/images are unchanged, and the SPA production build passed.
 - Existing worker caches and the paused default queue were preserved.
 
 The latest-main SPA needed `console/` in its document filter for `console-native`.
@@ -39,7 +41,7 @@ catalog generator, units and documentation.
 
 | Artifact | SHA256 |
 |---|---|
-| Release archive | `7d7e71f27c1352a94be6482860601f2b58551dbb5fcd227c04be58bba4fc9601` |
+| Release archive | `cde8bc86c25236aa1f1589bb2bcc5adb86331fe17e2e4007253ad794c4d69c05` |
 | Activity Lab image | `49acb20b74159e5fe0314c70a56822a5c706a4bbea393b56f0c1c507c7c85acd` |
 | Dora image | `87e9524b10012f8ff2a9a06d1af4f7a7bd197757b0b018239fd015bf44e4a8f4` |
 | Caddy image | `36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e` |
@@ -115,11 +117,14 @@ details are included in this change.
 Operator commands are in the [EC2 guide](../deploy/ec2/README.md). Browser
 visual verification is deferred because no browser is available in this session.
 
-Cloud Node checks passed on ARM64 and x86_64 for the runtime release commit;
+Cloud Node checks passed on ARM64 and x86_64 for the initial runtime commit;
 full Rust cloud CI and Cursor review are pending. Full local workspace CI was
 deferred for this focused deployment change. Other demos, GPU execution,
 Kubernetes, load qualification and automatic recording retention are deferred.
 The ARM worker build/tests and EC2 runtime checks above are separate evidence.
 
 Activation preserves `/opt/doramcap-gallery/workspace` across release changes
-so repository-scoped admission and recovery retain the same identity.
+so repository-scoped admission and recovery retain the same identity. Final
+checks passed the refreshed SPA assets and embedded source revision, retained
+recording download, app startup, graceful restart and injected-crash recovery
+with this stable workspace. The deployment was left idle with no app containers.
