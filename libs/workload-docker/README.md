@@ -8,6 +8,8 @@ named volumes remain separate; reset never replays interrupted host writes.
 
 Compose handles configuration and container launch; Bollard verifies ownership,
 readiness and cleanup. Dora starts before system apps, followed by adopted apps.
+Shutdown stops adopted apps, then system apps, then Dora.
+System services use the same shutdown policy.
 
 Module relationships and execution barriers:
 

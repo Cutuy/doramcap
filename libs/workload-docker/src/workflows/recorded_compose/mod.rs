@@ -258,7 +258,7 @@ impl ComposeRunner {
         })
         .await;
 
-        // Stop adopted apps, drain system apps, then stop the shared Dora runtime.
+        // Stop adopted apps, then system apps, then the shared Dora runtime.
         if let Some(quiescing) = signals.quiescing.take() {
             let _ = quiescing.send(());
         }
@@ -270,13 +270,13 @@ impl ComposeRunner {
             &diagnostics,
         )
         .await;
-        let drained = resources
+        let systems_stopped = resources
             .lock()
             .await
             .shutdown(&prepared.value().system_services)
             .await;
-        if let Err(error) = &drained {
-            execution::record_failure(&diagnostics, "workload drain", error);
+        if let Err(error) = &systems_stopped {
+            execution::record_failure(&diagnostics, "system shutdown", error);
         }
         let systems_clean = execution::quiesce_services(
             &executor,
@@ -389,7 +389,7 @@ impl ComposeRunner {
                     && runtime_exit_clean
                     && applications_started
                     && adopted_clean
-                    && drained.is_ok()
+                    && systems_stopped.is_ok()
                     && systems_clean
                     && execution_error.is_none(),
                 event_stream_healthy: false,

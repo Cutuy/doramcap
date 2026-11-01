@@ -1576,8 +1576,9 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker Engine, Dora CLI and built node binaries"]
-async fn public_dora_records_and_drains() {
+async fn public_dora_records_and_stops_system_apps() {
     compose_public_run("complete").await;
+    compose_public_run("timer-consumer").await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1731,7 +1732,14 @@ async fn compose_public_run(outcome: &str) {
     let daemon_port = daemon.local_addr().unwrap().port();
     drop((coordinator, daemon));
     let graph = root.join("graph.yml");
-    std::fs::write(&graph, "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: recorder\n    path: dynamic\n    inputs:\n      snapshots: {source: source/data, queue_size: 64, queue_policy: backpressure}\n").unwrap();
+    let mut flow = "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: observer\n    path: dynamic\n    inputs:\n      data: source/data\n      tick: dora/timer/millis/100\n  - id: recorder\n    path: dynamic\n    inputs:\n      snapshots: {source: source/data, queue_size: 64, queue_policy: backpressure}\n".to_string();
+    if outcome == "complete" {
+        flow = flow.replace("      tick: dora/timer/millis/100\n", "");
+    }
+    if outcome == "timer-consumer" {
+        flow.push_str("      tick: dora/timer/millis/100\n");
+    }
+    std::fs::write(&graph, flow).unwrap();
     let packet = telemetry_protocol::pb::Packet {
         body: Some(telemetry_protocol::pb::packet::Body::Snapshot(
             telemetry_protocol::pb::SnapshotFrame {
@@ -1767,6 +1775,15 @@ async fn compose_public_run(outcome: &str) {
                 "volumes":[
                     {"type":"bind", "source":fixture, "target":"/fixture", "read_only":true},
                     {"type":"bind", "source":payload_file, "target":"/payload.pb", "read_only":true},
+                    {"type":"bind", "source":runtime, "target":runtime}
+                ]
+            },
+            "observer": {
+                "image":image, "network_mode":"host", "user":user,
+                "entrypoint":["/fixture"],
+                "command":["observer", daemon_port.to_string(), runtime.join("observer.ready").to_str().unwrap(), "idle"],
+                "volumes":[
+                    {"type":"bind", "source":fixture, "target":"/fixture", "read_only":true},
                     {"type":"bind", "source":runtime, "target":runtime}
                 ]
             },
@@ -1843,7 +1860,7 @@ async fn compose_public_run(outcome: &str) {
     let (ready, mut ready_rx) = tokio::sync::oneshot::channel::<ResolvedComposeProject>();
     let ready_seen = std::cell::Cell::new(false);
 
-    // Act: the public workflow owns startup, producer stop, consumer drain and cleanup.
+    // Act: the public workflow owns startup, user stop, system stop and cleanup.
     let crash_startup = outcome == "crash-startup";
     let crash_removal = outcome == "crash-removal";
     let report = Box::pin(runner.run_with_ready(
@@ -1922,18 +1939,15 @@ async fn compose_public_run(outcome: &str) {
 
     // Assert
     let report = report.expect("public workflow report");
-    assert_eq!(report.successful(), outcome == "complete", "{report:?}");
-    assert_eq!(
-        report.recording_finalized,
-        outcome == "complete",
-        "{report:?}"
-    );
-    if outcome == "complete" {
+    let complete = matches!(outcome, "complete" | "timer-consumer");
+    assert_eq!(report.successful(), complete, "{report:?}");
+    assert_eq!(report.recording_finalized, complete, "{report:?}");
+    if complete {
         assert!(ready_seen.get());
     }
     assert!(!runner.blocked(), "{report:?}");
     support::assert_no_run_resources(&adapter, &run).await;
-    if outcome != "complete" {
+    if !complete {
         if outcome == "stalled" {
             assert!(
                 report.writers_stopped && report.boundary_clean,
