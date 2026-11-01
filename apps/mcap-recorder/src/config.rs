@@ -89,29 +89,6 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn cpu(output_path: String) -> RecorderConfig {
-    RecorderConfig {
-        output_path,
-        report_path: String::new(),
-        input: vec![
-            Input {
-                input: "snapshots".into(),
-                topic: "doramcap/snapshots".into(),
-                message_encoding: "protobuf".into(),
-                validation: Validation::CpuSnapshot as i32,
-                ..Default::default()
-            },
-            Input {
-                input: "dictionary".into(),
-                topic: "doramcap/dictionary".into(),
-                message_encoding: "protobuf".into(),
-                validation: Validation::CpuDictionary as i32,
-                ..Default::default()
-            },
-        ],
-    }
-}
-
 pub fn report_text(report: &RecordingReport) -> Result<String> {
     let descriptor = DescriptorPool::decode(DESCRIPTOR)?
         .get_message_by_name("doramcap.recorder.v1.RecordingReport")

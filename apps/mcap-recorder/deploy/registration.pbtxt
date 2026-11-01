@@ -5,10 +5,10 @@ network: "host"
 headless: true
 readiness_seconds: 90
 stop_seconds: 50
-result_file: "recording.mcap"
+result_file: "cpu.mcap"
 recording_count {
   count_file: "published.count"
-  topic: "doramcap/snapshots"
+  topic: "doramcap/cpuacct"
 }
 env_prefix: "MCAP_RECORDER"
 requires_explicit_enable: true

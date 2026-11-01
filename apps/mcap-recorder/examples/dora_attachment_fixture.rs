@@ -7,7 +7,10 @@ use dora_node_api::{
 use eyre::{Result, bail, eyre};
 use prost::Message;
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
-use telemetry_mcap::McapSink;
+use telemetry_mcap::RecordingSink;
+
+#[path = "../src/config.rs"]
+pub mod config;
 
 fn acknowledge(path: &str) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()
@@ -41,7 +44,7 @@ fn shared_mapping(bytes: &[u8]) -> Result<bool> {
         }))
 }
 
-fn finish_recording(sink: McapSink, count: u64, proof: Option<&str>) -> Result<()> {
+fn finish_recording(sink: RecordingSink, count: u64, proof: Option<&str>) -> Result<()> {
     if count != 20 {
         bail!("expected 20 messages, received {count}");
     }
@@ -71,10 +74,30 @@ fn main() -> Result<()> {
         .daemon_port(port)
         .build()?;
     let mut recorder = if mode == "recorder" {
-        Some(McapSink::create(
+        let config = config::load(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/deploy/reusable/cpu.pbtxt"
+        )))?;
+        let input = config
+            .input
+            .iter()
+            .find(|input| input.validation == config::Validation::CpuSnapshot as i32)
+            .ok_or_else(|| eyre!("CPU snapshot channel missing from fixture config"))?;
+        let mut sink = RecordingSink::create(
             path.as_deref()
                 .ok_or_else(|| eyre!("missing recording path"))?,
-        )?)
+        )?;
+        let channel = sink.add_channel(
+            &input.topic,
+            &input.message_encoding,
+            Some((
+                telemetry_protocol::MCAP_SCHEMA_NAME,
+                "protobuf",
+                telemetry_protocol::FILE_DESCRIPTOR_SET,
+            )),
+            &Default::default(),
+        )?;
+        Some((sink, channel))
     } else {
         None
     };
@@ -132,8 +155,11 @@ fn main() -> Result<()> {
                         _ => bail!("missing {key} metadata"),
                     }
                 };
-                recorder.as_mut().expect("recorder").write(
-                    parameter("sequence")?,
+                let (sink, channel) = recorder.as_mut().expect("recorder");
+                sink.write(
+                    *channel,
+                    u32::try_from(parameter("sequence")?)?,
+                    parameter("capture_unix_ns")?,
                     parameter("capture_unix_ns")?,
                     bytes,
                 )?;
@@ -146,7 +172,7 @@ fn main() -> Result<()> {
             _ => {}
         }
     }
-    if let Some(sink) = recorder {
+    if let Some((sink, _)) = recorder {
         let proof = require_shm
             .then(|| {
                 done.as_deref()
@@ -174,7 +200,7 @@ mod tests {
         ));
         std::fs::create_dir(&root)?;
         for count in [0, 19] {
-            let sink = McapSink::create(root.join(format!("{count}.mcap")))?;
+            let sink = RecordingSink::create(root.join(format!("{count}.mcap")))?;
             let proof = root.join(format!("{count}.proof"));
             // Act
             let result = finish_recording(sink, count, Some(proof.to_str().unwrap()));

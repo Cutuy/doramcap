@@ -235,7 +235,11 @@ fn unsupported_payload_or_upstream_error_keeps_partial_failure_evidence() -> Res
 fn cpu_validation_preserves_capture_and_reports_producer_loss() -> Result<()> {
     // Arrange
     let temp = Temp::new()?;
-    let mut config = config::cpu(temp.0.join("test.mcap").to_str().unwrap().into());
+    let mut config = config::load(std::path::Path::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/deploy/reusable/cpu.pbtxt"
+    )))?;
+    config.output_path = temp.0.join("test.mcap").to_str().unwrap().into();
     config.report_path = temp.0.join("report.pbtxt").to_str().unwrap().into();
     let mut snapshot = monitor_core::Snapshot::with_capacity(1);
     snapshot.sequence = 17;
@@ -283,6 +287,9 @@ fn cpu_validation_preserves_capture_and_reports_producer_loss() -> Result<()> {
     assert_eq!(report.input[0].producer_dropped_batches, Some(4));
     assert_eq!(report.input[0].producer_capacity_overflow, Some(2));
     assert_eq!((report.input[0].received, report.input[0].written), (2, 1));
+    let bytes = std::fs::read(temp.0.join("test.mcap"))?;
+    let message = mcap::MessageStream::new(&bytes)?.next().unwrap()?;
+    assert_eq!(message.channel.topic, "doramcap/cpuacct");
     Ok(())
 }
 

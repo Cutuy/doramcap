@@ -2,13 +2,13 @@ output_path: "/results/cpu.mcap"
 report_path: "/results/cpu.report.pbtxt"
 input {
   input: "snapshots"
-  topic: "doramcap/snapshots"
+  topic: "doramcap/cpuacct"
   message_encoding: "protobuf"
   validation: CPU_SNAPSHOT
 }
 input {
   input: "dictionary"
-  topic: "doramcap/dictionary"
+  topic: "doramcap/cpuacct/dictionary"
   message_encoding: "protobuf"
   validation: CPU_DICTIONARY
 }

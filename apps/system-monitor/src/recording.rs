@@ -1,49 +1,21 @@
 //! Application-level telemetry policy over the format-independent storage writer.
 use eyre::{Result, ensure};
 use prost::Message as _;
+use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::{
     fs::File,
     os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     time::Instant,
 };
-use storage_persistence::mcap::{Channel, LargeReservation, McapWriter, Message, Schema};
+use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
 
-/// Encoded publication bytes borrowed during [`Recorder::record`]'s callback.
-/// Storage commit follows the callback; the borrow cannot be retained afterward.
-pub trait Payload {
-    /// Encoded byte length.
-    fn len(&self) -> usize;
-    /// Whether the payload contains zero bytes.
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-    /// Copy all encoded bytes into a destination of exactly [`Self::len`] bytes.
-    fn copy_to(&self, destination: &mut [u8]);
+mod pb {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.monitor.v1.rs"));
 }
-struct Slice<'a>(&'a [u8]);
-impl Payload for Slice<'_> {
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-    fn copy_to(&self, destination: &mut [u8]) {
-        destination.copy_from_slice(self.0);
-    }
-}
-impl Payload for LargeReservation<'_> {
-    fn len(&self) -> usize {
-        self.payload_len()
-    }
-    fn copy_to(&self, destination: &mut [u8]) {
-        self.copy_payload_to(destination);
-    }
-}
-/// Owner-thread telemetry recorder with explicit polling, rotation and finalization.
-///
-/// Methods perform encoding and I/O synchronously on the calling thread. Mutable
-/// access serializes operations. Successful records have been accepted by storage;
-/// [`Self::finish`] establishes finalized, synced output. Call it explicitly before
-/// treating the recording as complete; dropping the recorder does not seal MCAP.
+
+/// CPU packet recording on the caller thread, with explicit polling and rotation.
+/// Finalization drains storage and syncs the output; dropping leaves it unsealed.
 pub struct Recorder {
     writer: McapWriter,
     base: PathBuf,
@@ -60,15 +32,32 @@ fn create(path: &Path, direct: bool) -> Result<File> {
         .open(path)?)
 }
 impl Recorder {
-    /// Create a new recording with snapshot and dictionary channels.
-    ///
-    /// `path` must not exist. `direct` selects O_DIRECT with 4 KiB alignment;
-    /// otherwise writes use buffered I/O. `rotation_bytes` is a soft byte target,
-    /// with zero disabling the rotation recommendation. Rotation is caller-driven.
-    ///
-    /// Returns file creation, allocation, registration or io_uring errors. A newly
-    /// created partial file may remain on failure; existing files are preserved.
-    pub fn create(path: &Path, direct: bool, rotation_bytes: u64) -> Result<Self> {
+    /// Load pbtxt topics and create a new recording; an existing path is rejected.
+    /// None uses the shipped pbtxt defaults. Direct I/O uses 4 KiB alignment.
+    /// rotation_bytes is a soft byte target; zero disables rotation recommendations.
+    pub fn create(
+        path: &Path,
+        direct: bool,
+        rotation_bytes: u64,
+        config: Option<&Path>,
+    ) -> Result<Self> {
+        let descriptor = DescriptorPool::decode(
+            include_bytes!(concat!(env!("OUT_DIR"), "/recording.bin")).as_slice(),
+        )?
+        .get_message_by_name("doramcap.monitor.v1.RecordingConfig")
+        .expect("compiled recording config");
+        let text = match config {
+            Some(path) => std::fs::read_to_string(path)?,
+            None => include_str!("../config/recording.pbtxt").into(),
+        };
+        let config: pb::RecordingConfig =
+            DynamicMessage::parse_text_format(descriptor, &text)?.transcode_to()?;
+        ensure!(
+            !config.samples_topic.is_empty()
+                && !config.dictionary_topic.is_empty()
+                && config.samples_topic != config.dictionary_topic,
+            "recording topics must be nonempty and distinct"
+        );
         let file = create(path, direct)?;
         let schema = Schema {
             name: telemetry_protocol::MCAP_SCHEMA_NAME,
@@ -78,12 +67,12 @@ impl Recorder {
         let channels = [
             Channel {
                 id: 1,
-                topic: "doramcap/snapshots",
+                topic: &config.samples_topic,
                 encoding: "protobuf",
             },
             Channel {
                 id: 2,
-                topic: "doramcap/dictionary",
+                topic: &config.dictionary_topic,
                 encoding: "protobuf",
             },
         ];
@@ -115,15 +104,8 @@ impl Recorder {
             && self.rotation_bytes > 0
             && self.writer.file_bytes() >= self.rotation_bytes
     }
-    /// Finalize and sync the current file, then begin the next numbered file.
-    ///
-    /// Replaces the base path's extension with `000001.mcap`, `000002.mcap`, etc.
-    /// Schemas/channels repeat automatically; the caller supplies any dictionary
-    /// checkpoint. Successful rotation resets the accepted-snapshot count.
-    ///
-    /// Returns index exhaustion, file creation, finalization or new-file I/O errors.
-    /// An attempted rotation consumes its index, including on failure. Failure may
-    /// leave a finalized old file or a partial new file; rotation has no rollback.
+    /// Seal this file and open the next numbered file with its schema and channels.
+    /// The caller supplies a dictionary checkpoint; failure consumes the index.
     pub fn rotate(&mut self) -> Result<()> {
         self.index = self
             .index
@@ -141,28 +123,16 @@ impl Recorder {
         self.writer.poll(Instant::now())?;
         Ok(())
     }
-    /// Encode, publish and accept one packet for recording, in that order.
-    ///
-    /// `dictionary` selects the dictionary channel; otherwise use the snapshot
-    /// channel. The caller supplies a matching packet and transport metadata.
-    /// `sequence` is narrowed to MCAP's 32-bit header; `time` is Unix nanoseconds
-    /// used for both log and publication timestamps. Packet bytes are preserved.
-    ///
-    /// The synchronous `publish` callback borrows the exact encoded payload until
-    /// it returns. Encoding or callback failure abandons the reservation. After a
-    /// successful callback, storage commit may still fail: publication and recording
-    /// are separate effects, so retries must account for an already published packet.
-    ///
-    /// Returns frame-size, encoding, callback or storage errors. Success establishes
-    /// storage acceptance; later I/O failures surface through record/poll/finish.
-    /// Use [`Self::finish`] for finalized, synced output.
+    /// Encode and publish the packet, then commit the same bytes to storage.
+    /// The callback borrows bytes until it returns; callback failure abandons them.
+    /// Later storage failure can follow successful publication; finish seals output.
     pub fn record(
         &mut self,
         dictionary: bool,
         sequence: u64,
         time: u64,
         packet: &telemetry_protocol::pb::Packet,
-        publish: impl FnOnce(&dyn Payload) -> Result<()>,
+        publish: impl FnOnce(&[u8]) -> Result<()>,
     ) -> Result<()> {
         let len = packet.encoded_len();
         ensure!(
@@ -177,7 +147,7 @@ impl Recorder {
         };
         let mut reservation = self.writer.reserve(meta, len)?;
         packet.encode(&mut reservation.payload_mut())?;
-        publish(&Slice(reservation.payload()))?;
+        publish(reservation.payload())?;
         reservation.commit()?;
         if !dictionary {
             self.snapshots += 1;
@@ -201,7 +171,12 @@ mod tests {
         // Arrange
         let path =
             std::env::temp_dir().join(format!("doramcap-callback-{}.mcap", std::process::id()));
-        let mut recorder = Recorder::create(&path, true, 0)?;
+        let config = path.with_extension("pbtxt");
+        std::fs::write(
+            &config,
+            "samples_topic: 'example/cpu' dictionary_topic: 'example/names'",
+        )?;
+        let mut recorder = Recorder::create(&path, true, 0, Some(&config))?;
         let mut expected = Vec::new();
         for size in [4, 70000] {
             let packet =
@@ -228,7 +203,7 @@ mod tests {
             let mut published = vec![0; packet.encoded_len()];
             // Act: retry with a successful publisher.
             recorder.record(true, 1, 12, &packet, |payload| {
-                payload.copy_to(&mut published);
+                published.copy_from_slice(payload);
                 Ok(())
             })?;
             // Assert
@@ -243,8 +218,10 @@ mod tests {
         assert_eq!(messages.len(), 2);
         for (message, bytes) in messages.iter().zip(expected) {
             assert_eq!(message.data.as_ref(), bytes);
+            assert_eq!(message.channel.topic, "example/names");
         }
         std::fs::remove_file(path)?;
+        std::fs::remove_file(config)?;
         Ok(())
     }
 }

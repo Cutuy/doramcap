@@ -17,12 +17,17 @@ bin_dir = args.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
     root = Path(directory)
     embedded, received = root / 'embedded.mcap', root / 'received.mcap'
+    source = Path(__file__).resolve().parents[3]
+    monitor_config = source / 'apps/system-monitor/config/recording.pbtxt'
+    recorder_config = root / 'recorder.pbtxt'
+    template = (source / 'apps/mcap-recorder/deploy/reusable/cpu.pbtxt').read_text()
+    recorder_config.write_text(template.replace('/results/cpu.mcap', str(received)).replace('/results/cpu.report.pbtxt', str(root / 'received.report.pbtxt')))
     # JSON is a YAML-compatible descriptor and safely quotes filesystem paths.
     flow = {'nodes': [
         {'id': 'monitor', 'path': str(bin_dir / 'system-monitor'),
-         'args': f'--backend bpf --samples 24 --records 4096 --dora --record {embedded}',
+         'args': f'--backend bpf --samples 24 --records 4096 --dora --record {embedded} --record-config {monitor_config}',
          'outputs': ['snapshots', 'dictionary']},
-        {'id': 'recorder', 'path': str(bin_dir / 'mcap-recorder'), 'args': str(received),
+        {'id': 'recorder', 'path': str(bin_dir / 'mcap-recorder'), 'args': f'--config {recorder_config}',
          'inputs': {'snapshots': {'source': 'monitor/snapshots', 'queue_size': 64},
                     'dictionary': {'source': 'monitor/dictionary', 'queue_size': 64}}}]}
     descriptor = root / 'flow.yml'
@@ -44,4 +49,4 @@ with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
     if proc.returncode:
         print(output)
         raise SystemExit(proc.returncode)
-    subprocess.run([str(bin_dir / 'examples/compare_recordings'), str(embedded), str(received)], check=True)
+    subprocess.run([str(bin_dir / 'examples/compare_recordings'), str(embedded), str(received), 'doramcap/cpuacct', '24'], check=True)
