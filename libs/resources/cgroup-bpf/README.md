@@ -11,7 +11,8 @@ selects `css_rstat_flush` or `cgroup_rstat_flush`. Separate field reads preserve
 layout correctness. Hierarchy totals come directly from kernel counters. Root
 rows carry `ROOT` and read global per-CPU `kernel_cpustat` through BPF. Their
 runtime is user + nice + system + IRQ + softirq, matching Linux root cgroup CPU
-accounting. Offline runqueues are omitted. Root rows are independent of subtree
+accounting. A namespaced mount also includes the global root's CPU rows, using
+its kernel identity. Offline runqueues are omitted. Root rows are independent of subtree
 rstat and must be excluded from descendant rollups. `RAW_USER_SYSTEM` means user/system counters are raw,
 before cpu.stat adjustment.
 

@@ -23,6 +23,12 @@ def usage(path):
     return int(dict(line.split() for line in (path / 'cpu.stat').read_text().splitlines())['usage_usec']) * 1000
 
 
+def host_usage():
+    # Independent system-wide reference, including when cgroupfs has a namespaced root.
+    fields = Path('/proc/stat').read_text().splitlines()[0].split()[1:]
+    busy_ticks = sum(int(fields[index]) for index in (0, 1, 2, 5, 6))
+    return busy_ticks * 1_000_000_000 // os.sysconf('SC_CLK_TCK')
+
 
 def validate_readiness(monitor):
     # Arrange: output initialization failures must not leave a readiness marker.
@@ -80,7 +86,7 @@ def main():
             group.mkdir()
         identities = [group.stat().st_ino for group in groups]
         baseline = [usage(group) for group in groups]
-        host_baseline = usage(Path('/sys/fs/cgroup'))
+        host_baseline = host_usage()
         with tempfile.TemporaryDirectory(prefix='doramcap-native-') as directory:
             output = Path(directory) / 'snapshots.pb'
             monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
@@ -147,13 +153,14 @@ def main():
                 rows = [r for r in batches[-1]['records'] if r['cgroup_id'] == identities[index]]
                 assert all(r['parent_id'] == identities[0] for r in rows)
             # Assert: BPF root rows cover controlled work and remain inside an independent kernel accounting window.
-            host_reference = usage(Path('/sys/fs/cgroup')) - host_baseline
+            host_reference = host_usage() - host_baseline
             root_first = {r['cpu']: r for r in batches[0]['records'] if r['flags'] & 16}
             root_last = {r['cpu']: r for r in batches[-1]['records'] if r['flags'] & 16}
             assert root_first and root_first.keys() == root_last.keys(), 'missing BPF root CPU rows'
             assert all(r['parent_id'] == 0 and r['flags'] & 1 and not (r['flags'] & 64) for r in root_last.values())
             root_delta = sum(r['runtime_ns'] - root_first[cpu]['runtime_ns'] for cpu, r in root_last.items())
-            assert observed[0]['runtime_ns'] * .99 <= root_delta <= host_reference + 1_000_000, (root_delta, host_reference)
+            reference_precision = len(root_last) * 5 * 1_000_000_000 // os.sysconf('SC_CLK_TCK')
+            assert observed[0]['runtime_ns'] * .99 <= root_delta <= host_reference + reference_precision, (root_delta, host_reference)
             for previous, current in zip(batches, batches[1:]):
                 old = {r['cpu']: r['runtime_ns'] for r in previous['records'] if r['flags'] & 16}
                 assert all(r['runtime_ns'] >= old[r['cpu']] for r in current['records'] if r['flags'] & 16), 'BPF root counter regression'

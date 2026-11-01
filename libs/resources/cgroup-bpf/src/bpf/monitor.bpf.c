@@ -81,18 +81,7 @@ static __noinline int read_root(__u32 cpu, struct record *r) {
     return 0;
 }
 
-SEC("iter.s/cgroup")
-int collect(struct bpf_iter__cgroup *ctx) {
-    struct cgroup *cg = ctx->cgroup;
-    if (!cg) return 0;
-    __u32 zero = 0;
-    struct control *ctl = bpf_map_lookup_elem(&control, &zero);
-    if (!ctl) return 0;
-    if (ctx->meta->seq_num == 0) {
-        if (bpf_ksym_exists(css_rstat_flush)) css_rstat_flush(&cg->self);
-        else if (bpf_ksym_exists(cgroup_rstat_flush)) cgroup_rstat_flush(cg);
-        else return -95; // EOPNOTSUPP; never publish unflushed values as valid.
-    }
+static __noinline void collect_cgroup(struct cgroup *cg, struct control *ctl) {
     __u64 id = BPF_CORE_READ(cg, kn, id);
     struct cgroup_subsys_state *parent = BPF_CORE_READ(cg, self.parent);
     __u64 parent_id = parent ? BPF_CORE_READ(parent, cgroup, kn, id) : 0;
@@ -131,6 +120,35 @@ int collect(struct bpf_iter__cgroup *ctx) {
         // Native inclusive runtime; user/system are RAW, before cpu.stat adjustment.
         r->flags = 1 | 8;
     }
+}
+
+SEC("iter.s/cgroup")
+int collect(struct bpf_iter__cgroup *ctx) {
+    struct cgroup *cg = ctx->cgroup;
+    if (!cg) return 0;
+    __u32 zero = 0;
+    struct control *ctl = bpf_map_lookup_elem(&control, &zero);
+    if (!ctl) return 0;
+    if (ctx->meta->seq_num == 0) {
+        if (bpf_ksym_exists(css_rstat_flush)) css_rstat_flush(&cg->self);
+        else if (bpf_ksym_exists(cgroup_rstat_flush)) cgroup_rstat_flush(cg);
+        else return -95; // EOPNOTSUPP; never publish unflushed values as valid.
+        // Namespaced mounts can hide the global root; include its CPU totals once.
+        if (BPF_CORE_READ(cg, level) != 0) {
+            struct cgroup *ancestor = cg;
+            int depth;
+            bpf_for(depth, 0, 4096) {
+                ancestor = BPF_CORE_READ(ancestor, self.parent, cgroup);
+                if (!ancestor) return -5;
+                if (BPF_CORE_READ(ancestor, level) == 0) {
+                    collect_cgroup(ancestor, ctl);
+                    break;
+                }
+            }
+            if (BPF_CORE_READ(ancestor, level) != 0) return -7;
+        }
+    }
+    collect_cgroup(cg, ctl);
     return 0;
 }
 char LICENSE[] SEC("license") = "GPL";
