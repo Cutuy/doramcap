@@ -4,6 +4,7 @@ import "compose.proto";
 import "dora.proto";
 
 message ConsoleConfig {
+  bool download_missing_images = 10; // Prepare selected images before Review.
   string listen_address = 1;
   string project_root = 2;
   string data_root = 3;
@@ -36,3 +37,10 @@ message SystemAppDefinition {
 }
 
 message RecordingOutput { string id = 1; string path = 2; string stream = 3; bool cpu = 4; }
+
+// Release metadata and relative playground configuration, resolved by the installer CLI.
+message ReleaseManifest {
+  string version = 1;
+  string platform = 2;
+  ConsoleConfig config = 3;
+}

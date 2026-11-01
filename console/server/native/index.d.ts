@@ -25,6 +25,7 @@ export interface NativeExecution {
 /** Native capabilities used by the TypeScript Console application. */
 export interface NativeCapabilities {
   /** Parse ConsoleConfig pbtxt; validation belongs to the caller. */
+  formatConfig(config: doramcap.console.v1.ConsoleConfig): string;
   parseConfig(text: string): doramcap.console.v1.ConsoleConfig;
   /** Expand a caller-approved Dora graph into native graph JSON bytes. */
   expandGraph(path: string): Promise<Buffer>;

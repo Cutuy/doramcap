@@ -1,7 +1,7 @@
 # Console configuration
 
-Console loads protobuf text from the command-line configuration file. Images
-must already exist locally. The Dora coordinator and daemon are always included.
+Console loads protobuf text from the command-line configuration file. With `download_missing_images: true`, selected missing images download before
+Review. Otherwise images must already exist locally. The Dora coordinator and daemon are always included.
 
 Optional apps use ordinary Compose inputs. The CPU example requires the modular
 collector, feed and recorder manifests from [PR35](https://github.com/Cutuy/doramcap/pull/35).
