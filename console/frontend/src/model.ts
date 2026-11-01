@@ -7,7 +7,7 @@ export function createRequestKey(): string {
 }
 export function requestKey(existing: string, create: () => string): string { return existing || create(); }
 export function acceptsSnapshot(expectedRun: string, snapshot: Snapshot): boolean {
-  return !(expectedRun && snapshot.runId && snapshot.runId !== expectedRun);
+  return !expectedRun || (snapshot.runId === expectedRun && ['STARTING', 'RUNNING', 'STOPPING', 'FINISHED', 'BLOCKED'].includes(snapshot.phase));
 }
 export function outcomeLabels(outcome: Outcome | null) {
   return {

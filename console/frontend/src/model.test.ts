@@ -42,3 +42,19 @@ test('Stop is available only during preparation/execution and remains disabled a
   for (const phase of ['IDLE','PREPARING','REVIEWED','STOPPING','FINISHED','BLOCKED']) assert.equal(canStopRun({phase,runId:'run'}),false);
   assert.equal(canStopRun(null),false);
 });
+
+
+test('pre-launch and empty-run frames cannot replace an in-flight Start', () => {
+  // Arrange
+  const expected = 'starting-run';
+  // Act / Assert
+  for (const phase of ['IDLE', 'PREPARING', 'REVIEWED']) {
+    assert.equal(acceptsSnapshot(expected, {phase, runId: expected} as Snapshot), false);
+    assert.equal(acceptsSnapshot(expected, {phase, runId: ''} as Snapshot), false);
+  }
+  for (const phase of ['STARTING', 'RUNNING', 'STOPPING', 'FINISHED', 'BLOCKED']) {
+    assert.equal(acceptsSnapshot(expected, {phase, runId: expected} as Snapshot), true);
+    assert.equal(acceptsSnapshot(expected, {phase, runId: ''} as Snapshot), false);
+  }
+  assert.equal(acceptsSnapshot('', {phase:'IDLE', runId:''} as Snapshot), true);
+});

@@ -61,9 +61,20 @@ export function App() {
   const changeDirectory = (value: string) => { generation.current++; selecting.current = true; setDirectory(value); setReview(null); setAvailable([]); setProfiles([]); setSystemApps(undefined); setError(''); };
   const toggleProfile = (name: string) => { generation.current++; selecting.current = true; setProfiles(items => nextProfiles(items, name)); setReview(null); setError(''); };
   const prepare = async (appIds = systemApps) => {
+    const revision = ++generation.current;
     setBusy(true); setError(''); selecting.current = true;
-    try { const next = await api.prepare(directory, profiles, appIds); key.current = ''; setSystemApps(next.systemApps.filter(app => app.selected && !app.required).map(app => app.id)); const discoveredProfiles = available.length === 0 && next.availableProfiles.length > 0; setAvailable(next.availableProfiles); if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); } else if (discoveredProfiles) { setReview(null); setPhase('Project'); } else { setReview(next); setPhase('Review'); } }
-    catch (failure) { setError(message(failure)); }
+    try {
+      const next = await api.prepare(directory, profiles, appIds);
+      if (revision !== generation.current) return;
+      key.current = '';
+      setSystemApps(next.systemApps.filter(app => app.selected && !app.required).map(app => app.id));
+      const discoveredProfiles = available.length === 0 && next.availableProfiles.length > 0;
+      setAvailable(next.availableProfiles);
+      if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
+      else if (discoveredProfiles) { setReview(null); setPhase('Project'); }
+      else { setReview(next); setPhase('Review'); }
+    }
+    catch (failure) { if (revision === generation.current) setError(message(failure)); }
     finally { setBusy(false); }
   };
   const toggleSystemApp = (id: string) => {
@@ -82,7 +93,7 @@ export function App() {
     catch (failure) {
       if (failure instanceof ApiError && failure.code === 'Stopped') return;
       setError(message(failure));
-      if (failure instanceof ApiError && failure.code === 'StaleReview') { setReview(null); selecting.current = true; setPhase('Project'); key.current = ''; }
+      if (failure instanceof ApiError) { setReview(null); selecting.current = true; expected.current = ''; setPhase('Project'); key.current = ''; }
       else if (!(failure instanceof ApiError)) setRetry(true);
     }
   };
