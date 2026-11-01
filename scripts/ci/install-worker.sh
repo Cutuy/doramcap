@@ -6,10 +6,27 @@ worker_tmp=$(mktemp -d)
 trap 'rm -rf -- "$worker_tmp"' EXIT
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y --no-install-recommends clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config libelf-dev zlib1g-dev curl ca-certificates python3 python3-protobuf git rsync util-linux
+apt-get install -y --no-install-recommends clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config libelf-dev zlib1g-dev curl ca-certificates python3 python3-protobuf git rsync util-linux xz-utils
 id doramcap-ci >/dev/null 2>&1 || useradd --create-home --shell /bin/bash doramcap-ci
 install -d -m 700 -o doramcap-ci -g doramcap-ci /home/doramcap-ci/.ssh
 install -m 600 -o doramcap-ci -g doramcap-ci "$1" /home/doramcap-ci/.ssh/authorized_keys
+# Install the repository-pinned Node runtime for unprivileged CI jobs.
+node_version=$(cat "$(dirname "$0")/../../.node-version")
+sudo -u doramcap-ci -H bash -s -- "$node_version" <<'NODE'
+set -euo pipefail
+node_archive="node-v$1-linux-arm64.tar.xz"
+node_stage=$(mktemp -d)
+trap 'rm -rf -- "$node_stage"' EXIT
+cd "$node_stage"
+curl -fsSLO "https://nodejs.org/dist/v$1/$node_archive"
+curl -fsSLO "https://nodejs.org/dist/v$1/SHASUMS256.txt"
+sha256sum --check --ignore-missing SHASUMS256.txt
+mkdir -p "$HOME/.local/lib" "$HOME/.local/bin"
+tar -xJf "$node_archive" -C "$HOME/.local/lib"
+for binary in node npm npx; do
+  ln -sfn "$HOME/.local/lib/node-v$1-linux-arm64/bin/$binary" "$HOME/.local/bin/$binary"
+done
+NODE
 for binary in pueue pueued; do
   curl -fsSL "https://github.com/Nukesor/pueue/releases/download/v4.0.4/${binary}-aarch64-unknown-linux-musl" -o "$worker_tmp/${binary}"
 done

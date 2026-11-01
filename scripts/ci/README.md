@@ -17,6 +17,13 @@ Test shells receive a 256 MiB locked-memory limit for registered I/O buffers;
 Cargo and test binaries run as the unprivileged runner user.
 Private repositories use the owner's included Actions minutes and billing policy.
 
+[Node CI](../../.github/workflows/node.yml) uses the same ARM64/x86_64 runner matrix
+and the version in `.node-version`. Both GitHub and the ARM64 worker run
+`node scripts/ci/test-node.mts`: locked installs and the six existing `npm test`
+suites (Activity, CPU Viewer, CUDA viewer, Dataflow Tracing, Orchestrator and Storage).
+Live browser, CUDA and Dora qualification remain separate. Project Explorer has no
+`npm test` script. Node workflow paths cover frontend, TypeScript and protobuf inputs.
+
 Privileged native validation and Dora end-to-end checks use the worker below.
 
 ## ARM64 test worker
