@@ -13,7 +13,7 @@ credentials stay outside Git. No GitHub deploy key or registry is required.
 
 - [x] Acquire a worktree lease and base it on fetched remote main.
 - [x] Build release manager and Activity Lab with locked Rust dependencies.
-- [ ] Build gallery and Activity Lab frontends with lockfile installs.
+- [x] Build gallery and Activity Lab frontends with lockfile installs.
 - [ ] Package the ARM64 app image, Caddy image, runtime tree and checksums.
 
 **Validation**
@@ -29,6 +29,13 @@ The SPA generator requires Git metadata. Job 549 then exposed a catalog bug:
 the new `console-native` workspace member was discovered but `console/` documents
 were excluded. Include that directory in the existing document filter and record
 the resulting release commit. Existing worker caches were preserved.
+
+Job 550 built both frontends, passed 6 Activity Lab frontend tests and packaged
+ARM64 Activity Lab/Caddy images. The first live launch identified the shared
+`doramcap/dora:local` prerequisite, including for Activity Lab. Add the pinned
+Dora 1.1.0 runtime image before repeating lifecycle validation. Caddy requires
+`NET_BIND_SERVICE` in its capability bounding set because its binary has a file
+capability; the unit now matches the existing hosting recipe.
 
 ## M2 — Provision and deploy
 

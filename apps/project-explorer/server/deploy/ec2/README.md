@@ -19,9 +19,13 @@ group, and a 1 GiB swap file. Install these units in `/etc/systemd/system/`.
 Docker group access grants control of the host; keep the account dedicated.
 
 Each bundle contains `bin/`, `assets/`, `workspace/apps/activity-demo/deploy/`,
-`caddy/`, `images/arm64.tar.gz`, `SOURCE_REVISION`, `IMAGES`, and `SHA256SUMS`.
+`caddy/`, `systemd/`, `images/arm64.tar.gz`, `SOURCE_REVISION`, `IMAGES`, and
+`SHA256SUMS`.
 Build binaries and app assets on ARM64 Ubuntu 24.04 with the pinned toolchain;
-use `--release --locked` for Rust and `npm ci` for frontends. The gallery frontend
+use `--release --locked` for Rust and `npm ci` for frontends. Include the shared
+Dora 1.1.0 image built with `libs/workload-docker/deploy/Dockerfile`, even for
+Activity Lab. The official Caddy binary requires `NET_BIND_SERVICE` in its
+capability bounding set. The gallery frontend
 build also needs workspace Cargo metadata. The app Dockerfile stages prebuilt
 inputs; its Compose image name must match the imported tag.
 
@@ -36,7 +40,8 @@ sudo docker load -i images/arm64.tar.gz
 cat SOURCE_REVISION IMAGES
 ```
 
-Before importing an update, stop Caddy and the manager so active apps drain.
+For an update, stop Caddy and the manager before the `docker load` step above
+so active apps drain.
 Preserve the previous release and image IDs for rollback. With `REVISION` set to
 the extracted directory's basename:
 
