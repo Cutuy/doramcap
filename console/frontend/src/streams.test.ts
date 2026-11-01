@@ -7,8 +7,8 @@ const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
 const stream = (id: string, kind: number) => doramcap.console.v1.LiveStream.create({ id, appId: id, kind });
 const frame = (stream: string, sequence: number, payload: Uint8Array) => doramcap.console.live.v1.Frame.create({ stream, sequence, payload });
-const cpuPacket = (sequence: number, runtimeNs: number) =>
-  telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId: 's', snapshot: {
+const cpuPacket = (sequence: number, runtimeNs: number, sessionId = 's') =>
+  telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId, snapshot: {
     sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
     records: [0, 1].map(cpu => ({ cgroupId: 1, cpu, flags: 17, runtimeNs })),
   } } })).finish();
@@ -29,6 +29,20 @@ test('CPU totals derive from consecutive root counters and skipped frames count 
   assert.deepEqual(view.cpu!.history.map(sample => sample.percent), [100, 200]);
   assert.equal(view.cpu!.cores, 2);
   assert.equal(view.gaps, 2);
+});
+
+test('a restarted CPU monitor starts a new baseline and keeps updating', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
+  model.receive(frame('cpu_0', 1, cpuPacket(10, 0)));
+  model.receive(frame('cpu_0', 2, cpuPacket(11, 500_000_000)));
+  // Act
+  model.receive(frame('cpu_0', 3, cpuPacket(1, 0, 'restarted')));
+  model.receive(frame('cpu_0', 4, cpuPacket(2, 1_000_000_000, 'restarted')));
+  // Assert
+  assert.deepEqual(model.view().cpu!.history.map(sample => sample.percent), [100, 200]);
+  assert.equal(model.view().cpu!.sequence, '2');
 });
 
 test('frames for unknown streams, duplicates and malformed payloads are ignored; a new run resets state', () => {
