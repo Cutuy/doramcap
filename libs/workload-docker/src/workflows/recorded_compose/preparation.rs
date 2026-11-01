@@ -98,7 +98,6 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     // Resolve runtime settings and validate the request.
     let mut runtime = spec.dora.clone();
     super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
-    super::super::shared_dora::validate_endpoints(&runtime)?;
     model::validate(&spec)?;
     crate::evidence::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
@@ -214,6 +213,8 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
 impl PrepareRun {
     async fn prepare(&self, spec: ComposeRun) -> Result<PreparedRun> {
         let resolved = resolve(&self.adapter, spec).await?;
+        // Runtime endpoint availability is checked after execution resets the experiment.
+        super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
         // Capture the filesystem baseline only for execution.
         let executor = self

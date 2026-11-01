@@ -2018,6 +2018,69 @@ async fn compose_public_run(outcome: &str) {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker and prebuilt images; creates no containers"]
+async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_rejects_them() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let listeners = [
+        std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap(),
+        std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap(),
+    ];
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    write(
+        &root.path().join("worker.json"),
+        serde_json::json!({"services":{"worker":service(&image)}}),
+    );
+    let spec = ComposeRun {
+        id: "occupied-ports".into(),
+        artifacts: root.path().join("inspection"),
+        repository_root: root.path().into(),
+        filesystem: None,
+        system_apps: vec![project(root.path(), "worker")],
+        projects: vec![],
+        dora: DoraRuntime {
+            coordinator_port: listeners[0].local_addr().unwrap().port().into(),
+            daemon_port: listeners[1].local_addr().unwrap().port().into(),
+            ..Default::default()
+        },
+        recordings: vec![],
+        readiness_seconds: 10,
+        stop_seconds: 3,
+    };
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+
+    // Act
+    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+
+    // Assert
+    assert_eq!(inspected.dora.coordinator_port, spec.dora.coordinator_port);
+    assert_eq!(inspected.dora.daemon_port, spec.dora.daemon_port);
+
+    // Act
+    let mut execution = spec.clone();
+    execution.artifacts = root.path().join("execution");
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let result = runner
+        .run_with_preflight(
+            execution,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |_| panic!("occupied endpoints must fail before preflight acceptance"),
+        )
+        .await;
+
+    // Assert
+    assert!(result.unwrap_err().to_string().contains("Dora endpoint"));
+    assert!(!runner.blocked());
+    support::assert_no_run_resources(&adapter, &spec.id).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker and prebuilt images; creates no containers"]
 async fn independent_inspection_and_preparation_have_equal_configuration_snapshots() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
