@@ -22,9 +22,9 @@ doramcap-console stop
 
 `start` launches a transient system service that survives SSH disconnection.
 Stop the service before changing its port or SSH launch options.
-Desktop launches attempt to open the access link as the invoking user;
-`--no-open` suppresses this. `status` prints the current private link and SSH
-instructions. Keep the forwarding terminal open while using a remote Console.
+A fresh desktop start attempts to open the access link as the invoking user;
+`--no-open` suppresses this. Repeated starts and `status` print the current
+private link and SSH instructions. Keep the forwarding terminal open while using a remote Console.
 The browser signs in automatically. Links and sessions expire on restart.
 
 Setup creates `/var/lib/doramcap-console/console.pbtxt`, a private playground
