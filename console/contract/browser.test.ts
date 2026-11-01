@@ -7,10 +7,11 @@ import { createConsoleServer } from '../server/src/http.js';
 import type { ConsoleBackend } from '../server/src/native.js';
 import { doramcap } from '../server/src/generated/console.js';
 const wire = doramcap.console.v1;
+const live = doramcap.console.live.v1;
 
 // Exercise the browser's generated codecs against the real server route handling.
 test(
-  'browser and server agree on commands, selection presence, errors and live status',
+  'browser and server agree on commands, selection presence, errors, live status and relayed frames',
   { timeout: 10_000 },
   async (t) => {
     // Arrange
@@ -22,7 +23,12 @@ test(
       sequence: id,
       steps: [{ version: 1, session: 'run', executor: 'local', invocation: id, state: 1 }],
     });
+    const bridgeFrame = live.Frame.encode({ stream: 'cpu_0', sequence: id, payload: Buffer.from([7]) }).finish();
     const backend: ConsoleBackend = {
+      frames: (consume) => {
+        consume(Buffer.from(bridgeFrame));
+        return () => {};
+      },
       prepare: async (input) => {
         const request = wire.PrepareRequest.decode(input);
         selections.push(request.systemApps?.ids ?? undefined);
@@ -101,17 +107,21 @@ test(
     assert.equal(current.phase, Phase.RUNNING);
     assert.equal(String(current.sequence), id);
 
-    // Act / Assert: a live frame uses the same message model and exact IDs.
+    // Act / Assert: live status and relayed bridge frames keep exact IDs.
     const controller = new AbortController();
     let receive!: (status: Awaited<ReturnType<typeof client.current>>) => void;
     const received = new Promise<Awaited<ReturnType<typeof client.current>>>((resolve) => {
       receive = resolve;
     });
+    let relay!: (frame: InstanceType<typeof live.Frame>) => void;
+    const relayed = new Promise<InstanceType<typeof live.Frame>>((resolve) => {
+      relay = resolve;
+    });
     const streaming = client
-      .live((next) => {
-        receive(next);
+      .live(receive, controller.signal, (frame) => {
+        relay(frame as never);
         controller.abort();
-      }, controller.signal)
+      })
       .catch((error: unknown) => {
         if (!(error instanceof Error) || error.name !== 'AbortError') throw error;
       });
@@ -119,6 +129,10 @@ test(
     const next = await received;
     assert.equal(next.phase, current.phase);
     assert.equal(String(next.steps[0].invocation), id);
+    const frame = await relayed;
+    assert.equal(frame.stream, 'cpu_0');
+    assert.equal(String(frame.sequence), id);
+    assert.deepEqual([...frame.payload], [7]);
     await streaming;
   },
 );
