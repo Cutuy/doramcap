@@ -19,7 +19,7 @@ Publication is separate from building; this app does not deploy automatically.
 
 Hash routes support refresh, browser history, copied links and new tabs:
 
-- `#/apps?category=Observability&q=activity`
+- `#/apps?q=activity`
 - `#/crates/activity-tracing`
 - `#/dependencies?focus=apps/dataflow-tracing`
 - `#/overview?useCase=perception`
@@ -28,7 +28,7 @@ Hash routes support refresh, browser history, copied links and new tabs:
 - `#/docs?path=docs/repository-layout.md&heading=component-ownership`
 
 The overview is the default route. Capability and integration links retain the
-selected use case. Dependencies use `focus` and `category`; the explorer shows full transitive chains. `build=1` and `dev=1` include
+selected use case. Dependencies use `focus`; the explorer shows full transitive chains. `build=1` and `dev=1` include
 those declaration types. Component sidebars remain direct. Component documentation headings use `heading` in the query string.
 
 ## Validation

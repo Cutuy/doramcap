@@ -41,15 +41,13 @@ function DocumentView({ path, route }: { path: string; route: Route }) {
 }
 function Gallery({ kind, route }: { kind: Kind; route: Route }) {
   const query = route.params.get('q') ?? '';
-  const category = route.params.get('category') ?? '';
   const entries = catalog.components.filter(c => c.kind === kind);
-  const categories = [...new Set(entries.map(c => c.category))].sort();
-  const visible = entries.filter(c => (!category || c.category === category) && `${c.name} ${displayName(c.name)} ${c.summary} ${c.category}`.toLowerCase().includes(query.toLowerCase()));
+  const visible = entries.filter(c => `${c.name} ${displayName(c.name)} ${c.summary} ${c.category}`.toLowerCase().includes(query.toLowerCase()));
   return <>
     <div className="intro"><h1>Explore the {kind === 'apps' ? 'applications' : 'crates'}.</h1><p>{kind === 'apps' ? 'Runnable consoles, monitors and demos built on the workspace crates.' : 'Reusable building blocks for runtime, resources, memory, storage, telemetry and faults.'}</p></div>
-    <div className="toolbar"><div className="catalog-count">{visible.length} {kind === 'apps' ? 'applications' : 'crates'}</div><div className="filters"><label><span className="sr-only">Category</span><select aria-label="Category" value={category} onChange={e => updateParams(route, { category: e.target.value })}><option value="">All categories</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="search"><Search size={15} aria-hidden="true" /><input aria-label="Search components" type="search" value={query} placeholder={`Search ${kind}…`} onChange={e => updateParams(route, { q: e.target.value }, true)} /></label></div></div>
+    <div className="toolbar"><div className="catalog-count">{visible.length} {kind === 'apps' ? 'applications' : 'crates'}</div><div className="filters"><label className="search"><Search size={15} aria-hidden="true" /><input aria-label="Search components" type="search" value={query} placeholder={`Search ${kind}…`} onChange={e => updateParams(route, { q: e.target.value }, true)} /></label></div></div>
     <div className="gallery">{visible.map(c => <article className="tile" key={c.id}><a className="tile-main" href={componentHref(c)}><Category name={c.category} /><h2>{displayName(c.name)}</h2><p>{c.summary}</p></a>{kind === 'apps' && <div className="tile-actions"><Launch component={c} /></div>}</article>)}</div>
-    {!visible.length && <div className="empty"><h2>No matching components</h2><p>Try another search or category.</p><a href={`#/${kind}`}>Clear filters</a></div>}
+    {!visible.length && <div className="empty"><h2>No matching components</h2><p>Try another search.</p><a href={`#/${kind}`}>Clear search</a></div>}
   </>;
 }
 // Console runs directly on the Docker host; the gallery never launches it.
@@ -109,11 +107,10 @@ function Detail({ component, route }: { component: Component; route: Route }) {
 }
 function Explorer({ route }: { route: Route }) {
   const focus = route.params.get('focus') ?? '';
-  const category = route.params.get('category') ?? '';
   const component = catalog.components.find(c => c.id === focus || c.name === focus);
   const pkg = catalog.packages.find(p => p.name === focus);
   const valid = !focus || Boolean(component || pkg);
-  return <><div className="intro"><h1>Dependencies.</h1></div><div className="toolbar graph-toolbar"><label>Component <select aria-label="Dependency component" value={focus} onChange={e => updateParams(route, { focus: e.target.value })}><option value="">Whole workspace</option>{catalog.components.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}{focus && !catalog.components.some(c => c.id === focus) && <option value={focus}>{focus}</option>}</select></label>{!focus && <label>Category <select aria-label="Dependency category" value={category} onChange={e => updateParams(route, { category: e.target.value })}><option value="">All categories</option>{[...new Set(catalog.components.map(c => c.category))].sort().map(c => <option key={c}>{c}</option>)}</select></label>}<div className="dependency-kind-controls">{['build', 'dev'].map(kind => <label key={kind}><input type="checkbox" checked={route.params.get(kind) === '1'} onChange={e => updateParams(route, { [kind]: e.target.checked ? '1' : '' })} />{kind === 'build' ? 'Build' : 'Dev'}</label>)}</div></div>{valid ? <Suspense fallback={<p role="status">Loading dependency graph…</p>}><DependencyGraph catalog={catalog} focus={focus} category={category} build={route.params.get('build') === '1'} dev={route.params.get('dev') === '1'} /></Suspense> : <p role="alert">Unknown component. <a href="#/dependencies">Show workspace</a>.</p>}</>;
+  return <><div className="intro"><h1>Dependencies.</h1></div><div className="toolbar graph-toolbar"><label>Component <select aria-label="Dependency component" value={focus} onChange={e => updateParams(route, { focus: e.target.value })}><option value="">Whole workspace</option>{catalog.components.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}{focus && !catalog.components.some(c => c.id === focus) && <option value={focus}>{focus}</option>}</select></label><div className="dependency-kind-controls">{['build', 'dev'].map(kind => <label key={kind}><input type="checkbox" checked={route.params.get(kind) === '1'} onChange={e => updateParams(route, { [kind]: e.target.checked ? '1' : '' })} />{kind === 'build' ? 'Build' : 'Dev'}</label>)}</div></div>{valid ? <Suspense fallback={<p role="status">Loading dependency graph…</p>}><DependencyGraph catalog={catalog} focus={focus} build={route.params.get('build') === '1'} dev={route.params.get('dev') === '1'} /></Suspense> : <p role="alert">Unknown component. <a href="#/dependencies">Show workspace</a>.</p>}</>;
 
 }
 function App() {
