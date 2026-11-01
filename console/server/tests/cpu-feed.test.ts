@@ -16,6 +16,8 @@ test('CPU feed reuses viewer packets, bounds history and strips host ancestor pa
   assert.deepEqual(status.cpuSnapshots.map((s: any) => s.sequence), ['2','3']);
   assert.deepEqual(status.cpuGroupNames, [{id:'3',name:'worker.scope'}]);
   assert.equal(status.monitorReady,true);
+  assert.equal(status.cpuCaptureEnabled,true);
+  assert.equal(feeds.enrich({...base,systemApps:{ids:[]}}).cpuCaptureEnabled,false);
   assert.equal(feeds.enrich({...base,runId:'next'}).cpuSnapshots.length,0);
   feeds.close();
 });
@@ -31,4 +33,29 @@ test('restored terminal CPU history survives an idle feed consumer',()=>{
     // Assert
     assert.deepEqual(restored.cpuSnapshots,saved.cpuSnapshots);assert.deepEqual(restored.cpuGroupNames,saved.cpuGroupNames);
   }finally{feeds.close();}
+});
+
+test('CPU totals come from the selected monitor and expire with its feed', () => {
+  // Arrange
+  const feeds = new CpuFeeds({status: async () => Buffer.alloc(0)}, [{appId:'metrics',url:'ws://127.0.0.1:1/stream'}]);
+  const base = {runId:'run',phase:'FINISHED',systemApps:{ids:['metrics']}};
+  const observe = (sequence: number, runtimeNs: string, monotonicEndNs: string, sessionId = 'monitor') => feeds.observe(viewer.Packet.encode(viewer.Packet.fromObject({snapshot:{version:2,sessionId,snapshot:{sequence,monotonicEndNs,records:[0,1].map(cpu=>({cgroupId:'1',parentId:'0',cpu,flags:17,runtimeNs}))}}})).finish());
+  try {
+    feeds.enrich(base);
+    // Act / Assert: warm-up retains availability until two real monitor samples arrive.
+    observe(1, '9007199254740993', '9007199254741993');
+    assert.equal(feeds.sample('run')?.cpuPercent, null);
+    observe(2, '9007199254741493', '9007199254742993');
+    assert.deepEqual(feeds.sample('run'), {cpuPercent:100,cpuCores:2});
+    assert.equal(feeds.sample('another'), undefined);
+    assert.equal(feeds.sample('run', performance.now()+1000)?.cpuPercent, null);
+    // Act / Assert: idle zero is real data; a restarted producer needs a new baseline.
+    observe(3, '9007199254741493', '9007199254743993');
+    assert.equal(feeds.sample('run')?.cpuPercent, 0);
+    observe(4, '100', '200', 'restarted');
+    assert.equal(feeds.sample('run')?.cpuPercent, null);
+    // Act / Assert: unselecting the app disables sampling even with retained packets.
+    feeds.enrich({...base,systemApps:{ids:[]}});
+    assert.equal(feeds.sample('run'), undefined);
+  } finally {feeds.close();}
 });

@@ -49,7 +49,7 @@ class Engine implements NativeExecution {
     this.release?.();
   }
 }
-async function fixture(recording = false) {
+async function fixture(recording = false, cpuFeed = false) {
   const root = await mkdtemp(join(tmpdir(), 'console-service-')),
     project = join(root, 'project');
   await mkdir(project);
@@ -62,13 +62,14 @@ async function fixture(recording = false) {
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
   });
-  if (recording)
+  if (recording || cpuFeed)
     config.systemApps = [
       {
         id: 'recorder',
         defaultSelected: true,
         input: { directory: project, files: ['compose.yaml'] },
-        recordings: [{ id: 'messages', path: 'nested/messages.mcap' }],
+        recordings: recording ? [{ id: 'messages', path: 'nested/messages.mcap' }] : [],
+        cpuFeedUrl: cpuFeed ? 'ws://127.0.0.1:1/stream' : '',
       },
     ];
   validateConfig(config);
@@ -346,6 +347,46 @@ test('preflight failures return a safe classification and retain private diagnos
       (await readdir(directory)).map((name) => readFile(join(directory, name), 'utf8')),
     );
     assert.ok(notes.some((note) => note.includes(privateReason)));
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('disabled CPU capture produces no CPU data or metric samples', async () => {
+  // Arrange
+  const { root, engine, backend, review } = await fixture();
+  try {
+    // Act
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-capture' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!();
+    await start;
+    engine.update.ready = true;
+    const status = wire.Status.decode(await backend.status());
+    // Assert
+    assert.equal(status.phase, wire.Phase.RUNNING);
+    assert.equal(status.recordings.length, 0);
+    assert.equal(status.cpuCaptureEnabled, false);
+    assert.equal(status.cpuSnapshots.length, 0);
+    assert.equal(status.metrics.length, 0);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('review identifies selected CPU capture independently of recording', async () => {
+  // Arrange
+  const { root, backend, review } = await fixture(false, true);
+  try {
+    // Assert
+    assert.equal(review.cpuCaptureEnabled, true);
+    assert.equal(review.recordings.length, 0);
+    // Act
+    const unselected = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project'), systemApps: { ids: [] } }).finish())));
+    // Assert
+    assert.equal(unselected.cpuCaptureEnabled, false);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

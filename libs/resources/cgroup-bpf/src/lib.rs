@@ -3,7 +3,8 @@
 use std::fmt;
 
 pub const VALID: u32 = 1;
-pub const ROOT_UNAVAILABLE: u32 = 2;
+/// Global CPU accounting for the hierarchy root.
+pub const ROOT: u32 = 2;
 pub const READ_ERROR: u32 = 4;
 /// Native user/system counters have not undergone cpu.stat's cputime_adjust.
 pub const RAW_USER_SYSTEM: u32 = 8;

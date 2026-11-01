@@ -197,7 +197,7 @@ impl Backend {
             if row.flags & cgroup_bpf::RAW_USER_SYSTEM != 0 {
                 flags |= monitor_core::FLAG_USER_SYSTEM | monitor_core::FLAG_RAW_USER_SYSTEM;
             }
-            if row.flags & cgroup_bpf::ROOT_UNAVAILABLE != 0 {
+            if row.flags & cgroup_bpf::ROOT != 0 {
                 flags |= monitor_core::FLAG_ROOT;
             }
             if row.flags & cgroup_bpf::READ_ERROR != 0 {

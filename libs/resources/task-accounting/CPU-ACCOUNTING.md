@@ -4,7 +4,7 @@
 
 | Library | Measurement | Scope |
 |---|---|---|
-| `cgroup-bpf` | eBPF reads native per-CPU cgroup `subtree_bstat` runtime after rstat flush | Cgroup plus descendants; root runtime is unavailable in this reader |
+| `cgroup-bpf` | eBPF reads native per-CPU cgroup `subtree_bstat` runtime after rstat flush | Cgroup plus descendants; root rows use native global per-CPU accounting |
 | `task-accounting` | eBPF observes `sched_stat_runtime` and accumulates charged runtime | PF_KTHREAD lifetime × CPU × cgroup × classification flags, starting at attachment |
 
 Neither CPU measurement comes from polling `/proc` or cgroup filesystem stat

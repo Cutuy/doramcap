@@ -203,6 +203,7 @@ export class ConsoleService implements ConsoleBackend {
         preparedId: id,
         runId: id,
         availableProfiles: profiles,
+        cpuCaptureEnabled: apps.some(app => !!app.cpuFeedUrl),
         selectedProfiles: request.profiles,
         services: Object.entries(inspected.plan!.services ?? {}).map(([name, service]) => ({
           name,
@@ -419,7 +420,8 @@ export class ConsoleService implements ConsoleBackend {
     if (now - this.lastSample < this.config.runtime!.sampleIntervalMs!) return;
     this.lastSample = now;
     const recordings = this.marker?.recordings ?? [];
-    if (!recordings.length) return;
+    const cpu = this.feeds.sample(this.snapshot.runId);
+    if (!recordings.length && !cpu) return;
     let bytes: bigint | undefined = 0n;
     for (const output of recordings) {
       try {
@@ -437,6 +439,7 @@ export class ConsoleService implements ConsoleBackend {
         break;
       }
     }
+    if (!recordings.length) bytes = undefined;
     const rate =
       bytes != null && this.previous && bytes >= this.previous.bytes
         ? Number(bytes - this.previous.bytes) / Math.max((now - this.previous.time) / 1000, 0.001)
@@ -444,6 +447,7 @@ export class ConsoleService implements ConsoleBackend {
     if (bytes != null) this.previous = { bytes, time: now };
     this.snapshot.metrics.push(
       wire.RunMetric.fromObject({
+        ...cpu,
         elapsedNs: String(process.hrtime.bigint() - this.begun),
         recordingBytes: bytes?.toString() ?? null,
         writeBytesPerSecond: rate,

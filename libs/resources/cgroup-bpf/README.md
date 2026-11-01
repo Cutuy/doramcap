@@ -9,12 +9,16 @@ native rstat once, and reads each non-root cgroup's per-CPU `subtree_bstat`.
 CO-RE selects `rstat_base_cpu` or legacy `rstat_cpu`; weak kfunc detection
 selects `css_rstat_flush` or `cgroup_rstat_flush`. Separate field reads preserve
 layout correctness. Hierarchy totals come directly from kernel counters. Root
-rows are emitted with `ROOT_UNAVAILABLE`; native global accounting must be
-acquired separately. `RAW_USER_SYSTEM` means user/system counters are raw,
+rows carry `ROOT` and read global per-CPU `kernel_cpustat` through BPF. Their
+runtime is user + nice + system + IRQ + softirq, matching Linux root cgroup CPU
+accounting. A namespaced mount also includes the global root's CPU rows, using
+its kernel identity. Offline runqueues are omitted. Root rows are independent of subtree
+rstat and must be excluded from descendant rollups. `RAW_USER_SYSTEM` means user/system counters are raw,
 before cpu.stat adjustment.
 
 Requirements: BTF, cgroup iterator, numeric BPF iterator, a supported rstat flush
-kfunc, and visible `__per_cpu_offset` kernel symbol. The native per-CPU pointers
+kfunc, visible `__per_cpu_offset`, and BTF-visible `kernel_cpustat`/`runqueues`
+kernel symbols. The native per-CPU pointers
 lack tags needed by `bpf_per_cpu_ptr`, so checked reads use the offset table.
 CAP_BPF/CAP_PERFMON cover tracing; CAP_SYSLOG is additionally needed when kernel
 policy hides symbol addresses. A startup check rejects hidden addresses.

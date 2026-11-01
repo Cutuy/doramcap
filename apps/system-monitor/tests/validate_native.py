@@ -144,6 +144,14 @@ def main():
                 assert observed[index]['per_core_ns'][cpu] >= observed[index]['runtime_ns'] * .99
                 rows = [r for r in batches[-1]['records'] if r['cgroup_id'] == identities[index]]
                 assert all(r['parent_id'] == identities[0] for r in rows)
+            # Assert: global CPU records include the controlled workload, even with a namespaced cgroup mount.
+            root_first = {r['cpu']: r for r in batches[0]['records'] if r['flags'] & 16}
+            root_last = {r['cpu']: r for r in batches[-1]['records'] if r['flags'] & 16}
+            assert root_first and root_first.keys() == root_last.keys(), 'missing BPF root CPU rows'
+            assert all(r['parent_id'] == 0 and r['flags'] & 1 for r in root_last.values()), 'invalid BPF root CPU rows'
+            root_delta = [r['runtime_ns'] - root_first[cpu]['runtime_ns'] for cpu, r in root_last.items()]
+            assert min(root_delta) >= 0, 'BPF root counter regression'
+            assert sum(root_delta) >= observed[0]['runtime_ns'] * .99, 'BPF root CPU counters missed controlled work'
             durations = [(b['monotonic_end_ns']-b['monotonic_start_ns'])/1e6 for b in batches]
             intervals = [(b['monotonic_start_ns']-a['monotonic_start_ns'])/1e6 for a,b in zip(batches,batches[1:])]
             assert 90 <= statistics.median(intervals) <= 110

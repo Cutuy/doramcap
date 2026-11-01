@@ -23,6 +23,8 @@ struct kernfs_node { __u64 id; };
 struct cgroup;
 struct cgroup_subsys_state { struct cgroup *cgroup; struct cgroup_subsys_state *parent; };
 struct cgroup { struct cgroup_subsys_state self; struct kernfs_node *kn; struct cgroup_rstat_cpu *rstat_cpu; struct cgroup_rstat_base_cpu *rstat_base_cpu; int level; };
+struct kernel_cpustat { __u64 cpustat[10]; };
+struct rq { int online; };
 struct seq_file;
 struct bpf_iter_meta { struct seq_file *seq; __u64 session_id; __u64 seq_num; };
 struct bpf_iter__cgroup { struct bpf_iter_meta *meta; struct cgroup *cgroup; };
@@ -30,6 +32,9 @@ struct bpf_iter__cgroup { struct bpf_iter_meta *meta; struct cgroup *cgroup; };
 extern void cgroup_rstat_flush(struct cgroup *cgrp) __ksym __weak;
 extern void css_rstat_flush(struct cgroup_subsys_state *css) __ksym __weak;
 extern const void __per_cpu_offset __ksym;
+extern const struct kernel_cpustat kernel_cpustat __ksym;
+extern const struct rq runqueues __ksym;
+enum cpu_usage_stat { CPUTIME_USER, CPUTIME_NICE, CPUTIME_SYSTEM, CPUTIME_SOFTIRQ, CPUTIME_IRQ };
 struct record { __u64 id, parent_id; __u32 cpu, flags; __u64 runtime_ns, user_ns, system_ns; };
 struct control { __u32 capacity, cpus, count, overflow; };
 struct { __uint(type, BPF_MAP_TYPE_ARRAY); __uint(max_entries, 1); __type(key, __u32); __type(value, struct control); } control SEC(".maps");
@@ -53,18 +58,30 @@ static __noinline int read_old(struct cgroup *cg, unsigned long offset, struct r
         || BPF_CORE_READ_INTO(&r->system_ns, pc, subtree_bstat.cputime.stime);
 }
 
-SEC("iter.s/cgroup")
-int collect(struct bpf_iter__cgroup *ctx) {
-    struct cgroup *cg = ctx->cgroup;
-    if (!cg) return 0;
-    __u32 zero = 0;
-    struct control *ctl = bpf_map_lookup_elem(&control, &zero);
-    if (!ctl) return 0;
-    if (ctx->meta->seq_num == 0) {
-        if (bpf_ksym_exists(css_rstat_flush)) css_rstat_flush(&cg->self);
-        else if (bpf_ksym_exists(cgroup_rstat_flush)) cgroup_rstat_flush(cg);
-        else return -95; // EOPNOTSUPP; never publish unflushed values as valid.
-    }
+static __noinline int online_cpu(__u32 cpu) {
+    struct rq *rq = bpf_per_cpu_ptr(&runqueues, cpu);
+    int online = 0;
+    if (!rq || BPF_CORE_READ_INTO(&online, rq, online)) return -1;
+    return online != 0;
+}
+
+static __noinline int read_root(__u32 cpu, struct record *r) {
+    struct kernel_cpustat *stat = bpf_per_cpu_ptr(&kernel_cpustat, cpu);
+    if (!stat) return -1;
+    __u64 nice = 0, irq = 0, softirq = 0;
+    if (BPF_CORE_READ_INTO(&r->user_ns, stat, cpustat[bpf_core_enum_value(enum cpu_usage_stat, CPUTIME_USER)])
+        || BPF_CORE_READ_INTO(&nice, stat, cpustat[bpf_core_enum_value(enum cpu_usage_stat, CPUTIME_NICE)])
+        || BPF_CORE_READ_INTO(&r->system_ns, stat, cpustat[bpf_core_enum_value(enum cpu_usage_stat, CPUTIME_SYSTEM)])
+        || BPF_CORE_READ_INTO(&irq, stat, cpustat[bpf_core_enum_value(enum cpu_usage_stat, CPUTIME_IRQ)])
+        || BPF_CORE_READ_INTO(&softirq, stat, cpustat[bpf_core_enum_value(enum cpu_usage_stat, CPUTIME_SOFTIRQ)])) return -1;
+    // Match Linux root_cgroup_cputime: guest time is already included in user/nice.
+    r->user_ns += nice;
+    r->system_ns += irq + softirq;
+    r->runtime_ns = r->user_ns + r->system_ns;
+    return 0;
+}
+
+static __noinline void collect_cgroup(struct cgroup *cg, struct control *ctl) {
     __u64 id = BPF_CORE_READ(cg, kn, id);
     struct cgroup_subsys_state *parent = BPF_CORE_READ(cg, self.parent);
     __u64 parent_id = parent ? BPF_CORE_READ(parent, cgroup, kn, id) : 0;
@@ -73,14 +90,20 @@ int collect(struct bpf_iter__cgroup *ctx) {
     int cpu;
     bpf_for(cpu, 0, 4096) {
         if (cpu >= ctl->cpus) break;
+        int online = root ? online_cpu(cpu) : 1;
+        if (root && online == 0) continue;
         if (ctl->count >= ctl->capacity) { ctl->overflow++; continue; }
         __u32 index = ctl->count++;
         struct record *r = bpf_map_lookup_elem(&records, &index);
         if (!r) { ctl->overflow++; continue; }
         __builtin_memset(r, 0, sizeof(*r));
         r->id = id; r->parent_id = parent_id; r->cpu = cpu;
-        // Root uses global kcpustat, never subtree_bstat; explicitly unavailable.
-        if (root) { r->flags = 2; continue; }
+        if (root) {
+            r->flags = 2;
+            if (online < 0 || read_root(cpu, r)) r->flags |= 4;
+            else r->flags |= 1 | 8;
+            continue;
+        }
         // rstat pointers lack a percpu BTF tag on supported kernels, so the
         // typed bpf_per_cpu_ptr helper rejects them. Use the kernel's native
         // per-CPU offset table and checked probe reads instead.
@@ -97,6 +120,35 @@ int collect(struct bpf_iter__cgroup *ctx) {
         // Native inclusive runtime; user/system are RAW, before cpu.stat adjustment.
         r->flags = 1 | 8;
     }
+}
+
+SEC("iter.s/cgroup")
+int collect(struct bpf_iter__cgroup *ctx) {
+    struct cgroup *cg = ctx->cgroup;
+    if (!cg) return 0;
+    __u32 zero = 0;
+    struct control *ctl = bpf_map_lookup_elem(&control, &zero);
+    if (!ctl) return 0;
+    if (ctx->meta->seq_num == 0) {
+        if (bpf_ksym_exists(css_rstat_flush)) css_rstat_flush(&cg->self);
+        else if (bpf_ksym_exists(cgroup_rstat_flush)) cgroup_rstat_flush(cg);
+        else return -95; // EOPNOTSUPP; never publish unflushed values as valid.
+        // Namespaced mounts can hide the global root; include its CPU totals once.
+        if (BPF_CORE_READ(cg, level) != 0) {
+            struct cgroup *ancestor = cg;
+            int depth;
+            bpf_for(depth, 0, 4096) {
+                ancestor = BPF_CORE_READ(ancestor, self.parent, cgroup);
+                if (!ancestor) return 1;
+                if (BPF_CORE_READ(ancestor, level) == 0) {
+                    collect_cgroup(ancestor, ctl);
+                    break;
+                }
+            }
+            if (BPF_CORE_READ(ancestor, level) != 0) return 1;
+        }
+    }
+    collect_cgroup(cg, ctl);
     return 0;
 }
 char LICENSE[] SEC("license") = "GPL";
