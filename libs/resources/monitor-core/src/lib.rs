@@ -32,14 +32,6 @@ pub struct CpuRecord {
     pub system_ns: u64,
 }
 
-/// Host-wide cumulative USER_HZ ticks collected by the monitor.
-#[derive(Clone, Copy, Debug, Default, Serialize, serde::Deserialize)]
-pub struct CpuTotals {
-    pub busy_ticks: u64,
-    pub total_ticks: u64,
-    pub cpu_cores: u32,
-}
-
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 pub struct Snapshot {
     pub schema_version: u32,
@@ -52,7 +44,6 @@ pub struct Snapshot {
     pub records: Vec<CpuRecord>,
     pub task_records: Vec<task_accounting::TaskRecord>,
     pub task_losses: task_accounting::Losses,
-    pub cpu_totals: Option<CpuTotals>,
 }
 
 impl Snapshot {
@@ -71,13 +62,11 @@ impl Snapshot {
             records: Vec::with_capacity(records),
             task_records: Vec::with_capacity(tasks),
             task_losses: task_accounting::Losses::default(),
-            cpu_totals: None,
         }
     }
 
     pub fn reset(&mut self) {
         self.records.clear();
-        self.cpu_totals = None;
         self.task_records.clear();
         self.task_losses = task_accounting::Losses::default();
         self.capacity_overflow = 0;

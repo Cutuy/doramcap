@@ -50,11 +50,6 @@ snapshots. Display history expires after 30 seconds.
 
 ## Kernel accounting and timestamps
 
-`Snapshot.cpu_totals` carries host CPU counters read by the monitor from
-`/proc/stat`: busy ticks, total ticks and online CPU count. Busy excludes idle
-and I/O wait; guest time is already included in user/nice. Consumers derive core
-percent from counter deltas. An absent message denotes unavailable host counters.
-
 `FLAG_VIRTUAL_KERNEL` (128) selects a separate reporting namespace:
 `cgroup_id=0` represents `virtual/kernel`, with `FLAG_RUNTIME`, CPU index and
 cumulative PF_KTHREAD runtime. User/system counters are unavailable for this

@@ -33,12 +33,6 @@ message TaskLosses {
   uint64 dropped_runtime_ns = 2;
   uint64 identity_errors = 3;
 }
-// Host CPU ticks from the monitor's /proc/stat; ratios do not require USER_HZ conversion.
-message CpuTotals {
-  uint64 busy_ticks = 1;
-  uint64 total_ticks = 2;
-  uint32 cpu_cores = 3;
-}
 message Snapshot {
   uint32 schema_version = 1;
   uint64 sequence = 2;
@@ -50,7 +44,6 @@ message Snapshot {
   repeated CpuRecord records = 8;
   repeated TaskRecord task_records = 9;
   TaskLosses task_losses = 10;
-  CpuTotals cpu_totals = 11;
 }
 message DictionaryEntry {
   uint64 id = 1;

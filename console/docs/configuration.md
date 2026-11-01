@@ -40,7 +40,7 @@ node IDs or conflicting graph settings reject preparation. Source graphs are rea
 again on Start. Console never injects demo producers. Reusable deployments must
 supply healthchecks for subscriber/sink readiness before their producers start.
 
-The monitor publishes CPU totals, per-cgroup counters and capture health through
-the CPU feed. Console derives utilization from those counters. Recordings are finalized by
+The monitor publishes BPF root CPU records, per-cgroup counters and capture health
+through the CPU feed. Console derives total core utilization from root runtime deltas. Recordings are finalized by
 the workflow and exposed by ID after completion. Absent or invalid display
 metadata never bypasses the workflow's repository controller and reset.

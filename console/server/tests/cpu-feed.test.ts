@@ -39,7 +39,7 @@ test('CPU totals come from the selected monitor and expire with its feed', () =>
   // Arrange
   const feeds = new CpuFeeds({status: async () => Buffer.alloc(0)}, [{appId:'metrics',url:'ws://127.0.0.1:1/stream'}]);
   const base = {runId:'run',phase:'FINISHED',systemApps:{ids:['metrics']}};
-  const observe = (sequence: number, busyTicks: string, totalTicks: string, sessionId = 'monitor') => feeds.observe(viewer.Packet.encode(viewer.Packet.fromObject({snapshot:{version:2,sessionId,snapshot:{sequence,cpuTotals:{busyTicks,totalTicks,cpuCores:2}}}})).finish());
+  const observe = (sequence: number, runtimeNs: string, monotonicEndNs: string, sessionId = 'monitor') => feeds.observe(viewer.Packet.encode(viewer.Packet.fromObject({snapshot:{version:2,sessionId,snapshot:{sequence,monotonicEndNs,records:[0,1].map(cpu=>({cgroupId:'1',parentId:'0',cpu,flags:17,runtimeNs}))}}})).finish());
   try {
     feeds.enrich(base);
     // Act / Assert: warm-up retains availability until two real monitor samples arrive.

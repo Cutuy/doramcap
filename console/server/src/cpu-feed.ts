@@ -1,4 +1,5 @@
 import { viewer, wire, type ConsoleBackend } from './native.js';
+import type { doramcap } from './generated/console.js';
 const TELEMETRY_VERSION = 2;
 const MAX_FRAME_BYTES = 4 * 1024 * 1024;
 const MAX_RETAINED_FRAME_BYTES = 512 * 1024;
@@ -9,6 +10,15 @@ const MAX_SAMPLE_AGE_MS = 500;
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const options = { longs: String, enums: String, defaults: true } as const;
 type Status = Record<string, any>;
+
+/** Extract one complete set of BPF root counters, retaining uint64 precision. */
+function rootCounters(snapshot?: doramcap.telemetry.v1.ISnapshot | null) {
+  if (!snapshot || integer(snapshot.capacityOverflow) > 0n) return undefined;
+  const rows = (snapshot.records ?? []).filter(row => (Number(row.flags) & 16) !== 0);
+  if (!rows.length || rows.some(row => (Number(row.flags) & 1) === 0 || (Number(row.flags) & (64 | 128)) !== 0 || row.cpu === 0xffffffff)) return undefined;
+  const counters = new Map(rows.map(row => [Number(row.cpu), integer(row.runtimeNs)]));
+  return counters.size === rows.length ? counters : undefined;
+}
 
 /** Consume the existing CPU viewer feed; retain two snapshots and sanitized leaf names. */
 export class CpuFeeds {
@@ -121,15 +131,19 @@ export class CpuFeeds {
   sample(run: string, now = performance.now()) {
     if (!this.selected || run !== this.run) return undefined;
     const [before, after] = this.snapshots;
-    const current = after?.snapshot?.cpuTotals ?? before?.snapshot?.cpuTotals;
-    const unavailable = { cpuPercent: null as number | null, cpuCores: current?.cpuCores ?? 0 };
-    if (!before || !after || now - this.receivedAt > MAX_SAMPLE_AGE_MS || before.sessionId !== after.sessionId) return unavailable;
-    const old = before.snapshot?.cpuTotals, next = after.snapshot?.cpuTotals;
-    if (!old || !next || !next.cpuCores || old.cpuCores !== next.cpuCores || integer(after.snapshot.sequence) <= integer(before.snapshot.sequence)) return unavailable;
-    const total = integer(next.totalTicks) - integer(old.totalTicks);
-    const busy = integer(next.busyTicks) - integer(old.busyTicks);
-    if (total <= 0n || busy < 0n || busy > total) return unavailable;
-    return { cpuPercent: Number(busy) / Number(total) * next.cpuCores * 100, cpuCores: next.cpuCores };
+    const next = rootCounters(this.snapshots.at(-1)?.snapshot);
+    const unavailable = { cpuPercent: null as number | null, cpuCores: next?.size ?? 0 };
+    if (!before || !after || !next || now - this.receivedAt > MAX_SAMPLE_AGE_MS || before.sessionId !== after.sessionId) return unavailable;
+    const old = rootCounters(before.snapshot);
+    const elapsed = integer(after.snapshot.monotonicEndNs) - integer(before.snapshot.monotonicEndNs);
+    if (!old || old.size !== next.size || elapsed <= 0n || integer(after.snapshot.sequence) <= integer(before.snapshot.sequence)) return unavailable;
+    let runtime = 0n;
+    for (const [cpu, value] of next) {
+      const previous = old.get(cpu);
+      if (previous == null || value < previous) return unavailable;
+      runtime += value - previous;
+    }
+    return { cpuPercent: Number(runtime) / Number(elapsed) * 100, cpuCores: next.size };
   }
   observe(bytes: Uint8Array) {
     if (bytes.byteLength > MAX_FRAME_BYTES) throw new Error('CPU feed frame too large');

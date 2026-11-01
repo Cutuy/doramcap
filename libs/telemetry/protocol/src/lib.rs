@@ -131,11 +131,6 @@ impl From<&monitor_core::Snapshot> for pb::Snapshot {
             records: v.records.iter().map(Into::into).collect(),
             task_records: v.task_records.iter().map(Into::into).collect(),
             task_losses: Some((&v.task_losses).into()),
-            cpu_totals: v.cpu_totals.map(|t| pb::CpuTotals {
-                busy_ticks: t.busy_ticks,
-                total_ticks: t.total_ticks,
-                cpu_cores: t.cpu_cores,
-            }),
         }
     }
 }
@@ -152,11 +147,6 @@ impl From<pb::Snapshot> for monitor_core::Snapshot {
             records: v.records.into_iter().map(Into::into).collect(),
             task_records: v.task_records.into_iter().map(Into::into).collect(),
             task_losses: v.task_losses.unwrap_or_default().into(),
-            cpu_totals: v.cpu_totals.map(|t| monitor_core::CpuTotals {
-                busy_ticks: t.busy_ticks,
-                total_ticks: t.total_ticks,
-                cpu_cores: t.cpu_cores,
-            }),
         }
     }
 }

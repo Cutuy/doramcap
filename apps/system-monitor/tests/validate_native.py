@@ -54,16 +54,17 @@ def validate_readiness(monitor):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--monitor', required=True, type=Path)
+    parser.add_argument('--accounting-only', action='store_true', help='Run collector accounting checks without policy/Supervisor suites')
     args = parser.parse_args()
     assert os.geteuid() == 0, 'native validation requires privilege'
     validate_readiness(args.monitor)
     # The approved worker launcher runs this aggregate native suite. Build remains unprivileged.
     policy_suite = Path(__file__).resolve().parents[3] / 'libs/resources/resource-policy/tests/validate_native.py'
-    if policy_suite.exists():
+    if policy_suite.exists() and not args.accounting_only:
         policy_binary = args.monitor.resolve().parent / 'examples/native_policy'
         subprocess.run([sys.executable, str(policy_suite), '--binary', str(policy_binary), '--enable-root-cpuset'], check=True, timeout=90)
     supervisor_suite = Path(__file__).resolve().parents[3] / 'libs/workload-supervisor/tests/validate_native.py'
-    if supervisor_suite.exists():
+    if supervisor_suite.exists() and not args.accounting_only:
         import runpy
         runpy.run_path(str(supervisor_suite))['validate'](args.monitor)
     cpus = sorted(os.sched_getaffinity(0))
@@ -79,6 +80,7 @@ def main():
             group.mkdir()
         identities = [group.stat().st_ino for group in groups]
         baseline = [usage(group) for group in groups]
+        host_baseline = usage(Path('/sys/fs/cgroup'))
         with tempfile.TemporaryDirectory(prefix='doramcap-native-') as directory:
             output = Path(directory) / 'snapshots.pb'
             monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
@@ -144,6 +146,17 @@ def main():
                 assert observed[index]['per_core_ns'][cpu] >= observed[index]['runtime_ns'] * .99
                 rows = [r for r in batches[-1]['records'] if r['cgroup_id'] == identities[index]]
                 assert all(r['parent_id'] == identities[0] for r in rows)
+            # Assert: BPF root rows cover controlled work and remain inside an independent kernel accounting window.
+            host_reference = usage(Path('/sys/fs/cgroup')) - host_baseline
+            root_first = {r['cpu']: r for r in batches[0]['records'] if r['flags'] & 16}
+            root_last = {r['cpu']: r for r in batches[-1]['records'] if r['flags'] & 16}
+            assert root_first and root_first.keys() == root_last.keys(), 'missing BPF root CPU rows'
+            assert all(r['parent_id'] == 0 and r['flags'] & 1 and not (r['flags'] & 64) for r in root_last.values())
+            root_delta = sum(r['runtime_ns'] - root_first[cpu]['runtime_ns'] for cpu, r in root_last.items())
+            assert observed[0]['runtime_ns'] * .99 <= root_delta <= host_reference + 1_000_000, (root_delta, host_reference)
+            for previous, current in zip(batches, batches[1:]):
+                old = {r['cpu']: r['runtime_ns'] for r in previous['records'] if r['flags'] & 16}
+                assert all(r['runtime_ns'] >= old[r['cpu']] for r in current['records'] if r['flags'] & 16), 'BPF root counter regression'
             durations = [(b['monotonic_end_ns']-b['monotonic_start_ns'])/1e6 for b in batches]
             intervals = [(b['monotonic_start_ns']-a['monotonic_start_ns'])/1e6 for a,b in zip(batches,batches[1:])]
             assert 90 <= statistics.median(intervals) <= 110
@@ -156,6 +169,7 @@ def main():
             assert len(small)==2 and all(len(b['records'])==1 and b['capacity_overflow']>0 for b in small)
             print(json.dumps({'result':'PASS','kernel':os.uname().release,'architecture':os.uname().machine,
                 'samples':len(batches),'rows_per_snapshot':len(batches[-1]['records']),
+                'root_runtime_ns':root_delta,'root_reference_window_ns':host_reference,'root_cpus':len(root_last),
                 'collection_ms_median':statistics.median(durations),'collection_ms_max':max(durations),
                 'interval_ms_median':statistics.median(intervals),'interval_ms_max':max(intervals),
                 'native_capacity_overflow_checked':True,'concurrent_monitor_samples':len(concurrent_batches),'groups':observed},indent=2))
