@@ -19,6 +19,13 @@ Test shells receive a 256 MiB locked-memory limit for registered I/O buffers;
 Cargo and test binaries run as the unprivileged runner user.
 Private repositories use the owner's included Actions minutes and billing policy.
 
+[Node CI](../../.github/workflows/node.yml) uses the same ARM64/x86_64 runner matrix
+and the version in `.node-version`. Both GitHub and the ARM64 worker run
+`node scripts/ci/test-node.mts`: discover `apps/*/frontend/package.json` files
+with a `test` script, then run locked installs and `npm test` in each frontend.
+Live browser, CUDA and Dora qualification remain separate. Project Explorer has no
+`npm test` script. Node workflow paths cover all app, library and CI script changes.
+
 Privileged native validation and Dora end-to-end checks use the worker below.
 
 ## ARM64 test worker
@@ -109,15 +116,15 @@ Requirements: ARM64 Ubuntu, systemd, SSH, a Rust-compatible kernel with BTF and
 cgroup v2, rsync, flock (util-linux), and outbound package/GitHub/Rust download
 access. Existing `.20` has these platform prerequisites. Protobuf validation also requires `python3-protobuf`
 (`sudo apt-get install python3-protobuf` on an existing worker). As an administrator, copy `install-worker.sh` and the intended SSH
-**public** key, then run:
+**public** key and the repository’s `.node-version` file, then run:
 
 ```sh
-sudo bash install-worker.sh /path/to/authorized-key.pub
+sudo bash install-worker.sh /path/to/authorized-key.pub /path/to/.node-version
 ```
 
 This creates the dedicated user, installs clang18/libelf/zlib/build tooling,
 verifies pinned Pueue binary hashes, installs the service and sudo launcher, and
-installs Rust unprivileged. It replaces this account's authorized_keys and Pueue
+installs the pinned Node and Rust runtimes unprivileged. It replaces this account's authorized_keys and Pueue
 config; it restarts the daemon, so only reprovision while idle. Provision SSH
 separately and keep the WSL distro running. Systemd starts Pueue when the distro
 boots. Configure Windows startup and sleep policy separately if required.

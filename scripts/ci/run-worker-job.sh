@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 export CARGO_TARGET_DIR="$HOME/target"
 export CLANG=clang-18
 export RUSTUP_TOOLCHAIN=1.99.1
@@ -20,6 +20,8 @@ cat SOURCE.json
 rustup component add rustfmt clippy --toolchain 1.99.1
 python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
 python3 scripts/ci/test_boundaries.py
+test "$(node --version)" = "v$(cat .node-version)"
+node scripts/ci/test-node.mts
 cargo fmt --all -- --check
 cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
 cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings

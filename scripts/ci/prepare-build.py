@@ -67,8 +67,7 @@ def prepare(snapshot, destination):
         raise ValueError('Source permission inventory mismatch')
     verify(snapshot, expected, modes, ignored={'source.tar.gz'})
     destination.mkdir(parents=True, exist_ok=True)
-    # Refuse symlinks before allowing rsync to delete stale generated/source files.
-    files(destination)
+    # rsync replaces stale cache symlinks without following their targets.
     subprocess.run([
         'rsync', '-rcp', '--delete-excluded', '--exclude=/source.tar.gz',
         '--itemize-changes', '--', str(snapshot) + '/', str(destination) + '/',
