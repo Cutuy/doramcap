@@ -1,4 +1,4 @@
-import type { doramcap } from './generated/console.cjs';
+import type { doramcap } from './generated/console.js';
 type App = doramcap.console.v1.ISystemAppDefinition;
 type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };
 

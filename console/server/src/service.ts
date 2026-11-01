@@ -17,7 +17,7 @@ import {
   type Run,
   type Snapshot,
 } from './native.js';
-import type { doramcap } from './generated/console.cjs';
+import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
 import { discover, selectApps, appOptions, outputs, bindOutputs } from './system-apps.js';
 import { Graphs } from './graphs.js';

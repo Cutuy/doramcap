@@ -1,5 +1,5 @@
 import { workflow } from './native.js';
-import type { doramcap } from './generated/console.cjs';
+import type { doramcap } from './generated/console.js';
 type Event = doramcap.workflow.v1.IEvent;
 export const MAX_PROGRESS_ROWS = 512;
 const STARTED = workflow.Event.State.STARTED;

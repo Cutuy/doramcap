@@ -17,7 +17,7 @@ The [execution contract](../proto/execution.proto) carries explicit Compose inpu
 configuration snapshots and execution facts. The workflow owns repository admission,
 reset, preflight and cleanup. Console builds the browser-facing status in TypeScript.
 
-[Configuration](../docs/configuration.md) · [Recovery](../docs/recovery.md) ·
+[HTTP contract](../contract/transport.ts) · [Configuration](../docs/configuration.md) · [Recovery](../docs/recovery.md) ·
 [Process boundary](../docs/102926-console-boundary.svg) ·
 [Command flow](../docs/102926-console-interop.svg)
 
