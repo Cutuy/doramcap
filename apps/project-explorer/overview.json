@@ -143,9 +143,9 @@
       "id": "orchestration",
       "title": "Workflow execution",
       "category": "Runtime",
-      "summary": "Run observable Rust steps, supervise Compose workloads and collect filesystem changes before cleanup.",
+      "summary": "Run observable Rust steps, supervise Compose and Supervisor workloads, and collect filesystem changes before cleanup.",
       "status": "building-blocks",
-      "limits": "Docker Compose execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
+      "limits": "Docker Compose and Supervisor execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
       "components": [
         "apps/console",
         "apps/orchestrator-demo",
@@ -207,7 +207,7 @@
       "group": "execution",
       "summary": "Planned integration.",
       "url": "https://developer.nvidia.com/docs/drive/drive-os/7.0.3/public/drive-os-linux-sdk-api-ref/nvmedia__2d__sci_8h.html",
-      "status": "platform-dependent",
+      "status": "planned",
       "components": [],
       "evidence": [
         "docs/roadmap.md"
