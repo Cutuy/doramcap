@@ -20,5 +20,5 @@ host paths and app inputs in [console.pbtxt.example](console.pbtxt.example) and
 [configuration](docs/configuration.md). The browser uses HTTP Basic authentication
 with username `console` and the configured secret file's contents.
 
-[Backend](server/README.md) · [Recovery](docs/recovery.md) ·
+[Browser API](docs/api.md) · [Backend](server/README.md) · [Recovery](docs/recovery.md) ·
 [System app specification](docs/103026-system-apps-plan.md)

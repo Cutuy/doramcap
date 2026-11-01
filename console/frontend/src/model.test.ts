@@ -1,3 +1,5 @@
+import { wire } from './api';
+import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { acceptsSnapshot, canStopRun, outcomeLabels, requestKey, toggleProfile } from './model';
@@ -15,17 +17,17 @@ test('profile changes and lost Start responses retain explicit intent', () => {
 
 test('an older active run cannot replace the expected run', () => {
   // Arrange
-  const old = { phase: 'RUNNING', runId: 'old' } as Snapshot;
-  const current = { phase: 'RUNNING', runId: 'new' } as Snapshot;
+  const old = wire.Status.fromObject({ phase: Phase.RUNNING, runId: 'old' });
+  const current = wire.Status.fromObject({ phase: Phase.RUNNING, runId: 'new' });
   // Act / Assert
   assert.equal(acceptsSnapshot('new', old), false);
-  assert.equal(acceptsSnapshot('new', { ...old, phase: 'FINISHED' }), false);
+  assert.equal(acceptsSnapshot('new', { ...old, phase: Phase.FINISHED }), false);
   assert.equal(acceptsSnapshot('new', current), true);
 });
 
 test('execution and cleanup failures remain separate from saved recording', () => {
   // Arrange
-  const outcome = { execution: 'Failed', recordingFinalized: true, boundaryClean: false };
+  const outcome = wire.Outcome.fromObject({ execution: 'Failed', recordingFinalized: true, boundaryClean: false });
   // Act
   const labels = outcomeLabels(outcome);
   // Assert
@@ -35,11 +37,11 @@ test('execution and cleanup failures remain separate from saved recording', () =
 
 test('Stop is available only during preparation/execution and remains disabled after shutdown starts', () => {
   // Arrange / Act / Assert
-  for (const phase of ['STARTING','RUNNING']) {
+  for (const phase of [Phase.STARTING,Phase.RUNNING]) {
     assert.equal(canStopRun({phase,runId:'run'}),true);
     assert.equal(canStopRun({phase,runId:'run'},true),false);
   }
-  for (const phase of ['IDLE','PREPARING','REVIEWED','STOPPING','FINISHED','BLOCKED']) assert.equal(canStopRun({phase,runId:'run'}),false);
+  for (const phase of [Phase.IDLE,Phase.PREPARING,Phase.REVIEWED,Phase.STOPPING,Phase.FINISHED,Phase.BLOCKED]) assert.equal(canStopRun({phase,runId:'run'}),false);
   assert.equal(canStopRun(null),false);
 });
 
@@ -48,13 +50,13 @@ test('pre-launch and empty-run frames cannot replace an in-flight Start', () => 
   // Arrange
   const expected = 'starting-run';
   // Act / Assert
-  for (const phase of ['IDLE', 'PREPARING', 'REVIEWED']) {
-    assert.equal(acceptsSnapshot(expected, {phase, runId: expected} as Snapshot), false);
-    assert.equal(acceptsSnapshot(expected, {phase, runId: ''} as Snapshot), false);
+  for (const phase of [Phase.IDLE, Phase.PREPARING, Phase.REVIEWED]) {
+    assert.equal(acceptsSnapshot(expected, wire.Status.fromObject({phase, runId: expected})), false);
+    assert.equal(acceptsSnapshot(expected, wire.Status.fromObject({phase, runId: ''})), false);
   }
-  for (const phase of ['STARTING', 'RUNNING', 'STOPPING', 'FINISHED', 'BLOCKED']) {
-    assert.equal(acceptsSnapshot(expected, {phase, runId: expected} as Snapshot), true);
-    assert.equal(acceptsSnapshot(expected, {phase, runId: ''} as Snapshot), false);
+  for (const phase of [Phase.STARTING, Phase.RUNNING, Phase.STOPPING, Phase.FINISHED, Phase.BLOCKED]) {
+    assert.equal(acceptsSnapshot(expected, wire.Status.fromObject({phase, runId: expected})), true);
+    assert.equal(acceptsSnapshot(expected, wire.Status.fromObject({phase, runId: ''})), false);
   }
-  assert.equal(acceptsSnapshot('', {phase:'IDLE', runId:''} as Snapshot), true);
+  assert.equal(acceptsSnapshot('', wire.Status.fromObject({phase:Phase.IDLE, runId:''})), true);
 });

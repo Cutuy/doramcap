@@ -1,9 +1,11 @@
+import { workflow } from './api';
+import { StepState } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { elapsedDuration, summarySteps, evictionIndex, stepTimes, stepName } from './workflow';
 import type { Step } from './api';
 
-const step = (overrides: Partial<Step>): Step => ({ session: 's', executor: 'local', invocation: '9007199254740993', step: 'compose.prepare', displayName: 'Prepare project', state: 'SUCCEEDED', elapsedNs: '9007199254740999', durationNs: '9007199254740993', ...overrides });
+const step = (overrides: Record<string, unknown>): Step => (workflow.Event.fromObject({ session: 's', executor: 'local', invocation: '9007199254740993', step: 'compose.prepare', displayName: 'Prepare project', state: StepState.SUCCEEDED, elapsedNs: '9007199254740999', durationNs: '9007199254740993', ...overrides }));
 
 test('summary groups top-level invocations by stable identity and executor', () => {
   // Arrange
@@ -23,13 +25,13 @@ test('bounded history evicts completed rows when every step identity is unique',
   const incoming = step({ step: 'new', displayName: 'New step' });
   // Act / Assert
   assert.equal(evictionIndex(rows, incoming), 0);
-  assert.equal(evictionIndex(rows.map(row => ({...row, state: 'STARTED'})), incoming), -1);
+  assert.equal(evictionIndex(rows.map(row => workflow.Event.fromObject({...row, state: StepState.STARTED})), incoming), -1);
 });
 
 test('timestamps retain exact 64-bit subtraction and running elapsed time advances', () => {
   // Arrange
   const long = step({});
-  const running = step({ elapsedNs: '2000000000', durationNs: '0', state: 'STARTED' });
+  const running = step({ elapsedNs: '2000000000', durationNs: '0', state: StepState.STARTED });
   // Act / Assert
   assert.equal(stepTimes(long).start, 6e-9);
   assert.equal(elapsedDuration(running, 5), 3);

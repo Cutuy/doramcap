@@ -1,38 +1,21 @@
-import { doramcap } from './generated/console';
-import type { Snapshot } from './api';
+import { wire, Phase, routes, type Snapshot } from './protocol';
 import { evictionIndex } from './workflow';
-const wire = doramcap.console.v1;
-const LIMIT = 4 * 1024 * 1024;
-export const decodeStatus = (bytes: Uint8Array) => wire.Status.toObject(wire.Status.decode(bytes), { longs: String, enums: String, defaults: true }) as Snapshot;
+import { MEDIA_TYPE, FramedMessages } from './generated/transport';
 
-/** Four-byte LE framing handles arbitrary HTTP chunk boundaries. */
-export class LiveFrames {
-  private pending = new Uint8Array(0);
-  receive(chunk: Uint8Array, consume: (status: Snapshot) => void) {
-    if (chunk.length + this.pending.length > LIMIT * 2 + 8) throw new Error('Live buffer exceeds limit');
-    const bytes = new Uint8Array(this.pending.length + chunk.length);
-    bytes.set(this.pending); bytes.set(chunk, this.pending.length);
-    let offset = 0;
-    while (bytes.length - offset >= 4) {
-      const length = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
-      if (!length || length > LIMIT) throw new Error('Invalid live frame length');
-      if (bytes.length - offset - 4 < length) break;
-      consume(decodeStatus(bytes.subarray(offset + 4, offset + 4 + length)));
-      offset += 4 + length;
-    }
-    this.pending = bytes.slice(offset);
-  }
+export const decodeStatus = (bytes: Uint8Array) => wire.Status.decode(bytes);
+export class LiveFrames extends FramedMessages<Snapshot> {
+  constructor() { super(decodeStatus); }
 }
 
 /** Merge idempotent invocation replacements; keep server-equivalent bounded history. */
 export function mergeLive(previous: Snapshot | null, next: Snapshot): Snapshot {
   if (!previous || previous.runId !== next.runId
-    || ['IDLE', 'PREPARING', 'REVIEWED'].includes(next.phase)
-    || BigInt(next.sequence) < BigInt(previous.sequence)
-    || (next.phase === 'STARTING' && previous.phase !== 'STARTING')) return next;
+    || [Phase.IDLE, Phase.PREPARING, Phase.REVIEWED].includes(next.phase)
+    || BigInt(String(next.sequence)) < BigInt(String(previous.sequence))
+    || (next.phase === Phase.STARTING && previous.phase !== Phase.STARTING)) return next;
   const steps = next.steps.length ? [...previous.steps] : previous.steps;
   for (const step of next.steps) {
-    const index = steps.findIndex(row => row.session === step.session && row.executor === step.executor && row.invocation === step.invocation);
+    const index = steps.findIndex(row => row.session === step.session && row.executor === step.executor && String(row.invocation) === String(step.invocation));
     if (index >= 0) steps[index] = step;
     else {
       if (steps.length === 512) {
@@ -45,16 +28,16 @@ export function mergeLive(previous: Snapshot | null, next: Snapshot): Snapshot {
   }
   let history = previous.metrics;
   if (next.metrics?.length) {
-    const metrics = new Map((previous.metrics ?? []).map(metric => [metric.elapsedNs, metric]));
-    for (const metric of next.metrics) metrics.set(metric.elapsedNs, metric);
+    const metrics = new Map((previous.metrics ?? []).map(metric => [String(metric.elapsedNs), metric]));
+    for (const metric of next.metrics) metrics.set(String(metric.elapsedNs), metric);
     history = [...metrics.values()].slice(-1200);
   }
-  return { ...next, steps, metrics: history, cpuSnapshots: next.cpuSnapshots?.length ? next.cpuSnapshots : previous.cpuSnapshots, cpuGroupNames: next.cpuSnapshots?.length ? next.cpuGroupNames : previous.cpuGroupNames };
+  return wire.Status.create({ ...next, steps, metrics: history, cpuSnapshots: next.cpuSnapshots?.length ? next.cpuSnapshots : previous.cpuSnapshots, cpuGroupNames: next.cpuSnapshots?.length ? next.cpuGroupNames : previous.cpuGroupNames });
 }
 
-export async function readLive(consume: (status: Snapshot) => void, signal: AbortSignal) {
-  const response = await fetch('/api/live', { credentials: 'same-origin', signal, headers: { accept: 'application/x-protobuf' } });
-  if (!response.ok || !response.body || !response.headers.get('content-type')?.startsWith('application/x-protobuf')) throw new Error('Live connection unavailable');
+export async function readLive(consume: (status: Snapshot) => void, signal: AbortSignal, fetcher: typeof fetch = fetch) {
+  const response = await fetcher(routes.live.path, { credentials: 'same-origin', signal, headers: { accept: MEDIA_TYPE } });
+  if (!response.ok || !response.body || !response.headers.get('content-type')?.startsWith(MEDIA_TYPE)) throw new Error('Live connection unavailable');
   const reader = response.body.getReader();
   const frames = new LiveFrames();
   let snapshot: Snapshot | null = null;

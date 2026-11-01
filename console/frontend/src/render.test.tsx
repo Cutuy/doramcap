@@ -1,3 +1,5 @@
+import { wire, workflow } from './api';
+import { Phase, StepState } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import React from 'react';
@@ -19,7 +21,7 @@ test('project screen has labeled controls and phase navigation', () => {
 
 test('activity timeline retains repeated health-check invocations', () => {
   // Arrange
-  const rows: Step[] = ['9007199254740993', '9007199254740994'].map((invocation, index) => ({ session: 's', executor: 'local', invocation, step: 'module::ObserveProjects', state: 'SUCCEEDED', elapsedNs: String((index + 1) * 1_000_000_000), durationNs: '100000000' }));
+  const rows: Step[] = ['9007199254740993', '9007199254740994'].map((invocation, index) => (workflow.Event.fromObject({ session: 's', executor: 'local', invocation, step: 'module::ObserveProjects', state: StepState.SUCCEEDED, elapsedNs: String((index + 1) * 1_000_000_000), durationNs: '100000000' })));
   // Act
   const html = renderToStaticMarkup(<ActivityTimeline steps={rows} now={2} />);
   // Assert
@@ -31,7 +33,7 @@ test('activity timeline retains repeated health-check invocations', () => {
 
 test('blocked cleanup preserves declared recordings and allows another reset attempt', () => {
   // Arrange
-  const snapshot = { phase: 'BLOCKED', runId: 'a'.repeat(32), outcome: { execution: 'Failed', recordingFinalized: true, boundaryClean: false }, cpuAvailable: true, reportAvailable: true, recordings: [{id:'cpu',path:'cpu.mcap',cpu:true},{id:'dora',path:'dora.mcap'}] } as Snapshot;
+  const snapshot = wire.Status.fromObject({ phase: Phase.BLOCKED, runId: 'a'.repeat(32), outcome: { execution: 'Failed', recordingFinalized: true, boundaryClean: false }, cpuAvailable: true, reportAvailable: true, recordings: [{id:'cpu',path:'cpu.mcap',cpu:true},{id:'dora',path:'dora.mcap'}] });
   // Act
   const html = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}} />);
   // Assert
@@ -45,9 +47,9 @@ test('blocked cleanup preserves declared recordings and allows another reset att
 
 test('workflow list summarizes latest top-level invocations and excludes children', () => {
   // Arrange
-  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => ({ session: 's', executor: 'local', invocation, step: 'compose.launch', displayName: 'Start project', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '200000000' }));
-  rows.push({ session: 's', executor: 'local', invocation: '3', step: 'module::ObserveProjects', state: 'SUCCEEDED', durationNs: '100000000', elapsedNs: '300000000' });
-  rows.push({ ...rows[0], invocation: '4', parent: '3', step: 'module::InspectCompose', displayName: null });
+  const rows: Step[] = ['9007199254740993', '9007199254740994'].map(invocation => (workflow.Event.fromObject({ session: 's', executor: 'local', invocation, step: 'compose.launch', displayName: 'Start project', state: StepState.SUCCEEDED, durationNs: '100000000', elapsedNs: '200000000' })));
+  rows.push(workflow.Event.fromObject({ session: 's', executor: 'local', invocation: '3', step: 'module::ObserveProjects', state: StepState.SUCCEEDED, durationNs: '100000000', elapsedNs: '300000000' }));
+  rows.push(workflow.Event.fromObject({ ...rows[0], invocation: '4', parent: '3', step: 'module::InspectCompose', displayName: null }));
   // Act
   const html = renderToStaticMarkup(<RunSteps steps={rows} />);
   // Assert

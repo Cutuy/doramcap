@@ -1,27 +1,89 @@
+import { MEDIA_TYPE, LIMITS, isErrorCode, type ErrorCode } from './generated/transport';
 import { readLive } from './live';
-import type { doramcap } from './generated/console';
-export interface Service { name: string; imageId: string }
-export interface SystemApp { id: string; label: string; selected: boolean; required?: boolean }
-export interface RecordingOutput { id: string; path: string; stream?: string; cpu?: boolean }
-export interface Review { preparedId: string; runId: string; availableProfiles: string[]; selectedProfiles: string[]; services: Service[]; warnings: string[]; systemApps: SystemApp[]; recordings?: RecordingOutput[] }
-export interface Step { displayName?: string | null; session: string; executor: string; invocation: string; step: string; state: string; durationNs: string; elapsedNs?: string; parent?: string | null; dependencies?: string[]; sequence?: string; stepVersion?: number; error?: string | null }
-export interface Outcome { execution: string; writersStopped?: boolean | null; recordingFinalized?: boolean | null; boundaryClean?: boolean | null; eventStreamHealthy?: boolean | null }
-export interface RunMetric { elapsedNs: string; recordingBytes?: string | null; writeBytesPerSecond?: number | null; cpuPercent?: number | null; cpuCores: number }
-export interface Snapshot { recordings?: RecordingOutput[]; phase: string; runId: string; steps: Step[]; sequence: string; lostEvents: string; truncatedSteps: string; overflowSteps: string; progressIncomplete: boolean; outcome: Outcome | null; cpuAvailable: boolean; reportAvailable: boolean; monitorReady: boolean; projectDirectory?: string; profiles?: string[]; metrics?: RunMetric[]; activityAvailable?: boolean; metricsIncomplete?: boolean; cpuSnapshots?: doramcap.telemetry.v1.ISnapshot[]; cpuGroupNames?: { id: string; name: string }[]; systemApps?: { ids: string[] } | null }
-export class ApiError extends Error { constructor(public code: string) { super(code); } }
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { ...(init?.body ? { 'content-type': 'application/json' } : {}), ...init?.headers }, credentials: 'same-origin' });
-  const value = await response.json();
-  if (!response.ok) throw new ApiError(value?.error?.code ?? 'Internal');
-  return value as T;
-}
-const post = <T>(path: string, value: unknown) => request<T>(path, { method: 'POST', body: JSON.stringify(value) });
-export const api = {
-  prepare: (directory: string, profiles: string[], systemApps?: string[]) => post<Review>('/api/prepare', { directory, profiles, ...(systemApps === undefined ? {} : { systemApps }) }),
-  start: (preparedId: string, requestKey: string) => post<{ runId: string }>('/api/start', { preparedId, requestKey }),
-  stop: (runId: string) => post<{ accepted: boolean }>('/api/stop', { runId }),
-  current: () => request<Snapshot>('/api/current'),
-  live: readLive,
-};
 
-export const cpuRecordingEnabled = (snapshot: Pick<Snapshot, 'recordings'> | null) => snapshot?.recordings?.some(output => output.cpu) ?? false;
+export * from './protocol';
+import { wire, routes, type Snapshot } from './protocol';
+export class ApiError extends Error {
+  constructor(public code: ErrorCode) {
+    super(code);
+  }
+}
+
+async function request<T>(
+  endpoint: { path: string; method: string; status: number; response: { decode(bytes: Uint8Array): T } },
+  body: Uint8Array | undefined,
+  fetcher: typeof fetch,
+): Promise<T> {
+  const response = await fetcher(endpoint.path, {
+    method: endpoint.method,
+    body: body ? new Blob([new Uint8Array(body)]) : undefined,
+    headers: { accept: MEDIA_TYPE, ...(body ? { 'content-type': MEDIA_TYPE } : {}) },
+    credentials: 'same-origin',
+  });
+  if (response.headers.get('content-type')?.split(';')[0].trim() !== MEDIA_TYPE)
+    throw new Error('Invalid API response type');
+  if (!response.body) throw new Error('Missing API response body');
+  const reader = response.body.getReader(),
+    chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      length += value.length;
+      if (length > LIMITS.frameBytes) {
+        await reader.cancel();
+        throw new Error('API response exceeds limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  if (!response.ok) {
+    const error = routes.error.decode(bytes);
+    throw new ApiError(isErrorCode(error.code) ? error.code : 'Internal');
+  }
+  if (response.status !== endpoint.status) throw new Error('Invalid API response status');
+  return endpoint.response.decode(bytes);
+}
+/** Create the browser client with an explicit transport for HTTP integration tests. */
+export function createClient(fetcher: typeof fetch = fetch) {
+  return {
+    prepare: (directory: string, profiles: string[], systemApps?: string[]) =>
+      request(
+        routes.prepare,
+        routes.prepare.request
+          .encode(
+            wire.PrepareRequest.create({
+              directory,
+              profiles,
+              ...(systemApps === undefined
+                ? {}
+                : { systemApps: wire.SystemAppSelection.create({ ids: systemApps }) }),
+            }),
+          )
+          .finish(),
+        fetcher,
+      ),
+    start: (preparedId: string, requestKey: string) =>
+      request(
+        routes.start,
+        routes.start.request.encode(wire.StartRequest.create({ preparedId, requestKey })).finish(),
+        fetcher,
+      ),
+    stop: (runId: string) =>
+      request(routes.stop, routes.stop.request.encode(wire.StopRequest.create({ runId })).finish(), fetcher),
+    current: () => request(routes.current, undefined, fetcher),
+    live: (consume: (status: Snapshot) => void, signal: AbortSignal) => readLive(consume, signal, fetcher),
+  };
+}
+export const api = createClient();
+export const cpuRecordingEnabled = (snapshot: Pick<Snapshot, 'recordings'> | null) =>
+  snapshot?.recordings.some((output) => output.cpu) ?? false;

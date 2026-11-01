@@ -1,7 +1,7 @@
 import type { Step } from './api';
 import { stepTimes, stepKey, stepName } from './workflow';
 
-export const invocationKey = (step: Step) => JSON.stringify([step.session, step.executor, step.invocation]);
+export const invocationKey = (step: Pick<Step, 'session' | 'executor' | 'invocation'>) => JSON.stringify([step.session, step.executor, String(step.invocation)]);
 export interface Flow { source: Step; target: Step; kind: 'parent' | 'dependency'; from: number; to: number }
 
 /** Group by stable step identity; resolve explicit executor-local relationships. */
@@ -16,14 +16,14 @@ export function timelineModel(steps: Step[]) {
   const byInvocation = new Map(steps.map(step => [invocationKey(step), step]));
   const flows: Flow[] = [];
   for (const target of steps) {
-    const add = (id: string, kind: Flow['kind']) => {
+    const add = (id: Step['invocation'], kind: Flow['kind']) => {
       const source = byInvocation.get(invocationKey({ ...target, invocation: id }));
       if (!source || source === target) return;
       const times = stepTimes(source);
       flows.push({ source, target, kind, from: kind === 'parent' ? times.start : times.end, to: stepTimes(target).start });
     };
     if (target.parent) add(target.parent, 'parent');
-    for (const id of new Set(target.dependencies ?? [])) add(id, 'dependency');
+    for (const id of new Map((target.dependencies ?? []).map(id => [String(id), id])).values()) add(id, 'dependency');
   }
   const rowLabels = new Map(steps.map(step => [stepKey(step), stepName(step)]));
   return { rows, rowByName, rowLabels, flows };

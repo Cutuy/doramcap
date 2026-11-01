@@ -1,3 +1,5 @@
+import { workflow } from './api';
+import { StepState } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import React from 'react';
@@ -6,7 +8,7 @@ import type { Step } from './api';
 import { ActivityTimeline } from './ActivityTimeline';
 import { flowPath, timelineModel } from './timeline';
 
-const step = (invocation: string, name: string, extra: Partial<Step> = {}): Step => ({ session: 'run', executor: 'local', invocation, step: name, state: 'SUCCEEDED', elapsedNs: '2000000000', durationNs: '1000000000', ...extra });
+const step = (invocation: string, name: string, extra: Record<string, unknown> = {}): Step => (workflow.Event.fromObject({ session: 'run', executor: 'local', invocation, step: name, state: StepState.SUCCEEDED, elapsedNs: '2000000000', durationNs: '1000000000', ...extra }));
 
 test('each full step name owns one row across repeated invocations and window changes', () => {
   // Arrange

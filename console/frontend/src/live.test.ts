@@ -1,10 +1,11 @@
+import { wire } from './api';
+import { StepState } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { doramcap } from './generated/console';
 import { LiveFrames, mergeLive, decodeStatus } from './live';
 import { topCpuGroups } from './cpu';
 import type { Snapshot } from './api';
-const wire = doramcap.console.v1;
 const encode = (value: object) => wire.Status.encode(wire.Status.fromObject(value)).finish();
 const snapshot = (value: object) => decodeStatus(encode({runId:'run',phase:wire.Phase.RUNNING,...value}));
 test('binary framing survives split headers and bodies with precise u64 IDs', () => {
@@ -16,8 +17,8 @@ test('binary framing survives split headers and bodies with precise u64 IDs', ()
   // Act
   for (const byte of frame) decoder.receive(Uint8Array.of(byte), item => received.push(item));
   // Assert
-  assert.equal(received.length,1); assert.equal(received[0].sequence,id); assert.equal(received[0].steps[0].invocation,id);
-  assert.equal(received[0].steps[0].state,'STARTED');
+  assert.equal(received.length,1); assert.equal(String(received[0].sequence),id); assert.equal(String(received[0].steps[0].invocation),id);
+  assert.equal(received[0].steps[0].state,StepState.STARTED);
   const oversized = new Uint8Array(4); new DataView(oversized.buffer).setUint32(0,4*1024*1024+1,true);
   assert.throws(()=>decoder.receive(oversized,()=>{}),/length/);
 });
@@ -27,10 +28,10 @@ test('delta merging preserves distinct top-level rows, replaces invocations, bou
   // Act
   for(let i=2;i<1305;i++) state=mergeLive(state,snapshot({sequence:String(i),steps:[{session:'s',executor:'local',invocation:String(i),sequence:String(i),step:'module::ObserveProjects',state:2}],metrics:[{elapsedNs:String(i)}]}));
   // Assert
-  assert.equal(state.steps.length,512); assert.equal(state.steps[0].invocation,'1'); assert.equal(state.metrics?.length,1200); assert.equal(String(state.cpuSnapshots?.[0].sequence),'1');
+  assert.equal(state.steps.length,512); assert.equal(String(state.steps[0].invocation),'1'); assert.equal(state.metrics?.length,1200); assert.equal(String(state.cpuSnapshots?.[0].sequence),'1');
   // Act
   state=mergeLive(state,snapshot({sequence:'1304',steps:[{session:'s',executor:'local',invocation:'1304',state:3}]}));
-  assert.equal(state.steps.at(-1)?.state,'FAILED');
+  assert.equal(state.steps.at(-1)?.state,StepState.FAILED);
   state=mergeLive(state,snapshot({runId:'new'}));
   assert.equal(state.steps.length,0); assert.equal(state.metrics?.length,0); assert.equal(state.cpuSnapshots?.length,0);
 });
@@ -55,7 +56,7 @@ test('cgroup names keep exact IDs across heartbeats and reset with a fresh CPU f
   const heartbeat = mergeLive(first,snapshot({}));
   const changed = mergeLive(heartbeat,snapshot({cpuSnapshots:[{sequence:'2'}],cpuGroupNames:[]}));
   // Assert
-  assert.deepEqual(heartbeat.cpuGroupNames,[{id,name:'worker.service'}]);
+  assert.deepEqual(heartbeat.cpuGroupNames.map(group => ({id:String(group.id),name:group.name})),[{id,name:'worker.service'}]);
   assert.deepEqual(changed.cpuGroupNames,[]);
 });
 
@@ -71,7 +72,7 @@ test('review/start sequence resets discard previous-run time even under the same
   // Act / Assert: also reset if the first active frame arrives after Starting.
   const running = mergeLive(stale,snapshot({phase:wire.Phase.RUNNING,sequence:'2',steps:[{invocation:'1',elapsedNs:'100000000',state:1}]}));
   assert.equal(running.steps.length,1);
-  assert.equal(running.steps[0].elapsedNs,'100000000');
+  assert.equal(String(running.steps[0].elapsedNs),'100000000');
   // Act / Assert: review frames never inherit activity from an earlier same-ID frame.
   assert.equal(mergeLive(stale,snapshot({phase:wire.Phase.REVIEWED,sequence:'800'})).steps.length,0);
 });

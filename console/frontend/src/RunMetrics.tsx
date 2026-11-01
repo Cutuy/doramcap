@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { RunMetric, Snapshot } from './api';
 import { topCpuGroups } from './cpu';
 
-export const bytesLabel = (value: string | number | null | undefined) => {
+export const bytesLabel = (value: string | number | { toString(): string } | null | undefined) => {
   if (value == null) return 'Unavailable';
   const bytes = Number(value);
   if (!Number.isFinite(bytes) || bytes < 0) return 'Unavailable';
@@ -25,10 +25,10 @@ function Sparkline({ samples, field, label }: { samples: RunMetric[]; field: 'cp
 }
 export function RunMetrics({ samples = [], cpuSnapshots = [], cpuGroupNames = [], historical = false, disconnected = false, incomplete = false }: { samples?: RunMetric[]; cpuSnapshots?: Snapshot['cpuSnapshots']; cpuGroupNames?: Snapshot['cpuGroupNames']; historical?: boolean; disconnected?: boolean; incomplete?: boolean }) {
   const last = samples.at(-1);
-  const cpu = [...samples].reverse().find(sample => sample.cpuPercent != null && (historical || BigInt(last?.elapsedNs ?? '0') - BigInt(sample.elapsedNs) <= 500000000n));
+  const cpu = [...samples].reverse().find(sample => sample.cpuPercent != null && (historical || BigInt(String(last?.elapsedNs ?? 0)) - BigInt(String(sample.elapsedNs)) <= 500000000n));
   const source = cpuSnapshots.at(-1);
   const groups = useMemo(() => topCpuGroups(cpuSnapshots), [cpuSnapshots]);
-  const names = useMemo(() => new Map(cpuGroupNames.map(group => [group.id, group.name])), [cpuGroupNames]);
+  const names = useMemo(() => new Map(cpuGroupNames.map(group => [String(group.id), group.name])), [cpuGroupNames]);
   const peak = Math.max(100, ...groups.map(group => group.percent));
   return <><section className="panel"><h2>MCAP recording</h2><p className="metric-value">{bytesLabel(last?.recordingBytes)}</p><p>{last?.writeBytesPerSecond != null ? `${bytesLabel(last.writeBytesPerSecond)}/s` : 'Unavailable'}</p><Sparkline samples={samples} field="writeBytesPerSecond" label="MCAP write rate"/></section><section className="panel"><h2>CPU total · core %</h2><p className="metric-value">{cpu?.cpuPercent != null ? `${cpu.cpuPercent.toFixed(1)}%` : 'Unavailable'}</p>{!!cpu?.cpuCores && <p>{cpu.cpuCores} cores</p>}{disconnected && !historical && <p className="notice">Connection lost</p>}<Sparkline samples={samples} field="cpuPercent" label="Total CPU utilization across cores"/></section><section className="panel"><h2>Top CPU consumers</h2>{groups.length ? <ol className="cpu-ranking">{groups.map(group => <li key={group.id}><div><span className="mono" title={`Cgroup ${group.id}`}>{names.get(group.id) || `Cgroup ${group.id}`}</span><strong>{group.percent.toFixed(1)}%</strong></div><meter min={0} max={peak} value={group.percent} aria-label={`${names.get(group.id) || `Cgroup ${group.id}`} core utilization`}/></li>)}</ol> : <p className="muted">Unavailable</p>}</section><section className="panel"><h2>Capture health</h2><dl className="detail-grid"><dt>Snapshot</dt><dd>{source?.sequence?.toString() ?? 'Unavailable'}</dd><dt>Dropped batches</dt><dd>{source?.droppedBatches?.toString() ?? 'Unavailable'}</dd><dt>Capacity overflow</dt><dd>{source?.capacityOverflow?.toString() ?? 'Unavailable'}</dd></dl></section>{incomplete && <p className="notice">Metrics incomplete</p>}</>;
 }

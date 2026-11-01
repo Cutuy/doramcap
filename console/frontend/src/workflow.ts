@@ -1,3 +1,4 @@
+import { StepState } from './protocol';
 import type { Step } from './api';
 
 /** Captures without a label use their recorded step name. */
@@ -12,16 +13,16 @@ export const summarySteps = (steps: Step[]): Step[] => [...new Map(steps.filter(
 
 /** Prefer completed children/repeats; fall back to the oldest completed row. */
 export function evictionIndex(steps: Step[], incoming: Step): number {
-  const preferred = steps.findIndex((row, index) => row.state !== 'STARTED'
+  const preferred = steps.findIndex((row, index) => row.state !== StepState.STARTED
     && (row.parent != null || sameSummaryStep(row, incoming) || steps.slice(index + 1).some(later => sameSummaryStep(row, later))));
-  return preferred >= 0 ? preferred : steps.findIndex(row => row.state !== 'STARTED');
+  return preferred >= 0 ? preferred : steps.findIndex(row => row.state !== StepState.STARTED);
 }
 
 /** Convert elapsed and duration together so the 64-bit subtraction stays exact. */
 export function stepTimes(step: Step): { start: number; end: number } {
   try {
-    const elapsed = BigInt(step.elapsedNs ?? '0');
-    const duration = BigInt(step.durationNs ?? '0');
+    const elapsed = BigInt(String(step.elapsedNs ?? 0));
+    const duration = BigInt(String(step.durationNs ?? 0));
     const start = elapsed > duration ? elapsed - duration : 0n;
     return { start: Number(start) / 1e9, end: Number(elapsed) / 1e9 };
   } catch {
@@ -30,5 +31,5 @@ export function stepTimes(step: Step): { start: number; end: number } {
 }
 export function elapsedDuration(step: Step, now: number): number {
   const { start, end } = stepTimes(step);
-  return Math.max(0, (step.state === 'STARTED' ? Math.max(now, end) : end) - start);
+  return Math.max(0, (step.state === StepState.STARTED ? Math.max(now, end) : end) - start);
 }
