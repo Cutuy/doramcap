@@ -36,3 +36,6 @@ requirements-checklist.yaml
 requirements-checklist.yml
 
 /apps/cuda-shm-demo/build/
+
+# Local SSH private-key downloads.
+*.pem

@@ -4,6 +4,9 @@ Run prebuilt gallery assets, the manager and app images under systemd.
 Install Docker Engine/Compose and create a dedicated `gallery` account with
 Docker access. Build on ARM64 Ubuntu 24.04 using the pinned toolchain.
 
+Reference host: `t4g.micro` (Graviton2 ARM64, 2 vCPUs, 1 GiB RAM),
+Ubuntu 24.04 LTS, 30 GiB EBS with ext4, 1 GiB swap, and no GPU.
+
 Install the [manager](doramcap-gallery.service) and
 [proxy](doramcap-gallery-caddy.service) units in `/etc/systemd/system/`.
 Their default endpoint is <http://127.0.0.1:8096/#/apps>.
