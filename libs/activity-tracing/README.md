@@ -5,7 +5,6 @@ background encoding, and MCAP, WebSocket or OpenTelemetry outputs.
 
 ![Architecture](docs/architecture.svg)
 
-[Design and bounds](docs/design.md) ·
 [Buffer lifetimes](docs/buffer-lifetimes.svg) ·
 [Proposed external-buffer ownership](docs/external-buffer-ownership.svg) ·
 [Roadmap and validation gates](docs/101826-my-roadmpa.md) ·

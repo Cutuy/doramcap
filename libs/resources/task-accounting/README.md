@@ -12,5 +12,4 @@ Each counter key is `(start_boottime_ns, cgroup_id, tid, tgid, cpu, flags)`.
 Counters hold charged runtime since attachment; do not add them to native cgroup
 totals or treat deltas as exact wall-clock slices.
 
-[CPU accounting nuances](CPU-ACCOUNTING.md) ·
-[Kernel coverage, contracts and qualification gates](docs/qualification.md)
+[CPU accounting nuances](CPU-ACCOUNTING.md)

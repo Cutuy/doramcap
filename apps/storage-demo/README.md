@@ -22,7 +22,6 @@ cargo test -p storage-demo -p storage-persistence
 npm test --prefix apps/storage-demo/frontend
 ```
 
-[Controls, timeline and validation](docs/usage.md) ·
 [Live-feed architecture](docs/102026-live-storage-timeline.md) ·
 [Demo plan](docs/101826-live-storage-demo.md) ·
 [Docker deployment](deploy/README.md)
