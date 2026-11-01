@@ -114,6 +114,11 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
     // Assert: no JSON/status round trip; the native cursor is passed back unchanged.
     assert.equal(statuses,0); assert.deepEqual(cursors.slice(0,3),[0,1,2]);
     assert.ok(performance.now()-started>=150,'feed must not spin unbounded');
+    const others = await Promise.all(Array.from({length:LIMITS.liveStreams-1}, () => fetch(url,{headers:{authorization:auth},signal:controller.signal})));
+    assert.ok(others.every(stream => stream.status === 200));
+    const busy = await fetch(url,{headers:{authorization:auth}});
+    assert.equal(busy.status,503);
+    assert.equal(wire.ConsoleError.decode(new Uint8Array(await busy.arrayBuffer())).code,'Busy');
     controller.abort(); await reader.cancel().catch(()=>{});
   } finally { controller.abort(); server.closeAllConnections(); server.close(); await once(server,'close'); }
 });

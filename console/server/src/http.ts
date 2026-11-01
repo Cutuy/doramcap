@@ -99,7 +99,7 @@ export function createConsoleServer(config: HttpOptions) {
       }
       if (request.method === routes.live.method && url.pathname === routes.live.path) {
         if (request.headers.origin && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
-        if (streams >= LIMITS.liveStreams) throw new HttpError(409, 'Busy');
+        if (streams >= LIMITS.liveStreams) throw new HttpError(ERROR_STATUS.Busy, 'Busy');
         streams++;
         const controller = new AbortController();
         response.once('close', () => controller.abort());
