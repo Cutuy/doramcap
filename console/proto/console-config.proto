@@ -5,6 +5,7 @@ import "dora.proto";
 import "live.proto";
 
 message ConsoleConfig {
+  bool download_missing_images = 11; // Prepare selected images before Review.
   string listen_address = 1;
   string project_root = 2;
   string data_root = 3;
@@ -43,3 +44,10 @@ message LiveBridge { string image = 1; uint32 port = 2; }
 message LiveOutput { string source = 1; doramcap.console.live.v1.Kind kind = 2; }
 
 message RecordingOutput { string id = 1; string path = 2; string stream = 3; bool cpu = 4; }
+
+// Release metadata and relative playground configuration, resolved by the installer CLI.
+message ReleaseManifest {
+  string version = 1;
+  string platform = 2;
+  ConsoleConfig config = 3;
+}
