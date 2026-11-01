@@ -147,10 +147,12 @@
       "status": "building-blocks",
       "limits": "Docker Compose execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
       "components": [
+        "apps/console",
         "apps/orchestrator-demo",
         "crates/orchestrator",
         "crates/workload-docker",
-        "crates/workload-lifecycle"
+        "crates/workload-lifecycle",
+        "crates/workload-supervisor"
       ],
       "integrations": [
         "linux"
@@ -221,7 +223,8 @@
         "crates/cuda-dora-shm",
         "apps/system-monitor",
         "apps/dataflow-tracing",
-        "apps/mcap-recorder"
+        "apps/mcap-recorder",
+        "crates/dora-app"
       ],
       "evidence": [
         "docs/vision.md",
@@ -278,6 +281,7 @@
         "mcap"
       ],
       "components": [
+        "apps/console",
         "apps/orchestrator-demo",
         "apps/system-monitor",
         "crates/orchestrator",
@@ -399,12 +403,14 @@
         "mcap"
       ],
       "components": [
+        "apps/console",
         "apps/orchestrator-demo",
         "apps/system-monitor",
         "crates/orchestrator",
         "crates/workload-docker"
       ],
       "evidence": [
+        "console/README.md",
         "apps/orchestrator-demo/README.md",
         "libs/workload-docker/docs/102626-filesystem-metadata.md",
         "libs/workload-docker/docs/102926-shared-dora-experiment.md"

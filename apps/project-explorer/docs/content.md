@@ -1,8 +1,8 @@
 # Content conventions
 
-The generator reads Cargo workspace members and README files under `apps/`.
-Library packages get individual crate pages; packages below `apps/<name>/` belong
-to that logical app. Frontend-only apps appear with no Cargo dependency edges.
+The generator reads Cargo workspace members and README files under `apps/` and
+`console/`. Library packages get individual crate pages; packages below
+`apps/<name>/` or `console/` belong to that logical app. Frontend-only apps appear with no Cargo dependency edges.
 
 - Titles humanize package names and preserve common acronyms.
 - Summaries use the first nonempty README paragraph.

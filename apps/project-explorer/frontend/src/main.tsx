@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
 import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, type LucideIcon } from 'lucide-react';
 import generated from './.generated/catalog.json';
-import { componentHref, displayName, parseRoute, resolveLink, routeHref,  type Catalog, type Component, type Kind, type Route } from './model';
+import { componentHref, displayName, parseRoute, resolveLink, routeHref, type Catalog, type Component, type Kind, type Route } from './model';
 import Dependencies from './Dependencies';
 import Overview from './Overview';
 import './style.css';
@@ -20,10 +20,10 @@ function useRoute(): Route {
   useEffect(() => { const update = () => setHash(window.location.hash); window.addEventListener('hashchange', update); return () => window.removeEventListener('hashchange', update); }, []);
   return useMemo(() => parseRoute(hash), [hash]);
 }
-function updateParams(route: Route, values: Record<string, string>) {
+function updateParams(route: Route, values: Record<string, string>, replace = false) {
   const params = new URLSearchParams(route.params);
   for (const [key, value] of Object.entries(values)) { if (value) params.set(key, value); else params.delete(key); }
-  window.history.pushState(null, '', routeHref(route.path, params));
+  window.history[replace ? 'replaceState' : 'pushState'](null, '', routeHref(route.path, params));
   window.dispatchEvent(new HashChangeEvent('hashchange'));
 }
 function DocumentView({ path, route }: { path: string; route: Route }) {
@@ -46,8 +46,8 @@ function Gallery({ kind, route }: { kind: Kind; route: Route }) {
   const categories = [...new Set(entries.map(c => c.category))].sort();
   const visible = entries.filter(c => (!category || c.category === category) && `${c.name} ${displayName(c.name)} ${c.summary} ${c.category}`.toLowerCase().includes(query.toLowerCase()));
   return <>
-    <div className="intro"><h1>Explore the {kind === 'apps' ? 'applications' : 'crates'}.</h1><p>{kind === 'apps' ? 'Runnable tools and demos built on the workspace’s telemetry, resource, and storage libraries.' : 'Reusable building blocks for telemetry, resource management, memory, and persistence.'}</p></div>
-    <div className="toolbar"><div className="catalog-count">{visible.length} {kind === 'apps' ? 'applications' : 'crates'}</div><div className="filters"><label><span className="sr-only">Category</span><select aria-label="Category" value={category} onChange={e => updateParams(route, { category: e.target.value })}><option value="">All categories</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="search"><Search size={15} aria-hidden="true" /><input aria-label="Search components" type="search" value={query} placeholder={`Search ${kind}…`} onChange={e => updateParams(route, { q: e.target.value })} /></label></div></div>
+    <div className="intro"><h1>Explore the {kind === 'apps' ? 'applications' : 'crates'}.</h1><p>{kind === 'apps' ? 'Runnable consoles, monitors and demos built on the workspace crates.' : 'Reusable building blocks for runtime, resources, memory, storage, telemetry and faults.'}</p></div>
+    <div className="toolbar"><div className="catalog-count">{visible.length} {kind === 'apps' ? 'applications' : 'crates'}</div><div className="filters"><label><span className="sr-only">Category</span><select aria-label="Category" value={category} onChange={e => updateParams(route, { category: e.target.value })}><option value="">All categories</option>{categories.map(c => <option key={c}>{c}</option>)}</select></label><label className="search"><Search size={15} aria-hidden="true" /><input aria-label="Search components" type="search" value={query} placeholder={`Search ${kind}…`} onChange={e => updateParams(route, { q: e.target.value }, true)} /></label></div></div>
     <div className="gallery">{visible.map(c => <article className="tile" key={c.id}><a className="tile-main" href={componentHref(c)}><Category name={c.category} /><h2>{displayName(c.name)}</h2><p>{c.summary}</p></a>{kind === 'apps' && <div className="tile-actions"><Launch component={c} /></div>}</article>)}</div>
     {!visible.length && <div className="empty"><h2>No matching components</h2><p>Try another search or category.</p><a href={`#/${kind}`}>Clear filters</a></div>}
   </>;
@@ -79,7 +79,7 @@ function Launch({ component }: { component: Component }) {
             setReady(value.state === 'ready');
             setHeadless(value.headless === true);
           }
-        }
+        } else if (active) { setReady(false); setHeadless(false); }
         if (active) setAvailability(enabled ? 'enabled' : 'disabled');
       } catch {
         if (active) setAvailability(previous => previous === 'enabled' ? previous : 'error');
@@ -101,7 +101,7 @@ function Detail({ component, route }: { component: Component; route: Route }) {
     <a className="back" href={`#/${component.kind}`}><ArrowLeft size={14} />All {component.kind === 'apps' ? 'applications' : 'crates'}</a>
     <div className="detail-heading"><div className="intro"><Category name={component.category} /><h1>{displayName(component.name)}</h1><p>{component.summary}</p><code className="identifier">{component.name}</code><Launch component={component} /></div><a className="source-link" href={`${catalog.repository}/tree/${catalog.revision}/${component.directory}`} target="_blank" rel="noreferrer">Source <ArrowUpRight size={14} /></a></div>
     <div className="detail-grid"><div><DocumentView path={component.readme} route={route} /></div><aside><section className="dependency-panel"><div className="panel-title"><h2>Direct dependencies</h2><a href={`#/dependencies?focus=${encodeURIComponent(component.id)}`}>Explore <ArrowUpRight size={13} /></a></div><Dependencies catalog={catalog} focus={component.id} /></section>
-      {component.packages.length > 0 && <section className="related"><h2>Cargo packages</h2>{component.packages.map(p => <a key={p} href={`#/dependencies?focus=${encodeURIComponent(p)}`}>{p} <span>→</span></a>)}</section>}
+      {component.kind === 'apps' && component.packages.length > 0 && <section className="related"><h2>Cargo packages</h2>{component.packages.map(p => <a key={p} href={`#/dependencies?focus=${encodeURIComponent(p)}`}>{p} <span>→</span></a>)}</section>}
     </aside></div>
   </>;
 }
@@ -118,9 +118,9 @@ function App() {
   const route = useRoute();
   const component = catalog.components.find(c => `/${c.id}` === route.path);
   const active = route.path === '/' || route.path === '/overview' ? 'overview' : route.path.startsWith('/crates') ? 'crates' : route.path === '/dependencies' ? 'dependencies' : route.path.startsWith('/docs') ? 'docs' : 'apps';
-  useEffect(() => { document.title = `${component ? displayName(component.name) : active === 'overview' ? 'Overview' : active === 'dependencies' ? 'Dependencies' : active === 'crates' ? 'Crates' : active === 'docs' ? 'Documentation' : 'Apps'} · doramcap`; if (!route.params.has('heading')) window.scrollTo(0, 0); }, [route.path, component, active]);
+  useEffect(() => { document.title = `${component ? displayName(component.name) : active === 'overview' ? 'Overview' : active === 'dependencies' ? 'Dependencies' : active === 'crates' ? 'Crates' : active === 'docs' ? 'Documentation' : 'Apps'} · doramcap`; if (!route.params.has('heading')) window.scrollTo(0, 0); }, [route.path, route.params.get('path'), component, active]);
   return <><a href="#main" className="skip" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a><header className="site-header"><div className="shell header-inner"><a className="brand" href="#/overview">doramcap<span>.</span></a><nav aria-label="Main navigation">{[['overview', 'Overview'], ['apps', 'Apps'], ['crates', 'Crates'], ['dependencies', 'Dependencies']].map(([path, label]) => <a key={path} href={`#/${path}`} aria-current={active === path ? 'page' : undefined}>{label}</a>)}</nav><a className="repository" href={catalog.repository}>Repository <ArrowUpRight size={14} /></a></div></header>
-    <main id="main" tabIndex={-1} className="shell">{component ? <Detail component={component} route={route} /> : route.path === '/' || route.path === '/overview' ? <Overview catalog={catalog} route={route} /> : route.path === '/apps' ? <Gallery kind="apps" route={route} /> : route.path === '/crates' ? <Gallery kind="crates" route={route} /> : route.path === '/dependencies' ? <Explorer route={route} /> : route.path === '/docs' ? <><a className="back" href="#/apps"><ArrowLeft size={14} />Workspace</a><DocumentView path={route.params.get('path') ?? 'README.md'} route={route} /></> : <div className="empty"><h1>Page not found</h1><a href="#/apps">Browse applications</a></div>}</main>
-    <footer className="shell footer"><span>doramcap / Workspace explorer</span><a href={`${catalog.repository}/tree/${catalog.revision}`}>Source {catalog.revision.slice(0, 7)}</a><a href="#/docs?path=README.md">Workspace README</a></footer></>;
+    <main id="main" tabIndex={-1} className="shell">{component ? <Detail component={component} route={route} /> : route.path === '/' || route.path === '/overview' ? <Overview catalog={catalog} route={route} /> : route.path === '/apps' ? <Gallery kind="apps" route={route} /> : route.path === '/crates' ? <Gallery kind="crates" route={route} /> : route.path === '/dependencies' ? <Explorer route={route} /> : route.path === '/docs' ? <><a className="back" href="#/overview"><ArrowLeft size={14} />Overview</a><DocumentView path={route.params.get('path') ?? 'README.md'} route={route} /></> : <div className="empty"><h1>Page not found</h1><a href="#/apps">Browse applications</a></div>}</main>
+    <footer className="shell footer"><span>doramcap project explorer</span><a href={`${catalog.repository}/tree/${catalog.revision}`}>Source {catalog.revision.slice(0, 7)}</a><a href="#/docs?path=README.md">Workspace README</a></footer></>;
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);

@@ -46,16 +46,21 @@ function addComponent(kind: 'apps' | 'crates', name: string, directory: string):
   const component: Component = { id, kind, name, directory, readme, category: category(directory), summary: summaries.get(readme)!, packages: [] };
   catalog.components.push(component); return component;
 }
+// Apps live under apps/<name>/; the top-level Console is also an app.
+function appDirectory(directory: string): string | null {
+  if (directory === 'console' || directory.startsWith('console/')) return 'console';
+  return directory.startsWith('apps/') ? directory.split('/').slice(0, 2).join('/') : null;
+}
 const members = metadata.packages.filter((p: { id: string }) => metadata.workspace_members.includes(p.id));
 for (const p of members) {
   const directory = relative(root, dirname(p.manifest_path)).split(sep).join('/');
-  const app = directory.startsWith('apps/');
-  const component = app ? addComponent('apps', directory.split('/')[1], directory.split('/').slice(0, 2).join('/')) : addComponent('crates', p.name, directory);
+  const app = appDirectory(directory);
+  const component = app ? addComponent('apps', app.split('/').pop()!, app) : addComponent('crates', p.name, directory);
   component.packages.push(p.name);
   catalog.packages.push({ name: p.name, component: component.id, directory });
 }
 // Frontend-only apps participate in discovery without inventing Cargo dependencies.
-for (const file of supported.filter(p => /^apps\/[^/]+\/README\.md$/.test(p))) addComponent('apps', file.split('/')[1], dirname(file));
+for (const file of supported.filter(p => /^(apps\/[^/]+|console)\/README\.md$/.test(p))) { const directory = dirname(file); addComponent('apps', directory.split('/').pop()!, directory); }
 const packagePaths = new Map(members.map((p: { name: string; manifest_path: string }) => [realpathSync(dirname(p.manifest_path)), p.name]));
 for (const p of members) for (const dep of p.dependencies) {
   const target = dep.path && packagePaths.get(realpathSync(dep.path));
