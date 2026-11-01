@@ -67,6 +67,7 @@ message Status {
   SystemAppSelection system_apps = 19;
   repeated CpuGroupName cpu_group_names = 20;
   repeated RecordingOutput recordings = 21;
+  bool cpu_capture_enabled = 22; // A selected CPU live feed; readiness is reported separately.
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {

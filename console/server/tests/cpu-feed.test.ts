@@ -16,6 +16,8 @@ test('CPU feed reuses viewer packets, bounds history and strips host ancestor pa
   assert.deepEqual(status.cpuSnapshots.map((s: any) => s.sequence), ['2','3']);
   assert.deepEqual(status.cpuGroupNames, [{id:'3',name:'worker.scope'}]);
   assert.equal(status.monitorReady,true);
+  assert.equal(status.cpuCaptureEnabled,true);
+  assert.equal(feeds.enrich({...base,systemApps:{ids:[]}}).cpuCaptureEnabled,false);
   assert.equal(feeds.enrich({...base,runId:'next'}).cpuSnapshots.length,0);
   feeds.close();
 });

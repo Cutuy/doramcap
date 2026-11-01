@@ -52,6 +52,7 @@ export class CpuFeeds {
     }
     const active = ['STARTING', 'RUNNING', 'STOPPING'].includes(status.phase);
     const selected = this.feeds.find((feed) => status.systemApps?.ids?.includes(feed.appId));
+    status = { ...status, cpuCaptureEnabled: !!selected };
     if (status.phase === 'RUNNING' && selected?.url && !this.socket) {
       this.endpoint = selected.url;
       const socket = new WebSocket(this.endpoint);
