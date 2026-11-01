@@ -1,3 +1,5 @@
+import { doramcap } from './console.js';
+
 /** Browser/server transport; payload codecs are generated from console.proto. */
 export const MEDIA_TYPE = 'application/x-protobuf';
 export const LIMITS = {
@@ -23,44 +25,16 @@ export const ERROR_STATUS = {
 export type ErrorCode = keyof typeof ERROR_STATUS;
 export const isErrorCode = (code: string): code is ErrorCode => Object.hasOwn(ERROR_STATUS, code);
 
-/** Bind shared routes to each build's generated protobuf module. */
-export function contract<Prepare, Review, Start, Started, Stop, Stopped, Status, Error>(wire: {
-  PrepareRequest: Prepare;
-  Review: Review;
-  StartRequest: Start;
-  StartResponse: Started;
-  StopRequest: Stop;
-  StopResponse: Stopped;
-  Status: Status;
-  ConsoleError: Error;
-}) {
-  return {
-    prepare: {
-      method: 'POST',
-      path: '/api/prepare',
-      status: 200,
-      request: wire.PrepareRequest,
-      response: wire.Review,
-    },
-    start: {
-      method: 'POST',
-      path: '/api/start',
-      status: 202,
-      request: wire.StartRequest,
-      response: wire.StartResponse,
-    },
-    stop: {
-      method: 'POST',
-      path: '/api/stop',
-      status: 200,
-      request: wire.StopRequest,
-      response: wire.StopResponse,
-    },
-    current: { method: 'GET', path: '/api/current', status: 200, response: wire.Status },
-    live: { method: 'GET', path: '/api/live', status: 200, response: wire.Status },
-    error: wire.ConsoleError,
-  } as const;
-}
+// Both builds copy this module beside their generated console.js.
+const wire = doramcap.console.v1;
+export const routes = {
+  prepare: { method: 'POST', path: '/api/prepare', status: 200, request: wire.PrepareRequest, response: wire.Review },
+  start: { method: 'POST', path: '/api/start', status: 202, request: wire.StartRequest, response: wire.StartResponse },
+  stop: { method: 'POST', path: '/api/stop', status: 200, request: wire.StopRequest, response: wire.StopResponse },
+  current: { method: 'GET', path: '/api/current', status: 200, response: wire.Status },
+  live: { method: 'GET', path: '/api/live', status: 200, response: wire.Status },
+  error: wire.ConsoleError,
+} as const;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 export const artifactRoute = /^\/api\/artifacts\/([a-f0-9]{32})\/([A-Za-z0-9-]+)$/;

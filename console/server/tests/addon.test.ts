@@ -1,10 +1,9 @@
-import { createRequire } from 'node:module';
+import { doramcap } from '../src/generated/console.js';
 import { capabilities, execution, compose } from '../src/native.js';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
 
-const require = createRequire(import.meta.url);
 
 test('rejects an incompatible contract before reading configuration', async () => {
   // Arrange
@@ -53,7 +52,6 @@ test('opens and closes twice while Node remains responsive during native startup
   try {
     // Act
     const first = await openService(config);
-    const { doramcap } = require('../src/generated/console.cjs');
     const snapshot = doramcap.console.v1.Status.decode(await first.status());
     assert.equal(snapshot.phase, doramcap.console.v1.Phase.IDLE);
     await first.close();
@@ -86,7 +84,6 @@ test('artifact descriptors stay beneath the current run and reject symlinks', as
   const runDir = join(directory, 'runs', runId);
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, 'cpu.mcap'), 'evidence');
-  const { doramcap } = require('../src/generated/console.cjs');
   await writeFile(join(directory, 'current.pb'), doramcap.console.v1.Marker.encode({
     version: 1, runId, artifactReference:runId, phase: doramcap.console.v1.Phase.FINISHED,
     outcome: { boundaryClean: true, recordingFinalized: true }, recordings: [{id: "cpu",path: "cpu.mcap",cpu:true}],
@@ -137,7 +134,6 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   const handle = await openService(config) as ConsoleHandle & { prepare(input: Buffer): Promise<Buffer> };
-  const { doramcap } = require('../src/generated/console.cjs');
   const request = doramcap.console.v1.PrepareRequest.encode({ directory: project, profiles: [] }).finish();
   const preparation = handle.prepare(Buffer.from(request)).catch(() => null);
   try {
@@ -227,7 +223,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
   await writeFile(config,`listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${root}" data_root:"${root}/data" docker_socket:"${socket}" access_secret_file:"${root}/secret"`);
   const oldPath=process.env.PATH;process.env.PATH=`${bin}:${oldPath}`;
   const handle=await openService(config) as ConsoleHandle & {prepare(input:Buffer):Promise<Buffer>;start(input:Buffer):Promise<Buffer>};
-  const {doramcap}=require('../src/generated/console.cjs');const wire=doramcap.console.v1;
+  const wire=doramcap.console.v1;
   try {
     // Act
     const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({directory:project,profiles:[]}).finish())));

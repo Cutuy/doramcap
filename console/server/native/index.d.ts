@@ -1,4 +1,4 @@
-import type { doramcap } from '../src/generated/console.cjs';
+import type { doramcap } from '../src/generated/console.js';
 
 /** Typed execution client; the TypeScript adapter owns native serialization. */
 export interface NativeExecution {

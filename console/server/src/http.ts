@@ -6,10 +6,9 @@ import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { streamArtifact } from './artifacts.js';
-import { wire, type ConsoleBackend } from './native.js';
-import { contract, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, frame, type ErrorCode } from './generated/transport.js';
+import type { ConsoleBackend } from './native.js';
+import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, frame, type ErrorCode } from './generated/transport.js';
 
-const routes = contract(wire);
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode) { super(code); } }
 const hash = (s: string) => createHash('sha256').update(s).digest();

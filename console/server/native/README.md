@@ -7,7 +7,7 @@ See the [API declarations](index.d.ts) and [protobuf contracts](../../proto/READ
 The server's TypeScript adapter implements this typed API using generated protobuf
 messages. The compiled N-API library exchanges protobuf bytes behind that adapter;
 application callers use the generated message types. The server generation step
-provides the referenced `src/generated/console.cjs` module.
+provides the referenced `src/generated/console.js` module.
 
 ```sh
 cargo build --release --locked -p console-native

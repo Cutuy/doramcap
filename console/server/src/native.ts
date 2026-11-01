@@ -1,16 +1,15 @@
 import { createRequire } from 'node:module';
-import type { doramcap } from './generated/console.cjs';
+import { doramcap } from './generated/console.js';
 const require = createRequire(import.meta.url);
-const codecs = require('./generated/console.cjs') as typeof import('./generated/console.cjs');
 
 import type { NativeCapabilities, NativeExecution } from '../native/index.js';
 export type { NativeExecution, NativeCapabilities } from '../native/index.js';
 
-export const wire = codecs.doramcap.console.v1;
-export const execution = codecs.doramcap.console.execution.v1;
-export const compose = codecs.doramcap.compose.v1;
-export const workflow = codecs.doramcap.workflow.v1;
-export const viewer = codecs.doramcap.viewer.v1;
+export const wire = doramcap.console.v1;
+export const execution = doramcap.console.execution.v1;
+export const compose = doramcap.compose.v1;
+export const workflow = doramcap.workflow.v1;
+export const viewer = doramcap.viewer.v1;
 // The addon ABI stays private; application code uses the generated message types.
 type RawExecution = Omit<NativeExecution, 'profiles' | 'inspect' | 'start' | 'poll'> & {
   profiles(input: Buffer): Promise<Buffer>;

@@ -7,8 +7,7 @@ import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
 import { createConsoleServer } from '../src/http.js';
 import { wire, type ConsoleBackend } from '../src/native.js';
-import { contract, MEDIA_TYPE, LIMITS } from '../src/generated/transport.js';
-const routes = contract(wire);
+import { routes, MEDIA_TYPE, LIMITS } from '../src/generated/transport.js';
 
 test('authentication, Origin, size and field validation precede native mutations', async () => {
   // Arrange
