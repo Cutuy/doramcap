@@ -1,7 +1,7 @@
 use crate::config::{
     self, Input, RecorderConfig, RecordingReport, State, Validation, pb::InputReport,
 };
-use dora_node_api::{Event, Metadata, Parameter, StopCause};
+use dora_node_api::{Event, Metadata, Parameter};
 use eyre::{Result, bail, ensure, eyre};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -241,13 +241,13 @@ fn decimal(metadata: &Metadata, key: &str) -> Result<u64> {
     }
 }
 
-/// Drain buffered events after AllInputsClosed; explicit Stop leaves incomplete evidence.
+/// Drain buffered events after Dora stop; unconfirmed stream loss leaves incomplete evidence.
 pub fn consume(
     recording: &mut Recording,
     events: impl Iterator<Item = Event>,
 ) -> (State, Result<()>) {
     let mut closed = BTreeSet::new();
-    let mut all_closed = false;
+    let mut stopped = false;
     for event in events {
         let result = match event {
             Event::Input { id, data, metadata } => (|| -> Result<()> {
@@ -268,18 +268,12 @@ pub fn consume(
             }
             Event::InputRecovered { id } => {
                 closed.remove(id.as_str());
-                all_closed = false;
-                Ok(())
-            }
-            Event::Stop(StopCause::AllInputsClosed) => {
-                all_closed = true;
                 Ok(())
             }
             Event::Stop(_) => {
-                return (
-                    State::Interrupted,
-                    Err(eyre!("recording interrupted before input drain")),
-                );
+                // Dora ends the stream after delivering buffered events for every stop cause.
+                stopped = true;
+                Ok(())
             }
             Event::Error(error) => Err(eyre!("Dora event error: {error}")),
             Event::NodeFailed { error, .. } => Err(eyre!("upstream node failed: {error}")),
@@ -289,7 +283,7 @@ pub fn consume(
             return (State::Failed, Err(error));
         }
     }
-    if all_closed || recording.channels.keys().all(|id| closed.contains(id)) {
+    if stopped || recording.channels.keys().all(|id| closed.contains(id)) {
         (State::Drained, Ok(()))
     } else {
         (

@@ -11,8 +11,8 @@ fn invalid(message: &str) -> std::io::Error {
     std::io::Error::other(message)
 }
 
-/// Prepared application-output paths. A growing stream plus an armed recording
-/// establishes readiness; a terminal MCAP footer establishes finalization.
+/// Prepared application-output paths. An armed recording establishes readiness;
+/// a nonempty stream path also requires data growth. Finalization checks the MCAP footer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Recording {
     pub stream: PathBuf,
@@ -67,17 +67,21 @@ async fn wait_ready(output: &Recording, timeout: u64) -> std::io::Result<()> {
     let start = tokio::time::Instant::now();
     let mut previous = None;
     loop {
-        if let Ok(metadata) = tokio::fs::metadata(&output.stream).await {
-            if previous.is_some_and(|n| n > 0 && metadata.len() > n)
-                && tokio::fs::try_exists(&output.recording).await?
-            {
-                return Ok(());
-            }
+        let stream_ready = if output.stream.as_os_str().is_empty() {
+            true
+        } else if let Ok(metadata) = tokio::fs::metadata(&output.stream).await {
+            let advanced = previous.is_some_and(|n| n > 0 && metadata.len() > n);
             previous = Some(metadata.len());
+            advanced
+        } else {
+            false
+        };
+        if stream_ready && tokio::fs::try_exists(&output.recording).await? {
+            return Ok(());
         }
         if start.elapsed() > Duration::from_secs(timeout) {
             return Err(invalid(
-                "system app did not advance its stream/arm MCAP recording",
+                "system app did not arm its recording or advance its configured stream",
             ));
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
@@ -119,6 +123,35 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(0);
+    #[tokio::test]
+    async fn omitted_stream_waits_for_recording_before_producers_start() {
+        // Arrange
+        let dir = std::env::temp_dir().join(format!(
+            "recording-armed-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        tokio::fs::create_dir(&dir).await.unwrap();
+        let output = Recording {
+            stream: PathBuf::new(),
+            recording: dir.join("workload.mcap"),
+        };
+
+        // Act / Assert: attachment without an output file is not armed.
+        assert!(wait_ready(&output, 0).await.is_err());
+
+        // Act: a recorder opens its file while its workload has not published data.
+        tokio::fs::write(&output.recording, b"\x89MCAP0\r\n")
+            .await
+            .unwrap();
+        let result = wait_ready(&output, 0).await;
+
+        // Assert
+        assert!(result.is_ok());
+        assert!(finalized_recording(&output.recording).await.is_err());
+        tokio::fs::remove_dir_all(dir).await.unwrap();
+    }
+
     #[tokio::test]
     async fn rejects_truncation_and_requires_stream_advancement() {
         // Arrange
