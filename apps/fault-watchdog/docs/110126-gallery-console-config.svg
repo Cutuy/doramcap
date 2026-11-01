@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1080" viewBox="0 0 1280 1080" role="img" aria-labelledby="title desc">
 <title id="title">Gallery and Console: selecting Fault Watchdog pbtxt configuration</title>
-<desc id="desc">Two deployment paths select a root configuration before launch. Gallery uses an active registration and existing demo profiles. Planned Console wiring uses a selected system app and the standalone profiles from PR33. Each launch starts an independent watchdog instance. The same configuration resolver loads includes once at startup, validates the generated configuration and enables live faults, MCAP and OTLP outputs.</desc>
+<desc id="desc">Two deployment paths select a root configuration before launch. Gallery uses an active registration and existing demo profiles. Console uses a selected system app and the standalone profiles from PR33. Each launch starts an independent watchdog instance. The same configuration resolver loads includes once at startup, validates the generated configuration and enables live faults, MCAP and OTLP outputs.</desc>
 <style>
 :root {--paper:#ffffff;--ink:#142234;--sub:#526274;--line:#8291a2;--neutral:#d3dce5;--card:#ffffff;--blue:#235b9d;--bluebg:#f0f6fd;--purple:#7352a3;--purplebg:#f6f2fc;--green:#28715b;--greenbg:#f1f8f5}
 @media(prefers-color-scheme:dark){:root{--paper:#131b25;--ink:#edf2f8;--sub:#b2bfcd;--line:#9baaba;--neutral:#465467;--card:#202b39;--blue:#9fc7ff;--bluebg:#1b2c40;--purple:#d0b4fa;--purplebg:#2b243b;--green:#9edac5;--greenbg:#1c302c}}
@@ -16,7 +16,7 @@ text{font-family:Inter,Arial,sans-serif;fill:var(--ink)} .sub{fill:var(--sub)} .
 <text x="60" y="139" font-size="25" font-weight="600" style="fill:var(--blue)">Gallery</text>
 <text x="594" y="138" font-size="13" font-weight="600" text-anchor="end" style="fill:var(--blue)">CURRENT</text>
 <text x="680" y="139" font-size="25" font-weight="600" style="fill:var(--purple)">Console</text>
-<text x="1218" y="138" font-size="13" font-weight="600" text-anchor="end" style="fill:var(--purple)">WIRING PENDING</text>
+<text x="1218" y="138" font-size="13" font-weight="600" text-anchor="end" style="fill:var(--purple)">CURRENT</text>
 <text x="60" y="179" font-size="13" class="sub" font-weight="600">1   OPERATOR CONFIG · SERVER STARTUP</text>
 <text x="680" y="179" font-size="13" class="sub" font-weight="600">1   OPERATOR CONFIG · SERVER STARTUP</text>
 <rect x="60" y="194" width="540" height="76" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
@@ -88,7 +88,7 @@ text{font-family:Inter,Arial,sans-serif;fill:var(--ink)} .sub{fill:var(--sub)} .
 <text x="690" y="982" font-size="14" class="sub">Dora input subscriptions</text>
 <rect x="940" y="824" width="280" height="62" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
 <text x="960" y="849" font-size="17" font-weight="600">Dora fault publications</text>
-<text x="960" y="872" font-size="14" class="mono sub">live_output</text>
+<text x="960" y="872" font-size="14" class="mono sub">live_output → live bridge</text>
 <rect x="940" y="900" width="280" height="62" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
 <text x="960" y="925" font-size="17" font-weight="600">/results/faults.mcap</text>
 <text x="960" y="948" font-size="14" class="mono sub">mcap.enabled</text>

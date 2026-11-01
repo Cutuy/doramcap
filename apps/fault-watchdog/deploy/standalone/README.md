@@ -13,6 +13,8 @@ Connect [flow.yml](flow.yml) to the workload's fault output. Override the Compos
 user to match the Dora participant and mount a fresh writable results directory.
 Choose the [live](config/watchdog.pbtxt), [MCAP](config/watchdog-mcap.pbtxt) or
 [OTLP](config/watchdog-otel.pbtxt) configuration through the service command.
+In Console, declare `fault-watchdog/faults` as a `FAULT_PUBLICATION` live output
+to show faults through the [live bridge](../../../../console/bridge/README.md).
 
 [Runtime contract](../../docs/102026-runtime.md) ·
 [Fault protocol](../../../../libs/fault/protocol/README.md)
