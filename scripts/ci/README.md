@@ -56,7 +56,7 @@ snapshot. Git pushes run Actions; they do not submit Pueue jobs. Keep native tes
 default group.
 
 Submission copies an allowlisted snapshot of Cargo files, libraries and applications,
-including uncommitted source changes and the three boundary checker/rules/test
+including the Console native source and protobuf contracts, uncommitted source changes and the three boundary checker/rules/test
 files from `scripts/ci`, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,

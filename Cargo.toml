@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "console/server/native",
     "libs/activity-tracing",
     "libs/resources/cgroup-bpf",
     "libs/memory/cuda-host-memory",

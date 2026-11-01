@@ -10,6 +10,7 @@ on:
       - '*clippy.toml'
       - 'libs/**'
       - 'apps/**'
+      - 'console/proto/**'
       - 'scripts/ci/**'
       - '!**/*.md'
       - '!**/*.svg'
