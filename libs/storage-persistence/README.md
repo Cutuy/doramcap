@@ -63,3 +63,5 @@ application's activity runtime. [Observation milestones](docs/101926-observabili
 | Live inspection and roadmap | [Observability milestones](docs/101926-observability.md) |
 
 Run `cargo test -p storage-persistence --all-features` on Linux with io_uring support.
+Docker's default seccomp profile blocks io_uring; see the planned
+[io_uring seccomp profile](../../console/docs/110126-io-uring-seccomp.md).
