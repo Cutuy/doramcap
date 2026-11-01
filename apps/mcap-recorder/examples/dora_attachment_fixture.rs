@@ -66,6 +66,7 @@ fn main() -> Result<()> {
     let mode = args.next().unwrap_or_else(|| "idle".into());
     let path = args.next();
     let done = args.next();
+    let config_path = args.next();
     if args.next().is_some() {
         bail!("unexpected argument");
     }
@@ -74,10 +75,11 @@ fn main() -> Result<()> {
         .daemon_port(port)
         .build()?;
     let mut recorder = if mode == "recorder" {
-        let config = config::load(std::path::Path::new(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/deploy/reusable/cpu.pbtxt"
-        )))?;
+        let config = config::load(std::path::Path::new(
+            config_path
+                .as_deref()
+                .ok_or_else(|| eyre!("missing recorder pbtxt path"))?,
+        ))?;
         let input = config
             .input
             .iter()
