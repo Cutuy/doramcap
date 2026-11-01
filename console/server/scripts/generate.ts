@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, cpSync } from 'node:fs';
 
 mkdirSync('src/generated', { recursive: true });
+cpSync('../contract/transport.ts', 'src/generated/transport.ts');
 execFileSync('node_modules/.bin/pbjs', [
   '-t', 'static-module', '-w', 'commonjs',
   '-p', '../proto', '-p', '../../libs/workload-docker/proto',

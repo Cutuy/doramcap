@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
 import { createConsoleServer } from '../src/http.js';
 import { wire, type ConsoleBackend } from '../src/native.js';
+import { contract, MEDIA_TYPE, LIMITS } from '../src/generated/transport.js';
+const routes = contract(wire);
 
 test('authentication, Origin, size and field validation precede native mutations', async () => {
   // Arrange
@@ -27,42 +29,44 @@ test('authentication, Origin, size and field validation precede native mutations
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const base = `http://127.0.0.1:${address.port}`;
   const auth = `Basic ${Buffer.from('console:secret').toString('base64')}`;
-  const post = (path: string, data: string, origin = 'http://console.test') => fetch(base + path, { method: 'POST', headers: { authorization: auth, origin, 'content-type': 'application/json' }, body: data });
+  const post = (path: string, data: Uint8Array, origin = 'http://console.test') => fetch(base + path, { method: 'POST', headers: { authorization: auth, origin, 'content-type': MEDIA_TYPE }, body: new Blob([new Uint8Array(data)]) });
+  const start = (key: string) => wire.StartRequest.encode({preparedId:'run',requestKey:key}).finish();
   try {
     // Act / Assert
     assert.equal((await fetch(base + '/')).status, 401);
     assert.equal((await fetch(base + '/api/current', { headers: { authorization: 'Basic bad' } })).status, 401);
-    assert.equal((await post('/api/start', '{"preparedId":"run","requestKey":"key"}', 'http://evil.test')).status, 403);
-    assert.equal((await post('/api/start', '{"preparedId":"run","requestKey":"key","extra":1}')).status, 400);
-    assert.equal((await post('/api/stop', '{"runId":"run","extra":1}')).status, 400);
-    assert.equal((await post('/api/start', JSON.stringify({ preparedId: 'x'.repeat(65536), requestKey: 'key' }))).status, 400);
+    assert.equal((await post(routes.start.path, start('key'), 'http://evil.test')).status, 403);
+    assert.equal((await post(routes.start.path, Uint8Array.of(0xff))).status, 400);
+    assert.equal((await post(routes.stop.path, wire.StopRequest.encode({}).finish())).status, 400);
+    assert.equal((await post(routes.start.path, new Uint8Array(LIMITS.bodyBytes + 1))).status, 400);
+    assert.equal((await fetch(base + routes.start.path, { method:'POST', headers:{authorization:auth,origin:'http://console.test','content-type':'application/json'},body:'{}' })).status,400);
     const chunkedStatus = await new Promise<number>((resolve, reject) => {
-      const request = httpRequest(base + '/api/start', { method: 'POST', headers: { authorization: auth, origin: 'http://console.test', 'content-type': 'application/json', 'transfer-encoding': 'chunked' } }, response => { response.resume(); response.on('end', () => resolve(response.statusCode!)); });
+      const request = httpRequest(base + '/api/start', { method: 'POST', headers: { authorization: auth, origin: 'http://console.test', 'content-type': MEDIA_TYPE, 'transfer-encoding': 'chunked' } }, response => { response.resume(); response.on('end', () => resolve(response.statusCode!)); });
       request.on('error', reject);
       request.write('x'.repeat(65536)); request.end('x');
     });
     assert.equal(chunkedStatus, 400);
     assert.equal(starts, 0); assert.equal(stops, 0);
-    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[]}')).status, 200);
-    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":[]}')).status, 200);
-    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":["cpu-monitor"]}')).status, 200);
-    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":null}')).status, 400);
-    assert.equal((await post('/api/prepare', '{"directory":"/tmp","profiles":[],"systemApps":[42]}')).status, 400);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[]}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:[]}}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:['cpu-monitor']}}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:Array.from({length:LIMITS.selectionLength+1},()=> 'profile')}).finish())).status,400);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:['']}}).finish())).status,400);
     assert.deepEqual(selections, [undefined, [], ['cpu-monitor']]);
-    assert.equal((await post('/api/start', '{"preparedId":"run","requestKey":"key"}')).status, 202);
-    assert.equal((await post('/api/stop', '{"runId":"run"}')).status, 200);
+    assert.equal((await post(routes.start.path, start('key'))).status, 202);
+    assert.equal((await post(routes.stop.path, wire.StopRequest.encode({runId:'run'}).finish())).status, 200);
     assert.equal(starts, 1); assert.equal(stops, 1);
-    const stopped = await post('/api/start', '{"preparedId":"run","requestKey":"stopped"}');
+    const stopped = await post(routes.start.path, start('stopped'));
     assert.equal(stopped.status, 409);
-    assert.equal((await stopped.json() as {error:{code:string}}).error.code, 'Stopped');
-    const rejected = await post('/api/start', '{"preparedId":"run","requestKey":"rejected"}');
+    assert.equal(wire.ConsoleError.decode(new Uint8Array(await stopped.arrayBuffer())).code, 'Stopped');
+    const rejected = await post(routes.start.path, start('rejected'));
     assert.equal(rejected.status, 409);
-    assert.equal((await rejected.json() as {error:{code:string}}).error.code, 'PreflightRejected');
-    const closing = await post('/api/start', '{"preparedId":"run","requestKey":"closing"}');
+    assert.equal(wire.ConsoleError.decode(new Uint8Array(await rejected.arrayBuffer())).code, 'PreflightRejected');
+    const closing = await post(routes.start.path, start('closing'));
     assert.equal(closing.status, 503);
-    assert.equal((await closing.json() as {error:{code:string}}).error.code, 'Closing');
+    assert.equal(wire.ConsoleError.decode(new Uint8Array(await closing.arrayBuffer())).code, 'Closing');
     const current = await fetch(base + '/api/current', { headers: { authorization: auth } });
-    assert.equal((await current.json() as { sequence: string }).sequence, '9007199254740993');
+    assert.equal(String(wire.Status.decode(new Uint8Array(await current.arrayBuffer())).sequence), '9007199254740993');
     assert.equal((await fetch(base + '/api/nope', { headers: { authorization: auth } })).status, 404);
     assert.equal((await fetch(base + '/', { headers: { authorization: auth } })).status, 200);
   } finally {

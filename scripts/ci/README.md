@@ -21,10 +21,13 @@ Private repositories use the owner's included Actions minutes and billing policy
 
 [Node CI](../../.github/workflows/node.yml) uses the same ARM64/x86_64 runner matrix
 and the version in `.node-version`. Both GitHub and the ARM64 worker run
-`node scripts/ci/test-node.mts`: discover `apps/*/frontend/package.json` files
-with a `test` script, then run locked installs and `npm test` in each frontend.
-Live browser, CUDA and Dora qualification remain separate. Project Explorer has no
-`npm test` script. Node workflow paths cover all app, library and CI script changes.
+`node scripts/ci/test-node.mts`: discover app frontends plus `console/server` and
+`console/frontend`, and run locked installs and tests. Console also runs production
+builds/type checks and the browser/server HTTP integration test. The server test
+script builds its native addon using the pinned Rust toolchain and locked dependencies.
+Node workflow paths include Console, app, library and CI changes; npm caching includes
+both Console lockfiles. Live browser, CUDA and Dora qualification remain separate.
+Project Explorer has no `npm test` script.
 
 Privileged native validation and Dora end-to-end checks use the worker below.
 
@@ -144,7 +147,8 @@ No sudo password is stored in the CI account or submitted snapshots.
 
 ## Component layout compatibility
 
-Source snapshots include `libs/` and `apps/`. The native integration test lives
+Source snapshots include `libs/`, `apps/`, and the Console source, contracts and
+package/build inputs. Operator configuration and secrets are excluded. The native integration test lives
 at `apps/system-monitor/tests/validate_native.py`; new privileged launchers use
 that path. Submission adds a small forwarding script at the legacy path inside
 the worker archive so previously installed launchers continue to work. This shim
