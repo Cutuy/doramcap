@@ -53,12 +53,12 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
   assert.throws(() => validateApps([{ ...apps[0], recordings: [{ id: 'messages', path: '../outside' }] }]));
   assert.throws(() => validateApps([{ ...apps[0], id: 'live-bridge' }]));
   for (const liveOutputs of [
-    [{ source: 'monitor', kind: live.Kind.TELEMETRY_PACKET }],
+    [{ source: 'monitor', kind: live.Kind.CPU_ACCOUNTING }],
     [{ source: 'monitor/snapshots' }],
-    [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }, { source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }],
+    [{ source: 'monitor/snapshots', kind: live.Kind.CPU_ACCOUNTING }, { source: 'monitor/snapshots', kind: live.Kind.CPU_ACCOUNTING }],
   ])
     assert.throws(() => validateApps([{ ...apps[0], liveOutputs }]));
-  validateApps([{ ...apps[0], liveOutputs: [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }] }]);
+  validateApps([{ ...apps[0], liveOutputs: [{ source: 'monitor/snapshots', kind: live.Kind.CPU_ACCOUNTING }] }]);
 });
 
 test('project discovery confines canonical paths and detects native input changes', async () => {

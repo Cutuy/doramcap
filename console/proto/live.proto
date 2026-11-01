@@ -1,10 +1,11 @@
 syntax = "proto3";
 package doramcap.console.live.v1;
 
-// Payload codec of one declared Dora output; the browser selects its decoder by kind.
+// Meaning of one declared Dora output; the browser selects its decoder and panel by kind.
+// Several kinds may share one payload message.
 enum Kind {
   KIND_UNSPECIFIED = 0;
-  TELEMETRY_PACKET = 1; // doramcap.telemetry.v1.Packet
+  CPU_ACCOUNTING = 1; // doramcap.telemetry.v1.Packet: cgroup CPU snapshots and dictionaries
   FAULT_PUBLICATION = 2; // doramcap.fault.v1.AggregationPublication
 }
 

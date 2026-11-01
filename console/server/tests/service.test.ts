@@ -73,7 +73,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
         defaultSelected: true,
         input: { directory: project, files: ['compose.yaml'] },
         recordings: recording ? [{ id: 'messages', path: 'nested/messages.mcap' }] : [],
-        liveOutputs: liveOutput ? [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }] : [],
+        liveOutputs: liveOutput ? [{ source: 'monitor/snapshots', kind: live.Kind.CPU_ACCOUNTING }] : [],
       },
     ];
   validateConfig(config);
@@ -389,7 +389,7 @@ test('the selected live bridge subscribes to declared outputs through generated 
     const compose = JSON.parse(await readFile(bridge.files![0], 'utf8'));
     const graph = JSON.parse(await readFile(run.dora!.graph!, 'utf8'));
     // Assert
-    assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.TELEMETRY_PACKET]]);
+    assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.CPU_ACCOUNTING]]);
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
     assert.deepEqual([option.label, option.selected, option.required], ['Live telemetry', true, false]);
     assert.equal(compose.services['live-bridge'].image, 'doramcap/live-bridge:local');

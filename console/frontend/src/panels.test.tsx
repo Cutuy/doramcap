@@ -53,7 +53,7 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   // Act
   const historical = renderToStaticMarkup(<RunActivity snapshot={snapshot} stopping={false} disconnected={false} historical/>);
   const model = new LiveModel();
-  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.TELEMETRY_PACKET })]);
+  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.CPU_ACCOUNTING })]);
   const absent = renderToStaticMarkup(<RunMetrics live={model.view()} disconnected incomplete/>);
   const zero = renderToStaticMarkup(<RunMetrics samples={[wire.RunMetric.fromObject({elapsedNs:'1000000000',recordingBytes:'0',writeBytesPerSecond:0})]} live={model.view()} historical/>);
   // Assert
@@ -107,7 +107,7 @@ test('CPU consumers show reported cgroup names with an ID tooltip and numeric fa
   // Arrange
   const telemetry = doramcap.telemetry.v1;
   const model = new LiveModel();
-  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.TELEMETRY_PACKET })]);
+  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.CPU_ACCOUNTING })]);
   const packet = (sequence: number, dictionary: object[] = []) => doramcap.console.live.v1.Frame.create({ stream: 'cpu_0', sequence, payload: telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId: 's', dictionary, snapshot: { sequence, monotonicEndNs: sequence * 100000000, records: [{ cgroupId: '9007199254740993', parentId: 0, cpu: 0, flags: 1, runtimeNs: sequence * 10000000 }] } } })).finish() });
   model.receive(packet(1));
   model.receive(packet(2));

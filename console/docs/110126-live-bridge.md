@@ -62,7 +62,7 @@ Evidence: `http.test.ts` and `live.test.ts` pass; frames are written only while 
 ## Milestone 4: Browser decoding
 
 **Work items**
-- [x] Decode telemetry packets: total CPU, top consumers, capture health.
+- [x] Decode CPU accounting: total CPU, top consumers, capture health.
 - [x] Decode fault publications: sources, active conditions, revision gaps.
 - [x] Status lists the run's live streams and their kinds.
 

@@ -20,8 +20,8 @@ system_apps {
   graph: "/absolute/doramcap/apps/cpu-viewer/deploy/reusable/cpu-flow.yml"
   output_mounts { service: "cpu-recorder" target: "/results" }
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.mcap" cpu: true }
-  live_outputs { source: "cpu-monitor/snapshots" kind: TELEMETRY_PACKET }
-  live_outputs { source: "cpu-monitor/dictionary" kind: TELEMETRY_PACKET }
+  live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
+  live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
 }
 system_apps {
   id: "fault-watchdog"
@@ -38,7 +38,7 @@ live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
 `live_bridge` adds the optional, default-selected Live telemetry app beside the
 Dora services. Console generates its Dora node and Compose service from the
 selected apps' `live_outputs`; it runs only when at least one is declared.
-Kinds select the browser decoder: `TELEMETRY_PACKET` or `FAULT_PUBLICATION`.
+Kinds select the browser decoder and panel: `CPU_ACCOUNTING` or `FAULT_PUBLICATION`.
 The bridge listens on loopback `port`. Build its image from [console/bridge](../bridge/README.md).
 
 Service users must match the configured Dora participant identity. Output mounts

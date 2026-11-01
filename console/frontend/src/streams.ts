@@ -173,7 +173,7 @@ export class LiveModel {
     this.signature = signature;
     this.kinds = new Map(streams.map((stream) => [stream.id!, Number(stream.kind)]));
     this.sequences.clear();
-    this.cpu = streams.some((stream) => stream.kind === Kind.TELEMETRY_PACKET) ? new CpuStreams() : undefined;
+    this.cpu = streams.some((stream) => stream.kind === Kind.CPU_ACCOUNTING) ? new CpuStreams() : undefined;
     this.faults = streams.some((stream) => stream.kind === Kind.FAULT_PUBLICATION) ? new FaultStreams() : undefined;
     this.gaps = 0;
   }
@@ -187,7 +187,7 @@ export class LiveModel {
     if (sequence > previous + 1n && previous > 0n) this.gaps += Number(sequence - previous - 1n);
     this.sequences.set(frame.stream, sequence);
     try {
-      if (kind === Kind.TELEMETRY_PACKET) this.cpu?.receive(frame.payload);
+      if (kind === Kind.CPU_ACCOUNTING) this.cpu?.receive(frame.payload);
       else if (kind === Kind.FAULT_PUBLICATION) this.faults?.receive(frame.payload);
       else return false;
     } catch {

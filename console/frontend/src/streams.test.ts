@@ -19,7 +19,7 @@ const publication = (value: object) => fault.AggregationPublication.encode(fault
 test('CPU totals derive from consecutive root counters and skipped frames count as gaps', () => {
   // Arrange
   const model = new LiveModel();
-  model.configure('run', [stream('cpu_0', Kind.TELEMETRY_PACKET)]);
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
   // Act
   model.receive(frame('cpu_0', 1, cpuPacket(1, 0)));
   model.receive(frame('cpu_0', 2, cpuPacket(2, 500_000_000)));
@@ -34,13 +34,13 @@ test('CPU totals derive from consecutive root counters and skipped frames count 
 test('frames for unknown streams, duplicates and malformed payloads are ignored; a new run resets state', () => {
   // Arrange
   const model = new LiveModel();
-  model.configure('run', [stream('cpu_0', Kind.TELEMETRY_PACKET)]);
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
   model.receive(frame('cpu_0', 1, cpuPacket(1, 0)));
   // Act / Assert
   assert.equal(model.receive(frame('cpu_0', 1, cpuPacket(1, 0))), false);
   assert.equal(model.receive(frame('other_0', 1, cpuPacket(1, 0))), false);
   assert.equal(model.receive(frame('cpu_0', 2, Uint8Array.of(0xff))), false);
-  model.configure('next', [stream('cpu_0', Kind.TELEMETRY_PACKET)]);
+  model.configure('next', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
   assert.equal(model.view().cpu!.history.length, 0);
   assert.equal(model.view().faults, undefined);
 });
