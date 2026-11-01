@@ -1,6 +1,8 @@
 # Agent workflow
 
-Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding dirty worktree files.
+Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding source changes.
+
+When obtaining or releasing a lease, clear known generated build outputs automatically without approval. Preserve source changes, credentials, configuration, runtime data and dependency caches.
 
 Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
 
