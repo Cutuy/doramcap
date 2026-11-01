@@ -1,0 +1,9 @@
+nodes:
+  - id: cpu-monitor
+    path: dynamic
+    outputs: [snapshots, dictionary]
+  - id: cpu-recorder
+    path: dynamic
+    inputs:
+      snapshots: {source: cpu-monitor/snapshots, queue_size: 64, queue_policy: backpressure}
+      dictionary: {source: cpu-monitor/dictionary, queue_size: 4, queue_policy: backpressure}
