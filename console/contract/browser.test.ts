@@ -3,7 +3,9 @@ import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
 import { createClient, ApiError, Phase } from '../frontend/src/api.js';
 import { createConsoleServer } from '../server/src/http.js';
-import { wire, type ConsoleBackend } from '../server/src/native.js';
+import type { ConsoleBackend } from '../server/src/native.js';
+import { doramcap } from '../server/src/generated/console.js';
+const wire = doramcap.console.v1;
 
 // Exercise the browser's generated codecs against the real server route handling.
 test(

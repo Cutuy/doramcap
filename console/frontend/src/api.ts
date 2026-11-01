@@ -22,30 +22,8 @@ async function request<T>(
   });
   if (response.headers.get('content-type')?.split(';')[0].trim() !== MEDIA_TYPE)
     throw new Error('Invalid API response type');
-  if (!response.body) throw new Error('Missing API response body');
-  const reader = response.body.getReader(),
-    chunks: Uint8Array[] = [];
-  let length = 0;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      length += value.length;
-      if (length > LIMITS.frameBytes) {
-        await reader.cancel();
-        throw new Error('API response exceeds limit');
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.length;
-  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > LIMITS.frameBytes) throw new Error('API response exceeds limit');
   if (!response.ok) {
     const error = routes.error.decode(bytes);
     throw new ApiError(isErrorCode(error.code) ? error.code : 'Internal');
