@@ -1,12 +1,11 @@
-//! Workload-owned graph registration and closure-driven application drain.
+//! Workload-owned graph registration and system application shutdown.
 use super::dora::DoraRuntime;
 use crate::compose::{error::invalid, *};
-use dora_core::config::InputMapping;
 use orchestrator::Step;
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 /// Owns one experiment's Dora runtime control and registered graph identity.
-/// Starts and monitors the runtime, registers the graph, and drains system services.
+/// Starts and monitors the runtime, registers the graph, and stops system services.
 pub struct ExperimentOwner {
     identity: Option<String>,
     attempted: bool,
@@ -93,7 +92,7 @@ impl ExperimentOwner {
         }
         Ok(())
     }
-    /// Stop graph roots and await natural exit of downstream system services.
+    /// Request Dora stop for every system node; Compose then verifies shutdown.
     pub async fn shutdown(&self, system: &[String]) -> Result<()> {
         let Some(uuid) = &self.identity else {
             return if self.attempted {
@@ -114,13 +113,7 @@ impl ExperimentOwner {
             .iter()
             .filter(|n| system.contains(&n.id.to_string()))
             .collect();
-        let roots = nodes.iter().filter(|node| {
-            !node.inputs.values().any(|input| {
-                matches!(&input.mapping, InputMapping::User(mapping)
-                    if system.contains(&mapping.source.to_string()))
-            })
-        });
-        for node in roots {
+        for node in nodes {
             if state
                 .containers
                 .iter()
@@ -138,26 +131,7 @@ impl ExperimentOwner {
                 .await?;
             }
         }
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(self.stop_seconds);
-        loop {
-            let mut state = self.adapter.project(&self.plan).inspect().await?;
-            state
-                .plan
-                .as_mut()
-                .ok_or_else(|| invalid("Compose state plan missing"))?
-                .services
-                .retain(|name, service| {
-                    service.completed = true;
-                    nodes.iter().any(|node| node.id.as_ref() == name)
-                });
-            if state.ready()? {
-                return Ok(());
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(invalid("system apps did not finish draining"));
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        Ok(())
     }
 }
 

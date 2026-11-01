@@ -45,7 +45,7 @@
   <rect x="65" y="695" width="530" height="155" rx="10" class="card"/>
   <text x="85" y="728" class="file">execution.rs</text>
   <text x="85" y="758" class="body">Start: Dora → system stable → adopted apps</text>
-  <text x="85" y="787" class="body">Stop: adopted apps → system drain → Dora</text>
+  <text x="85" y="787" class="body">Stop: adopted apps → system apps → Dora</text>
   <text x="85" y="816" class="small">observation.rs · Docker events + snapshots</text>
   <text x="85" y="840" class="small">Dora helpers: ../dora.rs + ../experiment.rs</text>
   <path d="M330 850V898" class="call"/>

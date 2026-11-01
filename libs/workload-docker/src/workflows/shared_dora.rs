@@ -5,11 +5,8 @@ use crate::compose::{
     adapter::{digest, private_write},
     error::invalid,
 };
-use dora_core::{
-    config::InputMapping,
-    descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static},
-};
-use std::{collections::HashSet, path::Path};
+use dora_core::descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static};
+use std::path::Path;
 
 pub(crate) const COORDINATOR: &str = "dora-coordinator";
 pub(crate) const DAEMON: &str = "dora-daemon";
@@ -89,7 +86,7 @@ pub fn validate_endpoints(runtime: &DoraRuntime) -> Result<()> {
     Ok(())
 }
 
-/// Expand native modules and require externally launched nodes with a drainable graph.
+/// Expand native modules and require externally launched nodes in the graph.
 pub fn graph(runtime: &DoraRuntime, bytes: &[u8]) -> Result<Descriptor> {
     let graph = Descriptor::parse(bytes.to_vec())
         .map_err(|e| invalid(format!("invalid Dora graph: {e:#}")))?
@@ -112,18 +109,6 @@ pub fn graph(runtime: &DoraRuntime, bytes: &[u8]) -> Result<Descriptor> {
         return Err(invalid(
             "Dora graph must use externally launched dynamic nodes",
         ));
-    }
-    let mut remaining: HashSet<_> = graph.nodes.iter().map(|n| n.id.to_string()).collect();
-    while !remaining.is_empty() {
-        let before = remaining.len();
-        for node in &graph.nodes {
-            if node.inputs.values().all(|i| !matches!(&i.mapping, InputMapping::User(m) if remaining.contains(m.source.as_ref()))) {
-                remaining.remove(node.id.as_ref());
-            }
-        }
-        if remaining.len() == before {
-            return Err(invalid("Dora graph cycles prevent ordered drain"));
-        }
     }
     Ok(graph)
 }

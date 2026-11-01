@@ -18,7 +18,7 @@ Acceptance requires **strictly fewer production-code LOC than main**.
   Enable Zenoh SHM. Give all apps the same daemon connection settings; use is optional.
 - Applications retain their Compose commands, mounts, dependencies and health checks.
   The Dora setup step owns communication services; workload steps own all app services.
-- Stop adopted apps, stop system producers, await consumer drain, stop Dora, then
+- Stop adopted apps, stop system apps, stop Dora, then
   finalize filesystems, remove resources and release repository admission. Different repositories
   may run concurrently; gallery apps have separate repository identities. Forced stops leave recording status incomplete.
 - Preserve protobuf/pbtxt settings, native Dora graphs, immutable inputs, embedded
