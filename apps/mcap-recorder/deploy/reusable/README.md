@@ -16,8 +16,8 @@ CPU recording uses the same binary in a separate instance with its own destinati
 
 `mcap-recorder --config FILE.pbtxt` loads generated
 [`RecorderConfig`](../../proto/recorder.proto) directly. Relative recording, report
-and schema paths resolve beside that file. The existing `mcap-recorder OUTPUT.mcap`
-invocation retains validated CPU snapshot/dictionary recording.
+and schema paths resolve beside that file. [cpu.pbtxt](cpu.pbtxt) declares CPU
+accounting channels and their validation.
 
 - Map each Dora input to a unique topic and declared message encoding.
 - Optional `schema_name`, `schema_encoding` and `schema_path` embed supplied schema

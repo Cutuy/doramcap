@@ -11,8 +11,7 @@ fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let config = match args.as_slice() {
         [flag, path] if flag == "--config" => config::load(std::path::Path::new(path))?,
-        [path] if !path.starts_with('-') => config::cpu(path.clone()),
-        _ => bail!("usage: mcap-recorder OUTPUT.mcap | --config FILE.pbtxt"),
+        _ => bail!("usage: mcap-recorder --config FILE.pbtxt"),
     };
     let (_node, mut events) = dora_app::environment::connect()?;
     let mut recording = recording::Recording::create(config)?;

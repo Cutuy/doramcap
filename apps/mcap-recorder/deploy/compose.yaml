@@ -34,4 +34,8 @@ services:
     environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"}
     healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"], interval: 200ms, timeout: 1s, retries: 150}
     entrypoint: [/usr/local/bin/mcap-recorder]
-    command: ["/results/recording.mcap"]
+    command: ["--config", "/config/recorder.pbtxt"]
+    volumes:
+      - *runtime
+      - *results
+      - {type: bind, source: ./reusable/cpu.pbtxt, target: /config/recorder.pbtxt, read_only: true}

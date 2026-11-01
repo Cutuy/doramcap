@@ -98,7 +98,7 @@ fn audit_recording(root: &Path) -> String {
     let mut sequences = Vec::new();
     for message in mcap::MessageStream::new(&bytes).unwrap() {
         let message = message.unwrap();
-        if message.channel.topic == "doramcap/snapshots" {
+        if message.channel.topic == "doramcap/cpuacct" {
             let frame = telemetry_protocol::decode(&message.data).unwrap();
             assert_eq!(frame.source, "bpf");
             assert_eq!(frame.snapshot.dropped_batches, 0);
@@ -189,7 +189,7 @@ async fn native_recorded_workflow() {
     let snapshots: Vec<_> = mcap::MessageStream::new(&bytes)
         .unwrap()
         .map(|message| message.unwrap())
-        .filter(|message| message.channel.topic == "doramcap/snapshots")
+        .filter(|message| message.channel.topic == "doramcap/cpuacct")
         .collect();
     assert!(!snapshots.is_empty());
     assert!(

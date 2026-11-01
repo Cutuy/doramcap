@@ -13,7 +13,7 @@ mcap-recorder --config apps/mcap-recorder/deploy/reusable/bytes.pbtxt
 The process requires a Dora attachment and writable configured output directory.
 It creates recordings exclusively, drains normal input closure and writes a
 separate report distinguishing finalization from drain and known loss evidence.
-The existing `mcap-recorder OUTPUT.mcap` invocation records CPU telemetry.
+Use `deploy/reusable/cpu.pbtxt` for CPU accounting channels.
 
 [Configuration, artifacts and reusable deployment](deploy/reusable/README.md) ·
 [Gallery deployment](deploy/README.md) ·

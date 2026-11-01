@@ -69,7 +69,7 @@ include both DORA topics; message rates and latency refer to numeric snapshots.
 
 ## MCAP and compatibility
 
-Both `doramcap/snapshots` and `doramcap/dictionary` use `message_encoding=protobuf`
+Both `doramcap/cpuacct` and `doramcap/cpuacct/dictionary` use `message_encoding=protobuf`
 and a schema named `doramcap.telemetry.v1.Packet`, `encoding=protobuf`. Schema data
 is a binary `FileDescriptorSet`, including dependencies, so readers can decode
 a recording from its embedded schema. Channel metadata identifies
