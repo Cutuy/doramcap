@@ -11,6 +11,6 @@ Console's [live bridge](../../../../console/bridge/README.md) relays it to brows
 
 - **Overrides:** images, identity, collector capacities and a writable `/results`.
 - **Recorder config:** mount #34's `cpu.pbtxt` read-only at `/config/recorder.pbtxt`.
-- **Live view:** declare `cpu-monitor/snapshots` and `cpu-monitor/dictionary` as `TELEMETRY_PACKET` `live_outputs`.
+- **Live view:** declare `cpu-monitor/snapshots` and `cpu-monitor/dictionary` as `CPU_ACCOUNTING` `live_outputs`.
 - **Startup:** the collector waits for the recorder's healthcheck.
 - **Stop:** the recorder drains queued input, then finalizes; overloaded queues can still lose messages.
