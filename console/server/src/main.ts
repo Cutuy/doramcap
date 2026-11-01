@@ -1,15 +1,25 @@
+import { parseArgs } from 'node:util';
+import { launchInstructions, listenConsole, portNumber } from './launch.js';
 import { createConsoleServer } from './http.js';
 import { ConsoleService } from './service.js';
-const [configPath, assets] = process.argv.slice(2);
+const { values, positionals: [configPath, assets] } = parseArgs({
+  allowPositionals: true,
+  options: { port: { type: 'string' }, 'browser-port': { type: 'string' }, ssh: { type: 'string' } },
+});
+const port = values.port ? portNumber(values.port) : undefined;
+const browserPort = values['browser-port'] ? portNumber(values['browser-port']) : undefined;
+// Validate destination before opening privileged resources.
+if (values.ssh) launchInstructions('http://127.0.0.1:43187', 43187, '', values.ssh);
 if (!configPath || !assets) throw new Error('usage: console-server CONFIG.pbtxt FRONTEND_DIST');
 const { backend, config, secret } = await ConsoleService.open(configPath);
 try {
-  const server = createConsoleServer({ backend, secret, origin: config.publicOrigin, assets });
-  const address = new URL(`http://${config.listenAddress}`);
-  await new Promise<void>((ok, fail) => {
-    server.once('error', fail);
-    server.listen(Number(address.port), address.hostname.replace(/^\[|\]$/g, ''), ok);
-  });
+  if (new URL(`http://${config.listenAddress}`).hostname !== '127.0.0.1')
+    throw new Error('Console launch requires listen_address on 127.0.0.1');
+  const preferred = port ?? portNumber(new URL(`http://${config.listenAddress}`).port);
+  const launched = await listenConsole(origin => createConsoleServer({ backend, secret, origin, assets }),
+    preferred, browserPort, port === undefined);
+  const { server } = launched;
+  console.log(launchInstructions(launched.origin, launched.port, secret, values.ssh));
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;

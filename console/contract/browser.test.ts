@@ -1,3 +1,4 @@
+import { establishSession } from '../frontend/src/session.js';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
@@ -61,13 +62,26 @@ test(
     const address = server.address();
     assert.ok(address && typeof address !== 'string');
     const base = `http://127.0.0.1:${address.port}`;
+    let cookie = '';
+    let cleanUrl = '';
+    await establishSession({ hash: '#access=secret', pathname: '/', search: '' },
+      { replaceState: (_data, _unused, url) => { cleanUrl = String(url); } },
+      async (path, init) => {
+        const response = await fetch(new URL(String(path), base), {
+          ...init, headers: { ...init?.headers, origin: 'http://console.test' },
+        });
+        cookie = response.headers.get('set-cookie')?.split(';')[0] ?? '';
+        return response;
+      });
+    assert.equal(cleanUrl, '/');
+    assert.ok(cookie);
     const client = createClient((path, init) =>
       fetch(new URL(String(path), base), {
         ...init,
         headers: {
           ...init?.headers,
           origin: 'http://console.test',
-          authorization: `Basic ${Buffer.from('console:secret').toString('base64')}`,
+          cookie,
         },
       }),
     );

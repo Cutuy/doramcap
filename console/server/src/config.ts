@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
@@ -9,9 +10,9 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
   const config = capabilities.parseConfig(await readFile(path, 'utf8'));
   validateConfig(config);
   const secret = (
-    await readFile(config.accessSecretFile, 'utf8').catch((error) => {
+    config.accessSecretFile ? await readFile(config.accessSecretFile, 'utf8').catch((error) => {
       throw new Error(`access_secret_file: ${error}`);
-    })
+    }) : randomBytes(32).toString('base64url')
   ).replace(/\r?\n$/, '');
   if (!secret) throw new Error('access_secret_file must contain a nonempty secret');
   config.projectRoot = await realpath(config.projectRoot);
@@ -22,9 +23,10 @@ export function validateConfig(config: Config) {
     ['project_root', config.projectRoot],
     ['data_root', config.dataRoot],
     ['docker_socket', config.dockerSocket],
-    ['access_secret_file', config.accessSecretFile],
   ])
     if (!isAbsolute(value)) throw new Error(`${name} must be absolute`);
+  if (config.accessSecretFile && !isAbsolute(config.accessSecretFile))
+    throw new Error('access_secret_file must be absolute');
   const origin = new URL(config.publicOrigin);
   if (
     !['http:', 'https:'].includes(origin.protocol) ||

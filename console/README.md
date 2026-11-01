@@ -21,8 +21,11 @@ Docker socket access alone is insufficient.
 
 Use Node.js 22 or newer. Build the native addon on the target platform. Configure
 host paths and app inputs in [console.pbtxt.example](console.pbtxt.example) and
-[configuration](docs/configuration.md). The browser uses HTTP Basic authentication
-with username `console` and the configured secret file's contents.
+[configuration](docs/configuration.md). Open the access link printed at startup; it signs the browser in automatically.
+Console binds to loopback, starting at port 43187 and retrying occupied ports.
+Use `--port PORT` for an exact server port. For a headless host, append
+`--ssh user@workstation`; the output includes a command to run on the browser
+computer. `--browser-port PORT` selects its local tunnel port.
 
 [HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Recovery](docs/recovery.md) ·
 [System app specification](docs/103026-system-apps-plan.md)
