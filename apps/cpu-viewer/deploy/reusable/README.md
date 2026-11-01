@@ -16,8 +16,7 @@ Compose inputs, in one experiment project:
 Use `cpu-flow.yml` as the Dora graph. The experiment assembler supplies the
 approved `dora_app::environment` attachment settings for each service, shared IPC
 and participant identity. Match graph IDs to service names when renaming nodes.
-The shared runtime and generated attachment settings require the incoming Dora
-workflow; these fragments do not start another daemon/coordinator.
+The shared workflow supplies the runtime and attachment settings for these inputs.
 
 Supply explicit Compose overrides for images, identity, collector command
 (capacities/backend), feed bind/port and recorder destination. Bind a writable
@@ -55,18 +54,14 @@ Clients should use matching dictionary revisions before resolving numeric IDs.
 
 The CPU recorder consumes original producer packets and creates `/results/cpu.mcap`
 with separate snapshot/dictionary topics. Workload recording uses another instance
-and destination. This example uses the existing CPU recorder invocation; the new
-configurable recorder can replace its command after that contract lands.
+and destination. This example uses the positional CPU invocation supported by the recorder in #34.
 
 For workflow startup, use attachment healthchecks before collection and keep HTTP
-data readiness as a post-producer check. The current workflow recording probe
-requires a growing file stream; these Dora-only fragments do not produce one.
-The integration owner must align that probe with sink initialization before using
-these inputs with recording declarations.
+data readiness as a post-producer check. With #34, omit the recording declaration's stream path to wait for MCAP file
+creation. Configure a stream only when the collector also writes a growing file.
 
-On stop, the workflow stops the producer,
-allows consumer input closure/drain, then finalizes and publishes recording
-artifacts. Recorder queues are bounded even with `backpressure`; queue overload
+On stop, the workflow explicitly stops system nodes. The recorder drains buffered
+Dora events before finalizing and the workflow verifies the recording afterward. Recorder queues are bounded even with `backpressure`; queue overload
 can lose messages. A finalized footer alone does not establish complete capture.
 BPF attachment and the combined Docker recording path require runtime validation
 on a capable host.
