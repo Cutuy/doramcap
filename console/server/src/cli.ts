@@ -62,9 +62,9 @@ async function main() {
       process.stdout.write(chunk);
       pending += chunk.toString();
       const lines = pending.split('\n'); pending = lines.pop()!;
-      for (const line of lines) if (!opened && !values.ssh && !values['no-open'] && line.startsWith('Open: ')) {
+      for (const line of lines) if (command === 'start' && !opened && !values.ssh && !values['no-open'] && line.startsWith('Launch browser: ')) {
         opened = true;
-        const browser = spawn('xdg-open', [line.slice(6)], { stdio: 'ignore' });
+        const browser = spawn('xdg-open', [line.slice('Launch browser: '.length)], { stdio: 'ignore' });
         browser.on('error', () => {});
         browser.unref();
       }
@@ -103,8 +103,11 @@ async function main() {
     await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=exec',
       '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, ...args]);
     for (let attempt = 0; attempt < 100; attempt++) {
-      try { console.log(await readFile(launchFile, 'utf8')); return; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      try {
+        const instructions = await readFile(launchFile, 'utf8');
+        console.log(instructions.replace(/^Open: /m, 'Launch browser: '));
+        return;
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       if (!await active()) throw new Error(`Console startup failed. Inspect: sudo journalctl -u ${unit}`);
       await delay(100);
     }
