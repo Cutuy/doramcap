@@ -203,6 +203,7 @@ export class ConsoleService implements ConsoleBackend {
         preparedId: id,
         runId: id,
         availableProfiles: profiles,
+        cpuCaptureEnabled: apps.some(app => !!app.cpuFeedUrl),
         selectedProfiles: request.profiles,
         services: Object.entries(inspected.plan!.services ?? {}).map(([name, service]) => ({
           name,

@@ -91,7 +91,7 @@ export function App() {
     key.current = requestKey(key.current, createRequestKey);
     generation.current++; expected.current = review.runId; selecting.current = false; setPhase('Run'); setRetry(false); setStopPending(false); setError('');
     setSnapshot(wire.Status.create({
-      phase: Phase.STARTING, runId: review.runId, recordings: review.recordings,
+      phase: Phase.STARTING, runId: review.runId, recordings: review.recordings, cpuCaptureEnabled: review.cpuCaptureEnabled,
       systemApps: wire.SystemAppSelection.create({ ids: review.systemApps.filter(app => app.selected && !app.required).map(app => app.id) }),
     }));
     try { await api.start(review.preparedId, key.current); }

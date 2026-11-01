@@ -23,6 +23,7 @@ message Review {
   repeated string warnings = 6;
   repeated SystemApp system_apps = 7;
   repeated RecordingOutput recordings = 8;
+  bool cpu_capture_enabled = 9;
 }
 
 enum Phase {
