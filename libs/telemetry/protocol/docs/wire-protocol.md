@@ -72,8 +72,8 @@ include both DORA topics; message rates and latency refer to numeric snapshots.
 Both `doramcap/cpuacct` and `doramcap/cpuacct/dictionary` use `message_encoding=protobuf`
 and a schema named `doramcap.telemetry.v1.Packet`, `encoding=protobuf`. Schema data
 is a binary `FileDescriptorSet`, including dependencies, so readers can decode
-a recording from its embedded schema. Channel metadata identifies
-`protocol=doramcap.telemetry.protobuf.v2`. MCAP preserves original payload bytes,
+a recording from its embedded schema. Recorder metadata identifies the Dora input
+and timing convention. MCAP preserves original payload bytes,
 capture timestamps and the low 32 bits of sequence; payloads preserve full u64
 sequences. Recording remains an optional DORA subscriber.
 
