@@ -1,0 +1,5 @@
+# MCAP variant: the direct MCAP writer uses io_uring, which Docker's default seccomp policy blocks.
+services:
+  fault-watchdog:
+    command: [/etc/fault-watchdog/watchdog-mcap.pbtxt]
+    security_opt: [no-new-privileges:true, seccomp=unconfined]

@@ -1,0 +1,12 @@
+include: "watchdog.pbtxt"
+app {
+  id: "watchdog"
+  config { [type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
+    mcap {
+      enabled: true
+      path: "/results/faults.mcap"
+      rotation_bytes: 0
+      flush_ms: 100
+    }
+  } }
+}

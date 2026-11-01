@@ -1,0 +1,32 @@
+services:
+  fault-watchdog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: doramcap/fault-watchdog:standalone
+    init: true
+    entrypoint: [/usr/local/bin/fault-watchdog]
+    command: [/etc/fault-watchdog/watchdog.pbtxt]
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    environment:
+      DORAMCAP_READY_FILE: /tmp/fault-watchdog.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/fault-watchdog.ready]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    volumes:
+      - type: bind
+        source: ./config
+        target: /etc/fault-watchdog
+        read_only: true
+      - type: bind
+        source: ./results
+        target: /results
+        bind: {create_host_path: false}
