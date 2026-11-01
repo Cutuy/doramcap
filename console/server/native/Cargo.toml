@@ -1,0 +1,26 @@
+[package]
+name = "console-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+prost = "0.14"
+tokio = { version = "1", features = ["rt", "sync"] }
+prost-reflect = { version = "0.16", features = ["text-format"] }
+workload-docker = { path = "../../../libs/workload-docker" }
+workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }
+napi = { version = "=3.15.0", features = ["tokio_rt", "napi8"] }
+napi-derive = "=3.6.13"
+orchestrator = { version = "0.1.0", path = "../../../libs/orchestrator" }
+rustix = { version = "=1.1.5", features = ["fs"] }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

@@ -4,6 +4,7 @@
     {"from": "workflow-protocol", "forbid": ["monitor-core", "task-accounting", "telemetry-protocol", "orchestrator", "workload-*"]},
     {"from": "telemetry-protocol", "forbid": ["cpu-viewer", "workflow-protocol"]},
     {"from": "workload-lifecycle", "forbid": ["workload-docker", "workload-supervisor", "bollard"]},
-    {"from": "workload-supervisor", "forbid": ["workload-docker", "bollard"]}
+    {"from": "workload-supervisor", "forbid": ["workload-docker", "bollard"]},
+    {"from": "console-native", "forbid": ["project-explorer-server", "cpu-viewer", "fault-*", "storage-persistence", "telemetry-protocol"]}
   ]
 }
