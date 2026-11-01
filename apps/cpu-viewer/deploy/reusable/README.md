@@ -19,7 +19,9 @@ and participant identity. Match graph IDs to service names when renaming nodes.
 The shared workflow supplies the runtime and attachment settings for these inputs.
 
 Supply explicit Compose overrides for images, identity, collector command
-(capacities/backend), feed bind/port and recorder destination. Bind a writable
+(capacities/backend), feed bind/port and recorder configuration. Mount PR34's
+`apps/mcap-recorder/deploy/reusable/cpu.pbtxt` read-only at `/config/recorder.pbtxt`.
+Bind a writable
 artifact directory to the recorder's `/results`; `cpu.mcap` must not exist.
 No artifact or kernel mounts are needed by the feed. Keep the BPF capabilities,
 host cgroup namespace and kernel mounts exclusive to the collector. Select the
@@ -53,8 +55,9 @@ Clients should use matching dictionary revisions before resolving numeric IDs.
 ## Recording and shutdown
 
 The CPU recorder consumes original producer packets and creates `/results/cpu.mcap`
-with separate snapshot/dictionary topics. Workload recording uses another instance
-and destination. This example uses the positional CPU invocation supported by the recorder in #34.
+with the configured `doramcap/cpuacct` and `doramcap/cpuacct/dictionary` topics.
+Workload recording uses another instance and destination. The recorder loads its
+pbtxt configuration at startup.
 
 For workflow startup, use attachment healthchecks before collection and keep HTTP
 data readiness as a post-producer check. With #34, omit the recording declaration's stream path to wait for MCAP file

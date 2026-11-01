@@ -2,7 +2,7 @@ services:
   cpu-recorder:
     image: doramcap/mcap-recorder-only:local
     entrypoint: [/usr/local/bin/mcap-recorder]
-    command: [/results/cpu.mcap]
+    command: [--config, /config/recorder.pbtxt]
     network_mode: host
     environment:
       DORAMCAP_READY_FILE: /tmp/cpu-recorder.ready
