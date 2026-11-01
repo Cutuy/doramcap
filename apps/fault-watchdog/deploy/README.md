@@ -7,4 +7,4 @@ before these app services; the MCAP writer keeps `seccomp=unconfined`.
 
 [Shared lifecycle and test results](../../../libs/workload-docker/docs/102926-shared-dora-experiment.md).
 
-The default dashboard binds host loopback port 8089; Fault Demo uses 8088.
+The dashboard binds host loopback port 8089 in all profiles; Fault Demo uses 8088.
