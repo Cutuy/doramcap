@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -54,22 +55,37 @@ BUILD_OUTPUTS = (
 
 
 def clean_build_outputs(path):
+    # Expand the single app-name wildcard explicitly so traversal errors propagate.
+    try:
+        apps = sorted((path / 'apps').iterdir())
+    except FileNotFoundError:
+        apps = []
+    candidates = {
+        path / pattern.replace('*', app.name)
+        for pattern in BUILD_OUTPUTS if '*' in pattern for app in apps
+    }
+    candidates.update(path / pattern for pattern in BUILD_OUTPUTS if '*' not in pattern)
     outputs = []
-    for output in sorted({output for pattern in BUILD_OUTPUTS for output in path.glob(pattern)}):
+    for output in sorted(candidates):
         rel = output.relative_to(path)
-        # Check each component before following it, including dangling symlinks.
+        # Validate every component before deleting any output.
         current = path
-        for part in Path(rel).parts:
+        for part in rel.parts:
             current = current / part
-            if current.is_symlink():
+            try:
+                mode = current.lstat().st_mode
+            except FileNotFoundError:
+                break
+            if stat.S_ISLNK(mode):
                 raise RuntimeError(f'Build output uses a symlink; inspect manually: {current}')
-        if not output.exists():
-            continue
-        if not output.is_dir():
-            raise RuntimeError(f'Build output is not a directory: {output}')
-        if git(path, 'ls-files', '--', str(rel)):
-            raise RuntimeError(f'Build output contains tracked files: {output}')
-        outputs.append(output)
+            if not stat.S_ISDIR(mode):
+                if current != output:
+                    break
+                raise RuntimeError(f'Build output is not a directory: {current}')
+        else:
+            if git(path, 'ls-files', '--', str(rel)):
+                raise RuntimeError(f'Build output contains tracked files: {output}')
+            outputs.append(output)
     for output in outputs:
         print(f'Removing build output: {output}', file=sys.stderr)
         shutil.rmtree(output)

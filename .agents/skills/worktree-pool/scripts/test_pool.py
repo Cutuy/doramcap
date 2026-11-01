@@ -2,6 +2,7 @@
 """Acquisition and release behavior exercised in disposable Git repositories."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -190,6 +191,60 @@ class ReleaseTests(unittest.TestCase):
                 pool.main()
         self.assertTrue(artifact.exists())
         self.assertIsNone(self.lease())
+        self.assertEqual(self.git('rev-parse', 'HEAD', root=self.worktree).stdout, head)
+
+    def test_cleanup_preserves_files_beside_app_directories(self):
+        # Arrange
+        source = self.write(self.worktree, 'apps/README.md')
+        artifact = self.write(self.worktree, 'target/artifact')
+
+        # Act
+        pool.clean_build_outputs(self.worktree)
+
+        # Assert
+        self.assertTrue(source.exists())
+        self.assertFalse(artifact.exists())
+
+    @unittest.skipIf(os.geteuid() == 0, 'Permission checks require an unprivileged user')
+    def test_release_discovery_failure_keeps_lease_and_outputs(self):
+        # Arrange
+        artifact = self.write(self.worktree, 'apps/cpu-viewer/frontend/dist/artifact')
+        other = self.write(self.worktree, 'target/artifact')
+        blocked = artifact.parent.parent
+        blocked.chmod(0)
+        self.addCleanup(blocked.chmod, 0o755)
+
+        # Act
+        result = self.release()
+        blocked.chmod(0o755)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(blocked).encode(), result.stderr)
+        self.assertEqual(self.lease()['token'], self.token)
+        self.assertTrue(artifact.exists())
+        self.assertTrue(other.exists())
+
+    @unittest.skipIf(os.geteuid() == 0, 'Permission checks require an unprivileged user')
+    def test_acquire_discovery_failure_preserves_free_slot(self):
+        # Arrange
+        self.assertEqual(self.release().returncode, 0)
+        artifact = self.write(self.worktree, 'apps/cpu-viewer/frontend/dist/artifact')
+        head = self.git('rev-parse', 'HEAD', root=self.worktree).stdout
+        blocked = self.worktree / 'apps'
+        blocked.chmod(0)
+        self.addCleanup(blocked.chmod, 0o755)
+
+        # Act
+        result = self.command('acq', '--owner', 'next', '--branch',
+                              'codex/discovery-failure', check=False)
+        blocked.chmod(0o755)
+
+        # Assert
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(str(blocked).encode(), result.stderr)
+        self.assertIsNone(self.lease())
+        self.assertTrue(artifact.exists())
         self.assertEqual(self.git('rev-parse', 'HEAD', root=self.worktree).stdout, head)
 
     def test_acquire_preserves_ignored_collision(self):
