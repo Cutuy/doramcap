@@ -1,5 +1,7 @@
 # Console
 
+[Install and launch a release](docs/install.md).
+
 Select a Compose project and optional system apps, inspect the resolved services,
 then run the shared experiment and download its recordings. Dora coordinator and
 IPC daemon are included automatically.

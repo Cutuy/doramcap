@@ -1,10 +1,11 @@
+import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { launchInstructions, listenConsole, portNumber } from './launch.js';
 import { createConsoleServer } from './http.js';
 import { ConsoleService } from './service.js';
 const { values, positionals: [configPath, assets] } = parseArgs({
   allowPositionals: true,
-  options: { port: { type: 'string' }, 'browser-port': { type: 'string' }, ssh: { type: 'string' } },
+  options: { port: { type: 'string' }, 'browser-port': { type: 'string' }, ssh: { type: 'string' }, 'launch-file': { type: 'string' } },
 });
 const port = values.port ? portNumber(values.port) : undefined;
 const browserPort = values['browser-port'] ? portNumber(values['browser-port']) : undefined;
@@ -19,7 +20,11 @@ try {
   const launched = await listenConsole(origin => createConsoleServer({ backend, secret, origin, assets }),
     preferred, browserPort, port === undefined);
   const { server } = launched;
-  console.log(launchInstructions(launched.origin, launched.port, secret, values.ssh));
+  const instructions = launchInstructions(launched.origin, launched.port, secret, values.ssh) + `\n\nProjects: ${config.projectRoot}`;
+  if (values['launch-file']) {
+    await writeFile(values['launch-file'], instructions, { mode: 0o600, flag: 'wx' });
+    console.log('Console ready; use doramcap-console status to retrieve the access link.');
+  } else console.log(instructions);
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;

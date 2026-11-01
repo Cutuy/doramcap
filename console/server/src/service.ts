@@ -1,3 +1,4 @@
+import { ensureImages } from './images.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -182,6 +183,8 @@ export class ConsoleService implements ConsoleBackend {
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
       const run = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
+      if (this.config.downloadMissingImages)
+        await ensureImages(this.config, [project, ...apps.map(app => app.input!)]);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(run);
