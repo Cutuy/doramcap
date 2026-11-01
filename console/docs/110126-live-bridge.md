@@ -77,12 +77,12 @@ Evidence: frontend `npm test` 37/37 including `streams.test.ts`; `npm run build`
 **Work items**
 - [x] Delete `cpu_feed_url`, `CpuFeeds` and CPU fields in `Status`/`Review`/`RunMetric`.
 - [x] Update configuration docs and the system-app specification.
-- [ ] Supersede the headless CPU feed in PR 35.
+- [x] Supersede the headless CPU feed in PR 35.
 
 **Validation**
 - [x] Console server and frontend test suites.
 
-Evidence: server `npm test` 35/35 (native addon rebuilt); frontend 37/37. PR 35's feed remains to be removed on its branch.
+Evidence: server `npm test` 35/35 (native addon rebuilt); frontend 37/37. PR 35 commit `2deaf9b` removes the feed service, its image and `--headless`.
 
 ## Milestone 6: Runtime qualification
 
