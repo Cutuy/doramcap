@@ -1,0 +1,23 @@
+[Unit]
+Description=Doramcap gallery manager
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=gallery
+Group=gallery
+SupplementaryGroups=docker
+WorkingDirectory=/opt/doramcap-gallery/current
+ExecStart=/opt/doramcap-gallery/current/bin/project-explorer-server --workspace /opt/doramcap-gallery/workspace --data /var/lib/doramcap-gallery --assets /opt/doramcap-gallery/current/assets --bind 127.0.0.1:8095 --origin http://127.0.0.1:8096
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+ProtectHome=true
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

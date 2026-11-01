@@ -16,7 +16,7 @@ const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encodi
 const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--offline', '--no-deps', '--format-version', '1'], { cwd: root, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }));
 const config = JSON.parse(readFileSync(resolve(frontend, '../catalog.config.json'), 'utf8'));
 const files = [...new Set(git('ls-files', '--cached', '--others', '--exclude-standard', '-z').split('\0').filter(Boolean))].filter(p => existsSync(resolve(root, p)));
-const supported = files.filter(p => /^(README\.md$|(?:apps|libs|docs|scripts)\/)/.test(p) && !/(^|\/)(AGENTS\.md|node_modules|target|dist|\.generated)(\/|$)/.test(p));
+const supported = files.filter(p => /^(README\.md$|(?:apps|console|libs|docs|scripts)\/)/.test(p) && !/(^|\/)(AGENTS\.md|node_modules|target|dist|\.generated)(\/|$)/.test(p));
 const catalog: Catalog = { components: [], packages: [], dependencies: [], documents: {}, assets: [], files, repository: '', revision: git('rev-parse', 'HEAD'), warnings: [] };
 const origin = git('remote', 'get-url', 'origin').replace(/\.git$/, '').replace(/^git@([^:]+):/, 'https://$1/');
 if (!/^https:\/\/[^/@]+\//.test(origin)) throw new Error('A public HTTPS source repository URL is required.');

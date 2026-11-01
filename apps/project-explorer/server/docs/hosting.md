@@ -63,6 +63,23 @@ writers, discards leftover overlay data, and removes owned containers and networ
 before preparing a new run. Unexpected reset failures block that launch. Other
 apps may run concurrently. Save any old upper data you need before launching again.
 
+## EC2 releases
+
+Package the manager, SPA assets, selected app deployment files, Caddy configuration,
+systemd units and ARM64 images with source revision, image identities and checksums.
+Include the shared Dora image required by the app wrappers. See the
+[EC2 units and layout](../deploy/ec2/README.md).
+
+For updates, verify checksums and retain the previous bundle. Stop Caddy and the
+manager to drain active apps, then load the new images, copy deployment files to
+the stable workspace, install units and switch `current` to the new release.
+Run `systemctl daemon-reload` and restart both services. Check service status and
+`/api/hosting/apps` through Caddy. Keep workspace and result paths stable for recovery.
+
+For rollback, stop both services and restore the previous bundle's image tags,
+workspace files, units and `current` symlink; reload systemd and restart.
+Preserve private results throughout updates and rollback.
+
 ## Public HTTPS
 
 Use [Caddyfile.public](../caddy/Caddyfile.public), replacing its example hostname
