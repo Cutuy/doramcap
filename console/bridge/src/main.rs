@@ -45,13 +45,17 @@ async fn serve_socket(socket: WebSocket, bridge: Arc<Bridge>) {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
-    let port: u16 = match (args.next().as_deref(), args.next(), args.next()) {
-        (Some("--port"), Some(port), None) => port.parse()?,
-        _ => bail!("usage: live-bridge --port PORT"),
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (port, max_payload_bytes): (u16, usize) = match args.as_slice() {
+        [port_flag, port, limit_flag, limit]
+            if port_flag == "--port" && limit_flag == "--max-payload-bytes" =>
+        {
+            (port.parse()?, limit.parse()?)
+        }
+        _ => bail!("usage: live-bridge --port PORT --max-payload-bytes BYTES"),
     };
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
-    let bridge = Arc::new(Bridge::default());
+    let bridge = Arc::new(Bridge::new(max_payload_bytes));
     let (attached, ready) = tokio::sync::oneshot::channel();
     let (shutdown, stopped) = tokio::sync::oneshot::channel();
     let source = bridge.clone();

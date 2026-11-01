@@ -2,9 +2,12 @@ import { doramcap } from './console.js';
 
 /** Browser/server transport; payload codecs are generated from console.proto. */
 export const MEDIA_TYPE = 'application/x-protobuf';
+const FRAME_BYTES = 4 * 1024 * 1024;
 export const LIMITS = {
   bodyBytes: 64 * 1024,
-  frameBytes: 4 * 1024 * 1024,
+  frameBytes: FRAME_BYTES,
+  // Largest bridge payload; 1 KiB leaves room for the Frame and LiveMessage wrappers.
+  bridgePayloadBytes: FRAME_BYTES - 1024,
   stringLength: 4096,
   selectionLength: 128,
   liveStreams: 4,

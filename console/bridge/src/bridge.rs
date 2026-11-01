@@ -10,8 +10,6 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.console.live.v1.rs"));
 }
 
-/// Largest payload relayed; larger frames advance the sequence and are skipped.
-pub const MAX_PAYLOAD_BYTES: usize = 4 * 1024 * 1024 - 1024;
 /// Frames buffered per client before it observes a sequence gap.
 const CLIENT_BACKLOG: usize = 64;
 
@@ -25,6 +23,7 @@ pub struct Encoded {
 
 /// Shared frame source. Publishing never blocks on clients.
 pub struct Bridge {
+    max_payload_bytes: usize,
     state: Mutex<State>,
     sender: broadcast::Sender<Encoded>,
 }
@@ -34,18 +33,18 @@ struct State {
     latest: BTreeMap<Arc<str>, Encoded>,
 }
 
-impl Default for Bridge {
-    fn default() -> Self {
+impl Bridge {
+    /// Relay payloads up to `max_payload_bytes`; Console supplies its transport limit.
+    pub fn new(max_payload_bytes: usize) -> Self {
         Self {
+            max_payload_bytes,
             state: Mutex::default(),
             sender: broadcast::channel(CLIENT_BACKLOG).0,
         }
     }
-}
 
-impl Bridge {
     /// Assign the stream's next sequence, retain the frame as latest and fan it out.
-    /// Returns false when the payload exceeds MAX_PAYLOAD_BYTES and was skipped.
+    /// Returns false when the payload exceeds the size limit and was skipped.
     pub fn publish(&self, stream: &str, payload: &[u8], received_unix_ns: u64) -> bool {
         let mut state = self.state.lock().unwrap();
         let key: Arc<str> = state
@@ -55,7 +54,7 @@ impl Bridge {
         let sequence = state.sequences.entry(key.clone()).or_default();
         *sequence += 1;
         let sequence = *sequence;
-        if payload.len() > MAX_PAYLOAD_BYTES {
+        if payload.len() > self.max_payload_bytes {
             return false;
         }
         let frame = pb::Frame {
@@ -117,6 +116,7 @@ impl Subscription {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const LIMIT: usize = 16;
 
     fn decode(bytes: Arc<Vec<u8>>) -> pb::Frame {
         pb::Frame::decode(bytes.as_slice()).unwrap()
@@ -125,7 +125,7 @@ mod tests {
     #[tokio::test]
     async fn new_clients_receive_latest_frame_per_stream_then_live_frames() {
         // Arrange
-        let bridge = Bridge::default();
+        let bridge = Bridge::new(LIMIT);
         bridge.publish("cpu", b"a", 1);
         bridge.publish("cpu", b"b", 2);
         bridge.publish("faults", b"c", 3);
@@ -161,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn lagging_clients_skip_frames_and_observe_gaps() {
         // Arrange
-        let bridge = Bridge::default();
+        let bridge = Bridge::new(LIMIT);
         let mut client = bridge.subscribe();
 
         // Act
@@ -177,11 +177,11 @@ mod tests {
     #[tokio::test]
     async fn oversized_payloads_are_skipped_with_a_sequence_gap() {
         // Arrange
-        let bridge = Bridge::default();
+        let bridge = Bridge::new(LIMIT);
         let mut client = bridge.subscribe();
 
         // Act
-        let oversized = bridge.publish("cpu", &vec![0; MAX_PAYLOAD_BYTES + 1], 1);
+        let oversized = bridge.publish("cpu", &[0; LIMIT + 1], 1);
         bridge.publish("cpu", b"ok", 2);
 
         // Assert

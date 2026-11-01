@@ -8,6 +8,7 @@ import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
 import { readFile } from 'node:fs/promises';
 import { live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
+import { LIMITS } from '../src/generated/transport.js';
 
 class Engine implements NativeExecution {
   starts = 0;
@@ -393,7 +394,7 @@ test('the selected live bridge subscribes to declared outputs through generated 
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
     assert.deepEqual([option.label, option.selected, option.required], ['Live telemetry', true, false]);
     assert.equal(compose.services['live-bridge'].image, 'doramcap/live-bridge:local');
-    assert.deepEqual(compose.services['live-bridge'].command, ['--port', '43190']);
+    assert.deepEqual(compose.services['live-bridge'].command, ['--port', '43190', '--max-payload-bytes', String(LIMITS.bridgePayloadBytes)]);
     assert.equal(compose.services['live-bridge'].network_mode, 'host');
     const node = graph.nodes.find((node: { id: string }) => node.id === 'live-bridge');
     assert.equal(node.inputs.recorder_0.source ?? node.inputs.recorder_0, 'monitor/snapshots');

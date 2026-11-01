@@ -13,5 +13,5 @@ docker build -t doramcap/live-bridge:local -f console/bridge/Dockerfile "$stage"
 rm -r "$stage"
 ```
 
-Console generates the node's inputs and Compose service from the selected apps'
+Console generates the node's inputs, Compose service and `--max-payload-bytes` limit from the selected apps'
 `live_outputs`; see [configuration](../docs/configuration.md) and the [plan](../docs/110126-live-bridge.md).

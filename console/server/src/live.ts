@@ -36,7 +36,7 @@ export async function bindBridge(config: Config, apps: App[], workspace: string,
   const service = {
     image: bridge.image,
     entrypoint: ['/usr/local/bin/live-bridge'],
-    command: ['--port', String(bridge.port)],
+    command: ['--port', String(bridge.port), '--max-payload-bytes', String(LIMITS.bridgePayloadBytes)],
     ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
     network_mode: 'host',
     init: true,
@@ -90,14 +90,15 @@ export class LiveRelay {
   }
   /** Retain and fan out one encoded `Frame`; false rejects a malformed or oversized frame. */
   receive(frame: Buffer): boolean {
-    if (!frame.length || frame.length > LIMITS.frameBytes - 16) return false;
-    let stream: string;
+    if (!frame.length || frame.length > LIMITS.frameBytes) return false;
+    let decoded: InstanceType<typeof live.Frame>;
     try {
-      stream = live.Frame.decode(frame).stream;
+      decoded = live.Frame.decode(frame);
     } catch {
       return false;
     }
-    if (!stream) return false;
+    const stream = decoded.stream;
+    if (!stream || decoded.payload.length > LIMITS.bridgePayloadBytes) return false;
     this.latest.set(stream, frame);
     for (const listener of this.listeners) listener(frame);
     return true;

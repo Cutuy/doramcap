@@ -131,7 +131,8 @@ export function createConsoleServer(config: HttpOptions) {
             const writable = response.write(message({ status: update.data }));
             // Subscribe after the first status names the streams; a lagging browser drops frames.
             unsubscribe ??= config.backend.frames((bytes) => {
-              if (!response.destroyed && response.writableLength <= LIMITS.frameBytes) response.write(message({ frame: bytes }));
+              if (response.destroyed || response.writableLength > LIMITS.frameBytes) return;
+              try { response.write(message({ frame: bytes })); } catch { /* exceeds the frame limit once wrapped: drop */ }
             });
             cursor = Buffer.from(update.cursor);
             if (!writable) await once(response, 'drain', {signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)])});
