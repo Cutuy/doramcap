@@ -54,4 +54,4 @@ services:
     command: ["/results/state.json", "controls.sock"]
     environment:
       DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/dashboard.ready"
-      FAULT_DEMO_LISTEN: 127.0.0.1:8088
+      FAULT_DEMO_LISTEN: 127.0.0.1:8089

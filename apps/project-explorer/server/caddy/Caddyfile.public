@@ -1,0 +1,15 @@
+{
+    admin off
+}
+
+# Replace gallery.example.com with the public gallery hostname in both blocks.
+gallery.example.com {
+    route {
+        import /etc/caddy/routes.caddy
+    }
+}
+
+http://:8096 {
+    bind 127.0.0.1
+    redir https://gallery.example.com{uri} 302
+}

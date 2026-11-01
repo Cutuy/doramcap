@@ -2,7 +2,7 @@ id: "fault-watchdog"
 compose_file: "compose.otel.yaml"
 service: "dashboard"
 network: "host"
-port: 8088
+port: 8089
 readiness_seconds: 90
 stop_seconds: 50
 result_file: "state.json"
