@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1080" viewBox="0 0 1280 1080" role="img" aria-labelledby="title desc">
+<title id="title">Gallery and Console: selecting Fault Watchdog pbtxt configuration</title>
+<desc id="desc">Two deployment paths select a root configuration before launch. Gallery uses an active registration and existing demo profiles. Planned Console wiring uses a selected system app and the standalone profiles from PR33. Each launch starts an independent watchdog instance. The same configuration resolver loads includes once at startup, validates the generated configuration and enables live faults, MCAP and OTLP outputs.</desc>
+<style>
+:root {--paper:#ffffff;--ink:#142234;--sub:#526274;--line:#8291a2;--neutral:#d3dce5;--card:#ffffff;--blue:#235b9d;--bluebg:#f0f6fd;--purple:#7352a3;--purplebg:#f6f2fc;--green:#28715b;--greenbg:#f1f8f5}
+@media(prefers-color-scheme:dark){:root{--paper:#131b25;--ink:#edf2f8;--sub:#b2bfcd;--line:#9baaba;--neutral:#465467;--card:#202b39;--blue:#9fc7ff;--bluebg:#1b2c40;--purple:#d0b4fa;--purplebg:#2b243b;--green:#9edac5;--greenbg:#1c302c}}
+text{font-family:Inter,Arial,sans-serif;fill:var(--ink)} .sub{fill:var(--sub)} .mono{font-family:'DejaVu Sans Mono',Consolas,monospace} .edge{fill:none;stroke:var(--line);stroke-width:1.8;marker-end:url(#arrow)} .gallery{stroke:var(--blue)} .console{stroke:var(--purple);stroke-dasharray:7 5} .node{fill:var(--card);stroke:var(--neutral);stroke-width:1.2}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="context-stroke"/></marker></defs>
+<rect width="1280" height="1080" fill="var(--paper)"/>
+
+<text x="40" y="40" font-size="28" font-weight="600">How configuration reaches Fault Watchdog</text>
+<text x="40" y="70" font-size="16" class="sub">Deployment choice  →  process launch  →  startup configuration  →  runtime behavior</text>
+<rect x="40" y="100" width="580" height="580" rx="10" fill="var(--bluebg)" stroke="var(--blue)" stroke-width="1.4"/>
+<rect x="660" y="100" width="580" height="580" rx="10" fill="var(--purplebg)" stroke="var(--purple)" stroke-width="1.4" stroke-dasharray="8 5"/>
+<text x="60" y="139" font-size="25" font-weight="600" style="fill:var(--blue)">Gallery</text>
+<text x="594" y="138" font-size="13" font-weight="600" text-anchor="end" style="fill:var(--blue)">CURRENT</text>
+<text x="680" y="139" font-size="25" font-weight="600" style="fill:var(--purple)">Console</text>
+<text x="1218" y="138" font-size="13" font-weight="600" text-anchor="end" style="fill:var(--purple)">WIRING PENDING</text>
+<text x="60" y="179" font-size="13" class="sub" font-weight="600">1   OPERATOR CONFIG · SERVER STARTUP</text>
+<text x="680" y="179" font-size="13" class="sub" font-weight="600">1   OPERATOR CONFIG · SERVER STARTUP</text>
+<rect x="60" y="194" width="540" height="76" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="80" y="224" font-size="19" class="mono">registration.pbtxt</text>
+<text x="80" y="249" font-size="16" class="sub">compose_file selects the Gallery variant</text>
+<rect x="680" y="194" width="540" height="76" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="700" y="224" font-size="19" class="mono">console.pbtxt → system_apps</text>
+<text x="700" y="249" font-size="16" class="sub">Compose files + graph + command override</text>
+<path d="M330 270 V299" class="edge gallery"/>
+<path d="M950 270 V299" class="edge console"/>
+<rect x="60" y="304" width="540" height="176" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="80" y="331" font-size="17" font-weight="600">One Compose variant → one root pbtxt</text>
+<text x="80" y="362" font-size="15" class="mono">compose.yaml</text>
+<text x="274" y="362" font-size="17" class="sub">→</text>
+<text x="300" y="362" font-size="15" class="mono">config/default.pbtxt</text>
+<text x="80" y="392" font-size="15" class="mono">compose.mcap.yaml</text>
+<text x="274" y="392" font-size="17" class="sub">→</text>
+<text x="300" y="392" font-size="15" class="mono">watchdog-mcap.pbtxt</text>
+<text x="80" y="422" font-size="15" class="mono">compose.otel.yaml</text>
+<text x="274" y="422" font-size="17" class="sub">→</text>
+<text x="300" y="422" font-size="15" class="mono">watchdog-otel.pbtxt</text>
+<text x="80" y="459" font-size="15" class="sub">Dora inputs: source_a, source_b</text>
+<rect x="680" y="304" width="540" height="176" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="700" y="331" font-size="17" font-weight="600">command selects one standalone root · PR33</text>
+<text x="700" y="360" font-size="15" class="mono">watchdog.pbtxt</text>
+<text x="963" y="360" font-size="15" class="sub">base / live</text>
+<text x="700" y="389" font-size="15" class="mono">watchdog-mcap.pbtxt</text>
+<text x="963" y="389" font-size="15" class="sub">base + MCAP</text>
+<text x="700" y="418" font-size="15" class="mono">watchdog-otel.pbtxt</text>
+<text x="963" y="418" font-size="15" class="sub">base + OTLP</text>
+<text x="700" y="451" font-size="15" class="mono">both.pbtxt (operator)</text>
+<text x="963" y="451" font-size="15" class="sub">MCAP + OTLP includes</text>
+<text x="60" y="515" font-size="13" class="sub" font-weight="600">2   USER LAUNCHES APP</text>
+<text x="680" y="515" font-size="13" class="sub" font-weight="600">2   SELECT APP → START</text>
+<path d="M330 480 V541" class="edge gallery"/>
+<path d="M950 480 V541" class="edge console"/>
+<rect x="60" y="548" width="540" height="110" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="80" y="577" font-size="18" font-weight="600">Compose starts the Gallery graph</text>
+<text x="80" y="603" font-size="15" class="mono">fault-watchdog /opt/fault-demo/watchdog.pbtxt</text>
+<text x="80" y="631" font-size="15" class="sub">Selected config mount · demo reporters + dashboard</text>
+<rect x="680" y="548" width="540" height="110" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="700" y="577" font-size="18" font-weight="600">Compose starts the selected system app</text>
+<text x="700" y="603" font-size="15" class="mono">fault-watchdog /etc/fault-watchdog/&lt;root&gt;.pbtxt</text>
+<text x="700" y="631" font-size="15" class="sub">Config directory mount · workload_faults input</text>
+<path d="M330 658 V750" class="edge gallery"/>
+<path d="M950 658 V750" class="edge console"/>
+<text x="350" y="709" font-size="15" class="sub">selected root pbtxt</text>
+<text x="930" y="709" font-size="15" class="sub" text-anchor="end">root + included pbtxt files</text>
+<rect x="40" y="756" width="1200" height="296" rx="10" fill="var(--greenbg)" stroke="var(--green)" stroke-width="1.4"/>
+<text x="60" y="791" font-size="18" font-weight="600" style="fill:var(--green)">3   WATCHDOG STARTUP</text>
+<text x="425" y="791" font-size="16" class="sub">Shared implementation · instance per launch</text>
+<text x="940" y="791" font-size="17" font-weight="600" style="fill:var(--green)">4   ENABLED OUTPUTS</text>
+<rect x="60" y="868" width="335" height="126" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="80" y="900" font-size="19" class="mono">pbtxt_config::resolve</text>
+<text x="80" y="930" font-size="17">Read root + resolve includes</text>
+<text x="80" y="958" font-size="17">Overlay fields → validate</text>
+<text x="80" y="982" font-size="14" class="sub">Once, at initialization</text>
+<path d="M395 931 H419" class="edge "/>
+<rect x="425" y="868" width="215" height="126" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="445" y="900" font-size="19" class="mono">WatchdogConfig</text>
+<text x="445" y="930" font-size="16">Generated protobuf</text>
+<text x="445" y="957" font-size="16" class="sub">Inputs · timeouts</text>
+<text x="445" y="980" font-size="15" class="sub">Queues · sink settings</text>
+<path d="M640 931 H664" class="edge "/>
+<rect x="670" y="868" width="235" height="126" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="690" y="900" font-size="20" font-weight="600">Fault Watchdog</text>
+<text x="690" y="930" font-size="17">Fault aggregation</text>
+<text x="690" y="958" font-size="17">Source liveness</text>
+<text x="690" y="982" font-size="14" class="sub">Dora input subscriptions</text>
+<rect x="940" y="824" width="280" height="62" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="960" y="849" font-size="17" font-weight="600">Dora fault publications</text>
+<text x="960" y="872" font-size="14" class="mono sub">live_output</text>
+<rect x="940" y="900" width="280" height="62" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="960" y="925" font-size="17" font-weight="600">/results/faults.mcap</text>
+<text x="960" y="948" font-size="14" class="mono sub">mcap.enabled</text>
+<rect x="940" y="976" width="280" height="62" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
+<text x="960" y="1001" font-size="17" font-weight="600">OTLP log delivery</text>
+<text x="960" y="1024" font-size="14" class="mono sub">otel.enabled</text>
+<path d="M905 931 H922 V855 H934" class="edge "/>
+<path d="M905 931 H934" class="edge "/>
+<path d="M905 931 H922 V1007 H934" class="edge "/>
+</svg>
