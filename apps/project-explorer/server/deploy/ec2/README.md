@@ -25,28 +25,24 @@ Build binaries and app assets on ARM64 Ubuntu 24.04 with the pinned toolchain;
 use `--release --locked` for Rust and `npm ci` for frontends. Include the shared
 Dora 1.1.0 image built with `libs/workload-docker/deploy/Dockerfile`, even for
 Activity Lab. The official Caddy binary requires `NET_BIND_SERVICE` in its
-capability bounding set. The gallery frontend
-build also needs workspace Cargo metadata. The app Dockerfile stages prebuilt
+capability bounding set. The gallery frontend build needs a Git checkout with
+a public HTTPS origin and workspace Cargo metadata. The app Dockerfile stages prebuilt
 inputs; its Compose image name must match the imported tag.
 
 ## Activate or update
 
 Verify the archive checksum supplied through the trusted SSH connection. Extract
-it into a new revision directory, then verify its contents there:
+it into a new revision directory. For updates, stop Caddy and the manager before
+loading images so active apps drain. Preserve the previous verified release and image IDs.
+
+From the new revision directory, with `REVISION` set to its basename:
 
 ```sh
 sha256sum -c SHA256SUMS
-sudo docker load -i images/arm64.tar.gz
 cat SOURCE_REVISION IMAGES
-```
-
-For an update, stop Caddy and the manager before the `docker load` step above
-so active apps drain.
-Preserve the previous release and image IDs for rollback. With `REVISION` set to
-the extracted directory's basename:
-
-```sh
 sudo systemctl stop doramcap-gallery-caddy doramcap-gallery
+sudo docker load -i images/arm64.tar.gz
+sudo install -o root -g root -m 644 systemd/*.service /etc/systemd/system/
 sudo ln -sfn "/opt/doramcap-gallery/releases/$REVISION" /opt/doramcap-gallery/current
 sudo systemctl daemon-reload
 sudo systemctl enable --now doramcap-gallery doramcap-gallery-caddy
@@ -55,7 +51,8 @@ curl --fail http://127.0.0.1:8096/api/hosting/apps
 ```
 
 For rollback, stop both services, reload the previous bundle's images to restore
-the Compose/Caddy tags, switch `current` to that release, and start both services.
+the app, Dora and Caddy tags, reinstall that release's systemd units, switch `current`
+to that release, run `systemctl daemon-reload`, and start both services.
 Keep the previous workspace and private recordings until recovery is verified.
 
 ## Access and maintenance
