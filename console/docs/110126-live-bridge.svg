@@ -18,10 +18,10 @@
   <text x="275" y="143" text-anchor="middle" fill="#555" font-size="12">shared IPC</text>
   <rect x="385" y="96" width="140" height="72" rx="6" fill="#fff6e5" stroke="#b7791f" stroke-width="1.5"/>
   <text x="455" y="125" text-anchor="middle">Live bridge</text>
-  <text x="455" y="143" text-anchor="middle" fill="#555" font-size="12">optional system app</text>
+  <text x="455" y="143" text-anchor="middle" fill="#555" font-size="12">optional Dora node</text>
   <rect x="575" y="96" width="120" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
   <text x="635" y="125" text-anchor="middle">Console server</text>
-  <text x="635" y="143" text-anchor="middle" fill="#555" font-size="12">auth · fan-out</text>
+  <text x="635" y="143" text-anchor="middle" fill="#555" font-size="12">relay · auth</text>
   <rect x="745" y="96" width="95" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
   <text x="792" y="125" text-anchor="middle">Browser</text>
   <text x="792" y="143" text-anchor="middle" fill="#555" font-size="12">decode · render</text>
