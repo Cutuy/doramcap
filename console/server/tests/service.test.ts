@@ -352,30 +352,23 @@ test('preflight failures return a safe classification and retain private diagnos
   }
 });
 
-test('host CPU sampling works without recording or a CPU feed', async () => {
+test('disabled CPU capture produces no CPU data or metric samples', async () => {
   // Arrange
-  const { root, config, engine, backend, review } = await fixture();
-  config.runtime!.sampleIntervalMs = 1;
+  const { root, engine, backend, review } = await fixture();
   try {
     // Act
-    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'cpu-only' }).finish()));
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-capture' }).finish()));
     await waitFor(() => engine.starts === 1);
     engine.release!();
     await start;
     engine.update.ready = true;
-    let status = wire.Status.decode(await backend.status());
-    const deadline = performance.now() + 2000;
-    while (status.metrics.at(-1)?.cpuPercent == null && performance.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 10));
-      status = wire.Status.decode(await backend.status());
-    }
+    const status = wire.Status.decode(await backend.status());
     // Assert
     assert.equal(status.phase, wire.Phase.RUNNING);
     assert.equal(status.recordings.length, 0);
     assert.equal(status.cpuCaptureEnabled, false);
-    assert.ok((status.metrics.at(-1)?.cpuCores ?? 0) > 0);
-    assert.equal(typeof status.metrics.at(-1)?.cpuPercent, 'number');
-    assert.equal(status.metrics.at(-1)?.recordingBytes, null);
+    assert.equal(status.cpuSnapshots.length, 0);
+    assert.equal(status.metrics.length, 0);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

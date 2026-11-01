@@ -5,6 +5,7 @@ must already exist locally. The Dora coordinator and daemon are always included.
 
 Optional apps use ordinary Compose inputs. This example reuses the existing CPU
 Viewer collector, recorder and feed; supply a host-specific port override last.
+Build that image from the same revision; see [CPU Viewer deployment](../../apps/cpu-viewer/deploy/README.md).
 
 ```protobuf
 system_apps {
@@ -39,7 +40,7 @@ node IDs or conflicting graph settings reject preparation. Source graphs are rea
 again on Start. Console never injects demo producers. Reusable deployments must
 supply healthchecks for subscriber/sink readiness before their producers start.
 
-Host CPU totals use Node's OS counters, including runs with recording disabled.
-The CPU feed supplies per-cgroup counters and capture health. Recordings are finalized by
+The monitor publishes CPU totals, per-cgroup counters and capture health through
+the CPU feed. Console derives utilization from those counters. Recordings are finalized by
 the workflow and exposed by ID after completion. Absent or invalid display
 metadata never bypasses the workflow's repository controller and reset.

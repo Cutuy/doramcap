@@ -5,6 +5,8 @@ const MAX_RETAINED_FRAME_BYTES = 512 * 1024;
 export const MAX_SNAPSHOTS = 2;
 export const MAX_GROUP_NAMES = 512;
 const MAX_GROUP_NAME_CHARS = 128;
+const MAX_SAMPLE_AGE_MS = 500;
+const integer = (value: unknown) => BigInt(String(value ?? 0));
 const options = { longs: String, enums: String, defaults: true } as const;
 type Status = Record<string, any>;
 
@@ -17,6 +19,8 @@ export class CpuFeeds {
   private snapshots: any[] = [];
   private dictionary: any;
   private incomplete = false;
+  private selected = false;
+  private receivedAt = 0;
   constructor(
     private native: Pick<ConsoleBackend, 'status'>,
     private feeds: { appId?: string | null; url?: string | null }[],
@@ -52,7 +56,8 @@ export class CpuFeeds {
     }
     const active = ['STARTING', 'RUNNING', 'STOPPING'].includes(status.phase);
     const selected = this.feeds.find((feed) => status.systemApps?.ids?.includes(feed.appId));
-    status = { ...status, cpuCaptureEnabled: !!selected };
+    this.selected = !!selected;
+    status = { ...status, cpuCaptureEnabled: this.selected };
     if (status.phase === 'RUNNING' && selected?.url && !this.socket) {
       this.endpoint = selected.url;
       const socket = new WebSocket(this.endpoint);
@@ -112,6 +117,20 @@ export class CpuFeeds {
       metricsIncomplete: !!status.metricsIncomplete || this.incomplete,
     };
   }
+  /** Derive core percent exclusively from the selected monitor's cumulative host counters. */
+  sample(run: string, now = performance.now()) {
+    if (!this.selected || run !== this.run) return undefined;
+    const [before, after] = this.snapshots;
+    const current = after?.snapshot?.cpuTotals ?? before?.snapshot?.cpuTotals;
+    const unavailable = { cpuPercent: null as number | null, cpuCores: current?.cpuCores ?? 0 };
+    if (!before || !after || now - this.receivedAt > MAX_SAMPLE_AGE_MS || before.sessionId !== after.sessionId) return unavailable;
+    const old = before.snapshot?.cpuTotals, next = after.snapshot?.cpuTotals;
+    if (!old || !next || !next.cpuCores || old.cpuCores !== next.cpuCores || integer(after.snapshot.sequence) <= integer(before.snapshot.sequence)) return unavailable;
+    const total = integer(next.totalTicks) - integer(old.totalTicks);
+    const busy = integer(next.busyTicks) - integer(old.busyTicks);
+    if (total <= 0n || busy < 0n || busy > total) return unavailable;
+    return { cpuPercent: Number(busy) / Number(total) * next.cpuCores * 100, cpuCores: next.cpuCores };
+  }
   observe(bytes: Uint8Array) {
     if (bytes.byteLength > MAX_FRAME_BYTES) throw new Error('CPU feed frame too large');
     if (bytes.byteLength > MAX_RETAINED_FRAME_BYTES) {
@@ -126,7 +145,10 @@ export class CpuFeeds {
     }
     const frame = packet.snapshot;
     if (!frame?.snapshot || frame.version !== TELEMETRY_VERSION) throw new Error('invalid CPU feed packet');
-    if (this.snapshots.at(-1)?.snapshot?.sequence !== frame.snapshot.sequence) this.snapshots.push(frame);
+    if (this.snapshots.at(-1)?.snapshot?.sequence !== frame.snapshot.sequence) {
+      this.snapshots.push(frame);
+      this.receivedAt = performance.now();
+    }
     this.snapshots = this.snapshots.slice(-MAX_SNAPSHOTS);
   }
 }

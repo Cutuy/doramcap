@@ -145,13 +145,13 @@ test('required infrastructure is selected and disabled independently of optional
   assert.equal((html.match(/disabled=""/g) ?? []).length, 1);
 });
 
-test('disabled recording and capture stay distinct from unavailable host CPU', () => {
+test('disabled capture hides all CPU and recording panels', () => {
   // Arrange
   const samples = [wire.RunMetric.fromObject({ elapsedNs: '1000000000', cpuPercent: 50, cpuCores: 2 })];
   // Act
   const html = renderToStaticMarkup(<RunMetrics samples={samples} recordingEnabled={false} captureEnabled={false}/>);
   // Assert
-  assert.equal((html.match(/>Disabled</g) ?? []).length, 3);
-  assert.match(html, /50.0%/);
+  assert.equal((html.match(/>Disabled</g) ?? []).length, 4);
+  assert.doesNotMatch(html, /50.0%/);
   assert.doesNotMatch(html, /Unavailable/);
 });

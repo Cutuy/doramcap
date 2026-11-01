@@ -1,3 +1,5 @@
+mod cpu_totals;
+
 use eyre::{Result, WrapErr, bail, eyre};
 use monitor_core::{CpuRecord, Snapshot, handoff_with_tasks};
 use serde::Serialize;
@@ -167,6 +169,7 @@ fn capabilities() -> Result<Capabilities> {
 }
 
 struct Backend {
+    cpu_totals: Option<cpu_totals::Reader>,
     monitor: cgroup_bpf::Backend,
     scratch: Vec<cgroup_bpf::CgroupRecord>,
 }
@@ -179,11 +182,16 @@ impl Backend {
             );
         }
         Ok(Self {
+            cpu_totals: cpu_totals::Reader::open().ok(),
             monitor: cgroup_bpf::Backend::new(opts.records)?,
             scratch: Vec::with_capacity(opts.records),
         })
     }
     fn collect(&mut self, snapshot: &mut Snapshot) -> Result<(), String> {
+        snapshot.cpu_totals = self
+            .cpu_totals
+            .as_mut()
+            .and_then(|reader| reader.sample().ok());
         let stats = self
             .monitor
             .collect_into(&mut self.scratch)

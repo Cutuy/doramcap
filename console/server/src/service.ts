@@ -3,7 +3,6 @@ import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { cpus } from 'node:os';
 import {
   capabilities,
   wire,
@@ -25,7 +24,6 @@ import { Graphs } from './graphs.js';
 import { Store, writeOnce } from './store.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { CpuFeeds, MAX_SNAPSHOTS, MAX_GROUP_NAMES } from './cpu-feed.js';
-import { cpuUsage } from './host-cpu.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
 type ExecutionResult = doramcap.console.execution.v1.IExecutionResult;
@@ -65,7 +63,6 @@ export class ConsoleService implements ConsoleBackend {
   private begun = 0n;
   private lastSample = 0;
   private previous?: { bytes: bigint; time: number };
-  private previousCpu: ReturnType<typeof cpus> = [];
   private closing?: Promise<void>;
   private closed = false;
   constructor(
@@ -298,7 +295,6 @@ export class ConsoleService implements ConsoleBackend {
     this.metadataFailed = false;
     this.progress = new Progress();
     this.previous = undefined;
-    this.previousCpu = [];
     this.begun = process.hrtime.bigint();
     this.lastSample = 0;
     this.marker = wire.Marker.create({
@@ -423,8 +419,8 @@ export class ConsoleService implements ConsoleBackend {
     if (now - this.lastSample < this.config.runtime!.sampleIntervalMs!) return;
     this.lastSample = now;
     const recordings = this.marker?.recordings ?? [];
-    const currentCpu = cpus(), cpu = cpuUsage(this.previousCpu, currentCpu);
-    this.previousCpu = currentCpu;
+    const cpu = this.feeds.sample(this.snapshot.runId);
+    if (!recordings.length && !cpu) return;
     let bytes: bigint | undefined = 0n;
     for (const output of recordings) {
       try {
