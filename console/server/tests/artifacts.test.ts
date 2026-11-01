@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
+import { sessionCookie } from './session.js';
 import { createConsoleServer } from '../src/http.js';
 import type { ConsoleBackend } from '../src/native.js';
 
@@ -25,10 +26,10 @@ test('streams large evidence and closes descriptors on disconnect', async () => 
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const url = `http://127.0.0.1:${address.port}/api/artifacts/${'a'.repeat(32)}/cpu`;
-  const authorization = `Basic ${Buffer.from('console:secret').toString('base64')}`;
+  const cookie = await sessionCookie(new URL(url).origin);
   try {
     // Act
-    const response = await fetch(url, { headers: { authorization } });
+    const response = await fetch(url, { headers: { cookie } });
     const downloaded = Buffer.from(await response.arrayBuffer());
     // Assert
     assert.deepEqual(downloaded, contents);
@@ -36,7 +37,7 @@ test('streams large evidence and closes descriptors on disconnect', async () => 
     assert.throws(() => fstatSync(lastFd));
     // Act: disconnect while the next transfer is in flight.
     const controller = new AbortController();
-    const partial = await fetch(url, { headers: { authorization }, signal: controller.signal });
+    const partial = await fetch(url, { headers: { cookie }, signal: controller.signal });
     const reader = partial.body!.getReader();
     await reader.read();
     controller.abort();
@@ -48,7 +49,7 @@ test('streams large evidence and closes descriptors on disconnect', async () => 
     slow = true;
     const started = new Promise<void>(resolve => { opened = resolve; });
     const earlyAbort = new AbortController();
-    const pending = fetch(url, { headers: { authorization }, signal: earlyAbort.signal }).catch(() => null);
+    const pending = fetch(url, { headers: { cookie }, signal: earlyAbort.signal }).catch(() => null);
     await started;
     earlyAbort.abort();
     await pending;

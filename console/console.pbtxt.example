@@ -1,9 +1,8 @@
-listen_address: "127.0.0.1:8080"
-public_origin: "http://127.0.0.1:8080"
+listen_address: "127.0.0.1:43187"
+public_origin: "http://127.0.0.1:43187"
 project_root: "/absolute/path/to/projects"
 data_root: "/absolute/path/to/private-console-data"
 docker_socket: "/var/run/docker.sock"
-access_secret_file: "/absolute/path/to/console-secret"
 dora { image: "doramcap/dora:local" }
 # Optional apps use approved Compose inputs; no gallery demos are injected.
 # system_apps { id: "metrics" label: "CPU monitoring" input { directory: "/apps/cpu" files: "compose.yaml" } }

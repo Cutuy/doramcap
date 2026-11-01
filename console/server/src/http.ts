@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -13,13 +13,10 @@ export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: 
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode) { super(code); } }
 const hash = (s: string) => createHash('sha256').update(s).digest();
 
-function authenticate(request: IncomingMessage, secret: string): boolean {
-  const authorization = request.headers.authorization ?? '';
-  if (!authorization.startsWith('Basic ')) return false;
-  let supplied = '';
-  try { supplied = Buffer.from(authorization.slice(6), 'base64').toString('utf8'); } catch { return false; }
-  return timingSafeEqual(hash(supplied), hash(`console:${secret}`));
+function equal(left: string, right: string): boolean {
+  return timingSafeEqual(hash(left), hash(right));
 }
+
 function reply(response: ServerResponse, status: number, bytes: Uint8Array): void {
   if (bytes.length > LIMITS.frameBytes) throw new HttpError(500, 'Internal');
   response.writeHead(status, { 'content-type': MEDIA_TYPE, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
@@ -76,14 +73,32 @@ async function asset(response: ServerResponse, path: string, assets: string): Pr
 export function createConsoleServer(config: HttpOptions) {
   const origin = new URL(config.origin);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.origin !== config.origin || !config.secret) throw new Error('invalid server origin or empty secret');
+  const cookieName = `doramcap_${origin.port || '80'}`;
+  const session = randomBytes(32).toString('base64url');
   let streams = 0;
   const server = createServer(async (request, response) => {
     try {
-      if (!authenticate(request, config.secret)) {
-        response.setHeader('www-authenticate', 'Basic realm="Console", charset="UTF-8"');
-        throw new HttpError(401, 'Unauthorized');
-      }
       const url = new URL(request.url ?? '/', config.origin);
+      if (request.method === 'POST' && url.pathname === '/api/session') {
+        request.resume();
+        if (request.headers.origin !== config.origin ||
+            !equal(request.headers.authorization ?? '', `Bearer ${config.secret}`))
+          throw new HttpError(403, 'Unauthorized');
+        response.writeHead(204, {
+          'set-cookie': `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/`,
+          'cache-control': 'no-store',
+        });
+        response.end();
+        return;
+      }
+      if (!url.pathname.startsWith('/api/')) {
+        if (request.method !== 'GET') throw new HttpError(404, 'Missing');
+        await asset(response, url.pathname, config.assets);
+        return;
+      }
+      const cookie = (request.headers.cookie ?? '').split(';').map(value => value.trim())
+        .find(value => value.startsWith(`${cookieName}=`))?.slice(cookieName.length + 1) ?? '';
+      if (!equal(cookie, session)) throw new HttpError(401, 'Unauthorized');
       if (request.method === 'POST' && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
       if (request.method === routes.prepare.method && url.pathname === routes.prepare.path) {
         const input = await body(request), value = decode(routes.prepare.request, input);
@@ -129,9 +144,7 @@ export function createConsoleServer(config: HttpOptions) {
       }
       const artifact = artifactRoute.exec(url.pathname);
       if (request.method === 'GET' && artifact) { await streamArtifact(config.backend, response, artifact[1], artifact[2]); return; }
-      if (url.pathname.startsWith('/api/')) throw new HttpError(404, 'Missing');
-      if (request.method !== 'GET') throw new HttpError(404, 'Missing');
-      await asset(response, url.pathname, config.assets);
+      throw new HttpError(404, 'Missing');
     } catch (error) {
       if (response.headersSent) { response.destroy(); return; }
       const failure = nativeError(error);

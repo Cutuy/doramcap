@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { validateConfig } from '../src/config.js';
+import { loadConfig, validateConfig } from '../src/config.js';
 import { capabilities, wire } from '../src/native.js';
 import { selectApps, validateApps, appOptions, discover } from '../src/system-apps.js';
 import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
@@ -78,4 +78,18 @@ test('project discovery confines canonical paths and detects native input change
     await rm(root, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
   }
+});
+
+test('launch configuration generates fresh access without a secret file', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-launch-config-'));
+  const path = join(root, 'console.pbtxt');
+  await writeFile(path, `listen_address:"127.0.0.1:43187" public_origin:"http://127.0.0.1:43187" project_root:"${root}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock"`);
+  try {
+    // Act
+    const first = await loadConfig(path), second = await loadConfig(path);
+    // Assert
+    assert.match(first.secret, /^[A-Za-z0-9_-]{43}$/);
+    assert.notEqual(first.secret, second.secret);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

@@ -38,3 +38,15 @@ The monitor publishes BPF root CPU records, per-cgroup counters and capture heal
 through the CPU feed. Console derives total core utilization from root runtime
 deltas. The workflow finalizes recordings and exposes them by ID. Absent or invalid
 display metadata never bypasses the workflow's repository controller and reset.
+
+## Browser access
+
+Each launch generates an access link and an HTTP-only browser session. The link
+exchanges its fragment token before the UI loads and removes the fragment from
+browser history. Sessions expire when the process exits. Keep access links private.
+`access_secret_file` optionally supplies a stable token; omit it for release launches.
+
+The launcher binds `127.0.0.1`. `listen_address` selects the first candidate port;
+`--port` requires an exact port. `--browser-port` selects the browser-facing port
+and origin for SSH forwarding. Startup prints the effective URL and forwarding
+command when `--ssh user@host` is supplied.
