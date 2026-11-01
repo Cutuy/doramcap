@@ -2,7 +2,27 @@ name: Rust CI
 
 on:
   push:
+    paths: &rust-inputs
+      - '.github/workflows/ci.yml'
+      - '.cargo/**'
+      - 'rust-toolchain*'
+      - '*rustfmt.toml'
+      - '*clippy.toml'
+      - 'libs/**'
+      - 'apps/**'
+      - 'scripts/ci/**'
+      - '!**/*.md'
+      - '!**/*.svg'
+      - '!apps/*/frontend/**'
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      # These frontend files are embedded by Rust or used as Rust test fixtures.
+      - 'apps/cpu-viewer/frontend/src/fixtures/**'
+      - 'apps/fault-demo/frontend/index.html'
+      - 'apps/storage-demo/frontend/embedded/**'
   pull_request:
+    paths: *rust-inputs
   workflow_dispatch:
 
 permissions:

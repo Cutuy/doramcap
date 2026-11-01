@@ -2,8 +2,10 @@
 
 [GitHub Actions](../../.github/workflows/ci.yml) runs on standard
 `ubuntu-24.04-arm` and `ubuntu-24.04` runners for pushes, pull requests, and
-manual dispatch. ARM64 and x86_64 jobs report independently; both consume runner
-minutes for private repositories.
+manual dispatch. Push and PR runs filter for Rust sources, build/test inputs,
+CI scripts and the workflow itself. Documentation, worktree tooling and unrelated
+frontend edits skip Rust CI; manual dispatch always runs it.
+ARM64 and x86_64 jobs report independently; both consume runner minutes for private repositories.
 It checks [library dependency boundaries](boundaries.json), formatting, default/all-feature Clippy and Rust tests, storage without
 default features, example/binary builds, and snapshot synchronization tests.
 Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds use the
