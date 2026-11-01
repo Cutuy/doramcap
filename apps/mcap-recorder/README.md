@@ -5,6 +5,14 @@ A Dora subscriber that records configured byte inputs using
 encoding and optional schema. CPU snapshot/dictionary modes validate telemetry
 before writing and preserve its original payloads and capture timestamps.
 
+![Recording paths](docs/110126-recording-paths.svg)
+
+- **This recorder** records declared Dora outputs through `telemetry-mcap`'s generic
+  `RecordingSink`, which uses the `mcap` crate without io_uring.
+- **Embedded writers** stay in their apps. The CPU monitor's writer lives in
+  `system-monitor` and uses `storage-persistence`.
+- **Live view** uses Console's [live bridge](../../console/bridge/README.md) on the same outputs.
+
 ```sh
 cargo build --release --locked -p mcap-recorder
 mcap-recorder --config apps/mcap-recorder/deploy/reusable/bytes.pbtxt

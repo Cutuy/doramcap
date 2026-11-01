@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 440" font-family="system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+  </defs>
+  <rect width="960" height="440" fill="#fff"/>
+
+  <rect x="760" y="14" width="14" height="14" rx="3" fill="#fff6e5" stroke="#b7791f" stroke-width="1.5"/>
+  <text x="782" y="26">changed by #34</text>
+
+  <text x="20" y="30" font-weight="600">Embedded writers</text>
+  <g stroke-width="1.5">
+    <rect x="20" y="45" width="180" height="50" rx="6" fill="#fff6e5" stroke="#b7791f"/>
+    <rect x="20" y="110" width="180" height="50" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="270" y="75" width="200" height="56" rx="6" fill="#f4f4f4" stroke="#777"/>
+    <rect x="540" y="45" width="150" height="50" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="540" y="110" width="150" height="50" rx="6" fill="#fff" stroke="#777"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="110" y="66">CPU monitor</text>
+    <text x="110" y="84" fill="#555" font-size="12">embedded writer</text>
+    <text x="110" y="131">Fault Watchdog</text>
+    <text x="110" y="149" fill="#555" font-size="12">MCAP sink</text>
+    <text x="370" y="99">storage-persistence</text>
+    <text x="370" y="118" fill="#555" font-size="12">io_uring writer</text>
+    <text x="615" y="75">cpu.mcap</text>
+    <text x="615" y="140">faults.mcap</text>
+  </g>
+
+  <text x="20" y="225" font-weight="600">Through Dora</text>
+  <g stroke-width="1.5">
+    <rect x="20" y="240" width="180" height="44" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="20" y="296" width="180" height="44" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="20" y="352" width="180" height="44" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="260" y="240" width="120" height="156" rx="6" fill="#f4f4f4" stroke="#777"/>
+    <rect x="450" y="250" width="170" height="56" rx="6" fill="#fff6e5" stroke="#b7791f"/>
+    <rect x="660" y="250" width="170" height="56" rx="6" fill="#fff6e5" stroke="#b7791f"/>
+    <rect x="860" y="250" width="85" height="56" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="450" y="335" width="170" height="56" rx="6" fill="#eef2fb" stroke="#3b5bab"/>
+    <rect x="660" y="335" width="170" height="56" rx="6" fill="#eef2fb" stroke="#3b5bab"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="110" y="267">CPU monitor</text>
+    <text x="110" y="323">Fault Watchdog</text>
+    <text x="110" y="379">Workload nodes</text>
+    <text x="320" y="322">Dora daemon</text>
+    <text x="535" y="274">mcap-recorder</text>
+    <text x="535" y="293" fill="#555" font-size="12">--config pbtxt</text>
+    <text x="745" y="274">telemetry-mcap</text>
+    <text x="745" y="293" fill="#555" font-size="12">generic · mcap crate</text>
+    <text x="902" y="274">*.mcap</text>
+    <text x="902" y="293" fill="#555" font-size="12">+ report</text>
+    <text x="535" y="359">Live bridge</text>
+    <text x="535" y="378" fill="#555" font-size="12">#70</text>
+    <text x="745" y="359">Console</text>
+    <text x="745" y="378" fill="#555" font-size="12">browser panels</text>
+  </g>
+
+  <g stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <path d="M200 70 H235 V95 H268"/>
+    <path d="M200 135 H235 V111 H268"/>
+    <path d="M470 95 H505 V70 H538"/>
+    <path d="M470 111 H505 V135 H538"/>
+    <path d="M200 262 H258"/>
+    <path d="M200 318 H258"/>
+    <path d="M200 374 H258"/>
+    <path d="M380 278 H448"/>
+    <path d="M380 363 H448"/>
+    <path d="M620 278 H658"/>
+    <path d="M830 278 H858"/>
+    <path d="M620 363 H658"/>
+  </g>
+  <g fill="#333" font-size="12" text-anchor="middle">
+    <text x="414" y="270">backpressure</text>
+    <text x="414" y="355">drop_oldest</text>
+  </g>
+</svg>
