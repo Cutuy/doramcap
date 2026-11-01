@@ -125,6 +125,13 @@ impl ComposeConfiguration<'_> {
             .repository_root
             .as_ref()
             .map(|_| repository_scope(&identity));
+        let owned = |labels: Option<&std::collections::HashMap<String, String>>| {
+            scope.as_ref().is_some_and(|scope| {
+                labels
+                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
+                    .is_some_and(|value| value == &scope.to_string_lossy())
+            })
+        };
         let name = project_name(&project.key, &identity);
         let normalized = self.normalize(&input.run, project, &name).await?;
         let mut model = normalized.model;
@@ -251,12 +258,7 @@ impl ComposeConfiguration<'_> {
                             .config
                             .as_ref()
                             .and_then(|config| config.labels.as_ref());
-                        let owned = scope.as_ref().is_some_and(|scope| {
-                            labels
-                                .and_then(|labels| labels.get(CONTROLLER_LABEL))
-                                .is_some_and(|label| label == &scope.to_string_lossy())
-                        });
-                        if !owned {
+                        if !owned(labels) {
                             return Err(invalid(format!(
                                 "container name already occupied: {fixed}"
                             )));
@@ -335,7 +337,7 @@ impl ComposeConfiguration<'_> {
                 },
             );
         }
-        // Reject existing containers, networks and volumes before publishing the plan.
+        // Reject foreign project resources while allowing stale resources owned by this controller.
         let plan = ResolvedComposeProject {
             run: input.run,
             key: project.key.clone(),
@@ -350,32 +352,26 @@ impl ComposeConfiguration<'_> {
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
-        let owned = |labels: Option<&std::collections::HashMap<String, String>>| {
-            scope.as_ref().is_some_and(|scope| {
-                labels
-                    .and_then(|labels| labels.get(CONTROLLER_LABEL))
-                    .is_some_and(|value| value == &scope.to_string_lossy())
-            })
-        };
-        if execution
-            .containers()
-            .await?
-            .iter()
-            .any(|item| !owned(item.labels.as_ref()))
-            || execution
-                .networks()
-                .await?
-                .iter()
-                .any(|item| !owned(item.labels.as_ref()))
-            || execution
-                .volumes()
-                .await?
-                .iter()
-                .any(|item| !owned(Some(&item.labels)))
-        {
-            return Err(invalid(
-                "runtime project has resources owned by another controller",
-            ));
+        for container in execution.containers().await? {
+            if !owned(container.labels.as_ref()) {
+                return Err(invalid(
+                    "runtime project container belongs to another controller",
+                ));
+            }
+        }
+        for network in execution.networks().await? {
+            if !owned(network.labels.as_ref()) {
+                return Err(invalid(
+                    "runtime project network belongs to another controller",
+                ));
+            }
+        }
+        for volume in execution.volumes().await? {
+            if !owned(Some(&volume.labels)) {
+                return Err(invalid(
+                    "runtime project volume belongs to another controller",
+                ));
+            }
         }
         // Save and hash the private manifest with Compose's escaped dollar values intact.
         let bytes = serde_json::to_vec_pretty(&model)?;
