@@ -139,13 +139,13 @@ int collect(struct bpf_iter__cgroup *ctx) {
             int depth;
             bpf_for(depth, 0, 4096) {
                 ancestor = BPF_CORE_READ(ancestor, self.parent, cgroup);
-                if (!ancestor) return -5;
+                if (!ancestor) return 1;
                 if (BPF_CORE_READ(ancestor, level) == 0) {
                     collect_cgroup(ancestor, ctl);
                     break;
                 }
             }
-            if (BPF_CORE_READ(ancestor, level) != 0) return -7;
+            if (BPF_CORE_READ(ancestor, level) != 0) return 1;
         }
     }
     collect_cgroup(cg, ctl);
