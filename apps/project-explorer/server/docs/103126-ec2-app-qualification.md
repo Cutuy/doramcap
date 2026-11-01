@@ -46,8 +46,8 @@ intermediate release archives were removed to free space; shared CI caches remai
 **Validation**
 
 - [x] Launch each app, verify readiness and routed APIs/streams or controls.
-- [ ] Verify shared sessions, final artifacts and cleanup after session expiry.
-- [ ] Check independent generations, selected concurrency and available memory.
+- [x] Verify shared sessions, final artifacts and cleanup after session expiry.
+- [x] Check independent generations, selected concurrency and available memory.
 
 Evidence: archive and per-file checksums passed on EC2. All four apps reached
 readiness and passed routed checks. Storage produced binary snapshot/activity
@@ -57,7 +57,13 @@ reported five conditions and accepted fail/healthy controls concurrently.
 The existing Dataflow live decoder test also passed from the ARM worker against
 EC2: four node identities, 649 aligned step/activity pairs, lineage links and
 reconnect deduplication. All four apps passed independent first-viewer expiry
-while a second viewer kept each generation ready. Final expiry is being checked.
+while a second viewer kept each generation ready. Storage and both Fault apps
+finalized after final-viewer expiry; their outputs were 5,263,703, 95,842 and
+96,509 bytes respectively. Both Storage captures validated as MCAP. Dataflow
+initially failed publication because its shutdown marker was absent; health
+checks timed out under concurrent load. A repeat generation finalized normally
+and published a four-node summary with 9,409 completed results and zero capture
+losses. No OOM event was recorded. The failed generation remained unpublished.
 With all four running, about 338 MiB remained available; swap use was about
 219 MiB. Manager peak memory was about 96 MiB with no restarts.
 
@@ -66,13 +72,13 @@ With all four running, about 338 MiB remained available; swap use was about
 **Work items**
 
 - [x] Check EC2 kernel BTF, cgroups and BPF capabilities.
-- [ ] Qualify System Monitor, MCAP Recorder and CPU Viewer individually.
-- [ ] Keep unsupported apps disabled and record concrete blockers.
+- [x] Qualify System Monitor, MCAP Recorder and CPU Viewer individually.
+- [x] Keep unsupported apps disabled and record concrete blockers.
 
 **Validation**
 
-- [ ] Verify real telemetry, delivery counts and finalized artifacts.
-- [ ] Verify bounded memory and cleanup; distinguish ARM builds from EC2 runtime.
+- [x] Verify real telemetry, delivery counts and finalized artifacts.
+- [x] Measure memory and verify cleanup; distinguish ARM builds from EC2 runtime.
 - [ ] Review public changes for credentials and private connection details.
 
 Kernel inspection passed: Linux 7.0.0-1014-aws, readable BTF, cgroup v2, and
@@ -80,7 +86,41 @@ Kernel inspection passed: Linux 7.0.0-1014-aws, readable BTF, cgroup v2, and
 are enabled; qualification uses only the capabilities in the existing app recipes.
 No persistent kernel security settings were changed. The real attachment probe
 reported `attachment_verified=true`. A separate task-accounting run at capacity
-32768 completed with `collected=2 published=2 dropped=0`.
+32768 completed with `collected=2 published=2 dropped=0`. All three native
+apps passed readiness, independent viewer expiry, final publication and cleanup.
+Published outputs: System Monitor 22,761,127 bytes; MCAP Recorder 10,105,132;
+CPU Viewer 14,627,920. MCAP publication verified producer delivery counts.
+The CPU Viewer live decoder test passed from the ARM worker: source `bpf`,
+238 snapshots, 15 dictionary packets, valid rates, reconnect names and no invalid
+timestamps. Measured steady ingress was about 10 messages/second. CUDA and
+Orchestrator Lab remain outside this host profile.
 
 Full workspace CI, GPU qualification and automatic recording retention are
 outside this pass. Record focused checks and deferred coverage beside each result.
+
+
+## M4 — Public anonymous HTTPS
+
+**Work items**
+
+- [x] Configure the public Caddy hostname and persistent certificate storage.
+- [x] Set the manager origin to the HTTPS URL; redirect private bridge browsing there.
+- [ ] Open public TCP 80/443 through the EC2 security group.
+
+**Validation**
+
+- [ ] Verify public DNS, trusted TLS and HTTP-to-HTTPS redirects.
+- [ ] Verify anonymous SPA delivery, app launch, routed stream and retained downloads.
+- [ ] Verify existing app concurrency, viewer leases and result retention behavior.
+
+The user requested anonymous public play. Existing concurrency and viewer-lease
+behavior are preserved. Recordings persist until operator removal. Public host
+configuration uses the [Caddy template](../caddy/Caddyfile.public); operator
+connection details and certificate private keys stay outside Git.
+
+Public configuration passed `caddy validate` and systemd unit checks. The gateway
+listens on TCP 80/443; the manager remains on loopback. Local checks returned
+HTTP 308 to HTTPS and HTTP 302 from the private bridge. Public DNS points to the
+VM and has no conflicting AAAA/CAA records. External connections to 80/443 timed
+out, and ACME validation reported the same network blockage. Certificate retries
+are paused until the operator opens the security-group rules.

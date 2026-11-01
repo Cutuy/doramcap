@@ -62,3 +62,14 @@ Each app is a separate repository scope. Its next launch stops and verifies old
 writers, discards leftover overlay data, and removes owned containers and networks
 before preparing a new run. Unexpected reset failures block that launch. Other
 apps may run concurrently. Save any old upper data you need before launching again.
+
+## Public HTTPS
+
+Use [Caddyfile.public](../caddy/Caddyfile.public), replacing its example hostname
+in both blocks. Set the manager's `--origin` to that hostname's HTTPS origin.
+Point its DNS A record at the VM and allow inbound TCP 80/443. Keep the manager
+on loopback; mount persistent, private Caddy `/data` and `/config` directories so
+certificates survive restarts. The private loopback entry redirects to HTTPS.
+
+The public template serves anonymous viewers and preserves the gallery's existing
+app concurrency, viewer leases and operator-managed result retention.
