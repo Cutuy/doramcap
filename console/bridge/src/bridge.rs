@@ -24,7 +24,7 @@ pub struct Encoded {
 }
 
 /// Shared frame source. Publishing never blocks on clients.
-pub struct Hub {
+pub struct Bridge {
     state: Mutex<State>,
     sender: broadcast::Sender<Encoded>,
 }
@@ -34,7 +34,7 @@ struct State {
     latest: BTreeMap<Arc<str>, Encoded>,
 }
 
-impl Default for Hub {
+impl Default for Bridge {
     fn default() -> Self {
         Self {
             state: Mutex::default(),
@@ -43,7 +43,7 @@ impl Default for Hub {
     }
 }
 
-impl Hub {
+impl Bridge {
     /// Assign the stream's next sequence, retain the frame as latest and fan it out.
     /// Returns false when the payload exceeds MAX_PAYLOAD_BYTES and was skipped.
     pub fn publish(&self, stream: &str, payload: &[u8], received_unix_ns: u64) -> bool {
@@ -94,7 +94,7 @@ pub struct Subscription {
 }
 
 impl Subscription {
-    /// Next frame not yet delivered to this client; `None` after the hub closes.
+    /// Next frame not yet delivered to this client; `None` after the bridge closes.
     pub async fn next(&mut self) -> Option<Arc<Vec<u8>>> {
         loop {
             let frame = match self.replay.pop_front() {
@@ -125,14 +125,14 @@ mod tests {
     #[tokio::test]
     async fn new_clients_receive_latest_frame_per_stream_then_live_frames() {
         // Arrange
-        let hub = Hub::default();
-        hub.publish("cpu", b"a", 1);
-        hub.publish("cpu", b"b", 2);
-        hub.publish("faults", b"c", 3);
-        let mut client = hub.subscribe();
+        let bridge = Bridge::default();
+        bridge.publish("cpu", b"a", 1);
+        bridge.publish("cpu", b"b", 2);
+        bridge.publish("faults", b"c", 3);
+        let mut client = bridge.subscribe();
 
         // Act
-        hub.publish("cpu", b"d", 4);
+        bridge.publish("cpu", b"d", 4);
         let frames: Vec<_> = [
             client.next().await,
             client.next().await,
@@ -161,12 +161,12 @@ mod tests {
     #[tokio::test]
     async fn lagging_clients_skip_frames_and_observe_gaps() {
         // Arrange
-        let hub = Hub::default();
-        let mut client = hub.subscribe();
+        let bridge = Bridge::default();
+        let mut client = bridge.subscribe();
 
         // Act
         for index in 0..(CLIENT_BACKLOG as u64 + 10) {
-            hub.publish("cpu", &index.to_le_bytes(), index);
+            bridge.publish("cpu", &index.to_le_bytes(), index);
         }
         let first = decode(client.next().await.unwrap());
 
@@ -177,12 +177,12 @@ mod tests {
     #[tokio::test]
     async fn oversized_payloads_are_skipped_with_a_sequence_gap() {
         // Arrange
-        let hub = Hub::default();
-        let mut client = hub.subscribe();
+        let bridge = Bridge::default();
+        let mut client = bridge.subscribe();
 
         // Act
-        let oversized = hub.publish("cpu", &vec![0; MAX_PAYLOAD_BYTES + 1], 1);
-        hub.publish("cpu", b"ok", 2);
+        let oversized = bridge.publish("cpu", &vec![0; MAX_PAYLOAD_BYTES + 1], 1);
+        bridge.publish("cpu", b"ok", 2);
 
         // Assert
         assert!(!oversized);
