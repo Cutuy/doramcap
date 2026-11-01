@@ -1,5 +1,6 @@
 {
   "rules": [
+    {"from": "telemetry-mcap", "forbid": ["monitor-core", "cgroup-bpf", "task-accounting", "telemetry-protocol", "system-monitor"]},
     {"from": "orchestrator", "forbid": ["workload-*", "bollard", "monitor-core", "task-accounting", "telemetry-protocol"]},
     {"from": "workflow-protocol", "forbid": ["monitor-core", "task-accounting", "telemetry-protocol", "orchestrator", "workload-*"]},
     {"from": "telemetry-protocol", "forbid": ["cpu-viewer", "workflow-protocol"]},

@@ -1,0 +1,40 @@
+syntax = "proto3";
+package doramcap.recorder.v1;
+
+message RecorderConfig {
+  string output_path = 1;
+  // Defaults to output_path + ".report.pbtxt". Both files are created exclusively.
+  string report_path = 2;
+  repeated Input input = 3;
+}
+message Input {
+  string input = 1;
+  string topic = 2;
+  string message_encoding = 3;
+  string schema_name = 4;
+  string schema_encoding = 5;
+  // Relative to the config file; CPU validation supplies its embedded schema.
+  string schema_path = 6;
+  enum Validation { RAW_BYTES = 0; CPU_SNAPSHOT = 1; CPU_DICTIONARY = 2; }
+  Validation validation = 7;
+  // Raw inputs: decimal-string Unix nanoseconds. Empty means unavailable.
+  string timestamp_key = 8;
+  // Raw inputs: decimal-string u32. Empty means sequence unavailable (MCAP zero).
+  string sequence_key = 9;
+}
+message RecordingReport {
+  enum State { RUNNING = 0; DRAINED = 1; INTERRUPTED = 2; FAILED = 3; }
+  State state = 1;
+  bool finalized = 2;
+  string error = 3;
+  repeated InputReport input = 4;
+  // Dora has no per-input queue loss counter. Producer loss may also be unknown.
+  bool transport_loss_unknown = 5;
+}
+message InputReport {
+  string input = 1;
+  uint64 received = 2;
+  uint64 written = 3;
+  optional uint64 producer_dropped_batches = 4;
+  optional uint64 producer_capacity_overflow = 5;
+}

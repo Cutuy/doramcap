@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry_protocol::{DictionaryEntry, Frame as Envelope, VERSION};
 
+mod recording;
+
 const PERIOD: Duration = Duration::from_millis(100);
 
 struct Options {
@@ -26,6 +28,7 @@ struct Options {
     output: Option<PathBuf>,
     publisher_delay: Duration,
     record: Option<PathBuf>,
+    record_config: Option<PathBuf>,
     record_buffered: bool,
     record_rotate_bytes: u64,
 }
@@ -44,6 +47,7 @@ impl Options {
             output: None,
             publisher_delay: Duration::ZERO,
             record: None,
+            record_config: None,
             record_buffered: false,
             record_rotate_bytes: 0,
         };
@@ -64,6 +68,7 @@ impl Options {
                 }
                 "--output" => opts.output = Some(value(&mut args, &arg)?.into()),
                 "--record" => opts.record = Some(value(&mut args, &arg)?.into()),
+                "--record-config" => opts.record_config = Some(value(&mut args, &arg)?.into()),
                 "--record-buffered" => opts.record_buffered = true,
                 "--record-rotate-bytes" => {
                     opts.record_rotate_bytes = value(&mut args, &arg)?.parse()?
@@ -77,7 +82,7 @@ impl Options {
                 }
                 "--help" | "-h" => {
                     println!(
-                        "system-monitor [--check | --check-bpf] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
+                        "system-monitor [--check | --check-bpf] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-config FILE.pbtxt] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
                     );
                     std::process::exit(0);
                 }
@@ -383,10 +388,11 @@ fn run(opts: Options) -> Result<()> {
         .record
         .as_deref()
         .map(|path| {
-            telemetry_mcap::embedded::Recorder::create(
+            recording::Recorder::create(
                 path,
                 !opts.record_buffered,
                 opts.record_rotate_bytes,
+                opts.record_config.as_deref(),
             )
         })
         .transpose()?;
@@ -505,7 +511,7 @@ fn run(opts: Options) -> Result<()> {
                                         dictionary.revision,
                                         snapshot.capture_unix_ns,
                                         _payload.len(),
-                                        |out| _payload.copy_to(out),
+                                        |out| out.copy_from_slice(_payload),
                                     )?;
                                 }
                                 Ok(())
@@ -553,7 +559,7 @@ fn run(opts: Options) -> Result<()> {
                                         snapshot.sequence,
                                         snapshot.capture_unix_ns,
                                         _payload.len(),
-                                        |out| _payload.copy_to(out),
+                                        |out| out.copy_from_slice(_payload),
                                     )?;
                                 }
                                 Ok(())

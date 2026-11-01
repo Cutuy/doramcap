@@ -8,7 +8,7 @@ stop_seconds: 50
 result_file: "cpu.mcap"
 recording_count {
   count_file: "published.count"
-  topic: "doramcap/snapshots"
+  topic: "doramcap/cpuacct"
 }
 env_prefix: "CPU_VIEWER"
 requires_explicit_enable: true

@@ -98,7 +98,7 @@ fn audit_recording(root: &Path) -> String {
     let mut sequences = Vec::new();
     for message in mcap::MessageStream::new(&bytes).unwrap() {
         let message = message.unwrap();
-        if message.channel.topic == "doramcap/snapshots" {
+        if message.channel.topic == "doramcap/cpuacct" {
             let frame = telemetry_protocol::decode(&message.data).unwrap();
             assert_eq!(frame.source, "bpf");
             assert_eq!(frame.snapshot.dropped_batches, 0);
@@ -189,7 +189,7 @@ async fn native_recorded_workflow() {
     let snapshots: Vec<_> = mcap::MessageStream::new(&bytes)
         .unwrap()
         .map(|message| message.unwrap())
-        .filter(|message| message.channel.topic == "doramcap/snapshots")
+        .filter(|message| message.channel.topic == "doramcap/cpuacct")
         .collect();
     assert!(!snapshots.is_empty());
     assert!(
@@ -1771,6 +1771,20 @@ async fn compose_public_run(outcome: &str) {
     let payload = packet.encode_to_vec();
     let payload_file = root.join("payload.pb");
     std::fs::write(&payload_file, &payload).unwrap();
+    let recorder_config = root.join("recorder.pbtxt");
+    std::fs::write(
+        &recorder_config,
+        include_str!("../../../apps/mcap-recorder/deploy/reusable/cpu.pbtxt")
+            .replace(
+                "/results/cpu.mcap",
+                results.join("recording.mcap").to_str().unwrap(),
+            )
+            .replace(
+                "/results/cpu.report.pbtxt",
+                results.join("recording.report.pbtxt").to_str().unwrap(),
+            ),
+    )
+    .unwrap();
     let run = format!("mixed-{}", std::process::id());
     std::fs::write(root.join("run-id"), &run).unwrap();
     let artifacts = root.join(&run);
@@ -1805,10 +1819,11 @@ async fn compose_public_run(outcome: &str) {
                 "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
                 "security_opt":["seccomp=unconfined"],
                 "entrypoint":["/recorder"],
-                "command":[results.join("recording.mcap")],
+                "command":["--config", "/config/recorder.pbtxt"],
                 "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
                 "volumes":[
                     {"type":"bind", "source":recorder, "target":"/recorder", "read_only":true},
+                    {"type":"bind", "source":recorder_config, "target":"/config/recorder.pbtxt", "read_only":true},
                     {"type":"bind", "source":runtime, "target":runtime},
                     {"type":"bind", "source":results, "target":results}
                 ]

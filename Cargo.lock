@@ -3024,7 +3024,13 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "mcap",
+ "monitor-core",
  "prost",
+ "prost-build",
+ "prost-reflect",
+ "protoc-bin-vendored",
+ "serde_json",
  "telemetry-mcap",
  "telemetry-protocol",
 ]
@@ -5157,13 +5163,18 @@ dependencies = [
  "ctrlc",
  "dora-app",
  "eyre",
+ "libc",
  "mcap",
  "monitor-core",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "protoc-bin-vendored",
  "serde",
  "serde_json",
+ "storage-persistence",
  "system-monitor-dora",
  "task-accounting",
- "telemetry-mcap",
  "telemetry-protocol",
 ]
 
@@ -5198,12 +5209,7 @@ name = "telemetry-mcap"
 version = "0.1.0"
 dependencies = [
  "eyre",
- "libc",
  "mcap",
- "monitor-core",
- "prost",
- "storage-persistence",
- "telemetry-protocol",
 ]
 
 [[package]]

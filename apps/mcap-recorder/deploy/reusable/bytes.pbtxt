@@ -1,0 +1,7 @@
+output_path: "/results/workload.mcap"
+report_path: "/results/workload.report.pbtxt"
+input {
+  input: "data"
+  topic: "workload/data"
+  message_encoding: "application/octet-stream"
+}

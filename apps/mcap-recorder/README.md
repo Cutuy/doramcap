@@ -1,26 +1,28 @@
 # MCAP recorder
 
-An independent DORA subscriber that records snapshot and dictionary topics using
-[`telemetry-mcap`](../../libs/telemetry/mcap/). Each recording embeds the Protobuf
-schema and preserves original payloads, sequence and capture timestamps. The
-process refuses to overwrite an existing recording and drains normal input
-closure before finalization.
+A Dora subscriber that records configured byte inputs using
+[`telemetry-mcap`](../../libs/telemetry/mcap/). Each channel declares its topic,
+encoding and optional schema. CPU snapshot/dictionary modes validate telemetry
+before writing and preserve its original payloads and capture timestamps.
+
+![Recording paths](docs/110126-recording-paths.svg)
+
+- **This recorder** records declared Dora outputs through `telemetry-mcap`'s generic
+  `RecordingSink`, which uses the `mcap` crate without io_uring.
+- **Embedded writers** stay in their apps. The CPU monitor's writer lives in
+  `system-monitor` and uses `storage-persistence`.
+- **Live view** uses Console's [live bridge](../../console/bridge/README.md) on the same outputs.
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
-dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
+cargo build --release --locked -p mcap-recorder
+mcap-recorder --config apps/mcap-recorder/deploy/reusable/bytes.pbtxt
 ```
 
-The demo configuration records ten native CPU samples. See the
-[viewer guide](../cpu-viewer/docs/running.md) for composing live consumers.
-Install `libs/telemetry/protocol/python/requirements.txt`, then validate transport,
-embedded schemas, recording contents and finite-session shutdown:
+The process requires a Dora attachment and writable configured output directory.
+It creates recordings exclusively, drains normal input closure and writes a
+separate report distinguishing finalization from drain and known loss evidence.
+Use `deploy/reusable/cpu.pbtxt` for CPU accounting channels.
 
-```sh
-sudo /path/to/venv/bin/python apps/mcap-recorder/tests/validate_dora.py --dora /path/to/dora --runs 2
-```
-
-Use `--bin-dir` with a custom Cargo target directory. `--backend bpf` requires
-native build features and permission to load BPF programs.
-
-[Docker deployment and gallery registration](deploy/README.md).
+[Configuration, artifacts and reusable deployment](deploy/reusable/README.md) ·
+[Gallery deployment](deploy/README.md) ·
+[CPU viewer guide](../cpu-viewer/docs/running.md)

@@ -63,12 +63,12 @@ def read_messages(path):
                 schema_id, topic = channels[channel_id]
                 frame = unpack(data[22:], schemas[schema_id])
                 if frame.WhichOneof('body') == 'dictionary':
-                    assert topic == 'doramcap/dictionary' and frame.dictionary.entries
+                    assert topic == 'doramcap/cpuacct/dictionary' and frame.dictionary.entries
                     assert sequence == frame.dictionary.revision & 0xFFFFFFFF
                     assert log_time == publish_time == frame.dictionary.capture_unix_ns
                     dictionaries.append(frame)
                     continue
-                assert topic == 'doramcap/snapshots'
+                assert topic == 'doramcap/cpuacct'
                 payload = snapshot(frame)
                 assert sequence == payload["sequence"] & 0xFFFFFFFF
                 assert log_time == publish_time == payload["capture_unix_ns"]
@@ -99,11 +99,14 @@ def run_session(args, run):
         for binary in ("system-monitor", "mcap-recorder"):
             shutil.copy2(args.bin_dir / binary, work / binary)
         output = work / "session.mcap"
+        config = work / "recorder.pbtxt"
+        template = (Path(__file__).resolve().parents[1] / 'deploy/reusable/cpu.pbtxt').read_text()
+        config.write_text(template.replace('/results/cpu.mcap', str(output)).replace('/results/cpu.report.pbtxt', str(work / 'report.pbtxt')))
         descriptor = work / "dataflow.yml"
         descriptor.write_text(json.dumps({"nodes": [
             {"id": "monitor", "path": str(work / "system-monitor"),
              "args": f"--backend {args.backend} --samples 10 --records 16384 --dora", "outputs": ["snapshots", "dictionary"]},
-            {"id": "recorder", "path": str(work / "mcap-recorder"), "args": str(output),
+            {"id": "recorder", "path": str(work / "mcap-recorder"), "args": f"--config {config}",
              "inputs": {"snapshots": {"source": "monitor/snapshots", "queue_size": 64}, "dictionary": {"source": "monitor/dictionary", "queue_size": 4}}},
         ]}))  # JSON is a YAML subset.
         subprocess.run([args.dora, "run", str(descriptor), "--stop-after", "15s"],

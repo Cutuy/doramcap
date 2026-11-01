@@ -1,0 +1,21 @@
+# The experiment supplies user, output/config mounts and approved Dora connection.
+services:
+  workload-recorder:
+    image: doramcap/mcap-recorder-only:local
+    entrypoint: [/usr/local/bin/mcap-recorder]
+    command: [--config, /config/recorder.pbtxt]
+    network_mode: host
+    environment:
+      DORAMCAP_READY_FILE: /tmp/mcap-recorder.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/mcap-recorder.ready]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 30s

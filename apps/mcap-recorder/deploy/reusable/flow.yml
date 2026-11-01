@@ -1,0 +1,10 @@
+# The assembler sets matching service/node IDs and selected workload outputs.
+# Dora 1.1 backpressure queues have a hard safety cap, not a lossless guarantee.
+nodes:
+  - id: workload-recorder
+    path: dynamic
+    inputs:
+      data:
+        source: workload/data
+        queue_size: 64
+        queue_policy: backpressure
