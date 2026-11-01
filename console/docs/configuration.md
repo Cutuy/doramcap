@@ -14,11 +14,8 @@ system_apps {
   default_selected: true
   input {
     directory: "/absolute/doramcap"
-    files: "apps/cpu-viewer/deploy/compose.yaml"
+    files: "apps/cpu-viewer/deploy/compose.capture.yaml"
     files: "/absolute/cpu-overrides.yaml"
-    environment { key: "CPU_VIEWER_UID" value: "0" }
-    environment { key: "CPU_VIEWER_GID" value: "0" }
-    environment { key: "CPU_VIEWER_RESULTS_DIR" value: "/absolute/existing-placeholder" }
   }
   graph: "/absolute/doramcap/apps/cpu-viewer/deploy/flow.yml"
   output_mounts { service: "monitor" target: "/results" }
@@ -29,9 +26,9 @@ system_apps {
 }
 ```
 
-The override sets `viewer.command` to bind the feed to that loopback port. App
-users must match the configured Dora participant identity. Output mounts replace
-the placeholder with the current run's artifact directory;
+The override sets explicit Compose `user` fields and `viewer.command` when host
+settings differ. Service users must match the configured Dora participant identity.
+Output mounts bind the current run's artifact directory;
 recording paths are relative to it. The current runtime requires stream growth
 before workload launch; using the MCAP path also verifies writer progress.
 
