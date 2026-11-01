@@ -40,18 +40,19 @@ and source-key conventions. Recorder ordinals never represent source sequences.
 The existing approved `dora_app::environment` readiness marker appears after
 subscriber attachment, file creation and channel initialization. The provided
 healthcheck uses that marker; consumers become ready before producers publish.
-Data arrival is a separate condition for Console to observe after launch.
+A recording declaration with an empty stream path waits for file creation.
+A configured stream additionally requires growth before workload launch.
 
 The recorder creates output and report files exclusively. `report_path` defaults
 to `output_path + ".report.pbtxt"`. The generated report records:
 
-- `RUNNING` initially; `DRAINED` after confirmed input closure and buffered drain.
-- `INTERRUPTED` on manual Dora stop or stream end without confirmed closure.
+- `RUNNING` initially; `DRAINED` after Dora stop or confirmed input closure and buffered drain.
+- `INTERRUPTED` on stream end without a stop request or confirmed input closure.
 - `FAILED` on invalid inputs, upstream errors or finalization failure.
 - Independent `finalized`, received/written counts and available CPU producer loss.
 
-The recorder drains buffered events after `Stop(AllInputsClosed)` until stream
-closure. On other errors it attempts footer finalization and reports both source
+The workflow explicitly stops system nodes. The recorder drains buffered events
+after every Dora stop cause until stream closure. On other errors it attempts footer finalization and reports both source
 and finalization failures. Interruption/error exits unsuccessfully even when the
 partial file is readable. Process kill or OS termination can leave `RUNNING`
 evidence and an unfinished file; the workflow must not publish it as complete.

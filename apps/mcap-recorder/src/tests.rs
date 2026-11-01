@@ -319,7 +319,7 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
 }
 
 #[test]
-fn manual_stop_reports_interruption_and_rejects_missing_declared_source_time() -> Result<()> {
+fn workflow_stop_drains_buffered_tail_and_validates_declared_source_time() -> Result<()> {
     // Arrange
     let temp = Temp::new()?;
     let mut recording = Recording::create(temp.config())?;
@@ -329,16 +329,19 @@ fn manual_stop_reports_interruption_and_rejects_missing_declared_source_time() -
         vec![
             event("data", b"partial", metadata()),
             Event::Stop(StopCause::Manual),
-            event("data", b"ignored", metadata()),
+            event("data", b"tail", metadata()),
         ]
         .into_iter(),
     );
-    assert!(recording.finish(state, result).is_err());
+    recording.finish(state, result)?;
     // Assert
     let report = temp.report()?;
-    assert_eq!(report.state, State::Interrupted as i32);
+    assert_eq!(report.state, State::Drained as i32);
     assert!(report.finalized);
-    assert_eq!(report.input[0].written, 1);
+    assert_eq!(report.input[0].written, 2);
+    let bytes = std::fs::read(temp.config().output_path)?;
+    let messages = mcap::MessageStream::new(&bytes)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    assert_eq!(messages[1].data.as_ref(), b"tail");
     // Arrange
     let bad = Temp::new()?;
     let mut config = bad.config();
