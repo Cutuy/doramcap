@@ -2,8 +2,9 @@
 
 # ARM64 gallery deployment
 
-Deploy the SPA and Activity Lab from remote main, based on
-`e056fc114302a9c2f77711166bad0aabd183b67c`. Build on the existing ARM worker;
+Deploy the SPA and Activity Lab from remote main. The initial build used
+`e056fc114302a9c2f77711166bad0aabd183b67c`; the final refresh includes remote main
+`bcbcea22f29d475b864c549be3009b630332a5e1`. Build on the existing ARM worker;
 ship prebuilt artifacts to the small EC2 host over SSH. Connection details and
 credentials stay outside Git. No GitHub deploy key or registry is required.
 
@@ -76,6 +77,7 @@ Activity Lab, 11 MiB combined for Dora, and 23 MiB for Caddy. The manager servic
 peaked at about 49 MiB during startup. These are observations, not capacity bounds.
 A host reboot verified automatic Docker/manager/Caddy startup and the active
 1 GiB swap file; the hosting API returned Activity Lab without manual startup.
+The first finalized recording remained downloadable after reboot.
 
 ## M3 — Exercise hosted app
 
@@ -118,3 +120,6 @@ full Rust cloud CI and Cursor review are pending. Full local workspace CI was
 deferred for this focused deployment change. Other demos, GPU execution,
 Kubernetes, load qualification and automatic recording retention are deferred.
 The ARM worker build/tests and EC2 runtime checks above are separate evidence.
+
+Activation preserves `/opt/doramcap-gallery/workspace` across release changes
+so repository-scoped admission and recovery retain the same identity.

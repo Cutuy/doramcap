@@ -11,6 +11,7 @@ for build/runtime evidence and [hosting](../../docs/hosting.md) for lifecycle be
 |---|---|
 | `/opt/doramcap-gallery/releases/REVISION/` | Root-owned release bundle |
 | `/opt/doramcap-gallery/current` | Active release symlink |
+| `/opt/doramcap-gallery/workspace/` | Stable app deployment paths and admission identity |
 | `/var/lib/doramcap-gallery/` | Gallery-owned private results and manager lock |
 | `/tmp/doramcap-experiments-*` | Lifecycle admission and reset state |
 
@@ -42,6 +43,8 @@ sha256sum -c SHA256SUMS
 cat SOURCE_REVISION IMAGES
 sudo systemctl stop doramcap-gallery-caddy doramcap-gallery
 sudo docker load -i images/arm64.tar.gz
+sudo install -d -o root -g root -m 755 /opt/doramcap-gallery/workspace
+sudo cp -a workspace/. /opt/doramcap-gallery/workspace/
 sudo install -o root -g root -m 644 systemd/*.service /etc/systemd/system/
 sudo ln -sfn "/opt/doramcap-gallery/releases/$REVISION" /opt/doramcap-gallery/current
 sudo systemctl daemon-reload
@@ -51,9 +54,13 @@ curl --fail http://127.0.0.1:8096/api/hosting/apps
 ```
 
 For rollback, stop both services, reload the previous bundle's images to restore
-the app, Dora and Caddy tags, reinstall that release's systemd units, switch `current`
+the app, Dora and Caddy tags, restore its `workspace/` files to the stable host
+workspace, reinstall that release's systemd units, switch `current`
 to that release, run `systemctl daemon-reload`, and start both services.
-Keep the previous workspace and private recordings until recovery is verified.
+Keep the canonical host workspace path stable across releases: the workflow
+uses it for admission and recovery ownership. Verify teardown before replacing
+its files. Keep previous release files and private recordings until recovery
+is verified.
 
 ## Access and maintenance
 
