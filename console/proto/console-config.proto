@@ -1,0 +1,38 @@
+syntax = "proto3";
+package doramcap.console.v1;
+import "compose.proto";
+import "dora.proto";
+
+message ConsoleConfig {
+  string listen_address = 1;
+  string project_root = 2;
+  string data_root = 3;
+  string docker_socket = 4;
+  string access_secret_file = 5;
+  repeated SystemAppDefinition system_apps = 6;
+  doramcap.dora.v1.DoraRuntime dora = 9;
+  string public_origin = 7;
+  RuntimeConfig runtime = 8;
+}
+
+// Omitted fields preserve defaults; explicit zero is invalid.
+message RuntimeConfig {
+  optional uint32 readiness_seconds = 1; // Default: 60.
+  optional uint32 stop_seconds = 2; // Default: 15.
+  optional uint32 sample_interval_ms = 3; // Default: 100; also bounds activity publication cadence.
+}
+
+
+message OutputMount { string service = 1; string target = 2; }
+message SystemAppDefinition {
+  string id = 1;
+  string label = 2;
+  bool default_selected = 3;
+  doramcap.compose.v1.ComposeProject input = 4;
+  repeated RecordingOutput recordings = 5;
+  string cpu_feed_url = 6;
+  string graph = 7;
+  repeated OutputMount output_mounts = 8;
+}
+
+message RecordingOutput { string id = 1; string path = 2; string stream = 3; bool cpu = 4; }
