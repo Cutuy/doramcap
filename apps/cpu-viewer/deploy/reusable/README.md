@@ -9,6 +9,7 @@ Console's [live bridge](../../../../console/bridge/README.md) relays it to brows
 | `cpu-recording.yaml` | Recorder; writes `/results/cpu.mcap` |
 | `cpu-flow.yml` | Dora graph; node IDs match service names |
 
+- **Images:** build the [system-monitor image](../../../system-monitor/deploy/README.md) (includes `dora`) and #34's recorder-only image.
 - **Overrides:** images, identity, collector capacities and a writable `/results`.
 - **Recorder config:** mount #34's `cpu.pbtxt` read-only at `/config/recorder.pbtxt`.
 - **Live view:** declare `cpu-monitor/snapshots` and `cpu-monitor/dictionary` as `CPU_ACCOUNTING` `live_outputs`.
