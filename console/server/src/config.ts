@@ -52,5 +52,7 @@ export function validateConfig(config: Config) {
     throw new Error('runtime.stop_seconds must be in 1..300');
   if (runtime.sampleIntervalMs < 1) throw new Error('runtime.sample_interval_ms must be positive');
   config.runtime = runtime;
+  if (config.liveBridge && (!config.liveBridge.image || !config.liveBridge.port || config.liveBridge.port > 65535))
+    throw new Error('live_bridge requires an image and a port in 1..65535');
   validateApps(config.systemApps);
 }

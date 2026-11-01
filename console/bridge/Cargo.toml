@@ -1,0 +1,25 @@
+[package]
+name = "console-live-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "live-bridge"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+dora-app = { path = "../../libs/dora-app" }
+dora-node-api = { version = "=1.1.0", default-features = false }
+eyre = "0.6"
+futures-util = "0.3"
+prost = "0.14"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal"] }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[lints]
+workspace = true

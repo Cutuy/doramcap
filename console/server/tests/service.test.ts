@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
 import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
-import { wire, execution, workflow, type NativeExecution } from '../src/native.js';
+import { readFile } from 'node:fs/promises';
+import { live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
 
 class Engine implements NativeExecution {
   starts = 0;
@@ -17,11 +18,13 @@ class Engine implements NativeExecution {
   rejectAdmission = '';
   profileNames: string[] = [];
   needsProfiles = false;
+  inspected?: Parameters<NativeExecution['inspect']>[0];
   async profiles() {
     return execution.Profiles.create({ names: this.profileNames });
   }
   async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
     if (this.needsProfiles && !request.projects[0].profiles?.length) throw new Error('EmptySelection');
+    this.inspected = request;
     return execution.Inspection.create({
       plan: { services: { worker: { imageId: 'sha256:approved' } } },
       snapshot: { manifestSha256: 'approved' },
@@ -49,7 +52,7 @@ class Engine implements NativeExecution {
     this.release?.();
   }
 }
-async function fixture(recording = false, cpuFeed = false) {
+async function fixture(recording = false, liveOutput = false, systemApps?: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'console-service-')),
     project = join(root, 'project');
   await mkdir(project);
@@ -62,14 +65,15 @@ async function fixture(recording = false, cpuFeed = false) {
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
   });
-  if (recording || cpuFeed)
+  if (liveOutput) config.liveBridge = { image: 'doramcap/live-bridge:local', port: 43190 };
+  if (recording || liveOutput)
     config.systemApps = [
       {
         id: 'recorder',
         defaultSelected: true,
         input: { directory: project, files: ['compose.yaml'] },
         recordings: recording ? [{ id: 'messages', path: 'nested/messages.mcap' }] : [],
-        cpuFeedUrl: cpuFeed ? 'ws://127.0.0.1:1/stream' : '',
+        liveOutputs: liveOutput ? [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }] : [],
       },
     ];
   validateConfig(config);
@@ -77,7 +81,7 @@ async function fixture(recording = false, cpuFeed = false) {
     store = await Store.open(config.dataRoot),
     backend = new ConsoleService(config, engine, store);
   const review = wire.Review.decode(
-    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project }).finish())),
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project, systemApps: systemApps && { ids: systemApps } }).finish())),
   );
   return { root, config, engine, backend, review };
 }
@@ -353,12 +357,12 @@ test('preflight failures return a safe classification and retain private diagnos
   }
 });
 
-test('disabled CPU capture produces no CPU data or metric samples', async () => {
+test('runs without live outputs report no live streams or metric samples', async () => {
   // Arrange
   const { root, engine, backend, review } = await fixture();
   try {
     // Act
-    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-capture' }).finish()));
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-live' }).finish()));
     await waitFor(() => engine.starts === 1);
     engine.release!();
     await start;
@@ -367,26 +371,56 @@ test('disabled CPU capture produces no CPU data or metric samples', async () => 
     // Assert
     assert.equal(status.phase, wire.Phase.RUNNING);
     assert.equal(status.recordings.length, 0);
-    assert.equal(status.cpuCaptureEnabled, false);
-    assert.equal(status.cpuSnapshots.length, 0);
+    assert.equal(status.liveStreams.length, 0);
     assert.equal(status.metrics.length, 0);
+    assert.ok(!review.systemApps.some((app) => app.id === 'live-bridge'));
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('review identifies selected CPU capture independently of recording', async () => {
+test('the selected live bridge subscribes to declared outputs through generated Dora and Compose inputs', async () => {
   // Arrange
-  const { root, backend, review } = await fixture(false, true);
+  const { root, engine, backend, review } = await fixture(false, true);
+  try {
+    const run = engine.inspected!;
+    const bridge = run.systemApps.find((project) => project.key === 'live-bridge')!;
+    const compose = JSON.parse(await readFile(bridge.files![0], 'utf8'));
+    const graph = JSON.parse(await readFile(run.dora!.graph!, 'utf8'));
+    // Assert
+    assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.TELEMETRY_PACKET]]);
+    const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
+    assert.deepEqual([option.label, option.selected, option.required], ['Live telemetry', true, false]);
+    assert.equal(compose.services['live-bridge'].image, 'doramcap/live-bridge:local');
+    assert.deepEqual(compose.services['live-bridge'].command, ['--port', '43190']);
+    assert.equal(compose.services['live-bridge'].network_mode, 'host');
+    const node = graph.nodes.find((node: { id: string }) => node.id === 'live-bridge');
+    assert.equal(node.inputs.recorder_0.source ?? node.inputs.recorder_0, 'monitor/snapshots');
+    // Act
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'live' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!();
+    await start;
+    const status = wire.Status.decode(await backend.status());
+    // Assert
+    assert.deepEqual(status.liveStreams, review.liveStreams);
+    assert.deepEqual(status.systemApps!.ids, ['live-bridge', 'recorder']);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('deselecting the live bridge removes its service, graph node and streams', async () => {
+  // Arrange / Act
+  const { root, engine, backend, review } = await fixture(false, true, ['recorder']);
   try {
     // Assert
-    assert.equal(review.cpuCaptureEnabled, true);
-    assert.equal(review.recordings.length, 0);
-    // Act
-    const unselected = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project'), systemApps: { ids: [] } }).finish())));
-    // Assert
-    assert.equal(unselected.cpuCaptureEnabled, false);
+    assert.equal(review.liveStreams.length, 0);
+    assert.equal(review.systemApps.find((app) => app.id === 'live-bridge')!.selected, false);
+    assert.ok(!engine.inspected!.systemApps.some((project) => project.key === 'live-bridge'));
+    assert.ok(!engine.inspected!.dora?.graph);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

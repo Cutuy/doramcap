@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { loadConfig, validateConfig } from '../src/config.js';
-import { capabilities, wire } from '../src/native.js';
+import { capabilities, live, wire } from '../src/native.js';
 import { selectApps, validateApps, appOptions, discover } from '../src/system-apps.js';
 import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -51,7 +51,14 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
   assert.throws(() => selectApps(apps, ['recorder', 'recorder']));
   assert.equal(appOptions(apps, []).filter((app) => app.required && app.selected).length, 2);
   assert.throws(() => validateApps([{ ...apps[0], recordings: [{ id: 'messages', path: '../outside' }] }]));
-  assert.throws(() => validateApps([{ ...apps[0], cpuFeedUrl: 'ws://remote.example/stream' }]));
+  assert.throws(() => validateApps([{ ...apps[0], id: 'live-bridge' }]));
+  for (const liveOutputs of [
+    [{ source: 'monitor', kind: live.Kind.TELEMETRY_PACKET }],
+    [{ source: 'monitor/snapshots' }],
+    [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }, { source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }],
+  ])
+    assert.throws(() => validateApps([{ ...apps[0], liveOutputs }]));
+  validateApps([{ ...apps[0], liveOutputs: [{ source: 'monitor/snapshots', kind: live.Kind.TELEMETRY_PACKET }] }]);
 });
 
 test('project discovery confines canonical paths and detects native input changes', async () => {

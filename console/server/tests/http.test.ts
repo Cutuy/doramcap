@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { request as httpRequest } from 'node:http';
 import { createConsoleServer } from '../src/http.js';
-import { wire, type ConsoleBackend } from '../src/native.js';
+import { live, wire, type ConsoleBackend } from '../src/native.js';
 import { routes, MEDIA_TYPE, LIMITS } from '../src/generated/transport.js';
 
 test('authentication, Origin, size and field validation precede native mutations', async () => {
@@ -16,6 +16,7 @@ test('authentication, Origin, size and field validation precede native mutations
   const selections: (string[] | undefined)[] = [];
   const native: ConsoleBackend = {
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
+    frames: () => () => {},
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
     start: async input => { const key = wire.StartRequest.decode(input).requestKey; if (key === 'stopped') throw new Error('Stopped'); if (key === 'rejected') throw new Error('PreflightRejected'); if (key === 'closing') throw new Error('Closing'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
@@ -81,9 +82,11 @@ test('authentication, Origin, size and field validation precede native mutations
 
 test('live feed forwards binary Rust frames with opaque cursors at a bounded cadence', async () => {
   // Arrange
-  let calls = 0; let statuses = 0;
+  let calls = 0; let statuses = 0; let subscribers = 0;
   const cursors: number[] = [];
+  const bridgeFrame = Buffer.from(live.Frame.encode({ stream: 'cpu-monitor_0', sequence: 7, payload: Buffer.from([1, 2, 3]) }).finish());
   const native: ConsoleBackend = {
+    frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
     status: async () => { statuses++; return Buffer.alloc(0); },
@@ -105,17 +108,21 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
     const response = await fetch(url,{headers:{cookie:auth},signal:controller.signal});
     assert.equal(response.headers.get('content-type'),'application/x-protobuf');
     const reader = response.body!.getReader();
-    let pending = Buffer.alloc(0); let frames = 0;
+    let pending = Buffer.alloc(0); let frames = 0; const relayed: Buffer[] = [];
     const started = performance.now();
     while (frames < 3) {
       const {value,done} = await reader.read(); assert.equal(done,false);
       pending = Buffer.concat([pending,Buffer.from(value!)]);
       while(pending.length>=4 && pending.length>=4+pending.readUInt32LE(0)) {
         const length=pending.readUInt32LE(0);
-        assert.equal(wire.Status.decode(pending.subarray(4,4+length)).sequence.toString(),'9007199254740993');
-        pending=pending.subarray(4+length); frames++;
+        const message = wire.LiveMessage.decode(pending.subarray(4,4+length));
+        if (message.frame?.length) relayed.push(Buffer.from(message.frame));
+        else { assert.equal(wire.Status.decode(message.status!).sequence.toString(),'9007199254740993'); frames++; }
+        pending=pending.subarray(4+length);
       }
     }
+    // Assert: bridge frames are relayed byte-for-byte beside status updates.
+    assert.deepEqual(relayed, [bridgeFrame]);
     // Assert: no JSON/status round trip; the native cursor is passed back unchanged.
     assert.equal(statuses,0); assert.deepEqual(cursors.slice(0,3),[0,1,2]);
     assert.ok(performance.now()-started>=150,'feed must not spin unbounded');
@@ -125,5 +132,8 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
     assert.equal(busy.status,503);
     assert.equal(wire.ConsoleError.decode(new Uint8Array(await busy.arrayBuffer())).code,'Busy');
     controller.abort(); await reader.cancel().catch(()=>{});
+    // Assert: closed browser streams unsubscribe from bridge frames.
+    for (let i = 0; i < 100 && subscribers; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(subscribers, 0);
   } finally { controller.abort(); server.closeAllConnections(); server.close(); await once(server,'close'); }
 });

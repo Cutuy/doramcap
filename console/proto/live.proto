@@ -1,0 +1,17 @@
+syntax = "proto3";
+package doramcap.console.live.v1;
+
+// Payload codec of one declared Dora output; the browser selects its decoder by kind.
+enum Kind {
+  KIND_UNSPECIFIED = 0;
+  TELEMETRY_PACKET = 1; // doramcap.telemetry.v1.Packet
+  FAULT_PUBLICATION = 2; // doramcap.fault.v1.AggregationPublication
+}
+
+// One Dora input message relayed unmodified by the live bridge.
+message Frame {
+  string stream = 1; // Bridge input ID.
+  uint64 sequence = 2; // Per stream, starting at one; gaps denote skipped frames.
+  uint64 received_unix_ns = 3; // Bridge receive time.
+  bytes payload = 4; // Producer bytes.
+}

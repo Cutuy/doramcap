@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 300" font-family="system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+  </defs>
+  <rect width="860" height="300" fill="#fff"/>
+  <g fill="#eef5f3" stroke="#177763" stroke-width="1.5">
+    <rect x="20" y="40" width="150" height="44" rx="6"/>
+    <rect x="20" y="110" width="150" height="44" rx="6"/>
+    <rect x="20" y="180" width="150" height="44" rx="6"/>
+  </g>
+  <g text-anchor="middle">
+    <text x="95" y="67">CPU monitor</text>
+    <text x="95" y="137">Fault Watchdog</text>
+    <text x="95" y="207">Other system apps</text>
+  </g>
+  <rect x="215" y="40" width="120" height="184" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <text x="275" y="125" text-anchor="middle">Dora daemon</text>
+  <text x="275" y="143" text-anchor="middle" fill="#555" font-size="12">shared IPC</text>
+  <rect x="385" y="96" width="140" height="72" rx="6" fill="#fff6e5" stroke="#b7791f" stroke-width="1.5"/>
+  <text x="455" y="125" text-anchor="middle">Live bridge</text>
+  <text x="455" y="143" text-anchor="middle" fill="#555" font-size="12">optional system app</text>
+  <rect x="575" y="96" width="120" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="635" y="125" text-anchor="middle">Console server</text>
+  <text x="635" y="143" text-anchor="middle" fill="#555" font-size="12">auth · fan-out</text>
+  <rect x="745" y="96" width="95" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="792" y="125" text-anchor="middle">Browser</text>
+  <text x="792" y="143" text-anchor="middle" fill="#555" font-size="12">decode · render</text>
+  <g stroke="#555" stroke-width="1.5" marker-end="url(#a)">
+    <line x1="170" y1="62" x2="213" y2="62"/>
+    <line x1="170" y1="132" x2="213" y2="132"/>
+    <line x1="170" y1="202" x2="213" y2="202"/>
+    <line x1="335" y1="132" x2="383" y2="132"/>
+    <line x1="525" y1="132" x2="573" y2="132"/>
+    <line x1="695" y1="132" x2="743" y2="132"/>
+  </g>
+  <g fill="#333" font-size="12" text-anchor="middle">
+    <text x="359" y="122">outputs</text>
+    <text x="549" y="112">WebSocket</text>
+    <text x="549" y="126">Frame</text>
+    <text x="719" y="112">/api/live</text>
+    <text x="719" y="126">Status | frame</text>
+  </g>
+</svg>

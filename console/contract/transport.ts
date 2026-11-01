@@ -32,7 +32,7 @@ export const routes = {
   start: { method: 'POST', path: '/api/start', status: 202, request: wire.StartRequest, response: wire.StartResponse },
   stop: { method: 'POST', path: '/api/stop', status: 200, request: wire.StopRequest, response: wire.StopResponse },
   current: { method: 'GET', path: '/api/current', status: 200, response: wire.Status },
-  live: { method: 'GET', path: '/api/live', status: 200, response: wire.Status },
+  live: { method: 'GET', path: '/api/live', status: 200, response: wire.LiveMessage },
   error: wire.ConsoleError,
 } as const;
 export const artifactPath = (runId: string, kind: string) =>

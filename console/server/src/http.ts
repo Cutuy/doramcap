@@ -121,17 +121,23 @@ export function createConsoleServer(config: HttpOptions) {
         response.writeHead(routes.live.status, { 'content-type': MEDIA_TYPE, 'cache-control': 'no-store', 'x-accel-buffering': 'no', 'x-content-type-options': 'nosniff' });
         response.flushHeaders();
         let cursor = Buffer.alloc(0);
+        const message = (body: { status?: Uint8Array; frame?: Uint8Array }) => frame(routes.live.response.encode(body).finish());
+        let unsubscribe: (() => void) | undefined;
         try {
           while (!response.destroyed) {
             const tick = performance.now();
             const update = await config.backend.update(cursor);
             if (response.destroyed) break;
-            const writable = response.write(frame(update.data));
+            const writable = response.write(message({ status: update.data }));
+            // Subscribe after the first status names the streams; a lagging browser drops frames.
+            unsubscribe ??= config.backend.frames((bytes) => {
+              if (!response.destroyed && response.writableLength <= LIMITS.frameBytes) response.write(message({ frame: bytes }));
+            });
             cursor = Buffer.from(update.cursor);
             if (!writable) await once(response, 'drain', {signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)])});
             await delay(Math.max(0, LIMITS.liveIntervalMs - (performance.now() - tick)), undefined, {signal: controller.signal});
           }
-        } finally { streams--; response.destroy(); }
+        } finally { unsubscribe?.(); streams--; response.destroy(); }
         return;
       }
       if (request.method === routes.current.method && url.pathname === routes.current.path) {

@@ -27,5 +27,5 @@ Use `--port PORT` for an exact server port. For a headless host, append
 `--ssh user@workstation`; the output includes a command to run on the browser
 computer. `--browser-port PORT` selects its local tunnel port.
 
-[HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Recovery](docs/recovery.md) ·
+[HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Live bridge](bridge/README.md) · [Recovery](docs/recovery.md) ·
 [System app specification](docs/103026-system-apps-plan.md)

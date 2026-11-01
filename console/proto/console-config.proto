@@ -2,6 +2,7 @@ syntax = "proto3";
 package doramcap.console.v1;
 import "compose.proto";
 import "dora.proto";
+import "live.proto";
 
 message ConsoleConfig {
   string listen_address = 1;
@@ -13,6 +14,7 @@ message ConsoleConfig {
   doramcap.dora.v1.DoraRuntime dora = 9;
   string public_origin = 7;
   RuntimeConfig runtime = 8;
+  LiveBridge live_bridge = 10; // Absent hides the live bridge system app.
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
@@ -30,9 +32,14 @@ message SystemAppDefinition {
   bool default_selected = 3;
   doramcap.compose.v1.ComposeProject input = 4;
   repeated RecordingOutput recordings = 5;
-  string cpu_feed_url = 6;
   string graph = 7;
   repeated OutputMount output_mounts = 8;
+  repeated LiveOutput live_outputs = 9; // Relayed when the live bridge is selected.
 }
+
+// Prebuilt bridge image and its loopback WebSocket port.
+message LiveBridge { string image = 1; uint32 port = 2; }
+// One Dora output, "node/output", and the codec of its payload bytes.
+message LiveOutput { string source = 1; doramcap.console.live.v1.Kind kind = 2; }
 
 message RecordingOutput { string id = 1; string path = 2; string stream = 3; bool cpu = 4; }

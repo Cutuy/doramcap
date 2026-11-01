@@ -1,5 +1,6 @@
 import { MEDIA_TYPE, LIMITS, isErrorCode, type ErrorCode } from './generated/transport';
 import { readLive } from './live';
+import type { Frame } from './streams';
 
 export * from './protocol';
 import { wire, routes, type Snapshot } from './protocol';
@@ -59,7 +60,7 @@ export function createClient(fetcher: typeof fetch = fetch) {
     stop: (runId: string) =>
       request(routes.stop, routes.stop.request.encode(wire.StopRequest.create({ runId })).finish(), fetcher),
     current: () => request(routes.current, undefined, fetcher),
-    live: (consume: (status: Snapshot) => void, signal: AbortSignal) => readLive(consume, signal, fetcher),
+    live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame?: (frame: Frame) => void) => readLive(consume, signal, fetcher, frame),
   };
 }
 export const api = createClient();

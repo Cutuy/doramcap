@@ -12,6 +12,7 @@ import { SystemApps } from './SystemApps';
 import { cpuRecordingEnabled } from './api';
 import { doramcap } from './generated/console';
 import { PageFrame } from './ui/PageFrame';
+import { Kind, LiveModel } from './streams';
 import type { Snapshot, Step } from './api';
 
 const step: Step = workflow.Event.fromObject({ session: 'session', executor: 'local', invocation: '9007199254740993', step: 'module::LaunchProjects', state: StepState.FAILED, durationNs: '100000000', elapsedNs: '1200000000', parent: '9007199254740994', dependencies: ['9007199254740995'], sequence: '9007199254740996', error: 'step failed' });
@@ -51,8 +52,10 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   const snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'run', steps: [step], sequence: '1', truncatedSteps: '0' });
   // Act
   const historical = renderToStaticMarkup(<RunActivity snapshot={snapshot} stopping={false} disconnected={false} historical/>);
-  const absent = renderToStaticMarkup(<RunMetrics disconnected incomplete/>);
-  const zero = renderToStaticMarkup(<RunMetrics samples={[wire.RunMetric.fromObject({elapsedNs:'1000000000',recordingBytes:'0',writeBytesPerSecond:0,cpuPercent:0,cpuCores:8})]} historical/>);
+  const model = new LiveModel();
+  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.TELEMETRY_PACKET })]);
+  const absent = renderToStaticMarkup(<RunMetrics live={model.view()} disconnected incomplete/>);
+  const zero = renderToStaticMarkup(<RunMetrics samples={[wire.RunMetric.fromObject({elapsedNs:'1000000000',recordingBytes:'0',writeBytesPerSecond:0})]} live={model.view()} historical/>);
   // Assert
   assert.match(historical, /Completed run/);
   assert.doesNotMatch(historical, /Retained view|512 invocations|1200 metric samples/);
@@ -60,8 +63,8 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   assert.match(absent, /Connection lost/);
   assert.match(absent, /incomplete/);
   assert.match(zero, /0 B/);
-  assert.match(zero, /0.0%/);
-  assert.match(zero, /8 cores/);
+  assert.match(zero, /0 B\/s/);
+  assert.doesNotMatch(zero, /Connection lost/);
   assert.match(zero, /Top CPU consumers/);
   assert.match(zero, /Capture health/);
   assert.doesNotMatch(zero, /Inclusive ancestors|recorder boundary/);
@@ -102,10 +105,16 @@ test('system app choices reflect selection and disabled recording stays distinct
 
 test('CPU consumers show reported cgroup names with an ID tooltip and numeric fallback', () => {
   // Arrange
-  const cpuSnapshots = [1,2].map(sequence=>doramcap.telemetry.v1.Snapshot.fromObject({sequence,monotonicEndNs:sequence*100000000,records:[{cgroupId:'9007199254740993',parentId:0,cpu:0,flags:1,runtimeNs:sequence*10000000}]}));
+  const telemetry = doramcap.telemetry.v1;
+  const model = new LiveModel();
+  model.configure('run', [wire.LiveStream.create({ id: 'cpu_0', appId: 'cpu', kind: Kind.TELEMETRY_PACKET })]);
+  const packet = (sequence: number, dictionary: object[] = []) => doramcap.console.live.v1.Frame.create({ stream: 'cpu_0', sequence, payload: telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId: 's', dictionary, snapshot: { sequence, monotonicEndNs: sequence * 100000000, records: [{ cgroupId: '9007199254740993', parentId: 0, cpu: 0, flags: 1, runtimeNs: sequence * 10000000 }] } } })).finish() });
+  model.receive(packet(1));
+  model.receive(packet(2));
+  const missing = renderToStaticMarkup(<RunMetrics live={model.view()}/>);
   // Act
-  const named = renderToStaticMarkup(<RunMetrics cpuSnapshots={cpuSnapshots} cpuGroupNames={[wire.CpuGroupName.fromObject({id:'9007199254740993',name:'worker.service'})]}/>);
-  const missing = renderToStaticMarkup(<RunMetrics cpuSnapshots={cpuSnapshots}/>);
+  model.receive(packet(3, [{ id: '9007199254740993', path: '/system.slice/worker.service' }]));
+  const named = renderToStaticMarkup(<RunMetrics live={model.view()}/>);
   // Assert
   assert.match(named, /title="Cgroup 9007199254740993">worker.service/);
   assert.match(named, /worker.service core utilization/);
@@ -145,13 +154,13 @@ test('required infrastructure is selected and disabled independently of optional
   assert.equal((html.match(/disabled=""/g) ?? []).length, 1);
 });
 
-test('disabled capture hides all CPU and recording panels', () => {
+test('runs without live streams show CPU and recording panels as disabled', () => {
   // Arrange
-  const samples = [wire.RunMetric.fromObject({ elapsedNs: '1000000000', cpuPercent: 50, cpuCores: 2 })];
+  const samples = [wire.RunMetric.fromObject({ elapsedNs: '1000000000' })];
   // Act
-  const html = renderToStaticMarkup(<RunMetrics samples={samples} recordingEnabled={false} captureEnabled={false}/>);
+  const html = renderToStaticMarkup(<RunMetrics samples={samples} recordingEnabled={false} live={new LiveModel().view()}/>);
   // Assert
   assert.equal((html.match(/>Disabled</g) ?? []).length, 4);
-  assert.doesNotMatch(html, /50.0%/);
+  assert.doesNotMatch(html, /Faults/);
   assert.doesNotMatch(html, /Unavailable/);
 });

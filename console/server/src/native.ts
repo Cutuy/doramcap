@@ -9,7 +9,7 @@ export const wire = doramcap.console.v1;
 export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
 export const workflow = doramcap.workflow.v1;
-export const viewer = doramcap.viewer.v1;
+export const live = doramcap.console.live.v1;
 // The addon ABI stays private; application code uses the generated message types.
 type RawExecution = Omit<NativeExecution, 'profiles' | 'inspect' | 'start' | 'poll'> & {
   profiles(input: Buffer): Promise<Buffer>;
@@ -64,6 +64,8 @@ export interface ConsoleBackend {
   start(input: Buffer): Promise<Buffer>;
   status(): Promise<Buffer>;
   update(cursor: Buffer): Promise<{ data: Buffer; cursor: Buffer }>;
+  /** Replay latest bridge frames, then forward live ones; returns the unsubscribe function. */
+  frames(consume: (frame: Buffer) => void): () => void;
   stop(input: Buffer): Promise<Buffer>;
   openArtifact(runId: string, kind: string): Promise<number>;
   close(): Promise<void>;
