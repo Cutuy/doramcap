@@ -65,6 +65,39 @@ impl ComposeConfiguration<'_> {
             stderr,
         })
     }
+    /// List declared profiles under the caller's explicit execution identity.
+    pub(crate) async fn profiles(
+        &self,
+        run: &str,
+        project: &ComposeProject,
+        name: &str,
+    ) -> Result<Vec<String>> {
+        validate_name(run)?;
+        validate_name(&project.key)?;
+        let mut project = project.clone();
+        project.profiles.clear();
+        project.services.clear();
+        let (directory, mut args, _) = config_arguments(&project, name).await?;
+        args.extend(["config".into(), "--profiles".into()]);
+        let (output, _) = compose(
+            &self.adapter.socket,
+            &directory,
+            &project.environment,
+            &args,
+            Duration::from_secs(60),
+        )
+        .await?;
+        let mut profiles: Vec<_> = output
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
+        profiles.sort();
+        profiles.dedup();
+        Ok(profiles)
+    }
+
     /// Freeze supplied Compose inputs and pinned image IDs into private launch artifacts.
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
