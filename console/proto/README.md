@@ -5,7 +5,8 @@
 - `console.proto`: browser requests, status and private display checkpoints.
 - [Native API](../server/native/index.d.ts): addon capabilities and execution transport.
 
-TypeScript generates all three schemas. Rust generates configuration and execution
+The TypeScript server generates all three schemas and uses their message types in
+the native client API. Its adapter owns protobuf encoding and decoding. Rust generates configuration and execution
 schemas, reusing the existing Compose, Dora and workflow types.
 
 Start resolves after workflow preflight accepts the supplied configuration snapshot.

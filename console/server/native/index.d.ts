@@ -1,23 +1,31 @@
-/** Protobuf execution transport implemented by the Rust addon. */
+import type { doramcap } from '../src/generated/console.cjs';
+
+/** Typed execution client; the TypeScript adapter owns native serialization. */
 export interface NativeExecution {
-  /** Encode ProfilesRequest; decode Profiles. */
-  profiles(input: Buffer): Promise<Buffer>;
-  /** Encode RunRequest; decode Inspection containing the plan and configuration snapshot. */
-  inspect(input: Buffer): Promise<Buffer>;
-  /** Encode StartRequest; resolve after preflight accepts, before workflow completion. */
-  start(input: Buffer): Promise<Buffer>;
+  profiles(
+    request: doramcap.console.execution.v1.ProfilesRequest,
+  ): Promise<doramcap.console.execution.v1.Profiles>;
+  /** Resolve the plan and configuration snapshot without starting execution. */
+  inspect(
+    request: doramcap.console.execution.v1.RunRequest,
+  ): Promise<doramcap.console.execution.v1.Inspection>;
+  /** Resolve after preflight accepts, before workflow completion. */
+  start(
+    run: doramcap.console.execution.v1.RunRequest,
+    expected: doramcap.compose.v1.ConfigurationSnapshot,
+  ): Promise<void>;
   /** Signal the active run's observation loop; completion is reported by poll(). */
   stop(runId: string): Promise<void>;
-  /** Decode ExecutionUpdate; drains bounded events and retains the terminal result. */
-  poll(): Buffer;
+  /** Drain bounded events and retain the terminal result across polls. */
+  poll(): doramcap.console.execution.v1.ExecutionUpdate;
   /** Stop the active workflow, await cleanup and join the owner thread. */
   close(): Promise<void>;
 }
 
 /** Native capabilities used by the TypeScript Console application. */
 export interface NativeCapabilities {
-  /** Decode ConsoleConfig pbtxt into protobuf bytes; validation belongs to the caller. */
-  parseConfig(text: string): Buffer;
+  /** Parse ConsoleConfig pbtxt; validation belongs to the caller. */
+  parseConfig(text: string): doramcap.console.v1.ConsoleConfig;
   /** Expand a caller-approved Dora graph into native graph JSON bytes. */
   expandGraph(path: string): Promise<Buffer>;
   /** Hold an exclusive process lock until close or handle release. */

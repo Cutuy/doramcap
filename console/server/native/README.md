@@ -4,7 +4,10 @@ Executes the recorded Compose workflow on its owner thread and exposes native
 parsing, file and lock capabilities to the TypeScript server.
 
 See the [API declarations](index.d.ts) and [protobuf contracts](../../proto/README.md).
-The server loads the compiled library through N-API.
+The server's TypeScript adapter implements this typed API using generated protobuf
+messages. The compiled N-API library exchanges protobuf bytes behind that adapter;
+application callers use the generated message types. The server generation step
+provides the referenced `src/generated/console.cjs` module.
 
 ```sh
 cargo build --release --locked -p console-native
