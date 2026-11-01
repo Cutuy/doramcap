@@ -94,15 +94,16 @@ pub struct ResolvedRun {
 /// Resolve inputs using the execution path, without reset, reservation, mounts or containers.
 /// `spec.artifacts` must name a new private directory beneath an existing parent.
 /// Callers compare the snapshot with fresh preparation in the runner's preflight callback.
-pub async fn resolve(adapter: &DockerAdapter, mut spec: ComposeRun) -> Result<ResolvedRun> {
+pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
     // Resolve runtime settings and validate the request.
-    super::super::shared_dora::resolve(&mut spec.dora, &spec.artifacts)?;
-    super::super::shared_dora::validate_endpoints(&spec.dora)?;
+    let mut runtime = spec.dora.clone();
+    super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
+    super::super::shared_dora::validate_endpoints(&runtime)?;
     model::validate(&spec)?;
     crate::evidence::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     // Freeze Dora inputs and merge apps while recording their startup stages.
-    let dora = super::super::shared_dora::prepare(&spec.dora, &artifacts).await?;
+    let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
     let mut model = json!({"services":{}});
     let mut system_services = Vec::new();
     let mut user_services = Vec::new();

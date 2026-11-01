@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1010" viewBox="0 0 1400 1010" role="img" aria-labelledby="title desc">
+  <title id="title">Compose resolution and launch validation</title>
+  <desc id="desc">Inspection and launch preparation share the same resolver. Inspection emits a frozen plan and configuration snapshot. Launch resets the repository scope, resolves fresh inputs and captures its filesystem baseline. The caller compares snapshots in preflight before daemon reservation, overlay preparation and container startup.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#52677c"/></marker>
+    <style>
+      text{font-family:'DejaVu Sans',sans-serif;fill:#18324a}
+      .title{font-size:30px;font-weight:700}.heading{font-size:23px;font-weight:700}
+      .body{font-size:19px}.label{font-size:17px;fill:#52677c}
+      .card{fill:#fff;stroke:#bed0e2;stroke-width:1.5}
+      .line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1400" height="1010" fill="white"/>
+  <text x="40" y="48" class="title">Compose resolution and launch validation</text>
+
+  <rect x="40" y="90" width="560" height="95" rx="12" fill="#fff6df" stroke="#d6bb75"/>
+  <text x="64" y="128" class="heading">Inspect · ComposeRun</text>
+  <text x="64" y="160" class="body">App inputs · graph · run settings</text>
+  <rect x="800" y="90" width="560" height="95" rx="12" fill="#edf4ff" stroke="#afc9eb"/>
+  <text x="824" y="128" class="heading">Launch · controller + reset</text>
+  <text x="824" y="160" class="body">Stop old writers · clear owned resources</text>
+  <path d="M320 185V215H650V243" class="line"/>
+  <path d="M1080 185V215H750V243" class="line"/>
+
+  <rect x="410" y="245" width="580" height="125" rx="12" fill="#f0f8f5" stroke="#acd1c1"/>
+  <text x="434" y="282" class="heading">preparation::resolve</text>
+  <text x="434" y="316" class="body">Merge apps · validate graph · freeze inputs</text>
+  <text x="434" y="347" class="body">Pin images · capture ConfigurationSnapshot</text>
+  <path d="M650 370V405H320V438" class="line"/>
+  <path d="M750 370V405H1080V438" class="line"/>
+
+  <rect x="40" y="440" width="560" height="130" rx="12" class="card"/>
+  <text x="64" y="478" class="heading">ResolvedRun</text>
+  <text x="64" y="511" class="body">Frozen plan · stages · graph · snapshot</text>
+  <text x="64" y="544" class="body">Generated paths and automatic ports normalized</text>
+  <rect x="800" y="440" width="560" height="130" rx="12" class="card"/>
+  <text x="824" y="478" class="heading">PrepareRun → PreparedRun</text>
+  <text x="824" y="511" class="body">Fresh resolution + configuration snapshot</text>
+  <text x="824" y="544" class="body">Observation + filesystem baseline</text>
+  <path d="M1080 570V643" class="line"/>
+  <path d="M320 570V610H710V695H798" class="line"/>
+  <text x="410" y="598" class="label">inspected snapshot</text>
+
+  <rect x="800" y="645" width="560" height="100" rx="12" fill="#edf4ff" stroke="#afc9eb"/>
+  <text x="824" y="683" class="heading">Caller preflight check</text>
+  <text x="824" y="718" class="body">Compare inspected and prepared snapshots</text>
+  <rect x="40" y="645" width="560" height="100" rx="12" fill="#fff0e7" stroke="#d8b49a"/>
+  <text x="64" y="683" class="heading">Reject launch</text>
+  <text x="64" y="718" class="body">Return input or preflight error</text>
+  <path d="M840 745V785H320V747" class="line"/>
+  <text x="470" y="774" class="label">mismatch / check error</text>
+  <path d="M1080 745V823" class="line"/>
+  <text x="1100" y="790" class="label">accepted</text>
+
+  <rect x="800" y="825" width="560" height="140" rx="12" fill="#f0f8f5" stroke="#acd1c1"/>
+  <text x="824" y="863" class="heading">Reserve and execute</text>
+  <text x="824" y="895" class="body">Verify namespace · reserve Dora · prepare overlays</text>
+  <text x="824" y="927" class="body">Dora → system apps stable → adopted apps</text>
+  <rect x="40" y="825" width="560" height="140" rx="12" class="card"/>
+  <text x="64" y="863" class="heading">Stop and finalize</text>
+  <text x="64" y="895" class="body">Adopted apps → system drain → Dora</text>
+  <text x="64" y="927" class="body">Verify recordings · filesystem policy · cleanup</text>
+  <path d="M800 920H602" class="line"/>
+  <text x="643" y="906" class="label">stop</text>
+</svg>

@@ -2006,6 +2006,76 @@ async fn compose_public_run(outcome: &str) {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker and prebuilt images; creates no containers"]
+async fn independent_inspection_and_preparation_have_equal_configuration_snapshots() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    write(
+        &root.path().join("worker.json"),
+        serde_json::json!({"services":{"worker":{
+            "image":image, "network_mode":"host",
+            "working_dir":"${DORAMCAP_DORA_RUNTIME_DIR:?}",
+            "volumes":["${DORAMCAP_DORA_RUNTIME_DIR:?}:${DORAMCAP_DORA_RUNTIME_DIR:?}"],
+            "environment":{"DORAMCAP_READY_FILE":"${DORAMCAP_DORA_RUNTIME_DIR:?}/worker.ready"},
+            "healthcheck":{"test":["CMD", "test", "-s", "${DORAMCAP_DORA_RUNTIME_DIR:?}/worker.ready"]}
+        }}}),
+    );
+    let spec = ComposeRun {
+        id: "inspected".into(),
+        artifacts: root.path().join("inspection"),
+        filesystem: None,
+        repository_root: root.path().into(),
+        system_apps: vec![project(root.path(), "worker")],
+        projects: vec![],
+        dora: Default::default(),
+        recordings: vec![],
+        readiness_seconds: 10,
+        stop_seconds: 3,
+    };
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+    let executor = Rc::new_cyclic(|weak| {
+        let mut executor = orchestrator::LocalExecutor::default();
+        workload_docker::workflows::steps::register(
+            &mut executor,
+            adapter.clone(),
+            Default::default(),
+        );
+        let backend = adapter.clone();
+        let weak = weak.clone();
+        executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
+            adapter: backend.clone(),
+            executor: weak.clone(),
+        });
+        executor
+    });
+
+    // Act
+    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+    let mut execution = spec.clone();
+    execution.id = "prepared".into();
+    execution.artifacts = root.path().join("execution");
+    let prepared = executor
+        .run::<preparation::PrepareRun>(execution)
+        .await
+        .unwrap()
+        .into_value();
+
+    // Assert
+    assert_ne!(
+        inspected.dora.runtime_directory,
+        prepared.dora.runtime_directory
+    );
+    assert_eq!(inspected.snapshot, prepared.snapshot);
+    support::assert_no_run_resources(&adapter, &spec.id).await;
+    support::assert_no_run_resources(&adapter, "prepared").await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker and prebuilt images; creates no containers"]
 async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
     // Arrange
     let root = std::env::temp_dir().join(format!("experiment-inputs-{}", std::process::id()));

@@ -9,9 +9,12 @@ named volumes remain separate; reset never replays interrupted host writes.
 Compose handles configuration and container launch; Bollard verifies ownership,
 readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 
-Module relationships and execution barriers:
+Inspection and launch preparation share resolution; the caller compares their
+configuration snapshots before reservation and startup.
 
-![Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
+![Compose resolution and launch](docs/103126-compose-resolution.svg)
+
+[Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
 # async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
