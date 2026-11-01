@@ -143,14 +143,16 @@
       "id": "orchestration",
       "title": "Workflow execution",
       "category": "Runtime",
-      "summary": "Run observable Rust steps, supervise Compose workloads and collect filesystem changes before cleanup.",
+      "summary": "Run observable Rust steps, supervise Compose and Supervisor workloads, and collect filesystem changes before cleanup.",
       "status": "building-blocks",
-      "limits": "Docker Compose execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
+      "limits": "Docker Compose and Supervisor execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
       "components": [
+        "apps/console",
         "apps/orchestrator-demo",
         "crates/orchestrator",
         "crates/workload-docker",
-        "crates/workload-lifecycle"
+        "crates/workload-lifecycle",
+        "crates/workload-supervisor"
       ],
       "integrations": [
         "linux"
@@ -205,7 +207,7 @@
       "group": "execution",
       "summary": "Planned integration.",
       "url": "https://developer.nvidia.com/docs/drive/drive-os/7.0.3/public/drive-os-linux-sdk-api-ref/nvmedia__2d__sci_8h.html",
-      "status": "platform-dependent",
+      "status": "planned",
       "components": [],
       "evidence": [
         "docs/roadmap.md"
@@ -221,7 +223,8 @@
         "crates/cuda-dora-shm",
         "apps/system-monitor",
         "apps/dataflow-tracing",
-        "apps/mcap-recorder"
+        "apps/mcap-recorder",
+        "crates/dora-app"
       ],
       "evidence": [
         "docs/vision.md",
@@ -265,8 +268,8 @@
     {
       "id": "repeat",
       "title": "Run and repeat an experiment",
-      "summary": "Run your workloads, inspect the results, and run again. doramcap captures recordings and execution evidence for each run and verifies workload cleanup before the next.",
-      "outcome": "Repeat experiments with recording and provenance handled by the workflow.",
+      "summary": "Run your existing Docker Compose workloads unchanged, side by side with doramcap. Inspect the results and run again: doramcap records each run, collects filesystem changes and verifies cleanup before the next.",
+      "outcome": "Repeat experiments on existing containers with recording and cleanup handled by doramcap.",
       "status": "illustrative",
       "capabilities": [
         "orchestration",
@@ -278,12 +281,14 @@
         "mcap"
       ],
       "components": [
+        "apps/console",
         "apps/orchestrator-demo",
         "apps/system-monitor",
         "crates/orchestrator",
         "crates/workload-docker"
       ],
       "evidence": [
+        "console/README.md",
         "apps/orchestrator-demo/README.md",
         "libs/workload-docker/docs/102926-shared-dora-experiment.md",
         "libs/workload-docker/docs/102626-filesystem-metadata.md"
@@ -381,33 +386,6 @@
       "evidence": [
         "apps/fault-demo/README.md",
         "apps/fault-watchdog/README.md"
-      ]
-    },
-    {
-      "id": "compose-run",
-      "title": "Zero-code adoption with Docker Compose",
-      "summary": "Run existing Docker Compose workloads without changing application code. doramcap orchestrates each run, records CPU activity and collects filesystem changes.",
-      "outcome": "Observe and record your existing containers with doramcap.",
-      "status": "illustrative",
-      "capabilities": [
-        "orchestration",
-        "resources",
-        "recording"
-      ],
-      "integrations": [
-        "linux",
-        "mcap"
-      ],
-      "components": [
-        "apps/orchestrator-demo",
-        "apps/system-monitor",
-        "crates/orchestrator",
-        "crates/workload-docker"
-      ],
-      "evidence": [
-        "apps/orchestrator-demo/README.md",
-        "libs/workload-docker/docs/102626-filesystem-metadata.md",
-        "libs/workload-docker/docs/102926-shared-dora-experiment.md"
       ]
     }
   ],

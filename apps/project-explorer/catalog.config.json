@@ -21,6 +21,10 @@
     "apps/orchestrator-demo": "Runtime",
     "libs/orchestrator": "Runtime",
     "libs/workload-docker": "Runtime",
-    "libs/workload-lifecycle": "Runtime"
+    "libs/workload-lifecycle": "Runtime",
+    "console": "Runtime",
+    "libs/dora-app": "Runtime",
+    "libs/session": "Runtime",
+    "libs/workload-supervisor": "Runtime"
   }
 }

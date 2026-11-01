@@ -76,13 +76,12 @@ export function directDependencies(catalog: Catalog, focus: string) {
 
 /** Show transitive dependencies and, for a focus, transitive dependents.
  * Traverse each direction separately to exclude unrelated sibling branches.
- * Category selects root components; dependencies outside that category stay visible.
  * A visited set terminates traversal even when dev/build declarations contain cycles.
  */
-export function dependencyChain(catalog: Catalog, focus: string, category: string, kinds: string[]) {
+export function dependencyChain(catalog: Catalog, focus: string, kinds: string[]) {
   const roots = focus
     ? directDependencies(catalog, focus).packages.map(p => p.name)
-    : catalog.packages.filter(p => !category || catalog.components.find(c => c.id === p.component)?.category === category).map(p => p.name);
+    : catalog.packages.map(p => p.name);
   const eligible = catalog.dependencies.filter(d => kinds.includes(d.kind));
   const walk = (reverse: boolean) => {
     const visited = new Set(roots);

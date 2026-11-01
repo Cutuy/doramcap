@@ -104,8 +104,6 @@ main.shell{padding-top:28px}
 .filters{width:100%}
 .search{flex:1;min-width:0}
 .search input{width:100%;min-width:0}
-.filters>label:first-child{width:100%}
-.filters select{width:100%}
 .intro p{font-size:14px}
 .related{width:100%}
 .graph-toolbar label{width:100%;justify-content:space-between}

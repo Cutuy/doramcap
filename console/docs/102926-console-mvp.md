@@ -91,7 +91,7 @@ After process loss, show “Interrupted” and mark unverified outcomes Unknown.
 | [Compose command helper](../../libs/workload-docker/src/compose/command.rs) | Reuse its socket, clean environment, argument handling, output limits and timeouts for profile discovery. |
 | [ComposeRunner::run_with_ready](../../libs/workload-docker/src/workflows/recorded_compose/mod.rs) | Calls `PrepareRun` internally, then mounts/launches. Add a review check immediately between those operations. |
 | [TelemetryObserver](../../libs/orchestrator/src/telemetry.rs) / [workflow-protocol](../../libs/telemetry/workflow-protocol/proto/workflow.proto) | Existing step events and codec; Console supplies transport and a bounded reducer. Observation repeats every 500 ms. |
-| [ComposeRunReport](../../libs/workload-docker/src/workflows/recorded_compose/mod.rs) / [system apps](../../libs/workload-docker/src/workflows/system_apps.rs) | Already produce outcome fields, `report.json` and `cpu.mcap`; no new recorder. |
+| [ComposeRunReport](../../libs/workload-docker/src/workflows/recorded_compose/mod.rs) / [system apps](../../libs/workload-docker/src/workflows/recorded_compose/preparation/model.rs) | Already produce outcome fields, `report.json` and `cpu.mcap`; no new recorder. |
 
 ## Deliverables and dependency order
 

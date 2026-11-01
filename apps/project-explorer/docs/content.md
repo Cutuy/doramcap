@@ -1,8 +1,8 @@
 # Content conventions
 
-The generator reads Cargo workspace members and README files under `apps/`.
-Library packages get individual crate pages; packages below `apps/<name>/` belong
-to that logical app. Frontend-only apps appear with no Cargo dependency edges.
+The generator reads Cargo workspace members and README files under `apps/` and
+`console/`. Library packages get individual crate pages; packages below
+`apps/<name>/` or `console/` belong to that logical app. Frontend-only apps appear with no Cargo dependency edges.
 
 - Titles humanize package names and preserve common acronyms.
 - Summaries use the first nonempty README paragraph.
@@ -23,8 +23,8 @@ Component pages list direct internal Cargo dependencies with an Explore link.
 The Dependencies tab shows transitive dependents above the highlighted selection and dependencies below it;
 shared nodes appear once. Optional/target-specific edges are dashed, and build/dev
 edges are opt-in. Selecting a node opens its inspector and component link. The original React Flow
-renderer provides connection handles, fitted layout, and pan/zoom controls. Category filters choose roots and retain their
-cross-category dependencies. Legacy depth parameters are ignored.
+renderer provides connection handles, fitted layout, and pan/zoom controls. Legacy
+depth and category parameters are ignored.
 
 The overview uses the versioned [mapping contract](overview-mappings.md). The build
 validates editorial mappings against the generated repository inventory.
