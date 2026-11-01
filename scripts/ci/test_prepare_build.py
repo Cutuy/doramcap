@@ -65,6 +65,31 @@ class PrepareBuildTests(unittest.TestCase):
         self.assertFalse((self.cache / 'generated.tmp').exists())
         self.assertEqual((first / 'libs/a.rs').read_text(), 'old')
 
+    def test_cached_symlinks_are_replaced_without_following_targets(self):
+        # Arrange
+        snapshot = self.snapshot('snapshot', {'apps/frontend/package.json': 'package'})
+        prepare_build.prepare(snapshot, self.cache)
+        outside = self.root / 'outside'
+        outside.mkdir()
+        sentinel = outside / 'sentinel'
+        sentinel.write_text('keep')
+        modules = self.cache / 'apps/frontend/node_modules'
+        (modules / '.bin').mkdir(parents=True)
+        (modules / '.bin/tsx').symlink_to('../tsx/cli.mjs')
+        (modules / 'external').symlink_to(outside, target_is_directory=True)
+        (self.cache / 'SOURCE.json').unlink()
+        (self.cache / 'SOURCE.json').symlink_to(sentinel)
+        (self.cache / 'apps/frontend').rename(self.cache / 'old-frontend')
+        (self.cache / 'apps/frontend').symlink_to(outside, target_is_directory=True)
+        # Act
+        prepare_build.prepare(snapshot, self.cache)
+        # Assert
+        self.assertFalse((self.cache / 'old-frontend').exists())
+        self.assertFalse((self.cache / 'apps/frontend').is_symlink())
+        self.assertFalse((self.cache / 'SOURCE.json').is_symlink())
+        self.assertEqual((self.cache / 'apps/frontend/package.json').read_text(), 'package')
+        self.assertEqual(sentinel.read_text(), 'keep')
+
     def test_permission_only_change(self):
         # Arrange
         first = self.snapshot('first', {'run.sh': 'echo ok'})

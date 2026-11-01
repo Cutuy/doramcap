@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Run as root on Ubuntu ARM64. Argument: authorized public-key file.
+# Run as root on Ubuntu ARM64. Arguments: public-key file and .node-version file.
 set -euo pipefail
-[[ $(uname -m) == aarch64 && $EUID == 0 && $# == 1 ]]
+[[ $(uname -m) == aarch64 && $EUID == 0 && $# == 2 ]]
+node_version=$(cat "$2")
 worker_tmp=$(mktemp -d)
 trap 'rm -rf -- "$worker_tmp"' EXIT
 export DEBIAN_FRONTEND=noninteractive
@@ -11,7 +12,6 @@ id doramcap-ci >/dev/null 2>&1 || useradd --create-home --shell /bin/bash doramc
 install -d -m 700 -o doramcap-ci -g doramcap-ci /home/doramcap-ci/.ssh
 install -m 600 -o doramcap-ci -g doramcap-ci "$1" /home/doramcap-ci/.ssh/authorized_keys
 # Install the repository-pinned Node runtime for unprivileged CI jobs.
-node_version=$(cat "$(dirname "$0")/../../.node-version")
 sudo -u doramcap-ci -H bash -s -- "$node_version" <<'NODE'
 set -euo pipefail
 node_archive="node-v$1-linux-arm64.tar.xz"

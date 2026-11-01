@@ -5,17 +5,9 @@ on:
     paths: &node-inputs
       - '.github/workflows/node.yml'
       - '.node-version'
-      - 'scripts/ci/test-node.mts'
-      - 'apps/*/frontend/**'
-      - 'apps/**/*.ts'
-      - 'apps/**/*.mts'
-      - 'apps/**/*.cts'
-      - 'apps/**/*.mjs'
-      - 'apps/**/*.cjs'
-      - 'apps/**/*.proto'
-      - 'libs/**/*.proto'
-      - '!**/*.md'
-      - '!**/*.svg'
+      - 'scripts/ci/**'
+      - 'apps/**'
+      - 'libs/**'
   pull_request:
     paths: *node-inputs
   workflow_dispatch:
