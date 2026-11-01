@@ -79,7 +79,7 @@ With all four running, about 338 MiB remained available; swap use was about
 
 - [x] Verify real telemetry, delivery counts and finalized artifacts.
 - [x] Measure memory and verify cleanup; distinguish ARM builds from EC2 runtime.
-- [ ] Review public changes for credentials and private connection details.
+- [x] Review public changes for credentials and private connection details.
 
 Kernel inspection passed: Linux 7.0.0-1014-aws, readable BTF, cgroup v2, and
 `kernel.io_uring_disabled=0`. Unprivileged BPF is disabled and perf restrictions
@@ -105,22 +105,28 @@ outside this pass. Record focused checks and deferred coverage beside each resul
 
 - [x] Configure the public Caddy hostname and persistent certificate storage.
 - [x] Set the manager origin to the HTTPS URL; redirect private bridge browsing there.
-- [ ] Open public TCP 80/443 through the EC2 security group.
+- [x] Open public TCP 80/443 through the EC2 security group.
 
 **Validation**
 
-- [ ] Verify public DNS, trusted TLS and HTTP-to-HTTPS redirects.
-- [ ] Verify anonymous SPA delivery, app launch, routed stream and retained downloads.
-- [ ] Verify existing app concurrency, viewer leases and result retention behavior.
+- [x] Verify public DNS, trusted TLS and HTTP-to-HTTPS redirects.
+- [x] Verify anonymous SPA delivery, app launch, routed stream and retained downloads.
+- [x] Verify existing app concurrency, viewer leases and result retention behavior.
 
 The user requested anonymous public play. Existing concurrency and viewer-lease
 behavior are preserved. Recordings persist until operator removal. Public host
 configuration uses the [Caddy template](../caddy/Caddyfile.public); operator
 connection details and certificate private keys stay outside Git.
 
-Public configuration passed `caddy validate` and systemd unit checks. The gateway
-listens on TCP 80/443; the manager remains on loopback. Local checks returned
-HTTP 308 to HTTPS and HTTP 302 from the private bridge. Public DNS points to the
-VM and has no conflicting AAAA/CAA records. External connections to 80/443 timed
-out, and ACME validation reported the same network blockage. Certificate retries
-are paused until the operator opens the security-group rules.
+Public configuration passed `caddy validate` and systemd unit checks. After the
+operator opened public TCP 80/443, trusted TLS succeeded with a Let's Encrypt
+certificate. Public HTTP returns 308 to HTTPS; the private bridge returns 302 to
+the public URL. DNS has no conflicting AAAA/CAA records. Certificate data/config
+storage is persistent and mode 0700; HTTPS remained valid after gateway restart.
+The application manager still listens only on loopback.
+
+Anonymous public checks passed HTML/JS/CSS delivery and all eight enabled app
+registrations, Activity launch/shared viewers, simultaneous Activity and Storage
+generations, secure WebSocket data, and a retained 5,263,703-byte MCAP download.
+The internal authorization route remains hidden. Authentication and new usage
+restrictions were not introduced; the deployment preserves existing behavior.
