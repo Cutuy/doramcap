@@ -15,6 +15,30 @@ fn path_value(value: &mut Value, artifacts: &Path) {
     }
 }
 
+// Generated runtime paths have the same meaning in every Compose field.
+fn runtime_paths(value: &mut Value, runtime: &str, replacement: &str) {
+    if runtime.is_empty() || runtime == replacement {
+        return;
+    }
+    match value {
+        Value::String(path) if path == runtime => *path = replacement.into(),
+        Value::String(text) => {
+            *text = text.replace(&format!("{runtime}/"), &format!("{replacement}/"));
+        }
+        Value::Array(values) => {
+            for value in values {
+                runtime_paths(value, runtime, replacement);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                runtime_paths(value, runtime, replacement);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn manifest(
     mut model: Value,
     artifacts: &Path,
@@ -38,6 +62,11 @@ fn manifest(
         }
     }
     // Normalize generated runtime paths and automatically assigned Dora endpoints.
+    runtime_paths(
+        &mut model,
+        &dora.runtime_directory,
+        &relative(&dora.runtime_directory, artifacts),
+    );
     if let Some(services) = model.get_mut("services").and_then(Value::as_object_mut) {
         for (name, service) in services {
             let runtime = [
@@ -51,8 +80,7 @@ fn manifest(
                         Path::new(source).starts_with(artifacts.join("inputs"))
                     });
                     let attachment = mount["target"] == dora.zenoh_overlay
-                        || mount["source"] == dora.zenoh_overlay
-                        || mount["source"] == dora.runtime_directory;
+                        || mount["source"] == dora.zenoh_overlay;
                     if frozen || runtime || systems.contains(name) || attachment {
                         path_value(&mut mount["source"], artifacts);
                     }
@@ -69,33 +97,7 @@ fn manifest(
                     if key == dora_app::environment::DAEMON_PORT && automatic_ports[1] {
                         *value = "@dora/daemon-port".into();
                     }
-                    if key == dora_app::environment::READY_FILE {
-                        path_value(value, artifacts);
-                    }
-                    if value == &dora.zenoh_overlay || (runtime && value == &dora.runtime_directory)
-                    {
-                        path_value(value, artifacts);
-                    }
-                }
-            }
-            if (runtime
-                || service["working_dir"]
-                    .as_str()
-                    .is_some_and(|path| Path::new(path).starts_with(&dora.runtime_directory)))
-                && let Some(directory) = service.get_mut("working_dir")
-            {
-                path_value(directory, artifacts);
-            }
-            if let Some(test) = service
-                .get_mut("healthcheck")
-                .and_then(|check| check.get_mut("test"))
-                .and_then(Value::as_array_mut)
-            {
-                for value in test {
-                    if value
-                        .as_str()
-                        .is_some_and(|path| Path::new(path).starts_with(&dora.runtime_directory))
-                    {
+                    if value == &dora.zenoh_overlay {
                         path_value(value, artifacts);
                     }
                 }
@@ -365,6 +367,8 @@ mod tests {
         let mut model = json!({"services":{"worker":{
             "image":"sha256:worker",
             "working_dir":directory,
+            "command":["--state",format!("{directory}/state.json"),format!("--log={directory}/worker.log")],
+            "entrypoint":[format!("{directory}/worker")],
             "healthcheck":{"test":["CMD", "test", "-s", ready]},
             "volumes":[{"type":"bind", "source":directory, "target":directory}],
             "environment":{dora_app::environment::READY_FILE:ready}
@@ -393,20 +397,13 @@ mod tests {
 
         // Assert
         assert_eq!(inspected, prepared);
-        assert_eq!(
-            prepared["services"]["worker"]["working_dir"],
-            "@artifacts/dora/runtime"
-        );
-        assert_eq!(
-            prepared["services"]["worker"]["healthcheck"]["test"][3],
-            "@artifacts/dora/runtime/worker.ready"
-        );
 
         // Act / Assert: user values that happen to contain an assigned port stay exact.
         for (field, value) in [
             ("command", json!(["--port", "7000"])),
             ("environment", json!({"CUSTOM":"7001"})),
             ("working_dir", json!("/different-directory")),
+            ("working_dir", json!("/execution/dora/runtime-unrelated")),
             (
                 "healthcheck",
                 json!({"test":["CMD", "test", "-s", "/different.ready"]}),
