@@ -52,6 +52,8 @@ function Gallery({ kind, route }: { kind: Kind; route: Route }) {
     {!visible.length && <div className="empty"><h2>No matching components</h2><p>Try another search or category.</p><a href={`#/${kind}`}>Clear filters</a></div>}
   </>;
 }
+// Console runs directly on the Docker host; the gallery never launches it.
+const headlessApps = new Set(['console']);
 function Launch({ component }: { component: Component }) {
   const [availability, setAvailability] = useState<'loading' | 'enabled' | 'disabled' | 'error'>('loading');
   const [ready, setReady] = useState(false);
@@ -63,7 +65,7 @@ function Launch({ component }: { component: Component }) {
     setAvailability('loading');
     setReady(false);
     setHeadless(false);
-    if (component.kind !== 'apps' || component.name === 'project-explorer') return;
+    if (component.kind !== 'apps' || component.name === 'project-explorer' || headlessApps.has(component.name)) return;
     async function refresh() {
       try {
         const response = await fetch(new URL('api/hosting/apps', base), { signal: AbortSignal.timeout(5000) });
@@ -92,7 +94,7 @@ function Launch({ component }: { component: Component }) {
   }, [component.kind, component.name, base.href]);
   if (component.kind !== 'apps') return null;
   if (component.name === 'project-explorer') return <span className="launch-status">Current app</span>;
-  if (headless) return <span className="launch-status">Headless</span>;
+  if (headless || headlessApps.has(component.name)) return <span className="launch-status">Headless</span>;
   if (availability !== 'enabled') return <span className="launch-unavailable"><button className="launch-link" disabled>Start</button><span>{availability === 'loading' ? 'Checking availability…' : availability === 'error' ? 'Hosting unavailable; retrying…' : 'Not enabled on this host'}</span></span>;
   return <a className="launch-link" href={new URL(`running/${encodeURIComponent(component.name)}/`, base).href}>{ready ? 'Open' : 'Start'} <ArrowUpRight size={14} /></a>;
 }
