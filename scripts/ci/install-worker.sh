@@ -47,7 +47,7 @@ cd "$job"
 /home/doramcap-ci/.local/bin/node apps/system-monitor/tests/validate_native.ts --monitor "$CARGO_TARGET_DIR/debug/system-monitor"
 "$CARGO_TARGET_DIR/debug/examples/native_allocations"
 if [[ -f apps/system-monitor/tests/validate_recording_dora.ts && -x /home/doramcap-ci/.local/bin/dora ]]; then
-    /home/doramcap-ci/.local/bin/node apps/system-monitor/tests/validate_recording_dora.ts --dora /home/doramcap-ci/.local/bin/dora --bin-dir "$CARGO_TARGET_DIR/debug" --backend bpf
+    /home/doramcap-ci/.local/bin/node apps/system-monitor/tests/validate_recording_dora.ts --dora /home/doramcap-ci/.local/bin/dora --bin-dir "$CARGO_TARGET_DIR/debug"
 fi
 LAUNCHER
 chmod 755 /usr/local/libexec/doramcap-ci-native-tests
