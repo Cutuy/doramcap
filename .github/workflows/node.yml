@@ -2,6 +2,8 @@ name: Node CI
 
 on:
   push:
+    branches: [main]
+    tags: ['console-v*']
     paths: &node-inputs
       - '.github/workflows/node.yml'
       - '.node-version'
