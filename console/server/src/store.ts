@@ -1,4 +1,4 @@
-import { constants, createReadStream, closeSync } from 'node:fs';
+import { constants, createReadStream, closeSync, fstatSync } from 'node:fs';
 import { mkdir, open, rename, rm, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -90,11 +90,31 @@ export class Store {
     }
   }
   available(id: string, path: string) {
+    return this.size(id, path) !== null;
+  }
+  /** Size of one regular file beneath a run, or null when it cannot be opened safely. */
+  size(id: string, path: string) {
+    return this.stat(join(this.root, 'runs'), `${id}/${path}`)?.size ?? null;
+  }
+  /** Modification time of a run's checkpoint in milliseconds, or null without one. */
+  activityTime(id: string) {
+    const time = this.stat(join(this.root, 'runs'), `${id}/activity.pb`)?.mtimeMs;
+    return time === undefined ? null : Math.floor(time);
+  }
+  markerTime() {
+    const time = this.stat(this.root, 'current.pb')?.mtimeMs;
+    return time === undefined ? null : Math.floor(time);
+  }
+  private stat(root: string, path: string) {
     try {
-      closeSync(capabilities.openFile(join(this.root, 'runs'), `${id}/${path}`));
-      return true;
+      const fd = capabilities.openFile(root, path);
+      try {
+        return fstatSync(fd);
+      } finally {
+        closeSync(fd);
+      }
     } catch {
-      return false;
+      return null;
     }
   }
 }

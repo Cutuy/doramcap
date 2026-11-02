@@ -24,6 +24,7 @@ import { loadConfig } from './config.js';
 import { discover, selectApps, appOptions, outputs, bindOutputs } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { Store, writeOnce } from './store.js';
+import { History } from './history.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LIVE_BRIDGE, LiveRelay, bindBridge, liveStreams } from './live.js';
 
@@ -70,11 +71,16 @@ export class ConsoleService implements ConsoleBackend {
   private previous?: { bytes: bigint; time: number };
   private closing?: Promise<void>;
   private closed = false;
+  private startedAt = 0;
+  private recorded = Phase.PHASE_UNSPECIFIED;
+  private runIndex: History;
   constructor(
     readonly config: Config,
     private engine: NativeExecution,
     private store: Store,
+    history?: History,
   ) {
+    this.runIndex = history ?? History.unavailable(store, 'History is not open');
     this.graphs = new Graphs(capabilities, config.systemApps, config.dora?.graph ?? '');
     if (config.liveBridge) this.relay = new LiveRelay(`ws://127.0.0.1:${config.liveBridge.port}/stream`);
     this.timer = setInterval(
@@ -92,7 +98,8 @@ export class ConsoleService implements ConsoleBackend {
     config.dataRoot = store.root;
     try {
       const engine = await capabilities.open(config.dockerSocket, 1);
-      const backend = new ConsoleService(config, engine, store);
+      const history = await History.open(store, await store.marker());
+      const backend = new ConsoleService(config, engine, store, history);
       await backend.restore();
       return { backend, config, secret };
     } catch (error) {
@@ -328,6 +335,8 @@ export class ConsoleService implements ConsoleBackend {
       steps: [],
       liveStreams: prepared.review.liveStreams,
     });
+    this.startedAt = Date.now();
+    this.recordTransition();
     this.startPromise = this.startRequest(prepared);
     return this.startPromise;
   }
@@ -437,7 +446,14 @@ export class ConsoleService implements ConsoleBackend {
       if (this.snapshot.phase === Phase.RUNNING && this.snapshot.liveStreams.length) this.relay?.open(this.snapshot.runId);
       else this.relay?.close();
       if (update.result && !this.admissionPending) await this.finish(update.result);
+      else this.recordTransition();
     }
+  }
+  /** Index the run on each phase change; History never throws into the run. */
+  private recordTransition() {
+    if (this.snapshot.phase === this.recorded) return;
+    this.recorded = this.snapshot.phase;
+    this.runIndex.record(this.enriched(), this.startedAt);
   }
   private async sample() {
     const now = performance.now();
@@ -519,6 +535,8 @@ export class ConsoleService implements ConsoleBackend {
       this.marker!.phase = Phase.BLOCKED;
       await this.store.write(this.marker!).catch(() => {});
     }
+    this.recorded = this.snapshot.phase;
+    this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
   }
   private enriched(): Snapshot {
     const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
@@ -564,17 +582,17 @@ export class ConsoleService implements ConsoleBackend {
     return this.relay?.subscribe(consume) ?? (() => {});
   }
   async openArtifact(id: string, kind: string) {
-    if (
-      !/^[a-f0-9]{32}$/.test(id) ||
-      this.marker?.runId !== id ||
-      ![Phase.FINISHED, Phase.BLOCKED].includes(this.snapshot.phase)
-    )
-      throw new Error('Missing');
-    const outputs = this.marker.recordings;
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('Missing');
+    const current = this.marker?.runId === id;
+    if (current && active(this.snapshot.phase)) throw new Error('Missing');
+    // Past runs resolve through their private checkpoint, independent of the history index.
+    const run = current && [Phase.FINISHED, Phase.BLOCKED].includes(this.snapshot.phase) ? this.marker! : await this.store.activity(id);
+    if (!run || run.runId !== id) throw new Error('Missing');
+    const outputs = run.recordings;
     const name =
       kind === 'report'
         ? 'console-report.json'
-        : this.marker.outcome?.recordingFinalized
+        : run.outcome?.recordingFinalized
           ? outputs.find((output) => output.id === kind || (kind === 'cpu' && output.cpu))?.path
           : undefined;
     if (!name) throw new Error('Missing');
@@ -583,6 +601,14 @@ export class ConsoleService implements ConsoleBackend {
     } catch {
       throw new Error('Missing');
     }
+  }
+  async history(input: Buffer) {
+    return Buffer.from(wire.HistoryPage.encode(this.runIndex.list(wire.HistoryQuery.decode(input))).finish());
+  }
+  async historyRun(id: string) {
+    const detail = this.runIndex.detail(id);
+    if (!detail) throw new Error('Missing');
+    return Buffer.from(wire.HistoryDetail.encode(detail).finish());
   }
   close() {
     if (!this.closing) this.closing = this.shutdown();
@@ -600,6 +626,7 @@ export class ConsoleService implements ConsoleBackend {
       clearInterval(this.timer);
       this.relay?.close();
       this.closed = true;
+      this.runIndex.close();
       this.store.close();
     }
   }

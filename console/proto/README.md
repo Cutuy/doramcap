@@ -2,7 +2,7 @@
 
 - `console-config.proto`: operator configuration and approved system apps.
 - `execution.proto`: explicit Compose inputs, inspection snapshots and execution facts.
-- `console.proto`: browser requests, status and private display checkpoints.
+- `console.proto`: browser requests, status, private display checkpoints and run history.
 - [HTTP transport](../contract/transport.ts): routes, status codes, errors, bounds and live framing.
 - [Native API](../server/native/index.d.ts): addon capabilities and execution transport.
 

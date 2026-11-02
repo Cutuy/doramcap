@@ -93,3 +93,46 @@ message RunMetric {
 
 // Opaque per-connection cursor; an empty cursor requests a bounded checkpoint.
 message StreamCursor { string run_id = 1; uint64 sequence = 2; uint64 metric_elapsed_ns = 3; }
+
+// Indexed result of one past or current run.
+enum HistoryState {
+  HISTORY_STATE_UNSPECIFIED = 0;
+  HISTORY_RUNNING = 1;
+  HISTORY_COMPLETED = 2;
+  HISTORY_FAILED = 3;
+  HISTORY_CANCELLED = 4;
+  HISTORY_BLOCKED = 5; // Cleanup was not verified.
+  HISTORY_INTERRUPTED = 6; // Console stopped before the run reported a result.
+}
+// One declared output; an absent size means no file exists on the host.
+message HistoryArtifact {
+  string id = 1;
+  optional uint64 size_bytes = 2;
+  bool downloadable = 3;
+}
+message HistoryEntry {
+  string run_id = 1;
+  string project_directory = 2;
+  repeated string profiles = 3;
+  SystemAppSelection system_apps = 4;
+  uint64 started_at_ms = 5;
+  optional uint64 finished_at_ms = 6; // Absent while running and after an interruption.
+  HistoryState state = 7;
+  string error_summary = 8;
+  repeated HistoryArtifact artifacts = 9;
+}
+// Empty limit, state and project select the default page size and all runs.
+message HistoryQuery {
+  uint32 limit = 1;
+  string cursor = 2;
+  HistoryState state = 3;
+  string project = 4;
+}
+message HistoryPage {
+  repeated HistoryEntry entries = 1;
+  string next_cursor = 2; // Empty on the last page.
+  repeated string projects = 3; // Known projects, for filtering.
+  string degraded = 4; // Set when the index failed; runs are unaffected.
+  uint32 unreadable = 5; // Run checkpoints that could not be indexed.
+}
+message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
