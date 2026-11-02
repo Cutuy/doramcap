@@ -1,9 +1,8 @@
-use fault_aggregation::{Freshness, Health};
-use fault_protocol::{AggregationFrame, AggregationPayload, ReporterFrame, ReporterPayload};
-use fault_reporter::{Definition, Reporter, Text};
+use fault_protocol::{AggregationFrame, AggregationPayload};
+use fault_reconciliation::Engine;
+use fault_reporter::Text;
 use fault_watchdog::{
     config::{self, WatchdogConfig},
-    engine::Engine,
     sinks::{Output, Packet, Sink},
 };
 use pbtxt_config::Payload;
@@ -15,22 +14,6 @@ fn cfg() -> WatchdogConfig {
     }
     .normalize()
     .unwrap()
-}
-fn frame(payload: ReporterPayload) -> Vec<u8> {
-    fault_protocol::encode_reporter(
-        &ReporterFrame {
-            published_unix_ns: None,
-            payload,
-        },
-        Default::default(),
-    )
-    .unwrap()
-}
-fn view(engine: &Engine) -> fault_aggregation::View {
-    match engine.snapshot(Duration::ZERO).payload {
-        AggregationPayload::Snapshot(v) => v,
-        _ => unreachable!(),
-    }
 }
 #[test]
 fn configuration_presence_features_and_budgets() {
@@ -81,82 +64,6 @@ fn configuration_presence_features_and_budgets() {
     };
     assert_eq!(c.normalize().is_ok(), cfg!(feature = "otel"));
 }
-#[test]
-fn registration_timeout_restart_and_collision() {
-    let mut engine = Engine::new(cfg(), 10, 11).unwrap();
-    let (r, mut p) = Reporter::new(1, Default::default()).unwrap();
-    let mut def = Definition::new("test", "disk", "write").unwrap();
-    def.policy.deadline = Some(Duration::from_millis(100));
-    let c = r.register(def).unwrap();
-    c.failure(Text::new("io").unwrap()).unwrap();
-    assert!(
-        engine
-            .receive(
-                "a",
-                &frame(ReporterPayload::Batch(p.batch(10).unwrap())),
-                Duration::ZERO
-            )
-            .is_err()
-    );
-    let bytes = frame(ReporterPayload::Snapshot(p.snapshot()));
-    engine.receive("a", &bytes, Duration::ZERO).unwrap();
-    assert!(engine.receive("b", &bytes, Duration::ZERO).is_err());
-    assert!(engine.receive("a", b"bad", Duration::ZERO).is_err());
-    engine.advance(Duration::from_secs(1)).unwrap();
-    let v = view(&engine);
-    let source = v.sources.iter().find(|s| s.source == 1).unwrap();
-    assert_eq!(source.conditions[0].health, Health::Active);
-    assert_eq!(source.conditions[0].freshness, Freshness::Stale);
-    engine.advance(Duration::from_secs(6)).unwrap();
-    assert!(
-        !view(&engine)
-            .sources
-            .iter()
-            .find(|s| s.source == 1)
-            .unwrap()
-            .connected
-    );
-    let (_r, p) = Reporter::new(2, Default::default()).unwrap();
-    engine
-        .receive(
-            "a",
-            &frame(ReporterPayload::Snapshot(p.snapshot())),
-            Duration::from_secs(6),
-        )
-        .unwrap();
-    assert!(!view(&engine).sources.iter().any(|s| s.source == 1));
-    assert!(view(&engine).sources.iter().any(|s| s.source == 2));
-}
-#[test]
-fn immediate_failure_publication_and_idle_snapshot() {
-    let mut e = Engine::new(cfg(), 10, 11).unwrap();
-    let (r, p) = Reporter::new(1, Default::default()).unwrap();
-    let c = r
-        .register(Definition::new("test", "disk", "write").unwrap())
-        .unwrap();
-    e.receive(
-        "a",
-        &frame(ReporterPayload::Snapshot(p.snapshot())),
-        Duration::ZERO,
-    )
-    .unwrap();
-    e.advance(Duration::ZERO).unwrap();
-    e.publications(Duration::ZERO);
-    c.failure(Text::new("io").unwrap()).unwrap();
-    e.receive(
-        "a",
-        &frame(ReporterPayload::Snapshot(p.snapshot())),
-        Duration::from_millis(1),
-    )
-    .unwrap();
-    let frames = e.publications(Duration::from_millis(1));
-    assert!(frames.iter().any(|f|matches!(&f.payload,AggregationPayload::Updates(b) if b.updates.iter().any(|u|u.state.is_some_and(|s|s.health==Health::Active)))));
-    assert!(
-        e.publications(Duration::from_secs(2))
-            .iter()
-            .any(|f| matches!(f.payload, AggregationPayload::Snapshot(_)))
-    );
-}
 struct Gate {
     started: crossbeam_channel::Sender<()>,
     release: crossbeam_channel::Receiver<()>,
@@ -172,7 +79,7 @@ impl Sink for Gate {
 fn blocked_sink_bounds_loss_repair_and_shutdown() {
     let mut config = cfg();
     config.queue_capacity = Some(1);
-    let e = Engine::new(config.clone(), 10, 11).unwrap();
+    let e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
     let (started, ready) = crossbeam_channel::unbounded();
     let (release, gate) = crossbeam_channel::unbounded();
     let out = Output::spawn(
@@ -214,7 +121,7 @@ impl Sink for Capture {
 #[test]
 fn own_fault_is_filtered_other_sink_faults_survive() {
     let config = cfg();
-    let mut e = Engine::new(config.clone(), 10, 11).unwrap();
+    let mut e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
     let own = e.sink_check("live").unwrap();
     let key = own.key();
     let other = e.sink_check("mcap").unwrap();
@@ -263,7 +170,7 @@ impl Sink for Flaky {
 fn retries_are_bounded_and_success_clears_failure() {
     let mut config = cfg();
     config.retry_delay_ms = Some(1);
-    let e = Engine::new(config.clone(), 10, 11).unwrap();
+    let e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
     let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let worker = attempts.clone();
     let (tx, rx) = crossbeam_channel::unbounded();
@@ -289,7 +196,7 @@ fn retries_are_bounded_and_success_clears_failure() {
 #[test]
 fn shutdown_closes_healthy_sink_while_another_is_blocked() {
     let config = cfg();
-    let engine = Engine::new(config.clone(), 10, 11).unwrap();
+    let engine = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
     let (started, ready) = crossbeam_channel::unbounded();
     let (release, gate) = crossbeam_channel::unbounded();
     let blocked = Output::spawn(

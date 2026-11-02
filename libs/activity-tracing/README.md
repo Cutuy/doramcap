@@ -39,13 +39,14 @@ assert!(report.sinks.iter().all(|sink| sink.error.is_none()));
 ```
 
 Register every emitting thread, use the `activity` target, and drop registrations
-before `shutdown()`. Outputs: `McapSink`, `WebSocketSink` (`websocket`) and `OtelSink` (`otel`).
+before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocketSink` (`websocket`) and
+`OtelSink` (`otel`). Hosts can also implement `Sink`.
 
 ## Run
 
 ```sh
 cargo test -p activity-tracing --all-features
-cargo run -p activity-tracing --example record -- /tmp/activity.mcap
+cargo run -p activity-tracing --features mcap --example record -- /tmp/activity.mcap
 cargo run -p activity-tracing --release --example throughput -- 100000
 cargo run -p activity-tracing --release --example throughput -- 100000 1000
 ```

@@ -10,7 +10,7 @@ activity-tracing = ["dep:activity-tracing", "dep:tracing", "storage-persistence/
 tracing-export = ["dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies]
-activity-tracing = { path = "../../libs/activity-tracing", optional = true }
+activity-tracing = { path = "../../libs/activity-tracing", optional = true, features = ["mcap"] }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true, default-features = false, features = ["fmt"] }
 storage-persistence = { path = "../../libs/storage-persistence", default-features = true }

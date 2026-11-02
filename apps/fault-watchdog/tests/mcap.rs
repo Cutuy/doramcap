@@ -9,7 +9,7 @@ use std::time::Duration;
 fn descriptor_readback_flush_rotation_and_finalization() {
     let directory = std::env::temp_dir().join(format!(
         "fault-mcap-{}",
-        fault_watchdog::incarnation().unwrap()
+        fault_protocol::host::incarnation().unwrap()
     ));
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("faults.mcap");

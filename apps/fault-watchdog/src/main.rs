@@ -1,9 +1,9 @@
 use dora_node_api::{Event, futures::StreamExt};
 use eyre::Result;
+use fault_protocol::host::incarnation;
+use fault_reconciliation::Engine;
 use fault_watchdog::{
     config,
-    engine::Engine,
-    incarnation,
     sinks::{DoraSink, Output},
 };
 use std::time::{Duration, Instant};
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
         .next()
         .ok_or_else(|| eyre::eyre!("usage: fault-watchdog CONFIG.pbtxt"))?;
     let config = config::load(std::path::Path::new(&path))?;
-    let mut engine = Engine::new(config.clone(), incarnation()?, incarnation()?)?;
+    let mut engine = Engine::new(config.settings()?, incarnation()?, incarnation()?)?;
     if args.next().is_some() {
         eyre::bail!("unexpected argument");
     }

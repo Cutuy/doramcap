@@ -14,6 +14,7 @@ dora-app = { path = "../../libs/dora-app" }
 fault-reporter = { path = "../../libs/fault/reporter" }
 fault-aggregation = { path = "../../libs/fault/aggregation" }
 fault-protocol = { path = "../../libs/fault/protocol" }
+fault-reconciliation = { path = "../../libs/fault/reconciliation" }
 pbtxt-config = { path = "../../libs/pbtxt-config" }
 prost = "0.14"
 crossbeam-channel = "0.5"

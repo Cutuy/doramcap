@@ -1,11 +1,19 @@
-//! Single-owner host state, with explicit ingress and timer advancement.
-use crate::config::WatchdogConfig;
+//! Single-owner fault host state, with explicit ingress and timer advancement.
 use eyre::{Result, ensure};
 use fault_aggregation::{Aggregator, FaultObservability};
 use fault_protocol::{AggregationFrame, AggregationPayload, Limits, ReporterPayload, Updates};
 use fault_reporter::{Check, Definition, Publisher, Reporter, Text};
-use pbtxt_config::Payload;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
+/// Validated limits and deadlines; the host owns loading and validating configuration.
+#[derive(Clone, Debug)]
+pub struct Settings {
+    pub inputs: Vec<String>, // One source incarnation per input.
+    pub aggregation: fault_aggregation::Config,
+    pub source_timeout: Duration,
+    pub snapshot_interval: Duration,
+    pub maintenance: Duration,
+    pub max_frame_bytes: usize,
+}
 struct Input {
     source: Option<u128>,
     seen: Duration,
@@ -14,7 +22,7 @@ struct Input {
 /// Owns source bindings, local diagnostics and aggregation. All times passed to
 /// methods share one monotonic epoch and must be nondecreasing. No I/O occurs.
 pub struct Engine {
-    config: WatchdogConfig,
+    settings: Settings,
     pub observability: Arc<FaultObservability>,
     aggregator: Aggregator,
     inputs: BTreeMap<String, Input>,
@@ -25,28 +33,16 @@ pub struct Engine {
     epoch: u128,
 }
 impl Engine {
-    /// Validate configuration and reserve a separate source for host diagnostics.
+    /// Reserve a separate source for host diagnostics.
     /// `epoch` and `source` must be distinct nonzero incarnation identifiers.
-    pub fn new(config: WatchdogConfig, epoch: u128, source: u128) -> Result<Self> {
+    pub fn new(settings: Settings, epoch: u128, source: u128) -> Result<Self> {
         ensure!(epoch != source, "host identities must differ");
-        let config = config.normalize()?;
         let observability = Arc::new(FaultObservability::new());
-        let aggregator = Aggregator::new(
-            epoch,
-            fault_aggregation::Config {
-                max_sources: config.max_sources.unwrap() as usize,
-                max_conditions_per_source: config.max_conditions_per_source.unwrap() as usize,
-                max_batch_records: config.max_batch_records.unwrap() as usize,
-                output_capacity: config.output_capacity.unwrap() as usize,
-                dedup_window: config.dedup_window.unwrap() as usize,
-                transport_allowance: ms(config.transport_allowance_ms.unwrap()),
-            },
-            observability.clone(),
-        )?;
+        let aggregator = Aggregator::new(epoch, settings.aggregation, observability.clone())?;
         let (reporter, publisher) = Reporter::new(source, Default::default())?;
         let ingress =
             reporter.register(Definition::new("watchdog", "ingress", "invalid_report")?)?;
-        let inputs = config
+        let inputs = settings
             .inputs
             .iter()
             .map(|s| {
@@ -61,7 +57,7 @@ impl Engine {
             })
             .collect();
         Ok(Self {
-            config,
+            settings,
             observability,
             aggregator,
             inputs,
@@ -81,7 +77,7 @@ impl Engine {
     /// Frame/record limits shared by ingress and publication adapters.
     pub fn limits(&self) -> Limits {
         Limits {
-            max_frame_bytes: self.config.max_frame_bytes.unwrap() as usize,
+            max_frame_bytes: self.settings.max_frame_bytes,
             max_records: 32768,
         }
     }
@@ -178,7 +174,7 @@ impl Engine {
     }
     /// Advance transport/freshness deadlines and ingest local diagnostics.
     pub fn advance(&mut self, now: Duration) -> Result<()> {
-        let timeout = ms(self.config.source_timeout_ms.unwrap());
+        let timeout = self.settings.source_timeout;
         for i in self.inputs.values_mut() {
             if i.connected && now.saturating_sub(i.seen) >= timeout {
                 self.aggregator
@@ -191,7 +187,7 @@ impl Engine {
         }
         let batch = self
             .publisher
-            .batch(self.config.max_batch_records.unwrap() as usize)?;
+            .batch(self.settings.aggregation.max_batch_records)?;
         if !batch.observations.is_empty() {
             self.aggregator.ingest_batch(&batch, now)?;
         }
@@ -204,7 +200,7 @@ impl Engine {
         let mut frames = Vec::new();
         while self.aggregator.has_updates() {
             let mut updates = Vec::new();
-            for _ in 0..self.config.max_batch_records.unwrap() {
+            for _ in 0..self.settings.aggregation.max_batch_records {
                 if let Some(u) = self.aggregator.pop_update() {
                     updates.push(u)
                 } else {
@@ -223,7 +219,7 @@ impl Engine {
         let reconcile = self.aggregator.take_reconciliation().is_some();
         if reconcile || now >= self.next_snapshot {
             frames.push(self.snapshot(now));
-            self.next_snapshot = now + ms(self.config.snapshot_interval_ms.unwrap());
+            self.next_snapshot = now + self.settings.snapshot_interval;
         }
         frames
     }
@@ -236,7 +232,7 @@ impl Engine {
     }
     fn frame(&self, payload: AggregationPayload, now: Duration) -> AggregationFrame {
         AggregationFrame {
-            published_unix_ns: crate::unix_ns(),
+            published_unix_ns: fault_protocol::host::unix_ns(),
             emitted_at: now,
             payload,
         }
@@ -245,16 +241,13 @@ impl Engine {
     pub fn wait(&self, now: Duration) -> Duration {
         self.aggregator
             .next_deadline()
-            .map_or(ms(self.config.maintenance_ms.unwrap()), |d| {
-                d.saturating_sub(now)
-                    .min(ms(self.config.maintenance_ms.unwrap()))
+            .map_or(self.settings.maintenance, |d| {
+                d.saturating_sub(now).min(self.settings.maintenance)
             })
     }
 }
-pub(crate) fn ms(value: u32) -> Duration {
-    Duration::from_millis(value.into())
-}
-pub(crate) fn detail(error: &impl std::fmt::Display) -> Text {
+/// Bounds an error message to the reporter's fixed-size UTF-8 detail field.
+pub fn detail(error: &impl std::fmt::Display) -> Text {
     let s = error.to_string();
     let mut end = s.len().min(192);
     while !s.is_char_boundary(end) {

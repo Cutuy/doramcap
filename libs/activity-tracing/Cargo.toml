@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 default = []
+mcap = ["dep:mcap"]
 websocket = ["dep:tungstenite"]
 otel = ["dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:futures-executor"]
 
@@ -16,7 +17,7 @@ tracing = "0.1"
 tracing-core = "0.1"
 prost = "0.14"
 libc = "0.2"
-mcap = { version = "=0.26.0", default-features = false }
+mcap = { version = "=0.26.0", default-features = false, optional = true }
 tungstenite = { version = "0.30", optional = true }
 opentelemetry = { version = "0.33", optional = true, default-features = false, features = ["trace"] }
 opentelemetry_sdk = { version = "0.33", optional = true, default-features = false, features = ["trace"] }
@@ -26,6 +27,10 @@ futures-executor = { version = "0.3", optional = true }
 [build-dependencies]
 prost-build = "0.14"
 protoc-bin-vendored = "3"
+
+[[example]]
+name = "record"
+required-features = ["mcap"]
 
 [lints]
 workspace = true

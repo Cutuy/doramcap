@@ -1734,7 +1734,6 @@ dependencies = [
  "fault-aggregation",
  "fault-protocol",
  "fault-reporter",
- "fault-watchdog",
  "serde_json",
  "tokio",
 ]
@@ -1748,6 +1747,16 @@ dependencies = [
  "fault-schema",
  "prost",
  "prost-types",
+]
+
+[[package]]
+name = "fault-reconciliation"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "fault-aggregation",
+ "fault-protocol",
+ "fault-reporter",
 ]
 
 [[package]]
@@ -1779,6 +1788,7 @@ dependencies = [
  "eyre",
  "fault-aggregation",
  "fault-protocol",
+ "fault-reconciliation",
  "fault-reporter",
  "futures-executor",
  "mcap",

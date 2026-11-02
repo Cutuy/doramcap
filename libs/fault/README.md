@@ -8,6 +8,7 @@ Bounded fault capture, state aggregation and Protobuf publication for host-manag
 |---|---|
 | [fault-reporter](reporter/) | Capture and prioritized draining |
 | [fault-aggregation](aggregation/) | Health, freshness and injected diagnostics |
+| [fault-reconciliation](reconciliation/) | Input binding, source liveness and host frames |
 | [fault-schema](schema/) | Generated Protobuf contracts and enums |
 | [fault-protocol](protocol/) | Checked record translation and byte codecs |
 

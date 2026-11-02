@@ -1,0 +1,14 @@
+[package]
+name = "fault-reconciliation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+fault-aggregation = { path = "../aggregation" }
+fault-protocol = { path = "../protocol" }
+fault-reporter = { path = "../reporter" }
+eyre = "0.6"
+
+[lints]
+workspace = true
