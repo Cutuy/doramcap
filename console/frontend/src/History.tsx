@@ -14,7 +14,7 @@ const failure = (error: unknown) => error instanceof ApiError && error.code === 
 function Row({ entry }: { entry: HistoryEntry }) {
   return <tr>
     <td><StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/></td>
-    <td><a className="mono break" href={historyHash(entry.runId)}>{entry.projectDirectory || entry.runId}</a>{entry.profiles.length > 0 && <div className="muted">{entry.profiles.join(', ')}</div>}{entry.errorSummary && <div className="history-error" title={entry.errorSummary}>{entry.errorSummary}</div>}</td>
+    <td><a className="mono break" href={historyHash(entry.runId)}>{entry.runId.slice(0, 8)}</a>{entry.profiles.length > 0 && <div className="muted">{entry.profiles.join(', ')}</div>}{entry.errorSummary && <div className="history-error" title={entry.errorSummary}>{entry.errorSummary}</div>}</td>
     <td className="hide-narrow">{timeLabel(entry.startedAtMs)}</td>
     <td>{durationLabel(entry)}</td>
     <td className="hide-narrow">{bytesLabel(entryRecordingBytes(entry))}</td>
@@ -22,20 +22,19 @@ function Row({ entry }: { entry: HistoryEntry }) {
 }
 
 /** Filtered run table; loading, failure and empty states come from its props. */
-export function HistoryTable({ page, loading, error, state, project, setState, setProject, more }: {
-  page: HistoryPage | null; loading: boolean; error: string; state: number; project: string;
-  setState: (state: number) => void; setProject: (project: string) => void; more: () => void;
+export function HistoryTable({ page, loading, error, state, setState, more }: {
+  page: HistoryPage | null; loading: boolean; error: string; state: number;
+  setState: (state: number) => void; more: () => void;
 }) {
-  const filtered = state !== 0 || project !== '';
+  const filtered = state !== 0;
   return <>
     <div className="heading"><div><h1>Experiment history</h1></div></div>
     {error && <p className="notice failure-notice" role="alert">{error}</p>}
     <section className="panel">
       <div className="history-filters">
         <div><label htmlFor="history-state">Status</label><select id="history-state" value={state} onChange={event => setState(Number(event.target.value))}><option value={0}>All</option>{filters.map(item => <option key={item} value={item}>{stateLabel(item)}</option>)}</select></div>
-        <div><label htmlFor="history-project">Project</label><select id="history-project" value={project} onChange={event => setProject(event.target.value)}><option value="">All</option>{page?.projects.map(item => <option key={item} value={item}>{item}</option>)}</select></div>
       </div>
-      {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-status">Status</th><th>Project</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry}/>)}</tbody></table>}
+      {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-status">Status</th><th>Run</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry}/>)}</tbody></table>}
       {loading && <p className="muted" role="status">Loading history…</p>}
       {!loading && !error && page?.entries.length === 0 && <p className="muted">{filtered ? 'No runs match these filters.' : 'No runs yet. Finished and interrupted experiments appear here.'}</p>}
       {page?.nextCursor && <div className="actions"><ActionButton variant="secondary" disabled={loading} onClick={more}>Load more</ActionButton></div>}
@@ -45,7 +44,6 @@ export function HistoryTable({ page, loading, error, state, project, setState, s
 
 export function HistoryList({ refresh }: { refresh: string }) {
   const [state, setState] = useState(0);
-  const [project, setProject] = useState('');
   const [page, setPage] = useState<HistoryPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,15 +52,15 @@ export function HistoryList({ refresh }: { refresh: string }) {
     const current = requests.begin();
     setLoading(true);
     try {
-      const next = await api.history({ state, project, cursor });
+      const next = await api.history({ state, cursor });
       if (!current()) return;
       setError('');
       setPage(previous => cursor && previous ? wire.HistoryPage.create({ ...next, entries: [...previous.entries, ...next.entries] }) : next);
     } catch (failed) { if (current()) setError(failure(failed)); }
     finally { if (current()) setLoading(false); }
   };
-  useEffect(() => { void load(''); return requests.cancel; }, [state, project, refresh]);
-  return <HistoryTable page={page} loading={loading} error={error} state={state} project={project} setState={setState} setProject={setProject} more={() => void load(page!.nextCursor)}/>;
+  useEffect(() => { void load(''); return requests.cancel; }, [state, refresh]);
+  return <HistoryTable page={page} loading={loading} error={error} state={state} setState={setState} more={() => void load(page!.nextCursor)}/>;
 }
 
 /** One stored run: the live Result, timeline and metrics components over its saved status. */

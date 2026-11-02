@@ -7,8 +7,7 @@ type Row = { entry: Uint8Array; detail: Uint8Array };
 
 const MAX_DETAIL_BYTES = 2 * 1024 * 1024,
   MAX_ERROR_LENGTH = 1024,
-  MAX_PAGE_BYTES = 1024 * 1024,
-  MAX_PROJECTS = 100;
+  MAX_PAGE_BYTES = 1024 * 1024;
 
 /** Map one Console status to its history result. */
 export function historyState(status: Pick<Snapshot, 'phase' | 'outcome'>) {
@@ -47,9 +46,9 @@ export class History {
     const [time, id] = query.cursor ? query.cursor.split(':') : [Number.MAX_SAFE_INTEGER, ''];
     const rows = this.store.db.prepare(
       `SELECT run_id, started_at_ms, entry FROM runs
-       WHERE (started_at_ms, run_id) < (?, ?) AND (? = 0 OR state = ?) AND (? = '' OR project_directory = ?)
+       WHERE (started_at_ms, run_id) < (?, ?) AND (? = 0 OR state = ?)
        ORDER BY started_at_ms DESC, run_id DESC LIMIT ?`,
-    ).all(Number(time), id || 'g', query.state, query.state, query.project, query.project, limit + 1) as { run_id: string; started_at_ms: number; entry: Uint8Array }[];
+    ).all(Number(time), id || 'g', query.state, query.state, limit + 1) as { run_id: string; started_at_ms: number; entry: Uint8Array }[];
     let bytes = 0;
     for (const row of rows) {
       bytes += row.entry.length;
@@ -60,9 +59,6 @@ export class History {
       }
       page.entries.push(wire.HistoryEntry.decode(row.entry));
     }
-    page.projects = (
-      this.store.db.prepare("SELECT DISTINCT project_directory AS p FROM runs WHERE p != '' ORDER BY p LIMIT ?").all(MAX_PROJECTS) as { p: string }[]
-    ).map((row) => row.p);
     return page;
   }
   /** Return one run with artifact sizes re-read from disk, or null when unknown. */

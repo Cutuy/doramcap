@@ -45,7 +45,9 @@ Evidence: Console server suite passes. On x86_64, the real CLI started two proje
 ## Milestone 3: One project in the UI
 
 **Work items**
-- [ ] Remove the project directory input and History's project filter.
+- [x] Remove the project directory input and History's project filter.
 
 **Validation**
-- [ ] Frontend tests and a browser run pass.
+- [x] Frontend tests and a browser run pass.
+
+Evidence: frontend 53/53, server 63 passed and 1 skipped, contract 1/1. Two real projects each showed their own directory, ran at once and listed only their own run in History. `PrepareRequest.directory` stays for tests and source installs; an empty value selects the project.

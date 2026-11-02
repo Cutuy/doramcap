@@ -102,7 +102,7 @@ export function createConsoleServer(config: HttpOptions) {
       if (request.method === 'POST' && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
       if (request.method === routes.prepare.method && url.pathname === routes.prepare.path) {
         const input = await body(request), value = decode(routes.prepare.request, input);
-        string(value.directory);
+        if (value.directory) string(value.directory);
         if (value.profiles.length > LIMITS.selectionLength || (value.systemApps?.ids?.length ?? 0) > LIMITS.selectionLength || Object.keys(value.systemApps?.profiles ?? {}).length > LIMITS.selectionLength) throw new HttpError(400, 'InvalidInput');
         value.profiles.forEach(string); value.systemApps?.ids?.forEach(string); Object.entries(value.systemApps?.profiles ?? {}).flat().forEach(string);
         reply(response, routes.prepare.status, await config.backend.prepare(input)); return;
@@ -151,7 +151,7 @@ export function createConsoleServer(config: HttpOptions) {
       }
       if (request.method === routes.history.method && url.pathname === routes.history.path) {
         const input = await body(request), value = decode(routes.history.request, input);
-        if (value.limit > LIMITS.historyPageMax || value.project.length > LIMITS.stringLength ||
+        if (value.limit > LIMITS.historyPageMax ||
             (value.cursor && !historyCursor.test(value.cursor)) || !(value.state in wire.HistoryState))
           throw new HttpError(400, 'InvalidInput');
         reply(response, routes.history.status, await config.backend.history(input)); return;

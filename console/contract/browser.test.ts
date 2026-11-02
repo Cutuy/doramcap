@@ -33,7 +33,7 @@ test(
       prepare: async (input) => {
         const request = wire.PrepareRequest.decode(input);
         selections.push(request.systemApps?.ids ?? undefined);
-        return Buffer.from(wire.Review.encode({ preparedId: request.directory, runId: 'run' }).finish());
+        return Buffer.from(wire.Review.encode({ preparedId: 'prepared', runId: 'run' }).finish());
       },
       start: async (input) => {
         const request = wire.StartRequest.decode(input);
@@ -54,7 +54,6 @@ test(
       },
       history: async (input) => {
         const query = wire.HistoryQuery.decode(input);
-        assert.equal(query.project, '/projects/example');
         return Buffer.from(wire.HistoryPage.encode({ entries: [{ runId: pastRun, startedAtMs: id as never, state: query.state }], nextCursor: `1:${pastRun}` }).finish());
       },
       historyRun: async (runId) => {
@@ -103,9 +102,9 @@ test(
     );
 
     // Act / Assert
-    assert.equal((await client.prepare('/projects/example', [])).preparedId, '/projects/example');
-    await client.prepare('/projects/example', [], []);
-    await client.prepare('/projects/example', ['extra'], ['recorder']);
+    assert.equal((await client.prepare([])).preparedId, 'prepared');
+    await client.prepare([], []);
+    await client.prepare(['extra'], ['recorder']);
     assert.deepEqual(selections, [undefined, [], ['recorder']]);
     assert.equal((await client.start('run', 'accepted')).runId, 'run');
     assert.equal((await client.stop('run')).accepted, true);
@@ -118,7 +117,7 @@ test(
     assert.equal(String(current.sequence), id);
 
     // Act / Assert: history queries and past runs keep their typed fields and error codes.
-    const past = await client.history({ project: '/projects/example', state: wire.HistoryState.HISTORY_FAILED });
+    const past = await client.history({ state: wire.HistoryState.HISTORY_FAILED });
     assert.equal(String(past.entries[0].startedAtMs), id);
     assert.equal(past.entries[0].state, wire.HistoryState.HISTORY_FAILED);
     assert.equal(past.nextCursor, `1:${pastRun}`);

@@ -36,13 +36,12 @@ async function request<T>(
 /** Create the browser client with an explicit transport for HTTP integration tests. */
 export function createClient(fetcher: typeof fetch = fetch) {
   return {
-    prepare: (directory: string, profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}) =>
+    prepare: (profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}) =>
       request(
         routes.prepare,
         routes.prepare.request
           .encode(
             wire.PrepareRequest.create({
-              directory,
               profiles,
               ...(systemApps === undefined
                 ? {}
@@ -61,7 +60,7 @@ export function createClient(fetcher: typeof fetch = fetch) {
     stop: (runId: string) =>
       request(routes.stop, routes.stop.request.encode(wire.StopRequest.create({ runId })).finish(), fetcher),
     current: () => request(routes.current, undefined, fetcher),
-    history: (query: { state?: number; project?: string; cursor?: string; limit?: number }) =>
+    history: (query: { state?: number; cursor?: string; limit?: number }) =>
       request(routes.history, routes.history.request.encode(wire.HistoryQuery.create(query)).finish(), fetcher),
     historyRun: (runId: string) => request({ ...routes.historyRun, path: historyRunPath(runId) }, undefined, fetcher),
     live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame?: (frame: Frame) => void) => readLive(consume, signal, fetcher, frame),

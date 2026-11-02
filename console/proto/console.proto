@@ -132,16 +132,14 @@ message HistoryEntry {
   string error_summary = 8;
   repeated HistoryArtifact artifacts = 9;
 }
-// Empty limit, state and project select the default page size and all runs.
+// Empty limit and state select the default page size and all runs.
 message HistoryQuery {
   uint32 limit = 1;
   string cursor = 2;
   HistoryState state = 3;
-  string project = 4;
 }
 message HistoryPage {
   repeated HistoryEntry entries = 1;
   string next_cursor = 2; // Empty on the last page.
-  repeated string projects = 3; // Known projects, for filtering.
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }

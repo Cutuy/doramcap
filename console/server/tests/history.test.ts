@@ -302,7 +302,6 @@ test('the HTTP history API authorizes, bounds, paginates and filters', async () 
     assert.equal((await post({ cursor: `1:${id(1)}' OR 1=1` })).status, 400);
     assert.equal((await post({ cursor: 'garbage' })).status, 400);
     assert.equal((await post({ state: 99 })).status, 400);
-    assert.equal((await post({ project: 'x'.repeat(LIMITS.stringLength + 1) })).status, 400);
     // Act / Assert: ids are strict.
     for (const bad of ['A'.repeat(32), id(1) + '0', '..%2f..%2fetc', id(1).slice(1)])
       assert.equal((await fetch(`${base}/api/history/${bad}`, { headers: { cookie } })).status, 404);
@@ -317,12 +316,8 @@ test('the HTTP history API authorizes, bounds, paginates and filters', async () 
     // Assert: newest first, ties stable, nothing repeated or lost.
     assert.deepEqual(walked, [id(5), id(4), id(3), id(2), id(1)]);
     assert.equal(pages, 3);
-    // Act / Assert: filters and their combination.
+    // Act / Assert: the status filter.
     assert.deepEqual(ids(await page({ state: State.HISTORY_FAILED })), [id(2)]);
-    assert.deepEqual(ids(await page({ project: '/projects/b' })), [id(4), id(3)]);
-    assert.deepEqual(ids(await page({ project: '/projects/a', state: State.HISTORY_COMPLETED })), [id(5), id(1)]);
-    assert.deepEqual(ids(await page({ project: "' OR 1=1 --" })), []);
-    assert.deepEqual((await page({})).projects, ['/projects/a', '/projects/b']);
     // Act
     const response = await fetch(base + historyRunPath(id(2)), { headers: { cookie } });
     // Assert

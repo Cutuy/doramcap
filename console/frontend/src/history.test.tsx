@@ -17,7 +17,7 @@ const entry = (fields: object = {}) => wire.HistoryEntry.fromObject({
   ...fields,
 });
 const table = (page: HistoryPage | null, fields: Partial<Parameters<typeof HistoryTable>[0]> = {}) => renderToStaticMarkup(
-  <HistoryTable page={page} loading={false} error="" state={0} project="" setState={() => {}} setProject={() => {}} more={() => {}} {...fields}/>);
+  <HistoryTable page={page} loading={false} error="" state={0} setState={() => {}} more={() => {}} {...fields}/>);
 const status = (fields: object = {}) => wire.Status.fromObject({
   phase: Phase.FINISHED, runId, recordings: [{ id: 'cpu', path: 'cpu.mcap', cpu: true }],
   outcome: { execution: 'Completed', recordingFinalized: true, boundaryClean: true }, reportAvailable: true,
@@ -40,9 +40,9 @@ test('the table shows loading, first-use, filtered-empty and failure states', ()
   assert.doesNotMatch(failed, /No runs/);
 });
 
-test('rows show state, project, duration, recording size, a detail link and paging', () => {
+test('rows show state, duration, recording size, a detail link and paging', () => {
   // Arrange
-  const page = wire.HistoryPage.create({ entries: [entry(), entry({ runId: 'b'.repeat(32), state: State.HISTORY_INTERRUPTED, finishedAtMs: null, errorSummary: 'Console stopped', artifacts: [] })], nextCursor: `1:${runId}`, projects: ['/projects/robot'] });
+  const page = wire.HistoryPage.create({ entries: [entry(), entry({ runId: 'b'.repeat(32), state: State.HISTORY_INTERRUPTED, finishedAtMs: null, errorSummary: 'Console stopped', artifacts: [] })], nextCursor: `1:${runId}` });
   // Act
   const html = table(page);
   // Assert
@@ -53,7 +53,6 @@ test('rows show state, project, duration, recording size, a detail link and pagi
   assert.match(html, /2\.0 MiB/);
   assert.match(html, /Console stopped/);
   assert.ok(html.includes(`href="${historyHash(runId)}"`));
-  assert.match(html, /<option value="\/projects\/robot">/);
   assert.match(html, /Load more/);
 });
 
@@ -151,13 +150,12 @@ test('the client sends the typed query and decodes the typed responses', async (
       : reply(wire.HistoryDetail.encode(wire.HistoryDetail.create({ entry: entry(), status: status() })).finish());
   }) as typeof fetch);
   // Act
-  const page = await client.history({ state: State.HISTORY_FAILED, project: '/projects/robot', cursor: `1:${runId}` });
+  const page = await client.history({ state: State.HISTORY_FAILED, cursor: `1:${runId}` });
   const detail = await client.historyRun(runId);
   // Assert
   assert.equal(calls[0].path, routes.history.path);
   const sent = wire.HistoryQuery.decode(calls[0].body);
   assert.equal(sent.state, State.HISTORY_FAILED);
-  assert.equal(sent.project, '/projects/robot');
   assert.equal(page.entries[0].runId, runId);
   assert.equal(calls[1].path, `/api/history/${runId}`);
   assert.equal(calls[1].method, 'GET');
