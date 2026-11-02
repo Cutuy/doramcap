@@ -56,10 +56,7 @@ impl Database {
         params: Vec<Option<Cell>>,
     ) -> Result<Vec<HashMap<String, Option<Cell>>>> {
         let mut statement = self.connection()?.prepare(&sql).map_err(failure)?;
-        let columns: Vec<String> = statement
-            .column_names()
-            .map(str::to_owned)
-            .collect();
+        let columns: Vec<String> = statement.column_names().map(str::to_owned).collect();
         let mut rows = statement
             .query(params_from_iter(params.into_iter().map(Param)))
             .map_err(failure)?;
