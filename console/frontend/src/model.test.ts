@@ -77,7 +77,7 @@ test('only the latest history request stays current', () => {
 
 test('Run again waits for any prepare or active run', () => {
   // Arrange
-  const snapshot = (phase: Phase, runId = 'run') => ({ phase, runId });
+  const snapshot = (phase: Snapshot['phase'], runId = 'run') => ({ phase, runId });
   // Act / Assert
   assert.equal(runAgainBlocked(null, false), false);
   assert.equal(runAgainBlocked(null, true), true);
