@@ -49,7 +49,7 @@ test('completed result exposes run activity even when admission is blocked', () 
 });
 test('historical run freezes elapsed time and unavailable metrics remain distinct from zero', () => {
   // Arrange
-  const snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'run', steps: [step], sequence: '1', truncatedSteps: '0' });
+  const snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'run', steps: [step], sequence: '1', truncatedSteps: '0', outcome: { execution: 'Completed' } });
   // Act
   const historical = renderToStaticMarkup(<RunActivity snapshot={snapshot} stopping={false} disconnected={false} historical/>);
   const model = new LiveModel();

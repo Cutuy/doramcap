@@ -2,7 +2,7 @@ import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, requestKey, runAgainBlocked, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('profile changes and lost Start responses retain explicit intent', () => {
@@ -84,4 +84,16 @@ test('Run again waits for any prepare or active run', () => {
   assert.equal(runAgainBlocked(snapshot(Phase.PREPARING, ''), false), true);
   for (const phase of [Phase.STARTING, Phase.RUNNING, Phase.STOPPING]) assert.equal(runAgainBlocked(snapshot(phase), false), true);
   for (const phase of [Phase.IDLE, Phase.REVIEWED, Phase.FINISHED, Phase.BLOCKED]) assert.equal(runAgainBlocked(snapshot(phase), false), false);
+});
+
+test('a past run is labelled by its result', () => {
+  // Arrange
+  const past = (phase: Snapshot['phase'], execution?: string) => wire.Status.create({ phase, ...(execution ? { outcome: wire.Outcome.create({ execution }) } : {}) });
+  // Act / Assert
+  assert.equal(pastRunLabel(past(Phase.FINISHED, 'Completed')), 'Completed run');
+  assert.equal(pastRunLabel(past(Phase.FINISHED, 'Failed')), 'Failed run');
+  assert.equal(pastRunLabel(past(Phase.FINISHED, 'Cancelled')), 'Cancelled run');
+  assert.equal(pastRunLabel(past(Phase.BLOCKED, 'Completed')), 'Cleanup unverified');
+  assert.equal(pastRunLabel(past(Phase.RUNNING)), 'Interrupted run');
+  assert.equal(pastRunLabel(null), 'Interrupted run');
 });

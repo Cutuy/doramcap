@@ -3,6 +3,13 @@ import type { HistoryEntry, Outcome, Snapshot } from './api';
 export function toggleProfile(current: string[], name: string): string[] {
   return current.includes(name) ? current.filter(item => item !== name) : [...current, name];
 }
+/** One past run's result, matching its History state. */
+export function pastRunLabel(snapshot: Pick<Snapshot, 'phase' | 'outcome'> | null): string {
+  if (snapshot?.phase === Phase.BLOCKED) return 'Cleanup unverified';
+  if (!snapshot?.outcome) return 'Interrupted run';
+  if (snapshot.outcome.execution === 'Failed') return 'Failed run';
+  return snapshot.outcome.execution === 'Cancelled' ? 'Cancelled run' : 'Completed run';
+}
 /** Track overlapping requests: only the latest begun and not cancelled one is current. */
 export function latestRequest() {
   let latest = 0;
