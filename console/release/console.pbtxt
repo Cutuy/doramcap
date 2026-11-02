@@ -1,5 +1,5 @@
 # Release template: system app paths are relative to system-apps, project paths to the playground.
-# Publishing replaces each :local image with its published digest.
+# The release workflow replaces each :local image with its multi-arch digest.
 dora { image: "doramcap/dora:local" }
 live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
