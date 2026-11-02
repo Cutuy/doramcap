@@ -8,7 +8,7 @@ import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
 import { readFile } from 'node:fs/promises';
 import { live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
-import { LIMITS } from '../src/generated/transport.js';
+import { LIMITS, PREPARING_RUN } from '../src/generated/transport.js';
 
 class Engine implements NativeExecution {
   starts = 0;
@@ -424,6 +424,45 @@ test('deselecting the live bridge removes its service, graph node and streams', 
     assert.ok(!engine.inspected!.dora?.graph);
   } finally {
     await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a hung image download can be cancelled, and failed downloads keep their own error', async () => {
+  // Arrange
+  const { root, config, backend } = await fixture(), previous = process.env.PATH;
+  const commands = join(root, 'commands');
+  await mkdir(commands);
+  await writeFile(join(commands, 'docker'), `#!${process.execPath} --
+const args = process.argv.slice(2);
+if (args.includes('compose')) console.log(JSON.stringify({ services: {} }));
+else if (args.includes('inspect')) process.exit(1);
+else if (args.at(-1).includes('broken')) process.exit(1);
+else setTimeout(() => {}, 60000);
+`, { mode: 0o755 });
+  process.env.PATH = `${commands}:${previous}`;
+  config.downloadMissingImages = true;
+  const request = Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project') }).finish());
+  const stop = Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish());
+  try {
+    // Act / Assert: cancellation returns the Console to idle.
+    config.dora = { image: 'registry/hung@sha256:hung' };
+    const hung = backend.prepare(request);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await assert.rejects(backend.prepare(request), /Conflict/);
+    await backend.stop(stop);
+    await assert.rejects(hung, /^Error: Stopped$/);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+    // Act / Assert: a registry failure is distinct from invalid project input.
+    config.dora = { image: 'registry/broken@sha256:broken' };
+    await assert.rejects(backend.prepare(request), /^Error: ImageDownload$/);
+    // Act / Assert: closing never waits for a hung download.
+    config.dora = { image: 'registry/hung@sha256:hung' };
+    const closing = backend.prepare(request);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await Promise.all([backend.close(), assert.rejects(closing)]);
+  } finally {
+    process.env.PATH = previous;
     await rm(root, { recursive: true, force: true });
   }
 });

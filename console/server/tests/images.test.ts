@@ -17,13 +17,14 @@ fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args)+'\\n');
 if (args.includes('compose')) console.log(JSON.stringify({services:{workload:{image:'registry/workload@sha256:new'},cached:{image:'registry/cached@sha256:cached'}}}));
 else if (args.includes('inspect')) process.exit(args.at(-1).includes('cached') ? 0 : 1);
 else if (args.includes('pull') && args.at(-1).includes('broken')) process.exit(1);
+else if (args.includes('pull') && args.at(-1).includes('hung')) setTimeout(() => {}, 60000);
 `, { mode: 0o755 });
   process.env.PATH = `${directory}:${previous}`;
   const config = wire.ConsoleConfig.create({ dockerSocket: '/custom/docker.sock', dora: { image: 'registry/dora@sha256:new' } });
   const project = compose.ComposeProject.create({ directory, files: ['compose.yaml'], profiles: ['selected'], envFiles: ['inputs.env'] });
   try {
     // Act
-    await ensureImages(config, [project, project]);
+    await ensureImages(config, [project, project], new AbortController().signal);
     // Assert
     const calls: string[][] = (await readFile(log, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
     assert.ok(calls.every(args => args[1] === 'unix:///custom/docker.sock'));
@@ -33,7 +34,14 @@ else if (args.includes('pull') && args.at(-1).includes('broken')) process.exit(1
     assert.ok(resolve.includes('selected') && resolve.includes('inputs.env') && resolve.includes('compose.yaml'));
     // Act / Assert
     config.dora!.image = 'registry/broken@sha256:broken';
-    await assert.rejects(ensureImages(config, []), /Image download failed/);
+    await assert.rejects(ensureImages(config, [], new AbortController().signal), /^Error: ImageDownload$/);
+    // Act / Assert: a hung registry fails at the deadline; cancellation reports Stopped.
+    config.dora!.image = 'registry/hung@sha256:hung';
+    await assert.rejects(ensureImages(config, [], new AbortController().signal, 100), /^Error: ImageDownload$/);
+    const cancel = new AbortController();
+    const cancelled = ensureImages(config, [], cancel.signal);
+    setTimeout(() => cancel.abort(), 100);
+    await assert.rejects(cancelled, /^Error: Stopped$/);
   } finally {
     if (previous === undefined) delete process.env.PATH; else process.env.PATH = previous;
     await rm(directory, { recursive: true, force: true });

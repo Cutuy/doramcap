@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Config, Project } from './native.js';
 const exec = promisify(execFile);
+const PULL_TIMEOUT_MS = 30 * 60_000; // Per image; generous for slow links, bounded for hung registries.
 
 /** Resolve the selected Compose services without downloading images or starting containers. */
 export async function imageReferences(socket: string, project: Project): Promise<string[]> {
@@ -21,21 +22,32 @@ export async function imageReferences(socket: string, project: Project): Promise
   });
 }
 
-/** Pull missing images before local image inspection; successful pulls remain in Docker's cache. */
-export async function ensureImages(config: Config, projects: Project[]): Promise<void> {
+/**
+ * Pull missing images before local image inspection; successful pulls remain in Docker's cache.
+ * Errors: `ImageDownload` after a failed or timed-out pull, `Stopped` after `signal` aborts.
+ */
+export async function ensureImages(config: Config, projects: Project[], signal: AbortSignal, timeout = PULL_TIMEOUT_MS): Promise<void> {
   const images = new Set<string>([config.dora?.image || 'doramcap/dora:local']);
   for (const project of projects)
     for (const image of await imageReferences(config.dockerSocket, project)) images.add(image);
   for (const image of images) {
+    if (signal.aborted) throw new Error('Stopped');
     const args = ['--host', `unix://${config.dockerSocket}`];
-    try { await exec('docker', [...args, 'image', 'inspect', image], { timeout: 30_000 }); }
-    catch {
-      console.log(`Downloading image: ${image}`);
+    try { await exec('docker', [...args, 'image', 'inspect', image], { timeout: 30_000, signal }); continue; }
+    catch { if (signal.aborted) throw new Error('Stopped'); }
+    console.log(`Downloading image: ${image}`);
+    try {
       await new Promise<void>((resolve, reject) => {
-        const child = spawn('docker', [...args, 'pull', image], { stdio: ['ignore', 'inherit', 'inherit'] });
+        // SIGKILL: a wedged client must not outlive the deadline; the daemon cancels its pull.
+        const child = spawn('docker', [...args, 'pull', image],
+          { stdio: ['ignore', 'inherit', 'inherit'], signal, timeout, killSignal: 'SIGKILL' });
         child.once('error', reject);
-        child.once('exit', code => code === 0 ? resolve() : reject(new Error(`Image download failed: ${image}`)));
+        child.once('exit', (code, killed) => code === 0 ? resolve() : reject(new Error(killed ? `killed after ${timeout} ms` : `exit ${code}`)));
       });
+    } catch (error) {
+      if (signal.aborted) throw new Error('Stopped');
+      console.error(`Image download failed: ${image}: ${(error as Error).message}`);
+      throw new Error('ImageDownload');
     }
   }
 }
