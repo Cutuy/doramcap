@@ -28,7 +28,8 @@ services:
       - *results
       - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
       - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
-    command: ["--backend", "bpf", "--dora", "--published-count", "/results/published.count", "--task-capacity", "32768", "--record", "/results/cpu.mcap", "--record-buffered"]
+      - {type: bind, source: ./monitor.pbtxt, target: /config/monitor.pbtxt, read_only: true}
+    command: ["--config", "/config/monitor.pbtxt"]
   viewer:
     <<: *node
     environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"}

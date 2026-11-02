@@ -2,8 +2,8 @@
 
 Collection runs every 100 ms, recording monotonic start/end times and Unix capture
 time. Counters are cumulative and can advance during collection. Missed deadlines
-skip catch-up bursts. `--records` bounds cgroup × possible-CPU rows and
-`--queue-slots` bounds buffered batches. Exhausting the batch pool increments loss
+skip catch-up bursts. `records` bounds cgroup × possible-CPU rows and
+`queue_slots` bounds buffered batches. Exhausting the batch pool increments loss
 and continues collection into a reusable discard batch.
 
 Numeric collection and handoff use preallocated storage. Metadata discovery,

@@ -1,0 +1,4 @@
+records: 4096
+queue_slots: 8
+task_capacity: 32768
+dora {}

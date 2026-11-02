@@ -3,7 +3,7 @@
 services:
   cpu-monitor:
     image: ${DORAMCAP_MONITOR_IMAGE:?prepared monitor image required}
-    command: ["--backend", "bpf", "--records", "32768", "--output", "/recordings/cpu.pb", "--record", "/recordings/cpu.mcap", "--record-buffered"]
+    command: ["--config", "/config/monitor.pbtxt"]
     network_mode: none
     read_only: true
     cap_drop: [ALL]
@@ -24,3 +24,7 @@ services:
       - type: bind
         source: ${DORAMCAP_ARTIFACTS:?new artifact directory required}
         target: /recordings
+      - type: bind
+        source: ./recording.pbtxt
+        target: /config/monitor.pbtxt
+        read_only: true

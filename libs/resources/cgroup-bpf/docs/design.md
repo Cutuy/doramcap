@@ -42,7 +42,7 @@ and performance qualification on NVIDIA BSP remains required.
 Live validation now passes on x86_64 Linux 7.0 and ARM64 WSL2 Linux 6.18:
 controlled nested cgroups, pinned cores, cpu.stat comparisons, bounded overflow,
 and 40 warmed-up collection calls with zero observed userspace allocations.
-Run `apps/system-monitor/tests/validate_native.py` for controlled integration and the
+Run `apps/system-monitor/tests/validate_native.ts` for controlled integration and the
 `native_allocations` Cargo example for the allocation probe. See
 [validation evidence](101826-native-kernel-validation.md).
 Linux 6.8/NVIDIA qualification and long-duration overhead testing remain open.

@@ -9,27 +9,23 @@ fn recording_rotation_preserves_every_sample() {
     let dir = std::env::temp_dir().join(format!("doramcap-embedded-{}", std::process::id()));
     std::fs::create_dir(&dir).unwrap();
     let path = dir.join("capture.mcap");
+    // Hold every sample even when rotation stalls the consumer on a busy host.
+    let config = dir.with_extension("pbtxt");
+    std::fs::write(
+        &config,
+        format!(
+            r#"records: 32768 queue_slots: 24 samples: 24
+            recording {{ path: "{}" rotation_bytes: 1 samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary" }}"#,
+            path.display()
+        ),
+    )
+    .unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_system-monitor"));
     command
-        .args([
-            "--backend",
-            "bpf",
-            "--samples",
-            "24",
-            "--records",
-            "32768",
-            "--record",
-        ])
-        .arg(&path)
-        .args([
-            "--record-config",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/config/recording.pbtxt"),
-        ])
-        .args(["--record-rotate-bytes", "1"])
+        .arg("--config")
+        .arg(&config)
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    // Hold every sample even when rotation stalls the consumer on a busy host.
-    command.args(["--queue-slots", "24"]);
     // Act
     let start = Instant::now();
     let mut child = command.spawn().unwrap();
@@ -76,11 +72,12 @@ fn recording_rotation_preserves_every_sample() {
     assert!(log.contains("collected=24 published=24 dropped=0"), "{log}");
     // Act
     let collision = Command::new(env!("CARGO_BIN_EXE_system-monitor"))
-        .args(["--backend", "bpf", "--samples", "1", "--record"])
-        .arg(&path)
+        .arg("--config")
+        .arg(&config)
         .output()
         .unwrap();
     // Assert
     assert!(!collision.status.success());
     std::fs::remove_dir_all(dir).unwrap();
+    std::fs::remove_file(config).unwrap();
 }

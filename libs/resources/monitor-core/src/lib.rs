@@ -6,6 +6,9 @@ use crossbeam_queue::ArrayQueue;
 use serde::Serialize;
 use std::sync::Arc;
 
+mod dictionary;
+pub use dictionary::{CgroupDictionary, CgroupEntry};
+
 pub const SCHEMA_VERSION: u32 = 1;
 pub const FLAG_RUNTIME: u32 = 1;
 pub const FLAG_USER_SYSTEM: u32 = 2;

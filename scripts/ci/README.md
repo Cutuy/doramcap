@@ -149,11 +149,10 @@ No sudo password is stored in the CI account or submitted snapshots.
 
 Source snapshots include `libs/`, `apps/`, and the Console source, contracts and
 package/build inputs. Operator configuration and secrets are excluded. The native integration test lives
-at `apps/system-monitor/tests/validate_native.py`; new privileged launchers use
-that path. Submission adds a small forwarding script at the legacy path inside
-the worker archive so previously installed launchers continue to work. This shim
-exists only in the submitted snapshot. Python validation requires the protobuf
-runtime described in `libs/telemetry/protocol/python/requirements.txt`.
+at `apps/system-monitor/tests/validate_native.ts`; new privileged launchers use
+that path. Submission adds small forwarding scripts at the old Python paths inside
+the worker archive so previously installed launchers continue to work. These shims
+exist only in the submitted snapshot.
 
 Source archives carry the snapshot creation timestamp. The rsync content check
 prevents those timestamps from invalidating unchanged cached source files.
@@ -172,10 +171,9 @@ contains its HTTP and activity-capture validation commands.
 
 ## Resource policy native coverage
 
-The aggregate native suite also invokes `libs/resources/resource-policy/tests/validate_native.py`
+The aggregate native suite also invokes `libs/resources/resource-policy/tests/validate_native.ts`
 against the unprivileged-built `native_policy` example. It checks cpuset placement,
-RR scheduling, inheritance, denial, contention, cleanup, and Python/Rust Protobuf
-compatibility. Its `--enable-root-cpuset` test option temporarily enables root
+RR scheduling, inheritance, denial, contention and cleanup. Its `--enable-root-cpuset` test option temporarily enables root
 cpuset delegation when absent, then restores the previous setting after removing
 its test subtree. This host-level test setup was explicitly approved on 2026-10-19.
 Run only on the trusted serial CI worker or an equivalently authorized test host.

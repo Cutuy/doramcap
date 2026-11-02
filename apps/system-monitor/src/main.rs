@@ -1,125 +1,57 @@
-use eyre::{Result, WrapErr, bail, eyre};
-use monitor_core::{CpuRecord, Snapshot, handoff_with_tasks};
+use config::MonitorConfig;
+use eyre::{Result, WrapErr, bail, ensure, eyre};
+use monitor_core::{CgroupDictionary, CpuRecord, Snapshot, handoff_with_tasks};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
-use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry_protocol::{DictionaryEntry, Frame as Envelope, VERSION};
 
+mod config;
 mod recording;
 
 const PERIOD: Duration = Duration::from_millis(100);
 
-struct Options {
-    backend: String,
-    samples: u64,
-    records: usize,
-    slots: usize,
-    tasks: usize,
-    dora: bool,
-    published_count: Option<PathBuf>,
-    check: bool,
-    check_bpf: bool,
-    output: Option<PathBuf>,
-    publisher_delay: Duration,
-    record: Option<PathBuf>,
-    record_config: Option<PathBuf>,
-    record_buffered: bool,
-    record_rotate_bytes: u64,
+const DEFAULT_CHECK_RECORDS: usize = 4096;
+const SOURCE: &str = "bpf";
+const USAGE: &str = "system-monitor --config FILE.pbtxt\nsystem-monitor --check\nsystem-monitor --check-bpf [--records N]\nCollection is fixed at 10 Hz. Configuration schema: proto/monitor.proto.\nBPF collection requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf.";
+
+/// One process invocation: a capability probe or a configured session.
+enum Launch {
+    Check { attach_records: Option<usize> },
+    Run(MonitorConfig),
 }
-impl Options {
-    fn parse() -> Result<Self> {
-        let mut opts = Self {
-            backend: "bpf".into(),
-            samples: 0,
-            records: 4096,
-            slots: 8,
-            tasks: 0,
-            dora: false,
-            published_count: None,
-            check: false,
-            check_bpf: false,
-            output: None,
-            publisher_delay: Duration::ZERO,
-            record: None,
-            record_config: None,
-            record_buffered: false,
-            record_rotate_bytes: 0,
-        };
-        let mut args = std::env::args().skip(1);
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--backend" => {
-                    opts.backend = args
-                        .next()
-                        .ok_or_else(|| eyre!("--backend requires a value"))?
-                }
-                "--samples" => opts.samples = value(&mut args, &arg)?.parse()?,
-                "--records" => opts.records = value(&mut args, &arg)?.parse()?,
-                "--task-capacity" => opts.tasks = value(&mut args, &arg)?.parse()?,
-                "--queue-slots" => opts.slots = value(&mut args, &arg)?.parse()?,
-                "--publisher-delay-ms" => {
-                    opts.publisher_delay = Duration::from_millis(value(&mut args, &arg)?.parse()?)
-                }
-                "--output" => opts.output = Some(value(&mut args, &arg)?.into()),
-                "--record" => opts.record = Some(value(&mut args, &arg)?.into()),
-                "--record-config" => opts.record_config = Some(value(&mut args, &arg)?.into()),
-                "--record-buffered" => opts.record_buffered = true,
-                "--record-rotate-bytes" => {
-                    opts.record_rotate_bytes = value(&mut args, &arg)?.parse()?
-                }
-                "--published-count" => opts.published_count = Some(value(&mut args, &arg)?.into()),
-                "--dora" => opts.dora = true,
-                "--check" => opts.check = true,
-                "--check-bpf" => {
-                    opts.check = true;
-                    opts.check_bpf = true;
-                }
-                "--help" | "-h" => {
-                    println!(
-                        "system-monitor [--check | --check-bpf] [--backend bpf] [--samples N]\n  [--records N] [--queue-slots N] [--task-capacity N] [--dora]\n  [--output FILE] [--publisher-delay-ms N]\n  [--record FILE] [--record-config FILE.pbtxt] [--record-buffered] [--record-rotate-bytes N]\nCollection is fixed at 10 Hz. samples=0 runs until Dora stop or interruption.\nDefault backend bpf requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf."
-                    );
-                    std::process::exit(0);
-                }
-                _ => bail!("unknown argument: {arg}"),
+impl Launch {
+    fn parse(args: &[String]) -> Result<Self> {
+        let args: Vec<_> = args.iter().map(String::as_str).collect();
+        match args.as_slice() {
+            ["--config", path] => Ok(Self::Run(config::load(Path::new(path))?)),
+            ["--check"] => Ok(Self::Check {
+                attach_records: None,
+            }),
+            ["--check-bpf"] => Ok(Self::Check {
+                attach_records: Some(DEFAULT_CHECK_RECORDS),
+            }),
+            ["--check-bpf", "--records", records] => {
+                let records = records.parse()?;
+                ensure!(
+                    (1..=1_048_576).contains(&records),
+                    "--records must be in 1..1048576"
+                );
+                Ok(Self::Check {
+                    attach_records: Some(records),
+                })
             }
+            ["--help" | "-h"] => {
+                println!("{USAGE}");
+                std::process::exit(0);
+            }
+            _ => bail!("{USAGE}"),
         }
-        if opts.backend != "bpf" {
-            bail!("only the native bpf backend is supported");
-        }
-        if opts.records == 0
-            || opts.records > 1_048_576
-            || opts.slots == 0
-            || opts.slots > 1024
-            || opts.tasks > 1_048_576
-        {
-            bail!(
-                "invalid capacities: records 1..1048576, queue-slots 1..1024, task-capacity 0..1048576"
-            );
-        }
-        let bytes = opts
-            .records
-            .checked_mul(std::mem::size_of::<CpuRecord>())
-            .and_then(|n| {
-                opts.tasks
-                    .checked_mul(std::mem::size_of::<task_accounting::TaskRecord>())
-                    .and_then(|t| n.checked_add(t))
-            })
-            .and_then(|n| n.checked_mul(opts.slots + 2))
-            .ok_or_else(|| eyre!("capacity overflow"))?;
-        if bytes > 512 * 1024 * 1024 {
-            bail!("configured acquisition storage exceeds 512 MiB; reduce capacities");
-        }
-        Ok(opts)
     }
-}
-fn value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<String> {
-    args.next().ok_or_else(|| eyre!("{flag} requires a value"))
 }
 fn unix_ns() -> u64 {
     SystemTime::now()
@@ -176,7 +108,7 @@ struct Backend {
     scratch: Vec<cgroup_bpf::CgroupRecord>,
 }
 impl Backend {
-    fn new(opts: &Options) -> Result<Self> {
+    fn new(records: usize) -> Result<Self> {
         let cap = capabilities()?;
         if !cap.kernel_version_ok || !cap.cgroup_v2 || !cap.btf_readable {
             bail!(
@@ -184,8 +116,8 @@ impl Backend {
             );
         }
         Ok(Self {
-            monitor: cgroup_bpf::Backend::new(opts.records)?,
-            scratch: Vec::with_capacity(opts.records),
+            monitor: cgroup_bpf::Backend::new(records)?,
+            scratch: Vec::with_capacity(records),
         })
     }
     fn collect(&mut self, snapshot: &mut Snapshot) -> Result<(), String> {
@@ -222,97 +154,6 @@ impl Backend {
     }
 }
 
-struct Dictionary {
-    entries: Vec<DictionaryEntry>,
-    index: HashMap<u64, usize>,
-    unresolved: HashSet<u64>,
-    capacity: usize,
-    revision: u64,
-    // Cumulative unresolved unique identities per published batch, not distinct
-    // identities over the session. Never retain an unbounded overflow-ID set.
-    overflow: u64,
-    next_refresh: Instant,
-}
-impl Dictionary {
-    fn new(capacity: usize) -> Self {
-        Self {
-            entries: Vec::with_capacity(capacity),
-            index: HashMap::with_capacity(capacity),
-            unresolved: HashSet::with_capacity(capacity),
-            capacity,
-            revision: 0,
-            overflow: 0,
-            next_refresh: Instant::now(),
-        }
-    }
-    fn update(&mut self, snapshot: &Snapshot) -> usize {
-        let mut first_changed = self.entries.len();
-        let now = Instant::now();
-        // Discovery is rate limited even if unresolved/new IDs appear in every
-        // batch. It also revisits names so renames and temporary failures recover.
-        let mut paths = HashMap::new();
-        let refresh = now >= self.next_refresh;
-        if refresh {
-            scan_cgroups(Path::new("/sys/fs/cgroup"), &mut paths, self.capacity, 0);
-            self.next_refresh = now + Duration::from_secs(2);
-            for (index, entry) in self.entries.iter_mut().enumerate() {
-                if let Some(path) = paths.get(&entry.id)
-                    && entry.path.as_ref() != Some(path)
-                {
-                    entry.path = Some(path.clone());
-                    first_changed = first_changed.min(index);
-                    self.revision = self.revision.saturating_add(1);
-                }
-            }
-        }
-        self.unresolved.clear();
-        for record in &snapshot.records {
-            if self.index.contains_key(&record.cgroup_id) {
-                continue;
-            }
-            if self.entries.len() == self.capacity {
-                self.unresolved.insert(record.cgroup_id);
-                continue;
-            }
-            let path = paths.remove(&record.cgroup_id);
-            self.index.insert(record.cgroup_id, self.entries.len());
-            self.entries.push(DictionaryEntry {
-                id: record.cgroup_id,
-                parent_id: record.parent_id,
-                path,
-            });
-            self.revision = self.revision.saturating_add(1);
-        }
-        self.overflow = self.overflow.saturating_add(self.unresolved.len() as u64);
-        first_changed
-    }
-}
-// Bound metadata strings and traversal depth as well as entry count. Deeper or
-// longer paths remain unresolved (numeric records still carry identity).
-fn scan_cgroups(path: &Path, paths: &mut HashMap<u64, String>, capacity: usize, depth: usize) {
-    if paths.len() >= capacity || depth > 64 || path.as_os_str().len() > 4096 {
-        return;
-    }
-    if let Ok(meta) = fs::metadata(path) {
-        let relative = path.strip_prefix("/sys/fs/cgroup").unwrap_or(path);
-        let name = if relative.as_os_str().is_empty() {
-            "/".into()
-        } else {
-            format!("/{}", relative.to_string_lossy())
-        };
-        paths.insert(meta.ino(), name);
-    }
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if paths.len() >= capacity {
-                break;
-            }
-            if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                scan_cgroups(&entry.path(), paths, capacity, depth + 1);
-            }
-        }
-    }
-}
 // Keep collecting into the preallocated discard buffer when the handoff is full.
 // The next accepted snapshot reports the cumulative number of discarded samples.
 fn collect_sample(
@@ -346,58 +187,55 @@ fn collect_sample(
     }
 }
 
-fn run(opts: Options) -> Result<()> {
-    if opts.check {
-        let mut capabilities = capabilities()?;
-        if opts.check_bpf {
-            // Probe real kernel attachment before a lifecycle owner launches recording.
-            let _backend = Backend::new(&opts)?;
-            capabilities.attachment_verified = true;
-        }
-        println!("{}", serde_json::to_string_pretty(&capabilities)?);
-        return Ok(());
+fn check(attach_records: Option<usize>) -> Result<()> {
+    let mut capabilities = capabilities()?;
+    if let Some(records) = attach_records {
+        // Probe real kernel attachment before a lifecycle owner launches recording.
+        let _backend = Backend::new(records)?;
+        capabilities.attachment_verified = true;
     }
-    if opts.tasks != 0 && !cfg!(feature = "task-bpf") {
-        bail!("--task-capacity requires --features task-bpf");
+    println!("{}", serde_json::to_string_pretty(&capabilities)?);
+    Ok(())
+}
+
+fn run(config: MonitorConfig) -> Result<()> {
+    let records = config.records as usize;
+    let slots = config.queue_slots as usize;
+    let tasks = config.task_capacity as usize;
+    let dora = config.dora.is_some();
+    if tasks != 0 && !cfg!(feature = "task-bpf") {
+        bail!("task_capacity requires --features task-bpf");
     }
-    let backend = Backend::new(&opts)?;
+    let backend = Backend::new(records)?;
     #[cfg(feature = "task-bpf")]
-    let tasks = if opts.tasks != 0 {
-        Some(task_accounting::Backend::new_experimental(opts.tasks)?)
+    let task_backend = if tasks != 0 {
+        Some(task_accounting::Backend::new_experimental(tasks)?)
     } else {
         None
     };
     #[cfg(feature = "dora")]
-    let mut publisher = if opts.dora {
+    let mut publisher = if dora {
         Some(system_monitor_dora::Publisher::new()?)
     } else {
         None
     };
     #[cfg(not(feature = "dora"))]
-    if opts.dora {
-        bail!("--dora requires --features dora");
+    if dora {
+        bail!("the dora section requires --features dora");
     }
-    let mut output: Option<Box<dyn Write>> = if let Some(path) = opts.output.as_ref() {
-        Some(Box::new(BufWriter::new(File::create(path)?)))
-    } else if !opts.dora && opts.record.is_none() {
+    let mut output: Option<Box<dyn Write>> = if !config.output_path.is_empty() {
+        Some(Box::new(BufWriter::new(File::create(&config.output_path)?)))
+    } else if !dora && config.recording.is_none() {
         Some(Box::new(BufWriter::new(std::io::stdout())))
     } else {
         None
     };
-    let mut recorder = opts
-        .record
-        .as_deref()
-        .map(|path| {
-            recording::Recorder::create(
-                path,
-                !opts.record_buffered,
-                opts.record_rotate_bytes,
-                opts.record_config.as_deref(),
-            )
-        })
+    let mut recorder = config
+        .recording
+        .as_ref()
+        .map(recording::Recorder::create)
         .transpose()?;
-    let (producer, consumer) =
-        handoff_with_tasks(opts.slots, opts.records, opts.tasks).map_err(|e| eyre!(e))?;
+    let (producer, consumer) = handoff_with_tasks(slots, records, tasks).map_err(|e| eyre!(e))?;
     let stop = Arc::new(AtomicBool::new(false));
     let signal_stop = stop.clone();
     ctrlc::set_handler(move || signal_stop.store(true, Ordering::Release))
@@ -405,18 +243,16 @@ fn run(opts: Options) -> Result<()> {
     let done = Arc::new(AtomicBool::new(false));
     let worker_stop = stop.clone();
     let worker_done = done.clone();
-    let record_capacity = opts.records;
-    let task_capacity = opts.tasks;
-    let limit = opts.samples;
+    let limit = config.samples;
     // Preallocate the discard batch before entering the periodic loop.
-    let mut discard = Snapshot::with_capacities(record_capacity, task_capacity);
+    let mut discard = Snapshot::with_capacities(records, tasks);
     let worker = std::thread::Builder::new()
         .name("monitor-collector".into())
         .spawn(move || {
             let result = (|| -> Result<(u64, u64), String> {
                 let mut backend = backend;
                 #[cfg(feature = "task-bpf")]
-                let mut tasks = tasks;
+                let mut task_backend = task_backend;
                 let origin = Instant::now();
                 let mut deadline = origin;
                 let mut sequence = 0u64;
@@ -437,7 +273,7 @@ fn run(opts: Options) -> Result<()> {
                         |snapshot| {
                             backend.collect(snapshot)?;
                             #[cfg(feature = "task-bpf")]
-                            if let Some(tasks) = tasks.as_mut() {
+                            if let Some(tasks) = task_backend.as_mut() {
                                 snapshot.task_losses = tasks
                                     .collect_into(&mut snapshot.task_records)
                                     .map_err(|e| e.to_string())?;
@@ -458,7 +294,8 @@ fn run(opts: Options) -> Result<()> {
             worker_done.store(true, Ordering::Release);
             result
         })?;
-    let mut dictionary = Dictionary::new(opts.records);
+    let mut dictionary = CgroupDictionary::new(records);
+    let mut dictionary_entries: Vec<DictionaryEntry> = Vec::with_capacity(records);
     let mut payload = Vec::new();
     let session = format!("{}-{}", unix_ns(), std::process::id());
     let mut published = 0u64;
@@ -487,20 +324,22 @@ fn run(opts: Options) -> Result<()> {
                         .is_none_or(|time| time.elapsed() >= Duration::from_secs(2));
                 if dictionary_due {
                     dictionary.update(snapshot);
+                    dictionary_entries.clear();
+                    dictionary_entries.extend(dictionary.entries().iter().map(Into::into));
                     let packet = telemetry_protocol::dictionary_packet(
                         &telemetry_protocol::DictionaryFrame {
                             version: VERSION,
                             session_id: session.clone(),
-                            revision: dictionary.revision,
-                            overflow: dictionary.overflow,
-                            entries: &dictionary.entries,
+                            revision: dictionary.revision(),
+                            overflow: dictionary.overflow(),
+                            entries: &dictionary_entries,
                             capture_unix_ns: snapshot.capture_unix_ns,
                         },
                     );
                     if let Some(recorder) = recorder.as_mut() {
                         recorder.record(
                             true,
-                            dictionary.revision,
+                            dictionary.revision(),
                             snapshot.capture_unix_ns,
                             &packet,
                             |_payload| {
@@ -508,7 +347,7 @@ fn run(opts: Options) -> Result<()> {
                                 if let Some(publisher) = publisher.as_mut() {
                                     publisher.publish_serialized(
                                         true,
-                                        dictionary.revision,
+                                        dictionary.revision(),
                                         snapshot.capture_unix_ns,
                                         _payload.len(),
                                         |out| out.copy_from_slice(_payload),
@@ -525,7 +364,7 @@ fn run(opts: Options) -> Result<()> {
                     }
                     dictionary_sent_at = Some(Instant::now());
                 }
-                let report = if opts.tasks != 0 {
+                let report = if tasks != 0 {
                     Some(monitor_core::kernel_reporting_snapshot(snapshot))
                 } else {
                     None
@@ -534,16 +373,16 @@ fn run(opts: Options) -> Result<()> {
                 let mut envelope = Envelope {
                     version: VERSION,
                     snapshot,
-                    source: opts.backend.clone(),
-                    task_collection_enabled: opts.tasks != 0,
-                    task_capacity: opts.tasks,
+                    source: SOURCE.into(),
+                    task_collection_enabled: tasks != 0,
+                    task_capacity: tasks,
                     session_id: session.clone(),
-                    dictionary_revision: dictionary.revision,
+                    dictionary_revision: dictionary.revision(),
                     dictionary_full: false,
-                    dictionary_overflow: dictionary.overflow,
+                    dictionary_overflow: dictionary.overflow(),
                     dictionary: &[] as &[DictionaryEntry],
                 };
-                if recorder.is_some() || opts.dora {
+                if recorder.is_some() || dora {
                     let packet = telemetry_protocol::snapshot_packet(&envelope);
                     if let Some(recorder) = recorder.as_mut() {
                         recorder.record(
@@ -578,7 +417,7 @@ fn run(opts: Options) -> Result<()> {
                 }
                 if let Some(output) = output.as_mut() {
                     // Standalone files remain self-contained; Dora uses separate topics.
-                    envelope.dictionary = &dictionary.entries;
+                    envelope.dictionary = &dictionary_entries;
                     envelope.dictionary_full = true;
                     telemetry_protocol::encode(&envelope, &mut payload)?;
                     output.write_all(&(payload.len() as u32).to_le_bytes())?;
@@ -586,9 +425,6 @@ fn run(opts: Options) -> Result<()> {
                     output.flush()?;
                 }
                 published += 1;
-                if !opts.publisher_delay.is_zero() {
-                    std::thread::sleep(opts.publisher_delay);
-                }
             } else if finished {
                 break;
             } else {
@@ -614,14 +450,19 @@ fn run(opts: Options) -> Result<()> {
         .map_err(|e| eyre!(e));
     publish_result?;
     let (collected, dropped) = collected?;
-    if let Some(path) = &opts.published_count {
-        fs::write(path, format!("{published}\n"))?;
+    if !config.published_count_path.is_empty() {
+        fs::write(&config.published_count_path, format!("{published}\n"))?;
     }
     eprintln!("session complete: collected={collected} published={published} dropped={dropped}");
     Ok(())
 }
 fn main() -> Result<()> {
-    run(Options::parse()?).wrap_err("system monitor failed")
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    match Launch::parse(&args)? {
+        Launch::Check { attach_records } => check(attach_records),
+        Launch::Run(config) => run(config),
+    }
+    .wrap_err("system monitor failed")
 }
 
 #[cfg(test)]

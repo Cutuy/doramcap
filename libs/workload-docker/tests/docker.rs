@@ -37,6 +37,11 @@ fn monitor(root: &Path, image: &str, artifacts: &Path) -> ComposeProject {
             include_bytes!("../../../apps/system-monitor/deploy/recording.yaml"),
         )
         .unwrap();
+        std::fs::write(
+            root.join("recording.pbtxt"),
+            include_bytes!("../../../apps/system-monitor/deploy/recording.pbtxt"),
+        )
+        .unwrap();
     }
     ComposeProject {
         key: "monitor".into(),
@@ -2114,6 +2119,11 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     std::fs::write(
         root.path().join("app.yaml"),
         include_bytes!("../../../apps/cpu-viewer/deploy/compose.yaml"),
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join("monitor.pbtxt"),
+        include_bytes!("../../../apps/cpu-viewer/deploy/monitor.pbtxt"),
     )
     .unwrap();
     let app = |artifacts: &Path| ComposeProject {

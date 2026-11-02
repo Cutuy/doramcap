@@ -1,0 +1,27 @@
+syntax = "proto3";
+package doramcap.monitor.v1;
+
+// One collector launch. Relative paths resolve beside the pbtxt.
+// With no output, Dora or recording section, snapshots go to stdout.
+message MonitorConfig {
+  uint32 records = 1; // Rows per snapshot, 1..1048576.
+  uint32 queue_slots = 2; // Buffered batches, 1..1024.
+  uint32 task_capacity = 3; // Zero disables task diagnostics; others need feature task-bpf.
+  uint64 samples = 4; // Zero runs until Dora stop or interruption.
+  string output_path = 5; // Length-prefixed Protobuf snapshots; replaces an existing file.
+  string published_count_path = 6; // Decimal count written after a clean session.
+  Dora dora = 7;
+  Recording recording = 8;
+}
+
+// Presence publishes snapshots and dictionaries as Dora outputs; needs feature dora.
+message Dora {}
+
+// Presence records MCAP inside the monitor. Files are created exclusively.
+message Recording {
+  string path = 1;
+  bool buffered = 2; // Buffered file I/O; otherwise direct I/O with 4 KiB alignment.
+  uint64 rotation_bytes = 3; // Soft target at message boundaries; zero disables rotation.
+  string samples_topic = 4;
+  string dictionary_topic = 5;
+}

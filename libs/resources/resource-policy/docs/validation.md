@@ -48,7 +48,7 @@ cargo test --locked --workspace --all-features
 cargo build --locked -p resource-policy --examples
 cargo run --locked -p resource-policy --example policy_overhead
 # Elevate only the prebuilt native suite using the repository credential workflow.
-python3 libs/resources/resource-policy/tests/validate_native.py --binary target/debug/examples/native_policy
+node libs/resources/resource-policy/tests/validate_native.ts --binary target/debug/examples/native_policy
 python3 scripts/ci/submit.py --source /absolute/path/to/checkout
 ```
 
@@ -56,8 +56,7 @@ The local all-feature build used the existing `/tmp/doramcap-native/root` LLVM 1
 and libelf headers/libraries through `CLANG`, `LD_LIBRARY_PATH`, `CFLAGS`,
 `LIBRARY_PATH`, `PKG_CONFIG_PATH`, and `PKG_CONFIG_SYSROOT_DIR`. The default local
 build environment lacked libelf headers. No system packages were installed.
-The Python interoperability suite used `/tmp/resource-policy-python` with
-Protobuf 6.33.6; builds remained unprivileged.
+Builds remained unprivileged.
 
 The ARM64 worker initially lacked root cpuset delegation (jobs 56/57). The user
 explicitly approved temporary enable/restore for tests. Job 58 passed cpuset/RR

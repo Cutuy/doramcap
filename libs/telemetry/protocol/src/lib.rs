@@ -12,6 +12,16 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.telemetry.v1.rs"));
 }
 pub use pb::DictionaryEntry;
+
+impl From<&monitor_core::CgroupEntry> for DictionaryEntry {
+    fn from(entry: &monitor_core::CgroupEntry) -> Self {
+        Self {
+            id: entry.id,
+            parent_id: entry.parent_id,
+            path: entry.path.clone(),
+        }
+    }
+}
 #[derive(Debug)]
 pub struct Frame<S = monitor_core::Snapshot, D = Vec<DictionaryEntry>> {
     pub version: u32,
