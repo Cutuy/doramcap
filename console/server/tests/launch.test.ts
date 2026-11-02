@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
-import { launchInstructions, listenConsole, portNumber } from '../src/launch.js';
+import { availablePort, launchInstructions, listenConsole, portNumber } from '../src/launch.js';
 
 test('occupied ports retry with the actual browser origin and explicit ports fail', async () => {
   // Arrange
@@ -39,4 +39,22 @@ test('launch options reject invalid ports and SSH destinations', () => {
   assert.equal(portNumber('43187'), 43187);
   for (const destination of ['-oProxyCommand=bad', 'host;command', 'user@host\ncommand'])
     assert.throws(() => launchInstructions('http://127.0.0.1:43187', 43187, 'secret', destination));
+});
+
+test('an available port can be bound and differs while the first is held', async () => {
+  // Arrange
+  const first = await availablePort();
+  const holder = createServer();
+  holder.listen(first, '127.0.0.1');
+  await once(holder, 'listening');
+  try {
+    // Act
+    const second = await availablePort();
+    // Assert
+    assert.notEqual(second, first);
+    assert.ok(second > 0 && second <= 65535);
+  } finally {
+    holder.close();
+    await once(holder, 'close');
+  }
 });

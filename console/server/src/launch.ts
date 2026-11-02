@@ -1,5 +1,6 @@
 import { once } from 'node:events';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 
 export const DEFAULT_PORT = 43187;
 
@@ -7,6 +8,17 @@ export function portNumber(value: string): number {
   if (!/^\d+$/.test(value) || Number(value) < 1024 || Number(value) > 65535)
     throw new Error('Port must be an integer in 1024..65535');
   return Number(value);
+}
+
+/** Reserve and release one free loopback port for a child that binds it soon after. */
+export async function availablePort(): Promise<number> {
+  const server = createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = server.address() as AddressInfo;
+  server.close();
+  await once(server, 'close');
+  return port;
 }
 
 /** Bind loopback directly; automatic selection retries occupied ports without a probe/bind race. */

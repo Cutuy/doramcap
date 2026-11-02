@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 300" role="img" aria-labelledby="title desc" font-family="system-ui, sans-serif" font-size="13">
+  <title id="title">One Console per project</title>
+  <desc id="desc">Each project directory gets its own Console service and state directory, with its own database and recordings. All projects share one installed release and Docker.</desc>
+  <rect width="860" height="300" fill="#fff"/>
+  <g fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5">
+    <rect x="20" y="30" width="170" height="64" rx="6"/>
+    <rect x="20" y="190" width="170" height="64" rx="6"/>
+    <rect x="270" y="30" width="200" height="64" rx="6"/>
+    <rect x="270" y="190" width="200" height="64" rx="6"/>
+  </g>
+  <g fill="#eef5f3" stroke="#177763" stroke-width="1.5">
+    <rect x="550" y="30" width="290" height="64" rx="6"/>
+    <rect x="550" y="190" width="290" height="64" rx="6"/>
+  </g>
+  <rect x="270" y="116" width="200" height="52" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <g text-anchor="middle">
+    <text x="105" y="58">~/work/robot</text>
+    <text x="105" y="77" fill="#555" font-size="12">Compose project</text>
+    <text x="105" y="218">~/work/arm</text>
+    <text x="105" y="237" fill="#555" font-size="12">Compose project</text>
+    <text x="370" y="58">Console service</text>
+    <text x="370" y="77" fill="#555" font-size="12">robot-3f9a1c2e7b04</text>
+    <text x="370" y="218">Console service</text>
+    <text x="370" y="237" fill="#555" font-size="12">arm-91c04d7ea233</text>
+    <text x="370" y="139">Release</text>
+    <text x="370" y="157" fill="#555" font-size="12">system apps, Docker images</text>
+    <text x="695" y="58">projects/robot-3f9a1c2e7b04/</text>
+    <text x="695" y="77" fill="#555" font-size="12">console.db, recordings</text>
+    <text x="695" y="218">projects/arm-91c04d7ea233/</text>
+    <text x="695" y="237" fill="#555" font-size="12">console.db, recordings</text>
+  </g>
+  <g stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <line x1="190" y1="62" x2="268" y2="62"/>
+    <line x1="190" y1="222" x2="268" y2="222"/>
+    <line x1="470" y1="62" x2="548" y2="62"/>
+    <line x1="470" y1="222" x2="548" y2="222"/>
+    <line x1="370" y1="116" x2="370" y2="96"/>
+    <line x1="370" y1="168" x2="370" y2="188"/>
+  </g>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker></defs>
+</svg>

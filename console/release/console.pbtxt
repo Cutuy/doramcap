@@ -1,7 +1,7 @@
 # Release template: system app paths are relative to system-apps, project paths to the playground.
 # The release workflow replaces each :local image with its multi-arch digest.
 dora { image: "doramcap/dora:local" }
-live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
+live_bridge { image: "doramcap/live-bridge:local" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
 system_apps {
   id: "cpu-monitor"
