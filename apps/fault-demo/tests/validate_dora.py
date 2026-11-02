@@ -47,14 +47,18 @@ with tempfile.TemporaryDirectory(prefix='fault-dora-') as directory:
     config.write_text('''app {id: "watchdog" config {[type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
     inputs: "source_a" inputs: "source_b" source_timeout_ms: 1000 snapshot_interval_ms: 100
     ''' + optional + '}}}')
+    controls = root/'controls.sock'
+    def backpressure(source):
+        return {'source': source, 'queue_policy': 'backpressure'}
     flow = {'nodes': [
-        *[{'id': f'source_{name}', 'path': str(bins/'fault-demo-source'), 'args': name,
-           'inputs': {'controls': 'dashboard/controls'}, 'outputs': ['reports']} for name in ['a', 'b']],
+        {'id': 'controls', 'path': str(bins/'fault-demo-controls'), 'args': str(controls), 'outputs': ['controls']},
+        *[{'id': f'source-{name}', 'path': str(bins/'fault-demo-source'), 'args': name,
+           'inputs': {'controls': backpressure('controls/controls')}, 'outputs': ['reports']} for name in ['a', 'b']],
         {'id': 'watchdog', 'path': str(bins/'fault-watchdog'), 'args': str(config),
-         'inputs': {'source_a': 'source_a/reports', 'source_b': 'source_b/reports'}, 'outputs': ['faults']},
-        {'id': 'dashboard', 'path': str(bins/'fault-demo-dashboard'),
+         'inputs': {'source_a': backpressure('source-a/reports'), 'source_b': backpressure('source-b/reports')}, 'outputs': ['faults']},
+        {'id': 'dashboard', 'path': str(bins/'fault-demo-dashboard'), 'args': f'{root/"state.json"} {controls}',
          'env': {'FAULT_DEMO_LISTEN': f'127.0.0.1:{port}'},
-         'inputs': {'faults': 'watchdog/faults'}, 'outputs': ['controls']}]}
+         'inputs': {'faults': backpressure('watchdog/faults')}}]}
     descriptor = root/'flow.yml'
     descriptor.write_text(json.dumps(flow))
     def state():
