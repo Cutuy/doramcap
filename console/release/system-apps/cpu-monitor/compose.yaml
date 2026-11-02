@@ -1,0 +1,26 @@
+services:
+  cpu-monitor:
+    image: doramcap/system-monitor:local
+    command: ["--config", "/config/monitor.pbtxt"]
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [BPF, PERFMON, SYSLOG]
+    security_opt: [seccomp=unconfined] # The MCAP writer uses io_uring.
+    cgroup: host
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    environment:
+      DORAMCAP_READY_FILE: /tmp/cpu-monitor.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/cpu-monitor.ready]
+      interval: 200ms
+      timeout: 1s
+      retries: 150
+    volumes:
+      - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
+      - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
+      - {type: bind, source: ./monitor.pbtxt, target: /config/monitor.pbtxt, read_only: true}

@@ -1,4 +1,5 @@
 import { MEDIA_TYPE, LIMITS, isErrorCode, type ErrorCode } from './generated/transport';
+export { PREPARING_RUN } from './generated/transport';
 import { readLive } from './live';
 import type { Frame } from './streams';
 

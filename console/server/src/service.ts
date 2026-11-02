@@ -1,3 +1,5 @@
+import { ensureImages } from './images.js';
+import { PREPARING_RUN } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -53,6 +55,7 @@ export class ConsoleService implements ConsoleBackend {
   private timer: ReturnType<typeof setInterval>;
   private ticking?: Promise<void>;
   private preparing?: Promise<Buffer>;
+  private preparation = new AbortController();
   private startKey = '';
   private startId = '';
   private startPromise?: Promise<Buffer>;
@@ -147,6 +150,7 @@ export class ConsoleService implements ConsoleBackend {
     return this.preparing;
   }
   private async prepareRequest(request: typeof wire.PrepareRequest.prototype) {
+    this.preparation = new AbortController();
     this.snapshot = wire.Status.create({ phase: Phase.PREPARING });
     this.startPromise = undefined;
     this.startKey = '';
@@ -181,6 +185,8 @@ export class ConsoleService implements ConsoleBackend {
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
       const run = await this.runRequest(id, project, apps, live, workspace, join(workspace, 'resolved'), 'review');
+      if (this.config.downloadMissingImages)
+        await ensureImages(this.config, [...run.projects, ...run.systemApps] as Project[], this.preparation.signal);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(run);
@@ -198,6 +204,7 @@ export class ConsoleService implements ConsoleBackend {
         }
         throw error;
       }
+      if (this.preparation.signal.aborted) throw new Error('Stopped');
       const review = wire.Review.create({
         preparedId: id,
         runId: id,
@@ -235,7 +242,7 @@ export class ConsoleService implements ConsoleBackend {
       if (workspace) await rm(workspace, { recursive: true, force: true });
       await this.diagnostic(error);
       const code = errorCode(error);
-      throw new Error(['Busy', 'Closing'].includes(code) ? code : 'InvalidInput');
+      throw new Error(['Busy', 'Closing', 'ImageDownload', 'Stopped'].includes(code) ? code : 'InvalidInput');
     }
   }
   private async runRequest(
@@ -391,6 +398,10 @@ export class ConsoleService implements ConsoleBackend {
   }
   async stop(input: Buffer) {
     const request = wire.StopRequest.decode(input);
+    if (request.runId === PREPARING_RUN && this.preparing) {
+      this.preparation.abort();
+      return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish());
+    }
     if (!this.marker || this.marker.runId !== request.runId || this.preparing) throw new Error('Conflict');
     if (active(this.snapshot.phase)) {
       this.stopped = true;
@@ -579,6 +590,7 @@ export class ConsoleService implements ConsoleBackend {
   }
   private async shutdown() {
     try {
+      this.preparation.abort();
       await this.preparing?.catch(() => {});
       this.stopped = true;
       await this.engine.close();

@@ -21,10 +21,13 @@ export const ERROR_STATUS = {
   StaleReview: 409,
   Stopped: 409,
   PreflightRejected: 409,
+  ImageDownload: 502,
   Busy: 503,
   Closing: 503,
   Internal: 500,
 } as const;
+/** `StopRequest.run_id` that cancels the preparation in progress. */
+export const PREPARING_RUN = 'preparing';
 export type ErrorCode = keyof typeof ERROR_STATUS;
 export const isErrorCode = (code: string): code is ErrorCode => Object.hasOwn(ERROR_STATUS, code);
 

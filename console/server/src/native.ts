@@ -17,13 +17,15 @@ type RawExecution = Omit<NativeExecution, 'profiles' | 'inspect' | 'start' | 'po
   start(input: Buffer): Promise<Buffer>;
   poll(): Buffer;
 };
-type RawCapabilities = Omit<NativeCapabilities, 'parseConfig' | 'open'> & {
+type RawCapabilities = Omit<NativeCapabilities, 'parseConfig' | 'formatConfig' | 'open'> & {
   parseConfig(text: string): Buffer;
+  formatConfig(bytes: Buffer): string;
   open(socket: string, version: number): Promise<RawExecution>;
 };
 const addon = require('../build/console.node') as RawCapabilities;
 
 export const capabilities: NativeCapabilities = {
+  formatConfig: (config) => addon.formatConfig(Buffer.from(wire.ConsoleConfig.encode(config).finish())),
   parseConfig: (text) => wire.ConsoleConfig.decode(addon.parseConfig(text)),
   expandGraph: (path) => addon.expandGraph(path),
   lockFile: (path) => addon.lockFile(path),

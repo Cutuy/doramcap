@@ -32,15 +32,34 @@ fn dispatch_failure(error: runtime::DispatchError) -> Error {
     })
 }
 
+fn descriptors() -> &'static prost_reflect::DescriptorPool {
+    static POOL: OnceLock<prost_reflect::DescriptorPool> = OnceLock::new();
+    POOL.get_or_init(|| {
+        prost_reflect::DescriptorPool::decode(
+            include_bytes!(concat!(env!("OUT_DIR"), "/console.bin")).as_slice(),
+        )
+        .expect("compiled descriptors")
+    })
+}
+
+/// Encode ConsoleConfig protobuf bytes as canonical protobuf text.
+#[napi]
+pub fn format_config(bytes: Buffer) -> Result<String> {
+    let descriptor = descriptors()
+        .get_message_by_name("doramcap.console.v1.ConsoleConfig")
+        .expect("compiled configuration");
+    Ok(
+        prost_reflect::DynamicMessage::decode(descriptor, bytes.as_ref())
+            .map_err(failure)?
+            .to_text_format(),
+    )
+}
+
 /// Decode protobuf text with the existing parser; configuration policy belongs to TypeScript.
 #[napi]
 pub fn parse_config(text: String) -> Result<Buffer> {
-    use prost_reflect::{DescriptorPool, DynamicMessage};
-    static POOL: OnceLock<DescriptorPool> = OnceLock::new();
-    let pool = POOL.get_or_init(|| {
-        DescriptorPool::decode(include_bytes!(concat!(env!("OUT_DIR"), "/console.bin")).as_slice())
-            .expect("compiled descriptors")
-    });
+    use prost_reflect::DynamicMessage;
+    let pool = descriptors();
     let descriptor = pool
         .get_message_by_name("doramcap.console.v1.ConsoleConfig")
         .expect("compiled configuration");

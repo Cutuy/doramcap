@@ -1,25 +1,20 @@
 # Console configuration
 
-Console loads protobuf text from the command-line configuration file. Images
-must already exist locally. The Dora coordinator and daemon are always included.
+Console loads protobuf text from the command-line configuration file. With `download_missing_images: true`, selected missing images download before
+Review. Otherwise images must already exist locally. The Dora coordinator and daemon are always included.
 
-Optional apps use ordinary Compose inputs. The CPU example requires the modular
-collector and recorder manifests from [PR35](https://github.com/Cutuy/doramcap/pull/35).
-Supply explicit service users in the final override file.
+Optional apps use ordinary Compose inputs. Each app container launches from its own
+pbtxt, bind-mounted read-only by its Compose file. The
+[release template](../release/console.pbtxt) is a complete working example.
 
 ```protobuf
 system_apps {
   id: "cpu-monitor"
-  label: "CPU monitoring and recording"
-  input {
-    directory: "/absolute/doramcap"
-    files: "apps/system-monitor/deploy/reusable/monitor.yaml"
-    files: "apps/cpu-viewer/deploy/reusable/cpu-recording.yaml"
-    files: "/absolute/cpu-overrides.yaml"
-  }
-  graph: "/absolute/doramcap/apps/cpu-viewer/deploy/reusable/cpu-flow.yml"
-  output_mounts { service: "cpu-recorder" target: "/results" }
-  recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.mcap" cpu: true }
+  label: "CPU monitoring"
+  input { directory: "/absolute/release/system-apps/cpu-monitor" files: "compose.yaml" }
+  graph: "/absolute/release/system-apps/cpu-monitor/flow.yml"
+  output_mounts { service: "cpu-monitor" target: "/results" }
+  recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
   live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
 }
