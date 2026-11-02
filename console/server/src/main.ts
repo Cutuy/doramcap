@@ -1,5 +1,6 @@
+import { execFile } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import { parseArgs } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 import { launchInstructions, listenConsole, portNumber } from './launch.js';
 import { createConsoleServer } from './http.js';
 import { ConsoleService } from './service.js';
@@ -23,6 +24,8 @@ try {
   const instructions = launchInstructions(launched.origin, launched.port, secret, values.ssh) + `\n\nProjects: ${config.projectRoot}`;
   if (values['launch-file']) {
     await writeFile(values['launch-file'], instructions, { mode: 0o600, flag: 'wx' });
+    // A launch file means the CLI started this service and waits for readiness.
+    await promisify(execFile)('systemd-notify', ['--ready']);
     console.log('Console ready; use doramcap-console status to retrieve the access link.');
   } else console.log(instructions);
   let stopping = false;

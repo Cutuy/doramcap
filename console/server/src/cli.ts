@@ -139,18 +139,11 @@ async function main() {
     const since = Math.floor(Date.now() / 1000);
     const args = [join(root, 'server/dist/main.js'), config, join(root, 'frontend'), '--launch-file', launchFile];
     for (const key of ['port', 'browser-port', 'ssh'] as const) if (values[key]) args.push(`--${key}`, values[key]);
-    await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=exec',
-      '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, ...args]);
-    for (let attempt = 0; attempt < 100; attempt++) {
-      try {
-        const instructions = await readFile(launchFile, 'utf8');
-        console.log(instructions.replace(/^Open: /m, 'Launch browser: '));
-        return;
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      if (!await active()) throw await startupFailure('Console startup failed', since);
-      await delay(100);
-    }
-    throw await startupFailure('Console startup timed out', since);
+    // systemd-run returns once the server reports ready; systemd stops one that never does.
+    await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=notify', '--property=NotifyAccess=all',
+      '--property=TimeoutStartSec=60', '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, ...args])
+      .catch(async () => { throw await startupFailure('Console startup failed', since); });
+    console.log((await readFile(launchFile, 'utf8')).replace(/^Open: /m, 'Launch browser: '));
   } finally { lock.close(); }
 }
 main().catch(error => { console.error(`Console: ${error.message}`); process.exitCode = 1; });
