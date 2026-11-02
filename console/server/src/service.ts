@@ -21,7 +21,7 @@ import {
 } from './native.js';
 import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
-import { discover, selectApps, appOptions, outputs, bindOutputs } from './system-apps.js';
+import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { Store, writeOnce } from './store.js';
 import { History } from './history.js';
@@ -33,7 +33,7 @@ type ExecutionResult = doramcap.console.execution.v1.IExecutionResult;
 type Prepared = {
   review: typeof wire.Review.prototype;
   project: Project;
-  apps: App[];
+  apps: SelectedApp[];
   live: boolean;
   workspace: string;
   snapshot: doramcap.compose.v1.ConfigurationSnapshot;
@@ -169,7 +169,7 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const ids = request.systemApps?.ids ?? undefined;
       const project = await discover(this.config.projectRoot, request.directory, request.profiles),
-        apps = selectApps(this.config.systemApps, this.config.liveBridge ? ids?.filter((id) => id !== LIVE_BRIDGE.id) : ids),
+        apps = selectApps(this.config.systemApps, this.config.liveBridge ? ids?.filter((id) => id !== LIVE_BRIDGE.id) : ids, request.systemApps?.profiles ?? {}),
         selected = this.config.liveBridge ? (ids?.includes(LIVE_BRIDGE.id) ?? true) : undefined,
         // The bridge runs only when a selected app declares a live output.
         live = !!selected && liveStreams(apps).length > 0;
@@ -238,7 +238,7 @@ export class ConsoleService implements ConsoleBackend {
         runId: id,
         projectDirectory: project.directory,
         profiles: request.profiles,
-        systemApps: { ids: selectedIds(apps, live) },
+        systemApps: { ids: selectedIds(apps, live), profiles: appProfiles(apps) },
         recordings: outputs(apps),
         liveStreams: review.liveStreams,
       });
@@ -254,7 +254,7 @@ export class ConsoleService implements ConsoleBackend {
   private async runRequest(
     id: string,
     project: Project,
-    apps: App[],
+    apps: SelectedApp[],
     live: boolean,
     workspace: string,
     artifacts: string,
@@ -323,7 +323,7 @@ export class ConsoleService implements ConsoleBackend {
       artifactReference: request.preparedId,
       projectDirectory: prepared.project.directory,
       profiles: prepared.project.profiles,
-      systemApps: { ids: selectedIds(prepared.apps, prepared.live) },
+      systemApps: { ids: selectedIds(prepared.apps, prepared.live), profiles: appProfiles(prepared.apps) },
       recordings: outputs(prepared.apps),
       startAccepted: false,
     });

@@ -9,6 +9,7 @@ import { RunActivity } from './RunActivity';
 import { RunMetrics } from './RunMetrics';
 import { Result } from './Result';
 import { SystemApps } from './SystemApps';
+import { selectedProfiles } from './model';
 import { cpuRecordingEnabled } from './api';
 import { doramcap } from './generated/console';
 import { PageFrame } from './ui/PageFrame';
@@ -87,8 +88,8 @@ test('system app choices reflect selection and disabled recording stays distinct
   const apps = [wire.SystemApp.fromObject({ id: 'cpu-monitor', label: 'CPU recording', selected: true })];
   const snapshot: Snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'a'.repeat(32), steps: [], sequence: '0', lostEvents: '0', truncatedSteps: '0', overflowSteps: '0', progressIncomplete: false, cpuAvailable: false, reportAvailable: true, monitorReady: false, systemApps: { ids: [] }, outcome: { execution: 'Completed', recordingFinalized: null, boundaryClean: true } });
   // Act
-  const enabled = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}}/>);
-  const checking = renderToStaticMarkup(<SystemApps apps={[wire.SystemApp.fromObject({...apps[0],selected:false})]} busy toggle={() => {}}/>);
+  const enabled = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
+  const checking = renderToStaticMarkup(<SystemApps apps={[wire.SystemApp.fromObject({...apps[0],selected:false})]} busy toggle={() => {}} chooseProfile={() => {}}/>);
   const result = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
   // Assert
   assert.match(enabled, /type="checkbox" checked=""/);
@@ -147,7 +148,7 @@ test('required infrastructure is selected and disabled independently of optional
   // Arrange
   const apps = [wire.SystemApp.fromObject({id:'dora-daemon',label:'Dora IPC daemon',selected:true,required:true}),wire.SystemApp.fromObject({id:'recorder',label:'MCAP recorder',selected:false})];
   // Act
-  const html = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}}/>);
+  const html = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
   // Assert
   assert.match(html, /type="checkbox" disabled="" checked=""/);
   assert.match(html, /Required/);
@@ -163,4 +164,23 @@ test('runs without live streams show CPU and recording panels as disabled', () =
   assert.equal((html.match(/>Disabled</g) ?? []).length, 4);
   assert.doesNotMatch(html, /Faults/);
   assert.doesNotMatch(html, /Unavailable/);
+});
+
+test('system apps offer a profile picker only when an app has several profiles', () => {
+  // Arrange
+  const profiles = [{ id: 'record', label: 'Record' }, { id: 'live', label: 'Live only' }];
+  const apps = [wire.SystemApp.fromObject({ id: 'monitor', label: 'Monitor', selected: true, profiles, profile: 'live' })];
+  const off = [wire.SystemApp.fromObject({ ...apps[0], selected: false })];
+  const single = [wire.SystemApp.fromObject({ ...apps[0], profiles: profiles.slice(0, 1), profile: 'record' })];
+  // Act
+  const html = renderToStaticMarkup(<SystemApps apps={apps} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
+  const disabled = renderToStaticMarkup(<SystemApps apps={off} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
+  const none = renderToStaticMarkup(<SystemApps apps={single} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
+  // Assert
+  assert.match(html, /aria-label="Monitor profile"/);
+  assert.match(html, /<option value="live" selected="">Live only<\/option>/);
+  assert.match(disabled, /<select[^>]*disabled=""/);
+  assert.doesNotMatch(none, /<select/);
+  assert.deepEqual(selectedProfiles([...apps, wire.SystemApp.fromObject({ id: 'other', selected: true })]), { monitor: 'live' });
+  assert.deepEqual(selectedProfiles(off), {});
 });

@@ -103,8 +103,8 @@ export function createConsoleServer(config: HttpOptions) {
       if (request.method === routes.prepare.method && url.pathname === routes.prepare.path) {
         const input = await body(request), value = decode(routes.prepare.request, input);
         string(value.directory);
-        if (value.profiles.length > LIMITS.selectionLength || (value.systemApps?.ids?.length ?? 0) > LIMITS.selectionLength) throw new HttpError(400, 'InvalidInput');
-        value.profiles.forEach(string); value.systemApps?.ids?.forEach(string);
+        if (value.profiles.length > LIMITS.selectionLength || (value.systemApps?.ids?.length ?? 0) > LIMITS.selectionLength || Object.keys(value.systemApps?.profiles ?? {}).length > LIMITS.selectionLength) throw new HttpError(400, 'InvalidInput');
+        value.profiles.forEach(string); value.systemApps?.ids?.forEach(string); Object.entries(value.systemApps?.profiles ?? {}).flat().forEach(string);
         reply(response, routes.prepare.status, await config.backend.prepare(input)); return;
       }
       if (request.method === routes.start.method && url.pathname === routes.start.path) {

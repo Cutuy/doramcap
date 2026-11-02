@@ -36,7 +36,7 @@ async function request<T>(
 /** Create the browser client with an explicit transport for HTTP integration tests. */
 export function createClient(fetcher: typeof fetch = fetch) {
   return {
-    prepare: (directory: string, profiles: string[], systemApps?: string[]) =>
+    prepare: (directory: string, profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}) =>
       request(
         routes.prepare,
         routes.prepare.request
@@ -46,7 +46,7 @@ export function createClient(fetcher: typeof fetch = fetch) {
               profiles,
               ...(systemApps === undefined
                 ? {}
-                : { systemApps: wire.SystemAppSelection.create({ ids: systemApps }) }),
+                : { systemApps: wire.SystemAppSelection.create({ ids: systemApps, profiles: appProfiles }) }),
             }),
           )
           .finish(),

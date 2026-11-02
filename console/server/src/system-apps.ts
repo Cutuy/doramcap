@@ -10,6 +10,22 @@ const INFRASTRUCTURE = [
 ];
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
+/** Reject invalid live and recording outputs, adding recording IDs to `seen`. */
+function validateOutputs(recordings: Output[], live: NonNullable<App['liveOutputs']>, seen: Set<string>) {
+  const sources = new Set<string>();
+  for (const output of live) {
+    if (!/^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/.test(output.source ?? '') || sources.has(output.source!) || !output.kind)
+      throw new Error('live output requires a unique node/output source and a kind');
+    sources.add(output.source!);
+  }
+  for (const output of recordings) {
+    if (!output.id || !/^[-a-zA-Z0-9]+$/.test(output.id) || output.id === 'report' || seen.has(output.id))
+      throw new Error('empty, duplicate or reserved recording id');
+    seen.add(output.id);
+    if (!child(output.path ?? '') || (output.stream && !child(output.stream)))
+      throw new Error('recording paths must be relative beneath artifacts');
+  }
+}
 export function validateApps(apps: App[]) {
   const ids = new Set<string>(),
     outputs = new Set<string>();
@@ -26,59 +42,83 @@ export function validateApps(apps: App[]) {
     if (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length)
       throw new Error('system app requires absolute directory and Compose files');
     if (app.graph && !isAbsolute(app.graph)) throw new Error('system app graph must be absolute');
-    const sources = new Set<string>();
-    for (const output of app.liveOutputs ?? []) {
-      if (!/^[A-Za-z0-9_.-]{1,64}\/[A-Za-z0-9_.-]{1,64}$/.test(output.source ?? '') || sources.has(output.source!) || !output.kind)
-        throw new Error('live output requires a unique node/output source and a kind');
-      sources.add(output.source!);
-    }
     for (const mount of app.outputMounts ?? [])
       if (!mount.service || !isAbsolute(mount.target ?? ''))
         throw new Error('output mount requires a service and absolute target');
-    for (const output of app.recordings ?? []) {
-      if (
-        !output.id ||
-        !/^[-a-zA-Z0-9]+$/.test(output.id) ||
-        output.id === 'report' ||
-        outputs.has(output.id)
-      )
-        throw new Error('empty, duplicate or reserved recording id');
-      outputs.add(output.id);
-      if (!child(output.path ?? '') || (output.stream && !child(output.stream)))
-        throw new Error('recording paths must be relative beneath artifacts');
+    validateOutputs(app.recordings ?? [], app.liveOutputs ?? [], outputs);
+    const profiles = app.launchProfiles ?? [];
+    if (profiles.length && (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '')))
+      throw new Error('launch profiles require a config mount with a service and absolute target');
+    const profileIds = new Set<string>(),
+      shared = new Set(outputs);
+    for (const profile of profiles) {
+      if (!/^[-a-z0-9]{1,40}$/.test(profile.id ?? '') || profileIds.has(profile.id!) || !profile.label || !isAbsolute(profile.config ?? ''))
+        throw new Error('launch profile requires a unique id, a label and an absolute config');
+      profileIds.add(profile.id!);
+      // Only one profile launches, so profiles of one app may reuse recording IDs.
+      const seen = new Set(shared);
+      validateOutputs(profile.recordings ?? [], [...(app.liveOutputs ?? []), ...(profile.liveOutputs ?? [])], seen);
+      seen.forEach((id) => outputs.add(id));
     }
   }
 }
-export function selectApps(apps: App[], requested?: string[]): App[] {
+/** An app with its launch profile's outputs applied. */
+export type SelectedApp = App & { profile?: NonNullable<App['launchProfiles']>[number] };
+export function selectApps(apps: App[], requested?: string[], profiles: Record<string, string> = {}): SelectedApp[] {
   const ids = requested ?? apps.filter((app) => app.defaultSelected).map((app) => app.id!);
-  if (new Set(ids).size !== ids.length || ids.some((id) => !apps.some((app) => app.id === id)))
+  if (
+    new Set(ids).size !== ids.length ||
+    ids.some((id) => !apps.some((app) => app.id === id)) ||
+    Object.keys(profiles).some((id) => !ids.includes(id))
+  )
     throw new Error('InvalidInput');
-  return ids.map((id) => apps.find((app) => app.id === id)!);
+  return ids.map((id) => {
+    const app = apps.find((app) => app.id === id)!,
+      options = app.launchProfiles ?? [];
+    if (!options.length && !(id in profiles)) return app;
+    const profile = id in profiles ? options.find((option) => option.id === profiles[id]) : options[0];
+    if (!profile) throw new Error('InvalidInput');
+    return {
+      ...app,
+      profile,
+      recordings: [...(app.recordings ?? []), ...(profile.recordings ?? [])],
+      liveOutputs: [...(app.liveOutputs ?? []), ...(profile.liveOutputs ?? [])],
+    };
+  });
 }
+/** App IDs and launch profiles for one selection, as stored with a run. */
+export const appProfiles = (apps: SelectedApp[]) =>
+  Object.fromEntries(apps.flatMap((app) => (app.profile ? [[app.id!, app.profile.id!]] : [])));
 /** `live` is undefined when no bridge is configured. */
-export function appOptions(apps: App[], selected: App[], live?: boolean) {
+export function appOptions(apps: App[], selected: SelectedApp[], live?: boolean) {
   return [
     ...INFRASTRUCTURE.map((app) => ({ ...app, selected: true, required: true })),
     ...(live === undefined ? [] : [{ ...LIVE_BRIDGE, selected: live, required: false }]),
-    ...apps.map((app) => ({
-      id: app.id,
-      label: app.label,
-      selected: selected.includes(app),
-      required: false,
-    })),
+    ...apps.map((app) => {
+      const chosen = selected.find((item) => item.id === app.id),
+        options = app.launchProfiles ?? [];
+      return {
+        id: app.id,
+        label: app.label,
+        selected: !!chosen,
+        required: false,
+        profiles: options.map(({ id, label }) => ({ id, label })),
+        profile: chosen?.profile?.id ?? options[0]?.id ?? '',
+      };
+    }),
   ];
 }
 export function outputs(apps: App[]): Output[] {
   return apps.flatMap((app) => app.recordings ?? []);
 }
-export async function bindOutputs(apps: App[], run: Run, workspace: string, stage: string) {
+export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: string, stage: string) {
   run.systemApps = [];
   for (const app of apps) {
     const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
     input.key = app.id!;
-    if (app.outputMounts?.length) {
+    if (app.outputMounts?.length || app.profile) {
       const services: Record<string, { volumes: unknown[] }> = {};
-      for (const mount of app.outputMounts) {
+      for (const mount of app.outputMounts ?? []) {
         (services[mount.service!] ??= { volumes: [] }).volumes.push({
           type: 'bind',
           source: run.artifacts,
@@ -86,6 +126,14 @@ export async function bindOutputs(apps: App[], run: Run, workspace: string, stag
           bind: { create_host_path: false },
         });
       }
+      if (app.profile)
+        (services[app.configMount!.service!] ??= { volumes: [] }).volumes.push({
+          type: 'bind',
+          source: app.profile.config,
+          target: app.configMount!.target,
+          read_only: true,
+          bind: { create_host_path: false },
+        });
       const path = join(workspace, `${stage}-${app.id}.json`);
       await writeOnce(path, Buffer.from(JSON.stringify({ services })));
       input.files.push(path);

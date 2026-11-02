@@ -412,6 +412,85 @@ test('the selected live bridge subscribes to declared outputs through generated 
   }
 });
 
+test('the selected launch profile mounts its config read-only and declares only its outputs', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-profile-')),
+    project = join(root, 'project'),
+    profile = (id: string) => join(root, `${id}.pbtxt`);
+  await mkdir(project);
+  await writeFile(join(project, 'compose.yaml'), 'services: {}');
+  const config = wire.ConsoleConfig.create({
+    projectRoot: root,
+    dataRoot: join(root, 'data'),
+    dockerSocket: '/unused.sock',
+    accessSecretFile: join(root, 'secret'),
+    listenAddress: '127.0.0.1:8080',
+    publicOrigin: 'http://127.0.0.1:8080',
+    systemApps: [
+      {
+        id: 'monitor',
+        defaultSelected: true,
+        input: { directory: project, files: ['compose.yaml'] },
+        configMount: { service: 'monitor', target: '/config/monitor.pbtxt' },
+        launchProfiles: [
+          { id: 'record', label: 'Record', config: profile('record'), recordings: [{ id: 'cpu', path: 'cpu.mcap' }] },
+          { id: 'live', label: 'Live', config: profile('live') },
+        ],
+      },
+    ],
+  });
+  validateConfig(config);
+  const engine = new Engine(),
+    store = await Store.open(config.dataRoot),
+    backend = new ConsoleService(config, engine, store),
+    prepare = async (systemApps?: { ids: string[]; profiles: Record<string, string> }) =>
+      wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project, systemApps }).finish())));
+  try {
+    // Act: review with the default profile.
+    const first = await prepare();
+    const mounted = async () => {
+      const files = engine.inspected!.systemApps[0].files!;
+      return JSON.parse(await readFile(files[files.length - 1], 'utf8')).services.monitor.volumes;
+    };
+    // Assert
+    assert.deepEqual(first.recordings.map((output) => output.id), ['cpu']);
+    const option = first.systemApps.find((app) => app.id === 'monitor')!;
+    assert.deepEqual(option.profiles!.map((item) => [item.id, item.label]), [['record', 'Record'], ['live', 'Live']]);
+    assert.equal(option.profile, 'record');
+    assert.deepEqual(await mounted(), [
+      { type: 'bind', source: profile('record'), target: '/config/monitor.pbtxt', read_only: true, bind: { create_host_path: false } },
+    ]);
+
+    // Act: choose another profile, then start it.
+    const second = await prepare({ ids: ['monitor'], profiles: { monitor: 'live' } });
+    const volumes = await mounted();
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: second.preparedId, requestKey: 'profile' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!();
+    await start;
+    const status = wire.Status.decode(await backend.status());
+    // Assert
+    assert.deepEqual(second.recordings, []);
+    assert.equal(volumes[0].source, profile('live'));
+    assert.deepEqual(status.systemApps!.profiles, { monitor: 'live' });
+    assert.deepEqual(status.recordings, []);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+test('an unknown launch profile rejects preparation', async () => {
+  // Arrange
+  const { root, backend, review } = await fixture(true);
+  try {
+    // Act / Assert
+    assert.ok(review.preparedId);
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project'), systemApps: { ids: ['recorder'], profiles: { recorder: 'missing' } } }).finish())));
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test('deselecting the live bridge removes its service, graph node and streams', async () => {
   // Arrange / Act
   const { root, engine, backend, review } = await fixture(false, true, ['recorder']);

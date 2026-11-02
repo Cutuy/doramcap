@@ -23,6 +23,10 @@ export function runAgainBlocked(snapshot: Pick<Snapshot, 'phase' | 'runId'> | nu
   if (preparing || snapshot?.phase === Phase.PREPARING) return true;
   return !!snapshot?.runId && [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(snapshot.phase);
 }
+/** Launch profiles of the selected apps, by app ID. */
+export function selectedProfiles(apps: readonly { id: string; selected: boolean; profiles: readonly unknown[]; profile: string }[]): Record<string, string> {
+  return Object.fromEntries(apps.filter(app => app.selected && app.profiles.length).map(app => [app.id, app.profile]));
+}
 export function createRequestKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 }
