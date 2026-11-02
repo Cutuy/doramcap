@@ -1,6 +1,7 @@
 //! Protobuf contracts and checked translation for fault IPC and stored aggregation output.
 //! Encoding runs in the host publication path, outside reporter callbacks.
 mod convert;
+pub mod host;
 mod publication;
 pub use publication::*;
 use std::time::Duration;

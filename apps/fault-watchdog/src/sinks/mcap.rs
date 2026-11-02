@@ -60,7 +60,7 @@ impl Recording {
             writer.rotate(OpenOptions::new().write(true).create_new(true).open(path)?)?;
         }
         let frame = fault_protocol::decode_aggregation(&packet.bytes, Default::default())?;
-        let now = crate::unix_ns().unwrap_or(0);
+        let now = fault_protocol::host::unix_ns().unwrap_or(0);
         let mut reservation = writer.reserve(
             Message {
                 channel: 1,

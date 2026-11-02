@@ -9,7 +9,7 @@ async fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let name = args.next().unwrap_or_else(|| "a".into());
     let (reporter, mut publisher) =
-        Reporter::new(fault_watchdog::incarnation()?, Default::default())?;
+        Reporter::new(fault_protocol::host::incarnation()?, Default::default())?;
     let mut definition = Definition::new("demo", &name, "operation")?;
     definition.policy.deadline = Some(Duration::from_millis(500));
     definition.policy.success_interval = Some(Duration::from_millis(100));
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
 fn send(node: &mut DoraNode, payload: ReporterPayload) -> Result<()> {
     let bytes = fault_protocol::encode_reporter(
         &ReporterFrame {
-            published_unix_ns: fault_watchdog::unix_ns(),
+            published_unix_ns: fault_protocol::host::unix_ns(),
             payload,
         },
         Default::default(),

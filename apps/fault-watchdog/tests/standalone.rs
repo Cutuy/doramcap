@@ -1,7 +1,8 @@
 use fault_aggregation::{Freshness, Health};
 use fault_protocol::{AggregationPayload, ReporterFrame, ReporterPayload};
+use fault_reconciliation::Engine;
 use fault_reporter::{Definition, Reporter, Text};
-use fault_watchdog::{config, engine::Engine};
+use fault_watchdog::config;
 use std::{path::Path, time::Duration};
 
 fn source(engine: &Engine, now: Duration) -> fault_aggregation::SourceView {
@@ -21,7 +22,7 @@ fn standalone_config_accepts_external_reporter_and_retains_disconnected_faults()
     let config = config::load(Path::new("deploy/standalone/config/watchdog.pbtxt")).unwrap();
     let timeout = Duration::from_millis(config.source_timeout_ms.unwrap().into());
     let input = config.inputs[0].clone();
-    let mut engine = Engine::new(config, 43, 44).unwrap();
+    let mut engine = Engine::new(config.settings().unwrap(), 43, 44).unwrap();
     let (reporter, publisher) = Reporter::new(42, Default::default()).unwrap();
     let condition = reporter
         .register(Definition::new("workload", "disk", "write").unwrap())

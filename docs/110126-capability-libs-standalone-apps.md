@@ -43,15 +43,17 @@ Evidence: `cargo test --release --locked` passes for System Monitor, `monitor-co
 ## Milestone 3: Lib boundaries
 
 **Work items**
-- [ ] Make the `activity-tracing` MCAP sink an optional feature; apps select sinks.
-- [ ] Move the watchdog engine into a fault lib; keep sinks in the app.
-- [ ] Remove `fault-demo`'s dependency on the `fault-watchdog` app.
-- [ ] Add boundary rules that keep MCAP out of capability libs, except the tracing feature.
+- [x] Make the `activity-tracing` MCAP sink an optional feature; apps select sinks.
+- [x] Move the watchdog engine into `fault-reconciliation`; keep sinks in the app.
+- [x] Remove `fault-demo`'s dependency on the `fault-watchdog` app.
+- [x] Add boundary rules that keep MCAP out of capability libs, except the tracing feature.
 
 **Validation**
-- [ ] Feature combinations for `activity-tracing` build and pass.
-- [ ] Fault lib, watchdog and demo tests pass.
-- [ ] Boundary checks reject a planted violation.
+- [x] Feature combinations for `activity-tracing` build and pass.
+- [x] Fault lib, watchdog and demo tests pass.
+- [x] Boundary checks reject a planted violation.
+
+Evidence: `cargo test --release --locked` passes for `activity-tracing` with no features, `mcap` and all features; for the fault libs, `fault-demo` and `fault-watchdog` with and without `mcap,otel`; and for the demos using tracing. All five gallery deployments pass in Docker on rebuilt fault images. Planted `mcap` and `fault-watchdog` dependencies fail the boundary check. `apps/fault-demo/tests/validate_dora.py` still uses the control wiring from before #45, so it does not run.
 
 ## Milestone 4: Watchdog variants
 

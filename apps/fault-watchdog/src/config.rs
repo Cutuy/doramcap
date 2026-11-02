@@ -1,5 +1,6 @@
 //! Typed runtime configuration. Includes/overrides preserve scalar presence.
 use pbtxt_config::{Error, Payload, Result};
+use std::time::Duration;
 pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.watchdog.v1.rs"));
 }
@@ -175,6 +176,28 @@ impl Payload for WatchdogConfig {
             "frame budget cannot hold worst-case batch",
         )?;
         Ok(v)
+    }
+}
+impl WatchdogConfig {
+    /// Validates, applies defaults and returns the reconciliation engine's settings.
+    pub fn settings(&self) -> Result<fault_reconciliation::Settings> {
+        let c = self.normalize()?;
+        let ms = |v: Option<u32>| Duration::from_millis(v.unwrap().into());
+        Ok(fault_reconciliation::Settings {
+            aggregation: fault_aggregation::Config {
+                max_sources: c.max_sources.unwrap() as usize,
+                max_conditions_per_source: c.max_conditions_per_source.unwrap() as usize,
+                max_batch_records: c.max_batch_records.unwrap() as usize,
+                output_capacity: c.output_capacity.unwrap() as usize,
+                dedup_window: c.dedup_window.unwrap() as usize,
+                transport_allowance: ms(c.transport_allowance_ms),
+            },
+            source_timeout: ms(c.source_timeout_ms),
+            snapshot_interval: ms(c.snapshot_interval_ms),
+            maintenance: ms(c.maintenance_ms),
+            max_frame_bytes: c.max_frame_bytes.unwrap() as usize,
+            inputs: c.inputs,
+        })
     }
 }
 /// Resolve the `watchdog` app from a TextFormat fragment, validating requested features.

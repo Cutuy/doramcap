@@ -4,17 +4,18 @@
 pub mod mcap;
 #[cfg(feature = "otel")]
 pub mod otel;
-use crate::{
-    config::WatchdogConfig,
-    engine::{detail, ms},
-};
+use crate::config::WatchdogConfig;
 use eyre::Result;
 use fault_protocol::{AggregationFrame, AggregationPayload, Limits};
+use fault_reconciliation::detail;
 use fault_reporter::{Check, Key};
 use std::{
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
+fn ms(value: u32) -> Duration {
+    Duration::from_millis(value.into())
+}
 /// Encoded domain publication retained for bounded retry. Epoch/revision in its
 /// payload identify duplicate delivery; retries provide at-least-once attempts.
 pub struct Packet {

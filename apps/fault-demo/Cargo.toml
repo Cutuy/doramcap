@@ -5,7 +5,6 @@ edition.workspace = true
 license.workspace = true
 [dependencies]
 dora-app = { path = "../../libs/dora-app" }
-fault-watchdog = { path = "../fault-watchdog" }
 fault-reporter = { path = "../../libs/fault/reporter" }
 fault-aggregation = { path = "../../libs/fault/aggregation" }
 fault-protocol = { path = "../../libs/fault/protocol" }

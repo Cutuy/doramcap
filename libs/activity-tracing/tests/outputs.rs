@@ -1,4 +1,4 @@
-use activity_tracing::{BatchView, Config, Result, Runtime, Sink, sinks::McapSink, wire};
+use activity_tracing::{BatchView, Config, Result, Runtime, Sink};
 use std::sync::{Arc, Mutex};
 struct Collect(Arc<Mutex<Vec<Vec<u8>>>>);
 impl Sink for Collect {
@@ -10,8 +10,10 @@ impl Sink for Collect {
         Ok(())
     }
 }
+#[cfg(feature = "mcap")]
 #[test]
 fn mcap_preserves_shared_bytes_schema_and_timestamps() {
+    use activity_tracing::{sinks::McapSink, wire};
     let path = std::env::temp_dir().join(format!(
         "activity-{}-{}.mcap",
         std::process::id(),
@@ -96,6 +98,7 @@ fn failure_is_reported_and_other_output_survives() {
 #[cfg(feature = "websocket")]
 #[test]
 fn websocket_binary_frame_decodes() {
+    use activity_tracing::wire;
     use std::{
         net::{TcpListener, TcpStream},
         time::Duration,
