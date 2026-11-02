@@ -59,12 +59,13 @@ async fn curl(
     Ok(output.stdout)
 }
 
-async fn check_deployment(app: &str, registration: &str) {
+async fn check_deployment(app: &str, config: Option<&str>) {
     // Arrange
     let source = PathBuf::from(std::env::var_os("DORAMCAP_TEST_WORKSPACE").unwrap());
     let root = std::env::temp_dir().join(format!(
-        "gallery-dora-{}-{app}-{registration}",
-        std::process::id()
+        "gallery-dora-{}-{app}-{}",
+        std::process::id(),
+        config.unwrap_or("default")
     ));
     std::fs::create_dir(&root).unwrap();
     let workspace = root.join("workspace");
@@ -74,8 +75,8 @@ async fn check_deployment(app: &str, registration: &str) {
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
-    if registration != "registration.pbtxt" {
-        std::fs::copy(deploy.join(registration), deploy.join("registration.pbtxt")).unwrap();
+    if let Some(config) = config {
+        std::fs::copy(deploy.join(config), deploy.join("watchdog.pbtxt")).unwrap();
     }
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
@@ -88,7 +89,7 @@ async fn check_deployment(app: &str, registration: &str) {
     let manager = Manager::new(registry, Duration::from_secs(300));
     // SAFETY: UID/GID access has no side effects.
     let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let collector = if registration.contains("otel") {
+    let collector = if config.is_some_and(|config| config.contains("otel")) {
         let received = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let counter = received.clone();
         let router = axum::Router::new().route(
@@ -195,7 +196,7 @@ async fn check_deployment(app: &str, registration: &str) {
     // Assert: clean producer/drain completion precedes result publication and removal.
     assert!(
         validation.is_ok(),
-        "{app}/{registration}: {validation:?}; shutdown={stopped:?}"
+        "{app}/{config:?}: {validation:?}; shutdown={stopped:?}"
     );
     assert!(
         matches!(expired, Status::Stopping { .. } | Status::Stopped { .. }),
@@ -205,6 +206,11 @@ async fn check_deployment(app: &str, registration: &str) {
     assert_eq!(state, Status::Stopped { error: None }, "{root:?}");
     let (complete, result, _) = service.recording_paths(app, launch.generation).unwrap();
     assert!(complete.is_file() && result.is_file(), "{root:?}");
+    assert_eq!(
+        result.with_file_name("faults.mcap").is_file(),
+        config.is_some_and(|config| config.contains("mcap")),
+        "{root:?}"
+    );
     for resource in [
         vec!["ps", "-aq"],
         vec!["network", "ls", "-q"],
@@ -241,19 +247,19 @@ async fn check_deployment(app: &str, registration: &str) {
 async fn gallery_dora_deployments() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for (app, registration) in [
-                ("fault-demo", "registration.pbtxt"),
-                ("fault-watchdog", "registration.pbtxt"),
-                ("fault-watchdog", "registration.mcap.pbtxt"),
-                ("fault-watchdog", "registration.otel.pbtxt"),
-                ("cpu-viewer", "registration.pbtxt"),
+            for (app, config) in [
+                ("fault-demo", None),
+                ("fault-watchdog", None),
+                ("fault-watchdog", Some("watchdog-mcap.pbtxt")),
+                ("fault-watchdog", Some("watchdog-otel.pbtxt")),
+                ("cpu-viewer", None),
             ] {
                 if std::env::var("DORAMCAP_GALLERY_CASE")
-                    .is_ok_and(|case| case != format!("{app}/{registration}"))
+                    .is_ok_and(|case| case != format!("{app}/{}", config.unwrap_or("default")))
                 {
                     continue;
                 }
-                Box::pin(check_deployment(app, registration)).await;
+                Box::pin(check_deployment(app, config)).await;
             }
         })
         .await;

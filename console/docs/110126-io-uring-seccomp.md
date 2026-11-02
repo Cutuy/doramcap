@@ -45,8 +45,8 @@ services that write recordings; every other service keeps Docker's default.
 
 **Work items**
 - [ ] Replace `seccomp=unconfined` in MCAP deployments: system monitor `recording.yaml`,
-  `mcap-recorder`, `storage-demo`, `cpu-viewer`, the gallery watchdog `compose.mcap.yaml`
-  and the standalone watchdog `compose.mcap.yaml` (#33).
+  `mcap-recorder`, `storage-demo`, `cpu-viewer`, the gallery watchdog `compose.yaml`
+  and the standalone watchdog `compose.yaml` (#33).
 - [ ] Update the `workload-docker` recording test that asserts `seccomp=unconfined`.
 
 **Validation**

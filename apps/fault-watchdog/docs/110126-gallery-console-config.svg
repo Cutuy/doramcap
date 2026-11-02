@@ -28,14 +28,14 @@ text{font-family:Inter,Arial,sans-serif;fill:var(--ink)} .sub{fill:var(--sub)} .
 <path d="M330 270 V299" class="edge gallery"/>
 <path d="M950 270 V299" class="edge console"/>
 <rect x="60" y="304" width="540" height="176" rx="10" fill="var(--card)" stroke="var(--neutral)" stroke-width="1.4"/>
-<text x="80" y="331" font-size="17" font-weight="600">One Compose variant → one root pbtxt</text>
+<text x="80" y="331" font-size="17" font-weight="600">One Compose file → one active pbtxt</text>
 <text x="80" y="362" font-size="15" class="mono">compose.yaml</text>
 <text x="274" y="362" font-size="17" class="sub">→</text>
-<text x="300" y="362" font-size="15" class="mono">config/default.pbtxt</text>
-<text x="80" y="392" font-size="15" class="mono">compose.mcap.yaml</text>
+<text x="300" y="362" font-size="15" class="mono">watchdog.pbtxt</text>
+<text x="80" y="392" font-size="15" class="mono">copied over it</text>
 <text x="274" y="392" font-size="17" class="sub">→</text>
 <text x="300" y="392" font-size="15" class="mono">watchdog-mcap.pbtxt</text>
-<text x="80" y="422" font-size="15" class="mono">compose.otel.yaml</text>
+<text x="80" y="422" font-size="15" class="mono">copied over it</text>
 <text x="274" y="422" font-size="17" class="sub">→</text>
 <text x="300" y="422" font-size="15" class="mono">watchdog-otel.pbtxt</text>
 <text x="80" y="459" font-size="15" class="sub">Dora inputs: source_a, source_b</text>

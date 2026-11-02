@@ -58,11 +58,13 @@ Evidence: `cargo test --release --locked` passes for `activity-tracing` with no 
 ## Milestone 4: Watchdog variants
 
 **Work items**
-- [ ] Use one watchdog Compose file and registration.
-- [ ] Express the MCAP and OTLP variants as pbtxt files.
+- [x] Use one watchdog Compose file and registration.
+- [x] Express the MCAP and OTLP variants as pbtxt files.
 
 **Validation**
-- [ ] Gallery deployment tests cover each pbtxt variant.
+- [x] Gallery deployment tests cover each pbtxt variant.
+
+Evidence: `gallery_dora_deployments` passes all five deployments in Docker on x86_64, with the default, MCAP and OTLP watchdog configurations. The MCAP case produces `faults.mcap`, the others do not, and the OTLP collector receives logs. Standalone watchdog config tests pass. The watchdog now keeps `seccomp=unconfined` in every configuration until the scoped [io_uring profile](../console/docs/110126-io-uring-seccomp.md) lands.
 
 ## Milestone 5: Console profiles
 
