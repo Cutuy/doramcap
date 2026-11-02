@@ -173,3 +173,17 @@ test('the client sends the typed query and decodes the typed responses', async (
   assert.equal(calls[1].method, 'GET');
   assert.equal(detail.status!.runId, runId);
 });
+
+test('a run still in progress links to the live view without stale activity', () => {
+  // Arrange
+  const status = wire.Status.fromObject({ phase: Phase.RUNNING, runId: 'a'.repeat(32), steps: [] });
+  const running = wire.HistoryDetail.create({ entry: entry({ state: State.HISTORY_RUNNING }), status });
+  const interrupted = wire.HistoryDetail.create({ entry: entry({ state: State.HISTORY_INTERRUPTED }), status });
+  // Act
+  const live = renderToStaticMarkup(<HistoryRun detail={running} runAgain={() => {}} runActive/>);
+  const stopped = renderToStaticMarkup(<HistoryRun detail={interrupted} runAgain={() => {}} runActive={false}/>);
+  // Assert
+  assert.match(live, /View live run/);
+  assert.doesNotMatch(live, /Interrupted run/);
+  assert.match(stopped, /Interrupted run/);
+});
