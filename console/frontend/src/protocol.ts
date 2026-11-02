@@ -11,3 +11,7 @@ export type Step = doramcap.workflow.v1.Event;
 export type Outcome = doramcap.console.v1.Outcome;
 export type RunMetric = doramcap.console.v1.RunMetric;
 export type Snapshot = doramcap.console.v1.Status;
+export type HistoryEntry = doramcap.console.v1.HistoryEntry;
+export type HistoryArtifact = doramcap.console.v1.HistoryArtifact;
+export type HistoryPage = doramcap.console.v1.HistoryPage;
+export type HistoryDetail = doramcap.console.v1.HistoryDetail;

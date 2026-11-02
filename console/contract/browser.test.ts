@@ -17,6 +17,7 @@ test(
     // Arrange
     const selections: (string[] | undefined)[] = [];
     const id = '9007199254740993';
+    const pastRun = 'a'.repeat(32);
     const snapshot = wire.Status.fromObject({
       phase: wire.Phase.RUNNING,
       runId: 'run',
@@ -50,6 +51,15 @@ test(
       }),
       openArtifact: async () => {
         throw new Error('Missing');
+      },
+      history: async (input) => {
+        const query = wire.HistoryQuery.decode(input);
+        assert.equal(query.project, '/projects/example');
+        return Buffer.from(wire.HistoryPage.encode({ entries: [{ runId: pastRun, startedAtMs: id as never, state: query.state }], nextCursor: `1:${pastRun}` }).finish());
+      },
+      historyRun: async (runId) => {
+        if (runId !== pastRun) throw new Error('Missing');
+        return Buffer.from(wire.HistoryDetail.encode({ entry: { runId }, status: snapshot }).finish());
       },
       close: async () => {},
     };
@@ -106,6 +116,21 @@ test(
     const current = await client.current();
     assert.equal(current.phase, Phase.RUNNING);
     assert.equal(String(current.sequence), id);
+
+    // Act / Assert: history queries and past runs keep their typed fields and error codes.
+    const past = await client.history({ project: '/projects/example', state: wire.HistoryState.HISTORY_FAILED });
+    assert.equal(String(past.entries[0].startedAtMs), id);
+    assert.equal(past.entries[0].state, wire.HistoryState.HISTORY_FAILED);
+    assert.equal(past.nextCursor, `1:${pastRun}`);
+    assert.equal((await client.historyRun(pastRun)).status!.runId, 'run');
+    await assert.rejects(
+      client.historyRun('b'.repeat(32)),
+      (error: unknown) => error instanceof ApiError && error.code === 'Missing',
+    );
+    await assert.rejects(
+      client.history({ cursor: 'not-a-cursor' }),
+      (error: unknown) => error instanceof ApiError && error.code === 'InvalidInput',
+    );
 
     // Act / Assert: live status and relayed bridge frames keep exact IDs.
     const controller = new AbortController();

@@ -70,5 +70,9 @@ export interface ConsoleBackend {
   frames(consume: (frame: Buffer) => void): () => void;
   stop(input: Buffer): Promise<Buffer>;
   openArtifact(runId: string, kind: string): Promise<number>;
+  /** Encoded HistoryQuery to encoded HistoryPage; a failed index yields a degraded page. */
+  history(input: Buffer): Promise<Buffer>;
+  /** Encoded HistoryDetail; rejects with `Missing` for an unknown id. */
+  historyRun(runId: string): Promise<Buffer>;
   close(): Promise<void>;
 }

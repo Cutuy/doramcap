@@ -141,7 +141,7 @@ async function main() {
     for (const key of ['port', 'browser-port', 'ssh'] as const) if (values[key]) args.push(`--${key}`, values[key]);
     // systemd-run returns once the server reports ready; systemd stops one that never does.
     await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=notify', '--property=NotifyAccess=all',
-      '--property=TimeoutStartSec=60', '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, ...args])
+      '--property=TimeoutStartSec=60', '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, '--disable-warning=ExperimentalWarning', ...args])
       .catch(async () => { throw await startupFailure('Console startup failed', since); });
     console.log((await readFile(launchFile, 'utf8')).replace(/^Open: /m, 'Launch browser: '));
   } finally { lock.close(); }

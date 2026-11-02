@@ -18,6 +18,7 @@ test('authentication, Origin, size and field validation precede native mutations
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     frames: () => () => {},
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
+    history: async () => Buffer.alloc(0), historyRun: async () => { throw new Error('Missing'); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
     start: async input => { const key = wire.StartRequest.decode(input).requestKey; if (key === 'stopped') throw new Error('Stopped'); if (key === 'rejected') throw new Error('PreflightRejected'); if (key === 'closing') throw new Error('Closing'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
     stop: async () => { stops++; return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish()); },
@@ -88,6 +89,7 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
   const native: ConsoleBackend = {
     frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
+    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
     status: async () => { statuses++; return Buffer.alloc(0); },
     update: async cursor => {

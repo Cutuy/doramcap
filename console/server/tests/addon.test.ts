@@ -3,6 +3,7 @@ import { capabilities, execution, compose } from '../src/native.js';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
+import { Store } from '../src/store.js';
 
 
 test('rejects an incompatible contract before reading configuration', async () => {
@@ -84,10 +85,12 @@ test('artifact descriptors stay beneath the current run and reject symlinks', as
   const runDir = join(directory, 'runs', runId);
   await mkdir(runDir, { recursive: true });
   await writeFile(join(runDir, 'cpu.mcap'), 'evidence');
-  await writeFile(join(directory, 'current.pb'), doramcap.console.v1.Marker.encode({
+  const store = await Store.open(directory);
+  store.write(doramcap.console.v1.Marker.create({
     version: 1, runId, artifactReference:runId, phase: doramcap.console.v1.Phase.FINISHED,
     outcome: { boundaryClean: true, recordingFinalized: true }, recordings: [{id: "cpu",path: "cpu.mcap",cpu:true}],
-  }).finish());
+  }));
+  store.close();
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket);
   await once(server, 'listening');

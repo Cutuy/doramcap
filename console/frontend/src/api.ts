@@ -1,4 +1,4 @@
-import { MEDIA_TYPE, LIMITS, isErrorCode, type ErrorCode } from './generated/transport';
+import { MEDIA_TYPE, LIMITS, historyRunPath, isErrorCode, type ErrorCode } from './generated/transport';
 export { PREPARING_RUN } from './generated/transport';
 import { readLive } from './live';
 import type { Frame } from './streams';
@@ -61,6 +61,9 @@ export function createClient(fetcher: typeof fetch = fetch) {
     stop: (runId: string) =>
       request(routes.stop, routes.stop.request.encode(wire.StopRequest.create({ runId })).finish(), fetcher),
     current: () => request(routes.current, undefined, fetcher),
+    history: (query: { state?: number; project?: string; cursor?: string; limit?: number }) =>
+      request(routes.history, routes.history.request.encode(wire.HistoryQuery.create(query)).finish(), fetcher),
+    historyRun: (runId: string) => request({ ...routes.historyRun, path: historyRunPath(runId) }, undefined, fetcher),
     live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame?: (frame: Frame) => void) => readLive(consume, signal, fetcher, frame),
   };
 }

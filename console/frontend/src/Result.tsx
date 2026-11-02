@@ -1,18 +1,25 @@
 import { artifactPath } from './generated/transport';
 import { Phase } from './api';
-import type { Snapshot } from './api';
+import type { ReactNode } from 'react';
+import type { HistoryArtifact, Snapshot } from './api';
+import { bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
 import { OutcomeSummary } from './ui/OutcomeSummary';
 
-export function Result({ snapshot, newRun, viewRun }: { snapshot: Snapshot; newRun: () => void; viewRun?: () => void }) {
+/** `past` shows a stored run: its stored title, action and on-disk artifact facts. */
+export type PastRun = { title: string; action: string; disabled: boolean; artifacts: HistoryArtifact[]; aside: ReactNode };
+export function Result({ snapshot, newRun, viewRun, past }: { snapshot: Snapshot; newRun: () => void; viewRun?: () => void; past?: PastRun }) {
   const outputs = snapshot.recordings ?? [];
   const blocked = snapshot.phase === Phase.BLOCKED;
   const saved = snapshot.outcome?.recordingFinalized === true;
+  const artifact = (id: string) => past?.artifacts.find(item => item.id === id);
+  const ready = (id: string) => past ? artifact(id)?.downloadable === true : saved;
+  const size = (id: string) => artifact(id)?.sizeBytes == null ? '' : ` · ${bytesLabel(artifact(id)!.sizeBytes)}`;
   return <>
-    <div className="heading"><div><h1>{blocked ? 'Cleanup unverified' : snapshot.outcome?.execution === 'Failed' ? 'Run failed' : snapshot.outcome?.execution === 'Cancelled' ? 'Run cancelled' : 'Run complete'}</h1><p>Run <span className="mono">{snapshot.runId || 'Unknown'}</span></p></div><div className="run-view-actions">{viewRun && <ActionButton variant="secondary" onClick={viewRun}>View run activity</ActionButton>}<ActionButton variant="secondary" onClick={newRun}>New run</ActionButton></div></div>
+    <div className="heading"><div><h1>{past ? past.title : blocked ? 'Cleanup unverified' : snapshot.outcome?.execution === 'Failed' ? 'Run failed' : snapshot.outcome?.execution === 'Cancelled' ? 'Run cancelled' : 'Run complete'}</h1><p>Run <span className="mono">{snapshot.runId || 'Unknown'}</span></p></div><div className="run-view-actions">{viewRun && <ActionButton variant="secondary" onClick={viewRun}>View run activity</ActionButton>}<ActionButton variant={past ? 'primary' : 'secondary'} disabled={past?.disabled} onClick={newRun}>{past ? past.action : 'New run'}</ActionButton></div></div>
     <div className="columns"><div><OutcomeSummary outcome={snapshot.outcome ?? null} recordingEnabled={outputs.length > 0}/><section className="panel"><h2>Evidence</h2><div className="actions">
-      {outputs.length ? outputs.map(output => saved ? <a className="button primary" key={output.id} href={artifactPath(snapshot.runId, output.id)}>Download {output.id} recording</a> : <span className="unavailable" key={output.id}>{output.id} recording unavailable</span>) : <span className="unavailable">Recording disabled</span>}
+      {outputs.length ? outputs.map(output => ready(output.id) ? <a className="button primary" key={output.id} href={artifactPath(snapshot.runId, output.id)}>Download {output.id} recording{size(output.id)}</a> : <span className="unavailable" key={output.id}>{output.id} recording unavailable{size(output.id) && `${size(output.id)} left on host`}</span>) : <span className="unavailable">Recording disabled</span>}
       {snapshot.reportAvailable ? <a className="button secondary" href={artifactPath(snapshot.runId, 'report')}>Download report</a> : <span className="unavailable">Report unavailable</span>}
-    </div></section></div>{blocked && <aside><section className="panel attention-panel"><h2>Reset required</h2><p>The next run will ask the repository controller to reset the experiment before starting. If reset fails, the run stays blocked; inspect the private report on the host.</p></section></aside>}</div>
+    </div></section></div>{past ? <aside>{past.aside}</aside> : blocked && <aside><section className="panel attention-panel"><h2>Reset required</h2><p>The next run will ask the repository controller to reset the experiment before starting. If reset fails, the run stays blocked; inspect the private report on the host.</p></section></aside>}</div>
   </>;
 }

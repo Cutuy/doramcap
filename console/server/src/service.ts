@@ -24,6 +24,7 @@ import { loadConfig } from './config.js';
 import { discover, selectApps, appOptions, outputs, bindOutputs } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { Store, writeOnce } from './store.js';
+import { History } from './history.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LIVE_BRIDGE, LiveRelay, bindBridge, liveStreams } from './live.js';
 
@@ -70,11 +71,15 @@ export class ConsoleService implements ConsoleBackend {
   private previous?: { bytes: bigint; time: number };
   private closing?: Promise<void>;
   private closed = false;
+  private startedAt = 0;
+  private recorded = Phase.PHASE_UNSPECIFIED;
+  private runIndex: History;
   constructor(
     readonly config: Config,
     private engine: NativeExecution,
     private store: Store,
   ) {
+    this.runIndex = new History(store);
     this.graphs = new Graphs(capabilities, config.systemApps, config.dora?.graph ?? '');
     if (config.liveBridge) this.relay = new LiveRelay(`ws://127.0.0.1:${config.liveBridge.port}/stream`);
     this.timer = setInterval(
@@ -92,6 +97,7 @@ export class ConsoleService implements ConsoleBackend {
     config.dataRoot = store.root;
     try {
       const engine = await capabilities.open(config.dockerSocket, 1);
+      new History(store).closeInterrupted();
       const backend = new ConsoleService(config, engine, store);
       await backend.restore();
       return { backend, config, secret };
@@ -101,7 +107,7 @@ export class ConsoleService implements ConsoleBackend {
     }
   }
   private async restore() {
-    const marker = await this.store.marker();
+    const marker = this.store.marker();
     if (
       !marker ||
       marker.version !== 1 ||
@@ -120,7 +126,7 @@ export class ConsoleService implements ConsoleBackend {
       systemApps: marker.systemApps,
       recordings: marker.recordings,
     });
-    const saved = await this.store.activity(marker.runId);
+    const saved = this.store.activity(marker.runId);
     if (
       saved &&
       saved.runId === marker.runId &&
@@ -328,13 +334,17 @@ export class ConsoleService implements ConsoleBackend {
       steps: [],
       liveStreams: prepared.review.liveStreams,
     });
+    this.startedAt = Date.now();
+    this.recordTransition();
     this.startPromise = this.startRequest(prepared);
     return this.startPromise;
   }
   private async startRequest(prepared: Prepared): Promise<Buffer> {
     try {
       // Persist intent before execution; interrupted requests are never replayed on restart.
-      await this.store.write(this.marker!);
+      this.store.write(this.marker!);
+      this.recorded = this.snapshot.phase;
+      this.runIndex.record(this.enriched(), this.startedAt);
       const fresh = await discover(
         this.config.projectRoot,
         prepared.project.directory!,
@@ -365,7 +375,7 @@ export class ConsoleService implements ConsoleBackend {
       this.accepted = true;
       this.marker!.startAccepted = true;
       try {
-        await this.store.write(this.marker!);
+        this.store.write(this.marker!);
       } catch (error) {
         this.metadataFailed = true;
         await this.engine.stop(this.startId);
@@ -437,6 +447,17 @@ export class ConsoleService implements ConsoleBackend {
       if (this.snapshot.phase === Phase.RUNNING && this.snapshot.liveStreams.length) this.relay?.open(this.snapshot.runId);
       else this.relay?.close();
       if (update.result && !this.admissionPending) await this.finish(update.result);
+      else this.recordTransition();
+    }
+  }
+  /** Save the run on each phase change. A failed save is retried at the next change and at the end. */
+  private recordTransition() {
+    if (this.snapshot.phase === this.recorded) return;
+    try {
+      this.runIndex.record(this.enriched(), this.startedAt);
+      this.recorded = this.snapshot.phase;
+    } catch (error) {
+      console.error('Could not save run progress', error);
     }
   }
   private async sample() {
@@ -495,8 +516,13 @@ export class ConsoleService implements ConsoleBackend {
     this.marker!.phase = this.snapshot.phase;
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
+    // The marker and History row commit together, so a crash cannot leave them disagreeing.
+    const save = () =>
+      this.store.transaction(() => {
+        this.store.write(this.marker!);
+        this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
+      });
     try {
-      await this.store.write(this.marker!);
       const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, 'console-report.json');
       if (this.executionStarted) await mkdir(dirname(report), { recursive: true, mode: 0o700 });
       if (this.executionStarted)
@@ -513,12 +539,17 @@ export class ConsoleService implements ConsoleBackend {
             }),
           ),
         );
-      if (this.executionStarted) await this.store.checkpoint(this.enriched());
+      save();
     } catch {
       this.snapshot.phase = Phase.BLOCKED;
       this.marker!.phase = Phase.BLOCKED;
-      await this.store.write(this.marker!).catch(() => {});
+      try {
+        save();
+      } catch (error) {
+        console.error('Could not save the run result', error);
+      }
     }
+    this.recorded = this.snapshot.phase;
   }
   private enriched(): Snapshot {
     const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
@@ -564,17 +595,17 @@ export class ConsoleService implements ConsoleBackend {
     return this.relay?.subscribe(consume) ?? (() => {});
   }
   async openArtifact(id: string, kind: string) {
-    if (
-      !/^[a-f0-9]{32}$/.test(id) ||
-      this.marker?.runId !== id ||
-      ![Phase.FINISHED, Phase.BLOCKED].includes(this.snapshot.phase)
-    )
-      throw new Error('Missing');
-    const outputs = this.marker.recordings;
+    if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('Missing');
+    const current = this.marker?.runId === id;
+    if (current && active(this.snapshot.phase)) throw new Error('Missing');
+    // Past runs resolve through their saved status.
+    const run = current && [Phase.FINISHED, Phase.BLOCKED].includes(this.snapshot.phase) ? this.marker! : this.store.activity(id);
+    if (!run || run.runId !== id) throw new Error('Missing');
+    const outputs = run.recordings;
     const name =
       kind === 'report'
         ? 'console-report.json'
-        : this.marker.outcome?.recordingFinalized
+        : run.outcome?.recordingFinalized
           ? outputs.find((output) => output.id === kind || (kind === 'cpu' && output.cpu))?.path
           : undefined;
     if (!name) throw new Error('Missing');
@@ -583,6 +614,14 @@ export class ConsoleService implements ConsoleBackend {
     } catch {
       throw new Error('Missing');
     }
+  }
+  async history(input: Buffer) {
+    return Buffer.from(wire.HistoryPage.encode(this.runIndex.list(wire.HistoryQuery.decode(input))).finish());
+  }
+  async historyRun(id: string) {
+    const detail = this.runIndex.detail(id);
+    if (!detail) throw new Error('Missing');
+    return Buffer.from(wire.HistoryDetail.encode(detail).finish());
   }
   close() {
     if (!this.closing) this.closing = this.shutdown();

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../src/store.js';
@@ -22,31 +22,39 @@ test('the data-root lock excludes concurrent writers and releases on close', asy
   }
 });
 
-test('an unfinished metadata write preserves the prior marker and rejects symlink reads', async () => {
+test('a data root other users can access is refused before any file is created', async () => {
   // Arrange
-  const root = await mkdtemp(join(tmpdir(), 'console-marker-')),
-    store = await Store.open(root);
-  const original = wire.Marker.create({
-    version: 1,
-    runId: 'a'.repeat(32),
-    artifactReference: 'a'.repeat(32),
-    phase: wire.Phase.FINISHED,
-  });
+  const root = await mkdtemp(join(tmpdir(), 'console-private-'));
+  try {
+    await chmod(root, 0o770);
+    // Act / Assert
+    await assert.rejects(Store.open(root), /must be owned by this user and mode 0700/);
+    await assert.rejects(stat(join(root, 'console.db')), { code: 'ENOENT' });
+    // Act / Assert
+    await chmod(root, 0o700);
+    (await Store.open(root)).close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('the marker survives reopening and an unreadable marker reads as none', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-marker-'));
+  let store = await Store.open(root);
+  const original = wire.Marker.create({ version: 1, runId: 'a'.repeat(32), artifactReference: 'a'.repeat(32), phase: wire.Phase.FINISHED });
   try {
     // Act
-    await store.write(original);
-    await writeFile(join(root, 'current.pb.unfinished.tmp'), 'partial');
+    store.write(original);
+    store.write(wire.Marker.create({ ...original, runId: 'b'.repeat(32) }));
+    store.close();
+    store = await Store.open(root);
     // Assert
-    assert.equal((await store.marker())!.runId, original.runId);
+    assert.equal(store.marker()!.runId, 'b'.repeat(32));
     // Act
-    await store.write(wire.Marker.create({ ...original, runId: 'b'.repeat(32) }));
+    store.db.prepare('UPDATE marker SET value = ?').run(Buffer.from([0xff, 0xff, 0xff]));
     // Assert
-    assert.equal((await store.marker())!.runId, 'b'.repeat(32));
-    // Act
-    await rm(join(root, 'current.pb'));
-    await symlink('/etc/passwd', join(root, 'current.pb'));
-    // Assert
-    assert.equal(await store.marker(), null);
+    assert.equal(store.marker(), null);
   } finally {
     store.close();
     await rm(root, { recursive: true, force: true });

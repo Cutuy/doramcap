@@ -6,8 +6,8 @@ import { stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { streamArtifact } from './artifacts.js';
-import type { ConsoleBackend } from './native.js';
-import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, frame, type ErrorCode } from './generated/transport.js';
+import { wire, type ConsoleBackend } from './native.js';
+import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, historyCursor, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
 
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode) { super(code); } }
@@ -148,6 +148,18 @@ export function createConsoleServer(config: HttpOptions) {
         const input = await body(request), value = decode(routes.stop.request, input);
         string(value.runId);
         reply(response, routes.stop.status, await config.backend.stop(input)); return;
+      }
+      if (request.method === routes.history.method && url.pathname === routes.history.path) {
+        const input = await body(request), value = decode(routes.history.request, input);
+        if (value.limit > LIMITS.historyPageMax || value.project.length > LIMITS.stringLength ||
+            (value.cursor && !historyCursor.test(value.cursor)) || !(value.state in wire.HistoryState))
+          throw new HttpError(400, 'InvalidInput');
+        reply(response, routes.history.status, await config.backend.history(input)); return;
+      }
+      const past = historyRunRoute.exec(url.pathname);
+      if (request.method === routes.historyRun.method && past) {
+        if (request.headers.origin && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
+        reply(response, routes.historyRun.status, await config.backend.historyRun(past[1])); return;
       }
       const artifact = artifactRoute.exec(url.pathname);
       if (request.method === 'GET' && artifact) { await streamArtifact(config.backend, response, artifact[1], artifact[2]); return; }

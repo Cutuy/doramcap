@@ -12,6 +12,8 @@ export const LIMITS = {
   selectionLength: 128,
   liveStreams: 4,
   liveIntervalMs: 100,
+  historyPageDefault: 50,
+  historyPageMax: 200,
 } as const;
 export const ERROR_STATUS = {
   Unauthorized: 401,
@@ -39,8 +41,14 @@ export const routes = {
   stop: { method: 'POST', path: '/api/stop', status: 200, request: wire.StopRequest, response: wire.StopResponse },
   current: { method: 'GET', path: '/api/current', status: 200, response: wire.Status },
   live: { method: 'GET', path: '/api/live', status: 200, response: wire.LiveMessage },
+  // POST carries the typed query; it reads only.
+  history: { method: 'POST', path: '/api/history', status: 200, request: wire.HistoryQuery, response: wire.HistoryPage },
+  historyRun: { method: 'GET', path: '/api/history', status: 200, response: wire.HistoryDetail },
   error: wire.ConsoleError,
 } as const;
+export const historyRunPath = (runId: string) => `/api/history/${encodeURIComponent(runId)}`;
+export const historyRunRoute = /^\/api\/history\/([a-f0-9]{32})$/;
+export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 export const artifactRoute = /^\/api\/artifacts\/([a-f0-9]{32})\/([A-Za-z0-9-]+)$/;

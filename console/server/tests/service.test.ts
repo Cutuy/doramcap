@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtemp, mkdir, writeFile, rm, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
@@ -84,7 +84,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
   const review = wire.Review.decode(
     await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project, systemApps: systemApps && { ids: systemApps } }).finish())),
   );
-  return { root, config, engine, backend, review };
+  return { root, config, store, engine, backend, review };
 }
 const waitFor = async (predicate: () => boolean) => {
   for (let i = 0; i < 200 && !predicate(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -156,14 +156,14 @@ test('duplicate Start requests join one execution and preserve independent compl
 
 test('failed intent persistence prevents execution admission', async () => {
   // Arrange
-  const { root, config, engine, backend, review } = await fixture();
-  await chmod(config.dataRoot, 0o500);
+  const { root, store, engine, backend, review } = await fixture();
+  store.db.exec('DROP TABLE marker');
   try {
     // Act / Assert
     await assert.rejects(
       backend.start(
         Buffer.from(
-          wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-disk-access' }).finish(),
+          wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-marker' }).finish(),
         ),
       ),
       /Internal/,
@@ -171,7 +171,6 @@ test('failed intent persistence prevents execution admission', async () => {
     assert.equal(engine.starts, 0);
     assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.BLOCKED);
   } finally {
-    await chmod(config.dataRoot, 0o700);
     await backend.close();
     await rm(root, { recursive: true, force: true });
   }
