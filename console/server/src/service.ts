@@ -516,8 +516,13 @@ export class ConsoleService implements ConsoleBackend {
     this.marker!.phase = this.snapshot.phase;
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
+    // The marker and History row commit together, so a crash cannot leave them disagreeing.
+    const save = () =>
+      this.store.transaction(() => {
+        this.store.write(this.marker!);
+        this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
+      });
     try {
-      this.store.write(this.marker!);
       const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, 'console-report.json');
       if (this.executionStarted) await mkdir(dirname(report), { recursive: true, mode: 0o700 });
       if (this.executionStarted)
@@ -534,13 +539,12 @@ export class ConsoleService implements ConsoleBackend {
             }),
           ),
         );
-      this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
+      save();
     } catch {
       this.snapshot.phase = Phase.BLOCKED;
       this.marker!.phase = Phase.BLOCKED;
       try {
-        this.store.write(this.marker!);
-        this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
+        save();
       } catch (error) {
         console.error('Could not save the run result', error);
       }

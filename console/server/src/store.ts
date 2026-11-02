@@ -40,16 +40,22 @@ export const MIGRATIONS = [
 /** Apply pending steps. A failed step throws and leaves the file at its last complete version. */
 export function migrate(db: DatabaseSync, steps = MIGRATIONS) {
   const version = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-  for (let next = version(); next < steps.length; next++) {
-    db.exec('BEGIN IMMEDIATE');
-    try {
+  for (let next = version(); next < steps.length; next++)
+    transaction(db, () => {
       db.exec(steps[next]);
       db.exec(`PRAGMA user_version = ${next + 1}`);
-      db.exec('COMMIT');
-    } catch (error) {
-      db.exec('ROLLBACK');
-      throw error;
-    }
+    });
+}
+
+/** Run `work` so its writes all commit or none do. Errors: rethrows after rolling back. */
+function transaction(db: DatabaseSync, work: () => void) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    work();
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
   }
 }
 
@@ -116,6 +122,10 @@ export class Store {
     const bytes = wire.Marker.encode(marker).finish();
     if (bytes.length > MAX_MARKER_BYTES) throw new Error('marker too large');
     this.db.prepare('INSERT INTO marker (id, value) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value').run(bytes);
+  }
+  /** Commit all of `work`'s writes or none of them. Errors: rethrows after rolling back. */
+  transaction(work: () => void) {
+    transaction(this.db, work);
   }
   /** One run's saved status, or null when absent or unreadable. */
   activity(id: string) {

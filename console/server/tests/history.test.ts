@@ -216,6 +216,45 @@ test('a run open at a crash reopens as interrupted with no finish time or downlo
   }
 });
 
+test('a result that cannot reach History leaves the marker unfinished, so restart closes the run as interrupted', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  run.store.db.exec("CREATE TRIGGER refuse BEFORE UPDATE ON runs BEGIN SELECT RAISE(ABORT, 'disk full'); END");
+  try {
+    // Act
+    await finishRun(run, runId);
+    // Assert
+    assert.ok(![Phase.FINISHED, Phase.BLOCKED].includes(run.store.marker()!.phase!));
+    // Act
+    run.store.db.exec('DROP TRIGGER refuse');
+    new History(run.store).closeInterrupted();
+    // Assert
+    assert.equal((await list(run)).entries[0].state, State.HISTORY_INTERRUPTED);
+  } finally {
+    await run.backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a report that cannot be written blocks the marker and History row alike', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  await mkdir(join(run.config.dataRoot, 'runs', runId), { recursive: true });
+  await writeFile(join(run.config.dataRoot, 'runs', runId, 'console-report.json'), 'already here');
+  try {
+    // Act
+    await finishRun(run, runId);
+    // Assert
+    assert.equal(run.store.marker()!.phase, Phase.BLOCKED);
+    assert.equal((await list(run)).entries[0].state, State.HISTORY_BLOCKED);
+  } finally {
+    await run.backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a damaged database stops Console from opening and is left in place', async () => {
   // Arrange
   const root = await temporary(), path = join(root, 'console.db');
