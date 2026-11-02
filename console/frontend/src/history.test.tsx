@@ -11,7 +11,7 @@ import { RunMetrics } from './RunMetrics';
 const { HistoryState: State } = wire;
 const runId = 'a'.repeat(32);
 const entry = (fields: object = {}) => wire.HistoryEntry.fromObject({
-  runId, projectDirectory: '/projects/robot', profiles: ['gpu'], systemApps: { ids: ['cpu-monitor'] },
+  runId, profiles: ['gpu'], systemApps: { ids: ['cpu-monitor'] },
   startedAtMs: 1_000_000, finishedAtMs: 1_125_000, state: State.HISTORY_COMPLETED,
   artifacts: [{ id: 'cpu', sizeBytes: 2 * 1024 * 1024, downloadable: true }, { id: 'report', sizeBytes: 100, downloadable: true }],
   ...fields,

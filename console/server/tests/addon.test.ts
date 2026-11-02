@@ -133,11 +133,11 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket); await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${directory}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\ndora { image: "doramcap/dora:local" }\n`);
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${project}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\ndora { image: "doramcap/dora:local" }\n`);
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   const handle = await openService(config) as ConsoleHandle & { prepare(input: Buffer): Promise<Buffer> };
-  const request = doramcap.console.v1.PrepareRequest.encode({ directory: project, profiles: [] }).finish();
+  const request = doramcap.console.v1.PrepareRequest.encode({ profiles: [] }).finish();
   const preparation = handle.prepare(Buffer.from(request)).catch(() => null);
   try {
     // Act: wait until the owner has begun the slow preparation, then close.
@@ -223,13 +223,13 @@ test('unchanged Start passes preflight while changed commands reject before cont
   await writeFile(join(bin,'docker'),cli);await chmod(join(bin,'docker'),0o755);
   await writeFile(join(root,'secret'),'test-secret');
   const config=join(root,'console.pbtxt');
-  await writeFile(config,`listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${root}" data_root:"${root}/data" docker_socket:"${socket}" access_secret_file:"${root}/secret"`);
+  await writeFile(config,`listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"${socket}" access_secret_file:"${root}/secret"`);
   const oldPath=process.env.PATH;process.env.PATH=`${bin}:${oldPath}`;
   const handle=await openService(config) as ConsoleHandle & {prepare(input:Buffer):Promise<Buffer>;start(input:Buffer):Promise<Buffer>};
   const wire=doramcap.console.v1;
   try {
     // Act
-    const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({directory:project,profiles:[]}).finish())));
+    const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     // Assert
     assert.ok(review.services.some((service:any)=>service.name==='worker'&&service.imageId==='sha256:approved'));
     assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,2);
@@ -247,7 +247,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     assert.equal(phase,wire.Phase.IDLE);
     // Act: a fresh review of unchanged inputs must pass preflight with automatic ports.
     // The fake CLI deliberately fails reservation after the Start acknowledgement.
-    const unchanged=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({directory:project,profiles:[]}).finish())));
+    const unchanged=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     const started=wire.StartResponse.decode(await handle.start(Buffer.from(wire.StartRequest.encode({preparedId:unchanged.preparedId,requestKey:'unchanged'}).finish())));
     // Assert
     assert.equal(started.runId,unchanged.runId);

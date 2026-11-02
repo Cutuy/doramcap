@@ -53,11 +53,11 @@ test('authentication, Origin, size and field validation precede native mutations
     });
     assert.equal(chunkedStatus, 400);
     assert.equal(starts, 0); assert.equal(stops, 0);
-    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[]}).finish())).status, 200);
-    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:[]}}).finish())).status, 200);
-    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:['cpu-monitor']}}).finish())).status, 200);
-    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:Array.from({length:LIMITS.selectionLength+1},()=> 'profile')}).finish())).status,400);
-    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({directory:'/tmp',profiles:[],systemApps:{ids:['']}}).finish())).status,400);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({profiles:[]}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({profiles:[],systemApps:{ids:[]}}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({profiles:[],systemApps:{ids:['cpu-monitor']}}).finish())).status, 200);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({profiles:Array.from({length:LIMITS.selectionLength+1},()=> 'profile')}).finish())).status,400);
+    assert.equal((await post(routes.prepare.path, wire.PrepareRequest.encode({profiles:[],systemApps:{ids:['']}}).finish())).status,400);
     assert.deepEqual(selections, [undefined, [], ['cpu-monitor']]);
     assert.equal((await post(routes.start.path, start('key'))).status, 202);
     assert.equal((await post(routes.stop.path, wire.StopRequest.encode({runId:'run'}).finish())).status, 200);

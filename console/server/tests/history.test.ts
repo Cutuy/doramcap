@@ -47,7 +47,7 @@ async function service(root: string) {
   await mkdir(project, { recursive: true });
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    projectRoot: root,
+    projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
     accessSecretFile: join(root, 'secret'),
@@ -67,7 +67,7 @@ const list = async ({ backend }: Pick<Service, 'backend'>, query: object = {}) =
   wire.HistoryPage.decode(await backend.history(Buffer.from(wire.HistoryQuery.encode(query).finish())));
 const detail = async ({ backend }: Pick<Service, 'backend'>, runId: string) => wire.HistoryDetail.decode(await backend.historyRun(runId));
 async function startRun({ backend, project }: Service, key = 'key') {
-  const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project }).finish())));
+  const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
   await backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: key }).finish()));
   return review.runId;
 }
@@ -83,7 +83,6 @@ async function checkpoint(store: Store, runId: string, fields: object = {}) {
   new History(store).record(wire.Status.create({
     phase: Phase.FINISHED,
     runId,
-    projectDirectory: '/projects/a',
     profiles: ['gpu'],
     systemApps: { ids: ['recorder'] },
     recordings: [{ id: 'messages', path: 'nested/messages.mcap' }],
@@ -101,7 +100,7 @@ test('each migration step raises user_version and a failed step leaves the last 
   // Assert
   assert.equal(version(), MIGRATIONS.length);
   assert.deepEqual((db.prepare("SELECT name FROM pragma_table_info('runs')").all() as { name: string }[]).map(row => row.name),
-    ['run_id', 'project_directory', 'state', 'started_at_ms', 'entry', 'detail']);
+    ['run_id', 'state', 'started_at_ms', 'entry', 'detail']);
   // Act
   assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
   // Assert
@@ -112,6 +111,28 @@ test('each migration step raises user_version and a failed step leaves the last 
   migrate(db);
   assert.deepEqual(db.prepare('SELECT run_id FROM runs').all(), []);
   db.close();
+});
+
+test('a database from before per-project Consoles keeps its runs and accepts new ones', async () => {
+  // Arrange
+  const root = await temporary();
+  const old = new DatabaseSync(join(root, 'console.db'));
+  migrate(old, MIGRATIONS.slice(0, 1));
+  old
+    .prepare('INSERT INTO runs (run_id, project_directory, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(id(1), '/old', State.HISTORY_COMPLETED, 1, new Uint8Array(), new Uint8Array());
+  old.close();
+  const store = await Store.open(root);
+  try {
+    // Act
+    new History(store).record(wire.Status.create({ runId: id(2), phase: Phase.FINISHED }), 2, 3);
+    // Assert
+    const rows = store.db.prepare('SELECT run_id FROM runs ORDER BY run_id').all() as { run_id: string }[];
+    assert.deepEqual(rows.map((row) => row.run_id), [id(1), id(2)]);
+  } finally {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('the database is private, uses WAL and refuses a symlink', async () => {
@@ -141,7 +162,7 @@ test('the database is private, uses WAL and refuses a symlink', async () => {
 test('Console refuses a run it cannot record', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
-  const review = wire.Review.decode(await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: run.project }).finish())));
+  const review = wire.Review.decode(await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
   run.store.db.exec('DROP TABLE runs');
   try {
     // Act / Assert
@@ -172,7 +193,6 @@ test('a finished run survives a restart with its selection, times, error and art
     assert.equal(entry.runId, runId);
     assert.equal(entry.state, State.HISTORY_FAILED);
     assert.equal(entry.errorSummary, 'worker exited with status 3');
-    assert.equal(entry.projectDirectory, second.project);
     assert.deepEqual(entry.systemApps!.ids, ['recorder']);
     assert.ok(Number(entry.startedAtMs) >= before);
     assert.ok(Number(entry.finishedAtMs) >= Number(entry.startedAtMs));
@@ -198,7 +218,7 @@ test('a run open at a crash reopens as interrupted with no finish time or downlo
   const history = new History(store);
   await mkdir(join(root, 'runs', id(1)), { recursive: true });
   await writeFile(join(root, 'runs', id(1), 'cpu.mcap'), 'partial');
-  history.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), projectDirectory: '/projects/a', recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
+  history.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
   try {
     // Act
     history.closeInterrupted();
@@ -275,13 +295,13 @@ test('the HTTP history API authorizes, bounds, paginates and filters', async () 
   // Arrange
   const root = await temporary(), run = await service(root);
   const history = new History(run.store);
-  const done = (runId: string, project: string, execution: string) => wire.Status.create({ phase: Phase.FINISHED, runId, projectDirectory: project, outcome: { execution } });
+  const done = (runId: string, execution: string) => wire.Status.create({ phase: Phase.FINISHED, runId, outcome: { execution } });
   // Two runs share one start time so the cursor must break the tie by id.
-  history.record(done(id(1), '/projects/a', 'Completed'), 1000, 2000);
-  history.record(done(id(2), '/projects/a', 'Failed'), 2000, 3000);
-  history.record(done(id(3), '/projects/b', 'Completed'), 2000, 3000);
-  history.record(done(id(4), '/projects/b', 'Cancelled'), 4000, 5000);
-  history.record(done(id(5), '/projects/a', 'Completed'), 5000, 6000);
+  history.record(done(id(1), 'Completed'), 1000, 2000);
+  history.record(done(id(2), 'Failed'), 2000, 3000);
+  history.record(done(id(3), 'Completed'), 2000, 3000);
+  history.record(done(id(4), 'Cancelled'), 4000, 5000);
+  history.record(done(id(5), 'Completed'), 5000, 6000);
   const server = createConsoleServer({ backend: run.backend, secret: 'secret', origin: 'http://console.test', assets: root });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');

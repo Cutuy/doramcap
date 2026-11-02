@@ -125,7 +125,6 @@ export class ConsoleService implements ConsoleBackend {
       phase: marker.phase,
       runId: marker.runId,
       outcome: marker.outcome,
-      projectDirectory: marker.projectDirectory,
       profiles: marker.profiles,
       systemApps: marker.systemApps,
       recordings: marker.recordings,
@@ -172,7 +171,7 @@ export class ConsoleService implements ConsoleBackend {
     let workspace = '';
     try {
       const ids = request.systemApps?.ids ?? undefined;
-      const project = await discover(this.config.projectRoot, request.directory || this.config.projectRoot, request.profiles),
+      const project = await discover(this.config.projectRoot, request.profiles),
         apps = selectApps(this.config.systemApps, this.config.liveBridge ? ids?.filter((id) => id !== LIVE_BRIDGE.id) : ids, request.systemApps?.profiles ?? {}),
         selected = this.config.liveBridge ? (ids?.includes(LIVE_BRIDGE.id) ?? true) : undefined,
         // The bridge runs only when a selected app declares a live output.
@@ -240,7 +239,6 @@ export class ConsoleService implements ConsoleBackend {
       this.snapshot = wire.Status.create({
         phase: Phase.REVIEWED,
         runId: id,
-        projectDirectory: project.directory,
         profiles: request.profiles,
         systemApps: { ids: selectedIds(apps, live), profiles: appProfiles(apps) },
         recordings: outputs(apps),
@@ -325,7 +323,6 @@ export class ConsoleService implements ConsoleBackend {
       requestKey: request.requestKey,
       phase: Phase.STARTING,
       artifactReference: request.preparedId,
-      projectDirectory: prepared.project.directory,
       profiles: prepared.project.profiles,
       systemApps: { ids: selectedIds(prepared.apps, prepared.live), profiles: appProfiles(prepared.apps) },
       recordings: outputs(prepared.apps),
@@ -349,11 +346,7 @@ export class ConsoleService implements ConsoleBackend {
       this.store.write(this.marker!);
       this.recorded = this.snapshot.phase;
       this.runIndex.record(this.enriched(), this.startedAt);
-      const fresh = await discover(
-        this.config.projectRoot,
-        prepared.project.directory!,
-        prepared.project.profiles ?? [],
-      ).catch(() => {
+      const fresh = await discover(this.config.projectRoot, prepared.project.profiles ?? []).catch(() => {
         throw new Error('StaleReview');
       });
       if (JSON.stringify(fresh) !== JSON.stringify(prepared.project)) throw new Error('StaleReview');
@@ -558,7 +551,7 @@ export class ConsoleService implements ConsoleBackend {
   private enriched(): Snapshot {
     const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
     const terminal = [Phase.FINISHED, Phase.BLOCKED].includes(status.phase);
-    status.projectDirectory ||= this.config.projectRoot;
+    status.projectDirectory = this.config.projectRoot;
     status.cpuAvailable =
       terminal &&
       status.outcome?.recordingFinalized === true &&

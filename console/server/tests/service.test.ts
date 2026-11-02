@@ -59,7 +59,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    projectRoot: root,
+    projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
     accessSecretFile: join(root, 'secret'),
@@ -82,7 +82,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
     store = await Store.open(config.dataRoot),
     backend = new ConsoleService(config, engine, store);
   const review = wire.Review.decode(
-    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project, systemApps: systemApps && { ids: systemApps } }).finish())),
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: systemApps && { ids: systemApps } }).finish())),
   );
   return { root, config, store, engine, backend, review };
 }
@@ -267,9 +267,7 @@ for (const rejection of ['Busy', 'Closing'])
       await assert.rejects(
         backend.prepare(
           Buffer.from(
-            wire.PrepareRequest.encode({
-              directory: join(config.projectRoot, 'project'),
-            }).finish(),
+            wire.PrepareRequest.encode({}).finish(),
           ),
         ),
         { message: rejection },
@@ -278,7 +276,7 @@ for (const rejection of ['Busy', 'Closing'])
       const next = wire.Review.decode(
         await backend.prepare(
           Buffer.from(
-            wire.PrepareRequest.encode({ directory: join(config.projectRoot, 'project') }).finish(),
+            wire.PrepareRequest.encode({}).finish(),
           ),
         ),
       );
@@ -294,11 +292,10 @@ test('a profiles-only project returns choices and can then be prepared explicitl
   const { root, config, engine, backend } = await fixture();
   engine.needsProfiles = true;
   engine.profileNames = ['optional'];
-  const directory = join(config.projectRoot, 'project');
   try {
     // Act
     const choices = wire.Review.decode(
-      await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory, profiles: [] }).finish())),
+      await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ profiles: [] }).finish())),
     );
     // Assert
     assert.equal(choices.preparedId, '');
@@ -306,7 +303,7 @@ test('a profiles-only project returns choices and can then be prepared explicitl
     // Act
     const ready = wire.Review.decode(
       await backend.prepare(
-        Buffer.from(wire.PrepareRequest.encode({ directory, profiles: ['optional'] }).finish()),
+        Buffer.from(wire.PrepareRequest.encode({ profiles: ['optional'] }).finish()),
       ),
     );
     // Assert
@@ -420,7 +417,7 @@ test('the selected launch profile mounts its config read-only and declares only 
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    projectRoot: root,
+    projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
     accessSecretFile: join(root, 'secret'),
@@ -444,7 +441,7 @@ test('the selected launch profile mounts its config read-only and declares only 
     store = await Store.open(config.dataRoot),
     backend = new ConsoleService(config, engine, store),
     prepare = async (systemApps?: { ids: string[]; profiles: Record<string, string> }) =>
-      wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: project, systemApps }).finish())));
+      wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps }).finish())));
   try {
     // Act: review with the default profile.
     const first = await prepare();
@@ -485,7 +482,7 @@ test('an unknown launch profile rejects preparation', async () => {
   try {
     // Act / Assert
     assert.ok(review.preparedId);
-    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project'), systemApps: { ids: ['recorder'], profiles: { recorder: 'missing' } } }).finish())));
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: ['recorder'], profiles: { recorder: 'missing' } } }).finish())));
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });
@@ -520,7 +517,7 @@ else setTimeout(() => {}, 60000);
 `, { mode: 0o755 });
   process.env.PATH = `${commands}:${previous}`;
   config.downloadMissingImages = true;
-  const request = Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project') }).finish());
+  const request = Buffer.from(wire.PrepareRequest.encode({}).finish());
   const stop = Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish());
   try {
     // Act / Assert: cancellation returns the Console to idle.
@@ -556,7 +553,7 @@ test('cancelling a review without downloads discards its inspection', async () =
   };
   try {
     // Act
-    const review = backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project') }).finish()));
+    const review = backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
     await new Promise((resolve) => setTimeout(resolve, 50));
     await backend.stop(Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish()));
     finish();

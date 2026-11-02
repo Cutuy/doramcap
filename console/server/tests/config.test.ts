@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert';
 import { loadConfig, validateConfig } from '../src/config.js';
 import { capabilities, live, wire } from '../src/native.js';
 import { selectApps, validateApps, appOptions, discover } from '../src/system-apps.js';
-import { mkdtemp, writeFile, mkdir, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 const config = (extra = '') =>
@@ -64,26 +64,22 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
 test('project discovery confines canonical paths and detects native input changes', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-discovery-')),
-    project = join(root, 'project'),
-    outside = await mkdtemp(join(tmpdir(), 'console-outside-'));
+    project = join(root, 'project');
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   await writeFile(join(project, '.env'), 'VALUE=kept');
   try {
     // Act
-    const found = await discover(root, project, ['extra']);
+    const found = await discover(project, ['extra']);
     // Assert
     assert.deepEqual(found.files, ['compose.yaml']);
     assert.deepEqual(found.envFiles, ['.env']);
     assert.deepEqual(found.profiles, ['extra']);
     // Act / Assert
-    await symlink(outside, join(root, 'escape'));
-    await assert.rejects(discover(root, join(root, 'escape'), []));
     await writeFile(join(project, 'docker-compose.yml'), 'services: {}');
-    await assert.rejects(discover(root, project, []));
+    await assert.rejects(discover(project, []));
   } finally {
     await rm(root, { recursive: true, force: true });
-    await rm(outside, { recursive: true, force: true });
   }
 });
 

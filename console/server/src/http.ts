@@ -102,7 +102,6 @@ export function createConsoleServer(config: HttpOptions) {
       if (request.method === 'POST' && request.headers.origin !== config.origin) throw new HttpError(403, 'Unauthorized');
       if (request.method === routes.prepare.method && url.pathname === routes.prepare.path) {
         const input = await body(request), value = decode(routes.prepare.request, input);
-        if (value.directory) string(value.directory);
         if (value.profiles.length > LIMITS.selectionLength || (value.systemApps?.ids?.length ?? 0) > LIMITS.selectionLength || Object.keys(value.systemApps?.profiles ?? {}).length > LIMITS.selectionLength) throw new HttpError(400, 'InvalidInput');
         value.profiles.forEach(string); value.systemApps?.ids?.forEach(string); Object.entries(value.systemApps?.profiles ?? {}).flat().forEach(string);
         reply(response, routes.prepare.status, await config.backend.prepare(input)); return;

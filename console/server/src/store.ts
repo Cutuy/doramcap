@@ -7,7 +7,7 @@ import { capabilities, wire } from './native.js';
 const MAX_MARKER_BYTES = 64 * 1024;
 /**
  * Schema steps; each moves `user_version` up by one and runs in one transaction.
- * Additive only: rows are protobuf blobs plus query columns, so older Consoles keep reading.
+ * Rows are protobuf blobs plus query columns. Append steps; never edit one that has shipped.
  */
 export const MIGRATIONS = [
   `CREATE TABLE runs (
@@ -22,6 +22,9 @@ export const MIGRATIONS = [
    CREATE INDEX runs_by_project ON runs (project_directory, started_at_ms DESC, run_id DESC);
    CREATE INDEX runs_by_state ON runs (state, started_at_ms DESC, run_id DESC);
    CREATE TABLE marker (id INTEGER PRIMARY KEY CHECK (id = 1), value BLOB NOT NULL) STRICT;`,
+  // Each Console now serves one project.
+  `DROP INDEX runs_by_project;
+   ALTER TABLE runs DROP COLUMN project_directory;`,
 ];
 
 /** Apply pending steps. A failed step throws and leaves the file at its last complete version. */

@@ -74,7 +74,6 @@ export class History {
   private upsert(status: Snapshot, state: number, startedAt: number, finishedAt: number | undefined, error: string) {
     const entry = wire.HistoryEntry.create({
       runId: status.runId,
-      projectDirectory: status.projectDirectory,
       profiles: status.profiles,
       systemApps: status.systemApps,
       startedAtMs: startedAt,
@@ -84,11 +83,10 @@ export class History {
       artifacts: this.artifacts(status),
     });
     this.store.db.prepare(
-      `INSERT INTO runs (run_id, project_directory, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO runs (run_id, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (run_id) DO UPDATE SET
-         project_directory = excluded.project_directory, state = excluded.state,
-         entry = excluded.entry, detail = excluded.detail`,
-    ).run(status.runId, status.projectDirectory, state, startedAt, wire.HistoryEntry.encode(entry).finish(), encodeDetail(status));
+         state = excluded.state, entry = excluded.entry, detail = excluded.detail`,
+    ).run(status.runId, state, startedAt, wire.HistoryEntry.encode(entry).finish(), encodeDetail(status));
   }
   private startedAt(id: string) {
     return (this.store.db.prepare('SELECT started_at_ms AS t FROM runs WHERE run_id = ?').get(id) as { t: number } | undefined)?.t;
