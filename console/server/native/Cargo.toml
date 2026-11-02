@@ -17,6 +17,7 @@ napi = { version = "=3.15.0", features = ["tokio_rt", "napi8"] }
 napi-derive = "=3.6.13"
 orchestrator = { version = "0.1.0", path = "../../../libs/orchestrator" }
 rustix = { version = "=1.1.5", features = ["fs"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 
 [build-dependencies]
 prost-build = "0.14"

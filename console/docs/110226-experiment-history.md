@@ -2,7 +2,8 @@
 
 # Experiment history
 
-Created: 2026-11-02. Status: implemented; see milestones for evidence.
+Created: 2026-11-02. Status: implemented; the milestones below record the first version, before the single-store rework.
+
 
 History lists every Console run with its status, duration and recordings. A detail
 page reuses the Result and timeline views and offers **Run again** through Review.
@@ -11,17 +12,16 @@ page reuses the Result and timeline views and offers **Run again** through Revie
 
 | Topic | Decision |
 | --- | --- |
-| Engine | `node:sqlite` `DatabaseSync` from the pinned Node 22. No new dependency. It is experimental in Node 22 and prints an `ExperimentalWarning`. `better-sqlite3` and `rusqlite` were not adopted. |
-| Authority | `current.pb`, `activity.pb` and Compose ownership stay authoritative. `console.db` can be rebuilt from them. |
-| Failure | No database error reaches a run. The API returns a page with `degraded` set. A corrupt file is preserved for the operator. |
-| Row | Run id, project, state and start time as indexed columns; `HistoryEntry` and `Status` as protobuf blobs. |
-| Writes | One upsert per phase transition, synchronously on the service loop. WAL with `synchronous=NORMAL` and a 250 ms busy timeout. |
-| Interrupted | A row still open at the next open becomes **Interrupted**, with no finish time and no download, unless a checkpoint or marker reports a result. |
-| Backfill times | `finished` is the `activity.pb` mtime; `started` subtracts the longest recorded elapsed time. Older checkpoints have no wall clock. |
-| Retention | Newest 1000 rows. Pruning removes rows only; recordings stay under `runs/`. An open row is never pruned. Files too old for a full index are skipped, so pruned rows stay pruned. |
+| Engine | `rusqlite` with bundled SQLite in the Console addon. SQL and schema stay in TypeScript. `node:sqlite` is experimental in Node 22, and `better-sqlite3` adds a second native addon. |
+| Authority | `console.db` is the only store for the marker and run status. Recordings stay files under `runs/`. |
+| Failure | Console refuses to start without its database and refuses a run it cannot record. A failed progress save mid-run retries at the next change; a failed final save marks the run Blocked. |
+| Row | Run id, project, state and start time as indexed columns; `HistoryEntry` and `Status` as protobuf blobs, so old rows stay readable. Migrations are additive only, so older Consoles keep reading. |
+| Writes | One upsert per phase transition, synchronously on the service loop. WAL with `synchronous=FULL` and a 250 ms busy timeout. |
+| Interrupted | A row still open at the next start becomes **Interrupted**, with no finish time and no download. |
+| Retention | Every run is kept. Rows are the only record of their recordings, so they are never pruned. |
 | Deletion | Left out. Removing recordings needs an explicit design with the user. |
 | List route | `POST /api/history` with a `HistoryQuery` body keeps the query typed and reuses the origin check. It only reads. |
-| Downloads | Past recordings resolve through `activity.pb` and the existing beneath-root native open, so they work with the index degraded. Only finalized recordings download. |
+| Downloads | Past recordings resolve through the saved status and the existing beneath-root native open. Only finalized recordings download. |
 | CPU panels | A stored run shows recording metrics only; live CPU frames are not stored. |
 
 ## Milestone 1: Contracts

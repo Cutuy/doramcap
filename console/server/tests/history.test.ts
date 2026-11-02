@@ -4,14 +4,13 @@ import { closeSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { validateConfig } from '../src/config.js';
-import { History, MAX_HISTORY_RUNS, MIGRATIONS, migrate } from '../src/history.js';
+import { History } from '../src/history.js';
 import { createConsoleServer } from '../src/http.js';
-import { execution, wire, type NativeExecution } from '../src/native.js';
+import { capabilities, execution, wire, type NativeExecution } from '../src/native.js';
 import { ConsoleService } from '../src/service.js';
-import { Store } from '../src/store.js';
+import { MIGRATIONS, Store, migrate } from '../src/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
 import { sessionCookie } from './session.js';
 
@@ -57,10 +56,10 @@ async function service(root: string) {
   });
   validateConfig(config);
   const store = await Store.open(config.dataRoot),
-    history = await History.open(store, await store.marker()),
     engine = new Engine(),
-    backend = new ConsoleService(config, engine, store, history);
-  return { project, config, store, history, engine, backend };
+    backend = new ConsoleService(config, engine, store);
+  new History(store).closeInterrupted();
+  return { project, config, store, engine, backend };
 }
 type Service = Awaited<ReturnType<typeof service>>;
 const list = async ({ backend }: Pick<Service, 'backend'>, query: object = {}) =>
@@ -77,10 +76,10 @@ async function finishRun(run: Service, runId: string, result: Partial<typeof exe
   run.engine.update.result = execution.ExecutionResult.create({ blocked: false, boundaryClean: true, writersStopped: true, recordingFinalized: true, eventStreamHealthy: true, ...result });
   return wire.Status.decode(await run.backend.status());
 }
-/** Write one real `activity.pb` checkpoint for a past run. */
+/** Save one finished past run. */
 async function checkpoint(store: Store, runId: string, fields: object = {}) {
   await mkdir(join(store.root, 'runs', runId, 'nested'), { recursive: true });
-  await store.checkpoint(wire.Status.create({
+  new History(store).record(wire.Status.create({
     phase: Phase.FINISHED,
     runId,
     projectDirectory: '/projects/a',
@@ -89,30 +88,33 @@ async function checkpoint(store: Store, runId: string, fields: object = {}) {
     recordings: [{ id: 'messages', path: 'nested/messages.mcap' }],
     outcome: { execution: 'Completed', recordingFinalized: true, boundaryClean: true },
     ...fields,
-  }));
+  }), 1, 2);
 }
 
 test('each migration step raises user_version and a failed step leaves the last complete version', async () => {
   // Arrange
-  const db = new DatabaseSync(':memory:');
-  const version = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-  // Act
-  migrate(db, MIGRATIONS.slice(0, 1));
-  // Assert: step 1 creates the indexed run table.
-  assert.equal(version(), 1);
-  assert.deepEqual((db.prepare('SELECT name FROM pragma_table_info(\'runs\')').all() as { name: string }[]).map(row => row.name),
-    ['run_id', 'project_directory', 'state', 'started_at_ms', 'entry', 'detail']);
-  // Act
-  assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
-  // Assert
-  assert.equal(version(), MIGRATIONS.length);
-  assert.equal(db.prepare('SELECT name FROM sqlite_master WHERE name = \'half\'').get(), undefined);
-  // Act / Assert: reapplying is a no-op; a newer schema is refused.
-  migrate(db);
-  assert.equal(version(), MIGRATIONS.length);
-  db.exec(`PRAGMA user_version = ${MIGRATIONS.length + 1}`);
-  assert.throws(() => migrate(db), /newer than this Console/);
-  db.close();
+  const root = await temporary(), db = capabilities.openDatabase(join(root, 'migrate.db'));
+  const version = () => db.query('PRAGMA user_version')[0].user_version;
+  try {
+    // Act
+    migrate(db);
+    // Assert
+    assert.equal(version(), MIGRATIONS.length);
+    assert.deepEqual(db.query("SELECT name FROM pragma_table_info('runs')").map(row => row.name),
+      ['run_id', 'project_directory', 'state', 'started_at_ms', 'entry', 'detail']);
+    // Act
+    assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
+    // Assert
+    assert.equal(version(), MIGRATIONS.length);
+    assert.deepEqual(db.query("SELECT name FROM sqlite_master WHERE name = 'half'"), []);
+    // Act / Assert: a schema from a newer Console stays readable.
+    db.exec(`PRAGMA user_version = ${MIGRATIONS.length + 1}`);
+    migrate(db);
+    assert.deepEqual(db.query('SELECT run_id FROM runs'), []);
+  } finally {
+    db.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('the database is private, uses WAL and refuses a symlink', async () => {
@@ -120,27 +122,36 @@ test('the database is private, uses WAL and refuses a symlink', async () => {
   const root = await temporary(), store = await Store.open(root);
   try {
     // Act
-    const history = await History.open(store, null);
-    history.record(wire.Status.create({ phase: Phase.STARTING, runId: id(1) }), 1);
+    new History(store).record(wire.Status.create({ phase: Phase.STARTING, runId: id(1) }), 1);
     // Assert
-    assert.equal(history.degraded, '');
     for (const name of (await readdir(root)).filter(name => name.startsWith('console.db')))
       assert.equal(statSync(join(root, name)).mode & 0o777, 0o600, name);
-    const reader = new DatabaseSync(join(root, 'console.db'));
-    assert.deepEqual({ ...reader.prepare('PRAGMA journal_mode').get() }, { journal_mode: 'wal' });
-    reader.close();
-    history.close();
+    assert.deepEqual(store.db.query('PRAGMA journal_mode'), [{ journal_mode: 'wal' }]);
+    assert.deepEqual(store.db.query('PRAGMA synchronous'), [{ synchronous: 2 }]);
+    store.close();
     // Arrange
     await rm(join(root, 'console.db'));
     await writeFile(join(root, 'elsewhere'), 'keep');
     await symlink(join(root, 'elsewhere'), join(root, 'console.db'));
-    // Act
-    const refused = await History.open(store, null);
-    // Assert
-    assert.notEqual(refused.degraded, '');
+    // Act / Assert
+    await assert.rejects(Store.open(root));
     assert.equal(readFileSync(join(root, 'elsewhere'), 'utf8'), 'keep');
   } finally {
-    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Console refuses a run it cannot record', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const review = wire.Review.decode(await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: run.project }).finish())));
+  run.store.db.exec('DROP TABLE runs');
+  try {
+    // Act / Assert
+    await assert.rejects(run.backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'key' }).finish())));
+    assert.equal(run.engine.starts, 0);
+  } finally {
+    await run.backend.close();
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -187,15 +198,14 @@ test('a finished run survives a restart with its selection, times, error and art
 test('a run open at a crash reopens as interrupted with no finish time or download', async () => {
   // Arrange: a crash leaves the row open and a partial recording behind.
   const root = await temporary(), store = await Store.open(root);
-  const first = await History.open(store, null);
+  const history = new History(store);
   await mkdir(join(root, 'runs', id(1)), { recursive: true });
   await writeFile(join(root, 'runs', id(1), 'cpu.mcap'), 'partial');
-  first.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), projectDirectory: '/projects/a', recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
-  first.close();
+  history.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), projectDirectory: '/projects/a', recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
   try {
     // Act
-    const second = await History.open(store, null);
-    const entry = second.list(wire.HistoryQuery.create()).entries[0];
+    history.closeInterrupted();
+    const entry = history.list(wire.HistoryQuery.create()).entries[0];
     // Assert
     assert.equal(entry.state, State.HISTORY_INTERRUPTED);
     assert.equal(Number(entry.startedAtMs), 5000);
@@ -203,200 +213,24 @@ test('a run open at a crash reopens as interrupted with no finish time or downlo
     assert.match(entry.errorSummary!, /stopped before/);
     assert.equal(Number(entry.artifacts![0].sizeBytes), 'partial'.length);
     assert.equal(entry.artifacts![0].downloadable, false);
-    second.close();
   } finally {
     store.close();
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test('a crash after the checkpoint but before the index write trusts the checkpoint', async () => {
+test('a damaged database stops Console from opening and is left in place', async () => {
   // Arrange
-  const root = await temporary(), store = await Store.open(root);
-  const first = await History.open(store, null);
-  first.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), projectDirectory: '/projects/a' }), 5000);
-  first.close();
-  await checkpoint(store, id(1));
+  const root = await temporary(), path = join(root, 'console.db');
+  await writeFile(path, 'this is not a database, and it must stay here');
   try {
-    // Act
-    const second = await History.open(store, null);
-    const entry = second.list(wire.HistoryQuery.create()).entries[0];
-    // Assert
-    assert.equal(entry.state, State.HISTORY_COMPLETED);
-    assert.equal(Number(entry.startedAtMs), 5000);
-    assert.ok(Number(entry.finishedAtMs) > 5000);
-    second.close();
+    // Act / Assert
+    await assert.rejects(Store.open(root));
+    assert.match(readFileSync(path, 'utf8'), /must stay here/);
+    // Act / Assert: the lock is released, so a repaired directory opens.
+    await rm(path);
+    (await Store.open(root)).close();
   } finally {
-    store.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('a preflight-rejected checkpoint backfills as failed rather than unreadable', async () => {
-  // Arrange
-  const root = await temporary(), store = await Store.open(root);
-  await checkpoint(store, id(1), { phase: Phase.IDLE, outcome: { execution: 'Failed', boundaryClean: true }, recordings: [] });
-  try {
-    // Act
-    const history = await History.open(store, null);
-    const page = history.list(wire.HistoryQuery.create());
-    // Assert
-    assert.equal(page.unreadable, 0);
-    assert.equal(page.entries[0].state, State.HISTORY_FAILED);
-    history.close();
-  } finally {
-    store.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('a marker with no index row or checkpoint becomes an interrupted entry', async () => {
-  // Arrange: the database was unavailable when this run started.
-  const root = await temporary(), store = await Store.open(root);
-  const marker = wire.Marker.create({ version: 1, runId: id(7), artifactReference: id(7), phase: Phase.RUNNING, projectDirectory: '/projects/m' });
-  await store.write(marker);
-  try {
-    // Act
-    const history = await History.open(store, marker);
-    const entry = history.list(wire.HistoryQuery.create()).entries[0];
-    // Assert
-    assert.equal(entry.runId, id(7));
-    assert.equal(entry.state, State.HISTORY_INTERRUPTED);
-    history.close();
-  } finally {
-    store.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('backfill is idempotent, derives times and tolerates corrupt, oversized and symlinked checkpoints', async () => {
-  // Arrange
-  const root = await temporary(), store = await Store.open(root);
-  await checkpoint(store, id(1), { steps: [{ step: 'launch', state: 'FAILED', error: 'image missing', elapsedNs: 2_000_000_000 }], outcome: { execution: 'Failed' } });
-  await utimes(join(root, 'runs', id(1), 'activity.pb'), 100, 100);
-  await mkdir(join(root, 'runs', id(2)));
-  await writeFile(join(root, 'runs', id(2), 'activity.pb'), Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff]));
-  await mkdir(join(root, 'runs', id(3)));
-  await writeFile(join(root, 'runs', id(3), 'activity.pb'), Buffer.alloc(2 * 1024 * 1024 + 1, 1));
-  await mkdir(join(root, 'runs', id(4)));
-  await symlink('/etc/passwd', join(root, 'runs', id(4), 'activity.pb'));
-  await checkpoint(store, id(5), { runId: id(5) });
-  await rm(join(root, 'runs', id(5), 'activity.pb'));
-  await mkdir(join(root, 'runs', 'not-a-run'));
-  try {
-    // Act
-    const first = await History.open(store, null);
-    const page = first.list(wire.HistoryQuery.create());
-    first.close();
-    const second = await History.open(store, null);
-    const again = second.list(wire.HistoryQuery.create());
-    second.close();
-    // Assert
-    assert.equal(page.degraded, '');
-    assert.deepEqual(page.entries.map(entry => entry.runId), [id(1)]);
-    assert.equal(page.unreadable, 2);
-    const entry = page.entries[0];
-    assert.equal(entry.state, State.HISTORY_FAILED);
-    assert.equal(entry.errorSummary, 'image missing');
-    assert.equal(Number(entry.finishedAtMs), 100_000);
-    assert.equal(Number(entry.startedAtMs), 98_000);
-    const plain = (value: typeof page) => wire.HistoryPage.toObject(value, { longs: String }).entries;
-    assert.deepEqual(plain(again), plain(page));
-  } finally {
-    store.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-for (const [name, sabotage] of [
-  ['a directory at the database path', (path: string) => mkdir(path)],
-  ['a corrupt database file', (path: string) => writeFile(path, 'this is not a database, and it must be preserved')],
-] as const)
-  test(`${name} degrades history and never blocks a run`, async () => {
-    // Arrange
-    const root = await temporary();
-    await mkdir(join(root, 'data'));
-    await sabotage(join(root, 'data', 'console.db'));
-    const run = await service(root);
-    try {
-      // Act
-      const runId = await startRun(run);
-      run.engine.update.ready = true;
-      const running = wire.Status.decode(await run.backend.status());
-      const finished = await finishRun(run, runId);
-      const page = await list(run);
-      const fd = await run.backend.openArtifact(runId, 'messages');
-      closeSync(fd);
-      // Assert
-      assert.equal(running.phase, Phase.RUNNING);
-      assert.equal(finished.phase, Phase.FINISHED);
-      assert.equal(run.engine.starts, 1);
-      assert.notEqual(page.degraded, '');
-      assert.deepEqual(page.entries, []);
-      await assert.rejects(run.backend.historyRun(runId), /Missing/);
-      if (statSync(join(root, 'data', 'console.db')).isFile()) assert.match(readFileSync(join(root, 'data', 'console.db'), 'utf8'), /must be preserved/);
-    } finally {
-      await run.backend.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-test('a database failure during a run is visible and the next open restores the run', async () => {
-  // Arrange
-  const root = await temporary(), first = await service(root);
-  const runId = await startRun(first);
-  const saboteur = new DatabaseSync(join(root, 'data', 'console.db'));
-  saboteur.exec('DROP TABLE runs');
-  // Act
-  const finished = await finishRun(first, runId);
-  const page = await list(first);
-  // Assert
-  assert.equal(finished.phase, Phase.FINISHED);
-  assert.notEqual(page.degraded, '');
-  // Act: an operator recreates the index, as recovery.md describes.
-  saboteur.close();
-  await first.backend.close();
-  await rm(join(root, 'data', 'console.db'));
-  await rm(join(root, 'data', 'console.db-wal'), { force: true });
-  await rm(join(root, 'data', 'console.db-shm'), { force: true });
-  const second = await service(root);
-  try {
-    const restored = await list(second);
-    // Assert
-    assert.equal(restored.degraded, '');
-    assert.deepEqual(restored.entries.map(entry => [entry.runId, entry.state]), [[runId, State.HISTORY_COMPLETED]]);
-  } finally {
-    await second.backend.close();
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('retention keeps the newest runs, never touches recordings and does not resurrect pruned rows', async () => {
-  // Arrange
-  const root = await temporary(), store = await Store.open(root);
-  await checkpoint(store, id(1));
-  await writeFile(join(root, 'runs', id(1), 'nested/messages.mcap'), 'kept');
-  await utimes(join(root, 'runs', id(1), 'activity.pb'), 1, 1);
-  const first = await History.open(store, null);
-  assert.equal(first.list(wire.HistoryQuery.create()).entries[0].runId, id(1));
-  const status = (runId: string) => wire.Status.create({ phase: Phase.FINISHED, runId, outcome: { execution: 'Completed' } });
-  try {
-    // Act
-    for (let n = 2; n <= MAX_HISTORY_RUNS + 1; n++) first.record(status(id(n)), 1_000_000 + n, 2_000_000 + n);
-    const count = () => (new DatabaseSync(join(root, 'console.db')).prepare('SELECT count(*) AS n FROM runs').get() as { n: number }).n;
-    // Assert
-    assert.equal(count(), MAX_HISTORY_RUNS);
-    assert.equal(first.detail(id(1)), null);
-    assert.equal(readFileSync(join(root, 'runs', id(1), 'nested/messages.mcap'), 'utf8'), 'kept');
-    // Act
-    first.close();
-    const second = await History.open(store, null);
-    // Assert
-    assert.equal(second.detail(id(1)), null);
-    assert.equal(count(), MAX_HISTORY_RUNS);
-    second.close();
-  } finally {
-    store.close();
     await rm(root, { recursive: true, force: true });
   }
 });
@@ -404,13 +238,14 @@ test('retention keeps the newest runs, never touches recordings and does not res
 test('the HTTP history API authorizes, bounds, paginates and filters', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
+  const history = new History(run.store);
   const done = (runId: string, project: string, execution: string) => wire.Status.create({ phase: Phase.FINISHED, runId, projectDirectory: project, outcome: { execution } });
   // Two runs share one start time so the cursor must break the tie by id.
-  run.history.record(done(id(1), '/projects/a', 'Completed'), 1000, 2000);
-  run.history.record(done(id(2), '/projects/a', 'Failed'), 2000, 3000);
-  run.history.record(done(id(3), '/projects/b', 'Completed'), 2000, 3000);
-  run.history.record(done(id(4), '/projects/b', 'Cancelled'), 4000, 5000);
-  run.history.record(done(id(5), '/projects/a', 'Completed'), 5000, 6000);
+  history.record(done(id(1), '/projects/a', 'Completed'), 1000, 2000);
+  history.record(done(id(2), '/projects/a', 'Failed'), 2000, 3000);
+  history.record(done(id(3), '/projects/b', 'Completed'), 2000, 3000);
+  history.record(done(id(4), '/projects/b', 'Cancelled'), 4000, 5000);
+  history.record(done(id(5), '/projects/a', 'Completed'), 5000, 6000);
   const server = createConsoleServer({ backend: run.backend, secret: 'secret', origin: 'http://console.test', assets: root });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');

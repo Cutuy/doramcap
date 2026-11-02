@@ -40,16 +40,6 @@ test('the table shows loading, first-use, filtered-empty and failure states', ()
   assert.doesNotMatch(failed, /No runs/);
 });
 
-test('a degraded index says runs are unaffected and does not claim the history is empty', () => {
-  // Arrange / Act
-  const html = table(wire.HistoryPage.create({ degraded: 'database disk image is malformed', unreadable: 2 }));
-  // Assert
-  assert.match(html, /History is degraded: database disk image is malformed/);
-  assert.match(html, /Runs still start, stop and recover/);
-  assert.match(html, /2 saved runs could not be read/);
-  assert.doesNotMatch(html, /No runs yet/);
-});
-
 test('rows show state, project, duration, recording size, a detail link and paging', () => {
   // Arrange
   const page = wire.HistoryPage.create({ entries: [entry(), entry({ runId: 'b'.repeat(32), state: State.HISTORY_INTERRUPTED, finishedAtMs: null, errorSummary: 'Console stopped', artifacts: [] })], nextCursor: `1:${runId}`, projects: ['/projects/robot'] });

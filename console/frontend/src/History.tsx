@@ -11,10 +11,6 @@ const { HistoryState: State } = wire;
 const filters = [State.HISTORY_COMPLETED, State.HISTORY_FAILED, State.HISTORY_CANCELLED, State.HISTORY_BLOCKED, State.HISTORY_INTERRUPTED, State.HISTORY_RUNNING];
 const failure = (error: unknown) => error instanceof ApiError && error.code === 'Missing' ? 'This run is not in the history.' : error instanceof ApiError && error.code === 'Unauthorized' ? 'Session ended. Open the access link printed by the running Console.' : 'History could not be loaded. Try again.';
 
-export function Degraded({ reason }: { reason: string }) {
-  return <p className="notice" role="status">History is degraded: {reason}. Runs still start, stop and recover normally. Completed runs return to this list once the database opens.</p>;
-}
-
 function Row({ entry }: { entry: HistoryEntry }) {
   return <tr>
     <td><StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/></td>
@@ -25,7 +21,7 @@ function Row({ entry }: { entry: HistoryEntry }) {
   </tr>;
 }
 
-/** Filtered run table; loading, failure, degraded and empty states come from its props. */
+/** Filtered run table; loading, failure and empty states come from its props. */
 export function HistoryTable({ page, loading, error, state, project, setState, setProject, more }: {
   page: HistoryPage | null; loading: boolean; error: string; state: number; project: string;
   setState: (state: number) => void; setProject: (project: string) => void; more: () => void;
@@ -33,8 +29,6 @@ export function HistoryTable({ page, loading, error, state, project, setState, s
   const filtered = state !== 0 || project !== '';
   return <>
     <div className="heading"><div><h1>Experiment history</h1></div></div>
-    {page?.degraded && <Degraded reason={page.degraded}/>}
-    {!!page?.unreadable && <p className="notice" role="status">{page.unreadable} saved {page.unreadable === 1 ? 'run' : 'runs'} could not be read. The files stay on the host.</p>}
     {error && <p className="notice failure-notice" role="alert">{error}</p>}
     <section className="panel">
       <div className="history-filters">
@@ -43,7 +37,7 @@ export function HistoryTable({ page, loading, error, state, project, setState, s
       </div>
       {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-status">Status</th><th>Project</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry}/>)}</tbody></table>}
       {loading && <p className="muted" role="status">Loading history…</p>}
-      {!loading && !error && page?.entries.length === 0 && !page.degraded && <p className="muted">{filtered ? 'No runs match these filters.' : 'No runs yet. Finished and interrupted experiments appear here.'}</p>}
+      {!loading && !error && page?.entries.length === 0 && <p className="muted">{filtered ? 'No runs match these filters.' : 'No runs yet. Finished and interrupted experiments appear here.'}</p>}
       {page?.nextCursor && <div className="actions"><ActionButton variant="secondary" disabled={loading} onClick={more}>Load more</ActionButton></div>}
     </section>
   </>;

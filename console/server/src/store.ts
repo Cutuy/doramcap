@@ -1,11 +1,9 @@
-import { constants, createReadStream, closeSync, fstatSync } from 'node:fs';
-import { mkdir, open, rename, rm, realpath } from 'node:fs/promises';
+import { constants, closeSync, fchmodSync, fstatSync, openSync } from 'node:fs';
+import { mkdir, open, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { capabilities, wire, type Snapshot } from './native.js';
+import { capabilities, wire, type Database } from './native.js';
 
-const MAX_MARKER_BYTES = 64 * 1024,
-  MAX_ACTIVITY_BYTES = 2 * 1024 * 1024;
+const MAX_MARKER_BYTES = 64 * 1024;
 export async function writeOnce(path: string, bytes: Uint8Array) {
   const file = await open(
     path,
@@ -19,74 +17,107 @@ export async function writeOnce(path: string, bytes: Uint8Array) {
     await file.close();
   }
 }
-async function bounded(root: string, path: string, limit: number) {
-  const fd = capabilities.openFile(root, path),
-    source = createReadStream('', { fd, autoClose: true, start: 0, end: limit });
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const bytes of source) {
-    size += bytes.length;
-    if (size > limit) throw new Error('checkpoint too large');
-    chunks.push(bytes);
+/**
+ * Schema steps; each moves `user_version` up by one and runs in one transaction.
+ * Additive only: rows are protobuf blobs plus query columns, so older Consoles keep reading.
+ */
+export const MIGRATIONS = [
+  `CREATE TABLE runs (
+     run_id TEXT PRIMARY KEY,
+     project_directory TEXT NOT NULL,
+     state INTEGER NOT NULL,
+     started_at_ms INTEGER NOT NULL,
+     entry BLOB NOT NULL,
+     detail BLOB NOT NULL
+   ) STRICT;
+   CREATE INDEX runs_by_time ON runs (started_at_ms DESC, run_id DESC);
+   CREATE INDEX runs_by_project ON runs (project_directory, started_at_ms DESC, run_id DESC);
+   CREATE INDEX runs_by_state ON runs (state, started_at_ms DESC, run_id DESC);
+   CREATE TABLE marker (id INTEGER PRIMARY KEY CHECK (id = 1), value BLOB NOT NULL) STRICT;`,
+];
+
+/** Apply pending steps. A failed step throws and leaves the file at its last complete version. */
+export function migrate(db: Database, steps = MIGRATIONS) {
+  const version = () => Number(db.query('PRAGMA user_version')[0].user_version);
+  for (let next = version(); next < steps.length; next++) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(steps[next]);
+      db.exec(`PRAGMA user_version = ${next + 1}`);
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
   }
-  return Buffer.concat(chunks);
 }
-/** Persist browser metadata independently of repository admission and recovery. */
+
+/**
+ * Console's durable state: `<data_root>/console.db`, with recordings beside it under `runs/`.
+ * Errors: open and writes throw; Console must not start a run it cannot record.
+ */
 export class Store {
   private constructor(
     readonly root: string,
+    readonly db: Database,
     private lock: { close(): void },
   ) {}
   static async open(path: string) {
     await mkdir(path, { recursive: true, mode: 0o700 });
     const root = await realpath(path);
-    return new Store(root, capabilities.lockFile(join(root, 'console.lock')));
+    const lock = capabilities.lockFile(join(root, 'console.lock'));
+    try {
+      const file = join(root, 'console.db');
+      // SQLite gives the -wal and -shm files this file's mode.
+      const fd = openSync(file, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+      try {
+        fchmodSync(fd, 0o600);
+      } finally {
+        closeSync(fd);
+      }
+      const db = capabilities.openDatabase(file);
+      try {
+        // FULL keeps a marker written before execution across power loss.
+        db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 250');
+        migrate(db);
+      } catch (error) {
+        db.close();
+        throw error;
+      }
+      return new Store(root, db, lock);
+    } catch (error) {
+      lock.close();
+      throw error;
+    }
   }
   close() {
+    this.db.close();
     this.lock.close();
   }
-  async marker() {
+  /** The latest run's marker, or null when absent or unreadable. */
+  marker() {
+    const row = this.db.query('SELECT value FROM marker WHERE id = 1')[0];
+    if (!row) return null;
     try {
-      return wire.Marker.decode(await bounded(this.root, 'current.pb', MAX_MARKER_BYTES));
+      return wire.Marker.decode(row.value as Buffer);
     } catch {
       return null;
     }
   }
-  async activity(id: string) {
-    if (!/^[a-f0-9]{32}$/.test(id)) return null;
-    try {
-      return wire.Status.decode(
-        await bounded(join(this.root, 'runs'), `${id}/activity.pb`, MAX_ACTIVITY_BYTES),
-      );
-    } catch {
-      return null;
-    }
-  }
-  async write(marker: typeof wire.Marker.prototype) {
+  /** Replace the marker durably. */
+  write(marker: typeof wire.Marker.prototype) {
     const bytes = wire.Marker.encode(marker).finish();
     if (bytes.length > MAX_MARKER_BYTES) throw new Error('marker too large');
-    await this.atomic('current.pb', bytes);
+    this.db.query('INSERT INTO marker (id, value) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value', [Buffer.from(bytes)]);
   }
-  async checkpoint(status: Snapshot) {
-    if (!/^[a-f0-9]{32}$/.test(status.runId)) throw new Error('invalid checkpoint run id');
-    const bytes = wire.Status.encode(status).finish();
-    if (bytes.length > MAX_ACTIVITY_BYTES) throw new Error('activity too large');
-    await this.atomic(join('runs', status.runId, 'activity.pb'), bytes);
-  }
-  private async atomic(relative: string, bytes: Uint8Array) {
-    const target = join(this.root, relative),
-      temporary = target + '.' + randomUUID() + '.tmp';
+  /** One run's saved status, or null when absent or unreadable. */
+  activity(id: string) {
+    const row = this.db.query('SELECT detail FROM runs WHERE run_id = ?', [id])[0];
+    if (!row) return null;
     try {
-      await writeOnce(temporary, bytes);
-      await rename(temporary, target);
-      const parent = await open(join(target, '..'), constants.O_RDONLY | constants.O_DIRECTORY);
-      try {
-        await parent.sync();
-      } finally {
-        await parent.close();
-      }
-    } finally {
-      await rm(temporary, { force: true });
+      return wire.Status.decode(row.detail as Buffer);
+    } catch {
+      return null;
     }
   }
   available(id: string, path: string) {
@@ -94,22 +125,10 @@ export class Store {
   }
   /** Size of one regular file beneath a run, or null when it cannot be opened safely. */
   size(id: string, path: string) {
-    return this.stat(join(this.root, 'runs'), `${id}/${path}`)?.size ?? null;
-  }
-  /** Modification time of a run's checkpoint in milliseconds, or null without one. */
-  activityTime(id: string) {
-    const time = this.stat(join(this.root, 'runs'), `${id}/activity.pb`)?.mtimeMs;
-    return time === undefined ? null : Math.floor(time);
-  }
-  markerTime() {
-    const time = this.stat(this.root, 'current.pb')?.mtimeMs;
-    return time === undefined ? null : Math.floor(time);
-  }
-  private stat(root: string, path: string) {
     try {
-      const fd = capabilities.openFile(root, path);
+      const fd = capabilities.openFile(join(this.root, 'runs'), `${id}/${path}`);
       try {
-        return fstatSync(fd);
+        return fstatSync(fd).size;
       } finally {
         closeSync(fd);
       }

@@ -1,4 +1,5 @@
 //! Protobuf execution transport and OS capabilities for the TypeScript server.
+pub mod database;
 mod execution;
 mod runtime;
 

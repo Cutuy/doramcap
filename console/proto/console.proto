@@ -132,7 +132,5 @@ message HistoryPage {
   repeated HistoryEntry entries = 1;
   string next_cursor = 2; // Empty on the last page.
   repeated string projects = 3; // Known projects, for filtering.
-  string degraded = 4; // Set when the index failed; runs are unaffected.
-  uint32 unreadable = 5; // Run checkpoints that could not be indexed.
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
