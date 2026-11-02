@@ -1,23 +1,10 @@
 import { constants, closeSync, fchmodSync, fstatSync, openSync } from 'node:fs';
-import { mkdir, open, realpath, stat } from 'node:fs/promises';
+import { mkdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { capabilities, wire } from './native.js';
 
 const MAX_MARKER_BYTES = 64 * 1024;
-export async function writeOnce(path: string, bytes: Uint8Array) {
-  const file = await open(
-    path,
-    constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
-    0o600,
-  );
-  try {
-    await file.writeFile(bytes);
-    await file.sync();
-  } finally {
-    await file.close();
-  }
-}
 /**
  * Schema steps; each moves `user_version` up by one and runs in one transaction.
  * Additive only: rows are protobuf blobs plus query columns, so older Consoles keep reading.

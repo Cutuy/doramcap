@@ -31,14 +31,16 @@ Evidence: Console server suite passes. Real concurrent runs are recorded under M
 ## Milestone 2: Per-project service and state
 
 **Work items**
-- [ ] Add `--project`, defaulting to the current directory.
-- [ ] Derive the project ID, service name and state directory.
-- [ ] Add `list`.
-- [ ] Stop seeding a playground; keep the sample read-only in the release.
+- [x] Add `--project`, defaulting to the current directory.
+- [x] Derive the project ID, service name and state directory.
+- [x] Add `list`.
+- [x] Stop seeding a playground; keep the sample read-only in the release.
 
 **Validation**
-- [ ] Project ID and release tests pass.
-- [ ] Two projects run at the same time with separate history and recordings.
+- [x] Project ID and release tests pass.
+- [x] Two projects run at the same time with separate history and recordings.
+
+Evidence: Console server suite passes. On x86_64, the real CLI started two projects through systemd on ports 43187 and 43188. Both ran through Chromium with live CPU panels at once; each History showed only its own run; recordings of 9.3 and 11.2 MB landed in separate state directories; stopping one left the other running; no containers remained. Not run: the packaged archive, the sample at its installed path, ARM64.
 
 ## Milestone 3: One project in the UI
 

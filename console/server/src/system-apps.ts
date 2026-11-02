@@ -1,7 +1,7 @@
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
-import { writeOnce } from './store.js';
+import { writeOnce } from './files.js';
 import { LIVE_BRIDGE } from './live.js';
 
 const INFRASTRUCTURE = [

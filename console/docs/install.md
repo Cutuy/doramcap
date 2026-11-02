@@ -10,6 +10,7 @@ archive and installs into `/opt/doramcap-console` with sudo.
 curl -fLO https://github.com/Cutuy/doramcap/releases/latest/download/install.sh
 sh install.sh
 doramcap-console doctor
+cd /path/to/your/compose/project
 doramcap-console start
 doramcap-console --help
 ```

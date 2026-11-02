@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, statfs, symlink, writeFile } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { capabilities, wire, type Config } from './native.js';
 
@@ -16,8 +17,14 @@ export async function readRelease(root: string) {
   return manifest;
 }
 
-/** Resolve project paths inside a writable playground and system app paths inside the immutable release. */
-export function releaseConfig(template: Config, playground: string, systemApps: string, state: string): Config {
+/** State directory name for one canonical project path: its folder name and a path hash. */
+export function projectId(project: string) {
+  const name = basename(project).replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'project';
+  return `${name}-${createHash('sha256').update(project).digest('hex').slice(0, 12)}`;
+}
+
+/** Resolve the project and graph inside `project`, and system app paths inside the immutable release. */
+export function releaseConfig(template: Config, project: string, systemApps: string, state: string): Config {
   const config = wire.ConsoleConfig.decode(wire.ConsoleConfig.encode(template).finish());
   const input = (root: string, path: string, base = root) => {
     if (isAbsolute(path)) throw new Error(`Release input must be relative: ${path}`);
@@ -25,14 +32,14 @@ export function releaseConfig(template: Config, playground: string, systemApps: 
     if (inside === '..' || inside.startsWith(`..${sep}`)) throw new Error(`Release input escapes ${root}: ${path}`);
     return target;
   };
-  config.projectRoot = input(playground, config.projectRoot || '.');
-  config.dataRoot = join(state, 'runs');
+  config.projectRoot = project;
+  config.dataRoot = state;
   config.dockerSocket ||= '/var/run/docker.sock';
   config.listenAddress = '127.0.0.1:43187';
   config.publicOrigin = 'http://127.0.0.1:43187';
   config.accessSecretFile = '';
   config.downloadMissingImages = true;
-  if (config.dora?.graph) config.dora.graph = input(playground, config.dora.graph);
+  if (config.dora?.graph) config.dora.graph = input(project, config.dora.graph);
   if (config.dora) {
     config.dora.runtimeDirectory = '';
     config.dora.zenohOverlay = '';
@@ -57,26 +64,18 @@ export async function privateState(path: string) {
     throw new Error('State directory must be canonical, root-owned and mode 0700');
 }
 
-export async function initialize(root: string, state: string) {
+/** Write one project's config once, pinned to the release that wrote it, and record its path. */
+export async function initialize(root: string, project: string, state: string) {
   const release = await readRelease(root);
   await privateState(state);
+  await writeFile(join(state, 'project.txt'), `${project}\n`, { mode: 0o600 });
   const configPath = join(state, 'console.pbtxt');
   try {
     const info = await lstat(configPath);
     if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022)) throw new Error('Unsafe Console configuration');
     return configPath;
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  const playground = join(state, 'playground');
-  // Seed once; later releases keep all user-edited playground files.
-  try { await lstat(playground); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    const staging = join(state, `playground-${process.pid}`);
-    await cp(join(root, 'playground'), staging, { recursive: true, errorOnExist: true, force: false });
-    await rename(staging, playground);
-  }
-  // The config stays coupled to the release that wrote it, through that release's own directory.
-  const config = releaseConfig(wire.ConsoleConfig.create(release.config!), playground, join(root, 'system-apps'), state);
+  const config = releaseConfig(wire.ConsoleConfig.create(release.config!), project, join(root, 'system-apps'), state);
   await writeFile(configPath, capabilities.formatConfig(config), { mode: 0o600, flag: 'wx' });
   return configPath;
 }
