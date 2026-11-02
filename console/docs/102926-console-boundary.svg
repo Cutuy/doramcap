@@ -10,7 +10,7 @@
   <rect x="330" y="60" width="745" height="390" rx="9" fill="#eef3ef" stroke="#bdcdc5" />
   <text x="700" y="85" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">On-prem host</text>
   <rect x="355" y="100" width="695" height="160" rx="9" fill="#e4eeec" stroke="#bdcdc5" />
-  <text x="700" y="124" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">One Node.js process</text>
+  <text x="700" y="124" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">One Node.js process per project</text>
   <rect x="25" y="155" width="175" height="56" rx="9" fill="#fff" stroke="#bdcdc5" />
   <text x="112.5" y="189" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">React UI</text>
   <rect x="380" y="155" width="210" height="56" rx="9" fill="#fff" stroke="#bdcdc5" />

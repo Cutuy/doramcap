@@ -8,7 +8,7 @@ then run the shared experiment and download its recordings. Dora coordinator and
 IPC daemon are included automatically. [History](docs/110226-experiment-history.md)
 keeps past runs, their recordings and a **Run again** action.
 
-![Console and workflow boundaries](docs/103026-console-compose-steps.svg)
+![Console architecture](docs/102926-console-boundary.svg)
 
 ```sh
 npm --prefix console/server ci

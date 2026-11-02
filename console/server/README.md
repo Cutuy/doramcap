@@ -4,8 +4,6 @@ TypeScript owns configuration, app selection, reviews, request coordination,
 progress views and persistence. A native bridge runs the existing Compose workflow
 on its owner thread and exposes bounded events and safe OS handles.
 
-![Console integration](../docs/103026-console-compose-steps.svg)
-
 ```sh
 npm --prefix console/server ci
 npm --prefix console/server run build:native
@@ -21,7 +19,7 @@ configuration snapshots and execution facts. The workflow owns repository admiss
 reset, preflight and cleanup. Console builds the browser-facing status in TypeScript.
 
 [HTTP contract](../contract/transport.ts) · [Configuration](../docs/configuration.md) · [Recovery](../docs/recovery.md) ·
-[Process boundary](../docs/102926-console-boundary.svg) ·
+[Execution boundaries](../docs/103026-console-compose-steps.svg) ·
 [Command flow](../docs/102926-console-interop.svg)
 
 Run `npm --prefix console/server test` for server, native transport and OS-helper
