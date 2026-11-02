@@ -33,9 +33,13 @@ pub(super) fn merge_app(
     services: &mut Vec<String>,
 ) -> Result<Vec<String>> {
     let names = part["services"]
-        .as_object()
+        .as_object_mut()
         .ok_or_else(|| invalid("Compose input has no services"))?;
     services.extend(names.keys().cloned());
+    // Normalization already applied profile selection; the merged manifest has none to activate.
+    for service in names.values_mut().filter_map(Value::as_object_mut) {
+        service.remove("profiles");
+    }
     if let Some(volumes) = part.get_mut("volumes").and_then(Value::as_object_mut) {
         for volume in volumes.values_mut().filter(|v| v["external"] != true) {
             if volume["labels"].get("io.doramcap.remove-volume").is_some() {
