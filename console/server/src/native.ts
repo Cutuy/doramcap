@@ -3,7 +3,7 @@ import { doramcap } from './generated/console.js';
 const require = createRequire(import.meta.url);
 
 import type { NativeCapabilities, NativeExecution } from '../native/index.js';
-export type { Database, NativeExecution, NativeCapabilities } from '../native/index.js';
+export type { NativeExecution, NativeCapabilities } from '../native/index.js';
 
 export const wire = doramcap.console.v1;
 export const execution = doramcap.console.execution.v1;
@@ -29,14 +29,6 @@ export const capabilities: NativeCapabilities = {
   parseConfig: (text) => wire.ConsoleConfig.decode(addon.parseConfig(text)),
   expandGraph: (path) => addon.expandGraph(path),
   lockFile: (path) => addon.lockFile(path),
-  openDatabase(path) {
-    const db = addon.openDatabase(path);
-    return {
-      exec: (sql) => db.exec(sql),
-      query: (sql, params = []) => db.query(sql, params),
-      close: () => db.close(),
-    };
-  },
   openFile: (root, relative) => addon.openFile(root, relative),
   async open(socket, version) {
     const owner = await addon.open(socket, version);

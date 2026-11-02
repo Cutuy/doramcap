@@ -1,7 +1,8 @@
 import { constants, closeSync, fchmodSync, fstatSync, openSync } from 'node:fs';
 import { mkdir, open, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { capabilities, wire, type Database } from './native.js';
+import { DatabaseSync } from 'node:sqlite';
+import { capabilities, wire } from './native.js';
 
 const MAX_MARKER_BYTES = 64 * 1024;
 export async function writeOnce(path: string, bytes: Uint8Array) {
@@ -37,8 +38,8 @@ export const MIGRATIONS = [
 ];
 
 /** Apply pending steps. A failed step throws and leaves the file at its last complete version. */
-export function migrate(db: Database, steps = MIGRATIONS) {
-  const version = () => Number(db.query('PRAGMA user_version')[0].user_version);
+export function migrate(db: DatabaseSync, steps = MIGRATIONS) {
+  const version = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
   for (let next = version(); next < steps.length; next++) {
     db.exec('BEGIN IMMEDIATE');
     try {
@@ -57,9 +58,10 @@ export function migrate(db: Database, steps = MIGRATIONS) {
  * Errors: open and writes throw; Console must not start a run it cannot record.
  */
 export class Store {
+  private closed = false;
   private constructor(
     readonly root: string,
-    readonly db: Database,
+    readonly db: DatabaseSync,
     private lock: { close(): void },
   ) {}
   static async open(path: string) {
@@ -75,7 +77,7 @@ export class Store {
       } finally {
         closeSync(fd);
       }
-      const db = capabilities.openDatabase(file);
+      const db = new DatabaseSync(file);
       try {
         // FULL keeps a marker written before execution across power loss.
         db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 250');
@@ -91,15 +93,16 @@ export class Store {
     }
   }
   close() {
-    this.db.close();
+    if (!this.closed) this.db.close();
+    this.closed = true;
     this.lock.close();
   }
   /** The latest run's marker, or null when absent or unreadable. */
   marker() {
-    const row = this.db.query('SELECT value FROM marker WHERE id = 1')[0];
+    const row = this.db.prepare('SELECT value FROM marker WHERE id = 1').get() as { value: Uint8Array } | undefined;
     if (!row) return null;
     try {
-      return wire.Marker.decode(row.value as Buffer);
+      return wire.Marker.decode(row.value);
     } catch {
       return null;
     }
@@ -108,14 +111,14 @@ export class Store {
   write(marker: typeof wire.Marker.prototype) {
     const bytes = wire.Marker.encode(marker).finish();
     if (bytes.length > MAX_MARKER_BYTES) throw new Error('marker too large');
-    this.db.query('INSERT INTO marker (id, value) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value', [Buffer.from(bytes)]);
+    this.db.prepare('INSERT INTO marker (id, value) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value').run(bytes);
   }
   /** One run's saved status, or null when absent or unreadable. */
   activity(id: string) {
-    const row = this.db.query('SELECT detail FROM runs WHERE run_id = ?', [id])[0];
+    const row = this.db.prepare('SELECT detail FROM runs WHERE run_id = ?').get(id) as { detail: Uint8Array } | undefined;
     if (!row) return null;
     try {
-      return wire.Status.decode(row.detail as Buffer);
+      return wire.Status.decode(row.detail);
     } catch {
       return null;
     }

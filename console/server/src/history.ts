@@ -3,7 +3,7 @@ import { wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
 
 const { HistoryState: State, Phase } = wire;
-type Row = { entry: Buffer; detail: Buffer };
+type Row = { entry: Uint8Array; detail: Uint8Array };
 
 const MAX_DETAIL_BYTES = 2 * 1024 * 1024,
   MAX_ERROR_LENGTH = 1024,
@@ -31,8 +31,9 @@ export class History {
   constructor(private store: Store) {}
   /** A row still open when Console starts belongs to a run that never reported a result. */
   closeInterrupted() {
-    for (const row of this.store.db.query('SELECT detail, started_at_ms AS t FROM runs WHERE state = ?', [State.HISTORY_RUNNING]))
-      this.upsert(wire.Status.decode(row.detail as Buffer), State.HISTORY_INTERRUPTED, row.t as number, undefined, 'Console stopped before this run reported a result.');
+    const open = this.store.db.prepare('SELECT detail, started_at_ms AS t FROM runs WHERE state = ?').all(State.HISTORY_RUNNING) as { detail: Uint8Array; t: number }[];
+    for (const row of open)
+      this.upsert(wire.Status.decode(row.detail), State.HISTORY_INTERRUPTED, row.t, undefined, 'Console stopped before this run reported a result.');
   }
   /** Save one run transition. `startedAt` is ignored once the row exists. */
   record(status: Snapshot, startedAt: number, finishedAt?: number, error = '') {
@@ -44,12 +45,11 @@ export class History {
     const page = wire.HistoryPage.create();
     const limit = query.limit || LIMITS.historyPageDefault;
     const [time, id] = query.cursor ? query.cursor.split(':') : [Number.MAX_SAFE_INTEGER, ''];
-    const rows = this.store.db.query(
+    const rows = this.store.db.prepare(
       `SELECT run_id, started_at_ms, entry FROM runs
        WHERE (started_at_ms, run_id) < (?, ?) AND (? = 0 OR state = ?) AND (? = '' OR project_directory = ?)
        ORDER BY started_at_ms DESC, run_id DESC LIMIT ?`,
-      [Number(time), id || 'g', query.state, query.state, query.project, query.project, limit + 1],
-    ) as { run_id: string; started_at_ms: number; entry: Buffer }[];
+    ).all(Number(time), id || 'g', query.state, query.state, query.project, query.project, limit + 1) as { run_id: string; started_at_ms: number; entry: Uint8Array }[];
     let bytes = 0;
     for (const row of rows) {
       bytes += row.entry.length;
@@ -60,14 +60,14 @@ export class History {
       }
       page.entries.push(wire.HistoryEntry.decode(row.entry));
     }
-    page.projects = this.store.db
-      .query("SELECT DISTINCT project_directory AS p FROM runs WHERE p != '' ORDER BY p LIMIT ?", [MAX_PROJECTS])
-      .map((row) => row.p as string);
+    page.projects = (
+      this.store.db.prepare("SELECT DISTINCT project_directory AS p FROM runs WHERE p != '' ORDER BY p LIMIT ?").all(MAX_PROJECTS) as { p: string }[]
+    ).map((row) => row.p);
     return page;
   }
   /** Return one run with artifact sizes re-read from disk, or null when unknown. */
   detail(id: string) {
-    const row = this.store.db.query('SELECT entry, detail FROM runs WHERE run_id = ?', [id])[0] as Row | undefined;
+    const row = this.store.db.prepare('SELECT entry, detail FROM runs WHERE run_id = ?').get(id) as Row | undefined;
     if (!row) return null;
     const entry = wire.HistoryEntry.decode(row.entry),
       status = wire.Status.decode(row.detail);
@@ -87,16 +87,15 @@ export class History {
       errorSummary: error.slice(0, MAX_ERROR_LENGTH),
       artifacts: this.artifacts(status),
     });
-    this.store.db.query(
+    this.store.db.prepare(
       `INSERT INTO runs (run_id, project_directory, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT (run_id) DO UPDATE SET
          project_directory = excluded.project_directory, state = excluded.state,
          entry = excluded.entry, detail = excluded.detail`,
-      [status.runId, status.projectDirectory, state, startedAt, Buffer.from(wire.HistoryEntry.encode(entry).finish()), Buffer.from(encodeDetail(status))],
-    );
+    ).run(status.runId, status.projectDirectory, state, startedAt, wire.HistoryEntry.encode(entry).finish(), encodeDetail(status));
   }
   private startedAt(id: string) {
-    return this.store.db.query('SELECT started_at_ms AS t FROM runs WHERE run_id = ?', [id])[0]?.t as number | undefined;
+    return (this.store.db.prepare('SELECT started_at_ms AS t FROM runs WHERE run_id = ?').get(id) as { t: number } | undefined)?.t;
   }
   private artifacts(status: Snapshot) {
     const done = status.outcome != null;

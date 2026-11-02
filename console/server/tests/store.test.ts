@@ -36,7 +36,7 @@ test('the marker survives reopening and an unreadable marker reads as none', asy
     // Assert
     assert.equal(store.marker()!.runId, 'b'.repeat(32));
     // Act
-    store.db.query('UPDATE marker SET value = ?', [Buffer.from([0xff, 0xff, 0xff])]);
+    store.db.prepare('UPDATE marker SET value = ?').run(Buffer.from([0xff, 0xff, 0xff]));
     // Assert
     assert.equal(store.marker(), null);
   } finally {

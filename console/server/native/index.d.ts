@@ -23,22 +23,12 @@ export interface NativeExecution {
 }
 
 /** Native capabilities used by the TypeScript Console application. */
-export type DatabaseCell = number | string | Buffer | null;
-export interface Database {
-  /** Run statements without parameters or results; throws on failure. */
-  exec(sql: string): void;
-  /** Run one statement; throws on failure. Integers keep precision up to 2^53. */
-  query(sql: string, params?: DatabaseCell[]): Record<string, DatabaseCell>[];
-  close(): void;
-}
 export interface NativeCapabilities {
   /** Parse ConsoleConfig pbtxt; validation belongs to the caller. */
   formatConfig(config: doramcap.console.v1.ConsoleConfig): string;
   parseConfig(text: string): doramcap.console.v1.ConsoleConfig;
   /** Expand a caller-approved Dora graph into native graph JSON bytes. */
   expandGraph(path: string): Promise<Buffer>;
-  /** Open or create a SQLite file, refusing a symlink; used only from this thread. */
-  openDatabase(path: string): Database;
   /** Hold an exclusive process lock until close or handle release. */
   lockFile(path: string): { close(): void };
   /** Open a regular file beneath root; the caller authorizes access and closes the fd. */

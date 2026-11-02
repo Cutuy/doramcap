@@ -4,11 +4,12 @@ import { closeSync, readFileSync, statSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { validateConfig } from '../src/config.js';
 import { History } from '../src/history.js';
 import { createConsoleServer } from '../src/http.js';
-import { capabilities, execution, wire, type NativeExecution } from '../src/native.js';
+import { execution, wire, type NativeExecution } from '../src/native.js';
 import { ConsoleService } from '../src/service.js';
 import { MIGRATIONS, Store, migrate } from '../src/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
@@ -93,28 +94,24 @@ async function checkpoint(store: Store, runId: string, fields: object = {}) {
 
 test('each migration step raises user_version and a failed step leaves the last complete version', async () => {
   // Arrange
-  const root = await temporary(), db = capabilities.openDatabase(join(root, 'migrate.db'));
-  const version = () => db.query('PRAGMA user_version')[0].user_version;
-  try {
-    // Act
-    migrate(db);
-    // Assert
-    assert.equal(version(), MIGRATIONS.length);
-    assert.deepEqual(db.query("SELECT name FROM pragma_table_info('runs')").map(row => row.name),
-      ['run_id', 'project_directory', 'state', 'started_at_ms', 'entry', 'detail']);
-    // Act
-    assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
-    // Assert
-    assert.equal(version(), MIGRATIONS.length);
-    assert.deepEqual(db.query("SELECT name FROM sqlite_master WHERE name = 'half'"), []);
-    // Act / Assert: a schema from a newer Console stays readable.
-    db.exec(`PRAGMA user_version = ${MIGRATIONS.length + 1}`);
-    migrate(db);
-    assert.deepEqual(db.query('SELECT run_id FROM runs'), []);
-  } finally {
-    db.close();
-    await rm(root, { recursive: true, force: true });
-  }
+  const db = new DatabaseSync(':memory:');
+  const version = () => (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+  // Act
+  migrate(db);
+  // Assert
+  assert.equal(version(), MIGRATIONS.length);
+  assert.deepEqual((db.prepare("SELECT name FROM pragma_table_info('runs')").all() as { name: string }[]).map(row => row.name),
+    ['run_id', 'project_directory', 'state', 'started_at_ms', 'entry', 'detail']);
+  // Act
+  assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
+  // Assert
+  assert.equal(version(), MIGRATIONS.length);
+  assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'half'").get(), undefined);
+  // Act / Assert: a schema from a newer Console stays readable.
+  db.exec(`PRAGMA user_version = ${MIGRATIONS.length + 1}`);
+  migrate(db);
+  assert.deepEqual(db.prepare('SELECT run_id FROM runs').all(), []);
+  db.close();
 });
 
 test('the database is private, uses WAL and refuses a symlink', async () => {
@@ -126,8 +123,8 @@ test('the database is private, uses WAL and refuses a symlink', async () => {
     // Assert
     for (const name of (await readdir(root)).filter(name => name.startsWith('console.db')))
       assert.equal(statSync(join(root, name)).mode & 0o777, 0o600, name);
-    assert.deepEqual(store.db.query('PRAGMA journal_mode'), [{ journal_mode: 'wal' }]);
-    assert.deepEqual(store.db.query('PRAGMA synchronous'), [{ synchronous: 2 }]);
+    assert.deepEqual({ ...store.db.prepare('PRAGMA journal_mode').get() }, { journal_mode: 'wal' });
+    assert.deepEqual({ ...store.db.prepare('PRAGMA synchronous').get() }, { synchronous: 2 });
     store.close();
     // Arrange
     await rm(join(root, 'console.db'));
