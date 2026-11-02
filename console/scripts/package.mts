@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -63,8 +63,9 @@ run('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], 
 cpSync(`${root}/console/frontend/dist`, `${packageRoot}/frontend`, { recursive: true });
 cpSync(playground, `${packageRoot}/playground`, { recursive: true });
 mkdirSync(`${packageRoot}/runtime`);
-cpSync(node, `${packageRoot}/runtime/node`);
-cpSync(resolve(values['node-license']!), `${packageRoot}/runtime/NODE-LICENSE`, { force: false });
+// Copy the real binary: a symlink would dangle on every other host.
+cpSync(realpathSync(node), `${packageRoot}/runtime/node`);
+cpSync(realpathSync(values['node-license']!), `${packageRoot}/runtime/NODE-LICENSE`, { force: false });
 mkdirSync(`${packageRoot}/bin`);
 writeFileSync(`${packageRoot}/bin/doramcap-console`, `#!/bin/sh\nset -eu\nroot=$(dirname "$(dirname "$(readlink -f "$0")")")\nexec "$root/runtime/node" "$root/server/dist/cli.js" "$@"\n`, { mode: 0o755 });
 writeFileSync(`${packageRoot}/release.pb`, wire.ReleaseManifest.encode({
