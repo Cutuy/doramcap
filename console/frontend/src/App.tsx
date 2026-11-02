@@ -7,7 +7,7 @@ import { RunMetrics } from './RunMetrics';
 import { HistoryList, HistoryRunPage } from './History';
 import { LiveModel, type LiveView } from './streams';
 import { SystemApps } from './SystemApps';
-import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, requestKey, toggleProfile as nextProfiles } from './model';
+import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, requestKey, runAgainBlocked, toggleProfile as nextProfiles } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
@@ -130,6 +130,7 @@ export function App() {
   const newRun = () => { viewingRun.current = false; generation.current++; selecting.current = true; expected.current = ''; key.current = ''; setReview(null); setDirectory(''); setProfiles([]); setAvailable([]); setSystemApps(undefined); setStopPending(false); setRetry(false); setError(''); setPhase('Project'); };
   /** Prefill a past run's selection, then enter the normal Review flow. */
   const runAgain = (entry: HistoryEntry) => {
+    if (runAgainBlocked(snapshot, busy)) return;
     newRun();
     const ids = entry.systemApps?.ids ?? undefined, rerun = { directory: entry.projectDirectory, profiles: entry.profiles };
     setDirectory(rerun.directory); setProfiles(rerun.profiles); setSystemApps(ids);
@@ -142,7 +143,7 @@ export function App() {
   const navigateRun = (target: PagePhase) => { viewingRun.current = target === 'Run'; selecting.current = false; setPhase(target); };
   const refresh = `${snapshot?.runId}:${snapshot?.phase}`;
   return <PageFrame phase={phase} history={!!route} onNavigate={historical && (phase === 'Run' || phase === 'Result') ? navigateRun : undefined}>
-    {route ? <>{active.has(state) && !!snapshot?.runId && <p className="notice" role="status">A run is in progress. <a href="#/">View live run</a></p>}{route.runId ? <HistoryRunPage id={route.runId} refresh={refresh} runAgain={runAgain} runActive={active.has(state) && !!snapshot?.runId}/> : <HistoryList refresh={refresh}/>}</> : <>
+    {route ? <>{active.has(state) && !!snapshot?.runId && <p className="notice" role="status">A run is in progress. <a href="#/">View live run</a></p>}{route.runId ? <HistoryRunPage id={route.runId} refresh={refresh} runAgain={runAgain} runActive={runAgainBlocked(snapshot, busy)}/> : <HistoryList refresh={refresh}/>}</> : <>
     {error && <div className="notice failure-notice" role="alert">{error}{retry && canStopRun(snapshot, stopPending) && <ActionButton variant="secondary" onClick={() => void start()}>Start run</ActionButton>}</div>}
     {disconnected && <div className="notice"><span role="status">Connection lost; run may still be active.</span> <span aria-live="off">{updated && `Last update ${Math.max(0, Math.floor((clock - updated) / 1000))} s ago.`}</span></div>}
     <div className="sr-only" aria-live="polite">{phase} {state === Phase.STOPPING ? 'Stopping run' : ''}</div>

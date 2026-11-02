@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiError, api, wire, type HistoryDetail, type HistoryEntry, type HistoryPage } from './api';
-import { historyHash, durationLabel, entryRecordingBytes, stateLabel, stateTone, timeLabel } from './model';
+import { historyHash, durationLabel, entryRecordingBytes, latestRequest, stateLabel, stateTone, timeLabel } from './model';
 import { Result } from './Result';
 import { RunActivity } from './RunActivity';
 import { RunMetrics, bytesLabel } from './RunMetrics';
@@ -55,7 +55,9 @@ export function HistoryList({ refresh }: { refresh: string }) {
   const [page, setPage] = useState<HistoryPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const load = async (cursor: string, current: () => boolean) => {
+  const requests = useRef(latestRequest()).current;
+  const load = async (cursor: string) => {
+    const current = requests.begin();
     setLoading(true);
     try {
       const next = await api.history({ state, project, cursor });
@@ -65,8 +67,8 @@ export function HistoryList({ refresh }: { refresh: string }) {
     } catch (failed) { if (current()) setError(failure(failed)); }
     finally { if (current()) setLoading(false); }
   };
-  useEffect(() => { let live = true; void load('', () => live); return () => { live = false; }; }, [state, project, refresh]);
-  return <HistoryTable page={page} loading={loading} error={error} state={state} project={project} setState={setState} setProject={setProject} more={() => void load(page!.nextCursor, () => true)}/>;
+  useEffect(() => { void load(''); return requests.cancel; }, [state, project, refresh]);
+  return <HistoryTable page={page} loading={loading} error={error} state={state} project={project} setState={setState} setProject={setProject} more={() => void load(page!.nextCursor)}/>;
 }
 
 /** One stored run: the live Result, timeline and metrics components over its saved status. */

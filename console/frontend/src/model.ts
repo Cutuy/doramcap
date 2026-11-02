@@ -3,6 +3,19 @@ import type { HistoryEntry, Outcome, Snapshot } from './api';
 export function toggleProfile(current: string[], name: string): string[] {
   return current.includes(name) ? current.filter(item => item !== name) : [...current, name];
 }
+/** Track overlapping requests: only the latest begun and not cancelled one is current. */
+export function latestRequest() {
+  let latest = 0;
+  return {
+    begin() { const id = ++latest; return () => id === latest; },
+    cancel() { latest++; },
+  };
+}
+/** Run again starts a prepare, which the server refuses while another prepare or run is active. */
+export function runAgainBlocked(snapshot: Pick<Snapshot, 'phase' | 'runId'> | null, preparing: boolean): boolean {
+  if (preparing || snapshot?.phase === Phase.PREPARING) return true;
+  return !!snapshot?.runId && [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(snapshot.phase);
+}
 export function createRequestKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 }

@@ -2,7 +2,7 @@ import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, outcomeLabels, requestKey, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
 
 test('profile changes and lost Start responses retain explicit intent', () => {
@@ -59,4 +59,29 @@ test('pre-launch and empty-run frames cannot replace an in-flight Start', () => 
     assert.equal(acceptsSnapshot(expected, wire.Status.fromObject({phase, runId: ''})), false);
   }
   assert.equal(acceptsSnapshot('', wire.Status.fromObject({phase:Phase.IDLE, runId:''})), true);
+});
+
+test('only the latest history request stays current', () => {
+  // Arrange
+  const requests = latestRequest();
+  // Act
+  const first = requests.begin(), second = requests.begin();
+  // Assert: a filter change or refresh supersedes an in-flight page.
+  assert.equal(first(), false);
+  assert.equal(second(), true);
+  // Act
+  requests.cancel();
+  // Assert
+  assert.equal(second(), false);
+});
+
+test('Run again waits for any prepare or active run', () => {
+  // Arrange
+  const snapshot = (phase: Phase, runId = 'run') => ({ phase, runId });
+  // Act / Assert
+  assert.equal(runAgainBlocked(null, false), false);
+  assert.equal(runAgainBlocked(null, true), true);
+  assert.equal(runAgainBlocked(snapshot(Phase.PREPARING, ''), false), true);
+  for (const phase of [Phase.STARTING, Phase.RUNNING, Phase.STOPPING]) assert.equal(runAgainBlocked(snapshot(phase), false), true);
+  for (const phase of [Phase.IDLE, Phase.REVIEWED, Phase.FINISHED, Phase.BLOCKED]) assert.equal(runAgainBlocked(snapshot(phase), false), false);
 });
