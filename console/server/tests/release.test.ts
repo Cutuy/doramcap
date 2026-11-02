@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { capabilities, wire } from '../src/native.js';
 import { validateConfig } from '../src/config.js';
+import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, releaseConfig } from '../src/release.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -172,4 +173,14 @@ test('doctor reports every missing requirement with its remediation', async () =
     process.env.PATH = previous;
     await rm(empty, { recursive: true, force: true });
   }
+});
+
+test('release images must offer both architectures', () => {
+  // Arrange
+  const index = (...architectures: string[]) => JSON.stringify({ manifests: architectures.map(architecture => ({ platform: { os: 'linux', architecture } })) });
+  // Act / Assert
+  requireMultiArch('image', index('amd64', 'arm64', 'unknown'));
+  assert.throws(() => requireMultiArch('image', index('amd64')), /linux\/arm64: image/);
+  assert.throws(() => requireMultiArch('image', index('arm64')), /linux\/amd64: image/);
+  assert.throws(() => requireMultiArch('image', JSON.stringify({ config: {}, layers: [] })), /multi-arch/);
 });

@@ -22,6 +22,14 @@ export async function imageReferences(socket: string, project: Project): Promise
   });
 }
 
+/** Reject a registry manifest that does not offer every architecture a release supports. */
+export function requireMultiArch(image: string, raw: string) {
+  const manifests = (JSON.parse(raw) as { manifests?: { platform?: { os?: string; architecture?: string } }[] }).manifests ?? [];
+  for (const architecture of ['amd64', 'arm64'])
+    if (!manifests.some(({ platform }) => platform?.os === 'linux' && platform.architecture === architecture))
+      throw new Error(`Pin a multi-arch digest with linux/${architecture}: ${image}`);
+}
+
 /**
  * Pull missing images before local image inspection; successful pulls remain in Docker's cache.
  * Errors: `ImageDownload` after a failed or timed-out pull, `Stopped` after `signal` aborts.
