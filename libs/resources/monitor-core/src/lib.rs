@@ -7,7 +7,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 mod dictionary;
-pub use dictionary::{CgroupEntry, Dictionary};
+pub use dictionary::{CgroupDictionary, CgroupEntry};
 
 pub const SCHEMA_VERSION: u32 = 1;
 pub const FLAG_RUNTIME: u32 = 1;
