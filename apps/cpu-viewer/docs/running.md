@@ -25,13 +25,8 @@ For container hosting, see [deployment](../deploy/README.md).
 
 ## Recording
 
-The sample recording flow has System Monitor write ten BPF samples to
-`phase0.mcap`. It refuses to overwrite the file and finalizes when sampling ends:
-
-```sh
-cargo build -p system-monitor --features system-monitor/dora,system-monitor/bpf
-dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
-```
+The live flow does not record. The [deployment](../deploy/README.md) records `cpu.mcap`
+inside [System Monitor](../../system-monitor/README.md#embedded-mcap-recording).
 
 ## Verification
 

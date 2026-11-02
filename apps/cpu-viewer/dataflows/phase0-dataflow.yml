@@ -1,7 +1,0 @@
-nodes:
-  - id: system-monitor
-    path: ../../system-monitor/scripts/run-native-monitor.sh
-    args: --backend bpf --samples 10 --dora --record phase0.mcap
-    outputs:
-      - snapshots
-      - dictionary
