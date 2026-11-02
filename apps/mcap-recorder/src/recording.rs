@@ -1,5 +1,6 @@
-use crate::config::{
-    self, Input, RecorderConfig, RecordingReport, State, Validation, pb::InputReport,
+use crate::{
+    config::{self, Input, RecorderConfig, RecordingReport, State, pb::InputReport},
+    sink::RecordingSink,
 };
 use dora_node_api::{Event, Metadata, Parameter};
 use eyre::{Result, bail, ensure, eyre};
@@ -8,7 +9,6 @@ use std::{
     fs::File,
     io::{Seek, SeekFrom, Write},
 };
-use telemetry_mcap::RecordingSink;
 
 struct Channel {
     input: Input,
@@ -67,32 +67,18 @@ impl Recording {
             report_file,
         };
         for (input, bytes) in prepared {
-            let cpu = input.validation != Validation::RawBytes as i32;
-            let schema = if cpu {
-                Some((
-                    telemetry_protocol::MCAP_SCHEMA_NAME,
-                    "protobuf",
-                    telemetry_protocol::FILE_DESCRIPTOR_SET,
-                ))
-            } else {
-                bytes.as_deref().map(|bytes| {
-                    (
-                        input.schema_name.as_str(),
-                        input.schema_encoding.as_str(),
-                        bytes,
-                    )
-                })
-            };
+            let schema = bytes.as_deref().map(|bytes| {
+                (
+                    input.schema_name.as_str(),
+                    input.schema_encoding.as_str(),
+                    bytes,
+                )
+            });
             let metadata = BTreeMap::from([
                 ("dora.input".into(), input.input.clone()),
                 (
                     "timing".into(),
-                    if cpu {
-                        "validated_cpu_capture"
-                    } else {
-                        "log=receipt_unix_ns;publish=configured_source_or_zero"
-                    }
-                    .into(),
+                    "log=receipt_unix_ns;publish=configured_source_or_zero".into(),
                 ),
                 ("source_timestamp_key".into(), input.timestamp_key.clone()),
                 ("source_sequence_key".into(), input.sequence_key.clone()),
@@ -135,48 +121,16 @@ impl Recording {
             .ok_or_else(|| eyre!("unconfigured Dora input: {input}"))?;
         let report = &mut self.report.input[channel.report_index];
         report.received += 1;
-        let (sequence, log_time, publish_time) =
-            match Validation::try_from(channel.input.validation)? {
-                Validation::CpuSnapshot => {
-                    let frame = telemetry_protocol::decode(bytes)?;
-                    ensure!(
-                        decimal(metadata, "sequence")? == frame.snapshot.sequence,
-                        "payload sequence differs from transport metadata"
-                    );
-                    ensure!(
-                        decimal(metadata, "capture_unix_ns")? == frame.snapshot.capture_unix_ns,
-                        "payload capture time differs from transport metadata"
-                    );
-                    report.producer_dropped_batches = Some(frame.snapshot.dropped_batches);
-                    report.producer_capacity_overflow = Some(frame.snapshot.capacity_overflow);
-                    (
-                        frame.snapshot.sequence as u32,
-                        frame.snapshot.capture_unix_ns,
-                        frame.snapshot.capture_unix_ns,
-                    )
-                }
-                Validation::CpuDictionary => {
-                    let frame = telemetry_protocol::decode_dictionary(bytes)?;
-                    (
-                        frame.revision as u32,
-                        frame.capture_unix_ns,
-                        frame.capture_unix_ns,
-                    )
-                }
-                Validation::RawBytes => {
-                    let sequence = if channel.input.sequence_key.is_empty() {
-                        0
-                    } else {
-                        u32::try_from(decimal(metadata, &channel.input.sequence_key)?)?
-                    };
-                    let source_time = if channel.input.timestamp_key.is_empty() {
-                        0
-                    } else {
-                        decimal(metadata, &channel.input.timestamp_key)?
-                    };
-                    (sequence, received_ns, source_time)
-                }
-            };
+        let sequence = if channel.input.sequence_key.is_empty() {
+            0
+        } else {
+            u32::try_from(decimal(metadata, &channel.input.sequence_key)?)?
+        };
+        let source_time = if channel.input.timestamp_key.is_empty() {
+            0
+        } else {
+            decimal(metadata, &channel.input.timestamp_key)?
+        };
         // Ordinal is recorder-local correlation, never a manufactured source sequence.
         self.sink.metadata(
             "dora.message",
@@ -188,7 +142,7 @@ impl Recording {
             ]),
         )?;
         self.sink
-            .write(channel.channel, sequence, log_time, publish_time, bytes)?;
+            .write(channel.channel, sequence, received_ns, source_time, bytes)?;
         report.written += 1;
         Ok(())
     }

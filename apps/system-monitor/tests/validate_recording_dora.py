@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare embedded recording with messages received through a real Dora flow."""
+"""Compare embedded snapshots with the same messages recorded through a real Dora flow."""
 import argparse
 import json
 import os
@@ -20,16 +20,17 @@ with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
     source = Path(__file__).resolve().parents[3]
     monitor_config = source / 'apps/system-monitor/config/recording.pbtxt'
     recorder_config = root / 'recorder.pbtxt'
-    template = (source / 'apps/mcap-recorder/deploy/reusable/cpu.pbtxt').read_text()
-    recorder_config.write_text(template.replace('/results/cpu.mcap', str(received)).replace('/results/cpu.report.pbtxt', str(root / 'received.report.pbtxt')))
+    recorder_config.write_text(f"""output_path: "{received}"
+report_path: "{root / 'received.report.pbtxt'}"
+input {{ input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobuf" timestamp_key: "capture_unix_ns" sequence_key: "sequence" }}
+""")
     # JSON is a YAML-compatible descriptor and safely quotes filesystem paths.
     flow = {'nodes': [
         {'id': 'monitor', 'path': str(bin_dir / 'system-monitor'),
          'args': f'--backend bpf --samples 24 --records 4096 --dora --record {embedded} --record-config {monitor_config}',
          'outputs': ['snapshots', 'dictionary']},
         {'id': 'recorder', 'path': str(bin_dir / 'mcap-recorder'), 'args': f'--config {recorder_config}',
-         'inputs': {'snapshots': {'source': 'monitor/snapshots', 'queue_size': 64},
-                    'dictionary': {'source': 'monitor/dictionary', 'queue_size': 64}}}]}
+         'inputs': {'snapshots': {'source': 'monitor/snapshots', 'queue_size': 64}}}]}
     descriptor = root / 'flow.yml'
     descriptor.write_text(json.dumps(flow))
     proc = subprocess.Popen([args.dora, 'run', str(descriptor)], cwd=root,

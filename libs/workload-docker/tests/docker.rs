@@ -1774,7 +1774,7 @@ async fn compose_public_run(outcome: &str) {
     let recorder_config = root.join("recorder.pbtxt");
     std::fs::write(
         &recorder_config,
-        include_str!("../../../apps/mcap-recorder/deploy/reusable/cpu.pbtxt")
+        include_str!("recorder.pbtxt")
             .replace(
                 "/results/cpu.mcap",
                 results.join("recording.mcap").to_str().unwrap(),
@@ -2116,18 +2116,18 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     // Use the shipped app input so runtime wiring evolves with its real consumer.
     std::fs::write(
         root.path().join("app.yaml"),
-        include_bytes!("../../../apps/mcap-recorder/deploy/compose.yaml"),
+        include_bytes!("../../../apps/cpu-viewer/deploy/compose.yaml"),
     )
     .unwrap();
     let app = |artifacts: &Path| ComposeProject {
-        key: "recorder".into(),
+        key: "cpu-viewer".into(),
         directory: root.path().to_string_lossy().into_owned(),
         files: vec!["app.yaml".into()],
         environment: BTreeMap::from([
-            ("MCAP_RECORDER_UID".into(), "1000".into()),
-            ("MCAP_RECORDER_GID".into(), "1000".into()),
+            ("CPU_VIEWER_UID".into(), "1000".into()),
+            ("CPU_VIEWER_GID".into(), "1000".into()),
             (
-                "MCAP_RECORDER_RESULTS_DIR".into(),
+                "CPU_VIEWER_RESULTS_DIR".into(),
                 artifacts.to_string_lossy().into_owned(),
             ),
         ]),

@@ -1,4 +1,3 @@
-//! Publication and recording belong outside the periodic collection thread.
 use eyre::Result;
 use std::{
     collections::BTreeMap,

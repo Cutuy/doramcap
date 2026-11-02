@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, path::Path};
 pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.recorder.v1.rs"));
 }
-pub use pb::{Input, RecorderConfig, RecordingReport, input::Validation, recording_report::State};
+pub use pb::{Input, RecorderConfig, RecordingReport, recording_report::State};
 const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/recorder.bin"));
 
 /// Loads pbtxt; relative schema, recording and report paths use its directory.
@@ -36,7 +36,7 @@ pub fn load(path: &Path) -> Result<RecorderConfig> {
     Ok(config)
 }
 
-/// Rejects ambiguous mappings and incomplete schema or CPU validation settings.
+/// Rejects ambiguous mappings and incomplete schema settings.
 pub fn validate(config: &RecorderConfig) -> Result<()> {
     ensure!(!config.output_path.is_empty(), "output_path is required");
     ensure!(
@@ -62,7 +62,6 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
             "{}: message_encoding is required",
             input.input
         );
-        let validation = Validation::try_from(input.validation)?;
         let fields = [
             &input.schema_name,
             &input.schema_encoding,
@@ -73,18 +72,6 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
             "{}: schema_name, schema_encoding and schema_path must be supplied together",
             input.input
         );
-        if validation != Validation::RawBytes {
-            ensure!(
-                input.message_encoding == "protobuf" && fields.iter().all(|s| s.is_empty()),
-                "{}: CPU inputs use protobuf and the embedded telemetry schema",
-                input.input
-            );
-            ensure!(
-                input.timestamp_key.is_empty() && input.sequence_key.is_empty(),
-                "{}: CPU timing and sequence come from the validated payload",
-                input.input
-            );
-        }
     }
     Ok(())
 }

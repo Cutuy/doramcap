@@ -25,11 +25,11 @@ For container hosting, see [deployment](../deploy/README.md).
 
 ## Recording
 
-The live flow has no recorder. The sample recording flow writes ten BPF samples
-to `phase0.mcap`, refuses to overwrite it and finalizes when input closes:
+The sample recording flow has System Monitor write ten BPF samples to
+`phase0.mcap`. It refuses to overwrite the file and finalizes when sampling ends:
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
+cargo build -p system-monitor --features system-monitor/dora,system-monitor/bpf
 dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 ```
 
@@ -37,7 +37,7 @@ dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
 
 ```sh
 npm test --prefix apps/cpu-viewer/frontend
-cargo test -p telemetry-protocol -p telemetry-mcap -p cpu-viewer
+cargo test -p telemetry-protocol -p cpu-viewer
 # With the live dataflow running:
 npm run test:live --prefix apps/cpu-viewer/frontend
 ```

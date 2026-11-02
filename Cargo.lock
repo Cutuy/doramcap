@@ -3025,13 +3025,11 @@ dependencies = [
  "dora-node-api",
  "eyre",
  "mcap",
- "monitor-core",
  "prost",
  "prost-build",
  "prost-reflect",
  "protoc-bin-vendored",
  "serde_json",
- "telemetry-mcap",
  "telemetry-protocol",
 ]
 
@@ -5202,14 +5200,6 @@ dependencies = [
  "libbpf-cargo",
  "libbpf-rs",
  "serde",
-]
-
-[[package]]
-name = "telemetry-mcap"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "mcap",
 ]
 
 [[package]]

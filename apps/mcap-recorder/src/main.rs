@@ -1,6 +1,7 @@
 //! A separate Dora process; collection never calls the MCAP writer.
 mod config;
 mod recording;
+mod sink;
 #[cfg(test)]
 mod tests;
 

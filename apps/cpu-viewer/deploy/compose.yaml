@@ -18,7 +18,7 @@ services:
     <<: *node
     environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"}
     healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/monitor.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    depends_on: {recorder: {condition: service_healthy}, viewer: {condition: service_healthy}}
+    depends_on: {viewer: {condition: service_healthy}}
     entrypoint: [/usr/local/bin/system-monitor]
     cap_add: [BPF, PERFMON, SYSLOG]
     security_opt: [seccomp=unconfined]
@@ -28,17 +28,7 @@ services:
       - *results
       - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
       - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
-    command: ["--backend", "bpf", "--dora", "--published-count", "/results/published.count", "--task-capacity", "32768"]
-  recorder:
-    <<: *node
-    environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"}
-    healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/recorder.ready"], interval: 200ms, timeout: 1s, retries: 150}
-    entrypoint: [/usr/local/bin/mcap-recorder]
-    command: ["--config", "/config/recorder.pbtxt"]
-    volumes:
-      - *runtime
-      - *results
-      - {type: bind, source: ../../mcap-recorder/deploy/reusable/cpu.pbtxt, target: /config/recorder.pbtxt, read_only: true}
+    command: ["--backend", "bpf", "--dora", "--published-count", "/results/published.count", "--task-capacity", "32768", "--record", "/results/cpu.mcap", "--record-buffered"]
   viewer:
     <<: *node
     environment: {DORAMCAP_READY_FILE: "${DORAMCAP_DORA_RUNTIME_DIR:?}/viewer.ready"}

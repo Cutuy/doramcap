@@ -2,11 +2,6 @@ nodes:
   - id: monitor
     path: dynamic
     outputs: [snapshots, dictionary]
-  - id: recorder
-    path: dynamic
-    inputs:
-      snapshots: {source: monitor/snapshots, queue_size: 64, queue_policy: backpressure}
-      dictionary: {source: monitor/dictionary, queue_size: 4, queue_policy: backpressure}
   - id: viewer
     path: dynamic
     inputs:

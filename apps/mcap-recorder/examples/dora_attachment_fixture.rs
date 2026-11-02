@@ -7,10 +7,12 @@ use dora_node_api::{
 use eyre::{Result, bail, eyre};
 use prost::Message;
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
-use telemetry_mcap::RecordingSink;
 
 #[path = "../src/config.rs"]
 pub mod config;
+#[path = "../src/sink.rs"]
+pub mod sink;
+use sink::RecordingSink;
 
 fn acknowledge(path: &str) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()
@@ -82,9 +84,8 @@ fn main() -> Result<()> {
         ))?;
         let input = config
             .input
-            .iter()
-            .find(|input| input.validation == config::Validation::CpuSnapshot as i32)
-            .ok_or_else(|| eyre!("CPU snapshot channel missing from fixture config"))?;
+            .first()
+            .ok_or_else(|| eyre!("fixture config has no input"))?;
         let mut sink = RecordingSink::create(
             path.as_deref()
                 .ok_or_else(|| eyre!("missing recording path"))?,

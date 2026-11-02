@@ -4,7 +4,6 @@ use crate::{
 };
 use dora_node_api::{Event, IntoArrow, Metadata, Parameter, StopCause};
 use eyre::Result;
-use prost::Message;
 use std::{
     path::PathBuf,
     sync::atomic::{AtomicU64, Ordering},
@@ -228,68 +227,6 @@ fn unsupported_payload_or_upstream_error_keeps_partial_failure_evidence() -> Res
     let report = partial.report()?;
     assert!(report.finalized && report.error.contains("source failed"));
     assert_eq!(report.input[0].written, 1);
-    Ok(())
-}
-
-#[test]
-fn cpu_validation_preserves_capture_and_reports_producer_loss() -> Result<()> {
-    // Arrange
-    let temp = Temp::new()?;
-    let mut config = config::load(std::path::Path::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/deploy/reusable/cpu.pbtxt"
-    )))?;
-    config.output_path = temp.0.join("test.mcap").to_str().unwrap().into();
-    config.report_path = temp.0.join("report.pbtxt").to_str().unwrap().into();
-    let mut snapshot = monitor_core::Snapshot::with_capacity(1);
-    snapshot.sequence = 17;
-    snapshot.capture_unix_ns = 123;
-    snapshot.dropped_batches = 4;
-    snapshot.capacity_overflow = 2;
-    let frame = telemetry_protocol::Frame {
-        version: telemetry_protocol::VERSION,
-        snapshot,
-        source: "fixture".into(),
-        task_collection_enabled: false,
-        task_capacity: 0,
-        session_id: "fixture".into(),
-        dictionary_revision: 1,
-        dictionary_full: false,
-        dictionary_overflow: 0,
-        dictionary: Vec::<telemetry_protocol::DictionaryEntry>::new(),
-    };
-    let payload = telemetry_protocol::snapshot_packet(&frame).encode_to_vec();
-    let mut metadata = metadata();
-    metadata
-        .parameters
-        .insert("sequence".into(), Parameter::String("17".into()));
-    metadata
-        .parameters
-        .insert("capture_unix_ns".into(), Parameter::String("123".into()));
-    let mut recording = Recording::create(config)?;
-    // Act
-    recording.record("snapshots", &payload, &metadata, 456)?;
-    metadata
-        .parameters
-        .insert("sequence".into(), Parameter::String("18".into()));
-    assert!(
-        recording
-            .record("snapshots", &payload, &metadata, 456)
-            .is_err()
-    );
-    assert!(
-        recording
-            .finish(State::Failed, Err(eyre::eyre!("invalid source metadata")))
-            .is_err()
-    );
-    // Assert
-    let report = temp.report()?;
-    assert_eq!(report.input[0].producer_dropped_batches, Some(4));
-    assert_eq!(report.input[0].producer_capacity_overflow, Some(2));
-    assert_eq!((report.input[0].received, report.input[0].written), (2, 1));
-    let bytes = std::fs::read(temp.0.join("test.mcap"))?;
-    let message = mcap::MessageStream::new(&bytes)?.next().unwrap()?;
-    assert_eq!(message.channel.topic, "doramcap/cpuacct");
     Ok(())
 }
 

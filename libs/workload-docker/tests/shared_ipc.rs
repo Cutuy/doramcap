@@ -73,11 +73,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     }
     .encode_to_vec();
     std::fs::write(root.join("payload.pb"), &payload).unwrap();
-    std::fs::write(
-        root.join("recorder.pbtxt"),
-        include_str!("../../../apps/mcap-recorder/deploy/reusable/cpu.pbtxt"),
-    )
-    .unwrap();
+    std::fs::write(root.join("recorder.pbtxt"), include_str!("recorder.pbtxt")).unwrap();
     let base = serde_json::json!({
         "image": image, "network_mode":"host", "ipc":"service:daemon", "stop_signal":"SIGINT",
         "environment":{"HOME":root, "DORA_ZENOH_CONFIG_OVERLAY":overlay, "DORA_DAEMON_LOCAL_LISTEN_PORT":daemon.to_string(), "DORAMCAP_REQUIRE_SHM":"1"},

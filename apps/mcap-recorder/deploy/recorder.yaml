@@ -1,7 +1,7 @@
 # The experiment supplies user, output/config mounts and approved Dora connection.
 services:
   workload-recorder:
-    image: doramcap/mcap-recorder-only:local
+    image: doramcap/mcap-recorder:local
     entrypoint: [/usr/local/bin/mcap-recorder]
     command: [--config, /config/recorder.pbtxt]
     network_mode: host

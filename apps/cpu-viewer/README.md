@@ -9,7 +9,7 @@ plots per-CPU cgroup activity and virtual kernel runtime over a 30-second window
 - [DORA demo configurations](dataflows/)
 - [Streaming and latency integration checks](tests/)
 
-The server runs independently of the collector and recorder. Unit tests live
+The server runs independently of the collector. Unit tests live
 alongside the frontend model and protocol adapter. Run from the repository root:
 
 ```sh
