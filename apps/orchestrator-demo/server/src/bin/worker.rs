@@ -207,6 +207,11 @@ async fn recorded_demo(
         include_bytes!("../../../../system-monitor/deploy/recording.yaml"),
     )
     .await?;
+    tokio::fs::write(
+        workspace.join("recording.pbtxt"),
+        include_bytes!("../../../../system-monitor/deploy/recording.pbtxt"),
+    )
+    .await?;
     let collector = ComposeProject {
         key: "monitor".into(),
         directory: workspace

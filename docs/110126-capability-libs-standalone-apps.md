@@ -36,9 +36,9 @@ Evidence: `cargo test --release --locked` for the listed packages passes. With `
 
 **Validation**
 - [x] Config tests cover Dora-only, MCAP-only and combined launches.
-- [ ] Native recording and Dora equality checks pass.
+- [x] Native recording and Dora equality checks pass.
 
-Evidence: `cargo test --release --locked` passes for System Monitor, `monitor-core`, `telemetry-protocol`, `workload-supervisor`, `cpu-viewer` and `mcap-recorder`, with native tests ignored. Strict Clippy, formatting, boundaries and `docker compose config` pass. BPF builds need `clang`, which this host lacks.
+Evidence: `cargo test --release --locked` passes for System Monitor, `monitor-core`, `telemetry-protocol`, `workload-supervisor`, `cpu-viewer` and `mcap-recorder`. With `CLANG=clang-18` on x86_64: `validate_native.py`, including Supervisor scenarios, and the embedded rotation test pass. Strict Clippy, formatting, boundaries and `docker compose config` pass.
 
 ## Milestone 3: Lib boundaries
 
