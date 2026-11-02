@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="470" viewBox="0 0 1100 470" role="img">
   <title>Console · boundaries</title>
   <defs>
-    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
       <path d="M0 0L8 4L0 8" fill="none" stroke="#236457" />
     </marker>
   </defs>
@@ -25,14 +25,21 @@
   <text x="698" y="157" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Protobuf / N-API</text>
   <path d="M805 201H590" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
   <text x="698" y="231" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Events / result</text>
-  <rect x="380" y="365" width="210" height="56" rx="9" fill="#fff" stroke="#bdcdc5" />
-  <text x="485.0" y="399" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Metadata + artifacts</text>
-  <rect x="805" y="365" width="220" height="56" rx="9" fill="#fff" stroke="#bdcdc5" />
-  <text x="915.0" y="399" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Docker + system apps</text>
-  <path d="M485 211V365" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
-  <text x="550" y="310" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Checkpoints</text>
-  <path d="M915 211V365" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
-  <text x="970" y="310" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Run / stop</text>
-  <path d="M805 393H590" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
-  <text x="698" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">MCAP / reports</text>
+  <rect x="355" y="360" width="150" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="430.0" y="387" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">console.db</text>
+  <text x="430.0" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">SQLite</text>
+  <rect x="545" y="360" width="140" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="615.0" y="387" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">runs/&lt;id&gt;/</text>
+  <text x="615.0" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">Recordings</text>
+  <rect x="805" y="360" width="220" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="915.0" y="387" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Docker + system apps</text>
+  <text x="915.0" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">Compose services</text>
+  <path d="M430 211V360" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" marker-start="url(#a)" />
+  <text x="440" y="305" text-anchor="start" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Protobuf rows</text>
+  <path d="M565 360V211" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="575" y="305" text-anchor="start" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Downloads</text>
+  <path d="M915 211V360" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="970" y="305" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Run / stop</text>
+  <path d="M805 393H685" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="745" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">MCAP / reports</text>
 </svg>
