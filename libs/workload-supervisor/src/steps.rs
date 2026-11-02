@@ -28,6 +28,8 @@ fn step_error(e: impl std::fmt::Display) -> orchestrator::Error {
 }
 const TEMPLATE: &str =
     include_str!("../../../apps/system-monitor/deploy/supervisor/recording.conf");
+const MONITOR_CONFIG: &str =
+    include_str!("../../../apps/system-monitor/deploy/supervisor/monitor.pbtxt");
 
 pub(crate) fn validate(run: &MonitorRun) -> Result<()> {
     if run.id.is_empty()
@@ -145,6 +147,7 @@ impl Prepare {
             TEMPLATE
         );
         ownership::private_file(&dir.join("supervisord.conf"), config.as_bytes())?;
+        ownership::private_file(&dir.join("monitor.pbtxt"), MONITOR_CONFIG.as_bytes())?;
         ownership::private_file(&dir.join("run.pb"), &prost::Message::encode_to_vec(&run))?;
         let ledger = Ownership {
             cgroup: format!("{}/{}", run.cgroup_parent, run.id),

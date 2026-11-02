@@ -1,7 +1,7 @@
 nodes:
   - id: system-monitor
     path: ../../system-monitor/scripts/run-native-monitor.sh
-    args: --backend bpf --task-capacity 32768 --dora
+    args: --config live-monitor.pbtxt
     outputs:
       - snapshots
       - dictionary

@@ -30,13 +30,15 @@ Evidence: `cargo test --release --locked` for the listed packages passes. With `
 ## Milestone 2: CPU app configuration
 
 **Work items**
-- [ ] Add `system-monitor --config FILE.pbtxt`, with optional `recording` and `dora` sections.
-- [ ] Replace CPU flags and `recording.proto` with that configuration.
-- [ ] Move cgroup dictionary state into a CPU lib; keep the sampling loop in the app.
+- [x] Add `system-monitor --config FILE.pbtxt`, with optional `recording` and `dora` sections.
+- [x] Replace CPU flags and `recording.proto` with that configuration; keep `--check` probes.
+- [x] Move cgroup dictionary state into `monitor-core`; keep the sampling loop in the app.
 
 **Validation**
-- [ ] Config tests cover Dora-only, MCAP-only and combined launches.
+- [x] Config tests cover Dora-only, MCAP-only and combined launches.
 - [ ] Native recording and Dora equality checks pass.
+
+Evidence: `cargo test --release --locked` passes for System Monitor, `monitor-core`, `telemetry-protocol`, `workload-supervisor`, `cpu-viewer` and `mcap-recorder`, with native tests ignored. Strict Clippy, formatting, boundaries and `docker compose config` pass. BPF builds need `clang`, which this host lacks.
 
 ## Milestone 3: Lib boundaries
 

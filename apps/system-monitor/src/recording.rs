@@ -1,7 +1,7 @@
 //! Application-level telemetry policy over the format-independent storage writer.
+use crate::config::Recording;
 use eyre::{Result, ensure};
 use prost::Message as _;
-use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::{
     fs::File,
     os::unix::fs::OpenOptionsExt,
@@ -9,10 +9,6 @@ use std::{
     time::Instant,
 };
 use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
-
-mod pb {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.monitor.v1.rs"));
-}
 
 /// CPU packet recording on the caller thread, with explicit polling and rotation.
 /// Finalization drains storage and syncs the output; dropping leaves it unsealed.
@@ -32,32 +28,13 @@ fn create(path: &Path, direct: bool) -> Result<File> {
         .open(path)?)
 }
 impl Recorder {
-    /// Load pbtxt topics and create a new recording; an existing path is rejected.
-    /// None uses the shipped pbtxt defaults. Direct I/O uses 4 KiB alignment.
-    /// rotation_bytes is a soft byte target; zero disables rotation recommendations.
-    pub fn create(
-        path: &Path,
-        direct: bool,
-        rotation_bytes: u64,
-        config: Option<&Path>,
-    ) -> Result<Self> {
-        let descriptor = DescriptorPool::decode(
-            include_bytes!(concat!(env!("OUT_DIR"), "/recording.bin")).as_slice(),
-        )?
-        .get_message_by_name("doramcap.monitor.v1.RecordingConfig")
-        .expect("compiled recording config");
-        let text = match config {
-            Some(path) => std::fs::read_to_string(path)?,
-            None => include_str!("../config/recording.pbtxt").into(),
-        };
-        let config: pb::RecordingConfig =
-            DynamicMessage::parse_text_format(descriptor, &text)?.transcode_to()?;
-        ensure!(
-            !config.samples_topic.is_empty()
-                && !config.dictionary_topic.is_empty()
-                && config.samples_topic != config.dictionary_topic,
-            "recording topics must be nonempty and distinct"
-        );
+    /// Create a new recording from a validated section; an existing path is rejected.
+    /// Direct I/O uses 4 KiB alignment unless `buffered` is set.
+    /// `rotation_bytes` is a soft byte target; zero disables rotation recommendations.
+    pub fn create(config: &Recording) -> Result<Self> {
+        let path = Path::new(&config.path);
+        let direct = !config.buffered;
+        let rotation_bytes = config.rotation_bytes;
         let file = create(path, direct)?;
         let schema = Schema {
             name: telemetry_protocol::MCAP_SCHEMA_NAME,
@@ -171,12 +148,12 @@ mod tests {
         // Arrange
         let path =
             std::env::temp_dir().join(format!("doramcap-callback-{}.mcap", std::process::id()));
-        let config = path.with_extension("pbtxt");
-        std::fs::write(
-            &config,
-            "samples_topic: 'example/cpu' dictionary_topic: 'example/names'",
-        )?;
-        let mut recorder = Recorder::create(&path, true, 0, Some(&config))?;
+        let mut recorder = Recorder::create(&Recording {
+            path: path.to_str().unwrap().into(),
+            samples_topic: "example/cpu".into(),
+            dictionary_topic: "example/names".into(),
+            ..Default::default()
+        })?;
         let mut expected = Vec::new();
         for size in [4, 70000] {
             let packet =
@@ -221,7 +198,6 @@ mod tests {
             assert_eq!(message.channel.topic, "example/names");
         }
         std::fs::remove_file(path)?;
-        std::fs::remove_file(config)?;
         Ok(())
     }
 }

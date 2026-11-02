@@ -24,6 +24,11 @@ def usage(path):
 
 
 
+def write_config(path, text):
+    path.write_text(text)
+    return ['--config', str(path)]
+
+
 def validate_readiness(monitor):
     # Arrange: output initialization failures must not leave a readiness marker.
     with tempfile.TemporaryDirectory(prefix='monitor-readiness-') as temporary:
@@ -32,9 +37,14 @@ def validate_readiness(monitor):
         existing = directory / 'existing.mcap'
         existing.write_bytes(b'existing recording')
         environment = dict(os.environ, DORAMCAP_READY_FILE=str(ready))
-        for arguments in (['--output', str(directory)], ['--record', str(existing)]):
+        topics = 'samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary"'
+        failing = (f'output_path: "{directory}"',
+                   f'recording {{ path: "{existing}" {topics} }}')
+        for section in failing:
+            arguments = write_config(directory / 'failing.pbtxt',
+                                     f'records: 4096 queue_slots: 8 samples: 1 {section}')
             # Act
-            result = subprocess.run([str(monitor), '--samples', '1', *arguments],
+            result = subprocess.run([str(monitor), *arguments],
                                     env=environment, capture_output=True, timeout=15)
             # Assert
             assert result.returncode != 0, result.stderr
@@ -42,7 +52,9 @@ def validate_readiness(monitor):
             assert existing.read_bytes() == b'existing recording'
         # Act: successful initialization publishes readiness and records one sample.
         output = directory / 'snapshots.pb'
-        result = subprocess.run([str(monitor), '--samples', '1', '--output', str(output)],
+        arguments = write_config(directory / 'valid.pbtxt',
+                                 f'records: 4096 queue_slots: 8 samples: 1 output_path: "{output}"')
+        result = subprocess.run([str(monitor), *arguments],
                                 env=environment, capture_output=True, timeout=15)
         # Assert
         assert result.returncode == 0, result.stderr
@@ -81,13 +93,14 @@ def main():
         baseline = [usage(group) for group in groups]
         with tempfile.TemporaryDirectory(prefix='doramcap-native-') as directory:
             output = Path(directory) / 'snapshots.pb'
-            monitor = subprocess.Popen([str(args.monitor), '--backend', 'bpf', '--samples', '65',
-                                        '--records', '16384', '--output', str(output)],
+            launch = lambda name, samples, path: write_config(
+                Path(directory) / name,
+                f'records: 16384 queue_slots: 8 samples: {samples} output_path: "{path}"')
+            monitor = subprocess.Popen([str(args.monitor), *launch('first.pbtxt', 65, output)],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             concurrent_output = Path(directory) / 'concurrent.pb'
             concurrent_monitor = subprocess.Popen(
-                [str(args.monitor), '--backend', 'bpf', '--samples', '80',
-                 '--records', '16384', '--output', str(concurrent_output)],
+                [str(args.monitor), *launch('concurrent.pbtxt', 80, concurrent_output)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             time.sleep(0.8)
             for process in (monitor, concurrent_monitor):
@@ -157,7 +170,7 @@ def main():
             assert 90 <= statistics.median(intervals) <= 110
             assert all(b['monotonic_end_ns']>=b['monotonic_start_ns'] for b in batches)
             # Independently exercise bounded native result capacity.
-            tiny = subprocess.run([str(args.monitor),'--backend','bpf','--samples','2','--records','1'],
+            tiny = subprocess.run([str(args.monitor), *write_config(Path(directory) / 'tiny.pbtxt', 'records: 1 queue_slots: 8 samples: 2')],
                                   capture_output=True,timeout=10)
             assert tiny.returncode == 0, tiny.stderr
             small = framed(tiny.stdout)

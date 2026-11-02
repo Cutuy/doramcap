@@ -7,12 +7,14 @@ lookup, reporting, shutdown and publication scheduling.
 
 ```sh
 cargo run -p system-monitor -- --check
-cargo run -p system-monitor --features bpf -- --samples 10 --output /tmp/monitor.pb
+cargo run -p system-monitor --features bpf -- --config apps/system-monitor/deploy/monitor.pbtxt
 cargo build -p system-monitor --features bpf,task-bpf,dora
 ```
 
-Standalone output is length-prefixed Protobuf. `--dora` publishes snapshots and
-dictionary checkpoints through the [DORA wrapper crate](dora/). The native
+Each launch reads one [pbtxt configuration](proto/monitor.proto); `--check` and
+`--check-bpf` probe host support. `output_path` writes length-prefixed Protobuf. A
+`dora` section publishes snapshots and dictionary checkpoints through the
+[DORA wrapper crate](dora/); a `recording` section writes MCAP. The native
 [launch wrapper](scripts/run-native-monitor.sh) follows the shared credential
 procedure in the repository's AGENTS.md.
 
@@ -35,15 +37,20 @@ The [native BPF Compose template](deploy/recording.yaml) lets the shared Docker 
 the image and output directory, then snapshots the selected
 template into each run’s private artifacts.
 
-```sh
-system-monitor --backend bpf --dora --record capture.mcap --record-rotate-bytes 67108864
+```pbtxt
+records: 4096
+queue_slots: 8
+dora {}
+recording {
+  path: "capture.mcap"
+  rotation_bytes: 67108864
+  samples_topic: "doramcap/cpuacct"
+  dictionary_topic: "doramcap/cpuacct/dictionary"
+}
 ```
 
-Recording topics come from [recording.pbtxt](config/recording.pbtxt), parsed at
-startup. Pass `--record-config FILE.pbtxt` to load a custom topic configuration.
-
 Recording uses the publication owner thread and an eight-buffer, 512-KiB pool.
-Direct I/O uses 4-KiB alignment; `--record-buffered` selects buffered file I/O.
+Direct I/O uses 4-KiB alignment; `buffered: true` selects buffered file I/O.
 The maximum encoded message is bounded by the pool. Files are created exclusively.
 Rotation is a soft limit at message boundaries and creates `capture.000001.mcap`,
 then subsequent numbered files, each with schema/channel and dictionary metadata.

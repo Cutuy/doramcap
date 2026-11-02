@@ -25,9 +25,10 @@ fn main() {
         signal(15, 1);
     }
     let _descendant = Command::new("/bin/sleep").arg("300").spawn().unwrap();
-    let value = |flag| args[args.iter().position(|a| a == flag).unwrap() + 1].clone();
-    let stream = value("--output");
-    fs::write(value("--record"), b"\x89MCAP0\r\n").unwrap();
+    let config = args[args.iter().position(|a| a == "--config").unwrap() + 1].clone();
+    let directory = std::path::Path::new(&config).parent().unwrap();
+    let stream = directory.join("cpu.pb");
+    fs::write(directory.join("cpu.mcap"), b"\x89MCAP0\r\n").unwrap();
     let mut bytes = vec![1];
     loop {
         fs::write(&stream, &bytes).unwrap();

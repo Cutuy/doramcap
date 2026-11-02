@@ -17,8 +17,9 @@ bin_dir = args.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='doramcap-recording-e2e-') as directory:
     root = Path(directory)
     embedded, received = root / 'embedded.mcap', root / 'received.mcap'
-    source = Path(__file__).resolve().parents[3]
-    monitor_config = source / 'apps/system-monitor/config/recording.pbtxt'
+    monitor_config = root / 'monitor.pbtxt'
+    monitor_config.write_text(f'''records: 4096 queue_slots: 8 samples: 24 dora {{}}
+recording {{ path: "{embedded}" samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary" }}''')
     recorder_config = root / 'recorder.pbtxt'
     recorder_config.write_text(f"""output_path: "{received}"
 report_path: "{root / 'received.report.pbtxt'}"
@@ -27,7 +28,7 @@ input {{ input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobu
     # JSON is a YAML-compatible descriptor and safely quotes filesystem paths.
     flow = {'nodes': [
         {'id': 'monitor', 'path': str(bin_dir / 'system-monitor'),
-         'args': f'--backend bpf --samples 24 --records 4096 --dora --record {embedded} --record-config {monitor_config}',
+         'args': f'--config {monitor_config}',
          'outputs': ['snapshots', 'dictionary']},
         {'id': 'recorder', 'path': str(bin_dir / 'mcap-recorder'), 'args': f'--config {recorder_config}',
          'inputs': {'snapshots': {'source': 'monitor/snapshots', 'queue_size': 64}}}]}

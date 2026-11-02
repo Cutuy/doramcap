@@ -98,10 +98,13 @@ def run_session(args, run):
         # Isolate from concurrent Cargo builds replacing the same target binary.
         shutil.copy2(args.bin_dir / "system-monitor", work / "system-monitor")
         output = work / "session.mcap"
+        config = work / "monitor.pbtxt"
+        config.write_text(f'''records: 16384 queue_slots: 8 samples: 10 dora {{}}
+recording {{ path: "{output}" samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary" }}''')
         descriptor = work / "dataflow.yml"
         descriptor.write_text(json.dumps({"nodes": [
             {"id": "monitor", "path": str(work / "system-monitor"),
-             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora --record {output}", "outputs": ["snapshots", "dictionary"]},
+             "args": f"--config {config}", "outputs": ["snapshots", "dictionary"]},
         ]}))  # JSON is a YAML subset.
         subprocess.run([args.dora, "run", str(descriptor), "--stop-after", "15s"],
                        check=True, timeout=30)

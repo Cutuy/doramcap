@@ -2,7 +2,7 @@ services:
   monitor:
     image: doramcap/system-monitor:local
     user: "0:${SYSTEM_MONITOR_GID:?}"
-    command: ["--backend", "bpf", "--task-capacity", "4096", "--output", "/results/monitor.pb"]
+    command: ["--config", "/config/monitor.pbtxt"]
     stop_signal: SIGINT
     stop_grace_period: 30s
     read_only: true
@@ -25,6 +25,10 @@ services:
       - type: bind
         source: ${SYSTEM_MONITOR_RESULTS_DIR:?}
         target: /results
+      - type: bind
+        source: ./monitor.pbtxt
+        target: /config/monitor.pbtxt
+        read_only: true
     healthcheck:
       test: ["CMD-SHELL", "size=$$(wc -c < /results/monitor.pb) && test \"$$size\" -ge 4 && length=$$(od -An -N4 -tu4 /results/monitor.pb | tr -d '[:space:]') && test -n \"$$length\" && test \"$$length\" -gt 0 && test \"$$size\" -ge \"$$((length + 4))\""]
       interval: 2s

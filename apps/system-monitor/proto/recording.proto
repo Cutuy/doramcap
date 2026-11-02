@@ -1,7 +1,0 @@
-syntax = "proto3";
-package doramcap.monitor.v1;
-
-message RecordingConfig {
-  string samples_topic = 1;
-  string dictionary_topic = 2;
-}
