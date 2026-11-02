@@ -466,3 +466,27 @@ else setTimeout(() => {}, 60000);
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('cancelling a review without downloads discards its inspection', async () => {
+  // Arrange
+  const { root, engine, backend } = await fixture();
+  const inspect = engine.inspect.bind(engine);
+  let finish = () => {};
+  engine.inspect = async (request) => {
+    await new Promise<void>((resolve) => { finish = resolve; });
+    return inspect(request);
+  };
+  try {
+    // Act
+    const review = backend.prepare(Buffer.from(wire.PrepareRequest.encode({ directory: join(root, 'project') }).finish()));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await backend.stop(Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish()));
+    finish();
+    // Assert
+    await assert.rejects(review, /^Error: Stopped$/);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

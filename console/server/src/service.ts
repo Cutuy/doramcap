@@ -204,6 +204,7 @@ export class ConsoleService implements ConsoleBackend {
         }
         throw error;
       }
+      if (this.preparation.signal.aborted) throw new Error('Stopped');
       const review = wire.Review.create({
         preparedId: id,
         runId: id,

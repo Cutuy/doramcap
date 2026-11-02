@@ -53,7 +53,8 @@ if (!projects.length) throw new Error('Playground must contain a Compose project
 for (const project of projects)
   for (const image of await imageReferences(deployed.dockerSocket, project))
     if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin release image by digest: ${image}`);
-if (!/@sha256:[0-9a-f]{64}$/.test(config.dora?.image ?? '')) throw new Error('Pin the release Dora image by digest');
+for (const [name, image] of [['Dora', config.dora?.image ?? ''], ['live bridge', config.liveBridge?.image]])
+  if (image !== undefined && !/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin the release ${name} image by digest`);
 const packageRoot = join(output, 'package');
 mkdirSync(join(packageRoot, 'server'), { recursive: true });
 cpSync(`${root}/console/server/dist`, `${packageRoot}/server/dist`, { recursive: true });
