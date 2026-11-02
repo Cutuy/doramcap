@@ -1,6 +1,6 @@
 # Telemetry
 
-Publication contracts, codecs, and recording adapters for measured data.
+Publication contracts and codecs for measured data.
 Current contracts describe CPU snapshots, dictionary checkpoints and versioned
 workflow events. Applications supply live transports and bounded replay.
 
@@ -8,7 +8,6 @@ workflow events. Applications supply live transports and bounded replay.
 |---|---|
 | [workflow-protocol](workflow-protocol/) | Resource-independent workflow event schema, codec and descriptor |
 | [telemetry-protocol](protocol/) | Protobuf schema, wire codec, descriptors, and Python reader |
-| [telemetry-mcap](mcap/) | Schema/channel registration, packet validation, and MCAP recording |
 
 [Resources](../resources/) supplies the current measurement types.
 [Storage persistence](../storage-persistence/) supplies the underlying writer.

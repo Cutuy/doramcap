@@ -34,8 +34,7 @@ explicit, including nested crates: add new paths to the root `Cargo.toml`.
 | `libs/dora-app` | Shared Dora attachment, environment bridge and readiness |
 | `apps/system-monitor/dora` | CPU publication and direct-buffer Protobuf encoding |
 | `apps/cpu-viewer/server` | HTTP/WebSocket delivery and viewer schema |
-| `apps/cpu-viewer/dataflows` | Monitor/viewer/recorder demo compositions |
-| `apps/mcap-recorder/tests` | Independent recorder lifecycle tests |
+| `apps/cpu-viewer/dataflows` | Monitor/viewer demo compositions |
 | `apps/system-monitor/tests` | Native collector integration tests |
 | `libs/telemetry/protocol` | CPU schemas, codecs and descriptors |
 | `libs/telemetry/workflow-protocol` | Workflow event contracts |

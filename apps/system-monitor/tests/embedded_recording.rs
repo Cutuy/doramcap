@@ -21,6 +21,10 @@ fn recording_rotation_preserves_every_sample() {
             "--record",
         ])
         .arg(&path)
+        .args([
+            "--record-config",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/config/recording.pbtxt"),
+        ])
         .args(["--record-rotate-bytes", "1"])
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
@@ -50,7 +54,7 @@ fn recording_rotation_preserves_every_sample() {
         let mut dictionary_seen = false;
         for msg in mcap::MessageStream::new(&data).unwrap() {
             let msg = msg.unwrap();
-            if msg.channel.topic == "doramcap/dictionary" {
+            if msg.channel.topic == "doramcap/cpuacct/dictionary" {
                 telemetry_protocol::decode_dictionary(&msg.data).unwrap();
                 dictionary_seen = true;
             } else {

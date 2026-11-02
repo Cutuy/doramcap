@@ -76,8 +76,7 @@ contract; they must not invent parallel types or commit placeholder integrations
 
 ## Agent A: reusable Dora MCAP recorder
 
-Own `apps/mcap-recorder`, its new configuration schema, and changes needed in
-`libs/telemetry/mcap`. Coordinate shared dependency wiring with the integration owner.
+Own `apps/mcap-recorder` and its configuration schema. Coordinate shared dependency wiring with the integration owner.
 
 Existing code recognizes only CPU `snapshots` and `dictionary` inputs and embeds
 the CPU telemetry schema. The gallery deployment also launches a CPU producer.

@@ -13,7 +13,10 @@ task-bpf = ["task-accounting/bpf"]
 
 [dependencies]
 dora-app = { path = "../../libs/dora-app", default-features = false }
-telemetry-mcap = { path = "../../libs/telemetry/mcap" }
+storage-persistence = { path = "../../libs/storage-persistence" }
+prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
+libc = "0.2"
 task-accounting = { path = "../../libs/resources/task-accounting" }
 telemetry-protocol = { path = "../../libs/telemetry/protocol" }
 monitor-core = { path = "../../libs/resources/monitor-core" }
@@ -26,6 +29,10 @@ ctrlc = { version = "3.4", features = ["termination"] }
 
 [dev-dependencies]
 mcap = { version = "=0.26.0", default-features = false }
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
 
 [lints]
 workspace = true

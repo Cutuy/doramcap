@@ -1,0 +1,9 @@
+output_path: "/results/cpu.mcap"
+report_path: "/results/cpu.report.pbtxt"
+input {
+  input: "snapshots"
+  topic: "doramcap/cpuacct"
+  message_encoding: "protobuf"
+  timestamp_key: "capture_unix_ns"
+  sequence_key: "sequence"
+}

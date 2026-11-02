@@ -1,26 +1,22 @@
 # MCAP recorder
 
-An independent DORA subscriber that records snapshot and dictionary topics using
-[`telemetry-mcap`](../../libs/telemetry/mcap/). Each recording embeds the Protobuf
-schema and preserves original payloads, sequence and capture timestamps. The
-process refuses to overwrite an existing recording and drains normal input
-closure before finalization.
+A standalone Dora subscriber that records existing apps' messages to MCAP. Each
+channel declares its topic, encoding, optional schema and source metadata keys.
+Payloads stay unchanged. ROS 2 input is planned.
+
+![Recording paths](docs/110126-recording-paths.svg)
+
+- **This recorder** captures declared Dora outputs through the `mcap` crate.
+- **Embedded writers** stay in their apps and use `storage-persistence`.
+- **Live view** uses Console's [live bridge](../../console/bridge/README.md) on the same outputs.
 
 ```sh
-cargo build -p system-monitor -p mcap-recorder --features system-monitor/dora,system-monitor/bpf
-dora run apps/cpu-viewer/dataflows/phase0-dataflow.yml
+cargo build --release --locked -p mcap-recorder
+mcap-recorder --config apps/mcap-recorder/deploy/bytes.pbtxt
 ```
 
-The demo configuration records ten native CPU samples. See the
-[viewer guide](../cpu-viewer/docs/running.md) for composing live consumers.
-Install `libs/telemetry/protocol/python/requirements.txt`, then validate transport,
-embedded schemas, recording contents and finite-session shutdown:
+The process requires a Dora attachment and writable configured output directory.
+It creates recordings exclusively, drains normal input closure and writes a
+separate report distinguishing finalization from drain and known loss evidence.
 
-```sh
-sudo /path/to/venv/bin/python apps/mcap-recorder/tests/validate_dora.py --dora /path/to/dora --runs 2
-```
-
-Use `--bin-dir` with a custom Cargo target directory. `--backend bpf` requires
-native build features and permission to load BPF programs.
-
-[Docker deployment and gallery registration](deploy/README.md).
+[Configuration, artifacts and deployment](deploy/README.md)

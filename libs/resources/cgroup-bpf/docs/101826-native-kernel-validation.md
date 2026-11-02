@@ -78,7 +78,7 @@ cargo build --locked --workspace --all-features
 cargo build -p cgroup-bpf --features bpf --examples
 sudo python3 apps/system-monitor/tests/validate_native.py --monitor "$PWD/target/debug/system-monitor"
 sudo ./target/debug/examples/native_allocations
-sudo python3 apps/mcap-recorder/tests/validate_dora.py --backend bpf --runs 10 --dora /path/to/dora-1.1.0
+sudo python3 apps/system-monitor/tests/validate_dora.py --backend bpf --runs 10 --dora /path/to/dora-1.1.0
 ```
 
 ARM64 source, tools, and binaries live under `/tmp/doramcap-validation` on `.20`.

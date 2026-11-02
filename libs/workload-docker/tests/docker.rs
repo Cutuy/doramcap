@@ -98,7 +98,7 @@ fn audit_recording(root: &Path) -> String {
     let mut sequences = Vec::new();
     for message in mcap::MessageStream::new(&bytes).unwrap() {
         let message = message.unwrap();
-        if message.channel.topic == "doramcap/snapshots" {
+        if message.channel.topic == "doramcap/cpuacct" {
             let frame = telemetry_protocol::decode(&message.data).unwrap();
             assert_eq!(frame.source, "bpf");
             assert_eq!(frame.snapshot.dropped_batches, 0);
@@ -189,7 +189,7 @@ async fn native_recorded_workflow() {
     let snapshots: Vec<_> = mcap::MessageStream::new(&bytes)
         .unwrap()
         .map(|message| message.unwrap())
-        .filter(|message| message.channel.topic == "doramcap/snapshots")
+        .filter(|message| message.channel.topic == "doramcap/cpuacct")
         .collect();
     assert!(!snapshots.is_empty());
     assert!(
@@ -1748,9 +1748,6 @@ async fn compose_public_run(outcome: &str) {
     if outcome == "complete" {
         flow = flow.replace("      tick: dora/timer/millis/100\n", "");
     }
-    if outcome == "timer-consumer" {
-        flow.push_str("      tick: dora/timer/millis/100\n");
-    }
     std::fs::write(&graph, flow).unwrap();
     let packet = telemetry_protocol::pb::Packet {
         body: Some(telemetry_protocol::pb::packet::Body::Snapshot(
@@ -1771,6 +1768,20 @@ async fn compose_public_run(outcome: &str) {
     let payload = packet.encode_to_vec();
     let payload_file = root.join("payload.pb");
     std::fs::write(&payload_file, &payload).unwrap();
+    let recorder_config = root.join("recorder.pbtxt");
+    std::fs::write(
+        &recorder_config,
+        include_str!("recorder.pbtxt")
+            .replace(
+                "/results/cpu.mcap",
+                results.join("recording.mcap").to_str().unwrap(),
+            )
+            .replace(
+                "/results/cpu.report.pbtxt",
+                results.join("recording.report.pbtxt").to_str().unwrap(),
+            ),
+    )
+    .unwrap();
     let run = format!("mixed-{}", std::process::id());
     std::fs::write(root.join("run-id"), &run).unwrap();
     let artifacts = root.join(&run);
@@ -1805,10 +1816,11 @@ async fn compose_public_run(outcome: &str) {
                 "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
                 "security_opt":["seccomp=unconfined"],
                 "entrypoint":["/recorder"],
-                "command":[results.join("recording.mcap")],
+                "command":["--config", "/config/recorder.pbtxt"],
                 "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
                 "volumes":[
                     {"type":"bind", "source":recorder, "target":"/recorder", "read_only":true},
+                    {"type":"bind", "source":recorder_config, "target":"/config/recorder.pbtxt", "read_only":true},
                     {"type":"bind", "source":runtime, "target":runtime},
                     {"type":"bind", "source":results, "target":results}
                 ]
@@ -2101,18 +2113,18 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     // Use the shipped app input so runtime wiring evolves with its real consumer.
     std::fs::write(
         root.path().join("app.yaml"),
-        include_bytes!("../../../apps/mcap-recorder/deploy/compose.yaml"),
+        include_bytes!("../../../apps/cpu-viewer/deploy/compose.yaml"),
     )
     .unwrap();
     let app = |artifacts: &Path| ComposeProject {
-        key: "recorder".into(),
+        key: "cpu-viewer".into(),
         directory: root.path().to_string_lossy().into_owned(),
         files: vec!["app.yaml".into()],
         environment: BTreeMap::from([
-            ("MCAP_RECORDER_UID".into(), "1000".into()),
-            ("MCAP_RECORDER_GID".into(), "1000".into()),
+            ("CPU_VIEWER_UID".into(), "1000".into()),
+            ("CPU_VIEWER_GID".into(), "1000".into()),
             (
-                "MCAP_RECORDER_RESULTS_DIR".into(),
+                "CPU_VIEWER_RESULTS_DIR".into(),
                 artifacts.to_string_lossy().into_owned(),
             ),
         ]),

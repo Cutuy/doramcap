@@ -19,7 +19,6 @@ members = [
     "libs/orchestrator",
     "libs/storage-persistence",
     "libs/resources/task-accounting",
-    "libs/telemetry/mcap",
     "libs/telemetry/protocol",
     "libs/telemetry/workflow-protocol",
     "libs/fault/reporter",

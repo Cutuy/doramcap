@@ -89,7 +89,6 @@
       "limits": "Durability and supported capture paths follow the selected recorder's contract.",
       "components": [
         "crates/storage-persistence",
-        "crates/telemetry-mcap",
         "apps/storage-demo",
         "apps/mcap-recorder"
       ],
@@ -240,7 +239,6 @@
       "status": "integrated",
       "components": [
         "crates/storage-persistence",
-        "crates/telemetry-mcap",
         "apps/mcap-recorder"
       ],
       "evidence": [

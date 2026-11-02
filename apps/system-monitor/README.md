@@ -39,6 +39,9 @@ template into each run’s private artifacts.
 system-monitor --backend bpf --dora --record capture.mcap --record-rotate-bytes 67108864
 ```
 
+Recording topics come from [recording.pbtxt](config/recording.pbtxt), parsed at
+startup. Pass `--record-config FILE.pbtxt` to load a custom topic configuration.
+
 Recording uses the publication owner thread and an eight-buffer, 512-KiB pool.
 Direct I/O uses 4-KiB alignment; `--record-buffered` selects buffered file I/O.
 The maximum encoded message is bounded by the pool. Files are created exclusively.

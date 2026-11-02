@@ -15,13 +15,7 @@ fn build_deployment_images() {
     // Arrange
     let contexts = PathBuf::from(std::env::var_os("DORAMCAP_DEPLOY_CONTEXTS").unwrap());
     // Act / Assert
-    for app in [
-        "dora",
-        "fault-demo",
-        "fault-watchdog",
-        "cpu-viewer",
-        "mcap-recorder",
-    ] {
+    for app in ["dora", "fault-demo", "fault-watchdog", "cpu-viewer"] {
         let status = std::process::Command::new("docker")
             .args(["build", "--tag", &format!("doramcap/{app}:local")])
             .arg(contexts.join(app))
@@ -253,7 +247,6 @@ async fn gallery_dora_deployments() {
                 ("fault-watchdog", "registration.mcap.pbtxt"),
                 ("fault-watchdog", "registration.otel.pbtxt"),
                 ("cpu-viewer", "registration.pbtxt"),
-                ("mcap-recorder", "registration.pbtxt"),
             ] {
                 if std::env::var("DORAMCAP_GALLERY_CASE")
                     .is_ok_and(|case| case != format!("{app}/{registration}"))

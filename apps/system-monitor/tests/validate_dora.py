@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run real Dora nodes and verify finite-session shutdown preserves every sample.
+"""Run System Monitor under Dora and verify its recording keeps every sample.
 
 Requires prebuilt --features dora binaries and Dora CLI 1.1.0.
 Install libs/telemetry/protocol/python/requirements.txt. MCAP checks support uncompressed chunks,
@@ -63,12 +63,12 @@ def read_messages(path):
                 schema_id, topic = channels[channel_id]
                 frame = unpack(data[22:], schemas[schema_id])
                 if frame.WhichOneof('body') == 'dictionary':
-                    assert topic == 'doramcap/dictionary' and frame.dictionary.entries
+                    assert topic == 'doramcap/cpuacct/dictionary' and frame.dictionary.entries
                     assert sequence == frame.dictionary.revision & 0xFFFFFFFF
                     assert log_time == publish_time == frame.dictionary.capture_unix_ns
                     dictionaries.append(frame)
                     continue
-                assert topic == 'doramcap/snapshots'
+                assert topic == 'doramcap/cpuacct'
                 payload = snapshot(frame)
                 assert sequence == payload["sequence"] & 0xFFFFFFFF
                 assert log_time == publish_time == payload["capture_unix_ns"]
@@ -96,15 +96,12 @@ def run_session(args, run):
     with tempfile.TemporaryDirectory(prefix="doramcap-dora-test-") as directory:
         work = Path(directory)
         # Isolate from concurrent Cargo builds replacing the same target binary.
-        for binary in ("system-monitor", "mcap-recorder"):
-            shutil.copy2(args.bin_dir / binary, work / binary)
+        shutil.copy2(args.bin_dir / "system-monitor", work / "system-monitor")
         output = work / "session.mcap"
         descriptor = work / "dataflow.yml"
         descriptor.write_text(json.dumps({"nodes": [
             {"id": "monitor", "path": str(work / "system-monitor"),
-             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora", "outputs": ["snapshots", "dictionary"]},
-            {"id": "recorder", "path": str(work / "mcap-recorder"), "args": str(output),
-             "inputs": {"snapshots": {"source": "monitor/snapshots", "queue_size": 64}, "dictionary": {"source": "monitor/dictionary", "queue_size": 4}}},
+             "args": f"--backend {args.backend} --samples 10 --records 16384 --dora --record {output}", "outputs": ["snapshots", "dictionary"]},
         ]}))  # JSON is a YAML subset.
         subprocess.run([args.dora, "run", str(descriptor), "--stop-after", "15s"],
                        check=True, timeout=30)
