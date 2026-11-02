@@ -158,7 +158,12 @@ impl Prepare {
             monitor_sha256: hex::encode(Sha256::digest(
                 std::fs::read(&run.monitor_binary).map_err(error)?,
             )),
-            config_sha256: hex::encode(Sha256::digest(config.as_bytes())),
+            config_sha256: hex::encode(
+                Sha256::new()
+                    .chain_update(config.as_bytes())
+                    .chain_update(MONITOR_CONFIG.as_bytes())
+                    .finalize(),
+            ),
             run: Some(run),
             ..Default::default()
         };
