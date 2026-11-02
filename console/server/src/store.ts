@@ -1,5 +1,5 @@
 import { constants, closeSync, fchmodSync, fstatSync, openSync } from 'node:fs';
-import { mkdir, open, realpath } from 'node:fs/promises';
+import { mkdir, open, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { capabilities, wire } from './native.js';
@@ -55,7 +55,7 @@ export function migrate(db: DatabaseSync, steps = MIGRATIONS) {
 
 /**
  * Console's durable state: `<data_root>/console.db`, with recordings beside it under `runs/`.
- * Errors: open and writes throw; Console must not start a run it cannot record.
+ * Errors: open rejects a data root others can access; open and writes throw, so no unrecorded run starts.
  */
 export class Store {
   private closed = false;
@@ -67,6 +67,10 @@ export class Store {
   static async open(path: string) {
     await mkdir(path, { recursive: true, mode: 0o700 });
     const root = await realpath(path);
+    // SQLite opens console.db by path, so nobody else may be able to swap it.
+    const info = await stat(root);
+    if (info.uid !== process.geteuid!() || (info.mode & 0o077) !== 0)
+      throw new Error(`Data root ${root} must be owned by this user and mode 0700`);
     const lock = capabilities.lockFile(join(root, 'console.lock'));
     try {
       const file = join(root, 'console.db');

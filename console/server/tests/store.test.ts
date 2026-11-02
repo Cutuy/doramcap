@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../src/store.js';
@@ -18,6 +18,22 @@ test('the data-root lock excludes concurrent writers and releases on close', asy
     second.close();
   } finally {
     first.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a data root other users can access is refused before any file is created', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-private-'));
+  try {
+    await chmod(root, 0o770);
+    // Act / Assert
+    await assert.rejects(Store.open(root), /must be owned by this user and mode 0700/);
+    await assert.rejects(stat(join(root, 'console.db')), { code: 'ENOENT' });
+    // Act / Assert
+    await chmod(root, 0o700);
+    (await Store.open(root)).close();
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
