@@ -1,6 +1,6 @@
 // Publish release images and write a release template pinned to their multi-arch digests.
 //   build: build and push this architecture's images from target/release and --dora.
-//   merge: join both architectures, mirror the sample base image and write --output.
+//   merge: join both architectures and write the pinned template to --output.
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,11 +15,12 @@ const { values, positionals: [command] } = parseArgs({ allowPositionals: true, o
 } });
 const { registry, version, source = 'https://github.com/Cutuy/doramcap' } = values;
 if (!registry || !version) throw new Error('usage: build|merge --registry REGISTRY --version VERSION [--arch ARCH --dora PATH] [--output DIR]');
-const images: Record<string, { dockerfile: string; binary: string }> = {
+const images: Record<string, { dockerfile: string; binary?: string }> = {
   dora: { dockerfile: 'libs/workload-docker/deploy/Dockerfile', binary: values.dora ?? '' },
   'system-monitor': { dockerfile: 'apps/system-monitor/deploy/Dockerfile', binary: 'target/release/system-monitor' },
   'mcap-recorder': { dockerfile: 'apps/mcap-recorder/deploy/Dockerfile', binary: 'target/release/mcap-recorder' },
   'live-bridge': { dockerfile: 'console/bridge/Dockerfile', binary: 'target/release/live-bridge' },
+  'cpu-burn': { dockerfile: 'console/release/playground/cpu-burn/Dockerfile' },
 };
 const docker = (...args: string[]) => execFileSync('docker', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
 const digest = (reference: string) => docker('buildx', 'imagetools', 'inspect', reference, '--format', '{{json .Manifest}}');
@@ -28,7 +29,7 @@ if (command === 'build') {
   if (!values.arch || !values.dora) throw new Error('build requires --arch and --dora');
   for (const [name, { dockerfile, binary }] of Object.entries(images)) {
     const stage = mkdtempSync(join(tmpdir(), 'console-image-')), tag = `${registry}/${name}:${version}-${values.arch}`;
-    cpSync(resolve(root, binary), join(stage, binary.split('/').at(-1)!));
+    if (binary) cpSync(resolve(root, binary), join(stage, binary.split('/').at(-1)!));
     // The source label links each package to the public repository.
     docker('build', '--tag', tag, '--label', `org.opencontainers.image.source=${source}`, '--file', dockerfile, stage);
     docker('push', tag);
@@ -46,9 +47,6 @@ if (command === 'build') {
   };
   const replacements = new Map(Object.keys(images).map(name => [`doramcap/${name}:local`,
     index(name, ['amd64', 'arm64'].map(arch => `${registry}/${name}:${version}-${arch}`))]));
-  const sample = join(template, 'playground/cpu-burn/compose.yaml');
-  const upstream = /image: (\S+)/.exec(readFileSync(sample, 'utf8'))![1];
-  replacements.set(upstream, index('ubuntu', [upstream]));
   const rewrite = (path: string) => {
     if (statSync(path).isDirectory()) return readdirSync(path).forEach(name => rewrite(join(path, name)));
     const text = readFileSync(path, 'utf8');
