@@ -1748,9 +1748,6 @@ async fn compose_public_run(outcome: &str) {
     if outcome == "complete" {
         flow = flow.replace("      tick: dora/timer/millis/100\n", "");
     }
-    if outcome == "timer-consumer" {
-        flow.push_str("      tick: dora/timer/millis/100\n");
-    }
     std::fs::write(&graph, flow).unwrap();
     let packet = telemetry_protocol::pb::Packet {
         body: Some(telemetry_protocol::pb::packet::Body::Snapshot(

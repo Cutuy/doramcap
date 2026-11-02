@@ -22,10 +22,10 @@ Created: 2026-11-01.
 **Validation**
 - [x] Recorder, System Monitor, workload lifecycle and Project Explorer tests pass; Docker test targets build.
 - [x] Strict Clippy, formatting and dependency boundaries pass.
-- [ ] Real Dora recording equality passes.
-- [ ] Docker gallery and shared-IPC tests pass.
+- [x] Real Dora recording equality passes.
+- [x] Docker gallery and shared-Dora tests pass.
 
-Evidence: `cargo test --release --locked` for the listed packages passes, with Docker-only tests ignored. BPF builds need `clang`, which this host lacks.
+Evidence: `cargo test --release --locked` for the listed packages passes. With `CLANG=clang-18` on x86_64: Dora equality 24/24 snapshots, `validate_dora.py` 2/2 sessions, CPU Viewer gallery deployment, `compose-e2e.py` 10/10 cases and `native_recorded_workflow` pass.
 
 ## Milestone 2: CPU app configuration
 
