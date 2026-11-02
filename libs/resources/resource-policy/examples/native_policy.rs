@@ -1,22 +1,9 @@
-//! Privileged native probe, driven with a timeout by tests/validate_native.py.
+//! Privileged native probe, driven with a timeout by tests/validate_native.ts.
 #[cfg(target_os = "linux")]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use resource_policy::{Goal, linux::*, proto};
     use std::{fs, path::Path};
     let args: Vec<_> = std::env::args().collect();
-    if args.get(1).map(String::as_str) == Some("--descriptor") {
-        fs::write(
-            &args[2],
-            pbtxt_config::descriptor_pool::<proto::Policy>()?.encode_to_vec(),
-        )?;
-        return Ok(());
-    }
-    if args.get(1).map(String::as_str) == Some("--wire") {
-        use prost::Message;
-        let fragment = resource_policy::config::parse_fragment(&fs::read_to_string(&args[2])?)?;
-        fs::write(&args[3], fragment.to_proto().encode_to_vec())?;
-        return Ok(());
-    }
     let before = inspect_current_thread()?;
     let cpu = args.get(3).map(String::as_str).unwrap_or("0");
     let policy = |priority| {

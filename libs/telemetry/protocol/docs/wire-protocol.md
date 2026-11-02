@@ -93,8 +93,7 @@ cargo run -p cpu-viewer --example fixture -- apps/cpu-viewer/frontend/src/fixtur
 ```
 
 Cargo generates Rust bindings and the embedded descriptor automatically using a
-vendored protoc. Python validators use the official protobuf runtime (install
-`libs/telemetry/protocol/python/requirements.txt`). `--check` remains a human-readable JSON capability report.
+vendored protoc. `--check` remains a human-readable JSON capability report.
 
 ## Workflow telemetry
 

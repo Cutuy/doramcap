@@ -76,7 +76,7 @@ Build as an ordinary user; elevate only the validation programs:
 cargo test --locked --workspace --all-features
 cargo build --locked --workspace --all-features
 cargo build -p cgroup-bpf --features bpf --examples
-sudo python3 apps/system-monitor/tests/validate_native.py --monitor "$PWD/target/debug/system-monitor"
+sudo node apps/system-monitor/tests/validate_native.ts --monitor "$PWD/target/debug/system-monitor"
 sudo ./target/debug/examples/native_allocations
 sudo node apps/system-monitor/tests/validate_recording_dora.ts --dora /path/to/dora-1.1.0 --bin-dir "$PWD/target/debug"
 ```
