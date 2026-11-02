@@ -50,15 +50,17 @@ const config = capabilities.parseConfig(readFileSync(resolve(values.config!), 'u
 const { releaseConfig } = await import(pathToFileURL(join(root, 'console/server/dist/release.js')).href);
 const deployed = releaseConfig(config, playground, systemApps, '/state');
 const { discover } = await import(pathToFileURL(join(root, 'console/server/dist/system-apps.js')).href);
-const { imageReferences } = await import(pathToFileURL(join(root, 'console/server/dist/images.js')).href);
+const { imageReferences, requireMultiArch } = await import(pathToFileURL(join(root, 'console/server/dist/images.js')).href);
 const projects = await Promise.all([...projectDirectories].map(path => discover(playground, path, ['*'])));
 projects.push(...deployed.systemApps.map((app: { input: unknown }) => app.input));
 if (!projects.length) throw new Error('Playground must contain a Compose project');
-for (const project of projects)
-  for (const image of await imageReferences(deployed.dockerSocket, project))
-    if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin release image by digest: ${image}`);
-for (const [name, image] of [['Dora', config.dora?.image ?? ''], ['live bridge', config.liveBridge?.image]])
-  if (image !== undefined && !/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin the release ${name} image by digest`);
+const images = new Set<string>([config.dora?.image ?? '', ...(config.liveBridge ? [config.liveBridge.image] : [])]);
+for (const project of projects) for (const image of await imageReferences(deployed.dockerSocket, project)) images.add(image);
+for (const image of images) {
+  if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin release image by digest: ${image || 'Dora'}`);
+  // Anonymous, so this also proves users can pull the image.
+  requireMultiArch(image, execFileSync('docker', ['buildx', 'imagetools', 'inspect', '--raw', image], { encoding: 'utf8' }));
+}
 const packageRoot = join(output, 'package');
 mkdirSync(join(packageRoot, 'server'), { recursive: true });
 cpSync(`${root}/console/server/dist`, `${packageRoot}/server/dist`, { recursive: true });

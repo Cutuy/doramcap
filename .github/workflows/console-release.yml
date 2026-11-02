@@ -1,0 +1,165 @@
+name: Console release
+
+on:
+  push:
+    tags: ['console-v*']
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io/cutuy/doramcap
+
+jobs:
+  images:
+    name: Images (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            dora: x86_64
+            dora_sha256: 2b1600f33187c552f98e52f7280318808e1e2ed491c6a8340dea104dbba0c85b
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            dora: aarch64
+            dora_sha256: 77fe85ff1eaf2cac2bf9e0d46d1efe00cad5076b5a0cf4e42b2cf2c646b4752f
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CLANG: clang-18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang-18 libclang-18-dev llvm-18-dev build-essential pkg-config libelf-dev zlib1g-dev
+      - name: Build binaries
+        run: |
+          rustup show
+          cargo build --release --locked -p mcap-recorder -p console-live-bridge -p system-monitor \
+            --features system-monitor/bpf,system-monitor/task-bpf,system-monitor/dora
+      - name: Download Dora CLI
+        env:
+          NAME: dora-cli-${{ matrix.dora }}-unknown-linux-gnu
+          SHA256: ${{ matrix.dora_sha256 }}
+        run: |
+          curl --fail --location --proto '=https' --retry 3 -o dora.tar.gz \
+            "https://github.com/dora-rs/dora/releases/download/v1.1.0/$NAME.tar.gz"
+          echo "$SHA256  dora.tar.gz" | sha256sum -c -
+          tar -xzf dora.tar.gz --strip-components=1 -C "$RUNNER_TEMP" "$NAME/dora"
+      - name: Sign in to GHCR
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Push images
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: node console/scripts/release-images.mts build --registry "$REGISTRY" --version "${GITHUB_REF_NAME#console-v}" --arch "$ARCH" --dora "$RUNNER_TEMP/dora"
+
+  template:
+    name: Pin multi-arch digests
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - name: Sign in to GHCR
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+      - name: Join architectures and pin the template
+        run: node console/scripts/release-images.mts merge --registry "$REGISTRY" --version "${GITHUB_REF_NAME#console-v}" --output "$RUNNER_TEMP/template"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: template
+          path: ${{ runner.temp }}/template
+          if-no-files-found: error
+
+  archives:
+    name: Archive (${{ matrix.arch }})
+    needs: template
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: template
+          path: ${{ runner.temp }}/template
+      - name: Package without registry credentials
+        run: |
+          rustup show
+          node_home=$(dirname "$(dirname "$(readlink -f "$(command -v node)")")")
+          node console/scripts/package.mts --output "$RUNNER_TEMP/archive" --version "${GITHUB_REF_NAME#console-v}" \
+            --node "$node_home/bin/node" --node-license "$node_home/LICENSE" \
+            --playground "$RUNNER_TEMP/template/playground" --system-apps "$RUNNER_TEMP/template/system-apps" \
+            --config "$RUNNER_TEMP/template/console.pbtxt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: archive-${{ matrix.arch }}
+          path: ${{ runner.temp }}/archive/doramcap-console-*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: archives
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: archive-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/release
+      - name: Upload to a draft, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#console-v}
+          cd "$RUNNER_TEMP/release"
+          hash() { cut -d' ' -f1 "doramcap-console-$version-linux-$1.tar.gz.sha256"; }
+          node "$GITHUB_WORKSPACE/console/scripts/installer.mts" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME" --version "$version" \
+            --amd64-sha256 "$(hash amd64)" --arm64-sha256 "$(hash arm64)" --output install.sh
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "Console $version" \
+            --notes "Install: download install.sh, inspect it, then run sh install.sh." install.sh doramcap-console-*
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
