@@ -18,6 +18,35 @@ const command = positionals[0] ?? 'start';
 const unit = 'doramcap-console.service';
 const state = resolve(values.state!);
 const launchFile = join(state, 'access.txt');
+const HELP = `Usage: doramcap-console [COMMAND] [OPTIONS]
+
+Commands:
+  start    Start the service and print its access link (default). Opens a browser on a desktop.
+  status   Print the release, start time and access link. Exits 3 when stopped.
+  stop     Stop any active run, finalize it and remove the access link.
+  doctor   Check host requirements and print a fix for each failure.
+  install  Activate this release after stopping Console. The installer runs this.
+
+Options for start:
+  --ssh USER@HOST      Print a forwarding command to run on the browser computer. Keep it open.
+  --port PORT          Use this exact server port.
+  --browser-port PORT  Use this port on the browser computer.
+  --no-open            Do not open a browser.
+
+Options:
+  --state PATH         Root-owned, mode-0700 state directory. Default: /var/lib/doramcap-console.
+  --help               Print this help.
+
+The service survives SSH disconnection. Stop it before changing launch options.
+Access links and browser sessions expire on restart; keep links private.
+
+Files:
+  STATE/console.pbtxt  Project roots and system apps. Edit with sudo.
+  STATE/playground     Sample workload and system app inputs.
+  STATE/runs           Run data and recordings.
+  /opt/doramcap-console/releases  Installed releases. Upgrades keep the state directory.
+
+Logs: sudo journalctl -u doramcap-console.service`;
 
 async function active() {
   return exec('systemctl', ['is-active', '--quiet', unit]).then(() => true, () => false);
@@ -40,7 +69,7 @@ async function startupFailure(summary: string, since: number) {
 
 async function main() {
   if (values.help) {
-    console.log('Usage: doramcap-console [start|stop|status|doctor|install] [--state PATH] [--ssh user@host] [--port PORT] [--browser-port PORT] [--no-open]');
+    console.log(HELP);
     return;
   }
   if (!['start', 'stop', 'status', 'doctor', 'install'].includes(command) || positionals.length > 1)
