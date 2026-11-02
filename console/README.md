@@ -1,6 +1,7 @@
 # Console
 
-[Install and launch a release](docs/install.md).
+[Install and launch a release](docs/install.md). Releases ship [CPU monitoring and
+Dora topic recording](release/console.pbtxt) as pbtxt-launched system apps.
 
 Select a Compose project and optional system apps, inspect the resolved services,
 then run the shared experiment and download its recordings. Dora coordinator and

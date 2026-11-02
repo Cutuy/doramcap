@@ -1,0 +1,3 @@
+output_path: "/results/cpu-topics.mcap"
+input { input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobuf" }
+input { input: "dictionary" topic: "doramcap/cpuacct/dictionary" message_encoding: "protobuf" }

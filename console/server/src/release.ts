@@ -1,6 +1,11 @@
-import { cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, statfs, symlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { promisify } from 'node:util';
 import { capabilities, wire, type Config } from './native.js';
+
+const exec = promisify(execFile);
+const MIN_DOCKER_FREE_BYTES = 10 * 1024 ** 3;
 
 export async function readRelease(root: string) {
   const manifest = wire.ReleaseManifest.decode(await readFile(join(root, 'release.pb')));
@@ -97,7 +102,7 @@ export async function installRelease(source: string, prefix = '/opt/doramcap-con
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   const staging = join(prefix, 'releases', `.install-${process.pid}`);
   try {
-    await cp(source, staging, { recursive: true, errorOnExist: true, force: false });
+    await cp(source, staging, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
     await rename(staging, target);
   } catch (error) { await rm(staging, { recursive: true, force: true }); throw error; }
   const next = join(prefix, `.current-${process.pid}`);
@@ -106,4 +111,59 @@ export async function installRelease(source: string, prefix = '/opt/doramcap-con
   try { await symlink(join(prefix, 'current/bin/doramcap-console'), bin); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
   return target;
+}
+
+/**
+ * Report every host requirement with its remediation.
+ * Warnings keep Console usable without optional apps; throws when a required check fails.
+ */
+export async function doctor(socket: string, log: (line: string) => void = console.log) {
+  const run = async (program: string, ...args: string[]) =>
+    (await exec(program, args, { timeout: 15_000 })).stdout.trim().split('\n')[0];
+  const docker = (...args: string[]) => run('docker', '--host', `unix://${socket}`, ...args);
+  const checks: { name: string; fix: string; warn?: boolean; probe(): Promise<string> }[] = [
+    { name: 'Docker CLI', fix: 'Install Docker Engine: https://docs.docker.com/engine/install/ubuntu/', probe: () => docker('--version') },
+    { name: 'Docker Engine', fix: `Start it with: sudo systemctl start docker. Set docker_socket in console.pbtxt if it does not listen on ${socket}.`, async probe() {
+      const type = await docker('info', '--format', '{{.OSType}} {{.ServerVersion}}');
+      if (!type.startsWith('linux ')) throw new Error(`reports ${type}`);
+      return type;
+    } },
+    { name: 'Docker mount namespace', fix: 'Use Docker Engine from the host package; snap, rootless and Desktop daemons cannot share host OverlayFS mounts.', async probe() {
+      const pid = (await run('pidof', 'dockerd')).split(' ')[0];
+      if (await readlink(`/proc/${pid}/ns/mnt`) !== await readlink('/proc/self/ns/mnt')) throw new Error('dockerd runs in another mount namespace');
+      return 'shared with Console';
+    } },
+    { name: 'Docker Compose v2', fix: 'Install it with: sudo apt-get install docker-compose-v2', probe: () => docker('compose', 'version') },
+    { name: 'rsync', fix: 'Install it with: sudo apt-get install rsync', probe: () => run('rsync', '--version') },
+    { name: 'systemd', fix: 'Boot the host with systemd; Console runs as a transient system service.', probe: () => run('systemctl', '--version') },
+    { name: 'cgroup v2', fix: 'Boot with systemd.unified_cgroup_hierarchy=1.', async probe() {
+      await lstat('/sys/fs/cgroup/cgroup.controllers');
+      return 'unified hierarchy';
+    } },
+    { name: 'OverlayFS', fix: 'Load it with: sudo modprobe overlay', async probe() {
+      if (!(await readFile('/proc/filesystems', 'utf8')).includes('overlay')) throw new Error('not in /proc/filesystems');
+      return 'available';
+    } },
+    { name: 'Kernel BTF', warn: true, fix: 'CPU monitoring needs a kernel built with CONFIG_DEBUG_INFO_BTF; other apps are unaffected.', async probe() {
+      await lstat('/sys/kernel/btf/vmlinux');
+      return 'available';
+    } },
+    { name: 'Docker disk space', warn: true, fix: 'Free space before downloading images; recordings also grow during runs.', async probe() {
+      const { bavail, bsize } = await statfs(await docker('info', '--format', '{{.DockerRootDir}}'));
+      const free = bavail * bsize;
+      if (free < MIN_DOCKER_FREE_BYTES) throw new Error(`${(free / 1024 ** 3).toFixed(1)} GiB free`);
+      return `${(free / 1024 ** 3).toFixed(1)} GiB free`;
+    } },
+  ];
+  let failed = 0;
+  for (const { name, fix, warn, probe } of checks) {
+    try { log(`ok    ${name}: ${await probe()}`); }
+    catch (error) {
+      if (!warn) failed++;
+      const { code, message } = error as NodeJS.ErrnoException;
+      log(`${warn ? 'warn' : 'FAIL'}  ${name}: ${code === 'ENOENT' ? 'not found' : message.split('\n')[0]}`);
+      log(`      Fix: ${fix}`);
+    }
+  }
+  if (failed) throw new Error(`${failed} required check${failed === 1 ? '' : 's'} failed; see the fixes above`);
 }

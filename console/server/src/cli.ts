@@ -1,12 +1,12 @@
 import { execFile, spawn } from 'node:child_process';
-import { readFile, rm, stat } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { capabilities } from './native.js';
 import { launchInstructions, portNumber } from './launch.js';
-import { initialize, installRelease, privateState, readRelease } from './release.js';
+import { doctor, initialize, installRelease, privateState, readRelease } from './release.js';
 const exec = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
@@ -23,22 +23,19 @@ async function active() {
   return exec('systemctl', ['is-active', '--quiet', unit]).then(() => true, () => false);
 }
 
-async function doctor() {
-  const release = await readRelease(root);
-  const socket = release.config?.dockerSocket || '/var/run/docker.sock';
-  for (const [program, args] of [
-    ['docker', ['info', '--format', '{{.OSType}}']], ['docker', ['compose', 'version']],
-    ['rsync', ['--version']], ['systemctl', ['--version']],
-  ] as const) {
-    const dockerArgs = program === 'docker' ? ['--host', `unix://${socket}`, ...args] : [...args];
-    const { stdout } = await exec(program, dockerArgs, { timeout: 15_000 });
-    if (program === 'docker' && args[0] === 'info' && stdout.trim() !== 'linux')
-      throw new Error('A local Linux Docker Engine is required');
-    console.log(`${program}: ${stdout.split('\n')[0]}`);
-  }
-  await stat('/sys/fs/cgroup/cgroup.controllers');
-  if (!(await readFile('/proc/filesystems', 'utf8')).includes('overlay'))
-    throw new Error('Linux OverlayFS support is required');
+/** Current access instructions; a running service without them is starting or uses another state root. */
+async function access() {
+  return readFile(launchFile, 'utf8').catch(error => {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    throw new Error(`Console is running without an access link at ${launchFile}; it is still starting or uses another --state`);
+  });
+}
+
+/** Startup failure with the service's own recent output; a collected unit keeps its journal. */
+async function startupFailure(summary: string, since: number) {
+  const log = await exec('journalctl', ['-u', unit, '--since', `@${since}`, '-n', '10', '--no-pager', '-o', 'cat'], { timeout: 5_000 })
+    .then(({ stdout }) => stdout.trim(), () => '');
+  return new Error(`${summary}.${log ? `\n${log}` : ''}\nInspect: sudo journalctl -u ${unit}`);
 }
 
 async function main() {
@@ -83,21 +80,33 @@ async function main() {
       console.log('Run: doramcap-console start');
       return;
     }
-    if (command === 'doctor') return doctor();
-    if (command === 'stop') { await exec('systemctl', ['stop', unit]); console.log('Console stopped.'); return; }
-    await privateState(state);
-    if (command === 'status') {
-      if (!await active()) throw new Error('Console is stopped. Run doramcap-console start');
-      console.log(await readFile(launchFile, 'utf8')); return;
+    const release = await readRelease(root);
+    const socket = release.config!.dockerSocket || '/var/run/docker.sock';
+    if (command === 'doctor') return await doctor(socket);
+    if (command === 'stop') {
+      if (!await active()) { console.log('Console is already stopped.'); return; }
+      await exec('systemctl', ['stop', unit]);
+      await rm(launchFile, { force: true });
+      console.log(`Console stopped. Recordings remain under ${state}.`);
+      return;
     }
+    if (command === 'status') {
+      // Exit status 3 follows LSB: not running.
+      if (!await active()) { console.log('Console is stopped. Run: doramcap-console start'); process.exitCode = 3; return; }
+      const { stdout } = await exec('systemctl', ['show', '--value', '--property=ActiveEnterTimestamp', unit]);
+      console.log(`Console ${release.version} running since ${stdout.trim()}.\n\n${await access()}`);
+      return;
+    }
+    await privateState(state);
     if (await active()) {
       if (values.port || values['browser-port'] || values.ssh)
         throw new Error('Console is already running; stop it before changing launch options');
-      console.log(await readFile(launchFile, 'utf8')); return;
+      console.log(await access()); return;
     }
-    await doctor();
+    await doctor(socket);
     const config = await initialize(root, state);
     await rm(launchFile, { force: true });
+    const since = Math.floor(Date.now() / 1000);
     const args = [join(root, 'server/dist/main.js'), config, join(root, 'frontend'), '--launch-file', launchFile];
     for (const key of ['port', 'browser-port', 'ssh'] as const) if (values[key]) args.push(`--${key}`, values[key]);
     await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=exec',
@@ -108,10 +117,10 @@ async function main() {
         console.log(instructions.replace(/^Open: /m, 'Launch browser: '));
         return;
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-      if (!await active()) throw new Error(`Console startup failed. Inspect: sudo journalctl -u ${unit}`);
+      if (!await active()) throw await startupFailure('Console startup failed', since);
       await delay(100);
     }
-    throw new Error(`Console startup timed out. Inspect: sudo journalctl -u ${unit}`);
+    throw await startupFailure('Console startup timed out', since);
   } finally { lock.close(); }
 }
 main().catch(error => { console.error(`Console: ${error.message}`); process.exitCode = 1; });

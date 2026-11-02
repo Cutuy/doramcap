@@ -1,0 +1,4 @@
+nodes:
+  - id: cpu-monitor
+    path: dynamic
+    outputs: [snapshots, dictionary]

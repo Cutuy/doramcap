@@ -5,7 +5,7 @@ The native BPF collector writes real CPU and kernel-thread telemetry to
 in `compose.yaml`.
 
 ```sh
-cargo build --release --locked -p system-monitor --features bpf,task-bpf
+cargo build --release --locked -p system-monitor --features bpf,task-bpf,dora
 stage=$(mktemp -d)
 cp target/release/system-monitor "$stage/"
 docker build -t doramcap/system-monitor:local -f apps/system-monitor/deploy/Dockerfile "$stage"

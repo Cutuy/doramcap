@@ -1,13 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { capabilities, wire } from '../src/native.js';
-import { initialize, installRelease, releaseConfig } from '../src/release.js';
+import { validateConfig } from '../src/config.js';
+import { doctor, initialize, installRelease, releaseConfig } from '../src/release.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -37,6 +38,7 @@ test('versioned installation preserves old releases and refuses replacement of u
   const source = join(directory, 'source'), prefix = join(directory, 'opt'), bin = join(directory, 'bin/console');
   await mkdir(join(source, 'bin'), { recursive: true });
   await writeFile(join(source, 'bin/doramcap-console'), '#!/bin/sh\n', { mode: 0o755 });
+  await symlink('doramcap-console', join(source, 'bin/relative-link'));
   const manifest = (version: string) => wire.ReleaseManifest.encode({ version, platform: `linux-${process.arch}`, config: {} }).finish();
   try {
     await writeFile(join(source, 'release.pb'), manifest('0.1.0'));
@@ -45,6 +47,7 @@ test('versioned installation preserves old releases and refuses replacement of u
     // Assert
     assert.equal(await readlink(join(prefix, 'current')), 'releases/0.1.0');
     assert.ok((await lstat(join(first, 'bin/doramcap-console'))).mode & 0o111);
+    assert.equal(await readlink(join(first, 'bin/relative-link')), 'doramcap-console');
     await assert.rejects(installRelease(source, prefix, bin), /already installed/);
     // Act
     await writeFile(join(source, 'release.pb'), manifest('0.2.0'));
@@ -125,4 +128,43 @@ test('root setup seeds the playground once and preserves edited projects and con
     assert.equal(await readFile(path, 'utf8'), 'operator configuration');
     assert.equal(await readFile(join(state, 'playground/project/compose.yaml'), 'utf8'), 'edited project');
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('the repository release template resolves to existing current app inputs', async () => {
+  // Arrange
+  const playground = join(repository, 'console/release/playground');
+  const template = capabilities.parseConfig(await readFile(join(repository, 'console/release/console.pbtxt'), 'utf8'));
+  // Act
+  const config = releaseConfig(template, playground, '/state');
+  validateConfig(config);
+  // Assert
+  assert.equal(config.systemApps.find(app => app.defaultSelected)!.id, 'cpu-monitor');
+  assert.ok(config.liveBridge?.image);
+  await access(config.projectRoot);
+  for (const app of config.systemApps) {
+    await access(app.graph!);
+    for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
+    assert.ok(app.recordings!.length > 0, app.id!);
+  }
+  const monitor = await readFile(join(playground, 'system-apps/cpu-monitor/monitor.pbtxt'), 'utf8');
+  assert.match(monitor, /^dora \{\}/m);
+  assert.match(monitor, /path: "\/results\/cpu.mcap"/);
+});
+
+test('doctor reports every missing requirement with its remediation', async () => {
+  // Arrange
+  const empty = await mkdtemp(join(tmpdir(), 'console-doctor-')), previous = process.env.PATH, lines: string[] = [];
+  process.env.PATH = empty;
+  try {
+    // Act / Assert
+    await assert.rejects(doctor('/custom.sock', line => lines.push(line)), /required checks failed/);
+    const report = lines.join('\n');
+    assert.match(report, /FAIL  Docker CLI: not found\n\s+Fix: Install Docker Engine/);
+    assert.match(report, /FAIL  rsync: not found\n\s+Fix: Install it with: sudo apt-get install rsync/);
+    assert.match(report, /FAIL  systemd: not found/);
+    assert.match(report, /listen on \/custom.sock/);
+  } finally {
+    process.env.PATH = previous;
+    await rm(empty, { recursive: true, force: true });
+  }
 });
