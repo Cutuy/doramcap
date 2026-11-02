@@ -16,7 +16,7 @@ cargo test --profile ci --locked -p workload-supervisor --test native --no-run
 cargo build --profile ci --locked -p workload-supervisor --example supervisor_monitor
 ```
 
-Run `tests/validate_native.py --monitor /absolute/path/to/target/ci/system-monitor`
+Run `node tests/validate_native.ts --monitor /absolute/path/to/target/ci/system-monitor`
 with the test capabilities and a 256 MiB locked-memory limit. The existing native
 monitor aggregate and ARM64 worker invoke this suite when Supervisor is provisioned;
 missing runtime prerequisites print an explicit skip.

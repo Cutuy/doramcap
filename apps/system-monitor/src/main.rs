@@ -1,6 +1,6 @@
 use config::MonitorConfig;
 use eyre::{Result, WrapErr, bail, ensure, eyre};
-use monitor_core::{CpuRecord, Dictionary, Snapshot, handoff_with_tasks};
+use monitor_core::{CgroupDictionary, CpuRecord, Snapshot, handoff_with_tasks};
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
@@ -294,7 +294,7 @@ fn run(config: MonitorConfig) -> Result<()> {
             worker_done.store(true, Ordering::Release);
             result
         })?;
-    let mut dictionary = Dictionary::new(records);
+    let mut dictionary = CgroupDictionary::new(records);
     let mut dictionary_entries: Vec<DictionaryEntry> = Vec::with_capacity(records);
     let mut payload = Vec::new();
     let session = format!("{}-{}", unix_ns(), std::process::id());

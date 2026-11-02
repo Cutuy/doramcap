@@ -17,7 +17,7 @@ parser.add_argument('--source', type=Path, default=Path.cwd())
 parser.add_argument('--host', default='doramcap-ci@100.64.0.20')
 args = parser.parse_args()
 source = args.source.resolve()
-for required in ('apps/system-monitor/tests/validate_native.py', 'libs/resources/cgroup-bpf/examples/native_allocations.rs'):
+for required in ('apps/system-monitor/tests/validate_native.ts', 'libs/resources/cgroup-bpf/examples/native_allocations.rs'):
     if not (source / required).is_file():
         parser.error(f'Source lacks {required}; use a checkout containing the native validation suite')
 job = '/home/doramcap-ci/jobs/' + uuid.uuid4().hex
@@ -58,16 +58,22 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
             info.size = len(data)
             info.mode = path.stat().st_mode & 0o777
             tar.addfile(info, io.BytesIO(data))
-        # Older root-owned launchers invoke examples/validate_native.py. Keep their
-        # source snapshot entry point until those launchers are upgraded.
-        compatibility = b"import runpy\nfrom pathlib import Path\nrunpy.run_path(str(Path(__file__).resolve().parents[1] / 'apps/system-monitor/tests/validate_native.py'), run_name='__main__')\n"
-        info = tarfile.TarInfo('examples/validate_native.py')
-        info.mtime = snapshot_mtime
-        info.size = len(compatibility)
-        info.mode = 0o644
-        tar.addfile(info, io.BytesIO(compatibility))
-        manifest['files_sha256'][info.name] = hashlib.sha256(compatibility).hexdigest()
-        manifest['files_mode'][info.name] = info.mode
+        # Installed root-owned launchers invoke these Python paths. Forward them to the
+        # TypeScript suite until those launchers are reinstalled.
+        for name, depth in (('examples/validate_native.py', 1), ('apps/system-monitor/tests/validate_native.py', 3)):
+            compatibility = f"""import os, sys
+from pathlib import Path
+test = Path(__file__).resolve().parents[{depth}] / 'apps/system-monitor/tests/validate_native.ts'
+node = '/home/doramcap-ci/.local/bin/node'
+os.execv(node, [node, str(test), *sys.argv[1:]])
+""".encode()
+            info = tarfile.TarInfo(name)
+            info.mtime = snapshot_mtime
+            info.size = len(compatibility)
+            info.mode = 0o644
+            tar.addfile(info, io.BytesIO(compatibility))
+            manifest['files_sha256'][info.name] = hashlib.sha256(compatibility).hexdigest()
+            manifest['files_mode'][info.name] = info.mode
         runner = Path(__file__).with_name('run-worker-job.sh').read_bytes()
         manifest['runner_sha256'] = hashlib.sha256(runner).hexdigest()
         prepare = Path(__file__).with_name('prepare-build.py').read_bytes()

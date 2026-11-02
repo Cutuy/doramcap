@@ -21,7 +21,7 @@ pub struct CgroupEntry {
 
 /// Tracks at most `capacity` identities seen in snapshots and their cgroupfs paths.
 /// Single owner; `update` may read cgroupfs, so call it outside the collection loop.
-pub struct Dictionary {
+pub struct CgroupDictionary {
     entries: Vec<CgroupEntry>,
     index: HashMap<u64, usize>,
     unresolved: HashSet<u64>,
@@ -33,7 +33,7 @@ pub struct Dictionary {
     next_refresh: Instant,
 }
 
-impl Dictionary {
+impl CgroupDictionary {
     /// Preallocates state for `capacity` identities.
     pub fn new(capacity: usize) -> Self {
         Self {
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn new_identities_advance_revision_once_and_repeats_do_not() {
         // Arrange
-        let mut dictionary = Dictionary::new(4);
+        let mut dictionary = CgroupDictionary::new(4);
 
         // Act
         dictionary.update(&snapshot(&[u64::MAX, u64::MAX - 1, u64::MAX]));
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn capacity_bounds_entries_and_overflow_accumulates_per_update() {
         // Arrange
-        let mut dictionary = Dictionary::new(1);
+        let mut dictionary = CgroupDictionary::new(1);
 
         // Act
         dictionary.update(&snapshot(&[u64::MAX, u64::MAX - 1, u64::MAX - 2]));
