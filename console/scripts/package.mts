@@ -8,9 +8,9 @@ import { parseArgs } from 'node:util';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values } = parseArgs({ options: {
   output: { type: 'string' }, version: { type: 'string' }, node: { type: 'string' },
-  playground: { type: 'string' }, 'node-license': { type: 'string' }, config: { type: 'string' },
+  playground: { type: 'string' }, 'system-apps': { type: 'string' }, 'node-license': { type: 'string' }, config: { type: 'string' },
 } });
-for (const key of ['output', 'version', 'node', 'node-license', 'playground', 'config'] as const)
+for (const key of ['output', 'version', 'node', 'node-license', 'playground', 'system-apps', 'config'] as const)
   if (!values[key]) throw new Error(`Required: --${key}`);
 if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch)) throw new Error('Build on Linux x64 or arm64');
 if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(values.version!)) throw new Error('Invalid version');
@@ -21,6 +21,7 @@ const pinnedNode = readFileSync(join(root, '.node-version'), 'utf8').trim();
 if (execFileSync(node, ['-p', 'process.versions.node+" "+process.platform+"-"+process.arch'], { encoding: 'utf8' }).trim()
   !== `${pinnedNode} linux-${process.arch}`) throw new Error('Node must match .node-version and the build platform');
 const playground = resolve(values.playground!);
+const systemApps = resolve(values['system-apps']!);
 const projectDirectories = new Set<string>();
 function validateTree(path: string) {
   const info = lstatSync(path);
@@ -33,6 +34,9 @@ function validateTree(path: string) {
     }
   } else if (!info.isFile()) throw new Error(`Release inputs must be regular files: ${path}`);
 }
+validateTree(systemApps);
+// Only playground directories are user projects; configuration lists the system apps.
+projectDirectories.clear();
 validateTree(playground);
 const run = (command: string, args: string[], cwd = root) => execFileSync(command, args, { cwd, stdio: 'inherit' });
 run('npm', ['ci', '--no-audit', '--no-fund'], `${root}/console/server`);
@@ -44,7 +48,7 @@ run('npm', ['run', 'build'], `${root}/console/frontend`);
 const { capabilities, wire } = await import(pathToFileURL(join(root, 'console/server/dist/native.js')).href);
 const config = capabilities.parseConfig(readFileSync(resolve(values.config!), 'utf8'));
 const { releaseConfig } = await import(pathToFileURL(join(root, 'console/server/dist/release.js')).href);
-const deployed = releaseConfig(config, playground, '/state');
+const deployed = releaseConfig(config, playground, systemApps, '/state');
 const { discover } = await import(pathToFileURL(join(root, 'console/server/dist/system-apps.js')).href);
 const { imageReferences } = await import(pathToFileURL(join(root, 'console/server/dist/images.js')).href);
 const projects = await Promise.all([...projectDirectories].map(path => discover(playground, path, ['*'])));
@@ -63,6 +67,7 @@ for (const name of ['package.json', 'package-lock.json']) cpSync(`${root}/consol
 run('npm', ['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], `${packageRoot}/server`);
 cpSync(`${root}/console/frontend/dist`, `${packageRoot}/frontend`, { recursive: true });
 cpSync(playground, `${packageRoot}/playground`, { recursive: true });
+cpSync(systemApps, `${packageRoot}/system-apps`, { recursive: true });
 mkdirSync(`${packageRoot}/runtime`);
 // Copy the real binary: a symlink would dangle on every other host.
 cpSync(realpathSync(node), `${packageRoot}/runtime/node`);

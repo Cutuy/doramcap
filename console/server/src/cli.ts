@@ -42,9 +42,10 @@ Access links and browser sessions expire on restart; keep links private.
 
 Files:
   STATE/console.pbtxt  Project roots and system apps. Edit with sudo.
-  STATE/playground     Sample workload and system app inputs.
+  STATE/playground     Sample project standing in for your repository.
   STATE/runs           Run data and recordings.
-  /opt/doramcap-console/releases  Installed releases. Upgrades keep the state directory.
+  /opt/doramcap-console/releases  Installed releases and their system apps. Upgrades keep the
+                       state directory, so console.pbtxt keeps the apps of the release that wrote it.
 
 Logs: sudo journalctl -u doramcap-console.service`;
 

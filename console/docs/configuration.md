@@ -11,8 +11,8 @@ pbtxt, bind-mounted read-only by its Compose file. The
 system_apps {
   id: "cpu-monitor"
   label: "CPU monitoring"
-  input { directory: "/absolute/release/playground/system-apps/cpu-monitor" files: "compose.yaml" }
-  graph: "/absolute/release/playground/system-apps/cpu-monitor/flow.yml"
+  input { directory: "/absolute/release/system-apps/cpu-monitor" files: "compose.yaml" }
+  graph: "/absolute/release/system-apps/cpu-monitor/flow.yml"
   output_mounts { service: "cpu-monitor" target: "/results" }
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }

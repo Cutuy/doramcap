@@ -16,23 +16,23 @@ export async function readRelease(root: string) {
   return manifest;
 }
 
-/** Resolve release-owned paths inside a writable playground; preserve operator configuration on reuse. */
-export function releaseConfig(template: Config, playground: string, state: string): Config {
+/** Resolve project paths inside a writable playground and system app paths inside the immutable release. */
+export function releaseConfig(template: Config, playground: string, systemApps: string, state: string): Config {
   const config = wire.ConsoleConfig.decode(wire.ConsoleConfig.encode(template).finish());
-  const input = (path: string, base = playground) => {
-    if (isAbsolute(path)) throw new Error(`Release input must be relative to playground: ${path}`);
-    const target = resolve(base, path), inside = relative(playground, target);
-    if (inside === '..' || inside.startsWith(`..${sep}`)) throw new Error('Release input escapes playground');
+  const input = (root: string, path: string, base = root) => {
+    if (isAbsolute(path)) throw new Error(`Release input must be relative: ${path}`);
+    const target = resolve(base, path), inside = relative(root, target);
+    if (inside === '..' || inside.startsWith(`..${sep}`)) throw new Error(`Release input escapes ${root}: ${path}`);
     return target;
   };
-  config.projectRoot = input(config.projectRoot || '.');
+  config.projectRoot = input(playground, config.projectRoot || '.');
   config.dataRoot = join(state, 'runs');
   config.dockerSocket ||= '/var/run/docker.sock';
   config.listenAddress = '127.0.0.1:43187';
   config.publicOrigin = 'http://127.0.0.1:43187';
   config.accessSecretFile = '';
   config.downloadMissingImages = true;
-  if (config.dora?.graph) config.dora.graph = input(config.dora.graph);
+  if (config.dora?.graph) config.dora.graph = input(playground, config.dora.graph);
   if (config.dora) {
     config.dora.runtimeDirectory = '';
     config.dora.zenohOverlay = '';
@@ -40,9 +40,9 @@ export function releaseConfig(template: Config, playground: string, state: strin
   }
   for (const app of config.systemApps) {
     if (!app.input) throw new Error(`Missing Compose input: ${app.id}`);
-    app.input.directory = input(app.input.directory || '.');
-    for (const file of [...(app.input.files ?? []), ...(app.input.envFiles ?? [])]) input(file, app.input.directory);
-    if (app.graph) app.graph = input(app.graph);
+    app.input.directory = input(systemApps, app.input.directory || '.');
+    for (const file of [...(app.input.files ?? []), ...(app.input.envFiles ?? [])]) input(systemApps, file, app.input.directory);
+    if (app.graph) app.graph = input(systemApps, app.graph);
   }
   return config;
 }
@@ -74,7 +74,8 @@ export async function initialize(root: string, state: string) {
     await cp(join(root, 'playground'), staging, { recursive: true, errorOnExist: true, force: false });
     await rename(staging, playground);
   }
-  const config = releaseConfig(wire.ConsoleConfig.create(release.config!), playground, state);
+  // The config stays coupled to the release that wrote it, through that release's own directory.
+  const config = releaseConfig(wire.ConsoleConfig.create(release.config!), playground, join(root, 'system-apps'), state);
   await writeFile(configPath, capabilities.formatConfig(config), { mode: 0o600, flag: 'wx' });
   return configPath;
 }

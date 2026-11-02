@@ -1,6 +1,5 @@
-# Release template: paths are relative to the playground; setup fills runtime paths.
+# Release template: system app paths are relative to system-apps, project paths to the playground.
 # Publishing replaces each :local image with its published digest.
-project_root: "workloads"
 dora { image: "doramcap/dora:local" }
 live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
@@ -8,8 +7,8 @@ system_apps {
   id: "cpu-monitor"
   label: "CPU monitoring"
   default_selected: true
-  input { directory: "system-apps/cpu-monitor" files: "compose.yaml" }
-  graph: "system-apps/cpu-monitor/flow.yml"
+  input { directory: "cpu-monitor" files: "compose.yaml" }
+  graph: "cpu-monitor/flow.yml"
   output_mounts { service: "cpu-monitor" target: "/results" }
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
@@ -18,8 +17,8 @@ system_apps {
 system_apps {
   id: "cpu-recorder"
   label: "Dora topic recording (needs CPU monitoring)"
-  input { directory: "system-apps/cpu-recorder" files: "compose.yaml" }
-  graph: "system-apps/cpu-recorder/flow.yml"
+  input { directory: "cpu-recorder" files: "compose.yaml" }
+  graph: "cpu-recorder/flow.yml"
   output_mounts { service: "cpu-recorder" target: "/results" }
   recordings { id: "cpu-topics" path: "cpu-topics.mcap" }
 }

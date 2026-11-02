@@ -15,20 +15,22 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 test('release configuration resolves native inputs and round-trips canonical pbtxt', () => {
   // Arrange
   const template = capabilities.parseConfig(`project_root:"projects" dora {image:"registry/dora@sha256:abc" graph:"graphs/flow.yml" shm_bytes:134217728}
-    system_apps {id:"capture" input {directory:"apps/capture" files:"compose.yaml" files:"../override.yaml"} graph:"graphs/capture.yml"}`);
+    system_apps {id:"capture" input {directory:"capture" files:"compose.yaml" files:"../override.yaml"} graph:"capture/flow.yml"}`);
   // Act
-  const config = releaseConfig(template, '/state/playground', '/state');
+  const config = releaseConfig(template, '/state/playground', '/release/system-apps', '/state');
   const decoded = capabilities.parseConfig(capabilities.formatConfig(config));
   // Assert
   assert.equal(decoded.projectRoot, '/state/playground/projects');
   assert.equal(decoded.dora!.graph, '/state/playground/graphs/flow.yml');
-  assert.equal(decoded.systemApps[0].input!.directory, '/state/playground/apps/capture');
+  assert.equal(decoded.systemApps[0].input!.directory, '/release/system-apps/capture');
+  assert.equal(decoded.systemApps[0].graph, '/release/system-apps/capture/flow.yml');
   assert.equal(decoded.downloadMissingImages, true);
   assert.equal(decoded.accessSecretFile, '');
   assert.equal(String(decoded.dora!.shmBytes), '134217728');
   assert.equal(template.projectRoot, 'projects');
   for (const path of ['/host', '../outside']) {
-    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ projectRoot: path }), '/playground', '/state'));
+    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ projectRoot: path }), '/playground', '/apps', '/state'));
+    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ systemApps: [{ id: 'app', input: { directory: path, files: ['compose.yaml'] } }] }), '/playground', '/apps', '/state'));
   }
 });
 
@@ -110,7 +112,8 @@ test('root setup seeds the playground once and preserves edited projects and con
   await mkdir(join(source, 'playground/project'), { recursive: true });
   await writeFile(join(source, 'playground/project/compose.yaml'), 'services: {}');
   await writeFile(join(source, 'release.pb'), wire.ReleaseManifest.encode({
-    version: '0.1.0', platform: `linux-${process.arch}`, config: { projectRoot: '.' },
+    version: '0.1.0', platform: `linux-${process.arch}`,
+    config: { projectRoot: '.', systemApps: [{ id: 'capture', input: { directory: 'capture', files: ['compose.yaml'] } }] },
   }).finish());
   try {
     // Act
@@ -118,6 +121,8 @@ test('root setup seeds the playground once and preserves edited projects and con
     // Assert
     const config = capabilities.parseConfig(await readFile(path, 'utf8'));
     assert.equal(config.projectRoot, join(state, 'playground'));
+    assert.equal(config.systemApps[0].input!.directory, join(source, 'system-apps/capture'));
+    await assert.rejects(lstat(join(state, 'playground/capture')), { code: 'ENOENT' });
     assert.equal((await lstat(path)).mode & 0o777, 0o600);
     assert.equal(await readFile(join(state, 'playground/project/compose.yaml'), 'utf8'), 'services: {}');
     // Act
@@ -132,10 +137,10 @@ test('root setup seeds the playground once and preserves edited projects and con
 
 test('the repository release template resolves to existing current app inputs', async () => {
   // Arrange
-  const playground = join(repository, 'console/release/playground');
+  const playground = join(repository, 'console/release/playground'), systemApps = join(repository, 'console/release/system-apps');
   const template = capabilities.parseConfig(await readFile(join(repository, 'console/release/console.pbtxt'), 'utf8'));
   // Act
-  const config = releaseConfig(template, playground, '/state');
+  const config = releaseConfig(template, playground, systemApps, '/state');
   validateConfig(config);
   // Assert
   assert.equal(config.systemApps.find(app => app.defaultSelected)!.id, 'cpu-monitor');
@@ -146,7 +151,7 @@ test('the repository release template resolves to existing current app inputs', 
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
     assert.ok(app.recordings!.length > 0, app.id!);
   }
-  const monitor = await readFile(join(playground, 'system-apps/cpu-monitor/monitor.pbtxt'), 'utf8');
+  const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
 });
