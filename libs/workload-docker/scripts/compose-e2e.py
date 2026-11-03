@@ -78,6 +78,7 @@ def main():
         ('active_experiments_are_exclusive_per_repository_and_independent_between_repositories', 1),
         ('reset_failure_blocks_preparation_and_retries_after_partial_removal', 1),
         ('stable_project_keeps_retained_volumes_isolated_between_experiments', 1),
+        ('selected_profile_starts_its_service', 1),
         ('reset_discards_fixed_workspace_without_launch_history', 1),
         ('shared_experiment_preserves_native_inputs_and_rejects_conflicts', 1),
         ('mixed_volume_policies_and_evidence_preservation', 1),

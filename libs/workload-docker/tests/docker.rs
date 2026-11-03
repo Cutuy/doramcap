@@ -1366,6 +1366,80 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker Engine and the prepared Dora image"]
+async fn selected_profile_starts_its_service() {
+    // Arrange
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("selected-profile-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let mut extra = service(&image);
+    extra["profiles"] = serde_json::json!(["extra"]);
+    write(
+        &root.join("session.json"),
+        serde_json::json!({"services":{"app":service(&image),"extra":extra}}),
+    );
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let input = |id: String, profiles: Vec<String>| {
+        let mut project = project(&root, "session");
+        project.profiles = profiles;
+        ComposeRun {
+            artifacts: root.join(&id),
+            id,
+            repository_root: root.clone(),
+            filesystem: None,
+            projects: vec![project],
+            system_apps: vec![],
+            dora: Default::default(),
+            recordings: vec![],
+            readiness_seconds: 15,
+            stop_seconds: 3,
+        }
+    };
+
+    // Act: inspect without selecting the profile.
+    let id = format!("profile-off-{}", std::process::id());
+    let inspected = preparation::resolve(&adapter, input(id, vec![]))
+        .await
+        .unwrap();
+
+    // Assert
+    assert!(inspected.plan.services.contains_key("app"));
+    assert!(!inspected.plan.services.contains_key("extra"));
+
+    // Act: review, then run the reviewed configuration with the profile selected.
+    let id = format!("profile-review-{}", std::process::id());
+    let reviewed = preparation::resolve(&adapter, input(id, vec!["extra".into()]))
+        .await
+        .unwrap();
+    let id = format!("profile-on-{}", std::process::id());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let (ready, started) = tokio::sync::oneshot::channel();
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let mut run = Box::pin(runner.run_with_preflight(
+        input(id, vec!["extra".into()]),
+        async {
+            let _ = stopped.await;
+        },
+        |_: &orchestrator::Event| {},
+        Some(ready),
+        |prepared| {
+            assert_eq!(prepared.snapshot, reviewed.snapshot);
+            Ok(())
+        },
+    ));
+    let plan = tokio::select! { plan = started => plan.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
+
+    // Assert
+    assert!(plan.services.contains_key("app"));
+    assert!(plan.services.contains_key("extra"));
+    stop.send(()).unwrap();
+    let report = run.await.unwrap();
+    assert!(report.boundary_clean, "{report:?}");
+    assert!(report.execution_error.is_none(), "{report:?}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and the prepared Dora image"]
 async fn active_experiments_are_exclusive_per_repository_and_independent_between_repositories() {
     // Arrange
     let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
