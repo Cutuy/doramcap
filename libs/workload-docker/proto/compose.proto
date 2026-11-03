@@ -48,6 +48,24 @@ message ResolvedComposeProject {
   bool remove_volumes = 8;
 }
 
+// Read-only view of one bind mount in a resolved Compose manifest.
+message ResolvedBind {
+  // Service consuming this bind.
+  string service = 1;
+  // Host path.
+  string source = 2;
+  // Container path.
+  string target = 3;
+  // Whether the container mounts the source read-only.
+  bool read_only = 4;
+  // Whether Docker creates a missing source; Compose treats an absent value as true.
+  bool create_host_path = 5;
+  // Declared mount propagation; empty when absent.
+  string propagation = 6;
+  // Whether the mount declares a SELinux relabel option.
+  bool selinux = 7;
+}
+
 // Pinned image and expected container count/completion policy.
 message ComposeService {
   // Pinned local Docker image ID.

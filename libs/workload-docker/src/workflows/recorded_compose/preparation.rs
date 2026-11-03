@@ -219,7 +219,7 @@ impl PrepareRun {
         let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
         let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
-        prepare_sources(&model, overlays).await?;
+        prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
@@ -262,31 +262,28 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
 }
 /// Refuse unreadable bind sources, naming every failure, and leave the host unchanged on refusal.
 /// `overlays` creates missing sources Docker would create, because overlays need a lower directory.
-async fn prepare_sources(model: &Value, overlays: bool) -> Result<()> {
+async fn prepare_sources(binds: &[ResolvedBind], overlays: bool) -> Result<()> {
     let mut failures = Vec::new();
     let mut missing = Vec::new();
-    for (service, value) in model["services"].as_object().into_iter().flatten() {
-        let mounts = value["volumes"].as_array().into_iter().flatten();
-        for mount in mounts.filter(|mount| mount["type"] == "bind") {
-            let Some(source) = mount["source"].as_str() else {
-                continue;
-            };
-            if let Err(error) = tokio::fs::metadata(source).await {
-                // Docker creates a missing source unless `create_host_path` is explicitly false.
-                if mount["bind"]["create_host_path"] == false
-                    || error.kind() != std::io::ErrorKind::NotFound
-                {
-                    failures.push(format!("{service}: bind mount source {source}: {error}"));
-                } else if overlays {
-                    missing.push((service, source));
-                }
+    let named = |bind: &ResolvedBind, error: std::io::Error| {
+        format!(
+            "{}: bind mount source {}: {error}",
+            bind.service, bind.source
+        )
+    };
+    for bind in binds {
+        if let Err(error) = tokio::fs::metadata(&bind.source).await {
+            if !bind.create_host_path || error.kind() != std::io::ErrorKind::NotFound {
+                failures.push(named(bind, error));
+            } else if overlays {
+                missing.push(bind);
             }
         }
     }
     failed(&failures)?;
-    for (service, source) in missing {
-        if let Err(error) = tokio::fs::create_dir_all(source).await {
-            failures.push(format!("{service}: bind mount source {source}: {error}"));
+    for bind in missing {
+        if let Err(error) = tokio::fs::create_dir_all(&bind.source).await {
+            failures.push(named(bind, error));
         }
     }
     failed(&failures)
