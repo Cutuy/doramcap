@@ -2,7 +2,7 @@
 
 
 - `reserve(message, size)` provides managed payload space; prepared slabs supply complete records.
-- Direct I/O requires `O_DIRECT` and configured 512-B or 4-KiB alignment.
+- `McapWriter` creates each file exclusively with `O_DIRECT` and uses 4-KiB alignment.
 - Each write occupies contiguous file offsets; cross-write placement and completion order are unspecified. Standalone writes leave combining batches buffered.
 - Registrations survive reuse and rotation. Explicit idle retirement releases them.
 - Rejected prepared blocks return intact; drive `flush_written()` before retrying pressure.

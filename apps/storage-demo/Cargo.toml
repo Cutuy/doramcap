@@ -21,7 +21,6 @@ axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.7", features = ["fs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal", "time"] }
 futures-util = "0.3"
-libc = "0.2"
 
 [dev-dependencies]
 mcap = { version = "=0.26.0", default-features = false }

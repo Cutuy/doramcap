@@ -2,14 +2,9 @@ use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
 #[test]
 fn adjacent_reservations_timer_flush_and_abandonment() {
     let path = std::env::temp_dir().join(format!("doramcap-combine-{}", std::process::id()));
-    let file = std::fs::File::options()
-        .create_new(true)
-        .write(true)
-        .open(&path)
-        .unwrap();
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let mut writer = McapWriter::new(
-        file,
+    let mut writer = McapWriter::create(
+        &path,
         Schema {
             name: "opaque",
             encoding: "",
@@ -23,8 +18,7 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
         storage_persistence::mcap::McapConfig {
             metrics,
             buffers: 2,
-            buffer_size: 512,
-            alignment: 1,
+            buffer_size: 8192,
             io: Default::default(),
             ..Default::default()
         },
@@ -58,7 +52,7 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
         monitor.snapshot().unwrap().writer.counters.accepted,
         baseline + 1
     );
-    for _ in 0..32 {
+    for _ in 0..256 {
         writer.reserve(meta, 1).unwrap().commit().unwrap();
     }
     writer.flush_written().unwrap();
@@ -72,7 +66,7 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
         .unwrap()
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
-    assert_eq!(messages.len(), 34);
+    assert_eq!(messages.len(), 258);
     assert_eq!(messages[0].data.as_ref(), &[7]);
     assert_eq!(messages[1].data.as_ref(), &[8]);
     std::fs::remove_file(path).unwrap();
@@ -82,14 +76,9 @@ fn adjacent_reservations_timer_flush_and_abandonment() {
 fn submissions_flush_aged_batches_and_reclaim_without_polling() {
     use std::time::{Duration, Instant};
     let path = std::env::temp_dir().join(format!("doramcap-submission-{}", std::process::id()));
-    let file = std::fs::File::options()
-        .create_new(true)
-        .write(true)
-        .open(&path)
-        .unwrap();
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let mut writer = McapWriter::new(
-        file,
+    let mut writer = McapWriter::create(
+        &path,
         Schema {
             name: "opaque",
             encoding: "",
@@ -103,8 +92,7 @@ fn submissions_flush_aged_batches_and_reclaim_without_polling() {
         storage_persistence::mcap::McapConfig {
             metrics,
             buffers: 2,
-            buffer_size: 512,
-            alignment: 1,
+            buffer_size: 8192,
             ..Default::default()
         },
     )
@@ -123,7 +111,7 @@ fn submissions_flush_aged_batches_and_reclaim_without_polling() {
     assert!(monitor.snapshot().unwrap().writer.counters.accepted > baseline);
     let deadline = Instant::now() + Duration::from_secs(5);
     let mut count = 2;
-    while count < 200 {
+    while count < 800 {
         match writer.reserve(meta, 1) {
             Ok(reservation) => {
                 reservation.commit().unwrap();

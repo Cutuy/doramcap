@@ -14,7 +14,6 @@ pub fn snapshot(v: &Value) -> pb::Snapshot {
         status: v["status"].as_str().unwrap_or_default().to_owned(),
         session: v["session"].as_str().unwrap_or_default().to_owned(),
         error: v["error"].as_str().unwrap_or_default().to_owned(),
-        direct: v["direct"].as_bool().unwrap_or_default(),
         elapsed_ms: unsigned(&v["elapsedMs"]),
         heartbeats: unsigned(&v["heartbeats"]),
         probes: unsigned(&v["probes"]),

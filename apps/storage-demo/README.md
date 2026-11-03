@@ -13,7 +13,7 @@ cargo run -p storage-demo
 # http://127.0.0.1:8091
 ```
 
-Writes use real O_DIRECT I/O (`--buffered` selects buffered I/O). Controls submit
+Writes use real O_DIRECT I/O. Controls submit
 managed buffers and sealed slabs, retain slab readers, and flush, seal or rotate
 the recording. The default bind is loopback.
 

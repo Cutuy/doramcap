@@ -2,7 +2,7 @@ services:
   storage:
     image: doramcap/storage-observatory:local
     user: "${STORAGE_UID:?}:${STORAGE_GID:?}"
-    command: ["--bind", "0.0.0.0", "--port", "8091", "--buffered", "--assets", "/opt/storage-observatory/dist", "--dir", "/results/captures", "--activity", "/results/activity.mcap"]
+    command: ["--bind", "0.0.0.0", "--port", "8091", "--assets", "/opt/storage-observatory/dist", "--dir", "/results/captures", "--activity", "/results/activity.mcap"]
     stop_signal: SIGINT
     stop_grace_period: 30s
     read_only: true

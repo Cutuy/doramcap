@@ -96,14 +96,9 @@ fn warmed_collection_is_bounded_and_allocation_free() {
         };
         let path =
             std::env::temp_dir().join(format!("mcap-metrics-{}-{enabled}", std::process::id()));
-        let file = File::options()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .unwrap();
         let (metrics, monitor) = McapMonitor::channel();
-        let mut writer = McapWriter::new(
-            file,
+        let mut writer = McapWriter::create(
+            &path,
             Schema {
                 name: "bytes",
                 encoding: "",

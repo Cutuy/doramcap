@@ -16,9 +16,7 @@ use prost::Message as _;
 use serde_json::{Value, json};
 use std::{
     convert::Infallible,
-    fs::File,
     io,
-    os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     sync::{
         Arc,
@@ -38,7 +36,6 @@ struct Options {
     root: PathBuf,
     port: u16,
     bind: std::net::IpAddr,
-    direct: bool,
     seconds: u64,
     start_paused: bool,
 }
@@ -49,7 +46,6 @@ fn options() -> Result<Options> {
         root: std::env::temp_dir().join(format!("doramcap-storage-demo-{}", now_ns())),
         port: 8091,
         bind: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
-        direct: true,
         seconds: 0,
         start_paused: false,
     };
@@ -59,13 +55,9 @@ fn options() -> Result<Options> {
             o.start_paused = true;
             continue;
         }
-        if arg == "--buffered" {
-            o.direct = false;
-            continue;
-        }
         if arg == "--help" {
             println!(
-                "storage-demo [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--buffered] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
+                "storage-demo [--dir NEW_DIR] [--bind IP] [--port 8091] [--seconds N] [--start-paused] [--activity NEW_MCAP] [--assets PATH]"
             );
             std::process::exit(0);
         }
@@ -186,12 +178,8 @@ async fn download(State(s): State<Web>, RoutePath(index): RoutePath<u64>) -> imp
         Err(_) => (StatusCode::NOT_FOUND, Vec::new()),
     }
 }
-fn open(o: &Options, index: u64) -> io::Result<File> {
-    File::options()
-        .write(true)
-        .create_new(true)
-        .custom_flags(if o.direct { libc::O_DIRECT } else { 0 })
-        .open(o.root.join(format!("capture-{index:04}.mcap")))
+fn capture_path(o: &Options, index: u64) -> PathBuf {
+    o.root.join(format!("capture-{index:04}.mcap"))
 }
 fn packet(seq: u32, large: bool) -> pb::Packet {
     pb::Packet {
@@ -262,8 +250,8 @@ fn owner(
     ];
     let mut observation = observation::Observation::new()?;
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let mut writer = McapWriter::new(
-        open(o, 0)?,
+    let mut writer = McapWriter::create(
+        capture_path(o, 0),
         schema,
         &channels,
         storage_persistence::mcap::McapConfig {
@@ -271,7 +259,6 @@ fn owner(
             observer: observation.collector.observer(),
             buffers: 8,
             buffer_size: 256 * 1024,
-            alignment: if o.direct { 4096 } else { 1 },
             io: storage_persistence::writer::WriterConfig::default(),
         },
     )?;
@@ -386,7 +373,7 @@ fn owner(
                 writer.flush_written()?;
             }
             if action == "rotate" {
-                writer.rotate(open(o, index + 1)?)?;
+                writer.rotate(capture_path(o, index + 1))?;
                 last_sealed = inspector.read(
                     &o.root.join(format!("capture-{index:04}.mcap")),
                     index,
@@ -408,7 +395,7 @@ fn owner(
                     false,
                 )?;
             }
-            tx.send_replace(json!({"status":"live","session":session,"direct":o.direct,"elapsedMs":start.elapsed().as_millis(),"heartbeats":beats,"probes":probes,
+            tx.send_replace(json!({"status":"live","session":session,"elapsedMs":start.elapsed().as_millis(),"heartbeats":beats,"probes":probes,
                 "combining":observation::combining(d),
                 "pool":observation::pool(d),"ring":observation::ring(d),
                 "exercises":exercises.json(),"observation":observation.json(),"activeWrites":observation::active(&monitor),

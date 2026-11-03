@@ -20,12 +20,8 @@ fn create_writer(
     topic: &str,
     encoding: &str,
 ) -> Result<McapWriter> {
-    let file = std::fs::File::options()
-        .write(true)
-        .create_new(true)
-        .open(path)?;
-    Ok(McapWriter::new(
-        file,
+    Ok(McapWriter::create(
+        path,
         Schema {
             name: telemetry_protocol::MCAP_SCHEMA_NAME,
             encoding: "protobuf",

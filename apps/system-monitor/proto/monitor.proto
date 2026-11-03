@@ -19,8 +19,8 @@ message Dora {}
 
 // Presence records MCAP inside the monitor. Files are created exclusively.
 message Recording {
+  reserved 2;
   string path = 1;
-  bool buffered = 2; // Buffered file I/O; otherwise direct I/O with 4 KiB alignment.
   uint64 rotation_bytes = 3; // Soft target at message boundaries; zero disables rotation.
   string samples_topic = 4;
   string dictionary_topic = 5;

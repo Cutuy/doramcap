@@ -20,8 +20,8 @@ fn path(label: &str) -> PathBuf {
 }
 fn open(path: &Path) -> File {
     File::options()
-        .create_new(true)
         .write(true)
+        .create_new(true)
         .custom_flags(libc::O_DIRECT)
         .open(path)
         .unwrap()
@@ -35,13 +35,13 @@ fn message(sequence: u32) -> Message {
     }
 }
 fn mcap(
-    file: File,
+    path: &Path,
     capacity: usize,
     observer: storage_persistence::observability::Observer,
 ) -> (McapWriter, storage_persistence::observability::McapMonitor) {
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let writer = McapWriter::new(
-        file,
+    let writer = McapWriter::create(
+        path,
         Schema {
             name: "opaque",
             encoding: "",
@@ -57,7 +57,6 @@ fn mcap(
             observer,
             buffers: 2,
             buffer_size: 8192,
-            alignment: 4096,
             io: WriterConfig {
                 pending_capacity: capacity,
                 max_write_bytes: 4096,
@@ -73,7 +72,7 @@ fn lifecycle_correlation_split_io_and_reader_retention() {
     let file = path("lifecycle");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
     let pool = SlabPool::with_observer(1, 8192, 4096, collector.observer()).unwrap();
-    let (mut writer, monitor) = mcap(open(&file), 8, collector.observer());
+    let (mut writer, monitor) = mcap(&file, 8, collector.observer());
     writer.flush_written().unwrap();
     writer.prepare_slabs(&pool).unwrap();
     let mut builder = writer.prepare_records(pool.acquire().unwrap());
@@ -258,7 +257,7 @@ fn combining_and_rotation_are_visible() {
     let second = path("rotate-b");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
     let slabs = SlabPool::with_observer(1, 4096, 4096, collector.observer()).unwrap();
-    let (mut writer, monitor) = mcap(open(&first), 1, collector.observer());
+    let (mut writer, monitor) = mcap(&first, 1, collector.observer());
     writer.flush_written().unwrap();
 
     // Act
@@ -282,7 +281,7 @@ fn combining_and_rotation_are_visible() {
         .unwrap();
     writer.flush_written().unwrap();
     let old = monitor.snapshot().unwrap().writer;
-    writer.rotate(open(&second)).unwrap();
+    writer.rotate(&second).unwrap();
 
     // Assert
     let new = monitor.snapshot().unwrap().writer;
@@ -354,8 +353,8 @@ fn injected_monitor_isolated_and_retains_final_state() {
     let first = path("monitor-a");
     let second = path("monitor-b");
     let collector = Collector::new(128, Mode::Inspect).unwrap();
-    let (mut a, a_monitor) = mcap(open(&first), 8, collector.observer());
-    let (b, b_monitor) = mcap(open(&second), 8, Default::default());
+    let (mut a, a_monitor) = mcap(&first, 8, collector.observer());
+    let (b, b_monitor) = mcap(&second, 8, Default::default());
     let b_initial = b_monitor.snapshot().unwrap();
     assert_ne!(
         a_monitor.snapshot().unwrap().writer.writer_id,

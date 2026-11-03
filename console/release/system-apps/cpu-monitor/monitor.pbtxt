@@ -5,7 +5,6 @@ output_path: "/results/cpu.pb"
 dora {}
 recording {
   path: "/results/cpu.mcap"
-  buffered: true
   samples_topic: "doramcap/cpuacct"
   dictionary_topic: "doramcap/cpuacct/dictionary"
 }

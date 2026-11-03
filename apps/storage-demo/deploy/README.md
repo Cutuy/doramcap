@@ -1,6 +1,6 @@
 # Storage Observatory wrapper
 
-Runs buffered storage and retains activity and capture MCAP files. Enable with `--enable-app storage-demo`.
+Runs storage and retains activity and capture MCAP files. Enable with `--enable-app storage-demo`.
 
 The container uses `seccomp=unconfined` for io_uring.
 

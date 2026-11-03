@@ -6,21 +6,11 @@ use storage_persistence::{
 };
 #[test]
 fn aligned_mcap_padding_and_exact_tail() {
-    for alignment in [512, 4096] {
-        let path = std::env::temp_dir().join(format!(
-            "doramcap-direct-{}-{alignment}",
-            std::process::id()
-        ));
-        let open = || {
-            File::options()
-                .create_new(true)
-                .write(true)
-                .custom_flags(libc::O_DIRECT)
-                .open(&path)
-                .unwrap()
-        };
-        let mut writer = McapWriter::new(
-            open(),
+    {
+        let alignment = storage_persistence::mcap::ALIGNMENT;
+        let path = std::env::temp_dir().join(format!("doramcap-direct-{}", std::process::id()));
+        let mut writer = McapWriter::create(
+            &path,
             Schema {
                 name: "opaque",
                 encoding: "",
@@ -34,7 +24,6 @@ fn aligned_mcap_padding_and_exact_tail() {
             storage_persistence::mcap::McapConfig {
                 buffers: 2,
                 buffer_size: alignment * 2,
-                alignment,
                 io: Default::default(),
                 ..Default::default()
             },
@@ -73,6 +62,23 @@ fn aligned_mcap_padding_and_exact_tail() {
             assert_eq!(msg.data.as_ref(), vec![42; size]);
         }
         std::fs::remove_file(&path).unwrap();
+    }
+}
+#[test]
+fn raw_direct_writer_alignments_and_exact_tail() {
+    for alignment in [512, 4096] {
+        let path = std::env::temp_dir().join(format!(
+            "doramcap-direct-raw-{}-{alignment}",
+            std::process::id()
+        ));
+        let open = || {
+            File::options()
+                .create_new(true)
+                .write(true)
+                .custom_flags(libc::O_DIRECT)
+                .open(&path)
+                .unwrap()
+        };
         let pool = BufferPool::new(2, alignment * 2, 4096).unwrap();
         let mut raw = Writer::direct(open(), pool.clone(), alignment).unwrap();
         assert!(raw.append(pool.reserve(1).unwrap()).is_err());

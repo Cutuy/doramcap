@@ -12,12 +12,11 @@ import urllib.request
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--bin-dir', type=Path, required=True)
-p.add_argument('--buffered', action='store_true')
 a = p.parse_args()
 bins = a.bin_dir.resolve()
 with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory:
     root = Path(directory) / 'session'
-    proc = subprocess.Popen([str(bins / 'storage-demo'), '--start-paused', '--seconds', '10', '--port', '0', '--dir', str(root)] + (['--buffered'] if a.buffered else []), stdout=subprocess.PIPE,
+    proc = subprocess.Popen([str(bins / 'storage-demo'), '--start-paused', '--seconds', '10', '--port', '0', '--dir', str(root)], stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True)
     live_stream = None
     try:
@@ -101,8 +100,7 @@ with tempfile.TemporaryDirectory(prefix='storage-demo-validation-') as directory
         sealed = result['lastSealed']
         kinds = [r['kind'] for r in sealed['records']]
         assert kinds[-3:] == ['DataEnd', 'Footer', 'Magic / EOF'], kinds
-        if not a.buffered:
-            assert sealed['size'] % 4096 == 50, sealed['size']
+        assert sealed['size'] % 4096 == 50, sealed['size']
         assert result['ring']['completions'] > 0
         assert any(e['kind'] == 'CqeObserved' for e in result['events'])
         with urllib.request.urlopen(base + '/files/0', timeout=3) as response:

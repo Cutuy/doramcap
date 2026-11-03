@@ -2,8 +2,6 @@
 use bytes::BufMut;
 use std::{
     alloc::{GlobalAlloc, Layout, System},
-    fs::File,
-    os::unix::fs::OpenOptionsExt,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed},
     time::Instant,
 };
@@ -37,17 +35,9 @@ fn cpu_ns() -> u64 {
 }
 fn main() {
     for buffer_size in [64 * 1024, 128 * 1024, 256 * 1024] {
-        for direct in [false, true] {
-            let path = std::env::temp_dir().join(format!(
-                "doramcap-benchmark-{}-{direct}",
-                std::process::id()
-            ));
-            let file = File::options()
-                .write(true)
-                .create_new(true)
-                .custom_flags(if direct { libc::O_DIRECT } else { 0 })
-                .open(&path)
-                .unwrap();
+        {
+            let path =
+                std::env::temp_dir().join(format!("doramcap-benchmark-{}", std::process::id()));
             let schema = Schema {
                 name: "opaque",
                 encoding: "",
@@ -58,14 +48,13 @@ fn main() {
                 topic: "benchmark",
                 encoding: "",
             }];
-            let mut w = McapWriter::new(
-                file,
+            let mut w = McapWriter::create(
+                &path,
                 schema,
                 &channels,
                 storage_persistence::mcap::McapConfig {
                     buffers: 8,
                     buffer_size,
-                    alignment: if direct { 4096 } else { 1 },
                     ..Default::default()
                 },
             )
@@ -124,8 +113,7 @@ fn main() {
             }
             assert_eq!(count, 64);
             println!(
-                "buffer_bytes={buffer_size} mode={} payload_mib=64 elapsed_ms={} throughput_mib_s={:.1} process_cpu_ms={:.1} p99_record_us={:.1} allocations={allocations}",
-                if direct { "direct" } else { "buffered" },
+                "buffer_bytes={buffer_size} payload_mib=64 elapsed_ms={} throughput_mib_s={:.1} process_cpu_ms={:.1} p99_record_us={:.1} allocations={allocations}",
                 elapsed.as_millis(),
                 64.0 / elapsed.as_secs_f64(),
                 cpu as f64 / 1e6,
