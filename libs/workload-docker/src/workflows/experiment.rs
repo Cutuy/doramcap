@@ -49,7 +49,7 @@ impl ExperimentOwner {
         }
         let bytes = crate::evidence::read_regular(
             std::path::Path::new(&self.settings.graph),
-            2 * 1024 * 1024,
+            super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
         if crate::compose::adapter::digest(&bytes) != self.settings.graph_sha256 {
@@ -103,7 +103,7 @@ impl ExperimentOwner {
         };
         let bytes = crate::evidence::read_regular(
             std::path::Path::new(&self.settings.graph),
-            2 * 1024 * 1024,
+            super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
         let graph = super::shared_dora::graph(&self.settings, &bytes)?;

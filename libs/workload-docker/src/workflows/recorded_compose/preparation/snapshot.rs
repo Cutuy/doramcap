@@ -134,6 +134,9 @@ fn manifest(
     model
 }
 
+/// Largest resolved execution manifest captured into a configuration snapshot.
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
+
 pub(super) async fn capture(
     spec: &ComposeRun,
     artifacts: &Path,
@@ -142,7 +145,8 @@ pub(super) async fn capture(
     user_services: &[String],
     dora: &crate::workflows::dora::DoraRuntime,
 ) -> Result<ConfigurationSnapshot> {
-    let bytes = crate::evidence::read_regular(Path::new(&plan.manifest), 64 * 1024 * 1024).await?;
+    let bytes =
+        crate::evidence::read_regular(Path::new(&plan.manifest), MAX_MANIFEST_BYTES).await?;
     if digest(&bytes) != plan.sha256 {
         return Err(invalid("execution manifest changed during resolution"));
     }

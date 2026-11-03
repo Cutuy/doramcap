@@ -10,6 +10,7 @@ use crate::compose::{
     overlay::OverlaySet,
     *,
 };
+use crate::workflows::shared_dora::MAX_GRAPH_BYTES;
 use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -17,6 +18,9 @@ use std::{
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
+
+/// Largest read-only bind, config or secret file frozen into run artifacts.
+const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreparedRun {
@@ -52,7 +56,7 @@ impl Step for PrepareRun {
 /// Completed graph validation remains part of experiment resolution.
 pub async fn expand_graph(path: &Path) -> Result<Vec<u8>> {
     use dora_core::descriptor::{Descriptor, DescriptorExt};
-    let bytes = crate::evidence::read_regular(path, 2 * 1024 * 1024).await?;
+    let bytes = crate::evidence::read_regular(path, MAX_GRAPH_BYTES).await?;
     let graph = Descriptor::parse(bytes)
         .map_err(|error| invalid(error.to_string()))?
         .expand(
@@ -141,7 +145,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     if !dora.graph.is_empty() {
         let graph = super::super::shared_dora::graph(
             &dora,
-            &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+            &crate::evidence::read_regular(Path::new(&dora.graph), MAX_GRAPH_BYTES).await?,
         )?;
         model::validate_graph(&model, &graph)?;
     }
@@ -246,7 +250,7 @@ impl PrepareRun {
 
 async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     let source = tokio::fs::canonicalize(source).await?;
-    let bytes = crate::evidence::read_regular(&source, 256 * 1024 * 1024).await?;
+    let bytes = crate::evidence::read_regular(&source, MAX_FROZEN_FILE_BYTES).await?;
     use std::os::unix::fs::PermissionsExt;
     let permissions = tokio::fs::metadata(&source).await?.permissions();
     let destination = directory.join(format!("{}-{:o}", digest(&bytes), permissions.mode()));

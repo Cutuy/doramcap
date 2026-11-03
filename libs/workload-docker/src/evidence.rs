@@ -3,6 +3,9 @@ use rustix::fs::{Mode, OFlags, ResolveFlags, openat2};
 use std::{fs::File, io, os::unix::fs::OpenOptionsExt, path::Path};
 use tokio::io::AsyncReadExt;
 
+/// Largest private workflow metadata document read or written as evidence.
+pub(crate) const MAX_METADATA_BYTES: usize = 2 * 1024 * 1024;
+
 /// Create a fresh owner-only directory; existing paths and missing parents fail.
 pub(crate) async fn create_private_dir(path: &Path) -> io::Result<()> {
     tokio::fs::DirBuilder::new().mode(0o700).create(path).await
@@ -74,7 +77,7 @@ pub fn write_private_once<T: serde::Serialize + ?Sized>(
         os::unix::fs::OpenOptionsExt,
     };
     let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
-    if bytes.len() > 2 * 1024 * 1024 {
+    if bytes.len() > MAX_METADATA_BYTES {
         return Err("artifact metadata exceeds its size limit".into());
     }
     match std::fs::OpenOptions::new()
@@ -98,7 +101,7 @@ pub fn write_private_once<T: serde::Serialize + ?Sized>(
                 return Err("index is not a regular file".into());
             }
             let mut existing = Vec::new();
-            file.take(2 * 1024 * 1024)
+            file.take(MAX_METADATA_BYTES as u64)
                 .read_to_end(&mut existing)
                 .map_err(|e| e.to_string())?;
             if existing == bytes {
