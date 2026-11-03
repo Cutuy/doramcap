@@ -37,14 +37,14 @@ input's configuration supplies the schema that readers use to decode them.
 
 | `message_encoding` | `schema_encoding` | `schema_path` file | Without a schema |
 |---|---|---|---|
-| `protobuf` | `protobuf` | Binary `FileDescriptorSet`, including imports | Readers cannot decode the channel |
+| `protobuf` | `protobuf` | Binary `FileDescriptorSet`, including imports | Refused at startup |
 | `json` | `jsonschema` | JSON Schema | Readers can still parse the JSON |
 | Other, such as `application/octet-stream` | None | None | Readers see opaque bytes |
 
 - `schema_name` is the message type's full name, such as `doramcap.telemetry.v1.Packet`.
 - The recorder reads the file once at startup and fails if it cannot.
 - It stores the schema bytes and payloads unchanged, without validating either.
-  A wrong schema, or `protobuf` with no schema, still records and fails later in the reader.
+  A wrong schema still records and fails later in the reader.
 - Inside a container, mount the file read-only and use its mounted path.
 
 Generate a protobuf schema and declare it:

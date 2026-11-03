@@ -12,7 +12,7 @@ message Input {
   string topic = 2;
   string message_encoding = 3;
   // Set schema_name, schema_encoding and schema_path together, or none of them.
-  // Readers need a schema to decode "protobuf"; the recorder never validates it.
+  // Required for "protobuf", which readers cannot decode without one. Contents are not validated.
   string schema_name = 4;
   string schema_encoding = 5;
   // File embedded as the schema, such as a binary FileDescriptorSet for "protobuf".

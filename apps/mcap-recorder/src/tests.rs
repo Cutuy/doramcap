@@ -259,6 +259,15 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Act / Assert
     assert!(config::load(&path).is_err());
     assert!(!temp.0.join("session.mcap").exists());
+    // Arrange
+    std::fs::write(
+        &path,
+        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'protobuf' }",
+    )?;
+    // Act
+    let error = config::load(&path).unwrap_err();
+    // Assert
+    assert!(error.to_string().contains("protobuf requires a schema"));
     Ok(())
 }
 
