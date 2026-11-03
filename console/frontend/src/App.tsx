@@ -7,7 +7,7 @@ import { RunMetrics } from './RunMetrics';
 import { HistoryList, HistoryRunPage } from './History';
 import { LiveModel, type LiveView } from './streams';
 import { SystemApps } from './SystemApps';
-import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, requestKey, runAgainBlocked, toggleProfile as nextProfiles } from './model';
+import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, requestKey, runAgainBlocked, selectedProfiles, toggleProfile as nextProfiles } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { PageFrame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
@@ -22,6 +22,7 @@ export function App() {
   const [directory, setDirectory] = useState('');
   const [profiles, setProfiles] = useState<string[]>([]);
   const [systemApps, setSystemApps] = useState<string[] | undefined>(undefined);
+  const [appProfiles, setAppProfiles] = useState<Record<string, string>>({});
   const [available, setAvailable] = useState<string[]>([]);
   const [review, setReview] = useState<Review | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -74,14 +75,15 @@ export function App() {
 
   const changeDirectory = (value: string) => { generation.current++; selecting.current = true; setDirectory(value); setReview(null); setAvailable([]); setProfiles([]); setSystemApps(undefined); setError(''); };
   const toggleProfile = (name: string) => { generation.current++; selecting.current = true; setProfiles(items => nextProfiles(items, name)); setReview(null); setError(''); };
-  const prepare = async (appIds = systemApps, rerun?: { directory: string; profiles: string[] }) => {
+  const prepare = async (appIds = systemApps, rerun?: { directory: string; profiles: string[] }, launchProfiles = appProfiles) => {
     const revision = ++generation.current;
     setBusy(true); setError(''); selecting.current = true;
     try {
-      const next = await api.prepare(rerun?.directory ?? directory, rerun?.profiles ?? profiles, appIds);
+      const next = await api.prepare(rerun?.directory ?? directory, rerun?.profiles ?? profiles, appIds, launchProfiles);
       if (revision !== generation.current) return;
       key.current = '';
       setSystemApps(next.systemApps.filter(app => app.selected && !app.required).map(app => app.id));
+      setAppProfiles(selectedProfiles(next.systemApps));
       const discoveredProfiles = !rerun && available.length === 0 && next.availableProfiles.length > 0;
       setAvailable(next.availableProfiles);
       if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
@@ -91,7 +93,7 @@ export function App() {
     catch (failure) {
       if (revision !== generation.current) return;
       // A selection the project or host no longer offers must not block a fresh review.
-      if (rerun && failure instanceof ApiError && failure.code === 'InvalidInput') { setProfiles([]); setSystemApps(undefined); setError('The previous selection is no longer valid. Continue to choose again.'); }
+      if (rerun && failure instanceof ApiError && failure.code === 'InvalidInput') { setProfiles([]); setSystemApps(undefined); setAppProfiles({}); setError('The previous selection is no longer valid. Continue to choose again.'); }
       else setError(message(failure));
     }
     finally { setBusy(false); }
@@ -100,8 +102,16 @@ export function App() {
     if (!review || busy || review.systemApps.find(app => app.id === id)?.required) return;
     const apps = review.systemApps.map(app => app.id === id ? wire.SystemApp.create({ ...app, selected: !app.selected }) : app);
     const ids = apps.filter(app => app.selected && !app.required).map(app => app.id);
-    setSystemApps(ids); setReview(wire.Review.create({ ...review, preparedId: '', systemApps: apps }));
-    void prepare(ids);
+    const chosen = selectedProfiles(apps);
+    setSystemApps(ids); setAppProfiles(chosen); setReview(wire.Review.create({ ...review, preparedId: '', systemApps: apps }));
+    void prepare(ids, undefined, chosen);
+  };
+  const chooseLaunchProfile = (id: string, profile: string) => {
+    if (!review || busy) return;
+    const apps = review.systemApps.map(app => app.id === id ? wire.SystemApp.create({ ...app, profile }) : app);
+    const chosen = selectedProfiles(apps);
+    setAppProfiles(chosen); setReview(wire.Review.create({ ...review, preparedId: '', systemApps: apps }));
+    void prepare(systemApps, undefined, chosen);
   };
   const start = async () => {
     if (!review?.preparedId || busy) return;
@@ -110,7 +120,7 @@ export function App() {
     liveModel.current.configure(review.runId, review.liveStreams); setLiveView(liveModel.current.view());
     setSnapshot(wire.Status.create({
       phase: Phase.STARTING, runId: review.runId, recordings: review.recordings, liveStreams: review.liveStreams,
-      systemApps: wire.SystemAppSelection.create({ ids: review.systemApps.filter(app => app.selected && !app.required).map(app => app.id) }),
+      systemApps: wire.SystemAppSelection.create({ ids: review.systemApps.filter(app => app.selected && !app.required).map(app => app.id), profiles: selectedProfiles(review.systemApps) }),
     }));
     try { await api.start(review.preparedId, key.current); }
     catch (failure) {
@@ -127,15 +137,16 @@ export function App() {
     try { await api.stop(id); }
     catch (failure) { setError(message(failure)); setStopPending(false); }
   };
-  const newRun = () => { viewingRun.current = false; generation.current++; selecting.current = true; expected.current = ''; key.current = ''; setReview(null); setDirectory(''); setProfiles([]); setAvailable([]); setSystemApps(undefined); setStopPending(false); setRetry(false); setError(''); setPhase('Project'); };
+  const newRun = () => { viewingRun.current = false; generation.current++; selecting.current = true; expected.current = ''; key.current = ''; setReview(null); setDirectory(''); setProfiles([]); setAvailable([]); setSystemApps(undefined); setAppProfiles({}); setStopPending(false); setRetry(false); setError(''); setPhase('Project'); };
   /** Prefill a past run's selection, then enter the normal Review flow. */
   const runAgain = (entry: HistoryEntry) => {
     if (runAgainBlocked(snapshot, busy)) return;
     newRun();
     const ids = entry.systemApps?.ids ?? undefined, rerun = { directory: entry.projectDirectory, profiles: entry.profiles };
-    setDirectory(rerun.directory); setProfiles(rerun.profiles); setSystemApps(ids);
+    const launchProfiles = entry.systemApps?.profiles ?? {};
+    setDirectory(rerun.directory); setProfiles(rerun.profiles); setSystemApps(ids); setAppProfiles(launchProfiles);
     location.hash = '#/';
-    void prepare(ids, rerun);
+    void prepare(ids, rerun, launchProfiles);
   };
   const state = snapshot?.phase ?? Phase.STARTING;
   const recordingEnabled = (snapshot?.recordings?.length ?? 0) > 0;
@@ -148,7 +159,7 @@ export function App() {
     {disconnected && <div className="notice"><span role="status">Connection lost; run may still be active.</span> <span aria-live="off">{updated && `Last update ${Math.max(0, Math.floor((clock - updated) / 1000))} s ago.`}</span></div>}
     <div className="sr-only" aria-live="polite">{phase} {state === Phase.STOPPING ? 'Stopping run' : ''}</div>
     {phase === 'Project' && <><div className="heading"><div><h1>Choose a project</h1></div></div><div className="columns"><section className="panel"><h2>Project directory</h2><p className="muted">Enter a directory beneath the approved project root.</p><label htmlFor="directory">Directory on this host</label><input id="directory" value={directory} onChange={event => changeDirectory(event.target.value)} placeholder="/projects/my-project" autoComplete="off"/>{available.length > 0 && <fieldset><legend>Optional profiles</legend>{available.map(profile => <label className="checkbox" key={profile}><input type="checkbox" checked={profiles.includes(profile)} onChange={() => toggleProfile(profile)}/>{profile}</label>)}</fieldset>}<div className="actions"><ActionButton disabled={!directory.trim() || busy} onClick={() => void prepare()}>{busy ? 'Checking…' : available.length ? 'Review project' : 'Continue'}</ActionButton>{busy && <ActionButton variant="secondary" onClick={() => void api.stop(PREPARING_RUN).catch(() => {})}>Cancel</ActionButton>}</div></section><aside><section className="panel"><h2>Before you start</h2><p>Choose a directory with default Compose files. Release installations download missing images while preparing the review.</p></section></aside></div></>}
-    {phase === 'Review' && review && <><div className="heading"><div><h1>Review project</h1></div><ActionButton onClick={() => void start()} disabled={busy || !review.preparedId}>Start run</ActionButton></div><div className="columns"><section className="panel"><div className="panel-heading"><h2>Application</h2><StatusLabel label={busy ? 'Checking…' : review.preparedId ? 'Ready to start' : 'Review required'} tone={review.preparedId && !busy ? 'success' : 'neutral'}/></div><p className="mono break">{directory}</p><h3>Enabled services</h3><table><thead><tr><th>Service</th><th>Local image</th></tr></thead><tbody>{review.services.map(service => <tr key={service.name}><td>{service.name}</td><td className="mono break">{service.imageId}</td></tr>)}</tbody></table>{review.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}<div className="actions"><ActionButton variant="secondary" disabled={busy} onClick={() => { selecting.current = true; setPhase('Project'); }}>Change project</ActionButton>{!busy && !review.preparedId && <ActionButton variant="secondary" onClick={() => void prepare()}>Retry review</ActionButton>}</div></section><aside><SystemApps apps={review.systemApps} busy={busy} toggle={toggleSystemApp}/><section className="panel"><h2>Run settings</h2><p>Profiles</p><p>{profiles.length ? profiles.join(', ') : 'Default'}</p></section></aside></div></>}
+    {phase === 'Review' && review && <><div className="heading"><div><h1>Review project</h1></div><ActionButton onClick={() => void start()} disabled={busy || !review.preparedId}>Start run</ActionButton></div><div className="columns"><section className="panel"><div className="panel-heading"><h2>Application</h2><StatusLabel label={busy ? 'Checking…' : review.preparedId ? 'Ready to start' : 'Review required'} tone={review.preparedId && !busy ? 'success' : 'neutral'}/></div><p className="mono break">{directory}</p><h3>Enabled services</h3><table><thead><tr><th>Service</th><th>Local image</th></tr></thead><tbody>{review.services.map(service => <tr key={service.name}><td>{service.name}</td><td className="mono break">{service.imageId}</td></tr>)}</tbody></table>{review.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}<div className="actions"><ActionButton variant="secondary" disabled={busy} onClick={() => { selecting.current = true; setPhase('Project'); }}>Change project</ActionButton>{!busy && !review.preparedId && <ActionButton variant="secondary" onClick={() => void prepare()}>Retry review</ActionButton>}</div></section><aside><SystemApps apps={review.systemApps} busy={busy} toggle={toggleSystemApp} chooseProfile={chooseLaunchProfile}/><section className="panel"><h2>Run settings</h2><p>Profiles</p><p>{profiles.length ? profiles.join(', ') : 'Default'}</p></section></aside></div></>}
     {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === Phase.STOPPING || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{(snapshot?.projectDirectory || directory) && <>{snapshot?.projectDirectory || directory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton variant="secondary" onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={!canStopRun(snapshot, stopPending)} onClick={() => void stop()}>{state === Phase.STOPPING || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === Phase.STOPPING || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>Recording</h2><StatusLabel label={!recordingEnabled ? 'Disabled' : historical ? (snapshot?.outcome?.recordingFinalized ? 'Saved' : 'Unavailable') : state === Phase.RUNNING ? 'In progress' : 'Waiting for readiness'} tone={recordingEnabled && state === Phase.RUNNING ? 'active' : 'neutral'}/></section><RunMetrics recordingEnabled={recordingEnabled} samples={snapshot?.metrics} live={liveView} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/></aside></div></>}
     {phase === 'Result' && snapshot && <Result snapshot={snapshot} newRun={newRun} viewRun={() => navigateRun('Run')}/>}
     </>}

@@ -28,6 +28,23 @@ system_apps {
 live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
 ```
 
+## Launch profiles
+
+`launch_profiles` lets the user choose how an app launches during Review. Console
+mounts the chosen `config` read-only at `config_mount`; the first profile is the
+default. A profile's `recordings` and `live_outputs` add to the app's own.
+
+```protobuf
+config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
+launch_profiles {
+  id: "record"
+  label: "Live panels and recording"
+  config: "/absolute/monitor.pbtxt"
+  recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
+}
+launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
+```
+
 ## Live bridge
 
 `live_bridge` adds the optional, default-selected Live telemetry app beside the

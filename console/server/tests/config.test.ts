@@ -100,3 +100,46 @@ test('launch configuration generates fresh access without a secret file', async 
     assert.notEqual(first.secret, second.secret);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('launch profiles choose one config and add its outputs', () => {
+  // Arrange
+  const app = {
+    id: 'monitor',
+    input: { directory: '/apps', files: ['compose.yaml'] },
+    liveOutputs: [{ source: 'monitor/snapshots', kind: live.Kind.CPU_ACCOUNTING }],
+    configMount: { service: 'monitor', target: '/config/monitor.pbtxt' },
+    launchProfiles: [
+      { id: 'record', label: 'Record', config: '/apps/record.pbtxt', recordings: [{ id: 'cpu', path: 'cpu.mcap' }] },
+      { id: 'live', label: 'Live', config: '/apps/live.pbtxt' },
+    ],
+  };
+  // Act
+  validateApps([app]);
+  const fallback = selectApps([app], ['monitor'])[0],
+    chosen = selectApps([app], ['monitor'], { monitor: 'live' })[0];
+  // Assert
+  assert.equal(fallback.profile?.id, 'record');
+  assert.deepEqual(fallback.recordings?.map((output) => output.id), ['cpu']);
+  assert.equal(fallback.liveOutputs?.length, 1);
+  assert.equal(chosen.profile?.id, 'live');
+  assert.deepEqual(chosen.recordings, []);
+  assert.deepEqual(appOptions([app], [chosen]).at(-1), { id: 'monitor', label: undefined, selected: true, required: false, profiles: [{ id: 'record', label: 'Record' }, { id: 'live', label: 'Live' }], profile: 'live' });
+  assert.equal(appOptions([app], []).at(-1)?.selected, false);
+
+  // Act / Assert: unknown profiles and unselected or profile-less apps are rejected.
+  assert.throws(() => selectApps([app], ['monitor'], { monitor: 'missing' }));
+  assert.throws(() => selectApps([app], [], { monitor: 'live' }));
+  assert.throws(() => selectApps([{ ...app, launchProfiles: [] }], ['monitor'], { monitor: 'live' }));
+
+  // Act / Assert: invalid definitions are rejected.
+  assert.throws(() => validateApps([{ ...app, configMount: undefined }]));
+  assert.throws(() => validateApps([{ ...app, configMount: { service: 'monitor', target: 'relative' } }]));
+  const [record, other] = app.launchProfiles;
+  assert.throws(() => validateApps([{ ...app, launchProfiles: [record, { ...other, id: 'record' }] }]));
+  assert.throws(() => validateApps([{ ...app, launchProfiles: [{ ...other, config: 'relative.pbtxt' }] }]));
+  assert.throws(() => validateApps([{ ...app, launchProfiles: [{ ...other, label: '' }] }]));
+  assert.throws(() => validateApps([{ ...app, launchProfiles: [{ ...other, recordings: [{ id: 'cpu', path: '../outside' }] }] }]));
+  // Profiles of one app may share a recording ID; another app may not reuse it.
+  validateApps([{ ...app, launchProfiles: [record, { ...other, recordings: record.recordings }] }]);
+  assert.throws(() => validateApps([app, { ...app, id: 'second' }]));
+});

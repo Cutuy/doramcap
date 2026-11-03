@@ -67,12 +67,14 @@ Evidence: `cargo test --release --locked` passes for `activity-tracing` with no 
 ## Milestone 5: Console profiles
 
 **Work items**
-- [ ] Add `launch_profiles` to `SystemAppDefinition`: label, pbtxt, recordings and live outputs.
-- [ ] Add per-app profile selection to prepare and run requests.
-- [ ] Add a profile picker to the System apps panel.
-- [ ] Mount the selected pbtxt read-only into the app container.
+- [x] Add `launch_profiles` to `SystemAppDefinition`: label, pbtxt, recordings and live outputs.
+- [x] Add per-app profile selection to prepare and run requests.
+- [x] Add a profile picker to the System apps panel.
+- [x] Mount the selected pbtxt read-only into the app container.
 
 **Validation**
-- [ ] Server tests cover default, valid and rejected profile selections.
-- [ ] Frontend tests cover the picker and review state.
-- [ ] A Console run records and streams data according to the selected profile.
+- [x] Server tests cover default, valid and rejected profile selections.
+- [x] Frontend tests cover the picker and review state.
+- [x] A Console run records and streams data according to the selected profile.
+
+Evidence: Console server (68 tests, 1 skipped) and frontend (50) suites pass. A real Compose run through Chromium on x86_64 used the release system apps: the record profile wrote an 8.5 MB `cpu.mcap` and offered its download; the live profile wrote no recording and showed live CPU panels with 0 dropped batches; History's Run again restored the live profile. Full local CI and ARM64 were not run.

@@ -6,8 +6,19 @@ import "workflow.proto";
 import "live.proto";
 
 // Omitted selection preserves host defaults; an explicit empty list selects no apps.
-message SystemAppSelection { repeated string ids = 1; }
-message SystemApp { string id = 1; string label = 2; bool selected = 3; bool required = 4; }
+message SystemAppSelection {
+  repeated string ids = 1;
+  map<string, string> profiles = 2; // App ID to launch profile ID; omitted apps use their default.
+}
+message ProfileOption { string id = 1; string label = 2; }
+message SystemApp {
+  string id = 1;
+  string label = 2;
+  bool selected = 3;
+  bool required = 4;
+  repeated ProfileOption profiles = 5;
+  string profile = 6; // The profile this app launches with when selected.
+}
 message PrepareRequest { string directory = 1; repeated string profiles = 2; SystemAppSelection system_apps = 3; }
 message StartRequest { string prepared_id = 1; string request_key = 2; }
 message StopRequest { string run_id = 1; }

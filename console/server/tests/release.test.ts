@@ -150,8 +150,15 @@ test('the repository release template resolves to existing current app inputs', 
   for (const app of config.systemApps) {
     await access(app.graph!);
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
-    assert.ok(app.recordings!.length > 0, app.id!);
+    const profiles = app.launchProfiles ?? [];
+    for (const profile of profiles) await access(profile.config!);
+    assert.ok(app.recordings!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
+  const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
+  assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
+  const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
+  assert.match(live, /^dora \{\}/m);
+  assert.doesNotMatch(live, /recording/);
   const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
