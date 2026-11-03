@@ -5,6 +5,8 @@
 Two synthetic reporters feed the production watchdog. The dashboard shows health,
 freshness and recent events, with fail/recover/flap/pause/flood/event controls.
 
+![Controls path](docs/controls-path.svg)
+
 Run it through the [Docker deployment and gallery registration](deploy/README.md).
 The dashboard binds to `127.0.0.1:8088` by default; `FAULT_DEMO_LISTEN` overrides the
 address. It is a local demonstration with no authentication.
