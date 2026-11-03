@@ -32,7 +32,8 @@ impl Recording {
             }],
             storage_persistence::mcap::McapConfig {
                 buffers: 4,
-                buffer_size: (max_frame + ALIGNMENT).next_multiple_of(ALIGNMENT),
+                // One block for the record header and one for padding keep every frame inline and ordered.
+                buffer_size: (max_frame + 2 * ALIGNMENT).next_multiple_of(ALIGNMENT),
                 ..Default::default()
             },
         )?;
@@ -97,5 +98,34 @@ impl Sink for Recording {
         result?;
         ensure!(!self.poisoned, "recording encountered an I/O failure");
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn largest_frame_fits_combining_buffer() {
+        for max_frame in [4090, 2 * 1024 * 1024] {
+            // Arrange
+            let path = std::env::temp_dir().join(format!(
+                "fault-mcap-inline-{}-{max_frame}",
+                fault_protocol::host::incarnation().unwrap()
+            ));
+            let config = McapConfig {
+                enabled: true,
+                path: path.to_str().unwrap().into(),
+                rotation_bytes: 0,
+                flush_ms: 1,
+            };
+
+            // Act
+            let recording = Recording::new(config, max_frame).unwrap();
+
+            // Assert
+            let inline = recording.writer.as_ref().unwrap().max_inline_payload();
+            assert!(inline >= max_frame, "{inline} < {max_frame}");
+            Box::new(recording).finish().unwrap();
+            std::fs::remove_file(path).unwrap();
+        }
     }
 }
