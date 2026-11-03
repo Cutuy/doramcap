@@ -59,24 +59,20 @@ async fn curl(
     Ok(output.stdout)
 }
 
-async fn check_deployment(app: &str, registration: &str) {
+async fn check_deployment(app: &str) {
     // Arrange
     let source = PathBuf::from(std::env::var_os("DORAMCAP_TEST_WORKSPACE").unwrap());
-    let root = std::env::temp_dir().join(format!(
-        "gallery-dora-{}-{app}-{registration}",
-        std::process::id()
-    ));
+    let root = std::env::temp_dir().join(format!("gallery-dora-{}-{app}", std::process::id()));
     std::fs::create_dir(&root).unwrap();
     let workspace = root.join("workspace");
-    let deploy = workspace.join("apps").join(app).join("deploy");
-    copy_tree(&source.join("apps").join(app).join("deploy"), &deploy);
+    copy_tree(
+        &source.join("apps").join(app).join("deploy"),
+        &workspace.join("apps").join(app).join("deploy"),
+    );
     copy_tree(
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
-    if registration != "registration.pbtxt" {
-        std::fs::copy(deploy.join(registration), deploy.join("registration.pbtxt")).unwrap();
-    }
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
     let registry = Registry::load(&workspace, &[app.into()]).unwrap();
@@ -88,32 +84,6 @@ async fn check_deployment(app: &str, registration: &str) {
     let manager = Manager::new(registry, Duration::from_secs(300));
     // SAFETY: UID/GID access has no side effects.
     let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let collector = if registration.contains("otel") {
-        let received = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter = received.clone();
-        let router = axum::Router::new().route(
-            "/v1/logs",
-            axum::routing::post(move |bytes: axum::body::Bytes| {
-                let counter = counter.clone();
-                async move {
-                    if !bytes.is_empty() {
-                        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    (
-                        [("Content-Type", "application/x-protobuf")],
-                        Vec::<u8>::new(),
-                    )
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:4318")
-            .await
-            .unwrap();
-        let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        Some((task, received))
-    } else {
-        None
-    };
     let service = Service::spawn_local(manager, adapter.clone(), data.clone(), uid, gid);
 
     // Act: join a generation, verify live traffic, then idle-stop its last viewers.
@@ -185,17 +155,10 @@ async fn check_deployment(app: &str, registration: &str) {
     let expired = service.status(app).await.unwrap();
     let stopped = service.shutdown().await;
 
-    if let Some((task, received)) = collector {
-        task.abort();
-        assert!(
-            received.load(std::sync::atomic::Ordering::Relaxed) > 0,
-            "OTLP collector received no logs"
-        );
-    }
     // Assert: clean producer/drain completion precedes result publication and removal.
     assert!(
         validation.is_ok(),
-        "{app}/{registration}: {validation:?}; shutdown={stopped:?}"
+        "{app}: {validation:?}; shutdown={stopped:?}"
     );
     assert!(
         matches!(expired, Status::Stopping { .. } | Status::Stopped { .. }),
@@ -241,19 +204,11 @@ async fn check_deployment(app: &str, registration: &str) {
 async fn gallery_dora_deployments() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for (app, registration) in [
-                ("fault-demo", "registration.pbtxt"),
-                ("fault-watchdog", "registration.pbtxt"),
-                ("fault-watchdog", "registration.mcap.pbtxt"),
-                ("fault-watchdog", "registration.otel.pbtxt"),
-                ("cpu-viewer", "registration.pbtxt"),
-            ] {
-                if std::env::var("DORAMCAP_GALLERY_CASE")
-                    .is_ok_and(|case| case != format!("{app}/{registration}"))
-                {
+            for app in ["fault-demo", "fault-watchdog", "cpu-viewer"] {
+                if std::env::var("DORAMCAP_GALLERY_CASE").is_ok_and(|case| case != app) {
                     continue;
                 }
-                Box::pin(check_deployment(app, registration)).await;
+                Box::pin(check_deployment(app)).await;
             }
         })
         .await;

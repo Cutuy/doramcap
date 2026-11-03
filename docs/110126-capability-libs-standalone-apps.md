@@ -58,11 +58,15 @@ Evidence: `cargo test --release --locked` passes for `activity-tracing` with no 
 ## Milestone 4: Watchdog variants
 
 **Work items**
-- [ ] Use one watchdog Compose file and registration.
-- [ ] Express the MCAP and OTLP variants as pbtxt files.
+- [x] Use one watchdog Compose file and registration in the gallery, with one prebuilt pbtxt.
+- [x] Express MCAP and OTLP as self-contained standalone pbtxt files for Console launch profiles.
 
 **Validation**
-- [ ] Gallery deployment tests cover each pbtxt variant.
+- [x] Gallery deployment test passes with the prebuilt pbtxt.
+- [x] Each profile file loads alone, without its siblings.
+- [x] A Console run launches each profile with its selected outputs.
+
+Evidence: on x86_64, `gallery_dora_deployments` passes the `fault-watchdog` case in Docker, and `standalone` config tests pass with and without `mcap,otel`. Real Console Compose runs on `doramcap/fault-watchdog:local` selected each profile at Review, using a test graph with no fault source. Each mounted its frozen pbtxt and finished clean: live wrote no recording, MCAP wrote a finalized 20 KB `faults.mcap`, and OTLP delivered 21 log posts to a local collector. The release template has no watchdog app, since its playground has no fault source and its images omit the watchdog. ARM64 and full local CI did not run.
 
 ## Milestone 5: Console profiles
 

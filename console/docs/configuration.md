@@ -23,7 +23,17 @@ system_apps {
   label: "Fault Watchdog"
   input { directory: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone" files: "compose.yaml" }
   graph: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/flow.yml"
+  output_mounts { service: "fault-watchdog" target: "/results" }
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
+  config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
+  launch_profiles { id: "live" label: "Live only" config: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/config/watchdog.pbtxt" }
+  launch_profiles {
+    id: "mcap"
+    label: "Live and MCAP"
+    config: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/config/watchdog-mcap.pbtxt"
+    recordings { id: "faults" path: "faults.mcap" }
+  }
+  launch_profiles { id: "otel" label: "Live and OTLP" config: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/config/watchdog-otel.pbtxt" }
 }
 live_bridge { image: "doramcap/live-bridge:local" }
 ```
@@ -32,7 +42,9 @@ live_bridge { image: "doramcap/live-bridge:local" }
 
 `launch_profiles` lets the user choose how an app launches during Review. Console
 mounts the chosen `config` read-only at `config_mount`; the first profile is the
-default. A profile's `recordings` and `live_outputs` add to the app's own.
+default. A profile's `recordings` and `live_outputs` add to the app's own. Only the
+chosen file is mounted and frozen for the run, so each `config` must be self-contained,
+without `include`.
 
 ```protobuf
 config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
