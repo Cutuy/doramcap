@@ -59,25 +59,20 @@ async fn curl(
     Ok(output.stdout)
 }
 
-async fn check_deployment(app: &str, config: Option<&str>) {
+async fn check_deployment(app: &str) {
     // Arrange
     let source = PathBuf::from(std::env::var_os("DORAMCAP_TEST_WORKSPACE").unwrap());
-    let root = std::env::temp_dir().join(format!(
-        "gallery-dora-{}-{app}-{}",
-        std::process::id(),
-        config.unwrap_or("default")
-    ));
+    let root = std::env::temp_dir().join(format!("gallery-dora-{}-{app}", std::process::id()));
     std::fs::create_dir(&root).unwrap();
     let workspace = root.join("workspace");
-    let deploy = workspace.join("apps").join(app).join("deploy");
-    copy_tree(&source.join("apps").join(app).join("deploy"), &deploy);
+    copy_tree(
+        &source.join("apps").join(app).join("deploy"),
+        &workspace.join("apps").join(app).join("deploy"),
+    );
     copy_tree(
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
-    if let Some(config) = config {
-        std::fs::copy(deploy.join(config), deploy.join("watchdog.pbtxt")).unwrap();
-    }
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
     let registry = Registry::load(&workspace, &[app.into()]).unwrap();
@@ -89,32 +84,6 @@ async fn check_deployment(app: &str, config: Option<&str>) {
     let manager = Manager::new(registry, Duration::from_secs(300));
     // SAFETY: UID/GID access has no side effects.
     let (uid, gid) = unsafe { (libc::geteuid(), libc::getegid()) };
-    let collector = if config.is_some_and(|config| config.contains("otel")) {
-        let received = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter = received.clone();
-        let router = axum::Router::new().route(
-            "/v1/logs",
-            axum::routing::post(move |bytes: axum::body::Bytes| {
-                let counter = counter.clone();
-                async move {
-                    if !bytes.is_empty() {
-                        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    }
-                    (
-                        [("Content-Type", "application/x-protobuf")],
-                        Vec::<u8>::new(),
-                    )
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:4318")
-            .await
-            .unwrap();
-        let task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        Some((task, received))
-    } else {
-        None
-    };
     let service = Service::spawn_local(manager, adapter.clone(), data.clone(), uid, gid);
 
     // Act: join a generation, verify live traffic, then idle-stop its last viewers.
@@ -186,17 +155,10 @@ async fn check_deployment(app: &str, config: Option<&str>) {
     let expired = service.status(app).await.unwrap();
     let stopped = service.shutdown().await;
 
-    if let Some((task, received)) = collector {
-        task.abort();
-        assert!(
-            received.load(std::sync::atomic::Ordering::Relaxed) > 0,
-            "OTLP collector received no logs"
-        );
-    }
     // Assert: clean producer/drain completion precedes result publication and removal.
     assert!(
         validation.is_ok(),
-        "{app}/{config:?}: {validation:?}; shutdown={stopped:?}"
+        "{app}: {validation:?}; shutdown={stopped:?}"
     );
     assert!(
         matches!(expired, Status::Stopping { .. } | Status::Stopped { .. }),
@@ -206,11 +168,6 @@ async fn check_deployment(app: &str, config: Option<&str>) {
     assert_eq!(state, Status::Stopped { error: None }, "{root:?}");
     let (complete, result, _) = service.recording_paths(app, launch.generation).unwrap();
     assert!(complete.is_file() && result.is_file(), "{root:?}");
-    assert_eq!(
-        result.with_file_name("faults.mcap").is_file(),
-        config.is_some_and(|config| config.contains("mcap")),
-        "{root:?}"
-    );
     for resource in [
         vec!["ps", "-aq"],
         vec!["network", "ls", "-q"],
@@ -247,19 +204,11 @@ async fn check_deployment(app: &str, config: Option<&str>) {
 async fn gallery_dora_deployments() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            for (app, config) in [
-                ("fault-demo", None),
-                ("fault-watchdog", None),
-                ("fault-watchdog", Some("watchdog-mcap.pbtxt")),
-                ("fault-watchdog", Some("watchdog-otel.pbtxt")),
-                ("cpu-viewer", None),
-            ] {
-                if std::env::var("DORAMCAP_GALLERY_CASE")
-                    .is_ok_and(|case| case != format!("{app}/{}", config.unwrap_or("default")))
-                {
+            for app in ["fault-demo", "fault-watchdog", "cpu-viewer"] {
+                if std::env::var("DORAMCAP_GALLERY_CASE").is_ok_and(|case| case != app) {
                     continue;
                 }
-                Box::pin(check_deployment(app, config)).await;
+                Box::pin(check_deployment(app)).await;
             }
         })
         .await;

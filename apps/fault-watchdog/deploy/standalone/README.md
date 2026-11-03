@@ -11,8 +11,10 @@ docker compose -f apps/fault-watchdog/deploy/standalone/compose.yaml build
 
 Connect [flow.yml](flow.yml) to the workload's fault output. Override the Compose
 user to match the Dora participant and mount a fresh writable results directory.
-Choose the [live](config/watchdog.pbtxt), [OTLP](config/watchdog-otel.pbtxt) or
-[MCAP](config/watchdog-mcap.pbtxt) configuration through the service command.
+The service mounts one self-contained pbtxt. Each [live](config/watchdog.pbtxt),
+[OTLP](config/watchdog-otel.pbtxt) or [MCAP](config/watchdog-mcap.pbtxt) file is a
+complete profile; Console selects one during Review through
+[launch profiles](../../../../console/docs/configuration.md#launch-profiles).
 The service keeps `seccomp=unconfined` for the MCAP writer's io_uring calls.
 In Console, declare `fault-watchdog/faults` as a `FAULT_PUBLICATION` live output
 to show faults through the [live bridge](../../../../console/bridge/README.md).

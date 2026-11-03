@@ -67,21 +67,23 @@ fn standalone_config_accepts_external_reporter_and_retains_disconnected_faults()
 
 #[test]
 fn standalone_sink_configs_use_existing_feature_gates() {
-    // Arrange
-    for (path, enabled) in [
-        (
-            "deploy/standalone/config/watchdog-mcap.pbtxt",
-            cfg!(feature = "mcap"),
-        ),
-        (
-            "deploy/standalone/config/watchdog-otel.pbtxt",
-            cfg!(feature = "otel"),
-        ),
+    // Arrange: Console mounts one profile file, with no siblings beside it.
+    let directory = std::env::temp_dir().join(format!("watchdog-profiles-{}", std::process::id()));
+    std::fs::create_dir(&directory).unwrap();
+    for (name, enabled) in [
+        ("watchdog.pbtxt", true),
+        ("watchdog-mcap.pbtxt", cfg!(feature = "mcap")),
+        ("watchdog-otel.pbtxt", cfg!(feature = "otel")),
     ] {
+        let path = directory.join(name);
+        std::fs::copy(Path::new("deploy/standalone/config").join(name), &path).unwrap();
+
         // Act
-        let config = config::load(Path::new(path));
+        let config = config::load(&path);
+        std::fs::remove_file(&path).unwrap();
 
         // Assert
-        assert_eq!(config.is_ok(), enabled, "{path}: {config:?}");
+        assert_eq!(config.is_ok(), enabled, "{name}: {config:?}");
     }
+    std::fs::remove_dir(directory).unwrap();
 }

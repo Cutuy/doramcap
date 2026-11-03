@@ -24,8 +24,8 @@ services:
       retries: 30
     volumes:
       - type: bind
-        source: ./config
-        target: /etc/fault-watchdog
+        source: ./config/watchdog.pbtxt
+        target: /etc/fault-watchdog/watchdog.pbtxt
         read_only: true
       - type: bind
         source: ./results
