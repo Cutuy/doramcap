@@ -24,7 +24,6 @@ fn records(c: &Collect) -> Vec<(wire::proto::Batch, wire::proto::Record)> {
 fn config() -> Config {
     Config {
         blocks: 128,
-        encoded_buffers: 128,
         sink_queue: 64,
         records_per_block: 8,
         ..Default::default()

@@ -33,6 +33,7 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
+ "storage-persistence",
  "tracing",
  "tracing-core",
  "tungstenite 0.30.0",

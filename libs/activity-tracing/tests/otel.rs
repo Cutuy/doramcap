@@ -32,7 +32,6 @@ fn exported_ids_parent_events_and_links_match_recording() {
     let stats = sink.stats();
     let mut rt = Runtime::start(
         Config {
-            encoded_buffers: 64,
             sink_queue: 16,
             ..Default::default()
         },

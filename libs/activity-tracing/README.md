@@ -1,12 +1,12 @@
 # Activity tracing
 
-Embedded recording of `tracing` spans and events, with bounded capture buffers,
-background encoding, and MCAP, WebSocket or OpenTelemetry outputs.
+Embedded recording of `tracing` spans and events, with bounded capture blocks
+and MCAP, WebSocket or OpenTelemetry outputs. Each sink's worker serializes for itself.
 
 ![Architecture](docs/architecture.svg)
 
 [Buffer lifetimes](docs/buffer-lifetimes.svg) ·
-[Proposed external-buffer ownership](docs/external-buffer-ownership.svg) ·
+[Buffer ownership](docs/external-buffer-ownership.svg) ·
 [Roadmap and validation gates](docs/101826-my-roadmpa.md) ·
 [Validation evidence](docs/validation.md) ·
 [Wire schema](proto/activity.proto)
@@ -19,7 +19,7 @@ use activity_tracing::{Config, Runtime, sinks::McapSink};
 # fn main() -> activity_tracing::Result<()> {
 let mut runtime = Runtime::start(
     Config::default(),
-    vec![Box::new(McapSink::create("activity.mcap")?)],
+    vec![Box::new(McapSink::new("activity.mcap"))],
 )?;
 let handle = runtime.handle();
 let registration = handle.register_thread("camera")?;
@@ -41,6 +41,9 @@ assert!(report.sinks.iter().all(|sink| sink.error.is_none()));
 Register every emitting thread, use the `activity` target, and drop registrations
 before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocketSink` (`websocket`) and
 `OtelSink` (`otel`). Hosts can also implement `Sink`.
+
+`McapSink` merges published blocks every 10 ms, or sooner under load, and serializes them
+directly into `McapWriter`'s pinned buffer. Other sinks receive one `Batch` per block.
 
 ## Run
 

@@ -173,17 +173,17 @@ pub fn capture_activity(
     feed: std::sync::Arc<crate::live::Feed>,
     run: impl FnOnce(),
 ) -> crate::Result<()> {
-    let mut sinks: Vec<Box<dyn activity_tracing::Sink>> =
+    let mut sinks: Vec<Box<dyn activity_tracing::SinkBuilder>> =
         vec![Box::new(crate::live::LiveSink(feed))];
     if let Some(path) = path {
-        sinks.push(Box::new(activity_tracing::sinks::McapSink::create(path)?));
+        sinks.push(Box::new(activity_tracing::sinks::McapSink::new(path)));
     }
     // Span boundaries flush individual batches. Cover a full capture-block burst
     // while sink workers are descheduled, preserving bounded nonblocking capture.
     let sink_queue = 64;
     let config = activity_tracing::Config {
+        blocks: 4 * sink_queue,
         sink_queue,
-        encoded_buffers: sinks.len() * (sink_queue + 1) + 1,
         ..Default::default()
     };
     let mut runtime = activity_tracing::Runtime::start(config, sinks)?;
