@@ -97,78 +97,59 @@ pub struct ResolvedRun {
 pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
     // Resolve runtime settings and validate the request.
     let mut runtime = spec.dora.clone();
-    let artifacts = async {
-        super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
-        model::validate(&spec)?;
-        crate::evidence::create_private_dir(&spec.artifacts).await?;
-        Ok::<_, Error>(tokio::fs::canonicalize(&spec.artifacts).await?)
-    }
-    .await
-    .map_err(in_stage("Validate request"))?;
+    super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
+    model::validate(&spec)?;
+    crate::evidence::create_private_dir(&spec.artifacts).await?;
+    let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     // Freeze Dora inputs and merge apps while recording their startup stages.
-    let dora = super::super::shared_dora::prepare(&runtime, &artifacts)
-        .await
-        .map_err(in_stage("Freeze inputs"))?;
+    let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
     let mut model = json!({"services":{}});
     let mut system_services = Vec::new();
     let mut user_services = Vec::new();
     let mut diagnostics = Vec::new();
-    async {
-        for (apps, services) in [
-            (&spec.system_apps, &mut system_services),
-            (&spec.projects, &mut user_services),
-        ] {
-            for app in apps {
-                let normalized = adapter
-                    .configuration()
-                    .normalize(
-                        &spec.id,
-                        &model::app_input(app, &dora)?,
-                        &crate::compose::adapter::project_name("experiment", &spec.repository_root),
-                    )
-                    .await?;
-                let warnings =
-                    model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
-                private_write(
+    for (apps, services) in [
+        (&spec.system_apps, &mut system_services),
+        (&spec.projects, &mut user_services),
+    ] {
+        for app in apps {
+            let normalized = adapter
+                .configuration()
+                .normalize(
+                    &spec.id,
+                    &model::app_input(app, &dora)?,
+                    &crate::compose::adapter::project_name("experiment", &spec.repository_root),
+                )
+                .await?;
+            let warnings =
+                model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
+            private_write(
                     &artifacts.join(format!("{}.inputs.json", app.key)),
                     &serde_json::to_vec(
                         &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
                     )?,
                 )
                 .await?;
-                diagnostics.extend(warnings);
-            }
+            diagnostics.extend(warnings);
         }
-        Ok::<_, Error>(())
     }
-    .await
-    .map_err(in_stage("Resolve apps"))?;
     // Configure shared IPC, then validate graph bindings and startup dependencies.
-    async {
-        diagnostics.extend(model::configure_dora(
-            &mut model,
+    diagnostics.extend(model::configure_dora(
+        &mut model,
+        &dora,
+        super::super::shared_dora::owner(&spec.repository_root),
+    )?);
+    if !dora.graph.is_empty() {
+        let graph = super::super::shared_dora::graph(
             &dora,
-            super::super::shared_dora::owner(&spec.repository_root),
-        )?);
-        if !dora.graph.is_empty() {
-            let graph = super::super::shared_dora::graph(
-                &dora,
-                &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
-            )?;
-            model::validate_graph(&model, &graph)?;
-        }
-        model::validate_dependencies(&model, &system_services, &user_services)
+            &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+        )?;
+        model::validate_graph(&model, &graph)?;
     }
-    .await
-    .map_err(in_stage("Validate graph"))?;
+    model::validate_dependencies(&model, &system_services, &user_services)?;
     // Snapshot file inputs and resolve one project with pinned images.
+    freeze_files(&mut model, &artifacts).await?;
     let manifest = artifacts.join("experiment.input.json");
-    async {
-        freeze_files(&mut model, &artifacts).await?;
-        private_write(&manifest, &serde_json::to_vec(&model)?).await
-    }
-    .await
-    .map_err(in_stage("Freeze inputs"))?;
+    private_write(&manifest, &serde_json::to_vec(&model)?).await?;
     let apps = spec.system_apps.iter().chain(&spec.projects);
     let mut plan = adapter
         .configuration()
@@ -205,8 +186,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
                 ..Default::default()
             }),
         })
-        .await
-        .map_err(in_stage("Resolve project"))?;
+        .await?;
     for warning in &diagnostics {
         eprintln!("warning: {warning}");
     }
@@ -219,8 +199,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         &user_services,
         &dora,
     )
-    .await
-    .map_err(in_stage("Resolve project"))?;
+    .await?;
     Ok(ResolvedRun {
         artifacts,
         plan,
@@ -236,9 +215,7 @@ impl PrepareRun {
         let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
         let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
-        prepare_sources(&model, overlays)
-            .await
-            .map_err(in_stage("Prepare project"))?;
+        prepare_sources(&model, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
@@ -278,18 +255,6 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
         tokio::fs::set_permissions(&destination, permissions).await?;
     }
     Ok(destination.to_string_lossy().into_owned())
-}
-/// Prefix validation, JSON and I/O errors with the `resolve` stage that raised them.
-/// Engine, Compose and selection errors keep their own variant and wording.
-fn in_stage(stage: &'static str) -> impl Fn(Error) -> Error {
-    move |error| match error {
-        Error::Io(error) => Error::Io(std::io::Error::new(
-            error.kind(),
-            format!("{stage}: {error}"),
-        )),
-        Error::Invalid(_) | Error::Json(_) => invalid(format!("{stage}: {error}")),
-        other => other,
-    }
 }
 /// Refuse unreadable bind sources, naming every failure, and leave the host unchanged on refusal.
 /// `overlays` creates missing sources Docker would create, because overlays need a lower directory.

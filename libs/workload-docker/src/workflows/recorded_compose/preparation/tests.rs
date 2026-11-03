@@ -420,26 +420,6 @@ async fn freezing_names_every_unreadable_file_input() {
     assert!(!error.contains("ambient"));
 }
 
-#[test]
-fn stage_labels_keep_error_variants_that_callers_match() {
-    // Arrange
-    let label = in_stage("Freeze inputs");
-    let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-
-    // Act
-    let io = label(Error::Io(denied));
-    let validation = label(invalid("bad input"));
-    let selection = label(Error::EmptySelection);
-
-    // Assert
-    assert!(
-        matches!(&io, Error::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied)
-    );
-    assert!(io.to_string().starts_with("Freeze inputs: "));
-    assert_eq!(validation.to_string(), "Freeze inputs: bad input");
-    assert!(matches!(selection, Error::EmptySelection));
-}
-
 #[tokio::test]
 async fn freezing_copies_files_and_permissions_while_writable_mounts_and_directories_stay_live() {
     use std::os::unix::fs::PermissionsExt;
