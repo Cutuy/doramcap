@@ -1,62 +1,89 @@
 # MCAP recorder deployment
 
-`recorder.yaml` starts the recorder without a producer or Dora runtime. `flow.yml`
-connects its dynamic `workload-recorder` node to one selected workload output. The assembler supplies matching service/node IDs, graph sources,
-shared Dora settings, process user, read-only configuration and writable results
-mounts. The recorder requires no BPF privileges.
+```sh
+cargo build --release --locked -p mcap-recorder
+# Stage the binary as mcap-recorder, then build this Dockerfile as doramcap/mcap-recorder:local.
+mcap-recorder --config bytes.pbtxt
+```
 
-Build with `cargo build --release --locked -p mcap-recorder`, stage the binary as
-`mcap-recorder`, then build this Dockerfile as `doramcap/mcap-recorder:local`.
-Mount a configuration such as [bytes.pbtxt](bytes.pbtxt) at `/config/recorder.pbtxt`
-and a writable directory at `/results`. Paths must not contain existing outputs.
+Mount a [`RecorderConfig`](../proto/recorder.proto) such as [bytes.pbtxt](bytes.pbtxt)
+at `/config/recorder.pbtxt` and a writable directory at `/results`. Relative paths
+resolve beside the config. No BPF privileges are needed.
 
-## Configuration
+[recorder.yaml](recorder.yaml) and [flow.yml](flow.yml) are templates. The assembler
+fills in service and node IDs, graph sources, Dora settings and mounts.
 
-`mcap-recorder --config FILE.pbtxt` loads generated
-[`RecorderConfig`](../proto/recorder.proto) directly. Relative recording, report
-and schema paths resolve beside that file.
+## What recording an app needs
 
-- Map each Dora input to a unique topic and declared message encoding.
-- Optional `schema_name`, `schema_encoding` and `schema_path` embed supplied schema
-  bytes together. Payloads remain unchanged; the producer owns their encoding.
-- Accept only non-null uint8 arrays. Other Arrow types fail explicitly.
-- `timestamp_key` and `sequence_key` name decimal-string metadata fields.
-  Declared fields must exist. Source sequences must fit MCAP's u32 field.
-- Log time is recorder receipt time. Publish time is the supplied source Unix
-  nanoseconds, or zero when unavailable. Missing source sequence is zero.
+- A recorder input in the Dora graph for each output.
+- A matching `input` in the recorder config, with a unique topic and an encoding.
+- Non-null uint8 array payloads. Other Arrow types fail the recording.
 
-Each `dora.message` MCAP metadata record preserves typed Dora metadata as JSON,
-receipt time and a recorder-local input ordinal. Non-finite float parameters fail
-explicitly because JSON cannot preserve them. Channel metadata declares timing
-and source-key conventions. Recorder ordinals never represent source sequences.
+An app that already publishes bytes needs no code changes.
 
-## Readiness and artifacts
+## Schemas
 
-The existing approved `dora_app::environment` readiness marker appears after
-subscriber attachment, file creation and channel initialization. The provided
-healthcheck uses that marker; consumers become ready before producers publish.
-A recording declaration with an empty stream path waits for file creation.
-A configured stream additionally requires growth before workload launch.
+Schemas are optional for your own messages. Add one when readers should decode them.
 
-The recorder creates output and report files exclusively. `report_path` defaults
-to `output_path + ".report.pbtxt"`. The generated report records:
+| `message_encoding` | `schema_encoding` | `schema_path` file | Without a schema |
+|---|---|---|---|
+| `protobuf` | `protobuf` | Binary `FileDescriptorSet` with imports | Refused at startup |
+| `json` | `jsonschema` | JSON Schema | Readers parse plain JSON |
+| `application/octet-stream` | None | None | Readers see raw bytes |
 
-- `RUNNING` initially; `DRAINED` after Dora stop or confirmed input closure and buffered drain.
-- `INTERRUPTED` on stream end without a stop request or confirmed input closure.
-- `FAILED` on invalid inputs, upstream errors or finalization failure.
-- Independent `finalized` and received/written counts.
+Set `schema_name`, `schema_encoding` and `schema_path` together:
 
-The workflow explicitly stops system nodes. The recorder drains buffered events
-after every Dora stop cause until stream closure. On other errors it attempts footer finalization and reports both source
-and finalization failures. Interruption/error exits unsuccessfully even when the
-partial file is readable. Process kill or OS termination can leave `RUNNING`
-evidence and an unfinished file; the workflow must not publish it as complete.
+```sh
+protoc --include_imports --descriptor_set_out=schema.bin my_message.proto
+```
 
-Dora exposes no trustworthy per-input transport-drop total here, so reports retain
-`transport_loss_unknown: true`. With Dora 1.1, backpressure queues have a safety cap
-of `max(10 * queue_size, 100)`; overflow can still lose messages. Slow storage can
-also stall producers that publish to backpressure queues.
-A finalized footer establishes readability, independently of recording completeness.
+```pbtxt
+input {
+  input: "data"
+  topic: "my_app/data"
+  message_encoding: "protobuf"
+  schema_name: "my_app.v1.MyMessage"
+  schema_encoding: "protobuf"
+  schema_path: "/config/schema.bin"
+}
+```
 
-Docker startup, real Dora/SHM routing, OS interruption and slow-storage queue behavior
-require runtime qualification. Unit tests exercise config, payloads, timing, closure drain and partial reports without claiming transport coverage.
+The recorder reads the file at startup and stores it unchanged. A wrong schema still
+records and fails later in the reader.
+
+## Timing
+
+- Log time is recorder receipt time.
+- `timestamp_key` names metadata with decimal-string Unix nanoseconds, used as publish time. Default: zero.
+- `sequence_key` names metadata with a decimal-string u32 sequence. Default: zero.
+- Declared metadata fields must exist.
+- Each `dora.message` metadata record keeps the Dora metadata as JSON. Non-finite floats fail the recording.
+
+## Readiness
+
+The healthcheck marker appears once the subscriber is attached, the file exists and
+channels are ready. A declared stream path also requires growth before workload launch.
+
+## Reports
+
+Outputs and reports are created exclusively. `report_path` defaults to
+`output_path + ".report.pbtxt"`.
+
+| State | Meaning |
+|---|---|
+| `RUNNING` | In progress, or the process was killed and the file may be unfinished |
+| `DRAINED` | Dora stop or input closure, with buffered messages written |
+| `INTERRUPTED` | Stream ended without a stop or closure; exits with an error |
+| `FAILED` | Invalid input, upstream error or finalization failure; exits with an error |
+
+`finalized` and the received and written counts are reported separately. A finalized
+file is readable, which says nothing about whether it is complete.
+
+## Loss
+
+- Reports keep `transport_loss_unknown: true`, because Dora has no per-input drop count.
+- Dora 1.1 backpressure queues cap at `max(10 * queue_size, 100)`, so overflow can lose messages.
+- Slow storage can stall producers on backpressure queues.
+
+Unit tests cover config, payloads, timing, closure drain and partial reports. Docker
+startup, Dora routing, OS interruption and slow storage need runtime qualification.

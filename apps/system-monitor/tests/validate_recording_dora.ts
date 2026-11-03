@@ -33,7 +33,7 @@ try {
 recording { path: "${embedded}" samples_topic: "${topic}" dictionary_topic: "${topic}/dictionary" }`);
   writeFileSync(join(root, 'recorder.pbtxt'), `output_path: "${received}"
 report_path: "${join(root, 'received.report.pbtxt')}"
-input { input: "snapshots" topic: "${topic}" message_encoding: "protobuf" timestamp_key: "capture_unix_ns" sequence_key: "sequence" }`);
+input { input: "snapshots" topic: "${topic}" message_encoding: "protobuf" schema_name: "doramcap.telemetry.v1.Packet" schema_encoding: "protobuf" schema_path: "${resolve(import.meta.dirname, '../../../libs/telemetry/protocol/proto/telemetry_descriptor.bin')}" timestamp_key: "capture_unix_ns" sequence_key: "sequence" }`);
   // JSON is a YAML subset and safely quotes filesystem paths.
   const flow = join(root, 'flow.yml');
   writeFileSync(flow, JSON.stringify({ nodes: [

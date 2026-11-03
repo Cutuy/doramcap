@@ -72,6 +72,12 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
             "{}: schema_name, schema_encoding and schema_path must be supplied together",
             input.input
         );
+        // Readers cannot decode a protobuf channel without its schema.
+        ensure!(
+            input.message_encoding != "protobuf" || !input.schema_path.is_empty(),
+            "{}: message_encoding protobuf requires a schema",
+            input.input
+        );
     }
     Ok(())
 }
