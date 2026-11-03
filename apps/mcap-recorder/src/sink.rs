@@ -57,15 +57,6 @@ impl RecordingSink {
         Ok(())
     }
 
-    /// Stores named recording or transport metadata beside the messages.
-    pub fn metadata(&mut self, name: &str, metadata: BTreeMap<String, String>) -> Result<()> {
-        self.writer.write_metadata(&mcap::records::Metadata {
-            name: name.into(),
-            metadata,
-        })?;
-        Ok(())
-    }
-
     /// Writes the footer and flushes userspace buffers; errors leave partial evidence.
     pub fn finish(mut self) -> Result<()> {
         self.writer.finish()?;

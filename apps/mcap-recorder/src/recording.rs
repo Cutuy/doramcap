@@ -1,5 +1,7 @@
 use crate::{
-    config::{self, Input, RecorderConfig, RecordingReport, State, pb::InputReport},
+    config::{
+        self, Input, METADATA_TOPIC_SUFFIX, RecorderConfig, RecordingReport, State, pb::InputReport,
+    },
     sink::RecordingSink,
 };
 use dora_node_api::{Event, Metadata, Parameter};
@@ -13,6 +15,7 @@ use std::{
 struct Channel {
     input: Input,
     channel: u16,
+    metadata_channel: u16,
     report_index: usize,
 }
 
@@ -89,6 +92,12 @@ impl Recording {
                 schema,
                 &metadata,
             )?;
+            let metadata_channel = recording.sink.add_channel(
+                &format!("{}{METADATA_TOPIC_SUFFIX}", input.topic),
+                "json",
+                None,
+                &BTreeMap::from([("dora.input".into(), input.input.clone())]),
+            )?;
             let index = recording.report.input.len();
             recording.report.input.push(InputReport {
                 input: input.input.clone(),
@@ -99,6 +108,7 @@ impl Recording {
                 Channel {
                     input,
                     channel,
+                    metadata_channel,
                     report_index: index,
                 },
             );
@@ -131,15 +141,14 @@ impl Recording {
         } else {
             decimal(metadata, &channel.input.timestamp_key)?
         };
+        // A message, unlike an MCAP metadata record, keeps the current chunk open.
         // Ordinal is recorder-local correlation, never a manufactured source sequence.
-        self.sink.metadata(
-            "dora.message",
-            BTreeMap::from([
-                ("input".into(), input.into()),
-                ("ordinal".into(), report.received.to_string()),
-                ("receipt_unix_ns".into(), received_ns.to_string()),
-                ("dora_metadata_json".into(), metadata_json(metadata)?),
-            ]),
+        self.sink.write(
+            channel.metadata_channel,
+            sequence,
+            received_ns,
+            source_time,
+            &metadata_json(report.received, metadata)?,
         )?;
         self.sink
             .write(channel.channel, sequence, received_ns, source_time, bytes)?;
@@ -173,7 +182,7 @@ impl Recording {
     }
 }
 
-fn metadata_json(metadata: &Metadata) -> Result<String> {
+fn metadata_json(ordinal: u64, metadata: &Metadata) -> Result<Vec<u8>> {
     for (key, value) in &metadata.parameters {
         let finite = match value {
             Parameter::Float(value) => value.is_finite(),
@@ -185,7 +194,10 @@ fn metadata_json(metadata: &Metadata) -> Result<String> {
             "{key}: non-finite Dora metadata cannot be preserved as JSON"
         );
     }
-    Ok(serde_json::to_string(metadata)?)
+    Ok(serde_json::to_vec(&serde_json::json!({
+        "ordinal": ordinal,
+        "metadata": metadata,
+    }))?)
 }
 
 fn decimal(metadata: &Metadata, key: &str) -> Result<u64> {

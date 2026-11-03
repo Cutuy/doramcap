@@ -1,5 +1,5 @@
 use crate::{
-    config::{self, Input, RecorderConfig, RecordingReport, State},
+    config::{self, Input, METADATA_TOPIC_SUFFIX, RecorderConfig, RecordingReport, State},
     recording::{Recording, consume},
 };
 use dora_node_api::{Event, IntoArrow, Metadata, Parameter, StopCause};
@@ -61,6 +61,67 @@ fn event(input: &str, bytes: &[u8], metadata: Metadata) -> Event {
     }
 }
 
+/// Recorded messages excluding the Dora metadata companion channels.
+fn payloads(bytes: &[u8]) -> Result<Vec<mcap::Message<'_>>> {
+    Ok(mcap::MessageStream::new(bytes)?
+        .collect::<std::result::Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|message| !message.channel.topic.ends_with(METADATA_TOPIC_SUFFIX))
+        .collect())
+}
+
+#[test]
+fn dora_metadata_is_paired_with_payloads_and_keeps_messages_chunked() -> Result<()> {
+    // Arrange
+    let temp = Temp::new()?;
+    let mut config = temp.config();
+    config.input[0].sequence_key = "seq".into();
+    let path = config.output_path.clone();
+    let mut recording = Recording::create(config)?;
+    // Act
+    for sequence in 0..100 {
+        let mut source = metadata();
+        source
+            .parameters
+            .insert("seq".into(), Parameter::String(sequence.to_string()));
+        recording.record("data", b"payload", &source, 1000 + sequence)?;
+    }
+    recording.finish(State::Drained, Ok(()))?;
+    // Assert: small messages share one chunk and add no per-message metadata records.
+    let bytes = std::fs::read(path)?;
+    let summary = mcap::Summary::read(&bytes)?.unwrap();
+    assert_eq!(summary.chunk_indexes.len(), 1);
+    assert!(summary.metadata_indexes.is_empty());
+    // Assert: each payload has one metadata message with its times.
+    let messages = mcap::MessageStream::new(&bytes)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    assert_eq!(messages.len(), 200);
+    for (index, pair) in messages.chunks(2).enumerate() {
+        let (companion, payload) = (&pair[0], &pair[1]);
+        assert_eq!(companion.channel.topic, "/test/dora_metadata");
+        assert_eq!(payload.channel.topic, "/test");
+        assert_eq!(companion.log_time, payload.log_time);
+        assert_eq!(companion.sequence, payload.sequence);
+        let recorded: serde_json::Value = serde_json::from_slice(&companion.data)?;
+        assert_eq!(recorded["ordinal"], index as u64 + 1);
+        assert_eq!(
+            recorded["metadata"]["parameters"]["seq"],
+            serde_json::to_value(Parameter::String(index.to_string()))?
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn metadata_channel_topics_are_reserved() -> Result<()> {
+    // Arrange
+    let temp = Temp::new()?;
+    let mut config = temp.config();
+    config.input[0].topic = "/test/dora_metadata".into();
+    // Act / Assert
+    assert!(Recording::create(config).is_err());
+    Ok(())
+}
+
 #[test]
 fn configured_topics_keep_schema_bytes_source_and_receipt_times() -> Result<()> {
     // Arrange
@@ -98,7 +159,7 @@ fn configured_topics_keep_schema_bytes_source_and_receipt_times() -> Result<()> 
     recording.finish(State::Drained, Ok(()))?;
     // Assert
     let bytes = std::fs::read(path)?;
-    let messages = mcap::MessageStream::new(&bytes)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    let messages = payloads(&bytes)?;
     assert_eq!(messages.len(), 2);
     assert_eq!(
         (
@@ -124,11 +185,6 @@ fn configured_topics_keep_schema_bytes_source_and_receipt_times() -> Result<()> 
     );
     assert_eq!(messages[1].channel.topic, "/status");
     assert_eq!(messages[1].data.as_ref(), b"ready");
-    assert!(
-        bytes
-            .windows(b"dora_metadata_json".len())
-            .any(|v| v == b"dora_metadata_json")
-    );
     let report = temp.report()?;
     assert_eq!(report.state, State::Drained as i32);
     assert!(report.finalized && report.transport_loss_unknown);
@@ -155,7 +211,7 @@ fn all_inputs_closed_drains_buffered_tail_but_unconfirmed_end_is_interrupted() -
     recording.finish(state, result)?;
     // Assert
     let bytes = std::fs::read(path)?;
-    assert_eq!(mcap::MessageStream::new(&bytes)?.count(), 1);
+    assert_eq!(payloads(&bytes)?.len(), 1);
     assert_eq!(temp.report()?.state, State::Drained as i32);
 
     // Arrange
@@ -293,7 +349,7 @@ fn workflow_stop_drains_buffered_tail_and_validates_declared_source_time() -> Re
     assert!(report.finalized);
     assert_eq!(report.input[0].written, 2);
     let bytes = std::fs::read(temp.config().output_path)?;
-    let messages = mcap::MessageStream::new(&bytes)?.collect::<std::result::Result<Vec<_>, _>>()?;
+    let messages = payloads(&bytes)?;
     assert_eq!(messages[1].data.as_ref(), b"tail");
     // Arrange
     let bad = Temp::new()?;

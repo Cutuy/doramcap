@@ -2106,6 +2106,7 @@ async fn compose_public_run(outcome: &str) {
     let messages: Vec<_> = mcap::MessageStream::new(&recording)
         .unwrap()
         .map(|message| message.unwrap())
+        .filter(|message| !message.channel.topic.ends_with("/dora_metadata"))
         .collect();
     assert_eq!(messages.len(), 20);
     assert!(messages.iter().map(|message| message.sequence).eq(0..20));

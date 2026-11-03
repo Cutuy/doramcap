@@ -57,7 +57,7 @@ records and fails later in the reader.
 - `timestamp_key` names metadata with decimal-string Unix nanoseconds, used as publish time. Default: zero.
 - `sequence_key` names metadata with a decimal-string u32 sequence. Default: zero.
 - Declared metadata fields must exist.
-- Each `dora.message` metadata record keeps the Dora metadata as JSON. Non-finite floats fail the recording.
+- Each input's `<topic>/dora_metadata` JSON channel keeps one message per payload: the recorder's `ordinal` and the Dora `metadata`, with the same times. Non-finite floats fail the recording.
 
 ## Readiness
 
