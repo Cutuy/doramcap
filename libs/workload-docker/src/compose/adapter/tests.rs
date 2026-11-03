@@ -205,6 +205,7 @@ fn state() -> ComposeProjectState {
             health: None,
             exit_code: None,
             restart_count: 0,
+            ..Default::default()
         }],
     }
 }
@@ -235,6 +236,36 @@ fn health_completion_and_image_identity_are_distinct() {
     // Act / Assert: unexpected image replacement must never count as ready.
     state.containers[0].image_id = "another-image".into();
     assert!(state.ready().is_err());
+}
+#[test]
+fn an_unexpected_exit_reports_its_status_and_last_output() {
+    // Arrange
+    let mut state = state();
+    state.containers[0].status = "exited".into();
+    state.containers[0].exit_code = Some(1);
+    state.containers[0].last_output = "Error: usage: worker --config FILE".into();
+    // Act
+    let message = state.ready().unwrap_err().to_string();
+    // Assert
+    assert!(
+        message.contains("worker exited unexpectedly with status 1"),
+        "{message}"
+    );
+    assert!(message.contains("usage: worker --config FILE"), "{message}");
+}
+#[test]
+fn appended_output_keeps_the_newest_readable_text() {
+    // Arrange: more output than the guard keeps, with the cause in the last chunk.
+    use crate::compose::state::{MAX_OUTPUT_CHARS, append_output};
+    let mut output = String::new();
+    let chunk = "h".repeat(MAX_OUTPUT_CHARS);
+    // Act
+    append_output(&mut output, chunk.as_bytes());
+    append_output(&mut output, b"\x1b[31mfinal error\x1b[0m\n");
+    // Assert
+    assert_eq!(output.chars().count(), MAX_OUTPUT_CHARS);
+    assert!(output.ends_with("final error[0m\n"));
+    assert!(!output.contains('\u{1b}'));
 }
 #[test]
 fn missing_replicas_never_count_as_ready() {
