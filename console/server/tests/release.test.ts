@@ -10,6 +10,7 @@ import { capabilities, wire } from '../src/native.js';
 import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
+import { mcapServices } from '../src/system-apps.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -171,6 +172,14 @@ test('the repository release template resolves to existing current app inputs', 
   const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
+});
+
+test('only recording apps name MCAP writer services', () => {
+  // Arrange
+  const mount = [{ service: 'writer', target: '/results' }];
+  // Act / Assert
+  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [{ id: 'a', path: 'a.mcap' }] }]), ['writer']);
+  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [] }]), []);
 });
 
 test('doctor reports every missing requirement with its remediation', async () => {

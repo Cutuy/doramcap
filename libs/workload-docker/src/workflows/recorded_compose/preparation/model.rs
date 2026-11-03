@@ -51,6 +51,33 @@ pub(super) fn merge_app(
     merge(model, part)
 }
 
+const MCAP_MEMLOCK_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Disable seccomp for each named service and raise its memlock limit.
+/// Errors: a name that matches no service.
+pub(super) fn configure_mcap_writers(model: &mut Value, services: &[String]) -> Result<()> {
+    for name in services {
+        let service = model["services"]
+            .get_mut(name)
+            .ok_or_else(|| invalid(format!("unknown MCAP writer service: {name}")))?;
+        let mut options: Vec<Value> = service["security_opt"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|option| !option.as_str().is_some_and(|o| o.starts_with("seccomp")))
+            .cloned()
+            .collect();
+        options.push("seccomp=unconfined".into());
+        service["security_opt"] = options.into();
+        let limit = service["ulimits"]["memlock"]["hard"]
+            .as_u64()
+            .unwrap_or(0)
+            .max(MCAP_MEMLOCK_BYTES);
+        service["ulimits"]["memlock"] = json!({"soft":limit,"hard":limit});
+    }
+    Ok(())
+}
+
 /// Join apps to shared IPC, supply approved settings and add owned Dora services.
 pub(super) fn configure_dora(
     model: &mut Value,

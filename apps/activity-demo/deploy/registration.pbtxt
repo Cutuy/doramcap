@@ -8,3 +8,4 @@ stop_seconds: 30
 result_file: "activity.mcap"
 env_prefix: "ACTIVITY"
 requires_explicit_enable: false
+mcap_services: "activity"

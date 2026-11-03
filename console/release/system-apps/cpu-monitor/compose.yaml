@@ -6,7 +6,6 @@ services:
     read_only: true
     cap_drop: [ALL]
     cap_add: [BPF, PERFMON, SYSLOG]
-    security_opt: [seccomp=unconfined] # The MCAP writer uses io_uring.
     cgroup: host
     tmpfs: [/tmp]
     stop_signal: SIGINT

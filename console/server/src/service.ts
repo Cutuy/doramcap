@@ -22,7 +22,7 @@ import {
 } from './native.js';
 import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
-import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
+import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, mcapServices, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
@@ -286,6 +286,7 @@ export class ConsoleService implements ConsoleBackend {
       })),
       readinessSeconds: this.config.runtime!.readinessSeconds!,
       stopSeconds: this.config.runtime!.stopSeconds!,
+      mcapServices: mcapServices(apps),
     });
     await bindOutputs(apps, run, workspace, stage);
     if (bridge) run.systemApps.push(compose.ComposeProject.create(bridge.project));

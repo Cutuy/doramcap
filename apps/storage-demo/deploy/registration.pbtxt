@@ -9,3 +9,4 @@ result_file: "activity.mcap"
 capture_directory: "captures"
 env_prefix: "STORAGE"
 requires_explicit_enable: true
+mcap_services: "storage"

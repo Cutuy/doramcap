@@ -13,3 +13,4 @@ recording_count {
 env_prefix: "CPU_VIEWER"
 requires_explicit_enable: true
 dora { graph: "flow.yml" shm_bytes: 134217728 memlock_bytes: 268435456 }
+mcap_services: "monitor"

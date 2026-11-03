@@ -433,6 +433,13 @@ fn step_error(error: impl std::fmt::Display) -> Error {
 /// Inputs to the Compose workflow: workloads and supporting apps sharing one
 /// run lifetime. Images must exist locally.
 /// Artifact directory must be new and have an existing parent.
+/// Services writing MCAP through io_uring, and the existing directories they write into.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McapWriters {
+    pub services: Vec<String>,
+    pub directories: Vec<PathBuf>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComposeRun {
@@ -458,6 +465,9 @@ pub struct ComposeRun {
     /// Explicit ordinary app recordings, checked after writers stop.
     #[serde(default)]
     pub recordings: Vec<Recording>,
+    /// Services using the io_uring MCAP writer; each gets `seccomp=unconfined` and memlock.
+    #[serde(default)]
+    pub mcap_writers: McapWriters,
     /// Positive startup/readiness budget in seconds; default 60.
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,

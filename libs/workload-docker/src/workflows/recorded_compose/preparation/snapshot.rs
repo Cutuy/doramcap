@@ -264,6 +264,7 @@ mod tests {
             system_apps: vec![],
             dora: Default::default(),
             recordings: vec![],
+            mcap_writers: Default::default(),
             readiness_seconds: 60,
             stop_seconds: 15,
         };

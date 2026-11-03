@@ -86,6 +86,7 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
         system_apps: vec![monitor(root, image, &root.join(&id))],
         dora: Default::default(),
         recordings: recordings(&root.join(&id)),
+        mcap_writers: Default::default(),
         readiness_seconds: 10,
         stop_seconds: 3,
     }
@@ -148,6 +149,7 @@ async fn native_recorded_workflow() {
         system_apps: vec![monitor(&root, &image, &artifacts)],
         dora: Default::default(),
         recordings: recordings(&artifacts),
+        mcap_writers: Default::default(),
         readiness_seconds: 15,
         stop_seconds: 5,
     };
@@ -883,6 +885,7 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             filesystem: None,
             dora: Default::default(),
             recordings: vec![],
+            mcap_writers: Default::default(),
             repository_root: root.to_path_buf(),
             projects: vec![project(&root, "session")],
             system_apps: vec![],
@@ -1045,6 +1048,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             repository_root: root.to_path_buf(),
             dora: Default::default(),
             recordings: vec![],
+            mcap_writers: Default::default(),
             system_apps: vec![project(&root, "helper")],
             projects: vec![project(&root, "alpha"), project(&root, "beta")],
             readiness_seconds: 5,
@@ -1189,6 +1193,7 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
         system_apps: vec![],
         dora: Default::default(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 15,
         stop_seconds: 3,
     };
@@ -1309,6 +1314,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
             system_apps: vec![],
             dora: Default::default(),
             recordings: vec![],
+            mcap_writers: Default::default(),
             readiness_seconds: 15,
             stop_seconds: 3,
         };
@@ -1391,6 +1397,7 @@ async fn selected_profile_starts_its_service() {
             system_apps: vec![],
             dora: Default::default(),
             recordings: vec![],
+            mcap_writers: Default::default(),
             readiness_seconds: 15,
             stop_seconds: 3,
         }
@@ -1467,6 +1474,7 @@ async fn active_experiments_are_exclusive_per_repository_and_independent_between
         system_apps: vec![],
         dora: Default::default(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 15,
         stop_seconds: 3,
     };
@@ -1584,6 +1592,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
         system_apps: vec![],
         dora: Default::default(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 15,
         stop_seconds: 3,
     };
@@ -1767,6 +1776,7 @@ async fn public_dora_resets_after_launcher_crash() {
                     system_apps: vec![],
                     dora: Default::default(),
                     recordings: vec![],
+                    mcap_writers: Default::default(),
                     readiness_seconds: 15,
                     stop_seconds: 3,
                 },
@@ -1892,8 +1902,6 @@ async fn compose_public_run(outcome: &str) {
             "recorder": {
                 "healthcheck": {"test": ["CMD", "test", "-s", runtime.join("recorder.ready")], "interval": "200ms", "timeout": "1s", "retries": 75},
                 "image":image, "network_mode":"host", "user":user, "shm_size":"64m",
-                "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
-                "security_opt":["seccomp=unconfined"],
                 "entrypoint":["/recorder"],
                 "command":["--config", "/config/recorder.pbtxt"],
                 "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
@@ -1952,6 +1960,10 @@ async fn compose_public_run(outcome: &str) {
         system_apps: vec![project(&root, "session"), project(&root, "support")],
         dora,
         recordings: vec![],
+        mcap_writers: McapWriters {
+            services: vec!["recorder".into()],
+            directories: vec![results.clone()],
+        },
         readiness_seconds: 15,
         stop_seconds: 5,
     };
@@ -2110,6 +2122,19 @@ async fn compose_public_run(outcome: &str) {
         .collect();
     assert_eq!(messages.len(), 20);
     assert!(messages.iter().map(|message| message.sequence).eq(0..20));
+    // Assert: the workflow gave the named writer its io_uring settings.
+    let resolved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(artifacts.join("experiment.compose.json")).unwrap())
+            .unwrap();
+    let writer = &resolved["services"]["recorder"];
+    assert!(
+        writer["security_opt"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|option| option == "seccomp=unconfined")
+    );
+    assert_eq!(writer["ulimits"]["memlock"]["hard"], 268435456);
     let mut expected = telemetry_protocol::pb::Packet::decode(payload.as_slice()).unwrap();
     for (sequence, message) in messages.iter().enumerate() {
         let Some(telemetry_protocol::pb::packet::Body::Snapshot(frame)) = expected.body.as_mut()
@@ -2149,6 +2174,7 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
             ..Default::default()
         },
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 10,
         stop_seconds: 3,
     };
@@ -2224,6 +2250,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         projects: vec![],
         dora: Default::default(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 10,
         stop_seconds: 3,
     };
@@ -2344,6 +2371,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         projects: vec![project(&root, "user")],
         dora: DoraRuntime::default(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 10,
         stop_seconds: 3,
     };
@@ -2539,6 +2567,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
                 system_apps: vec![],
                 dora: Default::default(),
                 recordings: vec![],
+                mcap_writers: Default::default(),
                 readiness_seconds: 10,
                 stop_seconds: 3,
             },
@@ -2641,6 +2670,7 @@ async fn incomplete_volume_scan_retains_volumes() {
                 system_apps: vec![],
                 dora: Default::default(),
                 recordings: vec![],
+                mcap_writers: Default::default(),
                 readiness_seconds: 10,
                 stop_seconds: 3,
             },

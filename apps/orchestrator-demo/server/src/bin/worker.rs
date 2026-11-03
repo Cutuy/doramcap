@@ -253,6 +253,7 @@ async fn recorded_demo(
                 }],
                 system_apps: vec![collector],
                 dora: Default::default(),
+                mcap_writers: Default::default(),
                 recordings: vec![Recording {
                     stream: artifacts.join("cpu.pb"),
                     recording: artifacts.join("cpu.mcap"),

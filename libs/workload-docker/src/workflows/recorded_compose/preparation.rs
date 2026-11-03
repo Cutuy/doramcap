@@ -105,6 +105,9 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     model::validate(&spec)?;
     crate::evidence::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
+    if !spec.mcap_writers.services.is_empty() {
+        validate_recording_host(&spec.mcap_writers.directories, &spec.id).await?;
+    }
     // Freeze Dora inputs and merge apps while recording their startup stages.
     let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
     let mut model = json!({"services":{}});
@@ -150,6 +153,8 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         model::validate_graph(&model, &graph)?;
     }
     model::validate_dependencies(&model, &system_services, &user_services)?;
+    // Docker's default seccomp filter blocks the io_uring calls MCAP writers need.
+    model::configure_mcap_writers(&mut model, &spec.mcap_writers.services)?;
     // Snapshot file inputs and resolve one project with pinned images.
     freeze_files(&mut model, &artifacts).await?;
     let manifest = artifacts.join("experiment.input.json");
@@ -212,6 +217,59 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         dora,
         snapshot,
     })
+}
+
+/// Whether a kernel release is at least 6.1, the MCAP writer's io_uring requirement.
+fn kernel_supports_mcap_writer(release: &str) -> bool {
+    let mut parts = release.split(['.', '-']).map(str::parse::<u32>);
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(Ok(major)), Some(Ok(minor))) if (major, minor) >= (6, 1)
+    )
+}
+
+/// Refuse a host where the MCAP writer cannot record into `directories`.
+/// Errors: kernel older than 6.1, io_uring disabled, or a filesystem without `O_DIRECT`.
+async fn validate_recording_host(directories: &[PathBuf], run: &str) -> Result<()> {
+    let release = tokio::fs::read_to_string("/proc/sys/kernel/osrelease").await?;
+    let release = release.trim();
+    if !kernel_supports_mcap_writer(release) {
+        return Err(invalid(format!(
+            "MCAP recording needs Linux 6.1 or newer; this host runs {release}"
+        )));
+    }
+    // Kernels before 6.6 have no such setting and leave io_uring enabled.
+    match tokio::fs::read_to_string("/proc/sys/kernel/io_uring_disabled").await {
+        Ok(value) if value.trim() != "0" => {
+            return Err(invalid(
+                "MCAP recording needs io_uring; set the kernel.io_uring_disabled sysctl to 0",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    for directory in directories {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A shared directory can hold another run's leftover probe after a crash.
+        let probe = directory.join(format!(".direct-io-probe-{run}"));
+        match std::fs::File::options()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&probe)
+        {
+            Ok(_) => tokio::fs::remove_file(&probe).await?,
+            Err(error) if error.raw_os_error() == Some(libc::EINVAL) => {
+                return Err(invalid(format!(
+                    "MCAP recording needs direct I/O; the filesystem of {} does not support it",
+                    directory.display()
+                )));
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 impl PrepareRun {

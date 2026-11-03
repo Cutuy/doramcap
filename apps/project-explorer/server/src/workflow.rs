@@ -68,6 +68,10 @@ pub async fn run(
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
             filesystem: None, dora, recordings:vec![], repository_root: app.repository_root.clone(),
+            mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {
+                services: app.mcap_services.clone(),
+                directories: vec![results.clone()],
+            },
             projects: vec![], system_apps: vec![project],
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
