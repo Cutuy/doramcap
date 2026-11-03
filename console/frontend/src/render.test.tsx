@@ -58,3 +58,14 @@ test('workflow list summarizes latest top-level invocations and excludes childre
   assert.match(html, /ObserveProjects/);
   assert.doesNotMatch(html, /InspectCompose/);
 });
+
+test('a failed run shows its cause on the Result page', () => {
+  // Arrange
+  const cause = 'cpu-recorder exited unexpectedly with status 1\nError: usage: mcap-recorder --config FILE';
+  const snapshot = wire.Status.create({ phase: Phase.FINISHED, runId: 'a'.repeat(32), outcome: wire.Outcome.create({ execution: 'Failed', error: cause }) }) as Snapshot;
+  // Act
+  const html = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}} />);
+  // Assert
+  assert.match(html, /role="alert"/);
+  assert.match(html, /usage: mcap-recorder --config FILE/);
+});

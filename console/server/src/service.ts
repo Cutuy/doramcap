@@ -9,6 +9,7 @@ import {
   capabilities,
   wire,
   execution,
+  browserError,
   compose,
   objectOptions,
   type Config,
@@ -46,6 +47,9 @@ const MAX_METRICS = 1200;
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const selectedIds = (apps: App[], live: boolean) => [...(live ? [LIVE_BRIDGE.id] : []), ...apps.map((app) => app.id!)];
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
+/** A browser error code that keeps its cause, when the cause says more than the code. */
+const failure = (code: string, cause: unknown) =>
+  Object.assign(new Error(code), { detail: errorCode(cause) === code ? '' : browserError(errorCode(cause)) });
 
 /** The TypeScript application owns request coordination, browser state and persistence. */
 export class ConsoleService implements ConsoleBackend {
@@ -250,7 +254,7 @@ export class ConsoleService implements ConsoleBackend {
       if (workspace) await rm(workspace, { recursive: true, force: true });
       await this.diagnostic(error);
       const code = errorCode(error);
-      throw new Error(['Busy', 'Closing', 'ImageDownload', 'Stopped'].includes(code) ? code : 'InvalidInput');
+      throw failure(['Busy', 'Closing', 'ImageDownload', 'Stopped'].includes(code) ? code : 'InvalidInput', error);
     }
   }
   private async runRequest(
@@ -381,21 +385,23 @@ export class ConsoleService implements ConsoleBackend {
       return Buffer.from(wire.StartResponse.encode({ runId: this.startId }).finish());
     } catch (error) {
       await this.diagnostic(error);
-      let preflightFailed = false;
+      let preflightFailed = false, preflightError = '';
       if (this.executionStarted && !this.accepted) {
         const update = this.engine.poll();
         preflightFailed = update.runId === this.startId && update.result?.error != null;
+        if (preflightFailed) preflightError = update.result!.error!;
         await this.consume(update);
         if (update.runId !== this.startId) this.executionStarted = false;
       }
       if (!this.executionStarted) await this.finish({ blocked: false, error: errorCode(error) });
       const code = errorCode(error) === 'ConfigurationChanged' ? 'StaleReview' : errorCode(error);
-      throw new Error(
+      throw failure(
         ['StaleReview', 'Stopped', 'Conflict', 'Busy', 'Closing'].includes(code)
           ? code
           : preflightFailed
             ? 'PreflightRejected'
             : 'Internal',
+        preflightError ? new Error(preflightError) : error,
       );
     } finally {
       this.admissionPending = false;
@@ -426,7 +432,8 @@ export class ConsoleService implements ConsoleBackend {
     return this.ticking;
   }
   private async tickInner() {
-    await this.consume(this.engine.poll());
+    // A finished run has nothing left to read, and the addon would re-encode its whole result.
+    if (!this.completed) await this.consume(this.engine.poll());
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {
@@ -505,6 +512,7 @@ export class ConsoleService implements ConsoleBackend {
           : Phase.FINISHED;
     this.snapshot.outcome = wire.Outcome.create({
       execution: !this.accepted && this.stopped ? 'Cancelled' : result.error ? 'Failed' : 'Completed',
+      error: browserError(result.error ?? ''),
       boundaryClean: !!clean,
       writersStopped: this.accepted ? result.writersStopped : null,
       recordingFinalized: this.marker!.recordings.length ? result.recordingFinalized : null,
@@ -528,6 +536,7 @@ export class ConsoleService implements ConsoleBackend {
           Buffer.from(
             JSON.stringify({
               execution: this.snapshot.outcome.execution,
+              error: result.error ?? null,
               writers_stopped: this.snapshot.outcome.writersStopped,
               recording_finalized: this.snapshot.outcome.recordingFinalized,
               boundary_clean: this.snapshot.outcome.boundaryClean,

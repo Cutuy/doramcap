@@ -52,6 +52,9 @@ export const capabilities: NativeCapabilities = {
   },
 };
 
+/** The end of an error, where its cause is, for a browser message. */
+export const browserError = (error: string) => error.slice(-execution.Limit.MAX_ERROR_CHARS);
+
 export const objectOptions = { longs: String, enums: String, defaults: true } as const;
 export type Config = doramcap.console.v1.ConsoleConfig;
 export type App = doramcap.console.v1.ISystemAppDefinition;

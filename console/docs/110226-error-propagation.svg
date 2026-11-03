@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 796" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" role="img" aria-labelledby="title desc">
+  <title id="title">Console error propagation</title>
+  <desc id="desc">How a failure travels from Docker through the workflow, native addon and Console server to the browser, with the size limit applied at each stage.</desc>
+  <defs>
+    <marker id="event" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3b5bab"/></marker>
+    <marker id="result" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a33636"/></marker>
+    <marker id="request" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b7791f"/></marker>
+    <marker id="stored" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#177763"/></marker>
+    <style>
+      .tier { fill: #f7f8f8; stroke: #e1e5e3; }
+      .head { font-weight: 650; fill: #20352f; }
+      .path { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #596b64; }
+      .name { font-weight: 600; fill: #20352f; text-anchor: middle; }
+      .code { font: 600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #20352f; text-anchor: middle; }
+      .sub { font-size: 12px; fill: #596b64; text-anchor: middle; }
+      .field { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #596b64; text-anchor: middle; }
+      .cap { fill: #20352f; }
+      .limit { font-size: 12px; font-weight: 600; fill: #fff; text-anchor: middle; }
+      .tag { font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #596b64; }
+      .source { fill: #fff; stroke: #777; stroke-width: 1.5; }
+      .n-event { fill: #eef2fb; stroke: #3b5bab; stroke-width: 1.5; }
+      .n-result { fill: #fbecec; stroke: #a33636; stroke-width: 1.5; }
+      .n-request { fill: #fff6e5; stroke: #b7791f; stroke-width: 1.5; }
+      .n-stored { fill: #eef5f3; stroke: #177763; stroke-width: 1.5; }
+      .a { fill: none; stroke-width: 1.6; }
+      .a-event { stroke: #3b5bab; }
+      .a-result { stroke: #a33636; }
+      .a-request { stroke: #b7791f; }
+      .a-stored { stroke: #177763; }
+      .before { stroke-dasharray: 5 4; }
+      .key { font-size: 12.5px; fill: #20352f; }
+    </style>
+  </defs>
+  <rect width="1200" height="796" fill="#fff"/>
+
+  <!-- Tiers -->
+  <rect class="tier" x="16" y="12" width="160" height="674" rx="8"/>
+  <rect class="tier" x="204" y="12" width="200" height="674" rx="8"/>
+  <rect class="tier" x="432" y="12" width="214" height="674" rx="8"/>
+  <rect class="tier" x="674" y="12" width="232" height="772" rx="8"/>
+  <rect class="tier" x="934" y="12" width="250" height="772" rx="8"/>
+  <text class="head" x="28" y="34">Docker</text><text class="path" x="28" y="50">engine · compose</text>
+  <text class="head" x="216" y="34">Workflow</text><text class="path" x="216" y="50">libs/workload-docker</text>
+  <text class="head" x="444" y="34">Native addon</text><text class="path" x="444" y="50">native/execution.rs</text>
+  <text class="head" x="686" y="34">Console server</text><text class="path" x="686" y="50">server/src</text>
+  <text class="head" x="946" y="34">Browser</text><text class="path" x="946" y="50">frontend/src</text>
+
+  <!-- Docker -->
+  <rect class="source" x="26" y="64" width="140" height="66" rx="6"/>
+  <text class="name" x="96" y="85">Failed container</text>
+  <text class="sub" x="96" y="103">exited or unhealthy</text>
+  <text class="sub" x="96" y="119">last 20 log lines</text>
+  <rect class="source" x="26" y="154" width="140" height="52" rx="6"/>
+  <text class="name" x="96" y="176">Engine · CLI</text>
+  <text class="sub" x="96" y="194">command errors</text>
+  <rect class="source" x="26" y="252" width="140" height="56" rx="6"/>
+  <text class="name" x="96" y="276">Engine events</text>
+  <text class="sub" x="96" y="294">stream failure</text>
+  <rect class="source" x="26" y="622" width="140" height="52" rx="6"/>
+  <text class="name" x="96" y="644">Compose files</text>
+  <text class="sub" x="96" y="662">project · registry</text>
+
+  <!-- Workflow -->
+  <rect class="cap" x="214" y="66" width="180" height="26" rx="13"/>
+  <text class="limit" x="304" y="84">last 256K chars, printable</text>
+  <rect class="n-event" x="214" y="104" width="180" height="42" rx="6"/>
+  <text class="code" x="304" y="122">ready()</text>
+  <text class="sub" x="304" y="138">service · status · output</text>
+  <rect class="n-event" x="214" y="158" width="180" height="44" rx="6"/>
+  <text class="name" x="304" y="177">Step fails</text>
+  <text class="field" x="304" y="194">Event.error</text>
+  <rect class="n-result" x="214" y="252" width="180" height="56" rx="6"/>
+  <text class="name" x="304" y="276">Run result</text>
+  <text class="field" x="304" y="294">execution_error · Err</text>
+  <rect class="n-request" x="214" y="622" width="180" height="52" rx="6"/>
+  <text class="name" x="304" y="644">Resolve project</text>
+  <text class="sub" x="304" y="662">profiles · config · images</text>
+
+  <!-- Native addon -->
+  <rect class="cap" x="442" y="104" width="194" height="26" rx="13"/>
+  <text class="limit" x="539" y="122">last 2000 chars</text>
+  <rect class="n-event" x="442" y="152" width="194" height="56" rx="6"/>
+  <text class="code" x="539" y="176">TelemetryObserver</text>
+  <text class="sub" x="539" y="194">16 KiB · 512 queue</text>
+  <rect class="n-result" x="442" y="252" width="194" height="56" rx="6"/>
+  <text class="code" x="539" y="276">ExecutionResult</text>
+  <text class="field" x="539" y="294">full error</text>
+  <rect class="n-request" x="442" y="622" width="194" height="52" rx="6"/>
+  <text class="name" x="539" y="644">Request rejection</text>
+  <text class="sub" x="539" y="662">Promise error</text>
+
+  <!-- Console server -->
+  <rect class="n-event" x="700" y="152" width="194" height="56" rx="6"/>
+  <text class="code" x="797" y="176">Progress.apply()</text>
+  <text class="field" x="797" y="194">Status.steps[].error</text>
+  <rect class="n-result" x="700" y="252" width="194" height="56" rx="6"/>
+  <text class="code" x="797" y="276">finish()</text>
+  <text class="field" x="797" y="294">full error</text>
+  <rect class="cap" x="700" y="330" width="128" height="26" rx="13"/>
+  <text class="limit" x="764" y="348">last 2000 chars</text>
+  <rect class="n-stored" x="700" y="380" width="194" height="60" rx="6"/>
+  <text class="code" x="797" y="404">console.db</text>
+  <text class="field" x="797" y="424">errorSummary · Status</text>
+  <rect class="n-stored" x="700" y="456" width="194" height="44" rx="6"/>
+  <text class="code" x="797" y="474">closeInterrupted()</text>
+  <text class="sub" x="797" y="491">after a Console restart</text>
+  <rect class="n-stored" x="700" y="516" width="194" height="40" rx="6"/>
+  <text class="name" x="797" y="532">Run report</text>
+  <text class="field" x="797" y="548">console-report.json</text>
+  <rect class="n-stored" x="700" y="566" width="194" height="40" rx="6"/>
+  <text class="code" x="797" y="582">diagnostics/</text>
+  <text class="field" x="797" y="598">&lt;uuid&gt;.json</text>
+  <rect class="n-request" x="700" y="622" width="194" height="52" rx="6"/>
+  <text class="name" x="797" y="644">Review · Start catch</text>
+  <text class="field" x="797" y="662">code + cause</text>
+  <rect class="cap" x="733" y="690" width="128" height="26" rx="13"/>
+  <text class="limit" x="797" y="708">last 2000 chars</text>
+  <rect class="n-request" x="700" y="730" width="194" height="44" rx="6"/>
+  <text class="code" x="797" y="748">ConsoleError</text>
+  <text class="field" x="797" y="765">code · message</text>
+
+  <!-- Browser -->
+  <text class="tag" x="946" y="144">/api/live Status</text>
+  <rect class="n-event" x="946" y="152" width="226" height="56" rx="6"/>
+  <text class="name" x="1059" y="176">Step table</text>
+  <text class="field" x="1059" y="194">step.error</text>
+  <rect class="n-result" x="946" y="252" width="226" height="56" rx="6"/>
+  <text class="name" x="1059" y="276">Result page</text>
+  <text class="field" x="1059" y="294">outcome.error</text>
+  <text class="tag" x="946" y="346">/api/history</text>
+  <rect class="n-stored" x="946" y="354" width="226" height="48" rx="6"/>
+  <text class="name" x="1059" y="374">History list</text>
+  <text class="sub" x="1059" y="391">one line · errorSummary</text>
+  <rect class="n-stored" x="946" y="414" width="226" height="52" rx="6"/>
+  <text class="name" x="1059" y="436">History detail</text>
+  <text class="sub" x="1059" y="454">Result page · saved step table</text>
+  <text class="tag" x="946" y="508">/api/artifacts</text>
+  <rect class="n-stored" x="946" y="516" width="226" height="40" rx="6"/>
+  <text class="name" x="1059" y="532">Download report</text>
+  <text class="sub" x="1059" y="548">full error</text>
+  <text class="tag" x="946" y="722">HTTP error response</text>
+  <rect class="n-request" x="946" y="730" width="226" height="44" rx="6"/>
+  <text class="name" x="1059" y="748">Page notice</text>
+  <text class="sub" x="1059" y="765">friendly copy + detail</text>
+
+  <!-- Step events -->
+  <g class="a a-event" marker-end="url(#event)">
+    <path d="M166,79 H212"/>
+    <path d="M304,92 V102"/>
+    <path d="M304,146 V156"/>
+    <path d="M166,180 H212"/>
+    <path d="M394,170 H418 V117 H440"/>
+    <path d="M539,130 V150"/>
+    <path d="M636,180 H698"/>
+    <path d="M894,180 H944"/>
+  </g>
+
+  <!-- Run result -->
+  <g class="a a-result" marker-end="url(#result)">
+    <path d="M304,202 V250"/>
+    <path d="M166,280 H212"/>
+    <path d="M394,280 H440"/>
+    <path d="M636,280 H698"/>
+    <path d="M764,308 V328"/>
+    <path d="M828,343 H920 V280 H944"/>
+  </g>
+
+  <!-- Stored -->
+  <g class="a a-stored" marker-end="url(#stored)">
+    <path d="M764,356 V378"/>
+    <path d="M797,456 V442"/>
+    <path d="M700,296 H686 V586 H698"/>
+    <path d="M686,536 H698"/>
+    <path d="M797,622 V608"/>
+    <path d="M894,398 H920 V378 H944"/>
+    <path d="M894,424 H920 V440 H944"/>
+    <path d="M894,536 H944"/>
+  </g>
+
+  <!-- Request failure -->
+  <g class="a a-request" marker-end="url(#request)">
+    <path d="M166,648 H212"/>
+    <path d="M394,648 H440"/>
+    <path d="M636,656 H698"/>
+    <path d="M797,674 V688"/>
+    <path d="M797,716 V728"/>
+    <path d="M894,752 H944"/>
+  </g>
+  <g class="a a-request before" marker-end="url(#request)">
+    <path d="M600,308 V602 H660 V638 H698"/>
+    <path d="M894,648 H902 V298 H896"/>
+  </g>
+  <text class="tag" x="606" y="444">preflight</text>
+  <text class="tag" x="908" y="618">Start</text>
+
+  <!-- Key -->
+  <g class="a" stroke-width="2">
+    <path class="a-event" d="M24,708 H58" marker-end="url(#event)"/>
+    <path class="a-result" d="M24,734 H58" marker-end="url(#result)"/>
+    <path class="a-request" d="M24,760 H58" marker-end="url(#request)"/>
+    <path class="a-stored" d="M238,708 H272" marker-end="url(#stored)"/>
+    <path class="a-request before" d="M238,734 H272" marker-end="url(#request)"/>
+  </g>
+  <text class="key" x="68" y="712">Step event</text>
+  <text class="key" x="68" y="738">Run result</text>
+  <text class="key" x="68" y="764">Request failure</text>
+  <text class="key" x="282" y="712">Stored evidence</text>
+  <text class="key" x="282" y="738">Before the run starts</text>
+  <rect class="cap" x="238" y="750" width="34" height="18" rx="9"/>
+  <text class="key" x="282" y="764">Size limit</text>
+</svg>

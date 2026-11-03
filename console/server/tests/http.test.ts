@@ -139,3 +139,30 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
     assert.equal(subscribers, 0);
   } finally { controller.abort(); server.closeAllConnections(); server.close(); await once(server,'close'); }
 });
+
+test('a failed request returns its error code and cause', async () => {
+  // Arrange
+  const native = {
+    close: async () => {},
+    status: async () => Buffer.from(wire.Status.encode({ phase: wire.Phase.IDLE }).finish()),
+    frames: () => () => {},
+    prepare: async () => { throw Object.assign(new Error('InvalidInput'), { detail: 'compose.yaml is broken' }); },
+  } as unknown as ConsoleBackend;
+  const assets = await mkdtemp(join(tmpdir(), 'console-http-'));
+  const server = createConsoleServer({ backend: native, secret: 'secret', origin: 'http://console.test', assets });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const address = server.address(); assert.ok(address && typeof address !== 'string');
+  const base = `http://127.0.0.1:${address.port}`, cookie = await sessionCookie(base);
+  try {
+    // Act
+    const response = await fetch(base + routes.prepare.path, { method: 'POST', headers: { cookie, origin: 'http://console.test', 'content-type': MEDIA_TYPE }, body: new Blob([new Uint8Array(wire.PrepareRequest.encode({}).finish())]) });
+    const error = routes.error.decode(new Uint8Array(await response.arrayBuffer()));
+    // Assert
+    assert.equal(response.status, 400);
+    assert.equal(error.code, 'InvalidInput');
+    assert.equal(error.message, 'compose.yaml is broken');
+  } finally {
+    server.close();
+    await rm(assets, { recursive: true, force: true });
+  }
+});

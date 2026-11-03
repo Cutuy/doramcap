@@ -6,8 +6,10 @@ use crate::compose::{
     Cleanup, ComposeProjectState, Container, ResolvedComposeProject, Result, Shutdown,
     command::compose,
     error::{absent, engine, invalid},
+    state::append_output,
 };
 use bollard::query_parameters::*;
+use futures_util::StreamExt;
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
@@ -135,8 +137,7 @@ impl ComposeExecution<'_> {
             let state = info
                 .state
                 .ok_or_else(|| invalid("Engine omitted container state"))?;
-            containers.push(Container {
-                id,
+            let mut container = Container {
                 service,
                 image_id: info.image.unwrap_or_default(),
                 pid: state.pid.unwrap_or(0),
@@ -144,12 +145,38 @@ impl ComposeExecution<'_> {
                 health: state.health.and_then(|h| h.status).map(|s| s.to_string()),
                 exit_code: state.exit_code,
                 restart_count: info.restart_count.unwrap_or(0),
-            });
+                ..Default::default()
+            };
+            let completed = self
+                .plan
+                .services
+                .get(&container.service)
+                .is_some_and(|service| service.completed);
+            if container.failed(completed) {
+                container.last_output = self.last_output(&id).await;
+            }
+            container.id = id;
+            containers.push(container);
         }
         Ok(ComposeProjectState {
             plan: Some(self.plan.clone()),
             containers,
         })
+    }
+    /// Return a container's last lines for error messages; empty when Engine cannot provide them.
+    async fn last_output(&self, id: &str) -> String {
+        let options = LogsOptions {
+            stdout: true,
+            stderr: true,
+            tail: "20".into(),
+            ..Default::default()
+        };
+        let mut logs = self.adapter.docker.logs(id, Some(options));
+        let mut output = String::new();
+        while let Some(Ok(chunk)) = logs.next().await {
+            append_output(&mut output, &chunk.into_bytes());
+        }
+        output.trim().to_owned()
     }
     /// Start selected services and wait for the requested readiness budget.
     /// Errors or cancellation can leave resources; quiesce joins pending CLI startup.

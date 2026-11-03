@@ -1,12 +1,11 @@
 import { LIMITS } from './generated/transport.js';
-import { wire, type Snapshot } from './native.js';
+import { browserError, wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
 
 const { HistoryState: State, Phase } = wire;
 type Row = { entry: Uint8Array; detail: Uint8Array };
 
 const MAX_DETAIL_BYTES = 2 * 1024 * 1024,
-  MAX_ERROR_LENGTH = 1024,
   MAX_PAGE_BYTES = 1024 * 1024;
 
 /** Map one Console status to its history result. */
@@ -79,7 +78,7 @@ export class History {
       startedAtMs: startedAt,
       ...(finishedAt === undefined ? {} : { finishedAtMs: finishedAt }),
       state,
-      errorSummary: error.slice(0, MAX_ERROR_LENGTH),
+      errorSummary: browserError(error),
       artifacts: this.artifacts(status),
     });
     this.store.db.prepare(

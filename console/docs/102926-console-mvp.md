@@ -236,7 +236,7 @@ revision and observed results beside its validation items before checking them.
   Stop/close outside the ordinary mailbox so admission saturation cannot starve them. Check a latched Stop in
   the preflight callback so Stop during preparation cannot lead to a later launch.
 - [ ] Feed an observer wrapper into `run_with_preflight`: remove payloads and
-  replace raw errors with safe error categories before forwarding to
+  keep step errors, which reach the browser capped at 2000 characters, before forwarding to
   `TelemetryObserver`. Its sink copies encoded bytes into a 512-entry queue using
   `try_send`, with a 16 KiB event limit. Queue-full returns an error to the observer;
   the observer's loss counter remains accessible even if the last event was lost.
@@ -310,7 +310,7 @@ revision and observed results beside its validation items before checking them.
   progress indicators. Stop remains available during Starting and Running.
 - [ ] Project `ComposeRunReport` into execution error category, `writers_stopped`,
   `recording_finalized`, `boundary_clean` and `event_stream_healthy`. Persist a
-  sanitized `console-report.json`; keep the original `report.json` private.
+  `console-report.json` with the full run error; keep the original `report.json` private.
   Render these outcomes separately. A runner error without a report shows Unknown
   for unavailable outcomes and preserves the admission block.
 - [ ] Register only `cpu.mcap` and `console-report.json` from the current run.

@@ -50,6 +50,7 @@ enum Phase {
 }
 message Outcome {
   string execution = 1;
+  string error = 6; // Why the run failed; empty on success.
   optional bool writers_stopped = 2;
   optional bool recording_finalized = 3;
   optional bool boundary_clean = 4;

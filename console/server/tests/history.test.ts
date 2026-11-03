@@ -193,6 +193,7 @@ test('a finished run survives a restart with its selection, times, error and art
     assert.equal(entry.runId, runId);
     assert.equal(entry.state, State.HISTORY_FAILED);
     assert.equal(entry.errorSummary, 'worker exited with status 3');
+    assert.equal(found.status!.outcome!.error, 'worker exited with status 3');
     assert.deepEqual(entry.systemApps!.ids, ['recorder']);
     assert.ok(Number(entry.startedAtMs) >= before);
     assert.ok(Number(entry.finishedAtMs) >= Number(entry.startedAtMs));
@@ -208,6 +209,70 @@ test('a finished run survives a restart with its selection, times, error and art
     closeSync(fd);
   } finally {
     await second.backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a long run error keeps its end in the history summary', async () => {
+  // Arrange
+  const root = await temporary(), store = await Store.open(root);
+  const history = new History(store);
+  const status = wire.Status.create({ phase: Phase.FINISHED, runId: id(1), outcome: { execution: 'Failed' } });
+  try {
+    // Act
+    history.record(status, 5000, 6000, `${'x'.repeat(3000)} the cause`);
+    const entry = history.list(wire.HistoryQuery.create()).entries[0];
+    // Assert
+    assert.equal(entry.errorSummary!.length, execution.Limit.MAX_ERROR_CHARS);
+    assert.ok(entry.errorSummary!.endsWith('the cause'));
+  } finally {
+    store.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a long run error reaches the browser capped and stays whole in its report', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const error = `start of the error ${'x'.repeat(3000)} the cause`;
+  const runId = await startRun(run);
+  try {
+    // Act
+    await finishRun(run, runId, { error, boundaryClean: true });
+    const found = await detail(run, runId);
+    const report = JSON.parse(readFileSync(join(run.config.dataRoot, 'runs', runId, 'console-report.json'), 'utf8'));
+    // Assert
+    assert.equal(found.status!.outcome!.error!.length, execution.Limit.MAX_ERROR_CHARS);
+    assert.ok(found.status!.outcome!.error!.endsWith('the cause'));
+    assert.equal(report.error, error);
+  } finally {
+    await run.backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a finished run is no longer polled until the next one starts', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  try {
+    await finishRun(run, runId, { boundaryClean: true });
+    let polls = 0;
+    const poll = run.engine.poll.bind(run.engine);
+    run.engine.poll = () => { polls++; return poll(); };
+    // Act
+    await run.backend.status();
+    // Assert
+    assert.equal(polls, 0);
+    // Act
+    const next = await startRun(run);
+    await run.backend.status();
+    // Assert: a new run is read again and finishes normally.
+    assert.ok(polls > 0);
+    await finishRun(run, next, { boundaryClean: true });
+    assert.equal(wire.Status.decode(await run.backend.status()).outcome!.execution, 'Completed');
+  } finally {
+    await run.backend.close();
     await rm(root, { recursive: true, force: true });
   }
 });

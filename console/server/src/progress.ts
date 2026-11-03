@@ -10,7 +10,7 @@ const summary = (a: Event, b: Event) =>
   a.executor === b.executor &&
   a.step === b.step;
 
-/** Reduce raw execution events into bounded, redacted Console rows. */
+/** Reduce raw execution events into bounded Console rows without payloads. */
 export class Progress {
   rows: Event[] = [];
   sequence = 0n;
@@ -22,7 +22,7 @@ export class Progress {
     const event = workflow.Event.create({
       ...raw,
       payloadJson: null,
-      error: raw.error ? 'step failed' : null,
+      error: raw.error || null,
     });
     const sequence = BigInt(event.sequence.toString());
     if (sequence > this.sequence) {

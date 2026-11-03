@@ -127,6 +127,8 @@ message Container {
   optional int64 exit_code = 7;
   // Engine-reported restart count.
   int64 restart_count = 8;
+  // Recent output of a failed container, for diagnostics; bounded.
+  string last_output = 9;
 }
 
 // Observed containers and their frozen execution identity.

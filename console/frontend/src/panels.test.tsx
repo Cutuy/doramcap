@@ -6,6 +6,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ActivityTimeline, EventDetails } from './ActivityTimeline';
 import { RunActivity } from './RunActivity';
+import { RunSteps } from './RunSteps';
 import { RunMetrics } from './RunMetrics';
 import { Result } from './Result';
 import { SystemApps } from './SystemApps';
@@ -16,16 +17,23 @@ import { PageFrame } from './ui/PageFrame';
 import { Kind, LiveModel } from './streams';
 import type { Snapshot, Step } from './api';
 
-const step: Step = workflow.Event.fromObject({ session: 'session', executor: 'local', invocation: '9007199254740993', step: 'module::LaunchProjects', state: StepState.FAILED, durationNs: '100000000', elapsedNs: '1200000000', parent: '9007199254740994', dependencies: ['9007199254740995'], sequence: '9007199254740996', error: 'step failed' });
-test('event inspector preserves precise identity, timing, relationships and safe failure information', () => {
+const step: Step = workflow.Event.fromObject({ session: 'session', executor: 'local', invocation: '9007199254740993', step: 'module::LaunchProjects', state: StepState.FAILED, durationNs: '100000000', elapsedNs: '1200000000', parent: '9007199254740994', dependencies: ['9007199254740995'], sequence: '9007199254740996', error: 'compose up exited 1: no such image' });
+test('event inspector preserves precise identity, timing, relationships and failure information', () => {
   // Arrange / Act
   const html = renderToStaticMarkup(<EventDetails step={step} now={3}/>);
   // Assert
   for (const id of ['9007199254740993', '9007199254740994', '9007199254740995', '9007199254740996']) assert.match(html, new RegExp(id));
   assert.match(html, /0.100 s/);
   assert.match(html, /1.100 s/);
-  assert.match(html, /step failed/);
+  assert.match(html, /no such image/);
   assert.doesNotMatch(html, /payloads are excluded|private host evidence/);
+});
+test('the step table shows why a step failed', () => {
+  // Arrange / Act
+  const html = renderToStaticMarkup(<RunSteps steps={[workflow.Event.create({ ...step, parent: null })]}/>);
+  // Assert
+  assert.match(html, /Failed/);
+  assert.match(html, /compose up exited 1: no such image/);
 });
 test('timeline events are keyboard buttons and completed view supports elapsed-time browsing', () => {
   // Arrange / Act
