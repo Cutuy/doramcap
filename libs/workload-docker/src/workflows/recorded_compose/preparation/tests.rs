@@ -332,6 +332,95 @@ fn request_validation_rejects_invalid_paths_keys_and_budgets() {
 }
 
 #[tokio::test]
+async fn preparation_reports_missing_sources_while_freezing_defers_missing_binds() {
+    // Arrange
+    let source = "/nonexistent/doramcap/data";
+    let strict = json!({"services":{
+        "app":{"volumes":[{"type":"bind","source":source}]},
+        "worker":{"volumes":[{"type":"bind","source":source}]}
+    }});
+    let created = json!({"services":{"app":{"volumes":[
+        {"type":"bind","source":source,"read_only":true,"bind":{}}
+    ]}}});
+    let spelled = json!({"services":{"app":{"volumes":[
+        {"type":"bind","source":source,"read_only":true,"bind":{"create_host_path":true}}
+    ]}}});
+    let refused = json!({"services":{"app":{"volumes":[
+        {"type":"bind","source":source,"read_only":true,"bind":{"create_host_path":false}}
+    ]}}});
+
+    // Act
+    let error = check_sources(&strict, false).await.unwrap_err().to_string();
+
+    // Assert
+    assert!(error.contains("app: bind mount source /nonexistent/doramcap/data"));
+    assert!(error.contains("worker: bind mount source /nonexistent/doramcap/data"));
+    for model in [&created, &spelled] {
+        check_sources(model, false).await.unwrap();
+        assert!(check_sources(model, true).await.is_err());
+    }
+    assert!(check_sources(&refused, false).await.is_err());
+
+    for mut frozen in [refused, created, spelled] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let original = frozen.clone();
+        // Act
+        freeze_files(&mut frozen, root.path()).await.unwrap();
+        // Assert
+        assert_eq!(frozen, original);
+    }
+}
+
+#[tokio::test]
+async fn freezing_names_every_unreadable_file_input() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("file");
+    std::fs::write(&file, b"contents").unwrap();
+    let below_file = file.join("child");
+    let below_file = below_file.to_str().unwrap();
+    let source = "/nonexistent/doramcap/data";
+    let mut model = json!({
+        "services":{"app":{"volumes":[{"type":"bind","source":below_file,"read_only":true}]}},
+        "configs":{"settings":{"file":source}},
+        "secrets":{"token":{"file":source},"ambient":{"environment":"TOKEN"}}
+    });
+
+    // Act
+    let error = freeze_files(&mut model, root.path())
+        .await
+        .unwrap_err()
+        .to_string();
+
+    // Assert
+    assert!(error.contains(&format!("app: bind mount source {below_file}: ")));
+    assert!(error.contains("configs/settings: file /nonexistent/doramcap/data: "));
+    assert!(error.contains("secrets/token: file /nonexistent/doramcap/data: "));
+    assert!(!error.contains("ambient"));
+}
+
+#[test]
+fn stage_labels_keep_error_variants_that_callers_match() {
+    // Arrange
+    let label = in_stage("Freeze inputs");
+    let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+
+    // Act
+    let io = label(Error::Io(denied));
+    let validation = label(invalid("bad input"));
+    let selection = label(Error::EmptySelection);
+
+    // Assert
+    assert!(
+        matches!(&io, Error::Io(error) if error.kind() == std::io::ErrorKind::PermissionDenied)
+    );
+    assert!(io.to_string().starts_with("Freeze inputs: "));
+    assert_eq!(validation.to_string(), "Freeze inputs: bad input");
+    assert!(matches!(selection, Error::EmptySelection));
+}
+
+#[tokio::test]
 async fn freezing_copies_files_and_permissions_while_writable_mounts_and_directories_stay_live() {
     use std::os::unix::fs::PermissionsExt;
     // Arrange

@@ -97,59 +97,78 @@ pub struct ResolvedRun {
 pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
     // Resolve runtime settings and validate the request.
     let mut runtime = spec.dora.clone();
-    super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
-    model::validate(&spec)?;
-    crate::evidence::create_private_dir(&spec.artifacts).await?;
-    let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
+    let artifacts = async {
+        super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
+        model::validate(&spec)?;
+        crate::evidence::create_private_dir(&spec.artifacts).await?;
+        Ok::<_, Error>(tokio::fs::canonicalize(&spec.artifacts).await?)
+    }
+    .await
+    .map_err(in_stage("Validate request"))?;
     // Freeze Dora inputs and merge apps while recording their startup stages.
-    let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
+    let dora = super::super::shared_dora::prepare(&runtime, &artifacts)
+        .await
+        .map_err(in_stage("Freeze inputs"))?;
     let mut model = json!({"services":{}});
     let mut system_services = Vec::new();
     let mut user_services = Vec::new();
     let mut diagnostics = Vec::new();
-    for (apps, services) in [
-        (&spec.system_apps, &mut system_services),
-        (&spec.projects, &mut user_services),
-    ] {
-        for app in apps {
-            let normalized = adapter
-                .configuration()
-                .normalize(
-                    &spec.id,
-                    &model::app_input(app, &dora)?,
-                    &crate::compose::adapter::project_name("experiment", &spec.repository_root),
-                )
-                .await?;
-            let warnings =
-                model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
-            private_write(
+    async {
+        for (apps, services) in [
+            (&spec.system_apps, &mut system_services),
+            (&spec.projects, &mut user_services),
+        ] {
+            for app in apps {
+                let normalized = adapter
+                    .configuration()
+                    .normalize(
+                        &spec.id,
+                        &model::app_input(app, &dora)?,
+                        &crate::compose::adapter::project_name("experiment", &spec.repository_root),
+                    )
+                    .await?;
+                let warnings =
+                    model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
+                private_write(
                     &artifacts.join(format!("{}.inputs.json", app.key)),
                     &serde_json::to_vec(
                         &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
                     )?,
                 )
                 .await?;
-            diagnostics.extend(warnings);
+                diagnostics.extend(warnings);
+            }
         }
+        Ok::<_, Error>(())
     }
+    .await
+    .map_err(in_stage("Resolve apps"))?;
     // Configure shared IPC, then validate graph bindings and startup dependencies.
-    diagnostics.extend(model::configure_dora(
-        &mut model,
-        &dora,
-        super::super::shared_dora::owner(&spec.repository_root),
-    )?);
-    if !dora.graph.is_empty() {
-        let graph = super::super::shared_dora::graph(
+    async {
+        diagnostics.extend(model::configure_dora(
+            &mut model,
             &dora,
-            &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
-        )?;
-        model::validate_graph(&model, &graph)?;
+            super::super::shared_dora::owner(&spec.repository_root),
+        )?);
+        if !dora.graph.is_empty() {
+            let graph = super::super::shared_dora::graph(
+                &dora,
+                &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+            )?;
+            model::validate_graph(&model, &graph)?;
+        }
+        model::validate_dependencies(&model, &system_services, &user_services)
     }
-    model::validate_dependencies(&model, &system_services, &user_services)?;
+    .await
+    .map_err(in_stage("Validate graph"))?;
     // Snapshot file inputs and resolve one project with pinned images.
-    freeze_files(&mut model, &artifacts).await?;
     let manifest = artifacts.join("experiment.input.json");
-    private_write(&manifest, &serde_json::to_vec(&model)?).await?;
+    async {
+        freeze_files(&mut model, &artifacts).await?;
+        private_write(&manifest, &serde_json::to_vec(&model)?).await
+    }
+    .await
+    .map_err(in_stage("Freeze inputs"))?;
     let apps = spec.system_apps.iter().chain(&spec.projects);
     let mut plan = adapter
         .configuration()
@@ -186,7 +205,8 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
                 ..Default::default()
             }),
         })
-        .await?;
+        .await
+        .map_err(in_stage("Resolve project"))?;
     for warning in &diagnostics {
         eprintln!("warning: {warning}");
     }
@@ -199,7 +219,8 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         &user_services,
         &dora,
     )
-    .await?;
+    .await
+    .map_err(in_stage("Resolve project"))?;
     Ok(ResolvedRun {
         artifacts,
         plan,
@@ -212,7 +233,12 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
 
 impl PrepareRun {
     async fn prepare(&self, spec: ComposeRun) -> Result<PreparedRun> {
+        let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
+        let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
+        check_sources(&model, overlays)
+            .await
+            .map_err(in_stage("Prepare project"))?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
@@ -253,32 +279,93 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     }
     Ok(destination.to_string_lossy().into_owned())
 }
+/// Prefix validation, JSON and I/O errors with the `resolve` stage that raised them.
+/// Engine, Compose and selection errors keep their own variant and wording.
+fn in_stage(stage: &'static str) -> impl Fn(Error) -> Error {
+    move |error| match error {
+        Error::Io(error) => Error::Io(std::io::Error::new(
+            error.kind(),
+            format!("{stage}: {error}"),
+        )),
+        Error::Invalid(_) | Error::Json(_) => invalid(format!("{stage}: {error}")),
+        other => other,
+    }
+}
+/// Refuse unreadable bind sources, naming every failure.
+/// `overlays` also refuses `create_host_path` sources, because overlays need them to exist.
+async fn check_sources(model: &Value, overlays: bool) -> Result<()> {
+    let mut failures = Vec::new();
+    for (service, value) in model["services"].as_object().into_iter().flatten() {
+        let mounts = value["volumes"].as_array().into_iter().flatten();
+        for mount in mounts.filter(|mount| mount["type"] == "bind") {
+            let Some(source) = mount["source"].as_str() else {
+                continue;
+            };
+            if let Err(error) = tokio::fs::metadata(source).await {
+                // Compose renders `create_host_path: true` explicitly or as `bind: {}`.
+                let created =
+                    mount["bind"].is_object() && mount["bind"]["create_host_path"] != false;
+                if overlays || !created || error.kind() != std::io::ErrorKind::NotFound {
+                    failures.push(format!("{service}: bind mount source {source}: {error}"));
+                }
+            }
+        }
+    }
+    failed(failures)
+}
+/// Join named source failures into one validation error.
+fn failed(failures: Vec<String>) -> Result<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(invalid(failures.join("; ")))
+    }
+}
+/// Snapshot read-only bind files, config files and secret files into `artifacts/inputs`.
+/// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
     crate::evidence::create_private_dir(&directory).await?;
-    for service in model["services"].as_object_mut().unwrap().values_mut() {
+    let mut failures = Vec::new();
+    for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
             for mount in mounts {
                 if mount["type"] == "bind"
                     && mount["read_only"] == true
                     && let Some(source) = mount["source"].as_str()
-                    && tokio::fs::metadata(source).await?.is_file()
                 {
-                    mount["source"] = snapshot_file(source, &directory).await?.into();
+                    let frozen = match tokio::fs::metadata(source).await {
+                        // Execution preparation validates missing bind sources.
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => Err(error.into()),
+                        Ok(metadata) if !metadata.is_file() => continue,
+                        Ok(_) => snapshot_file(source, &directory).await,
+                    };
+                    match frozen {
+                        Ok(frozen) => mount["source"] = frozen.into(),
+                        Err(error) => {
+                            failures.push(format!("{name}: bind mount source {source}: {error}"))
+                        }
+                    }
                 }
             }
         }
     }
     for kind in ["configs", "secrets"] {
         if let Some(items) = model.get_mut(kind).and_then(Value::as_object_mut) {
-            for item in items.values_mut() {
+            for (name, item) in items.iter_mut() {
                 if let Some(source) = item["file"].as_str() {
-                    item["file"] = snapshot_file(source, &directory).await?.into();
+                    match snapshot_file(source, &directory).await {
+                        Ok(frozen) => item["file"] = frozen.into(),
+                        Err(error) => {
+                            failures.push(format!("{kind}/{name}: file {source}: {error}"))
+                        }
+                    }
                 }
             }
         }
     }
-    Ok(())
+    failed(failures)
 }
 
 #[cfg(test)]

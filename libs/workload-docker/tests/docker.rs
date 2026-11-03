@@ -2277,6 +2277,30 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     assert_ne!(inspected.snapshot, changed.snapshot);
     support::assert_no_run_resources(&adapter, &spec.id).await;
     support::assert_no_run_resources(&adapter, "prepared").await;
+
+    // Act: Review defers missing bind directories to execution preparation.
+    let mut missing = spec;
+    missing.id = "missing-source".into();
+    missing.filesystem = Some(Default::default());
+    missing.artifacts = root.path().join("missing-review");
+    missing.system_apps = vec![app(&root.path().join("absent"))];
+    preparation::resolve(&adapter, missing.clone())
+        .await
+        .unwrap();
+    missing.artifacts = root.path().join("missing-preparation");
+    let error = executor
+        .run::<preparation::PrepareRun>(missing)
+        .await
+        .unwrap_err();
+
+    // Assert
+    assert!(
+        error
+            .to_string()
+            .contains("Prepare project: monitor: bind mount source")
+    );
+    assert!(!root.path().join("absent").exists());
+    support::assert_no_run_resources(&adapter, "missing-source").await;
 }
 
 #[tokio::test(flavor = "current_thread")]
