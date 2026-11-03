@@ -1,7 +1,7 @@
 # CI
 
 [GitHub Actions](../../.github/workflows/ci.yml) runs on standard
-`ubuntu-24.04-arm` and `ubuntu-24.04` runners for pushes, pull requests, and
+`ubuntu-24.04-arm` and `ubuntu-24.04` runners for pushes to main, pull requests, and
 manual dispatch. Push and PR runs filter for Rust sources, build/test inputs,
 CI scripts and the workflow itself. Documentation, worktree tooling and unrelated
 frontend edits skip Rust CI; manual dispatch always runs it.
