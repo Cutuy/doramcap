@@ -3,7 +3,8 @@
 
 - `reserve(message, size)` provides managed payload space; prepared slabs supply complete records.
 - `McapWriter` creates each file exclusively with `O_DIRECT` and uses 4-KiB alignment.
-- Each write occupies contiguous file offsets; cross-write placement and completion order are unspecified. Standalone writes leave combining batches buffered.
+- Each write occupies contiguous file offsets; completion order is unspecified.
+- Reservations take ascending file offsets in commit order. Prepared and external appends leave combining batches buffered, so they can take lower offsets than earlier commits.
 - Registrations survive reuse and rotation. Explicit idle retirement releases them.
 - Rejected prepared blocks return intact; drive `flush_written()` before retrying pressure.
 - Slab recycling waits for all readers and I/O. Sealing allocates one `Arc`; recycling uses a mutex.

@@ -674,6 +674,10 @@ impl MessageReservation<'_> {
             return Err(invalid());
         }
         self.writer.writer.progress(false)?;
+        if self.standalone.is_some() {
+            // Batch first; each step retains its bytes on refusal, so a retry keeps commit order.
+            self.writer.flush_combining()?;
+        }
         if let Some(lease) = self.standalone.take() {
             match self
                 .writer

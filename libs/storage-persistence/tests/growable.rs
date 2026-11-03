@@ -281,9 +281,9 @@ fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[0].sequence, 1);
-    assert_eq!(messages[1].sequence, 0);
-    assert!(messages[0].data.iter().all(|b| *b == 42));
+    assert_eq!(messages[0].sequence, 0);
+    assert_eq!(messages[1].sequence, 1);
+    assert!(messages[1].data.iter().all(|b| *b == 42));
     std::fs::remove_file(path).unwrap();
 }
 
@@ -329,8 +329,6 @@ fn framing_boundaries_and_small_batching() {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(messages.len(), 16);
-        let mut messages = messages;
-        messages.sort_by_key(|m| m.sequence);
         for (i, message) in messages.iter().enumerate() {
             assert_eq!(message.sequence, i as u32);
             assert_eq!(message.data.len(), if i < 10 { 7 } else { sizes[i - 10] });

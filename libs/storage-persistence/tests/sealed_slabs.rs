@@ -249,7 +249,7 @@ fn registration_limit_and_bad_length_return_slab_without_offset_consumption() {
 
 #[test]
 fn standalone_paths_do_not_flush_or_reserve_capacity_for_combining() {
-    for kind in ["large", "slab", "mapped"] {
+    for kind in ["slab", "mapped"] {
         let file = path(kind);
         // Metadata occupies one slot; exactly one slot remains for the new write.
         let (mut writer, monitor) = mcap(&file, 2);
@@ -262,11 +262,6 @@ fn standalone_paths_do_not_flush_or_reserve_capacity_for_combining() {
             .map(|i| ((i * 31 + i / 4096) % 251) as u8)
             .collect();
         match kind {
-            "large" => {
-                let mut r = writer.reserve(message(1), expected.len()).unwrap();
-                r.payload_mut().copy_from_slice(&expected);
-                r.try_commit().unwrap();
-            }
             "slab" => {
                 let pool = SlabPool::new(1, 16384, 4096).unwrap();
                 let mut b = writer.prepare_records(pool.acquire().unwrap());
