@@ -204,3 +204,7 @@ impl WatchdogConfig {
 pub fn load(path: &std::path::Path) -> Result<WatchdogConfig> {
     pbtxt_config::resolve::<WatchdogConfig>(path, &["watchdog"])?.config("watchdog")
 }
+/// Format the resolved `watchdog` app as one complete pbtxt, loadable by `load`.
+pub fn resolved_text(path: &std::path::Path) -> Result<String> {
+    pbtxt_config::resolve::<WatchdogConfig>(path, &["watchdog"])?.fragment_text()
+}

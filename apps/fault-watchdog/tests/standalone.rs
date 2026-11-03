@@ -67,23 +67,40 @@ fn standalone_config_accepts_external_reporter_and_retains_disconnected_faults()
 
 #[test]
 fn standalone_sink_configs_use_existing_feature_gates() {
-    // Arrange: Console mounts one profile file, with no siblings beside it.
-    let directory = std::env::temp_dir().join(format!("watchdog-profiles-{}", std::process::id()));
-    std::fs::create_dir(&directory).unwrap();
     for (name, enabled) in [
         ("watchdog.pbtxt", true),
         ("watchdog-mcap.pbtxt", cfg!(feature = "mcap")),
         ("watchdog-otel.pbtxt", cfg!(feature = "otel")),
     ] {
-        let path = directory.join(name);
-        std::fs::copy(Path::new("deploy/standalone/config").join(name), &path).unwrap();
+        // Arrange
+        let path = Path::new("deploy/standalone/config").join(name);
 
         // Act
         let config = config::load(&path);
-        std::fs::remove_file(&path).unwrap();
 
         // Assert
         assert_eq!(config.is_ok(), enabled, "{name}: {config:?}");
     }
-    std::fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+fn resolved_profile_loads_alone_with_the_config_of_its_includes() {
+    // Arrange
+    let source = Path::new("deploy/standalone/config/watchdog-otel.pbtxt");
+    if !cfg!(feature = "otel") {
+        assert!(config::resolved_text(source).is_err());
+        return;
+    }
+    let output = std::env::temp_dir().join(format!("watchdog-resolved-{}", std::process::id()));
+
+    // Act
+    let text = config::resolved_text(source).unwrap();
+    std::fs::write(&output, &text).unwrap();
+    let alone = config::load(&output);
+    let again = config::resolved_text(&output);
+    std::fs::remove_file(&output).unwrap();
+
+    // Assert
+    assert_eq!(alone.unwrap(), config::load(source).unwrap());
+    assert_eq!(again.unwrap(), text);
 }

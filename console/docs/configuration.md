@@ -26,6 +26,7 @@ system_apps {
   output_mounts { service: "fault-watchdog" target: "/results" }
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
   config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
+  config_resolver { command: "/usr/local/bin/fault-watchdog" command: "--resolve-config" }
   launch_profiles { id: "live" label: "Live only" config: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/config/watchdog.pbtxt" }
   launch_profiles {
     id: "mcap"
@@ -43,8 +44,8 @@ live_bridge { image: "doramcap/live-bridge:local" }
 `launch_profiles` lets the user choose how an app launches during Review. Console
 mounts the chosen `config` read-only at `config_mount`; the first profile is the
 default. A profile's `recordings` and `live_outputs` add to the app's own. Only the
-chosen file is mounted and frozen for the run, so each `config` must be self-contained,
-without `include`.
+chosen file is mounted and frozen for the run, so a `config` that uses `include`
+needs a `config_resolver`.
 
 ```protobuf
 config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
@@ -56,6 +57,15 @@ launch_profiles {
 }
 launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
 ```
+
+`config_resolver` runs once at Review, in a one-shot container of the `config_mount`
+service's image. It receives the profile's path as its last argument and prints one
+complete pbtxt to stdout; Console mounts and freezes that output instead of `config`.
+
+- **Sandbox:** no network, read-only root, no capabilities, `no-new-privileges`.
+- **Inputs:** the profile's directory, read-only, so includes must stay inside it.
+- **Limits:** 30 seconds and 1 MiB of output.
+- **Failure:** a nonzero exit, timeout or empty output fails Review with stderr.
 
 ## Live bridge
 

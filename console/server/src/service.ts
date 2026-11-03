@@ -24,6 +24,7 @@ import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
 import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, mcapServices, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
+import { resolveConfigs } from './config-resolver.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
@@ -200,6 +201,7 @@ export class ConsoleService implements ConsoleBackend {
       const run = await this.runRequest(id, project, apps, live, workspace, join(workspace, 'resolved'), 'review');
       if (this.config.downloadMissingImages)
         await ensureImages(this.config, [...run.projects, ...run.systemApps] as Project[], this.preparation.signal);
+      await resolveConfigs(this.config.dockerSocket, apps, workspace, this.preparation.signal);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(run);

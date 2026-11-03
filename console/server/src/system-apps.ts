@@ -1,6 +1,7 @@
 import { isAbsolute, join } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
+import { resolvedConfig } from './config-resolver.js';
 import { writeOnce } from './files.js';
 import { LIVE_BRIDGE } from './live.js';
 
@@ -49,6 +50,8 @@ export function validateApps(apps: App[]) {
     const profiles = app.launchProfiles ?? [];
     if (profiles.length && (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '')))
       throw new Error('launch profiles require a config mount with a service and absolute target');
+    if (app.configResolver && (!profiles.length || !isAbsolute(app.configResolver.command?.[0] ?? '')))
+      throw new Error('config resolver requires launch profiles and an absolute command');
     const profileIds = new Set<string>(),
       shared = new Set(outputs);
     for (const profile of profiles) {
@@ -133,7 +136,7 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
       if (app.profile)
         (services[app.configMount!.service!] ??= { volumes: [] }).volumes.push({
           type: 'bind',
-          source: app.profile.config,
+          source: app.configResolver ? resolvedConfig(workspace, app.id!) : app.profile.config,
           target: app.configMount!.target,
           read_only: true,
           bind: { create_host_path: false },

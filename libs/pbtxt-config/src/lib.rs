@@ -1,6 +1,6 @@
 //! Typed pbtxt payloads with ordered includes and reproducible deployments.
 use prost::Message;
-use prost_reflect::{DescriptorPool, DynamicMessage};
+use prost_reflect::{DescriptorPool, DynamicMessage, text_format::FormatOptions};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -71,6 +71,22 @@ impl<P: Payload> Resolved<P> {
     }
     pub fn digest(&self) -> [u8; 32] {
         Sha256::digest(self.canonical_bytes()).into()
+    }
+    /// Format the normalized apps as include-free Fragment text. Resolving the result
+    /// returns the same digest and text. Errors: `Invalid` for an undescribed payload.
+    pub fn fragment_text(&self) -> Result<String> {
+        let pool = descriptor_pool::<P>()?;
+        let desc = pool
+            .get_message_by_name("pbtxt_config.v1.Fragment")
+            .expect("compiled descriptor");
+        let fragment = proto::Fragment {
+            include: Vec::new(),
+            app: self.deployment.app.clone(),
+        };
+        let message = DynamicMessage::decode(desc, fragment.encode_to_vec().as_slice())
+            .map_err(|e| Error::Invalid(e.to_string()))?;
+        let options = FormatOptions::new().pretty(true);
+        Ok(message.to_text_format_with_options(&options) + "\n")
     }
     pub fn config(&self, id: &str) -> Result<P> {
         let app = self
@@ -380,6 +396,28 @@ mod tests {
             "type.googleapis.com/pbtxt_config.v1.App"
         );
     }
+    #[test]
+    fn fragment_text_resolves_to_the_same_deployment_without_its_includes() {
+        // Arrange
+        let sources = Temp::new();
+        sources.put("base", &entry("a", "base"));
+        let path = sources.put(
+            "overlay",
+            &format!("include: 'base'\n{}", entry("a", "overlay")),
+        );
+        let resolved = resolve::<proto::App>(&path, &["a"]).unwrap();
+
+        // Act
+        let text = resolved.fragment_text().unwrap();
+        let output = Temp::new();
+        let again = resolve::<proto::App>(&output.put("resolved", &text), &["a"]).unwrap();
+
+        // Assert
+        assert_eq!(again.digest(), resolved.digest());
+        assert_eq!(again.fragment_text().unwrap(), text);
+        assert_eq!(again.config("a").unwrap().id, "overlay");
+    }
+
     #[test]
     fn rejects_wrong_types_and_hidden_invalid_inputs() {
         // Arrange

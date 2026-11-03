@@ -4,8 +4,8 @@ import type { Config, Project } from './native.js';
 const exec = promisify(execFile);
 const PULL_TIMEOUT_MS = 30 * 60_000; // Per image; generous for slow links, bounded for hung registries.
 
-/** Resolve the selected Compose services without downloading images or starting containers. */
-export async function imageReferences(socket: string, project: Project): Promise<string[]> {
+/** Map the selected Compose services to images without downloading images or starting containers. */
+export async function serviceImages(socket: string, project: Project): Promise<Record<string, string>> {
   const args = ['--host', `unix://${socket}`, 'compose',
     '--project-directory', project.directory!, '--env-file', '/dev/null'];
   for (const file of project.envFiles ?? []) args.push('--env-file', file);
@@ -16,10 +16,10 @@ export async function imageReferences(socket: string, project: Project): Promise
   });
   if (stderr.includes('variable is not set')) throw new Error('Unresolved Compose environment');
   const model = JSON.parse(stdout) as { services?: Record<string, { image?: unknown }> };
-  return Object.entries(model.services ?? {}).map(([name, service]) => {
+  return Object.fromEntries(Object.entries(model.services ?? {}).map(([name, service]) => {
     if (typeof service.image !== 'string' || !service.image) throw new Error(`${name}: prebuilt image required`);
-    return service.image;
-  });
+    return [name, service.image];
+  }));
 }
 
 /** Reject a registry manifest that does not offer every architecture a release supports. */
@@ -37,7 +37,7 @@ export function requireMultiArch(image: string, raw: string) {
 export async function ensureImages(config: Config, projects: Project[], signal: AbortSignal, timeout = PULL_TIMEOUT_MS): Promise<void> {
   const images = new Set<string>([config.dora?.image || 'doramcap/dora:local']);
   for (const project of projects)
-    for (const image of await imageReferences(config.dockerSocket, project)) images.add(image);
+    for (const image of Object.values(await serviceImages(config.dockerSocket, project))) images.add(image);
   for (const image of images) {
     if (signal.aborted) throw new Error('Stopped');
     const args = ['--host', `unix://${config.dockerSocket}`];

@@ -513,6 +513,62 @@ test('the selected launch profile mounts its config read-only and declares only 
     await rm(root, { recursive: true, force: true });
   }
 });
+test('a resolved launch profile mounts the output frozen at Review through Start', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-resolved-')),
+    project = join(root, 'project'),
+    source = join(root, 'profile.pbtxt'),
+    previous = process.env.PATH;
+  await mkdir(project);
+  await writeFile(join(project, 'compose.yaml'), 'services: {}');
+  await writeFile(source, 'first');
+  await writeFile(join(root, 'docker'), `#!${process.execPath} --
+if (process.argv.includes('compose')) console.log(JSON.stringify({services:{monitor:{image:'monitor:local'}}}));
+else process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(source)}));
+`, { mode: 0o755 });
+  process.env.PATH = `${root}:${previous}`;
+  const config = wire.ConsoleConfig.create({
+    projectRoot: project,
+    dataRoot: join(root, 'data'),
+    dockerSocket: '/unused.sock',
+    accessSecretFile: join(root, 'secret'),
+    listenAddress: '127.0.0.1:8080',
+    publicOrigin: 'http://127.0.0.1:8080',
+    systemApps: [
+      {
+        id: 'monitor',
+        defaultSelected: true,
+        input: { directory: project, files: ['compose.yaml'] },
+        configMount: { service: 'monitor', target: '/config/monitor.pbtxt' },
+        configResolver: { command: ['/bin/monitor', '--resolve-config'] },
+        launchProfiles: [{ id: 'record', label: 'Record', config: source }],
+      },
+    ],
+  });
+  validateConfig(config);
+  const engine = new Engine(),
+    backend = new ConsoleService(config, engine, await Store.open(config.dataRoot));
+  try {
+    // Act
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    await writeFile(source, 'changed');
+    const start = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'resolved' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    const files = engine.inspected!.systemApps[0].files!,
+      [mount] = JSON.parse(await readFile(files[files.length - 1], 'utf8')).services.monitor.volumes;
+    const mounted = await readFile(mount.source, 'utf8');
+    engine.release!();
+    await start;
+
+    // Assert
+    assert.equal(mount.target, '/config/monitor.pbtxt');
+    assert.equal(mounted, 'first');
+  } finally {
+    process.env.PATH = previous;
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test('an unknown launch profile rejects preparation', async () => {
   // Arrange
   const { root, backend, review } = await fixture(true);

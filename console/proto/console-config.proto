@@ -35,6 +35,10 @@ message LaunchProfile {
   repeated RecordingOutput recordings = 4;
   repeated LiveOutput live_outputs = 5;
 }
+// Prints a profile's complete config to stdout, given its path as the last argument.
+message ConfigResolver {
+  repeated string command = 1; // Absolute executable in the config_mount service's image, then arguments.
+}
 message SystemAppDefinition {
   string id = 1;
   string label = 2;
@@ -46,6 +50,7 @@ message SystemAppDefinition {
   repeated LiveOutput live_outputs = 9; // Relayed when the live bridge is selected.
   OutputMount config_mount = 10; // Required with launch_profiles.
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
+  ConfigResolver config_resolver = 12; // Requires launch_profiles; mounts the output at config_mount.
 }
 
 // Prebuilt bridge image and its loopback WebSocket port; zero selects a free one at startup.

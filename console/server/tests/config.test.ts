@@ -130,6 +130,9 @@ test('launch profiles choose one config and add its outputs', () => {
   // Act / Assert: invalid definitions are rejected.
   assert.throws(() => validateApps([{ ...app, configMount: undefined }]));
   assert.throws(() => validateApps([{ ...app, configMount: { service: 'monitor', target: 'relative' } }]));
+  assert.throws(() => validateApps([{ ...app, configResolver: { command: ['relative'] } }]));
+  assert.throws(() => validateApps([{ ...app, launchProfiles: [], configResolver: { command: ['/bin/resolve'] } }]));
+  validateApps([{ ...app, configResolver: { command: ['/bin/resolve'] } }]);
   const [record, other] = app.launchProfiles;
   assert.throws(() => validateApps([{ ...app, launchProfiles: [record, { ...other, id: 'record' }] }]));
   assert.throws(() => validateApps([{ ...app, launchProfiles: [{ ...other, config: 'relative.pbtxt' }] }]));
