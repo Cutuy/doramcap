@@ -106,7 +106,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     crate::evidence::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     if !spec.mcap_writers.services.is_empty() {
-        validate_recording_host(&spec.mcap_writers.directories).await?;
+        validate_recording_host(&spec.mcap_writers.directories, &spec.id).await?;
     }
     // Freeze Dora inputs and merge apps while recording their startup stages.
     let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
@@ -230,7 +230,7 @@ fn kernel_supports_mcap_writer(release: &str) -> bool {
 
 /// Refuse a host where the MCAP writer cannot record into `directories`.
 /// Errors: kernel older than 6.1, io_uring disabled, or a filesystem without `O_DIRECT`.
-async fn validate_recording_host(directories: &[PathBuf]) -> Result<()> {
+async fn validate_recording_host(directories: &[PathBuf], run: &str) -> Result<()> {
     let release = tokio::fs::read_to_string("/proc/sys/kernel/osrelease").await?;
     let release = release.trim();
     if !kernel_supports_mcap_writer(release) {
@@ -251,7 +251,8 @@ async fn validate_recording_host(directories: &[PathBuf]) -> Result<()> {
     }
     for directory in directories {
         use std::os::unix::fs::OpenOptionsExt;
-        let probe = directory.join(".direct-io-probe");
+        // A shared directory can hold another run's leftover probe after a crash.
+        let probe = directory.join(format!(".direct-io-probe-{run}"));
         match std::fs::File::options()
             .write(true)
             .create_new(true)

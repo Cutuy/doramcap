@@ -542,18 +542,24 @@ fn mcap_writer_needs_linux_6_1() {
 }
 
 #[tokio::test]
-async fn recording_host_check_leaves_supported_directories_empty() {
+async fn recording_host_check_ignores_other_runs_leftover_probes() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
+    let leftover = root.path().join(".direct-io-probe-crashed");
+    std::fs::write(&leftover, b"").unwrap();
     // Act
-    validate_recording_host(&[root.path().to_owned()])
+    validate_recording_host(&[root.path().to_owned()], "run")
         .await
         .unwrap();
-    // Assert
-    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    // Assert: only the other run's file remains.
+    let names: Vec<_> = std::fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(names, [leftover]);
     // Act / Assert: a missing directory fails.
     assert!(
-        validate_recording_host(&[root.path().join("missing")])
+        validate_recording_host(&[root.path().join("missing")], "run")
             .await
             .is_err()
     );
