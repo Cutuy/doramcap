@@ -131,8 +131,9 @@ impl McapWriter {
     /// errors. Commit establishes acceptance; use [`Self::finish`] for durability.
     ///
     /// # Ordering
-    /// Committed messages reach the file in commit order. A payload above
-    /// [`Self::max_inline_payload`] flushes the buffered batch at commit, adding padding.
+    /// Committed messages take ascending file offsets in commit order. Their writes may
+    /// complete in any order until [`Self::flush_written`] or [`Self::finish`] returns.
+    /// A payload above [`Self::max_inline_payload`] flushes the batch at commit, adding padding.
     /// `try_commit` returns `WouldBlock` with the reservation intact; retrying keeps order.
     pub fn reserve(
         &mut self,
