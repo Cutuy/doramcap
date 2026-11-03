@@ -80,8 +80,29 @@ impl McapWriter {
         channels: &[Channel<'_>],
         config: McapConfig,
     ) -> io::Result<Self> {
+        let (mut records, mut content) = (Vec::new(), Vec::new());
+        content.extend_from_slice(&1_u16.to_le_bytes());
+        core::string(&mut content, schema.name.as_bytes())?;
+        core::string(&mut content, schema.encoding.as_bytes())?;
+        core::string(&mut content, schema.data)?;
+        core::record(&mut records, 3, &content);
+        for channel in channels {
+            content.clear();
+            content.extend_from_slice(&channel.id.to_le_bytes());
+            content.extend_from_slice(&1_u16.to_le_bytes());
+            core::string(&mut content, channel.topic.as_bytes())?;
+            core::string(&mut content, channel.encoding.as_bytes())?;
+            content.extend_from_slice(&0_u32.to_le_bytes());
+            core::record(&mut records, 4, &content);
+        }
+        Self::with_records(file, &records, config)
+    }
+    /// Create a recording declared by complete, framed MCAP Schema and Channel records.
+    /// The bytes are written unchanged and repeated on rotation.
+    /// Errors: other record types, bad framing, no or duplicate channels, config and I/O.
+    pub fn with_records(file: File, records: &[u8], config: McapConfig) -> io::Result<Self> {
         Ok(Self {
-            core: McapCore::new(file, schema, channels, config)?,
+            core: McapCore::new(file, records, config)?,
         })
     }
     fn update<T>(&mut self, operation: impl FnOnce(&mut McapCore) -> T) -> T {

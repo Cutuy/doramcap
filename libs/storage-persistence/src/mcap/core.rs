@@ -1,5 +1,5 @@
 //! Private recording state, framing, and reservation ownership.
-use super::{Channel, McapConfig, Message, Schema};
+use super::{McapConfig, Message};
 use crate::{
     managed_buffers::{BufferLease, BufferPool},
     observability::{EventData, EventKind, Ids, McapSnapshot, elapsed_us},
@@ -34,16 +34,52 @@ pub(super) struct McapCore {
 fn invalid() -> io::Error {
     io::ErrorKind::InvalidInput.into()
 }
-fn string(out: &mut Vec<u8>, value: &[u8]) -> io::Result<()> {
+pub(super) fn string(out: &mut Vec<u8>, value: &[u8]) -> io::Result<()> {
     let len = u32::try_from(value.len()).map_err(|_| invalid())?;
     out.extend_from_slice(&len.to_le_bytes());
     out.extend_from_slice(value);
     Ok(())
 }
-fn record(out: &mut Vec<u8>, op: u8, content: &[u8]) {
+pub(super) fn record(out: &mut Vec<u8>, op: u8, content: &[u8]) {
     out.push(op);
     out.extend_from_slice(&(content.len() as u64).to_le_bytes());
     out.extend_from_slice(content);
+}
+/// Channel IDs in complete Schema and Channel records; contents stay opaque otherwise.
+fn declared_channels(mut records: &[u8]) -> io::Result<Vec<u16>> {
+    let mut ids = Vec::new();
+    while !records.is_empty() {
+        let length: [u8; 8] = records
+            .get(1..9)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(invalid)?;
+        let end = usize::try_from(u64::from_le_bytes(length))
+            .ok()
+            .and_then(|length| length.checked_add(9))
+            .filter(|end| *end <= records.len())
+            .ok_or_else(invalid)?;
+        match records[0] {
+            3 => {}
+            4 => {
+                let id: [u8; 2] = records
+                    .get(9..11)
+                    .filter(|_| end >= 11)
+                    .and_then(|bytes| bytes.try_into().ok())
+                    .ok_or_else(invalid)?;
+                let id = u16::from_le_bytes(id);
+                if ids.contains(&id) {
+                    return Err(invalid());
+                }
+                ids.push(id);
+            }
+            _ => return Err(invalid()),
+        }
+        records = &records[end..];
+    }
+    if ids.is_empty() {
+        return Err(invalid());
+    }
+    Ok(ids)
 }
 fn checked_padded_len(used: usize, alignment: usize) -> Option<usize> {
     if used.is_multiple_of(alignment) {
@@ -74,12 +110,7 @@ impl McapCore {
             .publish(|| self.snapshot(), || self.writer.active_writes());
     }
 
-    pub(super) fn new(
-        file: File,
-        schema: Schema<'_>,
-        channels: &[Channel<'_>],
-        config: McapConfig,
-    ) -> io::Result<Self> {
+    pub(super) fn new(file: File, records: &[u8], config: McapConfig) -> io::Result<Self> {
         let McapConfig {
             buffers,
             buffer_size,
@@ -95,16 +126,10 @@ impl McapCore {
         {
             return Err(invalid());
         }
-        if buffer_size < 50 || channels.is_empty() {
+        if buffer_size < 50 {
             return Err(invalid());
         }
-        let mut ids = Vec::with_capacity(channels.len());
-        for channel in channels {
-            if ids.contains(&channel.id) {
-                return Err(invalid());
-            }
-            ids.push(channel.id);
-        }
+        let ids = declared_channels(records)?;
         let pool = BufferPool::new(buffers as usize, buffer_size, 4096).map_err(|_| invalid())?;
         let writer = if alignment > 1 {
             Writer::direct_with_observer(file, pool.clone(), alignment, config, observer)?
@@ -136,21 +161,7 @@ impl McapCore {
         string(&mut content, b"")?;
         string(&mut content, b"doramcap")?;
         record(&mut bytes, 1, &content);
-        content.clear();
-        content.extend_from_slice(&1_u16.to_le_bytes());
-        string(&mut content, schema.name.as_bytes())?;
-        string(&mut content, schema.encoding.as_bytes())?;
-        string(&mut content, schema.data)?;
-        record(&mut bytes, 3, &content);
-        for channel in channels {
-            content.clear();
-            content.extend_from_slice(&channel.id.to_le_bytes());
-            content.extend_from_slice(&1_u16.to_le_bytes());
-            string(&mut content, channel.topic.as_bytes())?;
-            string(&mut content, channel.encoding.as_bytes())?;
-            content.extend_from_slice(&0_u32.to_le_bytes());
-            record(&mut bytes, 4, &content);
-        }
+        bytes.extend_from_slice(records);
         if alignment > 1 {
             let used = bytes.len();
             bytes.resize(padded_len(used, alignment), 0);
