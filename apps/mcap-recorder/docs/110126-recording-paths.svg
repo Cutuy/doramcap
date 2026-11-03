@@ -14,9 +14,9 @@
   </g>
   <g text-anchor="middle">
     <text x="110" y="66">CPU monitor</text>
-    <text x="110" y="84" fill="#555" font-size="12">embedded writer</text>
+    <text x="110" y="84" fill="#555" font-size="12">record profile</text>
     <text x="110" y="131">Fault Watchdog</text>
-    <text x="110" y="149" fill="#555" font-size="12">MCAP sink</text>
+    <text x="110" y="149" fill="#555" font-size="12">mcap profile</text>
     <text x="370" y="99">storage-persistence</text>
     <text x="370" y="118" fill="#555" font-size="12">io_uring writer</text>
     <text x="615" y="75">cpu.mcap</text>
@@ -36,18 +36,18 @@
   </g>
   <g text-anchor="middle">
     <text x="110" y="279">System apps</text>
-    <text x="110" y="297" fill="#555" font-size="12">optional live outputs</text>
+    <text x="110" y="297" fill="#555" font-size="12">CPU monitor · Fault Watchdog</text>
     <text x="110" y="349">Existing apps</text>
     <text x="110" y="367" fill="#555" font-size="12">workload nodes</text>
     <text x="320" y="322">Dora daemon</text>
     <text x="535" y="274">mcap-recorder</text>
     <text x="535" y="293" fill="#555" font-size="12">--config pbtxt</text>
     <text x="745" y="274">mcap crate</text>
-    <text x="745" y="293" fill="#555" font-size="12">caller-declared channels</text>
+    <text x="745" y="293" fill="#555" font-size="12">channels + schemas</text>
     <text x="902" y="274">*.mcap</text>
     <text x="902" y="293" fill="#555" font-size="12">+ report</text>
     <text x="535" y="359">Live bridge</text>
-    <text x="535" y="378" fill="#555" font-size="12">#70</text>
+    <text x="535" y="378" fill="#555" font-size="12">optional Dora node</text>
     <text x="745" y="359">Console</text>
     <text x="745" y="378" fill="#555" font-size="12">browser panels</text>
   </g>
@@ -68,5 +68,6 @@
   <g fill="#333" font-size="12" text-anchor="middle">
     <text x="414" y="270">backpressure</text>
     <text x="414" y="355">drop_oldest</text>
+    <text x="639" y="355">Frame</text>
   </g>
 </svg>
