@@ -39,3 +39,6 @@ requirements-checklist.yml
 
 # Local SSH private-key downloads.
 *.pem
+
+# macOS Finder metadata.
+.DS_Store
