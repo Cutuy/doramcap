@@ -393,14 +393,13 @@ fn one_progress_call_retires_a_burst_of_ready_completions() {
         writer.append(pool.reserve(4096).unwrap()).unwrap();
     }
     writer.progress(false).unwrap();
-    let before = writer.snapshot().pending;
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Act
     writer.progress(false).unwrap();
 
-    // Assert: more than the kernel's 20-completion batch for one enter.
-    assert!(before - writer.snapshot().pending > 20);
+    // Assert
+    assert_eq!(writer.snapshot().pending, 0);
     writer.flush_written().unwrap();
     std::fs::remove_file(path).unwrap();
 }
