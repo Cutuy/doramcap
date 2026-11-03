@@ -356,16 +356,16 @@ fn expired_combiner_poll_drives_a_full_pending_queue() {
     r.commit().unwrap();
     let deadline = writer.next_flush_deadline().unwrap();
     // Metadata fills admission; the expired batch must stay intact while CQEs progress.
-    for _ in 0..10_000 {
+    let timeout = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while writer.next_flush_deadline().is_some() || monitor.snapshot().unwrap().writer.pending != 0
+    {
+        assert!(
+            std::time::Instant::now() < timeout,
+            "poll failed to admit the expired batch"
+        );
         writer.poll(deadline).unwrap();
-        if writer.next_flush_deadline().is_none() && monitor.snapshot().unwrap().writer.pending == 0
-        {
-            break;
-        }
         std::thread::yield_now();
     }
-    assert!(writer.next_flush_deadline().is_none());
-    assert_eq!(monitor.snapshot().unwrap().writer.pending, 0);
     writer.finish().unwrap();
     let data = std::fs::read(&path).unwrap();
     let messages = mcap::MessageStream::new(&data)
