@@ -205,6 +205,27 @@ fn write_keeps_call_order_across_large_payloads() {
 }
 
 #[test]
+fn reserve_keeps_commit_order_across_large_payloads() {
+    // Arrange
+    let (path, mut writer) = direct_writer("reserve-order", 1024);
+    // Act
+    for (byte, size) in [(1, 8), (2, 64 * 1024), (3, 8)] {
+        let mut reservation = writer.reserve(MESSAGE, size).unwrap();
+        reservation.payload_mut().fill(byte);
+        reservation.commit().unwrap();
+    }
+    writer.finish().unwrap();
+    // Assert
+    let bytes = std::fs::read(&path).unwrap();
+    let order: Vec<_> = mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .map(|message| message.unwrap().data[0])
+        .collect();
+    assert_eq!(order, [1, 2, 3]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn write_fails_when_registrations_stay_full() {
     // Arrange: a small table, which growing payloads fill with retained allocations.
     let registrations = 8;

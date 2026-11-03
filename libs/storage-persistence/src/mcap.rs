@@ -129,6 +129,11 @@ impl McapWriter {
     /// an uncommitted reservation abandons its bytes. Invalid channels/sizes,
     /// allocation/registration failures, backpressure and pending I/O errors return
     /// errors. Commit establishes acceptance; use [`Self::finish`] for durability.
+    ///
+    /// # Ordering
+    /// Committed messages reach the file in commit order. A payload above
+    /// [`Self::max_inline_payload`] flushes the buffered batch at commit, adding padding.
+    /// `try_commit` returns `WouldBlock` with the reservation intact; retrying keeps order.
     pub fn reserve(
         &mut self,
         message: Message,
@@ -140,7 +145,7 @@ impl McapWriter {
     /// Errors: invalid channels, allocation and retained I/O failures, and `WouldBlock`
     /// when registrations stay full after a flush. Success means acceptance.
     pub fn write(&mut self, message: Message, payload: &[u8]) -> io::Result<()> {
-        // Large payloads bypass the combining buffer, so drain it first to keep order.
+        // Drain first so commit has pending room and large allocations stay one at a time.
         if payload.len() > self.max_inline_payload() {
             self.flush_written()?;
         }
