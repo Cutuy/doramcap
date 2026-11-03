@@ -158,7 +158,7 @@ to retain CPU telemetry directly as MCAP without a separate recorder process.
 
 The [dashboard](../../../fault-demo/src/bin/dashboard.rs) already accepts
 `FAULT_DEMO_LISTEN`; its [HTML](../../../fault-demo/frontend/index.html) now uses
-base-relative APIs. The [flow](../../../fault-demo/dataflows/live.yml) runs two
+base-relative APIs. The [flow](../../../fault-demo/deploy/flow.yml) runs controls, two
 reporters, a watchdog and a dashboard. Default watchdog configuration has no MCAP sink.
 
 ### Work items
