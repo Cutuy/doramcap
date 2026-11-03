@@ -1,9 +1,9 @@
 # MCAP recorder
 
-A standalone Dora subscriber that records any app's messages to MCAP. It links no
+A standalone Dora subscriber that records apps' byte messages to MCAP. It links no
 message types: each channel declares its topic, encoding, schema file and source
-metadata keys. Protobuf channels [require a schema](deploy/README.md#schemas), so
-readers can decode them. Payloads stay unchanged. ROS 2 input is planned.
+metadata keys. Recording an app [needs configuration](deploy/README.md#what-recording-an-app-needs),
+and protobuf channels require a schema. Payloads stay unchanged. ROS 2 input is planned.
 
 ![Recording paths](docs/110126-recording-paths.svg)
 

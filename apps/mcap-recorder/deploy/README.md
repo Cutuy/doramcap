@@ -30,10 +30,21 @@ receipt time and a recorder-local input ordinal. Non-finite float parameters fai
 explicitly because JSON cannot preserve them. Channel metadata declares timing
 and source-key conventions. Recorder ordinals never represent source sequences.
 
+## What recording an app needs
+
+| You provide | Why |
+|---|---|
+| A recorder input in the Dora graph for each output | Dora delivers only declared inputs |
+| A matching `input` in the recorder configuration | It names the topic and encoding |
+| Outputs that publish uint8 arrays | Other Arrow types fail the recording |
+| A [schema](#schemas) for protobuf outputs | Readers cannot decode them without it |
+
+An app that already publishes bytes needs no code changes.
+
 ## Schemas
 
-The recorder links no message types, so it can record any app's messages. Each
-input's configuration supplies the schema that readers use to decode them.
+The recorder links no message types. Each input's configuration supplies the
+schema that readers use to decode its messages.
 
 | `message_encoding` | `schema_encoding` | `schema_path` file | Without a schema |
 |---|---|---|---|
