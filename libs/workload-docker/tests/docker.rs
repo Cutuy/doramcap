@@ -2278,7 +2278,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     support::assert_no_run_resources(&adapter, &spec.id).await;
     support::assert_no_run_resources(&adapter, "prepared").await;
 
-    // Act: Review defers missing bind directories to execution preparation.
+    // Act: Review leaves a missing bind directory for execution preparation.
     let mut missing = spec;
     missing.id = "missing-source".into();
     missing.filesystem = Some(Default::default());
@@ -2287,19 +2287,19 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     preparation::resolve(&adapter, missing.clone())
         .await
         .unwrap();
-    missing.artifacts = root.path().join("missing-preparation");
-    let error = executor
-        .run::<preparation::PrepareRun>(missing)
-        .await
-        .unwrap_err();
 
     // Assert
-    assert!(
-        error
-            .to_string()
-            .contains("Prepare project: monitor: bind mount source")
-    );
     assert!(!root.path().join("absent").exists());
+
+    // Act
+    missing.artifacts = root.path().join("missing-preparation");
+    executor
+        .run::<preparation::PrepareRun>(missing)
+        .await
+        .unwrap();
+
+    // Assert: overlays need the directory Docker would have created.
+    assert!(root.path().join("absent").is_dir());
     support::assert_no_run_resources(&adapter, "missing-source").await;
 }
 
