@@ -15,7 +15,7 @@ rustix = { version = "1.1.5", features = ["fs"] }
 mcap = { version = "=0.26.0", default-features = false, features = ["tokio"] }
 axum = "0.8"
 serde_json = "1"
-tower-http = { version = "0.6", features = ["fs"] }
+tower-http = { version = "0.7", features = ["fs"] }
 tokio-util = { version = "0.7", features = ["io"] }
 workload-docker = { path = "../../../libs/workload-docker" }
 orchestrator = { path = "../../../libs/orchestrator" }
