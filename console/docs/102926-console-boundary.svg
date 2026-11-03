@@ -33,15 +33,25 @@
   <rect x="545" y="360" width="140" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
   <text x="615.0" y="387" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">runs/&lt;id&gt;/</text>
   <text x="615.0" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">Recordings</text>
+  <rect x="805" y="360" width="220" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="915.0" y="387" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Compose project</text>
+  <text x="915.0" y="410" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">System apps + services</text>
   <rect x="805" y="480" width="220" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
-  <text x="915.0" y="507" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Docker + system apps</text>
-  <text x="915.0" y="530" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">Compose services</text>
+  <text x="915.0" y="507" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Docker daemon</text>
+  <text x="915.0" y="530" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">Image cache</text>
+  <rect x="365" y="480" width="220" height="66" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="475.0" y="507" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#263b37">Installed release</text>
+  <text x="475.0" y="530" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#263b37">System app definitions</text>
   <path d="M430 231V360" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" marker-start="url(#a)" />
   <text x="440" y="315" text-anchor="start" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Protobuf rows</text>
   <path d="M565 360V231" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
   <text x="575" y="315" text-anchor="start" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Downloads</text>
-  <path d="M915 231V480" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <path d="M915 231V360" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
   <text x="970" y="315" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Run / stop</text>
-  <path d="M805 513H615V426" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
-  <text x="710" y="500" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">MCAP / reports</text>
+  <path d="M805 393H685" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="745" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">MCAP / reports</text>
+  <path d="M915 426V480" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="925" y="468" text-anchor="start" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Containers</text>
+  <path d="M585 513H765V415H805" fill="none" stroke="#236457" stroke-width="2" marker-end="url(#a)" />
+  <text x="675" y="500" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Compose files</text>
 </svg>
