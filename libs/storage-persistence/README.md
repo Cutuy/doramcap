@@ -6,6 +6,8 @@ Managed buffers, sealed slabs and leased mmap ranges feed one io_uring per write
 
 ![MCAP write path](docs/architecture/mcap-write-path.svg)
 
+![MCAP completion progress](docs/architecture/mcap-completion-progress.svg)
+
 ## Prepared slab example
 
 ```rust
