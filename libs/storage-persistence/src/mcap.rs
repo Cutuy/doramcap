@@ -1,5 +1,11 @@
 //! Uncompressed, index-free MCAP framing. Payload encoding belongs to the caller.
 //!
+//! # Direct-I/O padding
+//! Direct I/O uses [private MCAP records](https://mcap.dev/spec#records) (`0x80`) for alignment.
+//! Message readers skip padding; record iterators may expose it as unknown records.
+//! Padding increases disk usage and write traffic and can exceed one alignment block.
+//!
+//! # Example
 //! ```no_run
 //! use storage_persistence::{mcap::{McapWriter, McapConfig, Schema, Channel},
 //!     observability::{Collector, Mode, McapMonitor}};
@@ -80,12 +86,12 @@ impl McapWriter {
         channels: &[Channel<'_>],
         config: McapConfig,
     ) -> io::Result<Self> {
-        let (mut records, mut content) = (Vec::new(), Vec::new());
+        let (mut schema_channel_records, mut content) = (Vec::new(), Vec::new());
         content.extend_from_slice(&1_u16.to_le_bytes());
         core::string(&mut content, schema.name.as_bytes())?;
         core::string(&mut content, schema.encoding.as_bytes())?;
         core::string(&mut content, schema.data)?;
-        core::record(&mut records, 3, &content);
+        core::record(&mut schema_channel_records, 3, &content);
         for channel in channels {
             content.clear();
             content.extend_from_slice(&channel.id.to_le_bytes());
@@ -93,16 +99,20 @@ impl McapWriter {
             core::string(&mut content, channel.topic.as_bytes())?;
             core::string(&mut content, channel.encoding.as_bytes())?;
             content.extend_from_slice(&0_u32.to_le_bytes());
-            core::record(&mut records, 4, &content);
+            core::record(&mut schema_channel_records, 4, &content);
         }
-        Self::with_records(file, &records, config)
+        Self::with_records(file, &schema_channel_records, config)
     }
-    /// Create a recording declared by complete, framed MCAP Schema and Channel records.
-    /// The bytes are written unchanged and repeated on rotation.
-    /// Errors: other record types, bad framing, no or duplicate channels, config and I/O.
-    pub fn with_records(file: File, records: &[u8], config: McapConfig) -> io::Result<Self> {
+    /// Starts a recording on owned `file` from serialized [MCAP Schema and Channel records](https://mcap.dev/spec#records).
+    /// Caller supplies valid declarations with at least one channel and unique channel IDs.
+    /// Errors: invalid framing, record types, channel IDs or configuration; allocation and I/O failures.
+    pub fn with_records(
+        file: File,
+        schema_channel_records: &[u8],
+        config: McapConfig,
+    ) -> io::Result<Self> {
         Ok(Self {
-            core: McapCore::new(file, records, config)?,
+            core: McapCore::new(file, schema_channel_records, config)?,
         })
     }
     fn update<T>(&mut self, operation: impl FnOnce(&mut McapCore) -> T) -> T {

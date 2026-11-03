@@ -86,6 +86,7 @@ fn checked_padded_len(used: usize, alignment: usize) -> Option<usize> {
         return Some(used);
     }
     let len = used.checked_next_multiple_of(alignment)?;
+    // Short gaps cannot hold the nine-byte record header and consume another alignment unit.
     if len - used < 9 {
         len.checked_add(alignment)
     } else {
@@ -95,6 +96,7 @@ fn checked_padded_len(used: usize, alignment: usize) -> Option<usize> {
 fn padded_len(used: usize, alignment: usize) -> usize {
     checked_padded_len(used, alignment).expect("validated record size")
 }
+/// Fills the alignment gap with a private `0x80` record whose body is zero-filled.
 fn padding(out: &mut [u8], used: usize, alignment: usize) -> usize {
     let len = padded_len(used, alignment);
     if len > used {
@@ -110,7 +112,14 @@ impl McapCore {
             .publish(|| self.snapshot(), || self.writer.active_writes());
     }
 
-    pub(super) fn new(file: File, records: &[u8], config: McapConfig) -> io::Result<Self> {
+    /// Starts recording on owned `file` using the buffer and I/O settings in `config`.
+    /// `schema_channel_records` supplies the MCAP Schema and Channel records that begin the Data section.
+    /// Copies them for reuse by `rotate`; requirements and errors: [`super::McapWriter::with_records`].
+    pub(super) fn new(
+        file: File,
+        schema_channel_records: &[u8],
+        config: McapConfig,
+    ) -> io::Result<Self> {
         let McapConfig {
             buffers,
             buffer_size,
@@ -129,7 +138,7 @@ impl McapCore {
         if buffer_size < 50 {
             return Err(invalid());
         }
-        let ids = declared_channels(records)?;
+        let ids = declared_channels(schema_channel_records)?;
         let pool = BufferPool::new(buffers as usize, buffer_size, 4096).map_err(|_| invalid())?;
         let writer = if alignment > 1 {
             Writer::direct_with_observer(file, pool.clone(), alignment, config, observer)?
@@ -161,7 +170,7 @@ impl McapCore {
         string(&mut content, b"")?;
         string(&mut content, b"doramcap")?;
         record(&mut bytes, 1, &content);
-        bytes.extend_from_slice(records);
+        bytes.extend_from_slice(schema_channel_records);
         if alignment > 1 {
             let used = bytes.len();
             bytes.resize(padded_len(used, alignment), 0);
