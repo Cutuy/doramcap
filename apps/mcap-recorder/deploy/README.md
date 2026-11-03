@@ -37,9 +37,11 @@ and source-key conventions. Recorder ordinals never represent source sequences.
 | A recorder input in the Dora graph for each output | Dora delivers only declared inputs |
 | A matching `input` in the recorder configuration | It names the topic and encoding |
 | Outputs that publish uint8 arrays | Other Arrow types fail the recording |
-| A [schema](#schemas) for protobuf outputs | Readers cannot decode them without it |
+| A [schema](#schemas) for inputs labelled `protobuf` | Readers cannot decode them without it |
 
-An app that already publishes bytes needs no code changes.
+An app that already publishes bytes needs no code changes. Schemas are optional for
+your own messages: label an input `application/octet-stream` to record it without
+one, and add the schema settings when you want readers to decode it.
 
 ## Schemas
 
