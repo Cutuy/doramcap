@@ -432,7 +432,8 @@ export class ConsoleService implements ConsoleBackend {
     return this.ticking;
   }
   private async tickInner() {
-    await this.consume(this.engine.poll());
+    // A finished run has nothing left to read, and the addon would re-encode its whole result.
+    if (!this.completed) await this.consume(this.engine.poll());
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {

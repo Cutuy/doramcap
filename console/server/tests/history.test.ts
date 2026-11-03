@@ -251,6 +251,32 @@ test('a long run error reaches the browser capped and stays whole in its report'
   }
 });
 
+test('a finished run is no longer polled until the next one starts', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  try {
+    await finishRun(run, runId, { boundaryClean: true });
+    let polls = 0;
+    const poll = run.engine.poll.bind(run.engine);
+    run.engine.poll = () => { polls++; return poll(); };
+    // Act
+    await run.backend.status();
+    // Assert
+    assert.equal(polls, 0);
+    // Act
+    const next = await startRun(run);
+    await run.backend.status();
+    // Assert: a new run is read again and finishes normally.
+    assert.ok(polls > 0);
+    await finishRun(run, next, { boundaryClean: true });
+    assert.equal(wire.Status.decode(await run.backend.status()).outcome!.execution, 'Completed');
+  } finally {
+    await run.backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a run open at a crash reopens as interrupted with no finish time or download', async () => {
   // Arrange: a crash leaves the row open and a partial recording behind.
   const root = await temporary(), store = await Store.open(root);
