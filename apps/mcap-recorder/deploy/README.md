@@ -17,8 +17,8 @@ and a writable directory at `/results`. Paths must not contain existing outputs.
 and schema paths resolve beside that file.
 
 - Map each Dora input to a unique topic and declared message encoding.
-- Optional `schema_name`, `schema_encoding` and `schema_path` embed supplied schema
-  bytes together. Payloads remain unchanged; the producer owns their encoding.
+- `schema_name`, `schema_encoding` and `schema_path` embed a supplied schema; set
+  all three or none. See [Schemas](#schemas).
 - Accept only non-null uint8 arrays. Other Arrow types fail explicitly.
 - `timestamp_key` and `sequence_key` name decimal-string metadata fields.
   Declared fields must exist. Source sequences must fit MCAP's u32 field.
@@ -29,6 +29,43 @@ Each `dora.message` MCAP metadata record preserves typed Dora metadata as JSON,
 receipt time and a recorder-local input ordinal. Non-finite float parameters fail
 explicitly because JSON cannot preserve them. Channel metadata declares timing
 and source-key conventions. Recorder ordinals never represent source sequences.
+
+## Schemas
+
+The recorder links no message types, so it can record any app's messages. Each
+input's configuration supplies the schema that readers use to decode them.
+
+| `message_encoding` | `schema_encoding` | `schema_path` file | Without a schema |
+|---|---|---|---|
+| `protobuf` | `protobuf` | Binary `FileDescriptorSet`, including imports | Readers cannot decode the channel |
+| `json` | `jsonschema` | JSON Schema | Readers can still parse the JSON |
+| Other, such as `application/octet-stream` | None | None | Readers see opaque bytes |
+
+- `schema_name` is the message type's full name, such as `doramcap.telemetry.v1.Packet`.
+- The recorder reads the file once at startup and fails if it cannot.
+- It stores the schema bytes and payloads unchanged, without validating either.
+  A wrong schema, or `protobuf` with no schema, still records and fails later in the reader.
+- Inside a container, mount the file read-only and use its mounted path.
+
+Generate a protobuf schema and declare it:
+
+```sh
+protoc --include_imports --descriptor_set_out=schema.bin my_message.proto
+```
+
+```pbtxt
+input {
+  input: "data"
+  topic: "my_app/data"
+  message_encoding: "protobuf"
+  schema_name: "my_app.v1.MyMessage"
+  schema_encoding: "protobuf"
+  schema_path: "/config/schema.bin"
+}
+```
+
+Console's [topic recording](../../../console/release/system-apps/cpu-recorder/recorder.pbtxt)
+follows this pattern.
 
 ## Readiness and artifacts
 

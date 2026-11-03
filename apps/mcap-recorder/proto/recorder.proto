@@ -11,9 +11,12 @@ message Input {
   string input = 1;
   string topic = 2;
   string message_encoding = 3;
+  // Set schema_name, schema_encoding and schema_path together, or none of them.
+  // Readers need a schema to decode "protobuf"; the recorder never validates it.
   string schema_name = 4;
   string schema_encoding = 5;
-  // Relative to the config file.
+  // File embedded as the schema, such as a binary FileDescriptorSet for "protobuf".
+  // Read once at startup. Relative to the config file.
   string schema_path = 6;
   // Metadata key with decimal-string Unix nanoseconds. Empty means unavailable.
   string timestamp_key = 7;
