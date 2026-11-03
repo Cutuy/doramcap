@@ -268,7 +268,8 @@ a.node:hover .node-box { stroke: var(--t); }
 .landing { --shell: min(1280px, 100vw); --gutter: max(40px, env(safe-area-inset-left, 0px)); }
 
 .story { position: relative; }
-.story-viewport { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; }
+/* The copy column is defined once; the headline and the 2D frame are sized from it so they never collide. */
+.story-viewport { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; --copy-left: max(var(--gutter), calc((100vw - 1280px) / 2 + 40px)); --copy-w: min(540px, 40vw); }
 .story-stage, .story-canvas { position: absolute; inset: 0; }
 .story-canvas canvas { display: block; }
 .scene-labels { position: absolute; inset: 0; pointer-events: none; }
@@ -286,15 +287,16 @@ a.node:hover .node-box { stroke: var(--t); }
 .scene-tip span { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .story-vignette { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 92%, transparent) 0, color-mix(in srgb, var(--bg) 55%, transparent) 34%, transparent 58%), linear-gradient(0deg, var(--bg) 0, transparent 18%); }
 .story-progress { position: absolute; left: 0; right: 0; top: 68px; height: 1px; background: linear-gradient(90deg, var(--accent), var(--evidence)); transform-origin: 0 50%; z-index: 2; }
-.story-schematic { position: absolute; inset: 100px 40px 80px 40%; display: grid; place-items: center; }
+.story-schematic { position: absolute; top: 150px; bottom: 80px; left: calc(var(--copy-left) + var(--copy-w) + 40px); right: var(--copy-left); display: grid; place-items: center; }
 
-.story-copy-wrap { position: absolute; z-index: 3; left: max(var(--gutter), calc((100vw - 1280px) / 2 + 40px)); top: 0; bottom: 0; width: min(540px, 42vw); display: flex; align-items: center; pointer-events: none; }
+.story-copy-wrap { position: absolute; z-index: 3; left: var(--copy-left); top: 0; bottom: 0; width: var(--copy-w); display: flex; align-items: center; pointer-events: none; }
 .story-copy { pointer-events: auto; }
 .story-copy .eyebrow { margin-bottom: 18px; }
 .story-copy .eyebrow b { color: var(--ink); font-weight: 500; }
-.story-copy h2 { font: 600 clamp(30px, 3.4vw, 46px)/1.02 var(--font-display); letter-spacing: -.01em; margin-bottom: 18px; text-wrap: balance; }
+.story-copy h2 { font: 600 clamp(28px, calc(var(--copy-w) / 11), 46px)/1.02 var(--font-display); letter-spacing: -.01em; margin-bottom: 18px; text-wrap: balance; }
 .story-copy p { font-size: 16px; line-height: 1.6; margin-bottom: 22px; }
-.hero-copy h1 { font-size: clamp(44px, 5.6vw, 82px); line-height: .96; margin-bottom: 22px; color: var(--ink); }
+/* About 6.8em is the widest headline line ("foundation for"), so this size always fits the column. */
+.hero-copy h1 { font-size: clamp(36px, calc(var(--copy-w) / 6.8), 80px); line-height: .96; margin-bottom: 22px; color: var(--ink); }
 .hero-copy p { font-size: 17px; max-width: 42ch; }
 .hero-copy h1 .word { display: inline-block; white-space: pre; }
 .hero-copy h1 .accent { color: light-dark(var(--accent), color-mix(in srgb, var(--accent) 70%, var(--ink))); text-shadow: 0 0 40px light-dark(transparent, color-mix(in srgb, var(--accent) 35%, transparent)); }
