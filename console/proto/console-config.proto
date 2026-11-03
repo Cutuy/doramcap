@@ -48,7 +48,7 @@ message SystemAppDefinition {
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
 }
 
-// Prebuilt bridge image and its loopback WebSocket port.
+// Prebuilt bridge image and its loopback WebSocket port; zero selects a free one at startup.
 message LiveBridge { string image = 1; uint32 port = 2; }
 // One Dora output, "node/output", and the codec of its payload bytes.
 message LiveOutput { string source = 1; doramcap.console.live.v1.Kind kind = 2; }

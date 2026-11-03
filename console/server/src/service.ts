@@ -27,6 +27,7 @@ import { Store, writeOnce } from './store.js';
 import { History } from './history.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LIVE_BRIDGE, LiveRelay, bindBridge, liveStreams } from './live.js';
+import { availablePort } from './launch.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
 type ExecutionResult = doramcap.console.execution.v1.IExecutionResult;
@@ -96,6 +97,8 @@ export class ConsoleService implements ConsoleBackend {
     const store = await Store.open(config.dataRoot);
     config.dataRoot = store.root;
     try {
+      // One port for this service's life keeps Review and Start on the same bridge inputs.
+      if (config.liveBridge && !config.liveBridge.port) config.liveBridge.port = await availablePort();
       const engine = await capabilities.open(config.dockerSocket, 1);
       new History(store).closeInterrupted();
       const backend = new ConsoleService(config, engine, store);

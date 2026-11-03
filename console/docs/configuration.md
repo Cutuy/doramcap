@@ -25,7 +25,7 @@ system_apps {
   graph: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/flow.yml"
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
 }
-live_bridge { image: "doramcap/live-bridge:local" port: 43190 }
+live_bridge { image: "doramcap/live-bridge:local" }
 ```
 
 ## Launch profiles
@@ -51,7 +51,7 @@ launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.p
 Dora services. Console generates its Dora node and Compose service from the
 selected apps' `live_outputs`; it runs only when at least one is declared.
 Kinds select the browser decoder and panel: `CPU_ACCOUNTING` or `FAULT_PUBLICATION`.
-The bridge listens on loopback `port`. Build its image from [console/bridge](../bridge/README.md).
+The bridge listens on loopback `port`; omit it to select a free port at startup, so several Consoles can run on one host. Build its image from [console/bridge](../bridge/README.md).
 
 Service users must match the configured Dora participant identity. Output mounts
 bind the current run's artifact directory; recording paths are relative to it.
