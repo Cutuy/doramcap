@@ -30,7 +30,7 @@ docker run --rm --name doramcap-gallery-caddy --network host --read-only \
   caddy:2 caddy run --config /etc/caddy/Caddyfile
 ```
 
-Open <http://127.0.0.1:8096/#/apps>.
+Open <http://127.0.0.1:8096/apps>.
 
 ## Configuration
 
@@ -50,7 +50,7 @@ host's Tailscale address and match `--origin` to the public URL. Restrict access
 through your Tailscale policy: permitted peers can launch enabled apps.
 
 For a URL prefix, set `GALLERY_PREFIX=/gallery` on Caddy and use
-`/etc/caddy/Caddyfile.prefix`. Open `/gallery/#/apps`; `--origin` contains only
+`/etc/caddy/Caddyfile.prefix`, and build the frontend with `--base /gallery/`. Open `/gallery/apps`; `--origin` contains only
 scheme and host, including port.
 
 ## Restarting after interruption

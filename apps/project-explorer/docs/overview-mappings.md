@@ -42,10 +42,10 @@ Generation runs Ajv against the strict JSON Schema, then verifies duplicate IDs,
 component/capability/integration references, evidence documents, and membership.
 Any failure exits nonzero before emitting the overview.
 
-Deep links use `#/overview?useCase=perception`, `?capability=memory`, or
-`?integration=dora`. The first use case in manifest order is selected when `useCase` is omitted.
-The selected use case can accompany a capability or integration. `view=3d` or `view=2d` picks the stack view; narrow screens default to 2D.
-Unknown IDs produce a recoverable message.
+Deep links use `/?useCase=perception`, `?capability=memory`, or
+`?integration=dora`. Without `useCase` the story opens on its hero.
+The selected use case can accompany a capability or integration. `view=2d` shows the flat schematic, which is also the fallback without WebGL. Scrolling the story updates `useCase`.
+Unknown IDs are ignored.
 
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is
