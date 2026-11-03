@@ -111,6 +111,10 @@ export function appOptions(apps: App[], selected: SelectedApp[], live?: boolean)
 export function outputs(apps: App[]): Output[] {
   return apps.flatMap((app) => app.recordings ?? []);
 }
+/** Services of apps that record; each writes through the io_uring MCAP writer. */
+export function mcapServices(apps: App[]): string[] {
+  return [...new Set(apps.filter((app) => app.recordings?.length).flatMap((app) => (app.outputMounts ?? []).map((mount) => mount.service!)))];
+}
 export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: string, stage: string) {
   run.systemApps = [];
   for (const app of apps) {

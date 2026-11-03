@@ -12,7 +12,7 @@ use std::{
 use tokio::sync::oneshot;
 use workload_docker::{
     compose::DockerAdapter,
-    workflows::recorded_compose::{ComposeRun, ComposeRunner, Recording, RunSignals},
+    workflows::recorded_compose::{ComposeRun, ComposeRunner, McapWriters, Recording, RunSignals},
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 512;
@@ -84,10 +84,16 @@ impl State {
     }
 }
 pub fn run(request: RunRequest) -> Result<ComposeRun, String> {
+    let artifacts = PathBuf::from(request.artifacts);
     Ok(ComposeRun {
         id: request.id,
         repository_root: request.repository_root.into(),
-        artifacts: request.artifacts.into(),
+        // Recordings live beneath the artifact directory, on the same filesystem as its parent.
+        mcap_writers: McapWriters {
+            services: request.mcap_services,
+            directories: artifacts.parent().map(PathBuf::from).into_iter().collect(),
+        },
+        artifacts,
         // Console executions retain the workflow's normal OverlayFS isolation.
         filesystem: Some(Default::default()),
         system_apps: request.system_apps,

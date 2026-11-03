@@ -107,6 +107,7 @@ fn request() -> ComposeRun {
         projects: vec![app("adopted")],
         dora: runtime(),
         recordings: vec![],
+        mcap_writers: Default::default(),
         readiness_seconds: 60,
         stop_seconds: 15,
     }
@@ -524,4 +525,59 @@ fn dora_wiring_preserves_an_absent_network_section() {
     configure_dora(&mut model, &runtime(), "owner".into()).unwrap();
     // Assert: Compose requires an absent optional section to stay absent.
     assert!(model.get("networks").is_none());
+}
+
+#[test]
+fn mcap_writer_needs_linux_6_1() {
+    // Act / Assert
+    for (release, supported) in [
+        ("6.1.0-13-amd64", true),
+        ("7.0.0-38-generic", true),
+        ("6.0.19", false),
+        ("5.15.0-91-generic", false),
+        ("unknown", false),
+    ] {
+        assert_eq!(kernel_supports_mcap_writer(release), supported, "{release}");
+    }
+}
+
+#[tokio::test]
+async fn recording_host_check_leaves_supported_directories_empty() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    // Act
+    validate_recording_host(&[root.path().to_owned()])
+        .await
+        .unwrap();
+    // Assert
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    // Act / Assert: a missing directory fails.
+    assert!(
+        validate_recording_host(&[root.path().join("missing")])
+            .await
+            .is_err()
+    );
+}
+
+#[test]
+fn mcap_writers_get_unconfined_seccomp_and_memlock() {
+    // Arrange
+    let mut model = json!({"services":{"writer":{
+        "security_opt":["no-new-privileges:true","seccomp=other.json"],
+        "ulimits":{"memlock":{"soft":1,"hard":1}},
+    },"other":{}}});
+    // Act
+    configure_mcap_writers(&mut model, &["writer".into()]).unwrap();
+    // Assert
+    assert_eq!(
+        model["services"]["writer"]["security_opt"],
+        json!(["no-new-privileges:true", "seccomp=unconfined"])
+    );
+    assert_eq!(
+        model["services"]["writer"]["ulimits"]["memlock"]["hard"],
+        268435456
+    );
+    assert!(model["services"]["other"].get("security_opt").is_none());
+    // Act / Assert: an unknown service is refused.
+    assert!(configure_mcap_writers(&mut model, &["absent".into()]).is_err());
 }

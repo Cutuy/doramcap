@@ -53,3 +53,4 @@ artifact_collections {
 shutdown_marker: "shutdown.complete"
 env_prefix: "CUDA"
 requires_explicit_enable: true
+mcap_services: "viewer"

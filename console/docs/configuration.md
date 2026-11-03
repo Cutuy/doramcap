@@ -67,8 +67,7 @@ The bridge listens on loopback `port`; omit it to select a free port at startup,
 
 Service users must match the configured Dora participant identity. Output mounts
 bind the current run's artifact directory; recording paths are relative to it.
-MCAP writers currently need `seccomp=unconfined` for io_uring; a scoped
-[seccomp profile](110126-io-uring-seccomp.md) is planned.
+Services of recording apps get `seccomp=unconfined` for io_uring and a memlock limit automatically.
 The runtime requires stream growth before workload launch.
 
 `dora.graph` supplies the workload graph. Selected app graphs add nodes; duplicate
