@@ -133,6 +133,39 @@ impl McapWriter {
     ) -> io::Result<MessageReservation<'_>> {
         self.core.reserve(message, payload_len)
     }
+    /// Copy `payload` into one message in call order, blocking through backpressure.
+    /// Errors: invalid channels, allocation and retained I/O failures, and `WouldBlock`
+    /// when registrations stay full after a flush. Success means acceptance.
+    pub fn write(&mut self, message: Message, payload: &[u8]) -> io::Result<()> {
+        // Large payloads bypass the combining buffer, so drain it first to keep order.
+        if payload.len() > self.max_inline_payload() {
+            self.flush_written()?;
+        }
+        let mut flushed = false;
+        loop {
+            match self.reserve(message, payload.len()) {
+                Ok(mut reservation) => {
+                    reservation.payload_mut().copy_from_slice(payload);
+                    // Each attempt reaps completions; the reservation keeps its bytes.
+                    loop {
+                        match reservation.try_commit() {
+                            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                                std::thread::yield_now();
+                            }
+                            result => return result,
+                        }
+                    }
+                }
+                // Flushing frees everything except registrations, so a second refusal is permanent.
+                Err(error) if flushed || error.kind() != io::ErrorKind::WouldBlock => {
+                    return Err(error);
+                }
+                Err(_) => {}
+            }
+            self.flush_written()?;
+            flushed = true;
+        }
+    }
     /// Reserve a contiguous payload through the compatibility `BufMut` adapter.
     /// Uses the same placement, ownership and errors as [`Self::reserve`]; small
     /// payloads may share a combining buffer. The initial pool size does not cap
