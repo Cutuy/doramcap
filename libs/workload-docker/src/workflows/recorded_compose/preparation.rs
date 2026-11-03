@@ -212,7 +212,10 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
 
 impl PrepareRun {
     async fn prepare(&self, spec: ComposeRun) -> Result<PreparedRun> {
+        let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
+        let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
+        prepare_sources(&model, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
@@ -253,32 +256,90 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     }
     Ok(destination.to_string_lossy().into_owned())
 }
+/// Refuse unreadable bind sources, naming every failure, and leave the host unchanged on refusal.
+/// `overlays` creates missing sources Docker would create, because overlays need a lower directory.
+async fn prepare_sources(model: &Value, overlays: bool) -> Result<()> {
+    let mut failures = Vec::new();
+    let mut missing = Vec::new();
+    for (service, value) in model["services"].as_object().into_iter().flatten() {
+        let mounts = value["volumes"].as_array().into_iter().flatten();
+        for mount in mounts.filter(|mount| mount["type"] == "bind") {
+            let Some(source) = mount["source"].as_str() else {
+                continue;
+            };
+            if let Err(error) = tokio::fs::metadata(source).await {
+                // Docker creates a missing source unless `create_host_path` is explicitly false.
+                if mount["bind"]["create_host_path"] == false
+                    || error.kind() != std::io::ErrorKind::NotFound
+                {
+                    failures.push(format!("{service}: bind mount source {source}: {error}"));
+                } else if overlays {
+                    missing.push((service, source));
+                }
+            }
+        }
+    }
+    failed(&failures)?;
+    for (service, source) in missing {
+        if let Err(error) = tokio::fs::create_dir_all(source).await {
+            failures.push(format!("{service}: bind mount source {source}: {error}"));
+        }
+    }
+    failed(&failures)
+}
+/// Join named source failures into one validation error.
+fn failed(failures: &[String]) -> Result<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(invalid(failures.join("; ")))
+    }
+}
+/// Snapshot read-only bind files, config files and secret files into `artifacts/inputs`.
+/// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
     crate::evidence::create_private_dir(&directory).await?;
-    for service in model["services"].as_object_mut().unwrap().values_mut() {
+    let mut failures = Vec::new();
+    for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
             for mount in mounts {
                 if mount["type"] == "bind"
                     && mount["read_only"] == true
                     && let Some(source) = mount["source"].as_str()
-                    && tokio::fs::metadata(source).await?.is_file()
                 {
-                    mount["source"] = snapshot_file(source, &directory).await?.into();
+                    let frozen = match tokio::fs::metadata(source).await {
+                        // Execution preparation validates missing bind sources.
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(error) => Err(error.into()),
+                        Ok(metadata) if !metadata.is_file() => continue,
+                        Ok(_) => snapshot_file(source, &directory).await,
+                    };
+                    match frozen {
+                        Ok(frozen) => mount["source"] = frozen.into(),
+                        Err(error) => {
+                            failures.push(format!("{name}: bind mount source {source}: {error}"))
+                        }
+                    }
                 }
             }
         }
     }
     for kind in ["configs", "secrets"] {
         if let Some(items) = model.get_mut(kind).and_then(Value::as_object_mut) {
-            for item in items.values_mut() {
+            for (name, item) in items.iter_mut() {
                 if let Some(source) = item["file"].as_str() {
-                    item["file"] = snapshot_file(source, &directory).await?.into();
+                    match snapshot_file(source, &directory).await {
+                        Ok(frozen) => item["file"] = frozen.into(),
+                        Err(error) => {
+                            failures.push(format!("{kind}/{name}: file {source}: {error}"))
+                        }
+                    }
                 }
             }
         }
     }
-    Ok(())
+    failed(&failures)
 }
 
 #[cfg(test)]

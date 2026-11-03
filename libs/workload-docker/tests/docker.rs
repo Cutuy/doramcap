@@ -2277,6 +2277,30 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     assert_ne!(inspected.snapshot, changed.snapshot);
     support::assert_no_run_resources(&adapter, &spec.id).await;
     support::assert_no_run_resources(&adapter, "prepared").await;
+
+    // Act: Review leaves a missing bind directory for execution preparation.
+    let mut missing = spec;
+    missing.id = "missing-source".into();
+    missing.filesystem = Some(Default::default());
+    missing.artifacts = root.path().join("missing-review");
+    missing.system_apps = vec![app(&root.path().join("absent"))];
+    preparation::resolve(&adapter, missing.clone())
+        .await
+        .unwrap();
+
+    // Assert
+    assert!(!root.path().join("absent").exists());
+
+    // Act
+    missing.artifacts = root.path().join("missing-preparation");
+    executor
+        .run::<preparation::PrepareRun>(missing)
+        .await
+        .unwrap();
+
+    // Assert: overlays need the directory Docker would have created.
+    assert!(root.path().join("absent").is_dir());
+    support::assert_no_run_resources(&adapter, "missing-source").await;
 }
 
 #[tokio::test(flavor = "current_thread")]

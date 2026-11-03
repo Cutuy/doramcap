@@ -326,12 +326,12 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                 .flatten()
                 .filter(|v| v["type"] == "bind")
             {
-                let source = tokio::fs::canonicalize(
-                    bind["source"]
-                        .as_str()
-                        .ok_or_else(|| invalid("bind source missing"))?,
-                )
-                .await?;
+                let raw = bind["source"]
+                    .as_str()
+                    .ok_or_else(|| invalid("bind source missing"))?;
+                let source = tokio::fs::canonicalize(raw).await.map_err(|error| {
+                    invalid(format!("{service}: bind mount source {raw}: {error}"))
+                })?;
                 if source.starts_with(&workspace) || workspace.starts_with(&source) {
                     return Err(invalid("overlay source overlaps the mutable workspace"));
                 }

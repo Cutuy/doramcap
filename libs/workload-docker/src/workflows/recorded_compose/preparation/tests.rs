@@ -332,6 +332,95 @@ fn request_validation_rejects_invalid_paths_keys_and_budgets() {
 }
 
 #[tokio::test]
+async fn preparation_creates_missing_binds_docker_would_create_only_for_overlays() {
+    for bind in [json!(null), json!({}), json!({"create_host_path":true})] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("nested/data");
+        let model = json!({"services":{"app":{"volumes":[
+            {"type":"bind","source":source,"read_only":true,"bind":bind}
+        ]}}});
+        let mut frozen = model.clone();
+
+        // Act: Review and plain runs leave the path for Docker.
+        freeze_files(&mut frozen, root.path()).await.unwrap();
+        prepare_sources(&model, false).await.unwrap();
+
+        // Assert
+        assert_eq!(frozen, model);
+        assert!(!source.exists());
+
+        // Act
+        prepare_sources(&model, true).await.unwrap();
+
+        // Assert
+        assert!(source.is_dir());
+    }
+}
+
+#[tokio::test]
+async fn preparation_names_every_refused_bind_and_creates_nothing() {
+    for overlays in [false, true] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("file");
+        std::fs::write(&file, b"contents").unwrap();
+        let refused = root.path().join("refused");
+        let below_file = file.join("child");
+        let creatable = root.path().join("creatable");
+        let model = json!({"services":{
+            "app":{"volumes":[{"type":"bind","source":refused,"bind":{"create_host_path":false}}]},
+            "worker":{"volumes":[{"type":"bind","source":below_file}]},
+            "other":{"volumes":[{"type":"bind","source":creatable}]}
+        }});
+
+        // Act
+        let error = prepare_sources(&model, overlays)
+            .await
+            .unwrap_err()
+            .to_string();
+
+        // Assert
+        assert!(error.contains(&format!("app: bind mount source {}", refused.display())));
+        assert!(error.contains(&format!(
+            "worker: bind mount source {}",
+            below_file.display()
+        )));
+        assert!(!error.contains("other"));
+        assert!(!refused.exists());
+        assert!(!creatable.exists());
+    }
+}
+
+#[tokio::test]
+async fn freezing_names_every_unreadable_file_input() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("file");
+    std::fs::write(&file, b"contents").unwrap();
+    let below_file = file.join("child");
+    let below_file = below_file.to_str().unwrap();
+    let source = "/nonexistent/doramcap/data";
+    let mut model = json!({
+        "services":{"app":{"volumes":[{"type":"bind","source":below_file,"read_only":true}]}},
+        "configs":{"settings":{"file":source}},
+        "secrets":{"token":{"file":source},"ambient":{"environment":"TOKEN"}}
+    });
+
+    // Act
+    let error = freeze_files(&mut model, root.path())
+        .await
+        .unwrap_err()
+        .to_string();
+
+    // Assert
+    assert!(error.contains(&format!("app: bind mount source {below_file}: ")));
+    assert!(error.contains("configs/settings: file /nonexistent/doramcap/data: "));
+    assert!(error.contains("secrets/token: file /nonexistent/doramcap/data: "));
+    assert!(!error.contains("ambient"));
+}
+
+#[tokio::test]
 async fn freezing_copies_files_and_permissions_while_writable_mounts_and_directories_stay_live() {
     use std::os::unix::fs::PermissionsExt;
     // Arrange
