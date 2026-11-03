@@ -1902,8 +1902,6 @@ async fn compose_public_run(outcome: &str) {
             "recorder": {
                 "healthcheck": {"test": ["CMD", "test", "-s", runtime.join("recorder.ready")], "interval": "200ms", "timeout": "1s", "retries": 75},
                 "image":image, "network_mode":"host", "user":user, "shm_size":"64m",
-                "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
-                "security_opt":["seccomp=unconfined"],
                 "entrypoint":["/recorder"],
                 "command":["--config", "/config/recorder.pbtxt"],
                 "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
@@ -1962,7 +1960,10 @@ async fn compose_public_run(outcome: &str) {
         system_apps: vec![project(&root, "session"), project(&root, "support")],
         dora,
         recordings: vec![],
-        mcap_writers: Default::default(),
+        mcap_writers: McapWriters {
+            services: vec!["recorder".into()],
+            directories: vec![results.clone()],
+        },
         readiness_seconds: 15,
         stop_seconds: 5,
     };
@@ -2121,6 +2122,19 @@ async fn compose_public_run(outcome: &str) {
         .collect();
     assert_eq!(messages.len(), 20);
     assert!(messages.iter().map(|message| message.sequence).eq(0..20));
+    // Assert: the workflow gave the named writer its io_uring settings.
+    let resolved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(artifacts.join("experiment.compose.json")).unwrap())
+            .unwrap();
+    let writer = &resolved["services"]["recorder"];
+    assert!(
+        writer["security_opt"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|option| option == "seccomp=unconfined")
+    );
+    assert_eq!(writer["ulimits"]["memlock"]["hard"], 268435456);
     let mut expected = telemetry_protocol::pb::Packet::decode(payload.as_slice()).unwrap();
     for (sequence, message) in messages.iter().enumerate() {
         let Some(telemetry_protocol::pb::packet::Body::Snapshot(frame)) = expected.body.as_mut()
