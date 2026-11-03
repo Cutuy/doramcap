@@ -13,7 +13,7 @@ tokio = { version = "1", features = ["rt", "sync"] }
 prost-reflect = { version = "0.16", features = ["text-format"] }
 workload-docker = { path = "../../../libs/workload-docker" }
 workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }
-napi = { version = "=3.15.0", features = ["tokio_rt", "napi8"] }
+napi = { version = "=3.16.1", features = ["tokio_rt", "napi8"] }
 napi-derive = "=3.7.0"
 orchestrator = { version = "0.1.0", path = "../../../libs/orchestrator" }
 rustix = { version = "=1.1.5", features = ["fs"] }
