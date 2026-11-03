@@ -39,6 +39,7 @@ if (command === 'build') {
   if (!values.output) throw new Error('merge requires --output');
   const template = resolve(values.output);
   cpSync(join(root, 'console/release'), template, { recursive: true });
+  cpSync(join(root, 'libs/telemetry/protocol/proto/telemetry_descriptor.bin'), join(template, 'system-apps/cpu-recorder/telemetry_descriptor.bin'));
   const index = (name: string, sources: string[]) => {
     const tag = `${registry}/${name}:${version}`;
     docker('buildx', 'imagetools', 'create', '--tag', tag, ...sources);

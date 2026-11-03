@@ -1,3 +1,3 @@
 output_path: "/results/cpu-topics.mcap"
-input { input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobuf" }
-input { input: "dictionary" topic: "doramcap/cpuacct/dictionary" message_encoding: "protobuf" }
+input { input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobuf" schema_name: "doramcap.telemetry.v1.Packet" schema_encoding: "protobuf" schema_path: "/config/telemetry_descriptor.bin" }
+input { input: "dictionary" topic: "doramcap/cpuacct/dictionary" message_encoding: "protobuf" schema_name: "doramcap.telemetry.v1.Packet" schema_encoding: "protobuf" schema_path: "/config/telemetry_descriptor.bin" }
