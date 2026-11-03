@@ -7,11 +7,11 @@ use storage_persistence::{
 fn path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("doramcap-growable-{}-{label}", std::process::id()))
 }
-fn open(path: &std::path::Path, alignment: usize) -> File {
+fn open(path: &std::path::Path) -> File {
     File::options()
         .write(true)
         .create_new(true)
-        .custom_flags(if alignment > 1 { libc::O_DIRECT } else { 0 })
+        .custom_flags(libc::O_DIRECT)
         .open(path)
         .unwrap()
 }
@@ -24,13 +24,12 @@ fn meta(sequence: u32) -> Message {
     }
 }
 fn mcap(
-    file: File,
-    alignment: usize,
+    path: &std::path::Path,
     config: WriterConfig,
 ) -> (McapWriter, storage_persistence::observability::McapMonitor) {
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let writer = McapWriter::new(
-        file,
+    let writer = McapWriter::create(
+        path,
         Schema {
             name: "bytes",
             encoding: "",
@@ -45,7 +44,6 @@ fn mcap(
             metrics,
             buffers: 8,
             buffer_size: DEFAULT_BUFFER_SIZE,
-            alignment,
             io: config,
             ..Default::default()
         },
@@ -103,8 +101,7 @@ fn registration_growth_backpressure_and_split_writes() {
         registration_capacity: 3,
         max_write_bytes: 4096,
     };
-    let mut writer =
-        Writer::direct_with_config(open(&path, 4096), pool.clone(), 4096, config).unwrap();
+    let mut writer = Writer::direct_with_config(open(&path), pool.clone(), 4096, config).unwrap();
     let mut first = pool.reserve(8192).unwrap();
     first.as_mut_slice().fill(1);
     let mut second = pool.reserve(12288).unwrap();
@@ -148,7 +145,7 @@ fn registration_limit_keeps_existing_writes_and_returns_new_lease() {
     let path = path("register-limit");
     let pool = BufferPool::new(1, 4096, 4096).unwrap();
     let mut writer = Writer::direct_with_config(
-        open(&path, 4096),
+        open(&path),
         pool.clone(),
         4096,
         WriterConfig {
@@ -170,27 +167,21 @@ fn registration_limit_keeps_existing_writes_and_returns_new_lease() {
     std::fs::remove_file(path).unwrap();
 }
 #[test]
-fn contiguous_hundred_mib_records_without_draining_and_exact_readback() {
-    large_readback(&[1], 100 * 1024 * 1024);
-}
-
-#[test]
 fn contiguous_direct_records_without_draining_and_exact_readback() {
-    large_readback(&[512, 4096], 16 * 1024 * 1024);
+    large_readback(16 * 1024 * 1024);
 }
 
 #[test]
 #[ignore = "requires more than 104 MiB RLIMIT_MEMLOCK; run explicitly on qualified hosts"]
 fn hundred_mib_registered_direct_readback() {
-    large_readback(&[512, 4096], 100 * 1024 * 1024);
+    large_readback(100 * 1024 * 1024);
 }
 
-fn large_readback(alignments: &[usize], huge_size: usize) {
-    for &alignment in alignments {
-        let path = path(&format!("huge-{alignment}-{huge_size}"));
+fn large_readback(huge_size: usize) {
+    {
+        let path = path(&format!("huge-{huge_size}"));
         let (mut writer, monitor) = mcap(
-            open(&path, alignment),
-            alignment,
+            &path,
             WriterConfig {
                 queue_depth: 1,
                 max_write_bytes: 1024 * 1024,
@@ -236,8 +227,7 @@ fn large_readback(alignments: &[usize], huge_size: usize) {
 fn mcap_commit_backpressure_retains_contiguous_bytes() {
     let path = path("retry");
     let (mut writer, _monitor) = mcap(
-        open(&path, 1),
-        1,
+        &path,
         WriterConfig {
             pending_capacity: 1,
             queue_depth: 1,
@@ -269,8 +259,7 @@ fn mcap_commit_backpressure_retains_contiguous_bytes() {
 fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
     let path = path("active-retry");
     let (mut writer, _monitor) = mcap(
-        open(&path, 1),
-        1,
+        &path,
         WriterConfig {
             pending_capacity: 1,
             queue_depth: 1,
@@ -300,10 +289,9 @@ fn reservation_succeeds_with_full_pending_queue_and_active_combiner() {
 
 #[test]
 fn framing_boundaries_and_small_batching() {
-    for alignment in [1, 512, 4096] {
-        let path = path(&format!("boundaries-{alignment}"));
-        let (mut writer, monitor) =
-            mcap(open(&path, alignment), alignment, WriterConfig::default());
+    {
+        let path = path("boundaries");
+        let (mut writer, monitor) = mcap(&path, WriterConfig::default());
         writer.flush_written().unwrap();
         let initial_writes = monitor.snapshot().unwrap().writer.counters.accepted;
         for seq in 0..10 {
@@ -356,8 +344,7 @@ fn framing_boundaries_and_small_batching() {
 fn expired_combiner_poll_drives_a_full_pending_queue() {
     let path = path("poll-pressure");
     let (mut writer, monitor) = mcap(
-        open(&path, 1),
-        1,
+        &path,
         WriterConfig {
             pending_capacity: 1,
             queue_depth: 1,

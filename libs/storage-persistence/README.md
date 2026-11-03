@@ -43,7 +43,7 @@ slab recycling and completion.
 
 ```rust
 let (metrics, monitor) = McapMonitor::channel();
-let writer = McapWriter::new(file, schema, &channels, McapConfig {
+let writer = McapWriter::create(path, schema, &channels, McapConfig {
     observer: collector.observer(), metrics, ..Default::default()
 })?;
 // Use monitor.snapshot() and monitor.active_writes() from the owner thread.

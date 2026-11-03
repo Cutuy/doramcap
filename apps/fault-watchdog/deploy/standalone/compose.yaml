@@ -13,6 +13,8 @@ services:
     # The MCAP writer uses io_uring, which Docker's default seccomp policy blocks.
     security_opt: [no-new-privileges:true, seccomp=unconfined]
     tmpfs: [/tmp]
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
     stop_signal: SIGINT
     stop_grace_period: 15s
     environment:

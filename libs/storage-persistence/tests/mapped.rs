@@ -146,16 +146,8 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
         let region = MmapRegion::new(map, Observer::default());
         let out = Temp::new(false, "mcap");
         let next = Temp::new(false, "rotated");
-        let open = |p: &Temp| {
-            OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .custom_flags(libc::O_DIRECT)
-                .open(&p.0)
-                .unwrap()
-        };
-        let mut w = McapWriter::new(
-            open(&out),
+        let mut w = McapWriter::create(
+            &out.0,
             Schema {
                 name: "raw",
                 encoding: "",
@@ -169,7 +161,6 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
             storage_persistence::mcap::McapConfig {
                 buffers: 2,
                 buffer_size: 8192,
-                alignment: 4096,
                 io: WriterConfig {
                     max_write_bytes: 4096,
                     ..Default::default()
@@ -179,8 +170,8 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
         )
         .unwrap();
         let wrong_out = Temp::new(false, "wrong-format");
-        let mut wrong = McapWriter::new(
-            open(&wrong_out),
+        let mut wrong = McapWriter::create(
+            &wrong_out.0,
             Schema {
                 name: "other",
                 encoding: "",
@@ -194,7 +185,6 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
             storage_persistence::mcap::McapConfig {
                 buffers: 2,
                 buffer_size: 8192,
-                alignment: 4096,
                 io: WriterConfig::default(),
                 ..Default::default()
             },
@@ -230,7 +220,7 @@ fn mapped_mcap_batches_bind_format_and_rotate() {
             assert!(region.acquire(4096..32768).is_err());
             drop(reader);
             if iteration == 0 {
-                w.rotate(open(&next)).unwrap();
+                w.rotate(&next.0).unwrap();
             }
         }
         w.finish().unwrap();
@@ -434,13 +424,8 @@ fn existing_payload_uses_prefix_page_without_touching_shm() {
         let expected = reader.as_slice().to_vec();
         let out = Temp::new(false, "external-payload-output");
         let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-        let mut w = McapWriter::new(
-            OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .custom_flags(libc::O_DIRECT)
-                .open(&out.0)
-                .unwrap(),
+        let mut w = McapWriter::create(
+            &out.0,
             Schema {
                 name: "raw",
                 encoding: "",
@@ -455,7 +440,6 @@ fn existing_payload_uses_prefix_page_without_touching_shm() {
                 metrics,
                 buffers: 1,
                 buffer_size: 8192,
-                alignment: 4096,
                 io: Default::default(),
                 ..Default::default()
             },
@@ -542,13 +526,8 @@ fn external_mcap_admission_rejects_bad_layouts_intact() {
         Observer::default(),
     );
     let out = Temp::new(false, "invalid-external-mcap");
-    let mut w = McapWriter::new(
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .custom_flags(libc::O_DIRECT)
-            .open(&out.0)
-            .unwrap(),
+    let mut w = McapWriter::create(
+        &out.0,
         Schema {
             name: "raw",
             encoding: "",
@@ -562,7 +541,6 @@ fn external_mcap_admission_rejects_bad_layouts_intact() {
         storage_persistence::mcap::McapConfig {
             buffers: 2,
             buffer_size: 8192,
-            alignment: 4096,
             io: Default::default(),
             ..Default::default()
         },

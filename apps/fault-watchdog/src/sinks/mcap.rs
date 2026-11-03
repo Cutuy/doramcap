@@ -2,11 +2,8 @@
 use super::{Packet, Sink};
 use crate::config::pb::McapConfig;
 use eyre::{Result, ensure};
-use std::{
-    fs::OpenOptions,
-    time::{Duration, Instant},
-};
-use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
+use std::time::{Duration, Instant};
+use storage_persistence::mcap::{ALIGNMENT, Channel, McapWriter, Message, Schema};
 /// Owns one writer and numbered rotation files. Existing paths are never replaced.
 /// A write/flush failure poisons recording: partial writes cannot safely be retried.
 pub struct Recording {
@@ -21,12 +18,8 @@ impl Recording {
     /// Create the initial recording and embed the shared aggregation descriptor.
     /// Requires the Linux capabilities supported by `storage-persistence`.
     pub fn new(config: McapConfig, max_frame: usize) -> Result<Self> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&config.path)?;
-        let writer = McapWriter::new(
-            file,
+        let writer = McapWriter::create(
+            &config.path,
             Schema {
                 name: fault_protocol::AGGREGATION_SCHEMA_NAME,
                 encoding: "protobuf",
@@ -39,7 +32,7 @@ impl Recording {
             }],
             storage_persistence::mcap::McapConfig {
                 buffers: 4,
-                buffer_size: max_frame + 4096,
+                buffer_size: (max_frame + ALIGNMENT).next_multiple_of(ALIGNMENT),
                 ..Default::default()
             },
         )?;
@@ -57,7 +50,7 @@ impl Recording {
         if self.config.rotation_bytes > 0 && writer.file_bytes() >= self.config.rotation_bytes {
             self.part += 1;
             let path = format!("{}.{:06}", self.config.path, self.part);
-            writer.rotate(OpenOptions::new().write(true).create_new(true).open(path)?)?;
+            writer.rotate(path)?;
         }
         let frame = fault_protocol::decode_aggregation(&packet.bytes, Default::default())?;
         let now = fault_protocol::host::unix_ns().unwrap_or(0);

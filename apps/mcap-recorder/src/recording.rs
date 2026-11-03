@@ -7,7 +7,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{Seek, SeekFrom, Write},
-    os::unix::fs::OpenOptionsExt,
 };
 use storage_persistence::mcap::{McapConfig, McapWriter, Message};
 
@@ -204,11 +203,6 @@ fn channel_record(
 
 /// Creates the recording exclusively with direct I/O and declares each input's channels.
 fn create_writer(path: &str, inputs: &[(Input, Option<Vec<u8>>)]) -> Result<McapWriter> {
-    let file = File::options()
-        .write(true)
-        .create_new(true)
-        .custom_flags(libc::O_DIRECT)
-        .open(path)?;
     let mut records = Vec::new();
     for (index, (input, schema)) in inputs.iter().enumerate() {
         let (channel, metadata_channel) = channel_ids(index)?;
@@ -248,12 +242,11 @@ fn create_writer(path: &str, inputs: &[(Input, Option<Vec<u8>>)]) -> Result<Mcap
         )?;
     }
     Ok(McapWriter::with_records(
-        file,
+        path,
         &records,
         McapConfig {
             buffers: 8,
             buffer_size: 256 * 1024,
-            alignment: 4096,
             ..Default::default()
         },
     )?)

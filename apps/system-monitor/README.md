@@ -49,7 +49,7 @@ recording {
 ```
 
 Recording uses the publication owner thread and an eight-buffer, 512-KiB pool.
-Direct I/O uses 4-KiB alignment; `buffered: true` selects buffered file I/O.
+Recordings use direct I/O with 4-KiB alignment.
 The maximum encoded message is bounded by the pool. Files are created exclusively.
 Rotation is a soft limit at message boundaries and creates `capture.000001.mcap`,
 then subsequent numbered files, each with schema/channel and dictionary metadata.

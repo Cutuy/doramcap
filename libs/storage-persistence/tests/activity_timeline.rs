@@ -4,7 +4,6 @@ use activity_tracing::{BatchView, Config, Runtime, Sink, wire};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::OpenOptions,
-    os::unix::fs::OpenOptionsExt,
     sync::{Arc, Mutex},
 };
 use storage_persistence::{
@@ -57,15 +56,9 @@ fn activity_capture_correlates_every_path_and_split_io() {
     let registration = h.register_thread("writer-test").unwrap();
     let path = std::env::temp_dir().join(format!("storage-timeline-{}.mcap", std::process::id()));
     tracing::subscriber::with_default(h.subscriber(), || {
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .custom_flags(libc::O_DIRECT)
-            .open(&path)
-            .unwrap();
         let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-        let mut w = McapWriter::new(
-            file,
+        let mut w = McapWriter::create(
+            &path,
             Schema {
                 name: "raw",
                 encoding: "",
@@ -80,7 +73,6 @@ fn activity_capture_correlates_every_path_and_split_io() {
                 metrics,
                 buffers: 2,
                 buffer_size: 8192,
-                alignment: 4096,
                 io: WriterConfig {
                     max_write_bytes: 4096,
                     ..Default::default()

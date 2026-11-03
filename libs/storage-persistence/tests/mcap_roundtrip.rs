@@ -11,15 +11,8 @@ struct Payload {
 #[test]
 fn raw_records_are_written_unchanged_and_malformed_ones_are_refused() {
     // Arrange
-    let file = |name: &str| {
-        let path = std::env::temp_dir().join(format!("doramcap-{name}-{}", std::process::id()));
-        let opened = std::fs::File::options()
-            .create_new(true)
-            .write(true)
-            .open(&path)
-            .unwrap();
-        (path, opened)
-    };
+    let file =
+        |name: &str| std::env::temp_dir().join(format!("doramcap-{name}-{}", std::process::id()));
     let framed = |op: u8, content: &[u8]| {
         let mut out = vec![op];
         out.extend_from_slice(&(content.len() as u64).to_le_bytes());
@@ -49,8 +42,8 @@ fn raw_records_are_written_unchanged_and_malformed_ones_are_refused() {
     let records = [framed(3, &schema), framed(4, &channel)].concat();
     let config = || storage_persistence::mcap::McapConfig::default();
     // Act
-    let (path, opened) = file("records");
-    let mut writer = McapWriter::with_records(opened, &records, config()).unwrap();
+    let path = file("records");
+    let mut writer = McapWriter::with_records(&path, &records, config()).unwrap();
     let message = Message {
         channel: 7,
         sequence: 0,
@@ -73,9 +66,9 @@ fn raw_records_are_written_unchanged_and_malformed_ones_are_refused() {
     let footer = framed(2, &[0; 20]);
     let truncated = &records[..records.len() - 1];
     for bad in [&[][..], truncated, &footer, &duplicate] {
-        let (path, opened) = file("malformed");
-        assert!(McapWriter::with_records(opened, bad, config()).is_err());
-        std::fs::remove_file(path).unwrap();
+        let path = file("malformed");
+        assert!(McapWriter::with_records(&path, bad, config()).is_err());
+        assert!(!path.exists());
     }
 }
 #[test]
@@ -83,13 +76,8 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
     for empty in [true, false] {
         let path =
             std::env::temp_dir().join(format!("doramcap-format-{}-{empty}", std::process::id()));
-        let file = std::fs::File::options()
-            .create_new(true)
-            .write(true)
-            .open(&path)
-            .unwrap();
-        let mut writer = McapWriter::new(
-            file,
+        let mut writer = McapWriter::create(
+            &path,
             Schema {
                 name: "Payload",
                 encoding: "protobuf",
@@ -102,8 +90,7 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
             }],
             storage_persistence::mcap::McapConfig {
                 buffers: 2,
-                buffer_size: 4096,
-                alignment: 1,
+                buffer_size: 8192,
                 io: Default::default(),
                 ..Default::default()
             },
@@ -165,16 +152,9 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
 }
 
 fn direct_writer(name: &str, registrations: u32) -> (std::path::PathBuf, McapWriter) {
-    use std::os::unix::fs::OpenOptionsExt;
     let path = std::env::temp_dir().join(format!("doramcap-{name}-{}", std::process::id()));
-    let file = std::fs::File::options()
-        .create_new(true)
-        .write(true)
-        .custom_flags(libc::O_DIRECT)
-        .open(&path)
-        .unwrap();
-    let writer = McapWriter::new(
-        file,
+    let writer = McapWriter::create(
+        &path,
         Schema {
             name: "S",
             encoding: "raw",
@@ -188,7 +168,6 @@ fn direct_writer(name: &str, registrations: u32) -> (std::path::PathBuf, McapWri
         storage_persistence::mcap::McapConfig {
             buffers: 4,
             buffer_size: 8192,
-            alignment: 4096,
             io: storage_persistence::writer::WriterConfig {
                 registration_capacity: registrations,
                 ..Default::default()
@@ -236,5 +215,38 @@ fn write_fails_when_registrations_stay_full() {
         .unwrap_err();
     // Assert
     assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn existing_paths_are_refused_and_failed_rotation_keeps_recording() {
+    // Arrange
+    let (path, mut writer) = direct_writer("rotate-existing", 1024);
+    // Act / Assert: the open path cannot be recreated or rotated into.
+    let schema = Schema {
+        name: "S",
+        encoding: "raw",
+        data: b"s",
+    };
+    let channels = [Channel {
+        id: 1,
+        topic: "t",
+        encoding: "raw",
+    }];
+    let created = McapWriter::create(&path, schema, &channels, Default::default());
+    let existing = std::io::ErrorKind::AlreadyExists;
+    assert_eq!(created.err().unwrap().kind(), existing);
+    assert_eq!(writer.rotate(&path).unwrap_err().kind(), existing);
+    // Act
+    writer.write(MESSAGE, &[9]).unwrap();
+    writer.finish().unwrap();
+    // Assert
+    let bytes = std::fs::read(&path).unwrap();
+    let messages = mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].data.as_ref(), &[9]);
     std::fs::remove_file(path).unwrap();
 }

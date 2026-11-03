@@ -9,10 +9,10 @@
 //! ```no_run
 //! use storage_persistence::{mcap::{McapWriter, McapConfig, Schema, Channel},
 //!     observability::{Collector, Mode, McapMonitor}};
-//! # fn record(file: std::fs::File, schema: Schema<'_>, channels: &[Channel<'_>]) -> std::io::Result<()> {
+//! # fn record(path: &std::path::Path, schema: Schema<'_>, channels: &[Channel<'_>]) -> std::io::Result<()> {
 //! let events = Collector::new(1024, Mode::Inspect)?;
 //! let (metrics, monitor) = McapMonitor::channel();
-//! let writer = McapWriter::new(file, schema, channels, McapConfig {
+//! let writer = McapWriter::create(path, schema, channels, McapConfig {
 //!     observer: events.observer(), metrics, ..Default::default()
 //! })?;
 //! // Record through writer; sample through monitor; export outside the writer.
@@ -28,8 +28,10 @@ use crate::{
     slabs::{Rejected, SlabPool, WritableSlab},
 };
 use core::McapCore;
-pub use core::{LargeReservation, MessageReservation, PreparedBlock, PreparedRecordsBuilder};
-use std::{fs::File, io, time::Instant};
+pub use core::{
+    ALIGNMENT, LargeReservation, MessageReservation, PreparedBlock, PreparedRecordsBuilder,
+};
+use std::{io, path::Path, time::Instant};
 pub struct Schema<'a> {
     pub name: &'a str,
     pub encoding: &'a str,
@@ -48,11 +50,10 @@ pub struct Message {
     pub publish_time: u64,
 }
 /// Recording configuration and injected observation dependencies.
-/// `alignment = 1` uses buffered I/O; 512/4096 require an O_DIRECT file.
+/// `buffer_size` must be a multiple of [`ALIGNMENT`] and at least two blocks.
 pub struct McapConfig {
     pub buffers: u32,
     pub buffer_size: usize,
-    pub alignment: usize,
     pub io: crate::writer::WriterConfig,
     pub observer: Observer,
     pub metrics: crate::observability::McapMetrics,
@@ -62,7 +63,6 @@ impl Default for McapConfig {
         Self {
             buffers: 8,
             buffer_size: crate::managed_buffers::DEFAULT_BUFFER_SIZE,
-            alignment: 1,
             io: Default::default(),
             observer: Default::default(),
             metrics: Default::default(),
@@ -80,8 +80,11 @@ pub struct McapWriter {
     core: McapCore,
 }
 impl McapWriter {
-    pub fn new(
-        file: File,
+    /// Starts a recording in a new file at `path`, opened `O_CREAT | O_EXCL | O_DIRECT`.
+    /// Errors: `AlreadyExists` for an existing path, `InvalidInput` on a filesystem
+    /// without direct I/O, and the errors of [`Self::with_records`].
+    pub fn create(
+        path: impl AsRef<Path>,
         schema: Schema<'_>,
         channels: &[Channel<'_>],
         config: McapConfig,
@@ -101,18 +104,18 @@ impl McapWriter {
             content.extend_from_slice(&0_u32.to_le_bytes());
             core::record(&mut schema_channel_records, 4, &content);
         }
-        Self::with_records(file, &schema_channel_records, config)
+        Self::with_records(path, &schema_channel_records, config)
     }
-    /// Starts a recording on owned `file` from serialized [MCAP Schema and Channel records](https://mcap.dev/spec#records).
+    /// Starts a recording at `path` from serialized [MCAP Schema and Channel records](https://mcap.dev/spec#records).
     /// Caller supplies valid declarations with at least one channel and unique channel IDs.
-    /// Errors: invalid framing, record types, channel IDs or configuration; allocation and I/O failures.
+    /// Errors: invalid framing, record types, channel IDs or configuration, which create no file; allocation and I/O failures.
     pub fn with_records(
-        file: File,
+        path: impl AsRef<Path>,
         schema_channel_records: &[u8],
         config: McapConfig,
     ) -> io::Result<Self> {
         Ok(Self {
-            core: McapCore::new(file, schema_channel_records, config)?,
+            core: McapCore::new(path.as_ref(), schema_channel_records, config)?,
         })
     }
     fn update<T>(&mut self, operation: impl FnOnce(&mut McapCore) -> T) -> T {
@@ -256,12 +259,12 @@ impl McapWriter {
     pub fn finish(mut self) -> io::Result<()> {
         self.update(McapCore::seal)
     }
-    /// Finalize the current recording and take ownership of `file` for the next one.
+    /// Finalize the current recording and continue in a new file at `path`, opened as in [`Self::create`].
     /// Repeats schema/channel records and preserves producer registration caches.
-    /// The caller supplies dictionary checkpoints. Errors may occur after the old
-    /// file is finalized or the new file is installed; there is no rollback.
-    pub fn rotate(&mut self, file: File) -> io::Result<()> {
-        self.update(|c| c.rotate(file))
+    /// The caller supplies dictionary checkpoints. A failed open leaves the current
+    /// file recording; errors after the old file is finalized have no rollback.
+    pub fn rotate(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.update(|c| c.rotate(path.as_ref()))
     }
     pub fn file_bytes(&self) -> u64 {
         self.core.file_bytes()

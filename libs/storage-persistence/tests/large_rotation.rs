@@ -1,15 +1,6 @@
 use bytes::BufMut;
-use std::{fs::File, os::unix::fs::OpenOptionsExt};
 use storage_persistence::mcap::{Channel, McapWriter, Message, Schema};
-fn create(path: &std::path::Path, alignment: usize) -> File {
-    File::options()
-        .write(true)
-        .create_new(true)
-        .custom_flags(if alignment > 1 { libc::O_DIRECT } else { 0 })
-        .open(path)
-        .unwrap()
-}
-fn writer(file: File, alignment: usize) -> McapWriter {
+fn writer(path: &std::path::Path) -> McapWriter {
     let schema = Schema {
         name: "bytes",
         encoding: "",
@@ -20,35 +11,17 @@ fn writer(file: File, alignment: usize) -> McapWriter {
         topic: "test",
         encoding: "",
     }];
-    if alignment > 1 {
-        McapWriter::new(
-            file,
-            schema,
-            &channels,
-            storage_persistence::mcap::McapConfig {
-                buffers: 3,
-                buffer_size: 8192,
-                alignment,
-                io: Default::default(),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    } else {
-        McapWriter::new(
-            file,
-            schema,
-            &channels,
-            storage_persistence::mcap::McapConfig {
-                buffers: 3,
-                buffer_size: 8192,
-                alignment: 1,
-                io: Default::default(),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    }
+    McapWriter::create(
+        path,
+        schema,
+        &channels,
+        storage_persistence::mcap::McapConfig {
+            buffers: 3,
+            buffer_size: 8192,
+            ..Default::default()
+        },
+    )
+    .unwrap()
 }
 fn meta(sequence: u32) -> Message {
     Message {
@@ -60,14 +33,10 @@ fn meta(sequence: u32) -> Message {
 }
 #[test]
 fn contiguous_records_and_rotation() {
-    for alignment in [1, 512, 4096] {
-        let path = |i| {
-            std::env::temp_dir().join(format!(
-                "doramcap-large-{}-{alignment}-{i}",
-                std::process::id()
-            ))
-        };
-        let mut writer = writer(create(&path(0), alignment), alignment);
+    {
+        let path =
+            |i| std::env::temp_dir().join(format!("doramcap-large-{}-{i}", std::process::id()));
+        let mut writer = writer(&path(0));
         assert!(
             writer
                 .reserve_large(meta(0), writer.max_large_payload() + 1)
@@ -87,7 +56,7 @@ fn contiguous_records_and_rotation() {
             small.payload_mut()[0] = 42;
             small.commit().unwrap();
             if i < 15 {
-                writer.rotate(create(&path(i + 1), alignment)).unwrap();
+                writer.rotate(path(i + 1)).unwrap();
             }
         }
         writer.finish().unwrap();
@@ -115,7 +84,7 @@ fn abrupt_exit_preserves_complete_record_prefix() {
     const KEY: &str = "DORAMCAP_CRASH_RECORDING";
     if let Some(path) = std::env::var_os(KEY) {
         let path = std::path::PathBuf::from(path);
-        let mut writer = writer(create(&path, 1), 1);
+        let mut writer = writer(&path);
         let mut r = writer.reserve_large(meta(1), 20000).unwrap();
         r.put_bytes(7, 20000);
         r.commit().unwrap();
@@ -148,6 +117,6 @@ fn abrupt_exit_preserves_complete_record_prefix() {
         (messages, cursor)
     };
     assert_eq!(scan(&data), (1, data.len()));
-    assert_eq!(scan(&data[..data.len() - 1]).0, 0);
+    assert_eq!(scan(&data[..20000]).0, 0);
     std::fs::remove_file(path).unwrap();
 }

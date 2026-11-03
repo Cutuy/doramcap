@@ -31,12 +31,12 @@ fn message(sequence: u32) -> Message {
     }
 }
 fn mcap(
-    file: File,
+    path: &Path,
     pending_capacity: usize,
 ) -> (McapWriter, storage_persistence::observability::McapMonitor) {
     let (metrics, monitor) = storage_persistence::observability::McapMonitor::channel();
-    let writer = McapWriter::new(
-        file,
+    let writer = McapWriter::create(
+        path,
         Schema {
             name: "opaque",
             encoding: "",
@@ -51,7 +51,6 @@ fn mcap(
             metrics,
             buffers: 2,
             buffer_size: 8192,
-            alignment: 4096,
             io: WriterConfig {
                 pending_capacity,
                 max_write_bytes: 4096,
@@ -69,7 +68,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
         let first = path(&format!("prepared-{size}-a"));
         let second = path(&format!("prepared-{size}-b"));
         let pool = SlabPool::new(1, size, 4096).unwrap();
-        let (mut writer, monitor) = mcap(open(&first), 8);
+        let (mut writer, monitor) = mcap(&first, 8);
         writer.flush_written().unwrap();
         writer.prepare_slabs(&pool).unwrap();
         let updates = monitor.snapshot().unwrap().writer.registration_updates;
@@ -107,7 +106,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             let bytes = std::fs::read(if iteration == 0 { &first } else { &second }).unwrap();
             assert_eq!(&bytes[range.offset as usize..][..size], expected);
             if iteration == 0 {
-                writer.rotate(open(&second)).unwrap();
+                writer.rotate(&second).unwrap();
             }
         }
         writer.finish().unwrap();
@@ -173,8 +172,8 @@ fn rejected_block_preserves_address_and_stream_binding() {
     let a = path("pressure-a");
     let b = path("pressure-b");
     let pool = SlabPool::new(1, 4096, 4096).unwrap();
-    let (mut writer, _monitor) = mcap(open(&a), 1);
-    let (mut foreign, _foreign_monitor) = mcap(open(&b), 2);
+    let (mut writer, _monitor) = mcap(&a, 1);
+    let (mut foreign, _foreign_monitor) = mcap(&b, 2);
     // The combining message stays buffered until the explicit barrier.
     writer.reserve(message(0), 0).unwrap().commit().unwrap();
     let mut builder = writer.prepare_records(pool.acquire().unwrap());
@@ -253,7 +252,7 @@ fn standalone_paths_do_not_flush_or_reserve_capacity_for_combining() {
     for kind in ["large", "slab", "mapped"] {
         let file = path(kind);
         // Metadata occupies one slot; exactly one slot remains for the new write.
-        let (mut writer, monitor) = mcap(open(&file), 2);
+        let (mut writer, monitor) = mcap(&file, 2);
         let mut small = writer.reserve(message(0), 3).unwrap();
         small.payload_mut().fill(7);
         small.commit().unwrap();

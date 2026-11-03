@@ -10,6 +10,8 @@ use crate::{
 use std::{
     fs::File,
     io,
+    os::unix::fs::OpenOptionsExt,
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -27,9 +29,17 @@ pub(super) struct McapCore {
     since: Option<Instant>,
     max_age: Duration,
     metrics: crate::observability::McapMetrics,
-    alignment: usize,
     metadata: Vec<u8>,
     prepared_format: Arc<PreparedFormat>,
+}
+/// Bytes of direct-I/O alignment for file offsets, lengths and buffers.
+pub const ALIGNMENT: usize = 4096;
+fn open(path: &Path) -> io::Result<File> {
+    File::options()
+        .write(true)
+        .create_new(true)
+        .custom_flags(libc::O_DIRECT)
+        .open(path)
 }
 fn invalid() -> io::Error {
     io::ErrorKind::InvalidInput.into()
@@ -81,24 +91,24 @@ fn declared_channels(mut records: &[u8]) -> io::Result<Vec<u16>> {
     }
     Ok(ids)
 }
-fn checked_padded_len(used: usize, alignment: usize) -> Option<usize> {
-    if used.is_multiple_of(alignment) {
+fn checked_padded_len(used: usize) -> Option<usize> {
+    if used.is_multiple_of(ALIGNMENT) {
         return Some(used);
     }
-    let len = used.checked_next_multiple_of(alignment)?;
+    let len = used.checked_next_multiple_of(ALIGNMENT)?;
     // Short gaps cannot hold the nine-byte record header and consume another alignment unit.
     if len - used < 9 {
-        len.checked_add(alignment)
+        len.checked_add(ALIGNMENT)
     } else {
         Some(len)
     }
 }
-fn padded_len(used: usize, alignment: usize) -> usize {
-    checked_padded_len(used, alignment).expect("validated record size")
+fn padded_len(used: usize) -> usize {
+    checked_padded_len(used).expect("validated record size")
 }
 /// Fills the alignment gap with a private `0x80` record whose body is zero-filled.
-fn padding(out: &mut [u8], used: usize, alignment: usize) -> usize {
-    let len = padded_len(used, alignment);
+fn padding(out: &mut [u8], used: usize) -> usize {
+    let len = padded_len(used);
     if len > used {
         out[used..len].fill(0);
         out[used] = 0x80;
@@ -112,39 +122,30 @@ impl McapCore {
             .publish(|| self.snapshot(), || self.writer.active_writes());
     }
 
-    /// Starts recording on owned `file` using the buffer and I/O settings in `config`.
+    /// Starts recording in a new file at `path` using the buffer and I/O settings in `config`.
     /// `schema_channel_records` supplies the MCAP Schema and Channel records that begin the Data section.
     /// Copies them for reuse by `rotate`; requirements and errors: [`super::McapWriter::with_records`].
     pub(super) fn new(
-        file: File,
+        path: &Path,
         schema_channel_records: &[u8],
         config: McapConfig,
     ) -> io::Result<Self> {
         let McapConfig {
             buffers,
             buffer_size,
-            alignment,
             io: config,
             observer,
             mut metrics,
         } = config;
         metrics.reserve(config.pending_capacity)?;
-        if !matches!(alignment, 1 | 512 | 4096)
-            || (alignment > 1
-                && (buffer_size < 2 * alignment || !buffer_size.is_multiple_of(alignment)))
-        {
-            return Err(invalid());
-        }
-        if buffer_size < 50 {
+        if buffer_size < 2 * ALIGNMENT || !buffer_size.is_multiple_of(ALIGNMENT) {
             return Err(invalid());
         }
         let ids = declared_channels(schema_channel_records)?;
-        let pool = BufferPool::new(buffers as usize, buffer_size, 4096).map_err(|_| invalid())?;
-        let writer = if alignment > 1 {
-            Writer::direct_with_observer(file, pool.clone(), alignment, config, observer)?
-        } else {
-            Writer::with_observer(file, config, observer)?
-        };
+        let pool =
+            BufferPool::new(buffers as usize, buffer_size, ALIGNMENT).map_err(|_| invalid())?;
+        let writer =
+            Writer::direct_with_observer(open(path)?, pool.clone(), ALIGNMENT, config, observer)?;
         let mut this = Self {
             combining_timeline: Timeline::default(),
             combining_messages: 0,
@@ -153,7 +154,6 @@ impl McapCore {
             pool,
             prepared_format: Arc::new(PreparedFormat {
                 channels: ids.clone(),
-                alignment,
             }),
             channels: ids,
             buffer_size,
@@ -162,7 +162,6 @@ impl McapCore {
             since: None,
             max_age: Duration::from_millis(100),
             metrics,
-            alignment,
             metadata: Vec::new(),
         };
         let mut bytes = MAGIC.to_vec();
@@ -171,11 +170,9 @@ impl McapCore {
         string(&mut content, b"doramcap")?;
         record(&mut bytes, 1, &content);
         bytes.extend_from_slice(schema_channel_records);
-        if alignment > 1 {
-            let used = bytes.len();
-            bytes.resize(padded_len(used, alignment), 0);
-            padding(&mut bytes, used, alignment);
-        }
+        let used = bytes.len();
+        bytes.resize(padded_len(used), 0);
+        padding(&mut bytes, used);
         for chunk in bytes.chunks(buffer_size) {
             let mut lease = this.acquire(chunk.len())?;
             lease.as_mut_slice().copy_from_slice(chunk);
@@ -407,10 +404,10 @@ impl McapCore {
         if total > self.record_capacity() {
             // Keep any preceding batch until commit. Pending-queue pressure must not
             // prevent acquiring a new contiguous payload allocation.
-            let physical = checked_padded_len(total, self.alignment).ok_or_else(invalid)?;
+            let physical = checked_padded_len(total).ok_or_else(invalid)?;
             let mut lease = self.acquire(physical)?;
             message_header(lease.as_mut_slice(), message, total);
-            padding(lease.as_mut_slice(), total, self.alignment);
+            padding(lease.as_mut_slice(), total);
             return Ok((0, total, Some(lease)));
         }
         if self.used + total > self.record_capacity() {
@@ -432,12 +429,7 @@ impl McapCore {
         self.record_capacity().saturating_sub(31)
     }
     fn record_capacity(&self) -> usize {
-        self.buffer_size
-            - if self.alignment > 1 {
-                self.alignment
-            } else {
-                0
-            }
+        self.buffer_size - ALIGNMENT
     }
     pub(super) fn next_flush_deadline(&self) -> Option<Instant> {
         self.since.and_then(|t| t.checked_add(self.max_age))
@@ -467,7 +459,7 @@ impl McapCore {
         }
         self.writer.check_capacity(1)?;
         if let Some(mut lease) = self.active.take() {
-            let physical = padding(lease.as_mut_slice(), self.used, self.alignment);
+            let physical = padding(lease.as_mut_slice(), self.used);
             // Keep the full combining lease on failure so the batch can be retried.
             lease.truncate(physical);
             match self
@@ -517,11 +509,7 @@ impl McapCore {
             .accepted_bytes()
             .checked_add(50)
             .ok_or_else(invalid)?;
-        let mut lease = self.acquire(if self.alignment > 1 {
-            self.alignment
-        } else {
-            50
-        })?;
+        let mut lease = self.acquire(ALIGNMENT)?;
         let tail = lease.as_mut_slice();
         tail.fill(0);
         tail[0] = 0x0f;
@@ -535,7 +523,9 @@ impl McapCore {
 
     /// Rotate at a message boundary. The application writes its dictionary
     /// checkpoint after this call; schemas/channels are repeated automatically.
-    pub(super) fn rotate(&mut self, file: File) -> io::Result<()> {
+    pub(super) fn rotate(&mut self, path: &Path) -> io::Result<()> {
+        // Open first so a bad path leaves the current file recording.
+        let file = open(path)?;
         self.seal()?;
         self.writer.replace_file(file)?;
         for start in (0..self.metadata.len()).step_by(self.buffer_size) {
@@ -556,7 +546,7 @@ impl McapCore {
     /// Address-space bound; independent of the initial pool size.
     pub(super) fn max_large_payload(&self) -> usize {
         (isize::MAX as usize)
-            .saturating_sub(self.alignment * 2)
+            .saturating_sub(ALIGNMENT * 2)
             .saturating_sub(31)
     }
     /// Compatibility BufMut adapter over a single contiguous reservation.
@@ -576,7 +566,6 @@ impl McapCore {
 #[derive(Debug)]
 struct PreparedFormat {
     channels: Vec<u16>,
-    alignment: usize,
 }
 
 /// Exclusive producer-side MCAP framing. Encoders write directly into each payload.
@@ -595,7 +584,7 @@ impl PreparedRecordsBuilder {
         }
         let total = payload_len.checked_add(31).ok_or_else(invalid)?;
         let end = self.used.checked_add(total).ok_or_else(invalid)?;
-        let physical = checked_padded_len(end, self.format.alignment).ok_or_else(invalid)?;
+        let physical = checked_padded_len(end).ok_or_else(invalid)?;
         if physical > self.slab.capacity() {
             return Err(io::ErrorKind::WriteZero.into());
         }
@@ -614,7 +603,7 @@ impl PreparedRecordsBuilder {
                 value: self,
             });
         }
-        let len = padding(self.slab.bytes_mut(), self.used, self.format.alignment);
+        let len = padding(self.slab.bytes_mut(), self.used);
         // reserve() established nonempty initialized bounds, including padding.
         let slab = self
             .slab

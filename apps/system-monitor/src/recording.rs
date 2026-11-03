@@ -3,8 +3,6 @@ use crate::config::Recording;
 use eyre::{Result, ensure};
 use prost::Message as _;
 use std::{
-    fs::File,
-    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -17,25 +15,14 @@ pub struct Recorder {
     base: PathBuf,
     index: u64,
     rotation_bytes: u64,
-    direct: bool,
     snapshots: u64,
-}
-fn create(path: &Path, direct: bool) -> Result<File> {
-    Ok(File::options()
-        .write(true)
-        .create_new(true)
-        .custom_flags(if direct { libc::O_DIRECT } else { 0 })
-        .open(path)?)
 }
 impl Recorder {
     /// Create a new recording from a validated section; an existing path is rejected.
-    /// Direct I/O uses 4 KiB alignment unless `buffered` is set.
     /// `rotation_bytes` is a soft byte target; zero disables rotation recommendations.
     pub fn create(config: &Recording) -> Result<Self> {
         let path = Path::new(&config.path);
-        let direct = !config.buffered;
         let rotation_bytes = config.rotation_bytes;
-        let file = create(path, direct)?;
         let schema = Schema {
             name: telemetry_protocol::MCAP_SCHEMA_NAME,
             encoding: "protobuf",
@@ -53,14 +40,13 @@ impl Recorder {
                 encoding: "protobuf",
             },
         ];
-        let writer = McapWriter::new(
-            file,
+        let writer = McapWriter::create(
+            path,
             schema,
             &channels,
             storage_persistence::mcap::McapConfig {
                 buffers: 8,
                 buffer_size: 256 * 1024,
-                alignment: if direct { 4096 } else { 1 },
                 ..Default::default()
             },
         )?;
@@ -69,7 +55,6 @@ impl Recorder {
             base: path.to_path_buf(),
             index: 0,
             rotation_bytes,
-            direct,
             snapshots: 0,
         })
     }
@@ -89,7 +74,7 @@ impl Recorder {
             .checked_add(1)
             .ok_or_else(|| eyre::eyre!("rotation index overflow"))?;
         let path = self.base.with_extension(format!("{:06}.mcap", self.index));
-        self.writer.rotate(create(&path, self.direct)?)?;
+        self.writer.rotate(&path)?;
         self.snapshots = 0;
         Ok(())
     }
