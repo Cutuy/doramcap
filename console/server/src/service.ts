@@ -9,6 +9,7 @@ import {
   capabilities,
   wire,
   execution,
+  browserError,
   compose,
   objectOptions,
   type Config,
@@ -505,6 +506,7 @@ export class ConsoleService implements ConsoleBackend {
           : Phase.FINISHED;
     this.snapshot.outcome = wire.Outcome.create({
       execution: !this.accepted && this.stopped ? 'Cancelled' : result.error ? 'Failed' : 'Completed',
+      error: browserError(result.error ?? ''),
       boundaryClean: !!clean,
       writersStopped: this.accepted ? result.writersStopped : null,
       recordingFinalized: this.marker!.recordings.length ? result.recordingFinalized : null,
@@ -528,6 +530,7 @@ export class ConsoleService implements ConsoleBackend {
           Buffer.from(
             JSON.stringify({
               execution: this.snapshot.outcome.execution,
+              error: result.error ?? null,
               writers_stopped: this.snapshot.outcome.writersStopped,
               recording_finalized: this.snapshot.outcome.recordingFinalized,
               boundary_clean: this.snapshot.outcome.boundaryClean,

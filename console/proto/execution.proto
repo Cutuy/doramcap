@@ -27,6 +27,12 @@ message ProfilesRequest {
   doramcap.compose.v1.ComposeProject project = 3;
 }
 message Profiles { repeated string names = 1; }
+// Limits shared by the native addon and TypeScript server.
+enum Limit {
+  LIMIT_UNSPECIFIED = 0;
+  // Characters of a failure message sent to the browser, kept from its end, where its cause is.
+  MAX_ERROR_CHARS = 2000;
+}
 message StartRequest {
   RunRequest run = 1;
   doramcap.compose.v1.ConfigurationSnapshot expected = 2;

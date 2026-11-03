@@ -7,16 +7,18 @@ import { ActionButton } from './ui/ActionButton';
 import { OutcomeSummary } from './ui/OutcomeSummary';
 
 /** `past` shows a stored run: its stored title, action and on-disk artifact facts. */
-export type PastRun = { title: string; action: string; disabled: boolean; artifacts: HistoryArtifact[]; aside: ReactNode };
+export type PastRun = { title: string; action: string; disabled: boolean; artifacts: HistoryArtifact[]; aside: ReactNode; error?: string | null };
 export function Result({ snapshot, newRun, viewRun, past }: { snapshot: Snapshot; newRun: () => void; viewRun?: () => void; past?: PastRun }) {
   const outputs = snapshot.recordings ?? [];
   const blocked = snapshot.phase === Phase.BLOCKED;
   const saved = snapshot.outcome?.recordingFinalized === true;
   const artifact = (id: string) => past?.artifacts.find(item => item.id === id);
   const ready = (id: string) => past ? artifact(id)?.downloadable === true : saved;
+  const error = past ? past.error : snapshot.outcome?.error;
   const size = (id: string) => artifact(id)?.sizeBytes == null ? '' : ` · ${bytesLabel(artifact(id)!.sizeBytes)}`;
   return <>
     <div className="heading"><div><h1>{past ? past.title : blocked ? 'Cleanup unverified' : snapshot.outcome?.execution === 'Failed' ? 'Run failed' : snapshot.outcome?.execution === 'Cancelled' ? 'Run cancelled' : 'Run complete'}</h1><p>Run <span className="mono">{snapshot.runId || 'Unknown'}</span></p></div><div className="run-view-actions">{viewRun && <ActionButton variant="secondary" onClick={viewRun}>View run activity</ActionButton>}<ActionButton variant={past ? 'primary' : 'secondary'} disabled={past?.disabled} onClick={newRun}>{past ? past.action : 'New run'}</ActionButton></div></div>
+    {error && <p className="notice failure-notice run-error" role="alert">{error}</p>}
     <div className="columns"><div><OutcomeSummary outcome={snapshot.outcome ?? null} recordingEnabled={outputs.length > 0}/><section className="panel"><h2>Evidence</h2><div className="actions">
       {outputs.length ? outputs.map(output => ready(output.id) ? <a className="button primary" key={output.id} href={artifactPath(snapshot.runId, output.id)}>Download {output.id} recording{size(output.id)}</a> : <span className="unavailable" key={output.id}>{output.id} recording unavailable{size(output.id) && `${size(output.id)} left on host`}</span>) : <span className="unavailable">Recording disabled</span>}
       {snapshot.reportAvailable ? <a className="button secondary" href={artifactPath(snapshot.runId, 'report')}>Download report</a> : <span className="unavailable">Report unavailable</span>}

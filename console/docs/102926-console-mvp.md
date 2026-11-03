@@ -310,7 +310,7 @@ revision and observed results beside its validation items before checking them.
   progress indicators. Stop remains available during Starting and Running.
 - [ ] Project `ComposeRunReport` into execution error category, `writers_stopped`,
   `recording_finalized`, `boundary_clean` and `event_stream_healthy`. Persist a
-  sanitized `console-report.json`; keep the original `report.json` private.
+  `console-report.json` with the full run error; keep the original `report.json` private.
   Render these outcomes separately. A runner error without a report shows Unknown
   for unavailable outcomes and preserves the admission block.
 - [ ] Register only `cpu.mcap` and `console-report.json` from the current run.
