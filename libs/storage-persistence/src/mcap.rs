@@ -146,15 +146,8 @@ impl McapWriter {
             match self.reserve(message, payload.len()) {
                 Ok(mut reservation) => {
                     reservation.payload_mut().copy_from_slice(payload);
-                    // Each attempt reaps completions; the reservation keeps its bytes.
-                    loop {
-                        match reservation.try_commit() {
-                            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                                std::thread::yield_now();
-                            }
-                            result => return result,
-                        }
-                    }
+                    // Large payloads flushed above and small ones join the batch, so pending has room.
+                    return reservation.try_commit();
                 }
                 // Flushing frees everything except registrations, so a second refusal is permanent.
                 Err(error) if flushed || error.kind() != io::ErrorKind::WouldBlock => {

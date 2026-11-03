@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" font-family="system-ui, sans-serif" font-size="13" role="img" aria-labelledby="title">
+  <title id="title">MCAP write path</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#b3372f"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#177763"/></marker>
+  </defs>
+  <rect width="1200" height="640" fill="#fff"/>
+
+  <text x="24" y="30" font-size="17" font-weight="600">MCAP write path</text>
+
+  <!-- Regions -->
+  <rect x="190" y="42" width="985" height="463" rx="8" fill="none" stroke="#3b5bab" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="205" y="62" font-weight="600" fill="#3b5bab">Owner thread: creates the ring and issues every SQE</text>
+  <rect x="440" y="72" width="330" height="418" rx="6" fill="#f7f7f7" stroke="#bbb"/>
+  <text x="452" y="92" font-weight="600">McapWriter</text>
+  <rect x="790" y="155" width="370" height="335" rx="6" fill="#f7f7f7" stroke="#bbb"/>
+  <text x="805" y="178" font-weight="600">Writer</text>
+  <rect x="20" y="522" width="1155" height="100" rx="8" fill="#f4f4f4" stroke="#bbb"/>
+  <text x="36" y="546" font-weight="600">Kernel</text>
+
+  <!-- Boxes -->
+  <g stroke-width="1.5">
+    <rect x="24" y="178" width="142" height="58" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="24" y="298" width="142" height="58" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="205" y="170" width="215" height="74" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="205" y="290" width="215" height="74" rx="6" fill="#eef5f3" stroke="#177763"/>
+    <rect x="452" y="98" width="306" height="42" rx="6" fill="#eef2fb" stroke="#3b5bab"/>
+    <rect x="470" y="168" width="270" height="48" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="452" y="240" width="148" height="70" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="612" y="240" width="146" height="70" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="520" y="345" width="170" height="50" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="805" y="215" width="235" height="72" rx="6" fill="#fbeeec" stroke="#b3372f"/>
+    <rect x="805" y="345" width="160" height="60" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="985" y="345" width="160" height="60" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="805" y="428" width="160" height="48" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="985" y="428" width="160" height="48" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="805" y="545" width="340" height="60" rx="6" fill="#fff" stroke="#777"/>
+    <rect x="480" y="545" width="200" height="60" rx="6" fill="#fff" stroke="#777"/>
+  </g>
+
+  <g text-anchor="middle">
+    <text x="95" y="203">Dora daemon</text>
+    <text x="95" y="221" fill="#555" font-size="12">input events</text>
+    <text x="95" y="323">App threads</text>
+    <text x="95" y="341" fill="#555" font-size="12">bounded sink queue</text>
+
+    <text x="312" y="193" font-weight="600">Recorder main thread</text>
+    <text x="312" y="212" fill="#555" font-size="12">Recording::record</text>
+    <text x="312" y="230" fill="#555" font-size="12">write: metadata, then payload</text>
+    <text x="312" y="313" font-weight="600">MCAP sink worker</text>
+    <text x="312" y="332" fill="#555" font-size="12">McapSink, wakes every 10 ms</text>
+    <text x="312" y="350" fill="#555" font-size="12">serializes into the reservation</text>
+
+    <text x="605" y="115">BufferPool</text>
+    <text x="605" y="132" fill="#555" font-size="12">8 × 256 KiB, pinned and registered</text>
+    <text x="605" y="188">reserve</text>
+    <text x="605" y="206" fill="#555" font-size="12">large or busy: flush_written first</text>
+    <text x="526" y="264">Combining buffer</text>
+    <text x="526" y="282" fill="#555" font-size="12">up to 252 KiB record</text>
+    <text x="526" y="299" fill="#555" font-size="12">shares a batch</text>
+    <text x="685" y="264">Standalone lease</text>
+    <text x="685" y="282" fill="#555" font-size="12">larger payload</text>
+    <text x="685" y="299" fill="#555" font-size="12">own pooled lease</text>
+    <text x="605" y="365">Admit</text>
+    <text x="605" y="383" fill="#555" font-size="12">try_commit or aged flush</text>
+
+    <text x="922" y="238" font-weight="600" fill="#b3372f">Drain in flight writes</text>
+    <text x="922" y="257" font-size="12">flush_written: submit_and_wait(1)</text>
+    <text x="922" y="274" fill="#555" font-size="12">sleeps on CQEs, then retries reserve</text>
+    <text x="885" y="370">Pending slots</text>
+    <text x="885" y="388" fill="#555" font-size="12">1024, each holds a lease</text>
+    <text x="1065" y="370">retire_completion</text>
+    <text x="1065" y="388" fill="#555" font-size="12">frees slot and lease</text>
+    <text x="885" y="448">SQ</text>
+    <text x="885" y="465" fill="#555" font-size="12">depth 8</text>
+    <text x="1065" y="448">CQ</text>
+    <text x="1065" y="465" fill="#555" font-size="12">reaped by owner thread</text>
+    <text x="975" y="570">io_uring</text>
+    <text x="975" y="589" fill="#555" font-size="12">WriteFixed, O_DIRECT</text>
+    <text x="580" y="570">*.mcap</text>
+    <text x="580" y="589" fill="#555" font-size="12">sync at finish</text>
+  </g>
+
+  <!-- Data flow -->
+  <g stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <path d="M166 207 H203"/>
+    <path d="M166 327 H203"/>
+    <path d="M420 207 H445 V192 H468"/>
+    <path d="M420 327 H445 V192 H468"/>
+    <path d="M605 140 V166"/>
+    <path d="M526 216 V238"/>
+    <path d="M685 216 V238"/>
+    <path d="M526 310 V327 H570 V343"/>
+    <path d="M685 310 V327 H640 V343"/>
+    <path d="M690 380 H803"/>
+    <path d="M885 405 V426"/>
+    <path d="M885 476 V543"/>
+    <path d="M1065 545 V478"/>
+    <path d="M1065 428 V407"/>
+    <path d="M985 375 H967"/>
+    <path d="M805 575 H682"/>
+  </g>
+
+  <!-- Backpressure -->
+  <g stroke="#b3372f" stroke-width="1.5" fill="none" marker-end="url(#r)">
+    <path d="M885 345 V289"/>
+    <path d="M805 251 H778 V192 H742"/>
+  </g>
+
+  <!-- Buffer return -->
+  <path d="M1110 345 V119 H760" stroke="#177763" stroke-width="1.5" stroke-dasharray="6 4" fill="none" marker-end="url(#g)"/>
+
+  <g font-size="12">
+    <text x="893" y="321" fill="#b3372f">full: WouldBlock</text>
+    <text x="754" y="186" fill="#b3372f" text-anchor="middle">retry</text>
+    <text x="745" y="396" fill="#333" text-anchor="middle">accept</text>
+    <text x="893" y="518" fill="#333">submit_and_wait</text>
+    <text x="1073" y="518" fill="#333">CQE</text>
+    <text x="742" y="568" fill="#333" text-anchor="middle">pinned buffer DMA</text>
+    <text x="935" y="111" fill="#177763" text-anchor="middle">lease returns to pool</text>
+  </g>
+
+  <!-- Legend -->
+  <g font-size="12" fill="#333">
+    <line x1="460" y1="424" x2="500" y2="424" stroke="#555" stroke-width="1.5"/>
+    <text x="510" y="428">Bytes and requests</text>
+    <line x1="460" y1="446" x2="500" y2="446" stroke="#b3372f" stroke-width="1.5"/>
+    <text x="510" y="450">Backpressure</text>
+    <line x1="460" y1="468" x2="500" y2="468" stroke="#177763" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="510" y="472">Buffer reuse</text>
+  </g>
+</svg>
