@@ -7,8 +7,7 @@ type Row = { entry: Uint8Array; detail: Uint8Array };
 
 const MAX_DETAIL_BYTES = 2 * 1024 * 1024,
   MAX_ERROR_LENGTH = 1024,
-  MAX_PAGE_BYTES = 1024 * 1024,
-  MAX_PROJECTS = 100;
+  MAX_PAGE_BYTES = 1024 * 1024;
 
 /** Map one Console status to its history result. */
 export function historyState(status: Pick<Snapshot, 'phase' | 'outcome'>) {
@@ -47,9 +46,9 @@ export class History {
     const [time, id] = query.cursor ? query.cursor.split(':') : [Number.MAX_SAFE_INTEGER, ''];
     const rows = this.store.db.prepare(
       `SELECT run_id, started_at_ms, entry FROM runs
-       WHERE (started_at_ms, run_id) < (?, ?) AND (? = 0 OR state = ?) AND (? = '' OR project_directory = ?)
+       WHERE (started_at_ms, run_id) < (?, ?) AND (? = 0 OR state = ?)
        ORDER BY started_at_ms DESC, run_id DESC LIMIT ?`,
-    ).all(Number(time), id || 'g', query.state, query.state, query.project, query.project, limit + 1) as { run_id: string; started_at_ms: number; entry: Uint8Array }[];
+    ).all(Number(time), id || 'g', query.state, query.state, limit + 1) as { run_id: string; started_at_ms: number; entry: Uint8Array }[];
     let bytes = 0;
     for (const row of rows) {
       bytes += row.entry.length;
@@ -60,9 +59,6 @@ export class History {
       }
       page.entries.push(wire.HistoryEntry.decode(row.entry));
     }
-    page.projects = (
-      this.store.db.prepare("SELECT DISTINCT project_directory AS p FROM runs WHERE p != '' ORDER BY p LIMIT ?").all(MAX_PROJECTS) as { p: string }[]
-    ).map((row) => row.p);
     return page;
   }
   /** Return one run with artifact sizes re-read from disk, or null when unknown. */
@@ -78,7 +74,6 @@ export class History {
   private upsert(status: Snapshot, state: number, startedAt: number, finishedAt: number | undefined, error: string) {
     const entry = wire.HistoryEntry.create({
       runId: status.runId,
-      projectDirectory: status.projectDirectory,
       profiles: status.profiles,
       systemApps: status.systemApps,
       startedAtMs: startedAt,
@@ -88,11 +83,10 @@ export class History {
       artifacts: this.artifacts(status),
     });
     this.store.db.prepare(
-      `INSERT INTO runs (run_id, project_directory, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO runs (run_id, state, started_at_ms, entry, detail) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT (run_id) DO UPDATE SET
-         project_directory = excluded.project_directory, state = excluded.state,
-         entry = excluded.entry, detail = excluded.detail`,
-    ).run(status.runId, status.projectDirectory, state, startedAt, wire.HistoryEntry.encode(entry).finish(), encodeDetail(status));
+         state = excluded.state, entry = excluded.entry, detail = excluded.detail`,
+    ).run(status.runId, state, startedAt, wire.HistoryEntry.encode(entry).finish(), encodeDetail(status));
   }
   private startedAt(id: string) {
     return (this.store.db.prepare('SELECT started_at_ms AS t FROM runs WHERE run_id = ?').get(id) as { t: number } | undefined)?.t;

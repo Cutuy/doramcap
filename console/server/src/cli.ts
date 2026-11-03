@@ -156,7 +156,7 @@ async function main() {
         throw new Error('Console is already running; stop it before changing launch options');
       console.log(await access()); return;
     }
-    await discover(project, project, []).catch(error => { throw new Error(`No Compose project at ${project}: ${error.message}`); });
+    await discover(project, []).catch(error => { throw new Error(`No Compose project at ${project}: ${error.message}`); });
     await privateState(dirname(stateRoot));
     await privateState(stateRoot);
     await privateState(state);

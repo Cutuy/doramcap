@@ -15,7 +15,7 @@ test('project screen has labeled controls and phase navigation', () => {
   const html = renderToStaticMarkup(<App />);
   // Assert
   assert.match(html, /aria-label="Run phases"/);
-  assert.match(html, /for="directory"/);
+  assert.doesNotMatch(html, /for="directory"/);
   assert.match(html, /Continue/);
 });
 

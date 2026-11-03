@@ -45,7 +45,22 @@ Evidence: Console server suite passes. On x86_64, the real CLI started two proje
 ## Milestone 3: One project in the UI
 
 **Work items**
-- [ ] Remove the project directory input and History's project filter.
+- [x] Remove the project directory input and History's project filter.
+- [x] Delete `PrepareRequest.directory`, the `project_directory` column, and the marker and History fields.
 
 **Validation**
-- [ ] Frontend tests and a browser run pass.
+- [x] Frontend tests and a browser run pass.
+
+Evidence: frontend 53/53, server 63 passed and 1 skipped, contract 1/1. Two real projects each showed their own directory, ran at once and listed only their own run in History.
+
+Crash recovery: `systemctl kill --signal=KILL` during a real run left all 5 containers running and the run Interrupted in History. The next run removed all 5 before starting its own, finished with a 7.9 MiB recording and left no containers; the interrupted recording stayed on disk.
+
+## Milestone 4: Host-wide CPU data in a per-project Console
+
+CPU monitoring is system-wide by design, so each project's panels and `cpu.mcap` can include other projects' containers.
+
+**Work items**
+- [ ] TODO: Decide how panels and recordings identify activity from other projects.
+
+**Validation**
+- [ ] With two projects running at once, each Console shows which CPU activity belongs to its project.

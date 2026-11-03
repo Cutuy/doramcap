@@ -1,4 +1,4 @@
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './files.js';
@@ -141,19 +141,11 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
     run.systemApps.push(input);
   }
 }
-/** Discover native Compose inputs beneath the approved project root. */
-export async function discover(root: string, directory: string, profiles: string[]): Promise<Project> {
+/** Discover the native Compose inputs of one project directory. */
+export async function discover(directory: string, profiles: string[]): Promise<Project> {
   if (!isAbsolute(directory)) throw new Error('InvalidInput');
-  const actual = await realpath(directory),
-    approved = await realpath(root),
-    inside = relative(approved, actual);
-  if (
-    inside === '..' ||
-    inside.startsWith('..' + sep) ||
-    isAbsolute(inside) ||
-    !(await lstat(actual)).isDirectory()
-  )
-    throw new Error('InvalidInput');
+  const actual = await realpath(directory);
+  if (!(await lstat(actual)).isDirectory()) throw new Error('InvalidInput');
   const exists = async (name: string) => {
     try {
       if (!(await lstat(join(actual, name))).isFile()) throw new Error('non-regular Compose input');

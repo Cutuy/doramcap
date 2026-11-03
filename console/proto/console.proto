@@ -19,7 +19,7 @@ message SystemApp {
   repeated ProfileOption profiles = 5;
   string profile = 6; // The profile this app launches with when selected.
 }
-message PrepareRequest { string directory = 1; repeated string profiles = 2; SystemAppSelection system_apps = 3; }
+message PrepareRequest { repeated string profiles = 2; SystemAppSelection system_apps = 3; }
 message StartRequest { string prepared_id = 1; string request_key = 2; }
 message StopRequest { string run_id = 1; }
 message StartResponse { string run_id = 1; }
@@ -90,7 +90,6 @@ message Marker {
   Outcome outcome = 6;
   bool start_accepted = 7;
   repeated RecordingOutput recordings = 11;
-  string project_directory = 8;
   repeated string profiles = 9;
   SystemAppSelection system_apps = 10;
 }
@@ -123,7 +122,6 @@ message HistoryArtifact {
 }
 message HistoryEntry {
   string run_id = 1;
-  string project_directory = 2;
   repeated string profiles = 3;
   SystemAppSelection system_apps = 4;
   uint64 started_at_ms = 5;
@@ -132,16 +130,14 @@ message HistoryEntry {
   string error_summary = 8;
   repeated HistoryArtifact artifacts = 9;
 }
-// Empty limit, state and project select the default page size and all runs.
+// Empty limit and state select the default page size and all runs.
 message HistoryQuery {
   uint32 limit = 1;
   string cursor = 2;
   HistoryState state = 3;
-  string project = 4;
 }
 message HistoryPage {
   repeated HistoryEntry entries = 1;
   string next_cursor = 2; // Empty on the last page.
-  repeated string projects = 3; // Known projects, for filtering.
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
