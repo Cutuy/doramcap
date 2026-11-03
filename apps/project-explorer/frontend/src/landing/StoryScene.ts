@@ -14,12 +14,13 @@ const tiers: Tier[] = ['compute', 'platform', 'foundation', 'applications'];
 const tierTokens: Record<Tier, string> = { applications: '--tier-apps', foundation: '--tier-core', platform: '--tier-platform', compute: '--tier-compute' };
 const tierLabels: Record<Tier, string> = { applications: 'Your applications', foundation: 'doramcap', platform: 'Platform', compute: 'Compute' };
 const SLAB_W = 17.5, SLAB_D = 7.4, TILE_H = .42;
-const HERO_GAP = 1.25, STORY_GAP = 3.1, TRAIL = 10, COMETS = 3, STEPS = 64;
+const HERO_GAP = 1.25, STORY_GAP = 3.1, PARTICLES = 64, SPREAD = .22;
 const damp = (current: number, target: number, rate: number, dt: number) => current + (target - current) * (1 - Math.exp(-rate * dt));
 
 interface Place { x: number; z: number; w: number; d: number; }
 interface Block { node: StackNode; mesh: THREE.Mesh; body: THREE.MeshStandardMaterial; edge: THREE.LineBasicMaterial; label: HTMLDivElement; glow: number; alpha: number; line: number; delay: number; }
-interface Trail { flow: Flow; curve: THREE.CubicBezierCurve3; line: THREE.Line; comets: THREE.Points; phase: number; }
+// One particle stream per flow; per-particle offset, speed and jitter keep the stream loose and organic.
+interface Trail { flow: Flow; curve: THREE.CubicBezierCurve3; points: THREE.Points; offset: Float32Array; speed: Float32Array; jitter: Float32Array; size: Float32Array; }
 export interface SceneEvents { hover(node: StackNode | null, x: number, y: number): void; select(node: StackNode | null): void; }
 
 /** Place blocks per tier; the foundation uses two rows so doramcap gets the most room. */
@@ -36,12 +37,14 @@ function layout(nodes: StackNode[], integrations: Integration[]): Map<string, Pl
   return places;
 }
 
-const cometVertex = `
+const particleVertex = `
 attribute float aSize; attribute float aAlpha; uniform float uScale; varying float vAlpha;
 void main() { vAlpha = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`;
-const cometFragment = `
+// Soft gaussian sprites: a hot core on dark (additive), plain tinted haze on light.
+const particleFragment = `
 uniform vec3 uColor; uniform float uFade; uniform float uLight; varying float vAlpha;
-void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(mix(uColor * (1.0 + a), uColor, uLight), a * vAlpha * uFade); }`;
+void main() { float d = length(gl_PointCoord - 0.5) * 2.0; if (d > 1.0) discard; float a = exp(-d * d * 3.0);
+  gl_FragColor = vec4(mix(uColor * (1.0 + a * 0.8), uColor, uLight), a * vAlpha * uFade * mix(0.85, 1.0, uLight)); }`;
 
 /** Cinematic platform stack: hero orbit at progress 0, isometric story view from progress 1.
  * Owns its renderer, labels and loop; callers drive it with setProgress/setView/setSelected and must dispose().
@@ -231,7 +234,7 @@ export class StoryScene {
     this.bloom.resolution.set(w / 2, h / 2);
     this.camera.aspect = w / h;
     const scale = h * this.renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
-    for (const t of this.trails) (t.comets.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
+    for (const t of this.trails) (t.points.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
   }
 
   private anchor(id: string, other: string, out: THREE.Vector3) {
@@ -242,23 +245,23 @@ export class StoryScene {
     return out.set(out.x, this.slabs[3].group.position.y + .05, out.z * .3);
   }
   private buildTrails(flows: Flow[]) {
-    for (const t of this.trails) { this.scene.remove(t.line, t.comets); t.line.geometry.dispose(); (t.line.material as THREE.Material).dispose(); t.comets.geometry.dispose(); (t.comets.material as THREE.Material).dispose(); }
+    for (const t of this.trails) { this.scene.remove(t.points); t.points.geometry.dispose(); (t.points.material as THREE.Material).dispose(); }
     const scale = this.host.clientHeight * this.renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     this.trails = flows.map(flow => {
-      const color = this.palette[flow.kind];
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(STEPS + 1).fill(0).map(() => new THREE.Vector3())),
-        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthTest: false, blending: this.light ? THREE.NormalBlending : THREE.AdditiveBlending }));
-      const count = TRAIL * COMETS, size = new Float32Array(count), alpha = new Float32Array(count);
-      for (let i = 0; i < count; i++) { const k = i % TRAIL; size[i] = .28 * (1 - k / TRAIL) + .04; alpha[i] = Math.pow(1 - k / TRAIL, 1.6); }
-      const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
-        .setAttribute('aSize', new THREE.BufferAttribute(size, 1)).setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1));
-      const comets = new THREE.Points(geometry, new THREE.ShaderMaterial({
-        uniforms: { uColor: { value: color }, uFade: { value: 0 }, uScale: { value: scale }, uLight: { value: this.light ? 1 : 0 } },
-        vertexShader: cometVertex, fragmentShader: cometFragment, transparent: true, depthWrite: false, depthTest: false, blending: this.light ? THREE.NormalBlending : THREE.AdditiveBlending,
+      const offset = new Float32Array(PARTICLES), speed = new Float32Array(PARTICLES), jitter = new Float32Array(PARTICLES * 3), size = new Float32Array(PARTICLES);
+      for (let i = 0; i < PARTICLES; i++) {
+        offset[i] = Math.random(); speed[i] = .75 + Math.random() * .5; size[i] = .09 + Math.random() ** 2 * .22;
+        jitter.set([Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1], i * 3);
+      }
+      const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(PARTICLES * 3), 3))
+        .setAttribute('aSize', new THREE.BufferAttribute(new Float32Array(PARTICLES), 1)).setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array(PARTICLES), 1));
+      const points = new THREE.Points(geometry, new THREE.ShaderMaterial({
+        uniforms: { uColor: { value: this.palette[flow.kind] }, uFade: { value: 0 }, uScale: { value: scale }, uLight: { value: this.light ? 1 : 0 } },
+        vertexShader: particleVertex, fragmentShader: particleFragment, transparent: true, depthWrite: false, depthTest: false, blending: this.light ? THREE.NormalBlending : THREE.AdditiveBlending,
       }));
-      line.renderOrder = 5; comets.renderOrder = 6; line.frustumCulled = comets.frustumCulled = false;
-      this.scene.add(line, comets);
-      return { flow, line, comets, curve: new THREE.CubicBezierCurve3(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()), phase: Math.random() };
+      points.renderOrder = 6; points.frustumCulled = false;
+      this.scene.add(points);
+      return { flow, points, offset, speed, jitter, size, curve: new THREE.CubicBezierCurve3(new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()) };
     });
     this.fade = 0;
   }
@@ -375,20 +378,26 @@ export class StoryScene {
 
     // Flows start once the stack has assembled.
     this.fade = this.intro < .8 ? 0 : Math.min(1, this.fade + dt * 1.6);
+    const rate = this.reduce ? .06 : .22, p = new THREE.Vector3();
     for (const t of this.trails) {
       this.updateCurve(t);
-      const line = t.line.geometry.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i <= STEPS; i++) { const p = t.curve.getPoint(i / STEPS); line.setXYZ(i, p.x, p.y, p.z); }
-      line.needsUpdate = true;
-      (t.line.material as THREE.LineBasicMaterial).opacity = .28 * this.fade;
-      (t.comets.material as THREE.ShaderMaterial).uniforms.uFade.value = this.fade;
-      t.phase += dt * (this.reduce ? .08 : .32);
-      const comets = t.comets.geometry.attributes.position as THREE.BufferAttribute;
-      for (let c = 0; c < COMETS; c++) for (let k = 0; k < TRAIL; k++) {
-        const p = t.curve.getPoint(((t.phase + c / COMETS - k * .012) % 1 + 1) % 1);
-        comets.setXYZ(c * TRAIL + k, p.x, p.y, p.z);
+      (t.points.material as THREE.ShaderMaterial).uniforms.uFade.value = this.fade;
+      const pos = t.points.geometry.attributes.position as THREE.BufferAttribute;
+      const alpha = t.points.geometry.attributes.aAlpha as THREE.BufferAttribute, size = t.points.geometry.attributes.aSize as THREE.BufferAttribute;
+      for (let i = 0; i < PARTICLES; i++) {
+        t.offset[i] = (t.offset[i] + dt * rate * t.speed[i]) % 1;
+        const u = t.offset[i], envelope = Math.sin(Math.PI * u);
+        t.curve.getPoint(u, p);
+        // Spread widest mid-path and swirl slowly, so the stream reads as particles rather than a pipe.
+        const spread = SPREAD * envelope, swirl = this.reduce ? 0 : time * 1.3 + i;
+        p.x += (t.jitter[i * 3] + Math.sin(swirl) * .35) * spread;
+        p.y += t.jitter[i * 3 + 1] * spread * .6;
+        p.z += (t.jitter[i * 3 + 2] + Math.cos(swirl) * .35) * spread;
+        pos.setXYZ(i, p.x, p.y, p.z);
+        alpha.setX(i, Math.pow(envelope, .7) * (this.reduce ? .8 : .55 + .45 * Math.sin(time * 5 + i * 1.7)));
+        size.setX(i, t.size[i] * (.55 + .45 * envelope));
       }
-      comets.needsUpdate = true;
+      pos.needsUpdate = alpha.needsUpdate = size.needsUpdate = true;
     }
 
     this.composer.render(dt);
