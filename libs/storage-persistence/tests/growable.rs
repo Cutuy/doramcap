@@ -374,3 +374,33 @@ fn expired_combiner_poll_drives_a_full_pending_queue() {
     assert_eq!(&*messages[0].data, &[42; 7]);
     std::fs::remove_file(path).unwrap();
 }
+
+#[test]
+fn one_progress_call_retires_a_burst_of_ready_completions() {
+    // Arrange
+    let path = path("burst");
+    let count = 64;
+    let pool = BufferPool::new(count, 4096, 4096).unwrap();
+    let mut writer = Writer::with_config(
+        open(&path),
+        WriterConfig {
+            queue_depth: count as u32,
+            ..WriterConfig::default()
+        },
+    )
+    .unwrap();
+    for _ in 0..count {
+        writer.append(pool.reserve(4096).unwrap()).unwrap();
+    }
+    writer.progress(false).unwrap();
+    let before = writer.snapshot().pending;
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    // Act
+    writer.progress(false).unwrap();
+
+    // Assert: more than the kernel's 20-completion batch for one enter.
+    assert!(before - writer.snapshot().pending > 20);
+    writer.flush_written().unwrap();
+    std::fs::remove_file(path).unwrap();
+}
