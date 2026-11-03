@@ -9,7 +9,7 @@ Run from the main checkout:
 python3 .agents/skills/worktree-pool/scripts/pool.py acq --owner CLI-session-task --branch feature/unique-name
 ```
 
-Use the existing five slots; never create an extra slot to bypass acquisition failures. Acquisition clears known generated build outputs before selecting a slot and after copying the main snapshot. A reusable slot must then have no staged, unstaged, or non-ignored untracked source files. Ignored caches and local configuration are preserved and do not block leasing; a collision with incoming main files fails safely.
+The pool has five slots; acquire creates missing ones on first use. Never create an extra slot to bypass acquisition failures. Acquisition clears known generated build outputs before selecting a slot and after copying the main snapshot. A reusable slot must then have no staged, unstaged, or non-ignored untracked source files. Ignored caches and local configuration are preserved and do not block leasing; a collision with incoming main files fails safely.
 
 Save the token; work only in the returned path. Continue existing tasks under their existing lease. Acquisition starts at main's HEAD and copies tracked edits (unstaged) and non-ignored untracked files; ignored files and submodule edits are excluded. Keep main stable during acquisition and review the inherited diff.
 
@@ -33,7 +33,8 @@ python3 /absolute/main/.agents/skills/worktree-pool/scripts/pool.py --repo /abso
 
 PR release uses authenticated `gh` to verify the branch and HEAD. Both release modes reject staged, unstaged, and non-ignored untracked source files, and recheck cleanliness after build cleanup. Commit all work before release; local release also requires every feature patch to be cherry-picked into main. A failed check retains the lease.
 
-- Five slots, no expiry. Use `status` to inspect; never steal leases. Failed acquisitions stay reserved for manual recovery.
+- Five slots, no expiry. Use `status` to inspect; never take over another session's lease.
+- To free a failed acquisition or an abandoned task, release with `--abandon`. It keeps the branch, commits and files; a dirty slot is skipped by later acquisitions until cleaned.
 - Integration: rebase the feature branch onto main’s latest HEAD, then cherry-pick (`git cherry-pick`) only its intended commits onto main. Never use `git merge` to integrate worktrees into main; keep history linear. Preserve local edits and resolve conflicts before proceeding.
 - Never wipe main or delete feature branches during cleanup.
 - Before `--discard-dirty`, show the exact warning/path and obtain user approval; it removes tracked, untracked, and ignored files in that slot.

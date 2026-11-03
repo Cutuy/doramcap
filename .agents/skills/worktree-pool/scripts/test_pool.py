@@ -258,6 +258,56 @@ class ReleaseTests(unittest.TestCase):
         self.assertEqual(existing.read_text(), 'preserve or clean')
         self.assertEqual(self.lease()['state'], 'preparing')
 
+    def test_acquire_creates_missing_slots(self):
+        # Arrange
+        fresh = Path(self.tmp.name) / 'fresh'
+        fresh.mkdir()
+        self.git('init', '-b', 'main', root=fresh)
+        self.git('-c', 'user.email=t@example.com', '-c', 'user.name=T', 'commit', '--allow-empty', '-m', 'Initial', root=fresh)
+
+        # Act
+        result = subprocess.run([sys.executable, str(SCRIPT), '--repo', str(fresh), 'acq',
+                                 '--owner', 'test', '--branch', 'codex/fresh'], capture_output=True)
+
+        # Assert
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = json.loads((fresh / '.git/agent-pool/state.json').read_text())
+        self.assertEqual(len(state['slots']), 5)
+
+    def test_abandon_frees_failed_acquisition(self):
+        # Arrange
+        self.assertEqual(self.release().returncode, 0)
+        self.write(self.worktree, '.env')
+        (self.repo / '.env').write_text('main tracked file')
+        self.git('add', '-f', '.env')
+        self.git('commit', '-m', 'Track configuration fixture')
+        self.command('acq', '--owner', 'next', '--branch', 'codex/stuck', check=False)
+        token = self.lease()['token']
+
+        # Act
+        result = self.command('release', '--token', token, '--abandon', check=False)
+
+        # Assert
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(self.lease())
+
+    def test_abandon_keeps_branch_commits_and_files(self):
+        # Arrange
+        self.write(self.worktree, 'source.rs')
+        self.git('add', 'source.rs', root=self.worktree)
+        self.git('commit', '-m', 'Unfinished', root=self.worktree)
+        head = self.git('rev-parse', 'HEAD', root=self.worktree).stdout
+        draft = self.write(self.worktree, 'draft.rs')
+
+        # Act
+        result = self.command('release', '--token', self.token, '--abandon', check=False)
+
+        # Assert
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(self.lease())
+        self.assertEqual(self.git('rev-parse', 'refs/heads/codex/test').stdout, head)
+        self.assertTrue(draft.exists())
+
     def test_symlink_blocks_cleanup_and_preserves_external_cache(self):
         artifact = self.write(self.repo, 'target/artifact')
         (self.worktree / 'target').symlink_to(artifact.parent, target_is_directory=True)
