@@ -163,3 +163,78 @@ fn protobuf_roundtrip_boundaries_and_abandonment() {
         std::fs::remove_file(path).unwrap();
     }
 }
+
+fn direct_writer(name: &str, registrations: u32) -> (std::path::PathBuf, McapWriter) {
+    use std::os::unix::fs::OpenOptionsExt;
+    let path = std::env::temp_dir().join(format!("doramcap-{name}-{}", std::process::id()));
+    let file = std::fs::File::options()
+        .create_new(true)
+        .write(true)
+        .custom_flags(libc::O_DIRECT)
+        .open(&path)
+        .unwrap();
+    let writer = McapWriter::new(
+        file,
+        Schema {
+            name: "S",
+            encoding: "raw",
+            data: b"s",
+        },
+        &[Channel {
+            id: 1,
+            topic: "t",
+            encoding: "raw",
+        }],
+        storage_persistence::mcap::McapConfig {
+            buffers: 4,
+            buffer_size: 8192,
+            alignment: 4096,
+            io: storage_persistence::writer::WriterConfig {
+                registration_capacity: registrations,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    (path, writer)
+}
+const MESSAGE: Message = Message {
+    channel: 1,
+    sequence: 0,
+    log_time: 0,
+    publish_time: 0,
+};
+
+#[test]
+fn write_keeps_call_order_across_large_payloads() {
+    // Arrange
+    let (path, mut writer) = direct_writer("write-order", 1024);
+    // Act
+    for (byte, size) in [(1, 8), (2, 64 * 1024), (3, 8)] {
+        writer.write(MESSAGE, &vec![byte; size]).unwrap();
+    }
+    writer.finish().unwrap();
+    // Assert
+    let bytes = std::fs::read(&path).unwrap();
+    let order: Vec<_> = mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .map(|message| message.unwrap().data[0])
+        .collect();
+    assert_eq!(order, [1, 2, 3]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn write_fails_when_registrations_stay_full() {
+    // Arrange: a small table, which growing payloads fill with retained allocations.
+    let registrations = 8;
+    let (path, mut writer) = direct_writer("write-full", registrations);
+    // Act
+    let error = (1..=registrations as usize + 1)
+        .try_for_each(|size| writer.write(MESSAGE, &vec![7; size * 64 * 1024]))
+        .unwrap_err();
+    // Assert
+    assert_eq!(error.kind(), std::io::ErrorKind::WouldBlock);
+    std::fs::remove_file(path).unwrap();
+}

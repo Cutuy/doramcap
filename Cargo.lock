@@ -3034,12 +3034,14 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "libc",
  "mcap",
  "prost",
  "prost-build",
  "prost-reflect",
  "protoc-bin-vendored",
  "serde_json",
+ "storage-persistence",
  "telemetry-protocol",
 ]
 

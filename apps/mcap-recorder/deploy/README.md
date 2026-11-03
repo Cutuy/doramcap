@@ -10,6 +10,9 @@ Mount a [`RecorderConfig`](../proto/recorder.proto) such as [bytes.pbtxt](bytes.
 at `/config/recorder.pbtxt` and a writable directory at `/results`. Relative paths
 resolve beside the config. No BPF privileges are needed.
 
+The writer uses io_uring and direct I/O, which need Linux 6.1+, a syscall policy that
+allows io_uring, a memlock limit and an output filesystem that supports `O_DIRECT`.
+
 [recorder.yaml](recorder.yaml) and [flow.yml](flow.yml) are templates. The assembler
 fills in service and node IDs, graph sources, Dora settings and mounts.
 
@@ -57,7 +60,7 @@ records and fails later in the reader.
 - `timestamp_key` names metadata with decimal-string Unix nanoseconds, used as publish time. Default: zero.
 - `sequence_key` names metadata with a decimal-string u32 sequence. Default: zero.
 - Declared metadata fields must exist.
-- Each `dora.message` metadata record keeps the Dora metadata as JSON. Non-finite floats fail the recording.
+- Each input's `<topic>/dora_metadata` JSON channel keeps one message per payload: the recorder's `ordinal` and the Dora `metadata`, with the same times. Non-finite floats fail the recording.
 
 ## Readiness
 

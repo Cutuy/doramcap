@@ -42,7 +42,7 @@
     <text x="320" y="322">Dora daemon</text>
     <text x="535" y="274">mcap-recorder</text>
     <text x="535" y="293" fill="#555" font-size="12">--config pbtxt</text>
-    <text x="745" y="274">mcap crate</text>
+    <text x="745" y="274">storage-persistence</text>
     <text x="745" y="293" fill="#555" font-size="12">caller-declared channels</text>
     <text x="902" y="274">*.mcap</text>
     <text x="902" y="293" fill="#555" font-size="12">+ report</text>

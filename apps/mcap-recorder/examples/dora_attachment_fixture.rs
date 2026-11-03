@@ -10,9 +10,35 @@ use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
 #[path = "../src/config.rs"]
 pub mod config;
-#[path = "../src/sink.rs"]
-pub mod sink;
-use sink::RecordingSink;
+use storage_persistence::mcap::{Channel, McapWriter, Schema};
+
+const CHANNEL: u16 = 1;
+
+/// Creates the fixture's recording exclusively with one telemetry channel.
+fn create_writer(
+    path: impl AsRef<std::path::Path>,
+    topic: &str,
+    encoding: &str,
+) -> Result<McapWriter> {
+    let file = std::fs::File::options()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    Ok(McapWriter::new(
+        file,
+        Schema {
+            name: telemetry_protocol::MCAP_SCHEMA_NAME,
+            encoding: "protobuf",
+            data: telemetry_protocol::FILE_DESCRIPTOR_SET,
+        },
+        &[Channel {
+            id: CHANNEL,
+            topic,
+            encoding,
+        }],
+        Default::default(),
+    )?)
+}
 
 fn acknowledge(path: &str) -> Result<()> {
     let mut file = std::fs::OpenOptions::new()
@@ -46,11 +72,11 @@ fn shared_mapping(bytes: &[u8]) -> Result<bool> {
         }))
 }
 
-fn finish_recording(sink: RecordingSink, count: u64, proof: Option<&str>) -> Result<()> {
+fn finish_recording(writer: McapWriter, count: u64, proof: Option<&str>) -> Result<()> {
     if count != 20 {
         bail!("expected 20 messages, received {count}");
     }
-    sink.finish()?;
+    writer.finish()?;
     if let Some(proof) = proof {
         acknowledge(proof)?;
     }
@@ -86,21 +112,12 @@ fn main() -> Result<()> {
             .input
             .first()
             .ok_or_else(|| eyre!("fixture config has no input"))?;
-        let mut sink = RecordingSink::create(
+        Some(create_writer(
             path.as_deref()
                 .ok_or_else(|| eyre!("missing recording path"))?,
-        )?;
-        let channel = sink.add_channel(
             &input.topic,
             &input.message_encoding,
-            Some((
-                telemetry_protocol::MCAP_SCHEMA_NAME,
-                "protobuf",
-                telemetry_protocol::FILE_DESCRIPTOR_SET,
-            )),
-            &Default::default(),
-        )?;
-        Some((sink, channel))
+        )?)
     } else {
         None
     };
@@ -158,14 +175,16 @@ fn main() -> Result<()> {
                         _ => bail!("missing {key} metadata"),
                     }
                 };
-                let (sink, channel) = recorder.as_mut().expect("recorder");
-                sink.write(
-                    *channel,
-                    u32::try_from(parameter("sequence")?)?,
-                    parameter("capture_unix_ns")?,
-                    parameter("capture_unix_ns")?,
-                    bytes,
-                )?;
+                let message = storage_persistence::mcap::Message {
+                    channel: CHANNEL,
+                    sequence: u32::try_from(parameter("sequence")?)?,
+                    log_time: parameter("capture_unix_ns")?,
+                    publish_time: parameter("capture_unix_ns")?,
+                };
+                let writer = recorder.as_mut().expect("recorder");
+                let mut reservation = writer.reserve(message, bytes.len())?;
+                reservation.payload_mut().copy_from_slice(bytes);
+                reservation.commit()?;
                 count += 1;
             }
             Event::InputClosed { .. } | Event::Stop(StopCause::AllInputsClosed) => {}
@@ -175,14 +194,14 @@ fn main() -> Result<()> {
             _ => {}
         }
     }
-    if let Some((sink, _)) = recorder {
+    if let Some(writer) = recorder {
         let proof = require_shm
             .then(|| {
                 done.as_deref()
                     .ok_or_else(|| eyre!("missing SHM proof path"))
             })
             .transpose()?;
-        finish_recording(sink, count, proof)?;
+        finish_recording(writer, count, proof)?;
     }
     Ok(())
 }
@@ -203,10 +222,10 @@ mod tests {
         ));
         std::fs::create_dir(&root)?;
         for count in [0, 19] {
-            let sink = RecordingSink::create(root.join(format!("{count}.mcap")))?;
+            let writer = create_writer(root.join(format!("{count}.mcap")), "test", "protobuf")?;
             let proof = root.join(format!("{count}.proof"));
             // Act
-            let result = finish_recording(sink, count, Some(proof.to_str().unwrap()));
+            let result = finish_recording(writer, count, Some(proof.to_str().unwrap()));
             // Assert
             assert!(
                 result

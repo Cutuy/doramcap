@@ -6,6 +6,8 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.recorder.v1.rs"));
 }
 pub use pb::{Input, RecorderConfig, RecordingReport, recording_report::State};
+/// Each input's `<topic><suffix>` channel holds per-message Dora metadata.
+pub const METADATA_TOPIC_SUFFIX: &str = "/dora_metadata";
 const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/recorder.bin"));
 
 /// Loads pbtxt; relative schema, recording and report paths use its directory.
@@ -56,6 +58,11 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
             !input.topic.is_empty() && topics.insert(&input.topic),
             "empty or duplicate topic: {}",
             input.topic
+        );
+        ensure!(
+            !input.topic.ends_with(METADATA_TOPIC_SUFFIX),
+            "{}: topic suffix {METADATA_TOPIC_SUFFIX} is reserved for recorded Dora metadata",
+            input.input
         );
         ensure!(
             !input.message_encoding.is_empty(),

@@ -7,8 +7,8 @@ and protobuf channels require a schema. Payloads stay unchanged. ROS 2 input is 
 
 ![Recording paths](docs/110126-recording-paths.svg)
 
-- **This recorder** captures declared Dora outputs through the `mcap` crate.
-- **Embedded writers** stay in their apps and use `storage-persistence`.
+- **This recorder** captures declared Dora outputs through `storage-persistence`.
+- **Embedded writers** stay in their apps and use the same writer.
 - **Live view** uses Console's [live bridge](../../console/bridge/README.md) on the same outputs.
 
 ```sh
