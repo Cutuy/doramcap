@@ -4,11 +4,12 @@ import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, Copy, Check, type LucideIcon } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, Copy, Check, Sun, Moon, type LucideIcon } from 'lucide-react';
 import generated from './.generated/catalog.json';
 import { componentHref, displayName, href, isAppLink, navigate, parseRoute, resolveLink, routeHref, type Catalog, type Component, type Kind, type Route } from './model';
 import Dependencies from './Dependencies';
 import Overview from './Overview';
+import { pinTheme, useTheme } from './theme';
 import './style.css';
 
 const catalog = generated as Catalog;
@@ -21,6 +22,11 @@ function spotlight(e: PointerEvent<HTMLElement>) {
   const r = e.currentTarget.getBoundingClientRect();
   e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`);
   e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
+}
+function ThemeToggle() {
+  const theme = useTheme(), next = theme === 'dark' ? 'light' : 'dark';
+  const Icon = theme === 'dark' ? Sun : Moon;
+  return <button type="button" className="theme-toggle" onClick={() => pinTheme(next)} aria-label={`Switch to ${next} theme`} title={`Switch to ${next} theme`}><Icon size={15} strokeWidth={1.7} aria-hidden="true" /></button>;
 }
 function useRoute(): Route {
   const [location, setLocation] = useState(window.location.pathname + window.location.search);
@@ -159,7 +165,7 @@ function App() {
   const component = catalog.components.find(c => `/${c.id}` === route.path);
   const active = route.path === '/' || route.path === '/overview' ? 'overview' : route.path.startsWith('/crates') ? 'crates' : route.path === '/dependencies' ? 'dependencies' : route.path.startsWith('/docs') ? 'docs' : 'apps';
   useEffect(() => { document.title = `${component ? displayName(component.name) : active === 'overview' ? 'Overview' : active === 'dependencies' ? 'Dependencies' : active === 'crates' ? 'Crates' : active === 'docs' ? 'Documentation' : 'Apps'} · doramcap`; if (!route.params.has('heading')) window.scrollTo(0, 0); }, [route.path, route.params.get('path'), component, active]);
-  return <><a href="#main" className="skip" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a><header className="site-header"><div className="shell header-inner"><a className="brand" href={href('/overview')}>doramcap<span>.</span></a><nav aria-label="Main navigation">{[['overview', 'Overview'], ['apps', 'Apps'], ['crates', 'Crates'], ['dependencies', 'Dependencies']].map(([path, label]) => <a key={path} href={href(`/${path}`)} aria-current={active === path ? 'page' : undefined}>{label}</a>)}</nav><a className="repository" href={catalog.repository}>Repository <ArrowUpRight size={14} /></a></div></header>
+  return <><a href="#main" className="skip" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a><header className="site-header"><div className="shell header-inner"><a className="brand" href={href('/overview')}>doramcap<span>.</span></a><nav aria-label="Main navigation">{[['overview', 'Overview'], ['apps', 'Apps'], ['crates', 'Crates'], ['dependencies', 'Dependencies']].map(([path, label]) => <a key={path} href={href(`/${path}`)} aria-current={active === path ? 'page' : undefined}>{label}</a>)}</nav><div className="header-tools"><ThemeToggle /><a className="repository" href={catalog.repository}>Repository <ArrowUpRight size={14} /></a></div></div></header>
     <main id="main" tabIndex={-1} className="shell">{component ? <Detail component={component} route={route} /> : route.path === '/' || route.path === '/overview' ? <Overview catalog={catalog} route={route} /> : route.path === '/apps' ? <Gallery kind="apps" route={route} /> : route.path === '/crates' ? <Gallery kind="crates" route={route} /> : route.path === '/dependencies' ? <Explorer route={route} /> : route.path === '/docs' ? <><a className="back" href={href('/overview')}><ArrowLeft size={14} />Overview</a><DocumentView path={route.params.get('path') ?? 'README.md'} route={route} /></> : <div className="empty"><h1>Page not found</h1><a href={href('/apps')}>Browse applications</a></div>}</main>
     <footer className="shell footer"><span>doramcap project explorer</span><a href={`${catalog.repository}/tree/${catalog.revision}`}>Source {catalog.revision.slice(0, 7)}</a><a href={href('/docs', { path: 'README.md' })}>Workspace README</a></footer></>;
 }

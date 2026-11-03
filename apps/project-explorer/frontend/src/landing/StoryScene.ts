@@ -40,8 +40,8 @@ const cometVertex = `
 attribute float aSize; attribute float aAlpha; uniform float uScale; varying float vAlpha;
 void main() { vAlpha = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`;
 const cometFragment = `
-uniform vec3 uColor; uniform float uFade; varying float vAlpha;
-void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(uColor * (1.0 + a), a * vAlpha * uFade); }`;
+uniform vec3 uColor; uniform float uFade; uniform float uLight; varying float vAlpha;
+void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d); gl_FragColor = vec4(mix(uColor * (1.0 + a), uColor, uLight), a * vAlpha * uFade); }`;
 
 /** Cinematic platform stack: hero orbit at progress 0, isometric story view from progress 1.
  * Owns its renderer, labels and loop; callers drive it with setProgress/setView/setSelected and must dispose().
@@ -82,6 +82,12 @@ export class StoryScene {
   private sweepPlane: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private down: [number, number] | null = null;
   private reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  private light = false;
+  private hemi = new THREE.HemisphereLight(0xb8c8ff, 0x101418, .9);
+  private key = new THREE.DirectionalLight(0xffffff, 1.1);
+  private grid: THREE.GridHelper | null = null;
+  private scheme = matchMedia('(prefers-color-scheme: dark)');
+  private themeWatch = new MutationObserver(() => this.applyTheme());
   private raycaster = new THREE.Raycaster();
 
   constructor(private host: HTMLElement, nodes: StackNode[], integrations: Integration[], private events: SceneEvents) {
@@ -94,11 +100,8 @@ export class StoryScene {
     this.readPalette();
 
     this.scene.fog = new THREE.FogExp2(this.palette.bg, .014);
-    this.scene.add(new THREE.HemisphereLight(0xb8c8ff, 0x101418, .9));
-    const key = new THREE.DirectionalLight(0xffffff, 1.1); key.position.set(-8, 22, 14); this.scene.add(key);
-    const grid = new THREE.GridHelper(140, 70, this.palette.line, this.palette.line);
-    (grid.material as THREE.Material).transparent = true; (grid.material as THREE.Material).opacity = .35;
-    grid.position.y = -2.4; this.scene.add(grid);
+    this.key.position.set(-8, 22, 14);
+    this.scene.add(this.hemi, this.key);
 
     // Slow-rising dust gives depth without competing with the stack.
     const dust = new Float32Array(1400 * 3);
@@ -150,6 +153,11 @@ export class StoryScene {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .62, .5, .16);
     this.composer.addPass(this.bloom);
 
+    this.applyTheme();
+    // Follow the system theme and the header toggle (data-theme) live.
+    this.scheme.addEventListener('change', this.applyTheme);
+    this.themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
     const canvas = this.renderer.domElement;
     canvas.addEventListener('pointermove', this.onMove);
     canvas.addEventListener('pointerleave', this.onLeave);
@@ -172,7 +180,28 @@ export class StoryScene {
     this.running = running;
     if (running) { this.clock.getDelta(); this.loop(); } else cancelAnimationFrame(this.frame);
   }
-  /** Re-read CSS tokens after a theme change. */
+  /** Re-read CSS tokens and restyle the scene: glow and additive light on dark, tinted solids on light. */
+  applyTheme = () => {
+    this.readPalette();
+    const p = this.palette, light = this.light = p.bg.r + p.bg.g + p.bg.b > 1.5;
+    (this.scene.fog as THREE.FogExp2).color.copy(p.bg);
+    this.hemi.intensity = light ? 2.3 : .9; this.key.intensity = light ? 1.2 : 1.1;
+    this.hemi.color.set(light ? 0xffffff : 0xb8c8ff); this.hemi.groundColor.set(light ? 0xdfe3ea : 0x101418);
+    if (this.grid) { this.scene.remove(this.grid); this.grid.geometry.dispose(); (this.grid.material as THREE.Material).dispose(); }
+    this.grid = new THREE.GridHelper(140, 70, p.line, p.line);
+    Object.assign(this.grid.material, { transparent: true, opacity: light ? .8 : .35 });
+    this.grid.position.y = -2.4; this.scene.add(this.grid);
+    Object.assign(this.dust.material, { opacity: light ? .3 : .45 });
+    (this.dust.material as THREE.PointsMaterial).color.copy(p.muted);
+    for (const s of this.slabs) { s.fill.color.copy(p[s.tier]); s.edge.color.copy(p[s.tier]); }
+    for (const b of this.blocks) { b.body.color.copy(p.panel).lerp(p[b.node.tier], .1); b.body.emissive.copy(p[b.node.tier]); b.edge.color.copy(p[b.node.tier]); }
+    this.sweepPlane.material.uniforms.uColor.value = p.foundation;
+    this.sweepPlane.material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
+    this.sweepPlane.material.needsUpdate = true;
+    this.bloom.enabled = !light;
+    this.buildTrails(this.view.flows);
+  };
+  /** Re-read CSS tokens. */
   readPalette() {
     const read = (token: string) => { this.probe.style.color = `var(${token})`; return new THREE.Color(getComputedStyle(this.probe).color); };
     this.palette = { bg: read('--bg'), panel: read('--panel'), line: read('--line'), muted: read('--muted'), ink: read('--ink'), data: read('--flow-data'), control: read('--flow-control'), evidence: read('--flow-evidence') };
@@ -182,6 +211,8 @@ export class StoryScene {
   dispose() {
     this.setRunning(false);
     this.resizer.disconnect();
+    this.scheme.removeEventListener('change', this.applyTheme);
+    this.themeWatch.disconnect();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointermove', this.onMove); canvas.removeEventListener('pointerleave', this.onLeave);
     canvas.removeEventListener('pointerdown', this.onDown); canvas.removeEventListener('pointerup', this.onUp);
@@ -216,14 +247,14 @@ export class StoryScene {
     this.trails = flows.map(flow => {
       const color = this.palette[flow.kind];
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new Array(STEPS + 1).fill(0).map(() => new THREE.Vector3())),
-        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthTest: false, blending: THREE.AdditiveBlending }));
+        new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0, depthTest: false, blending: this.light ? THREE.NormalBlending : THREE.AdditiveBlending }));
       const count = TRAIL * COMETS, size = new Float32Array(count), alpha = new Float32Array(count);
       for (let i = 0; i < count; i++) { const k = i % TRAIL; size[i] = .28 * (1 - k / TRAIL) + .04; alpha[i] = Math.pow(1 - k / TRAIL, 1.6); }
       const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
         .setAttribute('aSize', new THREE.BufferAttribute(size, 1)).setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1));
       const comets = new THREE.Points(geometry, new THREE.ShaderMaterial({
-        uniforms: { uColor: { value: color }, uFade: { value: 0 }, uScale: { value: scale } },
-        vertexShader: cometVertex, fragmentShader: cometFragment, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
+        uniforms: { uColor: { value: color }, uFade: { value: 0 }, uScale: { value: scale }, uLight: { value: this.light ? 1 : 0 } },
+        vertexShader: cometVertex, fragmentShader: cometFragment, transparent: true, depthWrite: false, depthTest: false, blending: this.light ? THREE.NormalBlending : THREE.AdditiveBlending,
       }));
       line.renderOrder = 5; comets.renderOrder = 6; line.frustumCulled = comets.frustumCulled = false;
       this.scene.add(line, comets);
@@ -312,7 +343,7 @@ export class StoryScene {
       s.group.position.y = i * this.gap - (1 - a) * 3 + (this.reduce ? 0 : Math.sin(time * .7 + i) * .05 * (1 - story));
       const near = Math.max(0, 1 - Math.abs(s.group.position.y - sweepY) / 1.2) * sweepAlpha;
       s.edge.opacity = (THREE.MathUtils.lerp(.7, .4, story) + near) * a;
-      s.fill.opacity = (.05 + near * .12) * a;
+      s.fill.opacity = ((this.light ? .07 : .05) + near * .12) * a;
       s.tag.style.opacity = String(a);
     });
 
@@ -323,7 +354,11 @@ export class StoryScene {
       b.glow = damp(b.glow, glow, 6, dt);
       const a = appear(b.delay);
       const scan = Math.max(0, 1 - Math.abs(b.mesh.parent!.position.y + b.mesh.position.y - sweepY) / 1.2) * sweepAlpha * 1.6;
-      b.body.emissiveIntensity = b.glow * (state === 'rest' ? .6 + .4 * Math.sin(time * 1.3 + b.mesh.position.x) * (1 - story) : 1) + scan;
+      if (this.light) {
+        // Light: tint the block toward its tier instead of glowing.
+        b.body.emissiveIntensity = 0;
+        b.body.color.copy(this.palette.panel).lerp(this.palette[b.node.tier], Math.min(1, b.glow * 1.5 + scan * .3));
+      } else b.body.emissiveIntensity = b.glow * (state === 'rest' ? .6 + .4 * Math.sin(time * 1.3 + b.mesh.position.x) * (1 - story) : 1) + scan;
       b.alpha = damp(b.alpha, state === 'dim' ? .32 : 1, 6, dt);
       b.line = damp(b.line, { rest: .35, on: .95, selected: 1, dim: .1 }[state], 6, dt);
       b.body.opacity = b.alpha * a;

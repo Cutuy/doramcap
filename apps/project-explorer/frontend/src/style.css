@@ -1,23 +1,24 @@
-/* Recorder-orange brand palette: periwinkle data, ink for control, hot pink for evidence. */
+/* Recorder-orange brand palette: periwinkle data, ink for control, pink for evidence; light and dark. */
 :root {
-  /* The explorer is dark throughout; light-dark() pairs keep a light palette available. */
-  color-scheme: dark;
-  --bg: light-dark(#eceeeb, #07090c);
-  --panel: light-dark(#fafaf8, #0e1216);
-  --soft: light-dark(#f1f2ef, #1b2025);
-  --ink: light-dark(#15191d, #e4e7e9);
-  --muted: light-dark(#59626b, #8f98a1);
-  --line: light-dark(#d8dcd6, #1e252c);
-  --accent: light-dark(#d9480f, #ff7a2e);
+  /* Follows the system; the header toggle pins a theme through data-theme. */
+  color-scheme: light dark;
+  --bg: light-dark(#f4f5f7, #07090c);
+  --panel: light-dark(#ffffff, #0e1216);
+  --soft: light-dark(#eceef2, #1b2025);
+  --ink: light-dark(#13161b, #e4e7e9);
+  --muted: light-dark(#5a636e, #8f98a1);
+  --line: light-dark(#dde1e7, #1e252c);
+  --accent: light-dark(#e2530a, #ff7a2e);
   --signal: var(--accent);
   --evidence: light-dark(#d6336c, #ff4d8d);
   --tier-apps: light-dark(#4b5fc0, #7c9cff);
   --tier-core: var(--accent);
-  --tier-platform: light-dark(#8a7340, #c9b27c);
-  --tier-compute: light-dark(#4a5159, #a2a9b2);
+  --tier-platform: light-dark(#94793f, #c9b27c);
+  --tier-compute: light-dark(#5a626c, #a2a9b2);
   --flow-data: var(--tier-apps);
   --flow-control: var(--ink);
   --flow-evidence: var(--evidence);
+  --shadow: light-dark(rgba(19, 22, 27, .16), #000);
   --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -28,6 +29,8 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
+:root[data-theme=light] { color-scheme: light; }
+:root[data-theme=dark] { color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; }
 a { color: var(--accent); text-underline-offset: 3px; }
@@ -56,7 +59,10 @@ nav { display: flex; gap: 26px; }
 nav a { text-decoration: none; color: var(--muted); padding: 23px 0; font-size: 13.5px; }
 nav a:hover { color: var(--ink); }
 nav a[aria-current=page] { color: var(--ink); box-shadow: inset 0 -2px var(--ink); }
-.repository { margin-left: auto; display: flex; align-items: center; gap: 5px; font: 12px var(--font-mono); text-decoration: none; color: var(--muted); }
+.header-tools { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+.theme-toggle { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--muted); transition: color .2s, border-color .2s; }
+.theme-toggle:hover { color: var(--ink); border-color: var(--ink); }
+.repository { display: flex; align-items: center; gap: 5px; font: 12px var(--font-mono); text-decoration: none; color: var(--muted); }
 .repository:hover { color: var(--ink); }
 main.shell { padding-top: 40px; padding-bottom: 56px; min-height: calc(100vh - 134px); }
 .footer { border-top: 1px solid var(--line); display: flex; align-items: center; gap: 20px; flex-wrap: wrap; min-height: 64px; padding-top: 16px; padding-bottom: 16px; font: 11px var(--font-mono); color: var(--muted); }
@@ -89,7 +95,7 @@ main.shell { padding-top: 40px; padding-bottom: 56px; min-height: calc(100vh - 1
 .mapping-links a:hover { border-color: var(--accent); color: var(--accent); }
 .mapping-links a span { padding-left: 8px; color: var(--muted); }
 
-.stack-viewer { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 28px 60px -44px light-dark(rgba(21, 25, 29, .35), rgba(0, 0, 0, .8)); }
+.stack-viewer { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 28px 60px -44px var(--shadow); }
 .viewer-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); }
 .viewer-bar .eyebrow { margin: 0; color: var(--ink); }
 .view-switch { display: inline-flex; gap: 0; padding: 3px; border: 1px solid var(--line); border-radius: 7px; }
@@ -274,7 +280,7 @@ a.node:hover .node-box { stroke: var(--t); }
 .scene-label[data-state=selected] { border-color: var(--ink); background: var(--ink); color: var(--bg); }
 .scene-label[data-state=selected] small { color: color-mix(in srgb, var(--bg) 70%, transparent); }
 .scene-tier { font: 500 10px var(--font-mono); letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; opacity: .8; }
-.scene-tip { position: fixed; left: 0; top: 0; z-index: 50; max-width: 280px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); box-shadow: 0 18px 40px -18px #000; backdrop-filter: blur(10px); pointer-events: none; opacity: 0; transition: opacity .18s; }
+.scene-tip { position: fixed; left: 0; top: 0; z-index: 50; max-width: 280px; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); box-shadow: 0 18px 40px -18px var(--shadow); backdrop-filter: blur(10px); pointer-events: none; opacity: 0; transition: opacity .18s; }
 .scene-tip.visible { opacity: 1; }
 .scene-tip strong { display: block; font: 600 13px var(--font-display); margin-bottom: 3px; }
 .scene-tip span { font-size: 12px; color: var(--muted); line-height: 1.45; }
@@ -291,7 +297,7 @@ a.node:hover .node-box { stroke: var(--t); }
 .hero-copy h1 { font-size: clamp(44px, 5.6vw, 82px); line-height: .96; margin-bottom: 22px; color: var(--ink); }
 .hero-copy p { font-size: 17px; max-width: 42ch; }
 .hero-copy h1 .word { display: inline-block; white-space: pre; }
-.hero-copy h1 .accent { color: color-mix(in srgb, var(--accent) 70%, var(--ink)); text-shadow: 0 0 40px color-mix(in srgb, var(--accent) 35%, transparent); }
+.hero-copy h1 .accent { color: light-dark(var(--accent), color-mix(in srgb, var(--accent) 70%, var(--ink))); text-shadow: 0 0 40px light-dark(transparent, color-mix(in srgb, var(--accent) 35%, transparent)); }
 .eyebrow.pulse { display: inline-flex; align-items: center; gap: 10px; }
 .eyebrow.pulse::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 60%, transparent); animation: pulse 2.4s infinite; }
 @keyframes pulse { 70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
@@ -329,7 +335,7 @@ a.node:hover .node-box { stroke: var(--t); }
 .story-switch a { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; }
 .story-switch a svg { opacity: .8; }
 
-.story-drawer { position: absolute; z-index: 4; right: max(24px, calc((100vw - 1280px) / 2 + 24px)); top: 96px; width: 340px; max-height: calc(100% - 140px); overflow: auto; padding: 22px; border-radius: 14px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line); box-shadow: 0 30px 80px -30px #000; backdrop-filter: blur(16px); }
+.story-drawer { position: absolute; z-index: 4; right: max(24px, calc((100vw - 1280px) / 2 + 24px)); top: 96px; width: 340px; max-height: calc(100% - 140px); overflow: auto; padding: 22px; border-radius: 14px; background: color-mix(in srgb, var(--panel) 86%, transparent); border: 1px solid var(--line); box-shadow: 0 30px 80px -30px var(--shadow); backdrop-filter: blur(16px); }
 .story-drawer h3 { font: 600 26px/1.1 var(--font-display); margin: 0 0 10px; }
 .story-drawer p { font-size: 14px; margin-bottom: 16px; }
 .story-drawer .upstream { display: inline-flex; align-items: center; gap: 4px; margin-top: 16px; font-size: 13px; }
@@ -405,13 +411,13 @@ body { position: relative; isolation: isolate; }
 .tile { position: relative; overflow: hidden; border-radius: 14px; background: radial-gradient(360px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%), color-mix(in srgb, var(--panel) 88%, transparent); }
 .tile::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; background: radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), color-mix(in srgb, var(--accent) 75%, transparent), transparent 70%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none; }
 .tile:hover { border-color: var(--line); }
-.tile:hover h2 { color: color-mix(in srgb, var(--accent) 60%, var(--ink)); }
+.tile:hover h2 { color: light-dark(var(--accent), color-mix(in srgb, var(--accent) 60%, var(--ink))); }
 .launch-link { background: var(--accent); color: var(--bg); }
 .toolbar { border-top-color: color-mix(in srgb, var(--line) 70%, transparent); }
 .search { background: color-mix(in srgb, var(--panel) 80%, transparent); }
 .detail-heading { padding-bottom: 8px; }
 .dependency-panel, .graph-canvas { background: color-mix(in srgb, var(--panel) 85%, transparent); border-radius: 12px; }
-.original-graph { box-shadow: 0 30px 80px -50px #000; }
+.original-graph { box-shadow: 0 30px 80px -50px var(--shadow); }
 .markdown img { border-radius: 10px; }
 .markdown pre { background: color-mix(in srgb, var(--panel) 85%, transparent); }
 
