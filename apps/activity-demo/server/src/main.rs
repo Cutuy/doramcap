@@ -12,7 +12,7 @@ use axum::{
 };
 use crossbeam_channel::{Receiver, Sender, bounded};
 use futures_util::{SinkExt, StreamExt};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
