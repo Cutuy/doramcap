@@ -19,6 +19,7 @@ continue to come from the repository.
 | `group` | Integration presentation group: `execution` or `communication` (default) |
 | `status` | Explicit maturity; illustrative use cases describe composition possibilities |
 | `limits` | Capability-specific boundaries and future scope |
+| `flows` | Use-case edges (`data`, `control`, `evidence`) between its capabilities, integrations or `applications`; drawn in the stack views |
 
 ## Editing
 
@@ -43,7 +44,7 @@ Any failure exits nonzero before emitting the overview.
 
 Deep links use `#/overview?useCase=perception`, `?capability=memory`, or
 `?integration=dora`. The first use case in manifest order is selected when `useCase` is omitted.
-The selected use case can accompany a capability or integration.
+The selected use case can accompany a capability or integration. `view=3d` or `view=2d` picks the stack view; narrow screens default to 2D.
 Unknown IDs produce a recoverable message.
 
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry

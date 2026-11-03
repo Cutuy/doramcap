@@ -17,12 +17,14 @@
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "rehype-slug": "^6.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.181.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.181.0",
     "ajv": "^8.17.1",
     "mdast-util-to-string": "^4.0.0",
     "remark-parse": "^11.0.0",

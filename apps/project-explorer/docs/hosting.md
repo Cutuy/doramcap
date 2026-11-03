@@ -25,6 +25,7 @@ Hash routes support refresh, browser history, copied links and new tabs:
 - `#/overview?useCase=perception`
 - `#/overview?capability=recording`
 - `#/overview?integration=mcap`
+- `#/overview?useCase=latency&view=2d`
 - `#/docs?path=docs/repository-layout.md&heading=component-ownership`
 
 The overview is the default route. Capability and integration links retain the

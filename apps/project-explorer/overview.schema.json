@@ -226,7 +226,8 @@
           "outcome",
           "status",
           "capabilities",
-          "integrations"
+          "integrations",
+          "flows"
         ],
         "properties": {
           "id": {
@@ -285,6 +286,36 @@
               "pattern": "^[a-z][a-z0-9-]*$"
             },
             "uniqueItems": true
+          },
+          "flows": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "from",
+                "to",
+                "kind"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "to": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$"
+                },
+                "kind": {
+                  "enum": [
+                    "data",
+                    "control",
+                    "evidence"
+                  ]
+                }
+              }
+            }
           }
         }
       }
