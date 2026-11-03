@@ -1,0 +1,9 @@
+nodes:
+  - id: fault-watchdog
+    path: dynamic
+    inputs:
+      workload_faults:
+        source: workload/faults
+        queue_size: 32
+        queue_policy: backpressure
+    outputs: [faults]

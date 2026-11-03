@@ -145,6 +145,17 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
     run.systemApps.push(input);
   }
 }
+/** The Dora graph beside a project's Compose file; undefined when the project declares none. */
+export async function projectGraph(directory: string): Promise<string | undefined> {
+  const path = join(directory, 'flow.yml');
+  try {
+    if (!(await lstat(path)).isFile()) throw new Error('non-regular project graph');
+    return path;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+}
 /** Discover the native Compose inputs of one project directory. */
 export async function discover(directory: string, profiles: string[]): Promise<Project> {
   if (!isAbsolute(directory)) throw new Error('InvalidInput');

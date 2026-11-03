@@ -20,6 +20,7 @@ const images: Record<string, { dockerfile: string; binary?: string }> = {
   'system-monitor': { dockerfile: 'apps/system-monitor/deploy/Dockerfile', binary: 'target/release/system-monitor' },
   'mcap-recorder': { dockerfile: 'apps/mcap-recorder/deploy/Dockerfile', binary: 'target/release/mcap-recorder' },
   'live-bridge': { dockerfile: 'console/bridge/Dockerfile', binary: 'target/release/live-bridge' },
+  'fault-watchdog': { dockerfile: 'apps/fault-watchdog/deploy/standalone/Dockerfile', binary: 'target/release/fault-watchdog' },
   'cpu-burn': { dockerfile: 'console/release/playground/cpu-burn/Dockerfile' },
 };
 const docker = (...args: string[]) => execFileSync('docker', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });

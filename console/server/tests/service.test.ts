@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
 import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
 import { LIMITS, PREPARING_RUN } from '../src/generated/transport.js';
 
@@ -66,6 +66,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
   });
+  if (liveOutput) await writeFile(join(project, 'flow.yml'), 'nodes:\n  - id: monitor\n    path: dynamic\n    outputs: [snapshots]\n');
   if (liveOutput) config.liveBridge = { image: 'doramcap/live-bridge:local', port: 43190 };
   if (recording || liveOutput)
     config.systemApps = [
@@ -513,6 +514,47 @@ test('the selected launch profile mounts its config read-only and declares only 
     await rm(root, { recursive: true, force: true });
   }
 });
+test('an app missing its Dora source blocks Review until the project flow.yml provides it or the app is deselected', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-source-')), project = join(root, 'project');
+  await mkdir(project);
+  await writeFile(join(project, 'compose.yaml'), 'services: {}');
+  await writeFile(join(root, 'watchdog.yml'), 'nodes:\n  - id: watchdog\n    path: dynamic\n    inputs:\n      faults: workload/faults\n');
+  const config = wire.ConsoleConfig.create({
+    projectRoot: project, dataRoot: join(root, 'data'), dockerSocket: '/unused.sock', accessSecretFile: join(root, 'secret'),
+    listenAddress: '127.0.0.1:8080', publicOrigin: 'http://127.0.0.1:8080',
+    systemApps: [{ id: 'watchdog', input: { directory: project, files: ['compose.yaml'] }, graph: join(root, 'watchdog.yml') }],
+  });
+  validateConfig(config);
+  const engine = new Engine(), store = await Store.open(config.dataRoot), backend = new ConsoleService(config, engine, store);
+  const prepare = async (ids: string[]) => wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids } }).finish())));
+  try {
+    // Act
+    const blocked = await prepare(['watchdog']);
+    // Assert
+    assert.equal(blocked.preparedId, '');
+    assert.equal(blocked.selectionBlocked, true);
+    assert.match(blocked.warnings[0], /watchdog needs Dora output workload\/faults/);
+    assert.equal(blocked.systemApps.find((app) => app.id === 'watchdog')!.selected, true);
+    assert.equal((await readdir(join(config.dataRoot, 'reviews'))).length, 0);
+    // Act
+    const deselected = await prepare([]);
+    // Assert
+    assert.ok(deselected.preparedId);
+    assert.equal(deselected.selectionBlocked, false);
+    // Act
+    await writeFile(join(project, 'flow.yml'), 'nodes:\n  - id: workload\n    path: dynamic\n    outputs: [faults]\n');
+    const provided = await prepare(['watchdog']);
+    // Assert
+    assert.ok(provided.preparedId);
+    const graph = JSON.parse(await readFile(engine.inspected!.dora!.graph!, 'utf8'));
+    assert.deepEqual(graph.nodes.map((node: { id: string }) => node.id).sort(), ['watchdog', 'workload']);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('an unknown launch profile rejects preparation', async () => {
   // Arrange
   const { root, backend, review } = await fixture(true);
@@ -533,7 +575,8 @@ test('deselecting the live bridge removes its service, graph node and streams', 
     assert.equal(review.liveStreams.length, 0);
     assert.equal(review.systemApps.find((app) => app.id === 'live-bridge')!.selected, false);
     assert.ok(!engine.inspected!.systemApps.some((project) => project.key === 'live-bridge'));
-    assert.ok(!engine.inspected!.dora?.graph);
+    const graph = JSON.parse(await readFile(engine.inspected!.dora!.graph!, 'utf8'));
+    assert.ok(!graph.nodes.some((node: { id: string }) => node.id === 'live-bridge'));
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

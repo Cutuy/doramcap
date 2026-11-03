@@ -5,7 +5,7 @@ data_root: "/absolute/path/to/private-console-data"
 docker_socket: "/var/run/docker.sock"
 dora { image: "doramcap/dora:local" }
 # Optional apps use approved Compose inputs; no gallery demos are injected.
-# See release/console.pbtxt for the CPU monitoring and Dora recording apps.
+# See release/console.pbtxt for the CPU monitoring, Dora recording and Fault Watchdog apps.
 # Optional live telemetry relay for apps' live_outputs.
 # live_bridge { image: "doramcap/live-bridge:local" }
 # Optional runtime policy; omitted fields preserve these defaults.

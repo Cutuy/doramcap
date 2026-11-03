@@ -1,6 +1,18 @@
 import type { doramcap } from './generated/console.js';
 type App = doramcap.console.v1.ISystemAppDefinition;
-type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };
+type NativeNode = { id: string; outputs?: string[]; inputs?: Record<string, string | { source?: string }>; [field: string]: unknown };
+type NativeGraph = { nodes: NativeNode[]; [field: string]: unknown };
+
+/** A selected node subscribes to an output no selected graph provides. */
+export class MissingSource extends Error {}
+function requireSources(nodes: NativeNode[]) {
+  for (const node of nodes) for (const input of Object.values(node.inputs ?? {})) {
+    const source = typeof input === 'string' ? input : input.source ?? '';
+    const [from, output] = source.split('/');
+    if (from === 'dora' || nodes.some(item => item.id === from && item.outputs?.includes(output))) continue;
+    throw new MissingSource(`${node.id} needs Dora output ${source}, which this selection does not provide. Deselect it or add the output to the project's flow.yml.`);
+  }
+}
 
 /** Combine approved native graph fragments; Rust expands modules and validates the result. */
 export class Graphs {
@@ -29,6 +41,7 @@ export class Graphs {
         merged[key] = value;
       }
     }
+    requireSources(merged.nodes);
     const bytes = Buffer.from(JSON.stringify(merged));
     if (bytes.length > 2 * 1024 * 1024) throw new Error('InvalidInput');
     return bytes;

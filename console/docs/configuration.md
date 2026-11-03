@@ -70,8 +70,12 @@ bind the current run's artifact directory; recording paths are relative to it.
 Services of recording apps get `seccomp=unconfined` for io_uring and a memlock limit automatically.
 The runtime requires stream growth before workload launch.
 
-`dora.graph` supplies the workload graph. Selected app graphs add nodes; duplicate
-node IDs or conflicting graph settings reject preparation. Source graphs are read
+`dora.graph` supplies a base graph. A project's own Dora nodes go in `flow.yml` beside
+its Compose file, each with a host-networked Compose service of the same name. Selected app graphs
+add nodes; duplicate node IDs or conflicting graph settings reject preparation. When a
+selected node subscribes to an output nothing provides, Review names it and disables
+Start until the selection changes. The release [Fault Watchdog](../release/system-apps/fault-watchdog/flow.yml)
+reads `workload/faults`, so the project needs a `workload` node publishing fault reports. Source graphs are read
 again on Start. Console never injects demo producers. Reusable deployments must
 supply healthchecks for subscriber/sink readiness before their producers start.
 

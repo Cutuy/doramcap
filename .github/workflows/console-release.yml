@@ -45,8 +45,8 @@ jobs:
       - name: Build binaries
         run: |
           rustup show
-          cargo build --release --locked -p mcap-recorder -p console-live-bridge -p system-monitor \
-            --features system-monitor/bpf,system-monitor/task-bpf,system-monitor/dora
+          cargo build --release --locked -p mcap-recorder -p console-live-bridge -p system-monitor -p fault-watchdog \
+            --features system-monitor/bpf,system-monitor/task-bpf,system-monitor/dora,fault-watchdog/mcap,fault-watchdog/otel
       - name: Download Dora CLI
         env:
           NAME: dora-cli-${{ matrix.dora }}-unknown-linux-gnu

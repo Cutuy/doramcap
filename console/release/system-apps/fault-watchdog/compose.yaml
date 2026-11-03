@@ -1,0 +1,20 @@
+services:
+  fault-watchdog:
+    image: doramcap/fault-watchdog:local
+    network_mode: host
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true, seccomp=unconfined] # The MCAP writer uses io_uring.
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    environment:
+      DORAMCAP_READY_FILE: /tmp/fault-watchdog.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/fault-watchdog.ready]
+      interval: 200ms
+      timeout: 1s
+      retries: 150
+    volumes:
+      - {type: bind, source: ./watchdog.pbtxt, target: /etc/fault-watchdog/watchdog.pbtxt, read_only: true}

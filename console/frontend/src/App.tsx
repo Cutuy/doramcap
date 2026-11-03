@@ -84,7 +84,8 @@ export function App() {
       setAppProfiles(selectedProfiles(next.systemApps));
       const discoveredProfiles = !rerun && available.length === 0 && next.availableProfiles.length > 0;
       setAvailable(next.availableProfiles);
-      if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
+      if (next.selectionBlocked) { setReview(next); setPhase('Review'); }
+      else if (!next.preparedId) { setReview(null); setError(next.warnings[0] ?? 'Select a profile to enable a service.'); setPhase('Project'); }
       else if (discoveredProfiles) { setReview(null); setPhase('Project'); }
       else { setReview(next); setPhase('Review'); }
     }

@@ -33,3 +33,20 @@ system_apps {
   output_mounts { service: "cpu-recorder" target: "/results" }
   recordings { id: "cpu-topics" path: "cpu-topics.mcap" }
 }
+system_apps {
+  id: "fault-watchdog"
+  label: "Fault Watchdog (needs workload/faults)"
+  input { directory: "fault-watchdog" files: "compose.yaml" }
+  graph: "fault-watchdog/flow.yml"
+  output_mounts { service: "fault-watchdog" target: "/results" }
+  live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
+  config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
+  launch_profiles { id: "live" label: "Live only" config: "fault-watchdog/watchdog.pbtxt" }
+  launch_profiles {
+    id: "mcap"
+    label: "Live and MCAP"
+    config: "fault-watchdog/watchdog-mcap.pbtxt"
+    recordings { id: "faults" path: "faults.mcap" }
+  }
+  launch_profiles { id: "otel" label: "Live and OTLP" config: "fault-watchdog/watchdog-otel.pbtxt" }
+}
