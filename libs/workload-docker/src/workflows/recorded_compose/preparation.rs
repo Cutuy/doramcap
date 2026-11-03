@@ -10,6 +10,7 @@ use crate::compose::{
     overlay::OverlaySet,
     *,
 };
+use crate::workflows::shared_dora::MAX_GRAPH_BYTES;
 use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -17,6 +18,9 @@ use std::{
     path::{Path, PathBuf},
     rc::{Rc, Weak},
 };
+
+/// Largest read-only bind, config or secret file frozen into run artifacts.
+const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreparedRun {
@@ -52,7 +56,7 @@ impl Step for PrepareRun {
 /// Completed graph validation remains part of experiment resolution.
 pub async fn expand_graph(path: &Path) -> Result<Vec<u8>> {
     use dora_core::descriptor::{Descriptor, DescriptorExt};
-    let bytes = crate::evidence::read_regular(path, 2 * 1024 * 1024).await?;
+    let bytes = crate::evidence::read_regular(path, MAX_GRAPH_BYTES).await?;
     let graph = Descriptor::parse(bytes)
         .map_err(|error| invalid(error.to_string()))?
         .expand(
@@ -141,7 +145,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     if !dora.graph.is_empty() {
         let graph = super::super::shared_dora::graph(
             &dora,
-            &crate::evidence::read_regular(Path::new(&dora.graph), 2 * 1024 * 1024).await?,
+            &crate::evidence::read_regular(Path::new(&dora.graph), MAX_GRAPH_BYTES).await?,
         )?;
         model::validate_graph(&model, &graph)?;
     }
@@ -215,7 +219,7 @@ impl PrepareRun {
         let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
         let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
-        prepare_sources(&model, overlays).await?;
+        prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
         observation::snapshot(&resolved.artifacts, "before").await?;
@@ -246,7 +250,7 @@ impl PrepareRun {
 
 async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
     let source = tokio::fs::canonicalize(source).await?;
-    let bytes = crate::evidence::read_regular(&source, 256 * 1024 * 1024).await?;
+    let bytes = crate::evidence::read_regular(&source, MAX_FROZEN_FILE_BYTES).await?;
     use std::os::unix::fs::PermissionsExt;
     let permissions = tokio::fs::metadata(&source).await?.permissions();
     let destination = directory.join(format!("{}-{:o}", digest(&bytes), permissions.mode()));
@@ -258,31 +262,28 @@ async fn snapshot_file(source: &str, directory: &Path) -> Result<String> {
 }
 /// Refuse unreadable bind sources, naming every failure, and leave the host unchanged on refusal.
 /// `overlays` creates missing sources Docker would create, because overlays need a lower directory.
-async fn prepare_sources(model: &Value, overlays: bool) -> Result<()> {
+async fn prepare_sources(binds: &[ResolvedBind], overlays: bool) -> Result<()> {
     let mut failures = Vec::new();
     let mut missing = Vec::new();
-    for (service, value) in model["services"].as_object().into_iter().flatten() {
-        let mounts = value["volumes"].as_array().into_iter().flatten();
-        for mount in mounts.filter(|mount| mount["type"] == "bind") {
-            let Some(source) = mount["source"].as_str() else {
-                continue;
-            };
-            if let Err(error) = tokio::fs::metadata(source).await {
-                // Docker creates a missing source unless `create_host_path` is explicitly false.
-                if mount["bind"]["create_host_path"] == false
-                    || error.kind() != std::io::ErrorKind::NotFound
-                {
-                    failures.push(format!("{service}: bind mount source {source}: {error}"));
-                } else if overlays {
-                    missing.push((service, source));
-                }
+    let named = |bind: &ResolvedBind, error: std::io::Error| {
+        format!(
+            "{}: bind mount source {}: {error}",
+            bind.service, bind.source
+        )
+    };
+    for bind in binds {
+        if let Err(error) = tokio::fs::metadata(&bind.source).await {
+            if !bind.create_host_path || error.kind() != std::io::ErrorKind::NotFound {
+                failures.push(named(bind, error));
+            } else if overlays {
+                missing.push(bind);
             }
         }
     }
     failed(&failures)?;
-    for (service, source) in missing {
-        if let Err(error) = tokio::fs::create_dir_all(source).await {
-            failures.push(format!("{service}: bind mount source {source}: {error}"));
+    for bind in missing {
+        if let Err(error) = tokio::fs::create_dir_all(&bind.source).await {
+            failures.push(named(bind, error));
         }
     }
     failed(&failures)

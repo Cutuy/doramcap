@@ -24,19 +24,24 @@ impl Drop for ProcessGroup {
         }
     }
 }
+/// Largest Compose stdout or stderr stream retained from one command.
+const MAX_COMPOSE_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
+/// Largest `/proc/net/tcp*` table parsed while verifying a Dora listener.
+const MAX_LISTENER_TABLE_BYTES: usize = 4 * 1024 * 1024;
+
 pub(crate) async fn capture(
     reader: impl AsyncRead + Unpin,
     stream: &'static str,
 ) -> Result<String> {
     let mut bytes = Vec::new();
     reader
-        .take(16 * 1024 * 1024 + 1)
+        .take(MAX_COMPOSE_OUTPUT_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .await?;
-    if bytes.len() > 16 * 1024 * 1024 {
+    if bytes.len() > MAX_COMPOSE_OUTPUT_BYTES {
         return Err(Error::OutputLimit {
             stream,
-            limit: 16 * 1024 * 1024,
+            limit: MAX_COMPOSE_OUTPUT_BYTES,
         });
     }
     Ok(String::from_utf8_lossy(&bytes).into_owned())
@@ -196,10 +201,10 @@ pub(crate) async fn verify_listener(pid: u32, port: u16) -> Result<()> {
     for (path, loopback) in [("/proc/net/tcp", "0100007F"), ("/proc/net/tcp6", "")] {
         let file = tokio::fs::File::open(path).await?;
         let mut data = Vec::new();
-        file.take(4 * 1024 * 1024 + 1)
+        file.take(MAX_LISTENER_TABLE_BYTES as u64 + 1)
             .read_to_end(&mut data)
             .await?;
-        if data.len() > 4 * 1024 * 1024 {
+        if data.len() > MAX_LISTENER_TABLE_BYTES {
             return Err(invalid("Dora listener table exceeds its size limit"));
         }
         let table =

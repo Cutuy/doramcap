@@ -32,10 +32,10 @@ pub(crate) fn read_outer_evidence(
         Err(error) => return Err(error.to_string()),
     };
     let mut bytes = Vec::new();
-    file.take(2 * 1024 * 1024 + 1)
+    file.take(crate::evidence::MAX_METADATA_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
-    if bytes.len() > 2 * 1024 * 1024 {
+    if bytes.len() > crate::evidence::MAX_METADATA_BYTES {
         return Err("outer filesystem checkpoint is too large".into());
     }
     let evidence: OuterEvidence = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;

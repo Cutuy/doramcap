@@ -340,18 +340,19 @@ async fn preparation_creates_missing_binds_docker_would_create_only_for_overlays
         let model = json!({"services":{"app":{"volumes":[
             {"type":"bind","source":source,"read_only":true,"bind":bind}
         ]}}});
+        let binds = ResolvedBind::from_manifest(&model).unwrap();
         let mut frozen = model.clone();
 
         // Act: Review and plain runs leave the path for Docker.
         freeze_files(&mut frozen, root.path()).await.unwrap();
-        prepare_sources(&model, false).await.unwrap();
+        prepare_sources(&binds, false).await.unwrap();
 
         // Assert
         assert_eq!(frozen, model);
         assert!(!source.exists());
 
         // Act
-        prepare_sources(&model, true).await.unwrap();
+        prepare_sources(&binds, true).await.unwrap();
 
         // Assert
         assert!(source.is_dir());
@@ -375,7 +376,8 @@ async fn preparation_names_every_refused_bind_and_creates_nothing() {
         }});
 
         // Act
-        let error = prepare_sources(&model, overlays)
+        let binds = ResolvedBind::from_manifest(&model).unwrap();
+        let error = prepare_sources(&binds, overlays)
             .await
             .unwrap_err()
             .to_string();

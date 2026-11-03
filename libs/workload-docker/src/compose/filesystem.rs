@@ -7,7 +7,7 @@ mod wire;
 pub(crate) use wire::{read_snapshot, write_record, write_snapshot};
 
 use super::{
-    DockerAdapter, ResolvedComposeProject, Result,
+    DockerAdapter, ResolvedBind, ResolvedComposeProject, Result,
     adapter::{digest, private_write},
     error::{absent, engine, invalid},
 };
@@ -328,64 +328,72 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
             return Err(invalid("filesystem baseline manifest changed"));
         }
         let model: Value = serde_json::from_slice(&bytes)?;
-        let services = model["services"]
-            .as_object()
-            .ok_or_else(|| invalid("missing services"))?;
-        for (service, value) in services {
-            for mount in value["volumes"].as_array().into_iter().flatten() {
-                let read_only = mount["read_only"] == true;
+        let mut record = |category: StorageCategory,
+                          identity: String,
+                          path: Option<PathBuf>,
+                          reason: Option<String>,
+                          read_only: bool,
+                          consumer: String| {
+            let key = format!("{category:?}:{identity}");
+            let baseline = directory.join(format!("{}.baseline.pb", digest(key.as_bytes())));
+            let source = sources.entry(key).or_insert(Source {
+                category,
+                identity,
+                path,
+                consumers: vec![],
+                baseline,
+                reason: reason.clone(),
+            });
+            // A writable alias must be observed even if the first alias is read-only.
+            if source.reason.as_deref() == Some("read-only input; no scan") && !read_only {
+                source.reason = reason;
+            }
+            source.consumers.push(consumer);
+        };
+        for bind in ResolvedBind::from_manifest(&model)? {
+            let path = tokio::fs::canonicalize(&bind.source)
+                .await
+                .unwrap_or_else(|_| PathBuf::from(&bind.source));
+            let reason = if bind.read_only {
+                Some("read-only input; no scan".into())
+            } else if excluded(&path, &input.artifacts) {
+                Some("pseudo-filesystem or managed artifact path; no scan".into())
+            } else {
+                None
+            };
+            record(
+                StorageCategory::HostBind,
+                path.to_string_lossy().into_owned(),
+                Some(path),
+                reason,
+                bind.read_only,
+                format!("{}/{}:{}", plan.name, bind.service, bind.target),
+            );
+        }
+        for (service, value) in model["services"].as_object().into_iter().flatten() {
+            let mounts = value["volumes"].as_array().into_iter().flatten();
+            for mount in mounts.filter(|mount| mount["type"] == "volume") {
                 let raw = mount["source"].as_str().unwrap_or("");
-                let (category, identity, path, reason) = match mount["type"].as_str() {
-                    Some("bind") => {
-                        let path = tokio::fs::canonicalize(raw)
-                            .await
-                            .unwrap_or_else(|_| PathBuf::from(raw));
-                        let reason = if read_only {
-                            Some("read-only input; no scan".into())
-                        } else if excluded(&path, &input.artifacts) {
-                            Some("pseudo-filesystem or managed artifact path; no scan".into())
-                        } else {
-                            None
-                        };
-                        (
-                            StorageCategory::HostBind,
-                            path.to_string_lossy().into_owned(),
-                            Some(path),
-                            reason,
-                        )
-                    }
-                    Some("volume") => {
-                        let name = model["volumes"][raw]["name"]
-                            .as_str()
-                            .ok_or_else(|| invalid("volume has no resolved name"))?
-                            .to_owned();
-                        let (path, reason) = match volume_path(adapter, &name).await {
-                            Ok(p) => (p, None),
-                            Err(e) => (None, Some(e.to_string())),
-                        };
-                        (StorageCategory::NamedVolume, name, path, reason)
-                    }
-                    _ => continue,
+                let name = model["volumes"][raw]["name"]
+                    .as_str()
+                    .ok_or_else(|| invalid("volume has no resolved name"))?
+                    .to_owned();
+                let (path, reason) = match volume_path(adapter, &name).await {
+                    Ok(p) => (p, None),
+                    Err(e) => (None, Some(e.to_string())),
                 };
-                let key = format!("{category:?}:{identity}");
-                let baseline = directory.join(format!("{}.baseline.pb", digest(key.as_bytes())));
-                let source = sources.entry(key).or_insert(Source {
-                    category,
-                    identity,
+                record(
+                    StorageCategory::NamedVolume,
+                    name,
                     path,
-                    consumers: vec![],
-                    baseline,
-                    reason: reason.clone(),
-                });
-                // A writable alias must be observed even if the first alias is read-only.
-                if source.reason.as_deref() == Some("read-only input; no scan") && !read_only {
-                    source.reason = reason;
-                }
-                source.consumers.push(format!(
-                    "{}/{service}:{}",
-                    plan.name,
-                    mount["target"].as_str().unwrap_or("?")
-                ));
+                    reason,
+                    mount["read_only"] == true,
+                    format!(
+                        "{}/{service}:{}",
+                        plan.name,
+                        mount["target"].as_str().unwrap_or("?")
+                    ),
+                );
             }
         }
     }

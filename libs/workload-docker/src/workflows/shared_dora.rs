@@ -8,6 +8,13 @@ use crate::compose::{
 use dora_core::descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static};
 use std::path::Path;
 
+/// Largest Dora graph descriptor accepted from a source or frozen file.
+pub(crate) const MAX_GRAPH_BYTES: u64 = 2 * 1024 * 1024;
+/// Smallest shared-memory size granted to a Dora experiment.
+const MIN_SHM_BYTES: u64 = 128 * 1024 * 1024;
+/// Smallest locked-memory limit granted to a Dora experiment.
+const MIN_MEMLOCK_BYTES: u64 = 64 * 1024 * 1024;
+
 pub(crate) const COORDINATOR: &str = "dora-coordinator";
 pub(crate) const DAEMON: &str = "dora-daemon";
 pub(crate) const GRAPH_FILE: &str = "graph.yml";
@@ -44,8 +51,8 @@ pub fn resolve(runtime: &mut DoraRuntime, artifacts: &Path) -> Result<()> {
         .join("dora/zenoh.json5")
         .to_string_lossy()
         .into_owned();
-    runtime.shm_bytes = runtime.shm_bytes.max(128 * 1024 * 1024);
-    runtime.memlock_bytes = runtime.memlock_bytes.max(64 * 1024 * 1024);
+    runtime.shm_bytes = runtime.shm_bytes.max(MIN_SHM_BYTES);
+    runtime.memlock_bytes = runtime.memlock_bytes.max(MIN_MEMLOCK_BYTES);
     // SAFETY: effective identity access has no side effects.
     runtime
         .participant_uid
@@ -123,7 +130,7 @@ pub(crate) async fn prepare(runtime: &DoraRuntime, artifacts: &Path) -> Result<D
     let mut frozen = runtime.clone();
     if !runtime.graph.is_empty() {
         let bytes =
-            crate::evidence::read_regular(Path::new(&runtime.graph), 2 * 1024 * 1024).await?;
+            crate::evidence::read_regular(Path::new(&runtime.graph), MAX_GRAPH_BYTES).await?;
         let bytes = serde_json::to_vec(&graph(runtime, &bytes)?)?;
         frozen.graph = directory.join(GRAPH_FILE).to_string_lossy().into_owned();
         frozen.graph_sha256 = digest(&bytes);

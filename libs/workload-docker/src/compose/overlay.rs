@@ -6,7 +6,7 @@
 mod direct;
 
 use super::{
-    ResolvedComposeProject, Result,
+    ResolvedBind, ResolvedComposeProject, Result,
     adapter::{digest, private_write},
     error::invalid,
     filesystem::{MetadataWalk, Snapshot, read_snapshot, write_record, write_snapshot},
@@ -316,74 +316,62 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             return Err(invalid("overlay input manifest changed"));
         }
         let model: Value = serde_json::from_slice(&bytes)?;
-        for (service, v) in model["services"]
-            .as_object()
-            .ok_or_else(|| invalid("missing services"))?
-        {
-            for bind in v["volumes"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|v| v["type"] == "bind")
-            {
-                let raw = bind["source"]
-                    .as_str()
-                    .ok_or_else(|| invalid("bind source missing"))?;
-                let source = tokio::fs::canonicalize(raw).await.map_err(|error| {
-                    invalid(format!("{service}: bind mount source {raw}: {error}"))
+        for bind in ResolvedBind::from_manifest(&model)? {
+            let source = tokio::fs::canonicalize(&bind.source)
+                .await
+                .map_err(|error| {
+                    invalid(format!(
+                        "{}: bind mount source {}: {error}",
+                        bind.service, bind.source
+                    ))
                 })?;
-                if source.starts_with(&workspace) || workspace.starts_with(&source) {
-                    return Err(invalid("overlay source overlaps the mutable workspace"));
-                }
-                let ro = bind["read_only"] == true;
-                let meta = tokio::fs::symlink_metadata(&source).await?;
-                let owned = source.starts_with(&artifacts);
-                if !ro && !owned {
-                    if !meta.is_dir()
-                        || ["/proc", "/sys", "/dev"]
-                            .iter()
-                            .any(|p| source.starts_with(p))
-                    {
-                        return Err(invalid(format!(
-                            "writable bind requires explicit unsupported-source handling: {}",
-                            source.display()
-                        )));
-                    }
-                    if artifacts.starts_with(&source) {
-                        return Err(invalid(format!(
-                            "artifact directory overlaps lower tree: {}",
-                            source.display()
-                        )));
-                    }
-                    if bind["bind"]["propagation"]
-                        .as_str()
-                        .is_some_and(|p| p != "rprivate" && p != "private")
-                        || bind["bind"].get("selinux").is_some()
-                    {
-                        return Err(invalid(format!(
-                            "unqualified bind propagation/SELinux option: {}",
-                            source.display()
-                        )));
-                    }
-                    writable.insert(source.clone());
-                }
-                mappings.push(MountMapping {
-                    project: project.key.clone(),
-                    service: service.clone(),
-                    target: bind["target"].as_str().unwrap_or("").into(),
-                    original: source.clone(),
-                    effective: source,
-                    read_only: ro,
-                    reason: if owned {
-                        "fresh run artifact"
-                    } else if ro {
-                        "read-only input"
-                    } else {
-                        "OverlayFS"
-                    }
-                    .into(),
-                });
+            if source.starts_with(&workspace) || workspace.starts_with(&source) {
+                return Err(invalid("overlay source overlaps the mutable workspace"));
             }
+            let meta = tokio::fs::symlink_metadata(&source).await?;
+            let owned = source.starts_with(&artifacts);
+            if !bind.read_only && !owned {
+                if !meta.is_dir()
+                    || ["/proc", "/sys", "/dev"]
+                        .iter()
+                        .any(|p| source.starts_with(p))
+                {
+                    return Err(invalid(format!(
+                        "writable bind requires explicit unsupported-source handling: {}",
+                        source.display()
+                    )));
+                }
+                if artifacts.starts_with(&source) {
+                    return Err(invalid(format!(
+                        "artifact directory overlaps lower tree: {}",
+                        source.display()
+                    )));
+                }
+                if !["", "rprivate", "private"].contains(&bind.propagation.as_str()) || bind.selinux
+                {
+                    return Err(invalid(format!(
+                        "unqualified bind propagation/SELinux option: {}",
+                        source.display()
+                    )));
+                }
+                writable.insert(source.clone());
+            }
+            mappings.push(MountMapping {
+                project: project.key.clone(),
+                service: bind.service,
+                target: bind.target,
+                original: source.clone(),
+                effective: source,
+                read_only: bind.read_only,
+                reason: if owned {
+                    "fresh run artifact"
+                } else if bind.read_only {
+                    "read-only input"
+                } else {
+                    "OverlayFS"
+                }
+                .into(),
+            });
         }
         models.push(model);
     }
