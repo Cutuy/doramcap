@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="460" viewBox="0 0 1100 460" role="img">
+  <title>Console · project recording</title>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse">
+      <path d="M0 0L8 4L0 8" fill="none" stroke="#236457" />
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#fafaf8" />
+  <text x="550" y="34" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" fill="#263b37">Console · project recording</text>
+  <rect x="25" y="100" width="170" height="90" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="110" y="128" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Project</text>
+  <text x="110" y="152" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#52645f">flow.yml</text>
+  <text x="110" y="172" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#52645f">compose.yaml</text>
+  <rect x="240" y="60" width="835" height="170" rx="9" fill="#e4eeec" stroke="#bdcdc5" />
+  <text x="657" y="85" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Console server</text>
+  <rect x="260" y="110" width="120" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="320" y="150" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">discover</text>
+  <rect x="470" y="110" width="120" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="530" y="140" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Review</text>
+  <text x="530" y="162" text-anchor="middle" font-family="Arial,sans-serif" font-size="13" fill="#52645f">Choose topics</text>
+  <rect x="680" y="110" width="170" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="765" y="150" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">bindRecorder</text>
+  <rect x="240" y="290" width="835" height="150" rx="9" fill="#eef3ef" stroke="#bdcdc5" />
+  <text x="657" y="315" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Experiment run</text>
+  <rect x="260" y="340" width="120" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="320" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Project nodes</text>
+  <rect x="470" y="340" width="120" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="530" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">Dora</text>
+  <rect x="680" y="340" width="170" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="765" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">mcap-recorder</text>
+  <rect x="940" y="340" width="120" height="70" rx="9" fill="#fff" stroke="#bdcdc5" />
+  <text x="1000" y="380" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" fill="#263b37">topics.mcap</text>
+  <g fill="none" stroke="#236457" stroke-width="1.5" marker-end="url(#a)">
+    <path d="M195 145H258" />
+    <path d="M380 145H468" />
+    <path d="M590 145H678" />
+    <path d="M765 180V338" />
+    <path d="M380 375H468" />
+    <path d="M590 375H678" />
+    <path d="M850 375H938" />
+  </g>
+  <g font-family="Arial,sans-serif" font-size="13" fill="#52645f" text-anchor="middle">
+    <text x="226" y="136">Graph</text>
+    <text x="425" y="136">Outputs</text>
+    <text x="635" y="136">Topics</text>
+    <text x="425" y="366">Messages</text>
+    <text x="635" y="366">Selected</text>
+    <text x="895" y="366">Payloads</text>
+    <text x="775" y="264" text-anchor="start">Config, graph, Compose</text>
+  </g>
+</svg>
