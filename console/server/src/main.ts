@@ -37,12 +37,13 @@ try {
     server.closeIdleConnections();
     try {
       await backend.close();
-      clearTimeout(deadline);
       process.exitCode = 0;
     } catch {
-      clearTimeout(deadline);
       process.exitCode = 1;
     }
+    clearTimeout(deadline);
+    // Open /api/live streams and downloads would otherwise keep the process alive.
+    server.closeAllConnections();
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

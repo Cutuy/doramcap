@@ -77,4 +77,6 @@ Evidence: `cargo test --release --locked` passes for `activity-tracing` with no 
 - [x] Frontend tests cover the picker and review state.
 - [x] A Console run records and streams data according to the selected profile.
 
-Evidence: Console server (68 tests, 1 skipped) and frontend (50) suites pass. A real Compose run through Chromium on x86_64 used the release system apps: the record profile wrote an 8.5 MB `cpu.mcap` and offered its download; the live profile wrote no recording and showed live CPU panels with 0 dropped batches; History's Run again restored the live profile. Full local CI and ARM64 were not run.
+Evidence: Console server (68 tests, 1 skipped) and frontend (50) suites pass. A real Compose run through Chromium on x86_64 used the release system apps: the record profile wrote an 8.5 MB `cpu.mcap` and offered its download; the live profile wrote no recording and showed live CPU panels with 0 dropped batches; History's Run again restored the live profile. ARM64 was skipped by request.
+
+Evidence: full local CI passes on x86_64 with every open PR combined: boundaries, formatting, default and all-feature Clippy and workspace tests (387 passed with all features), storage without default features, example and binary builds, snapshot synchronization and Console suites. `compose-e2e.py` passes all cases, including selected Compose profiles, and `validate_dora.py --sinks` passes on those fresh builds.
