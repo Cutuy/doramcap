@@ -236,7 +236,7 @@ revision and observed results beside its validation items before checking them.
   Stop/close outside the ordinary mailbox so admission saturation cannot starve them. Check a latched Stop in
   the preflight callback so Stop during preparation cannot lead to a later launch.
 - [ ] Feed an observer wrapper into `run_with_preflight`: remove payloads and
-  replace raw errors with safe error categories before forwarding to
+  keep step errors, which reach the browser capped at 2000 characters, before forwarding to
   `TelemetryObserver`. Its sink copies encoded bytes into a 512-entry queue using
   `try_send`, with a 16 KiB event limit. Queue-full returns an error to the observer;
   the observer's loss counter remains accessible even if the last event was lost.

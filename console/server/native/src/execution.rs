@@ -17,7 +17,18 @@ use workload_docker::{
 
 const EVENT_QUEUE_CAPACITY: usize = 512;
 const MAX_EVENT_BYTES: usize = 16 * 1024;
+const MAX_ERROR_CHARS: usize = Limit::MaxErrorChars as usize;
 pub(crate) type Reply = oneshot::Receiver<Result<Vec<u8>, String>>;
+
+/// Keep the end of an error, where its cause is, so its event fits `MAX_EVENT_BYTES`.
+fn bounded_error(error: &str) -> String {
+    let start = error
+        .char_indices()
+        .rev()
+        .nth(MAX_ERROR_CHARS - 1)
+        .map_or(0, |(index, _)| index);
+    error[start..].to_owned()
+}
 struct Active {
     id: String,
     stop: Option<oneshot::Sender<()>>,
@@ -182,7 +193,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                         elapsed_ns: event.elapsed_ns,
                         duration_ns: event.duration_ns,
                         payload: None,
-                        error: event.error.clone(),
+                        error: event.error.as_deref().map(bounded_error),
                     });
                     loss.lock().unwrap().dropped_events = observe.dropped_events();
                 },
@@ -250,4 +261,22 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let _ = done_tx.send(());
     });
     reply
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_error_keeps_its_end_within_the_event_limit() {
+        // Arrange
+        let error = format!("{} the cause", "é".repeat(MAX_EVENT_BYTES));
+        // Act
+        let bounded = bounded_error(&error);
+        // Assert
+        assert_eq!(bounded.chars().count(), MAX_ERROR_CHARS);
+        assert!(bounded.len() < MAX_EVENT_BYTES);
+        assert!(bounded.ends_with("the cause"));
+        assert_eq!(bounded_error("short"), "short");
+    }
 }

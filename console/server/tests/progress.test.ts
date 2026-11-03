@@ -15,11 +15,11 @@ const event = (id: number, sequence: number, state = STARTED, parent?: number) =
     parent,
   });
 
-test('progress replaces invocations, redacts private data and exposes sequence loss', () => {
+test('progress replaces invocations, omits payloads, keeps step errors and exposes sequence loss', () => {
   // Arrange
   const progress = new Progress();
   // Act
-  progress.apply({ ...event(1, 1), payloadJson: 'secret', error: '/private/host' });
+  progress.apply({ ...event(1, 1), payloadJson: 'secret', error: 'first failure' });
   progress.apply(event(1, 3, SUCCEEDED));
   // Assert
   assert.equal(progress.rows.length, 1);
@@ -27,9 +27,9 @@ test('progress replaces invocations, redacts private data and exposes sequence l
   assert.equal(progress.gaps, 1n);
   assert.equal(progress.incomplete, true);
   // Act
-  progress.apply({ ...event(2, 4), error: '/private/host' });
+  progress.apply({ ...event(2, 4), error: 'compose up exited 1: no such image' });
   // Assert
-  assert.equal(progress.rows[1].error, 'step failed');
+  assert.equal(progress.rows[1].error, 'compose up exited 1: no such image');
 });
 
 test('active rows survive capacity pressure and completed children can be replaced', () => {
