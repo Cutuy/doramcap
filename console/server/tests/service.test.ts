@@ -287,6 +287,43 @@ for (const rejection of ['Busy', 'Closing'])
     }
   });
 
+test('a failed Review keeps its cause beside the browser error code', async () => {
+  // Arrange
+  const { root, engine, backend } = await fixture();
+  engine.profiles = async () => {
+    throw new Error('compose.yaml: services must be a mapping');
+  };
+  try {
+    // Act / Assert
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), {
+      message: 'InvalidInput',
+      detail: 'compose.yaml: services must be a mapping',
+    });
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a long Review failure keeps the end of its cause', async () => {
+  // Arrange
+  const { root, engine, backend } = await fixture();
+  engine.profiles = async () => {
+    throw new Error(`${'x'.repeat(3000)} the cause`);
+  };
+  try {
+    // Act / Assert
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), (error: Error & { detail: string }) => {
+      assert.equal(error.detail.length, execution.Limit.MAX_ERROR_CHARS);
+      assert.ok(error.detail.endsWith('the cause'));
+      return true;
+    });
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('a profiles-only project returns choices and can then be prepared explicitly', async () => {
   // Arrange
   const { root, config, engine, backend } = await fixture();

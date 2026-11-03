@@ -47,6 +47,9 @@ const MAX_METRICS = 1200;
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const selectedIds = (apps: App[], live: boolean) => [...(live ? [LIVE_BRIDGE.id] : []), ...apps.map((app) => app.id!)];
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
+/** A browser error code that keeps its cause, when the cause says more than the code. */
+const failure = (code: string, cause: unknown) =>
+  Object.assign(new Error(code), { detail: errorCode(cause) === code ? '' : browserError(errorCode(cause)) });
 
 /** The TypeScript application owns request coordination, browser state and persistence. */
 export class ConsoleService implements ConsoleBackend {
@@ -251,7 +254,7 @@ export class ConsoleService implements ConsoleBackend {
       if (workspace) await rm(workspace, { recursive: true, force: true });
       await this.diagnostic(error);
       const code = errorCode(error);
-      throw new Error(['Busy', 'Closing', 'ImageDownload', 'Stopped'].includes(code) ? code : 'InvalidInput');
+      throw failure(['Busy', 'Closing', 'ImageDownload', 'Stopped'].includes(code) ? code : 'InvalidInput', error);
     }
   }
   private async runRequest(
@@ -382,21 +385,23 @@ export class ConsoleService implements ConsoleBackend {
       return Buffer.from(wire.StartResponse.encode({ runId: this.startId }).finish());
     } catch (error) {
       await this.diagnostic(error);
-      let preflightFailed = false;
+      let preflightFailed = false, preflightError = '';
       if (this.executionStarted && !this.accepted) {
         const update = this.engine.poll();
         preflightFailed = update.runId === this.startId && update.result?.error != null;
+        if (preflightFailed) preflightError = update.result!.error!;
         await this.consume(update);
         if (update.runId !== this.startId) this.executionStarted = false;
       }
       if (!this.executionStarted) await this.finish({ blocked: false, error: errorCode(error) });
       const code = errorCode(error) === 'ConfigurationChanged' ? 'StaleReview' : errorCode(error);
-      throw new Error(
+      throw failure(
         ['StaleReview', 'Stopped', 'Conflict', 'Busy', 'Closing'].includes(code)
           ? code
           : preflightFailed
             ? 'PreflightRejected'
             : 'Internal',
+        preflightError ? new Error(preflightError) : error,
       );
     } finally {
       this.admissionPending = false;
