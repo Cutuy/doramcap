@@ -7,7 +7,8 @@
     "generate": "tsx scripts/generate.ts",
     "dev": "npm run generate && vite --host 127.0.0.1",
     "build": "npm run generate && tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "readme": "npm run generate && tsx scripts/readme.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",

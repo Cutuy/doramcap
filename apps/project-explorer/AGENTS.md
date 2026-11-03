@@ -9,6 +9,7 @@
 - Scrolling drives chapters; the chapter rail and `useCase` deep links jump to them. Prefer direct manipulation over plain buttons.
 - Selecting a block opens its detail drawer; Escape, an empty-space click, a second click, browser back, or scrolling to another chapter closes it.
 - Effects must not invent data: copy, counts and flows come from `overview.json` and the catalog.
+- The root README art mirrors the landing stack; after changing the manifest or the stack's layout, palette or camera, update `scripts/readme.ts` to match and run `npm run readme`.
 - Keep the 2D schematic as the WebGL fallback and `view=2d`, and honor reduced motion.
 - Support light and dark themes: follow the system by default; the header toggle pins a choice. Style through tokens, and give the 3D scene both its dark glow and its light tinted treatment.
 - Keep Apps and Crates in separate galleries. Display readable names such as “My Name” for `my-name`, preserving technical acronyms.
