@@ -21,7 +21,7 @@ try {
   const launched = await listenConsole(origin => createConsoleServer({ backend, secret, origin, assets }),
     preferred, browserPort, port === undefined);
   const { server } = launched;
-  const instructions = launchInstructions(launched.origin, launched.port, secret, values.ssh) + `\n\nProjects: ${config.projectRoot}`;
+  const instructions = launchInstructions(launched.origin, launched.port, secret, values.ssh) + `\n\nProject: ${config.projectRoot}`;
   if (values['launch-file']) {
     await writeFile(values['launch-file'], instructions, { mode: 0o600, flag: 'wx' });
     // A launch file means the CLI started this service and waits for readiness.

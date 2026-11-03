@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { capabilities, wire } from '../src/native.js';
 import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
-import { doctor, initialize, installRelease, releaseConfig } from '../src/release.js';
+import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -21,7 +21,8 @@ test('release configuration resolves native inputs and round-trips canonical pbt
   const config = releaseConfig(template, '/state/playground', '/release/system-apps', '/state');
   const decoded = capabilities.parseConfig(capabilities.formatConfig(config));
   // Assert
-  assert.equal(decoded.projectRoot, '/state/playground/projects');
+  assert.equal(decoded.projectRoot, '/state/playground');
+  assert.equal(decoded.dataRoot, '/state');
   assert.equal(decoded.dora!.graph, '/state/playground/graphs/flow.yml');
   assert.equal(decoded.systemApps[0].input!.directory, '/release/system-apps/capture');
   assert.equal(decoded.systemApps[0].graph, '/release/system-apps/capture/flow.yml');
@@ -30,7 +31,7 @@ test('release configuration resolves native inputs and round-trips canonical pbt
   assert.equal(String(decoded.dora!.shmBytes), '134217728');
   assert.equal(template.projectRoot, 'projects');
   for (const path of ['/host', '../outside']) {
-    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ projectRoot: path }), '/playground', '/apps', '/state'));
+    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ dora: { graph: path } }), '/playground', '/apps', '/state'));
     assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ systemApps: [{ id: 'app', input: { directory: path, files: ['compose.yaml'] } }] }), '/playground', '/apps', '/state'));
   }
 });
@@ -105,34 +106,42 @@ test('generated installer selects both architectures and rejects corruption befo
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('root setup seeds the playground once and preserves edited projects and configuration',
+test('project IDs are readable, unique per path and safe in unit names', () => {
+  // Act / Assert
+  assert.match(projectId('/home/alice/robot'), /^robot-[0-9a-f]{12}$/);
+  assert.notEqual(projectId('/home/alice/robot'), projectId('/home/bob/robot'));
+  assert.equal(projectId('/home/alice/robot'), projectId('/home/alice/robot'));
+  assert.match(projectId('/work/my repo.v2!'), /^my-repo-v2-[0-9a-f]{12}$/);
+  assert.match(projectId('/'), /^project-[0-9a-f]{12}$/);
+  assert.ok(projectId(`/${'x'.repeat(300)}`).length <= 53);
+});
+
+test('root setup pins one project config and preserves later edits',
   { skip: process.getuid?.() !== 0 }, async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-root-setup-'));
-  const source = join(directory, 'source'), state = join(directory, 'state');
-  await mkdir(join(source, 'playground/project'), { recursive: true });
-  await writeFile(join(source, 'playground/project/compose.yaml'), 'services: {}');
+  const source = join(directory, 'source'), state = join(directory, 'state'), project = join(directory, 'project');
+  await mkdir(source);
+  await mkdir(project);
   await writeFile(join(source, 'release.pb'), wire.ReleaseManifest.encode({
     version: '0.1.0', platform: `linux-${process.arch}`,
     config: { projectRoot: '.', systemApps: [{ id: 'capture', input: { directory: 'capture', files: ['compose.yaml'] } }] },
   }).finish());
   try {
     // Act
-    const path = await initialize(source, state);
+    const path = await initialize(source, project, state);
     // Assert
     const config = capabilities.parseConfig(await readFile(path, 'utf8'));
-    assert.equal(config.projectRoot, join(state, 'playground'));
+    assert.equal(config.projectRoot, project);
+    assert.equal(config.dataRoot, state);
     assert.equal(config.systemApps[0].input!.directory, join(source, 'system-apps/capture'));
-    await assert.rejects(lstat(join(state, 'playground/capture')), { code: 'ENOENT' });
     assert.equal((await lstat(path)).mode & 0o777, 0o600);
-    assert.equal(await readFile(join(state, 'playground/project/compose.yaml'), 'utf8'), 'services: {}');
+    assert.equal(await readFile(join(state, 'project.txt'), 'utf8'), `${project}\n`);
     // Act
     await writeFile(path, 'operator configuration');
-    await writeFile(join(state, 'playground/project/compose.yaml'), 'edited project');
-    await initialize(source, state);
+    await initialize(source, project, state);
     // Assert
     assert.equal(await readFile(path, 'utf8'), 'operator configuration');
-    assert.equal(await readFile(join(state, 'playground/project/compose.yaml'), 'utf8'), 'edited project');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

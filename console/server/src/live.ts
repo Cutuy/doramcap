@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { live, wire, type App, type Config } from './native.js';
-import { writeOnce } from './store.js';
+import { writeOnce } from './files.js';
 import { LIMITS } from './generated/transport.js';
 
 /** Optional system app listed beside the Dora services. */

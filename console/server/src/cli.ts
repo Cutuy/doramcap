@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,26 +7,42 @@ import { parseArgs, promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import { capabilities } from './native.js';
 import { launchInstructions, portNumber } from './launch.js';
-import { doctor, initialize, installRelease, privateState, readRelease } from './release.js';
+import { doctor, initialize, installRelease, privateState, projectId, readRelease } from './release.js';
+import { discover } from './system-apps.js';
 const exec = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   state: { type: 'string', default: '/var/lib/doramcap-console' },
   port: { type: 'string' }, 'browser-port': { type: 'string' }, ssh: { type: 'string' },
-  'no-open': { type: 'boolean' }, help: { type: 'boolean' },
+  project: { type: 'string' }, 'no-open': { type: 'boolean' }, help: { type: 'boolean' },
 } });
 const command = positionals[0] ?? 'start';
-const unit = 'doramcap-console.service';
-const state = resolve(values.state!);
+const project = (() => {
+  const path = resolve(values.project ?? process.cwd());
+  // A deleted project can still be stopped by the path it had.
+  try { return realpathSync(path); } catch { return path; }
+})();
+const stateRoot = join(resolve(values.state!), 'projects');
+const id = projectId(project);
+const unit = `doramcap-console-${id}.service`;
+const state = join(stateRoot, id);
 const launchFile = join(state, 'access.txt');
 const HELP = `Usage: doramcap-console [COMMAND] [OPTIONS]
 
+Each Compose project has its own Console service, database and recordings.
+
 Commands:
-  start    Start the service and print its access link (default). Opens a browser on a desktop.
+  start    Start this project's service and print its access link (default). Opens a browser on a desktop.
   status   Print the release, start time and access link. Exits 3 when stopped.
   stop     Stop any active run, finalize it and remove the access link.
+  list     List running Consoles and their projects.
   doctor   Check host requirements and print a fix for each failure.
-  install  Activate this release after stopping Console. The installer runs this.
+  install  Activate this release. The installer runs this.
+
+Options:
+  --project PATH       Compose project directory. Default: the current directory.
+  --state PATH         Root-owned, mode-0700 state directory. Default: /var/lib/doramcap-console.
+  --help               Print this help.
 
 Options for start:
   --ssh USER@HOST      Print a forwarding command to run on the browser computer. Keep it open.
@@ -33,21 +50,18 @@ Options for start:
   --browser-port PORT  Use this port on the browser computer.
   --no-open            Do not open a browser.
 
-Options:
-  --state PATH         Root-owned, mode-0700 state directory. Default: /var/lib/doramcap-console.
-  --help               Print this help.
+Try the sample project: doramcap-console start --project ${join(root, 'playground/cpu-burn')}
 
 The service survives SSH disconnection. Stop it before changing launch options.
 Access links and browser sessions expire on restart; keep links private.
+A moved project directory starts with a new history; its old state stays behind.
 
-Files:
-  STATE/console.pbtxt  Project roots and system apps. Edit with sudo.
-  STATE/playground     Sample project standing in for your repository.
-  STATE/runs           Run data and recordings.
-  /opt/doramcap-console/releases  Installed releases and their system apps. Upgrades keep the
-                       state directory, so console.pbtxt keeps the apps of the release that wrote it.
+Files, one directory per project under STATE/projects/:
+  console.pbtxt  Service configuration, pinned to the release that wrote it. Edit with sudo.
+  console.db     Run history.
+  runs/          Recordings.
 
-Logs: sudo journalctl -u doramcap-console.service`;
+Logs: sudo journalctl -u doramcap-console-<project>.service`;
 
 async function active() {
   return exec('systemctl', ['is-active', '--quiet', unit]).then(() => true, () => false);
@@ -73,7 +87,7 @@ async function main() {
     console.log(HELP);
     return;
   }
-  if (!['start', 'stop', 'status', 'doctor', 'install'].includes(command) || positionals.length > 1)
+  if (!['start', 'stop', 'status', 'list', 'doctor', 'install'].includes(command) || positionals.length > 1)
     throw new Error('Unknown command; use --help');
   if (process.platform !== 'linux') throw new Error('Console runs on a Linux Docker host');
   if (values.port) portNumber(values.port);
@@ -102,10 +116,10 @@ async function main() {
     });
     return;
   }
-  const lock = capabilities.lockFile('/run/doramcap-console-cli.lock');
+  // Projects run independently; install changes what all of them share.
+  const lock = capabilities.lockFile(command === 'install' ? '/run/doramcap-console-cli.lock' : `/run/doramcap-console-cli-${id}.lock`);
   try {
     if (command === 'install') {
-      if (await active()) throw new Error('Stop Console before installing another release');
       console.log(`Installed: ${await installRelease(root)}`);
       console.log('Run: doramcap-console start');
       return;
@@ -113,28 +127,41 @@ async function main() {
     const release = await readRelease(root);
     const socket = release.config!.dockerSocket || '/var/run/docker.sock';
     if (command === 'doctor') return await doctor(socket);
+    if (command === 'list') {
+      const { stdout } = await exec('systemctl', ['list-units', '--type=service', '--state=active', '--plain', '--no-legend', 'doramcap-console-*']);
+      const units = stdout.split('\n').map(line => line.split(' ')[0]).filter(Boolean);
+      if (!units.length) console.log('No Console is running.');
+      for (const name of units) {
+        const path = await readFile(join(stateRoot, name.replace(/^doramcap-console-|\.service$/g, ''), 'project.txt'), 'utf8').catch(() => 'another --state\n');
+        console.log(`${name}  ${path.trim()}`);
+      }
+      return;
+    }
     if (command === 'stop') {
-      if (!await active()) { console.log('Console is already stopped.'); return; }
+      if (!await active()) { console.log(`Console is already stopped for ${project}.`); return; }
       await exec('systemctl', ['stop', unit]);
       await rm(launchFile, { force: true });
-      console.log(`Console stopped. Recordings remain under ${state}.`);
+      console.log(`Console stopped for ${project}. Recordings remain under ${state}.`);
       return;
     }
     if (command === 'status') {
       // Exit status 3 follows LSB: not running.
-      if (!await active()) { console.log('Console is stopped. Run: doramcap-console start'); process.exitCode = 3; return; }
+      if (!await active()) { console.log(`Console is stopped for ${project}. Run: doramcap-console start`); process.exitCode = 3; return; }
       const { stdout } = await exec('systemctl', ['show', '--value', '--property=ActiveEnterTimestamp', unit]);
       console.log(`Console ${release.version} running since ${stdout.trim()}.\n\n${await access()}`);
       return;
     }
-    await privateState(state);
     if (await active()) {
       if (values.port || values['browser-port'] || values.ssh)
         throw new Error('Console is already running; stop it before changing launch options');
       console.log(await access()); return;
     }
+    await discover(project, project, []).catch(error => { throw new Error(`No Compose project at ${project}: ${error.message}`); });
+    await privateState(dirname(stateRoot));
+    await privateState(stateRoot);
+    await privateState(state);
     await doctor(socket);
-    const config = await initialize(root, state);
+    const config = await initialize(root, project, state);
     await rm(launchFile, { force: true });
     const since = Math.floor(Date.now() / 1000);
     const args = [join(root, 'server/dist/main.js'), config, join(root, 'frontend'), '--launch-file', launchFile];
