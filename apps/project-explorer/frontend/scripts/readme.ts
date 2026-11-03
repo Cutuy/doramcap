@@ -255,7 +255,7 @@ ${st.svg}
 <rect width="${W}" height="${H}" fill="url(#vignette)"/>
 <rect width="${W}" height="${H}" fill="url(#floor)"/>
 <g><circle cx="${x + 4}" cy="126" r="4" fill="${p.accent}"/><circle class="beacon" cx="${x + 4}" cy="126" r="4" fill="${p.accent}"/>
-<text class="mono" x="${x + 20}" y="130.5" font-size="12.5" letter-spacing="1.75" fill="${p.muted}">Open-source runtime · Rust · Dora · MCAP</text></g>
+<text class="mono" x="${x + 20}" y="130.5" font-size="12.5" letter-spacing="1.75" fill="${p.muted}">Source-available runtime · Rust · Dora · MCAP</text></g>
 ${halo}${title}
 <g class="body" font-size="20" fill="${p.muted}">${summary}</g>
 ${statsSvg}

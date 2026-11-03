@@ -142,7 +142,7 @@ function Story({ catalog, route }: { catalog: Catalog; route: Route }) {
             <div className="flow-legend">{kinds.map(k => <span key={k} className={`legend-${k}`}><b aria-hidden="true" />{flowLabels[k]}</span>)}</div>
           </motion.div> : <motion.div key="hero" className="story-copy hero-copy"
             initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -24, filter: 'blur(6px)' }} transition={{ duration: .7, ease }}>
-            <div className="eyebrow pulse">Open-source runtime · Rust · Dora · MCAP</div>
+            <div className="eyebrow pulse">Source-available runtime · Rust · Dora · MCAP</div>
             <h1 aria-label={overview.title}>{overview.title.split(' ').map((word, i, all) => <motion.span key={i} className={`word${i >= all.length - 2 ? ' accent' : ''}`} aria-hidden="true" initial={{ opacity: 0, y: '0.4em', filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: .8, delay: .15 + i * .08, ease }}>{word} </motion.span>)}</h1>
             <p>{overview.summary}</p>
             <dl className="hero-stats">
