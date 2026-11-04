@@ -3,7 +3,8 @@ use super::{
     DockerAdapter, EXPERIMENT_OWNER_LABEL, RUN_LABEL, digest, private_write, validate_name,
 };
 use crate::compose::{
-    Cleanup, ComposeProjectState, Container, ResolvedComposeProject, Result, Shutdown,
+    Cleanup, ComposeProjectState, Container, FORCED_STOP_OPERATION, ResolvedComposeProject, Result,
+    Shutdown,
     command::compose,
     error::{absent, engine, invalid},
     state::append_output,
@@ -535,10 +536,25 @@ impl ComposeExecution<'_> {
                     match self.adapter.docker.inspect_container(&id, None).await {
                         Ok(stopped) => {
                             if stopped.state.as_ref().is_some_and(|s| {
+                                s.running != Some(true)
+                                    && s.pid.unwrap_or(0) == 0
+                                    && (s.exit_code == Some(137) || s.oom_killed == Some(true))
+                            }) {
+                                result.forced_services.push(
+                                    summary
+                                        .labels
+                                        .as_ref()
+                                        .and_then(|l| l.get("com.docker.compose.service"))
+                                        .cloned()
+                                        .unwrap_or_else(|| id.clone()),
+                                );
+                                result.diagnostics.push(
+                                    invalid(format!("{id}: forced/unclean shutdown"))
+                                        .diagnostic(FORCED_STOP_OPERATION),
+                                );
+                            } else if stopped.state.as_ref().is_some_and(|s| {
                                 s.running == Some(true)
                                     || s.pid.unwrap_or(0) != 0
-                                    || s.exit_code == Some(137)
-                                    || s.oom_killed == Some(true)
                                     || (self.plan.key == "system" && s.exit_code != Some(0))
                             }) {
                                 result.diagnostics.push(

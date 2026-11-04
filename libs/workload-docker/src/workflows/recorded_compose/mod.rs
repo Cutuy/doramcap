@@ -265,7 +265,7 @@ impl ComposeRunner {
         if let Some(quiescing) = signals.quiescing.take() {
             let _ = quiescing.send(());
         }
-        let adopted_clean = execution::quiesce_services(
+        let adopted = execution::quiesce_services(
             &executor,
             &plan,
             &prepared.value().user_services,
@@ -273,6 +273,12 @@ impl ComposeRunner {
             &diagnostics,
         )
         .await;
+        // A killed workload loses unsent messages; a killed MCAP writer also loses its footer.
+        let adopted_clean = adopted.stopped
+            && !adopted
+                .forced
+                .iter()
+                .any(|service| spec.mcap_writers.services.contains(service));
         let systems_stopped = resources
             .lock()
             .await
@@ -281,7 +287,7 @@ impl ComposeRunner {
         if let Err(error) = &systems_stopped {
             execution::record_failure(&diagnostics, "system shutdown", error);
         }
-        let systems_clean = execution::quiesce_services(
+        let systems = execution::quiesce_services(
             &executor,
             &plan,
             &prepared.value().system_services,
@@ -289,6 +295,7 @@ impl ComposeRunner {
             &diagnostics,
         )
         .await;
+        let systems_clean = systems.stopped && systems.forced.is_empty();
         let runtime_shutdown = executor.run::<super::experiment::StopDoraRuntime>(()).await;
         let runtime_stopped = runtime_shutdown
             .as_ref()
@@ -395,6 +402,7 @@ impl ComposeRunner {
                     && systems_stopped.is_ok()
                     && systems_clean
                     && execution_error.is_none(),
+                forced_services: adopted.forced,
                 event_stream_healthy: false,
                 filesystem_changes: finalized.filesystem_changes,
                 filesystem_results: finalized.filesystem_results,
@@ -518,6 +526,9 @@ pub struct ComposeRunReport {
     pub writers_stopped: bool,
     /// Whether configured supporting-app recordings passed finalization checks.
     pub recording_finalized: bool,
+    /// Workload services killed at stop; their final messages may be missing from recordings.
+    #[serde(default)]
+    pub forced_services: Vec<String>,
     /// Whether event capture completed without a detected error; not a losslessness guarantee.
     pub event_stream_healthy: bool,
     /// Category-specific metadata manifests. Expected changes/coverage warnings

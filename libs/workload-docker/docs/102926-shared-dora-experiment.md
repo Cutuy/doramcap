@@ -20,7 +20,7 @@ Acceptance requires **strictly fewer production-code LOC than main**.
   The Dora setup step owns communication services; workload steps own all app services.
 - Stop adopted apps, stop system apps, stop Dora, then
   finalize filesystems, remove resources and release repository admission. Different repositories
-  may run concurrently; gallery apps have separate repository identities. Forced stops leave recording status incomplete.
+  may run concurrently; gallery apps have separate repository identities. Forced stops of MCAP writers and supporting apps leave recording status incomplete; a killed workload keeps its recordings and is listed in `forced_services`.
 - Preserve protobuf/pbtxt settings, native Dora graphs, immutable inputs, embedded
   recording and the MCAP writer's `seccomp=unconfined` setting.
 
@@ -91,8 +91,9 @@ kills at three boundaries. The native group passes in 118 s.
 - [x] Events prove daemon ready → every system app stable → user starts, including
   slow startup. Earlier-stage failure/cancellation prevents user startup.
 - [x] Plain Compose apps and apps that ignore Dora run and stop normally.
-- [x] Final accepted messages survive drain. Forced workload stop and daemon death
-  report incomplete recording and await cleanup.
+- [x] Final accepted messages survive drain. Forced MCAP-writer stop and daemon death
+  report incomplete recording and await cleanup. Forced workload stop keeps recordings
+  and reports `forced_services`.
 - [x] Interrupted runs preserve ownership and outputs; M6 resets their disposable
   resources before another experiment starts.
 

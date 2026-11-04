@@ -179,6 +179,8 @@ message Shutdown {
   repeated Diagnostic diagnostics = 2;
   // All inspected owned containers are stopped; containers have not been removed.
   bool stopped = 3;
+  // Services killed by SIGKILL or the OOM killer; each also has a forced-stop diagnostic.
+  repeated string forced_services = 4;
 }
 
 // Comparable experiment configuration, independent of generated artifact locations.

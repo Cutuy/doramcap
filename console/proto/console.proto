@@ -55,6 +55,7 @@ message Outcome {
   optional bool recording_finalized = 3;
   optional bool boundary_clean = 4;
   optional bool event_stream_healthy = 5;
+  repeated string forced_services = 7; // Workload services killed at stop.
 }
 // One relayed bridge input; frames carry `id` as their stream.
 message LiveStream { string id = 1; string app_id = 2; doramcap.console.live.v1.Kind kind = 3; }

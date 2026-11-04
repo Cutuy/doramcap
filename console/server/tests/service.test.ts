@@ -237,6 +237,7 @@ test('declared recording sizes and downloads are built in the TypeScript view', 
       boundaryClean: true,
       writersStopped: true,
       recordingFinalized: true,
+      forcedServices: ['perception'],
       eventStreamHealthy: true,
     });
     const finished = wire.Status.decode(await backend.status());
@@ -244,6 +245,7 @@ test('declared recording sizes and downloads are built in the TypeScript view', 
     const { readFileSync, closeSync } = await import('node:fs');
     // Assert
     assert.equal(finished.outcome!.recordingFinalized, true);
+    assert.deepEqual(finished.outcome!.forcedServices, ['perception']);
     assert.equal(readFileSync(fd, 'utf8'), 'captured evidence');
     closeSync(fd);
   } finally {

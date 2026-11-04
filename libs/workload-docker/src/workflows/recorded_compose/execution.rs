@@ -1,5 +1,6 @@
 //! Application startup, monitoring and cooperative cancellation for one prepared run.
 use super::*;
+use crate::compose::FORCED_STOP_OPERATION;
 use orchestrator::{LocalExecutor, Output};
 use std::time::Duration;
 
@@ -136,15 +137,27 @@ pub(super) async fn monitor(
     }
 }
 
+/// Result of stopping selected services.
+pub(super) struct QuiescedServices {
+    /// Every service stopped with no failure other than forced termination.
+    pub stopped: bool,
+    /// Services killed by SIGKILL or the OOM killer.
+    pub forced: Vec<String>,
+}
+
 pub(super) async fn quiesce_services(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     services: &[String],
     stop_seconds: u64,
     diagnostics: &Diagnostics,
-) -> bool {
+) -> QuiescedServices {
+    let mut result = QuiescedServices {
+        stopped: services.is_empty(),
+        forced: Vec::new(),
+    };
     if services.is_empty() {
-        return true;
+        return result;
     }
     let Ok(stopped) = executor
         .run::<QuiesceCompose>(StopInput {
@@ -155,12 +168,17 @@ pub(super) async fn quiesce_services(
         })
         .await
     else {
-        return false;
+        return result;
     };
     let stopped = stopped.into_value();
-    let clean = stopped.stopped && stopped.diagnostics.is_empty();
+    result.stopped = stopped.stopped
+        && stopped
+            .diagnostics
+            .iter()
+            .all(|d| d.operation == FORCED_STOP_OPERATION);
+    result.forced = stopped.forced_services;
     diagnostics.borrow_mut().extend(stopped.diagnostics);
-    clean
+    result
 }
 
 pub(super) fn record_failure(
