@@ -1,8 +1,14 @@
-use crate::{BatchView, Result, Sink, SinkBuilder, wire};
-use std::path::{Path, PathBuf};
+use crate::{BatchView, Blocks, Result, Sink, SinkBuilder, wire};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 use storage_persistence::mcap::{Channel, McapConfig, McapWriter, Message, Schema};
 
 const CHANNEL: u16 = 1;
+/// Upper bound added to persistence latency by combining blocks into one message.
+const BATCH_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Direct-I/O MCAP output; its writer is created on the sink worker that owns it.
 pub struct McapSink {
@@ -45,15 +51,51 @@ impl Sink for Writer {
     fn name(&self) -> &str {
         "mcap"
     }
-    fn write(&mut self, b: BatchView<'_>) -> Result<()> {
-        let message = Message {
-            channel: CHANNEL,
-            sequence: b.sequence as u32,
-            log_time: b.unix_ns,
-            publish_time: b.unix_ns,
-        };
+    fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+        Err("McapSink serializes in write_blocks".into())
+    }
+    /// Serializes each batch directly into the writer's pinned buffer.
+    fn write_blocks(&mut self, blocks: &mut Blocks<'_>) -> Result<()> {
         let writer = self.0.as_mut().ok_or("MCAP finalized")?;
-        writer.write(message, b.bytes)?;
+        let limit = writer.max_inline_payload();
+        while let Some(plan) = blocks.plan(limit) {
+            let message = Message {
+                channel: CHANNEL,
+                sequence: plan.sequence as u32,
+                log_time: plan.unix_ns,
+                publish_time: plan.unix_ns,
+            };
+            // Drain first so commit has pending room and large allocations stay one at a time.
+            if plan.len > limit {
+                writer.flush_written()?;
+            }
+            for attempt in 0..2 {
+                match writer.reserve(message, plan.len) {
+                    Ok(mut reservation) => {
+                        blocks.encode(reservation.payload_mut());
+                        reservation.try_commit()?;
+                        break;
+                    }
+                    // Retry once after draining; retained registrations can still refuse capacity.
+                    Err(error) if attempt == 1 || error.kind() != io::ErrorKind::WouldBlock => {
+                        return Err(error.into());
+                    }
+                    Err(_) => {}
+                }
+                writer.flush_written()?;
+            }
+            blocks.commit(&plan);
+        }
+        Ok(())
+    }
+    fn batch_interval(&self) -> Option<Duration> {
+        Some(BATCH_INTERVAL)
+    }
+    /// Flushes aged data even while no blocks arrive.
+    fn poll(&mut self) -> Result<()> {
+        if let Some(writer) = self.0.as_mut() {
+            writer.poll(Instant::now())?;
+        }
         Ok(())
     }
     fn finish(&mut self) -> Result<()> {

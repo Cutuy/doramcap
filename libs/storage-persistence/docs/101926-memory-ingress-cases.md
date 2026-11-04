@@ -50,7 +50,7 @@ blocks bypass MCAP construction and combining through a thin format admission
 step. Backend support must establish DMA eligibility for the actual memory type.
 
 Related: [large external-memory plan](101826-external-buffer-leases.md),
-[tracing slab ownership](../../activity-tracing/docs/external-buffer-ownership.svg).
+[tracing buffer ownership](../../activity-tracing/docs/external-buffer-ownership.svg).
 
 ## Intra-process slab ownership
 
