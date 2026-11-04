@@ -56,7 +56,7 @@ codegen-units = 1
 [profile.ci]
 inherits = "dev"
 opt-level = 0
-debug = "line-tables-only"
+debug = false
 incremental = false
 debug-assertions = true
 overflow-checks = true
