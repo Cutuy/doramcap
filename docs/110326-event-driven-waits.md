@@ -14,7 +14,7 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 
 ## Milestone 1: Activity tracing
 
-![Sink block batching and MCAP serialization](110326-batch-blocks-flow.svg)
+![Sink block batching and MCAP serialization](../libs/activity-tracing/docs/batch-blocks-flow.svg)
 
 **Work items**
 

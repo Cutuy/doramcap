@@ -5,6 +5,7 @@ and MCAP, WebSocket or OpenTelemetry outputs. Each sink's worker serializes for 
 
 ![Architecture](docs/architecture.svg)
 
+[Sink block batching](docs/batch-blocks-flow.svg) ·
 [Buffer lifetimes](docs/buffer-lifetimes.svg) ·
 [Buffer ownership](docs/external-buffer-ownership.svg) ·
 [Roadmap and validation gates](docs/101826-my-roadmpa.md) ·
