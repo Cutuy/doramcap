@@ -2,7 +2,7 @@
 
 # System app health and protobuf launches
 
-Created: 2026-11-02. Updated: 2026-11-03. Status: implementation and validation.
+Created: 2026-11-02. Updated: 2026-11-03. Status: implemented; final hosted/ARM64 checks running.
 Updates [PR 96](https://github.com/Cutuy/doramcap/pull/96); leave it open for user review.
 
 CPU monitor records itself. Watchdog aggregates selected health outputs. The generic
@@ -18,8 +18,8 @@ protobuf TextFormat messages, mounted read-only at stable container paths.
 
 **Validation**
 - [x] Focused release-profile tests pass for watchdog, monitor, recorder and resource-policy without optional features.
-- [x] Feature-enabled tests and both Clippy configurations pass; complete local CI passed before the final diagnostic/UTF-8 follow-up.
-- [ ] Reference docs and catalog links match the direct configuration contracts.
+- [x] Final feature-enabled tests and both Clippy configurations pass.
+- [x] Reference docs and catalog links match the direct configuration contracts.
 
 Evidence: initial focused Rust run passed 28 tests plus the recorder fixture; the
 BPF-only monitor integration test was explicitly ignored in that build.
@@ -32,8 +32,8 @@ BPF-only monitor integration test was explicitly ignored in that build.
 
 **Validation**
 - [x] Initial standalone and host tests pass with direct pbtxt.
-- [ ] Feature-enabled profile and budget tests pass on the final source.
-- [ ] Real Dora runs cover zero inputs and incoming health publications.
+- [x] Feature-enabled and default profile/budget tests pass; all 15 external source slots fit each enabled release profile.
+- [x] Real Dora and Compose runs cover zero inputs and incoming health publications.
 
 ## Milestone 2: System apps publish health
 
@@ -44,8 +44,8 @@ BPF-only monitor integration test was explicitly ignored in that build.
 - [x] Declare health outputs in release and integration graphs and reuse helper in demo.
 
 **Validation**
-- [ ] Failure/recovery publications survive real transport and MCAP readback.
-- [ ] No-subscriber execution and existing recording behavior pass.
+- [x] Failure/recovery/staleness publications survive real transport; independent MCAP readback validates 265 watchdog publications.
+- [x] No-subscriber execution passes; official Dora CLI recording equality preserves all 24 CPU samples.
 - [x] Dependency boundary checks pass.
 
 ## Milestone 3: Console wiring and three-app release
@@ -54,18 +54,19 @@ BPF-only monitor integration test was explicitly ignored in that build.
 - [x] Wire selected `health` outputs using bounded `drop_oldest` queues.
 - [x] Remove fixed `workload/faults`, project `flow.yml` discovery and associated Review blocking.
 - [x] Pair generic recorder profiles with complete native Dora graphs and pbtxt configs.
-- [ ] Update PR 96 and leave it open for review.
+- [x] Update PR 96 and leave it open for review.
 
 **Validation**
 - [x] Graph tests cover zero/one/multiple health sources and arbitrary user-message recording inputs.
 - [x] Console server/frontend checks pass (77 server tests, one root-only skip; frontend tests/build pass).
-- [ ] Real release-profile acceptance script passes.
+- [x] All six real release-profile scenarios pass: alone, live, MCAP, OTLP, CPU topics and watchdog publications.
 - [x] Full local CI passed: boundaries, formatting, default/all-feature Clippy and workspace tests, storage without defaults, examples/binaries and snapshot synchronization.
 - [ ] Hosted CI and final follow-up checks pass.
-- [ ] ARM64 worker validation passes.
+- [x] ARM64 job 573 passes Node, lint, default/all-feature Rust and native accounting/allocation checks.
+- [ ] Final budget/UTF-8 snapshot job 574 passes.
 
 Worker observation: started the unprivileged Pueue daemon after finding no socket.
-ARM64 job 572 exhausted linker memory. The runner now builds with one Cargo job; retry 573 is running. Full CI and end-to-end results remain pending.
+ARM64 job 572 exhausted linker memory. The runner now builds with one Cargo job; retry 573 passed, including native tests. Final snapshot job 574 is running. Full CI and end-to-end results remain pending.
 
 Acceptance command (build the release binaries and examples unprivileged first):
 
@@ -84,3 +85,13 @@ initial cached qualification CLI had a different binary digest.
 
 The first-party live bridge also receives a complete `BridgeConfig` pbtxt via a
 read-only bind mount. Dora's third-party coordinator/daemon retain native CLI arguments.
+
+Acceptance evidence: `/tmp/console-system-apps-dsGPy7` on x86_64. Every scenario
+finished with clean boundaries and finalized recordings. User payload readback
+preserved 92–93 byte-exact messages per scenario; the system-output profile read
+343 watchdog messages. Live frames contained monitor, recorder and workload health;
+the OTLP collector received records. The health/recording graph cycle ran cleanly.
+
+The bundled `cpu-recorder` app is now `data-recorder`. Operator profiles pair a
+complete recorder pbtxt with a complete native Dora graph; the `user/messages`
+acceptance workload demonstrates this integration without a special message codec.

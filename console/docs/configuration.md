@@ -68,6 +68,8 @@ Mount schema files explicitly when the recording uses protobuf or another schema
 selected node declaring `health`, using bounded `drop_oldest` queues. Watchdog reads
 its inputs from Dora and can run with zero inputs. The release watchdog requires
 no workload graph. CPU monitor and data recorder publish health independently.
+Release watchdog profiles reserve one of 16 source slots for local diagnostics
+and allow 32 conditions per source; their frame and queue limits are explicit.
 
 ## Live bridge
 

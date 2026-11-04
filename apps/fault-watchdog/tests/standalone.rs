@@ -112,3 +112,27 @@ fn zero_inputs_publish_local_diagnostics_and_excess_inputs_fail() {
             .contains("max_sources")
     );
 }
+
+#[test]
+fn release_profiles_fit_the_declared_health_fan_in() {
+    // Arrange
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../console/release/system-apps/fault-watchdog");
+    for (name, enabled) in [
+        ("watchdog", true),
+        ("watchdog-mcap", cfg!(feature = "mcap")),
+        ("watchdog-otel", cfg!(feature = "otel")),
+    ] {
+        // Act
+        let config = config::load(&root.join(format!("{name}.pbtxt")));
+        // Assert
+        assert_eq!(config.is_ok(), enabled, "{name}");
+        if let Ok(config) = config {
+            // Act / Assert: the reserved local source plus every configured external source fit.
+            let inputs = (0..config.max_sources.unwrap() - 1)
+                .map(|id| format!("health_{id}"))
+                .collect();
+            assert!(config.settings(inputs).is_ok(), "{name}");
+        }
+    }
+}

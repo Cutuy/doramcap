@@ -2,7 +2,7 @@
 import { strict as assert } from 'node:assert';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,10 @@ for (const [name,dockerfile,binary] of images) {
 }
 const apps = join(directory, 'system-apps');
 await cp(join(root,'console/release/system-apps'), apps, {recursive:true});
+for (const name of await readdir(apps)) {
+  const path = join(apps,name,'compose.yaml');
+  await writeFile(path,(await readFile(path,'utf8')).replaceAll(':local',`:${tag}`));
+}
 await cp(join(root,'libs/telemetry/protocol/proto/telemetry_descriptor.bin'),join(apps,'data-recorder/telemetry_descriptor.bin'));
 const template = capabilities.parseConfig((await readFile(join(root,'console/release/console.pbtxt'),'utf8')).replaceAll(':local',`:${tag}`));
 let otlpRecords = 0;
@@ -55,9 +59,9 @@ try {
     await mkdir(project,{recursive:true});
     const withSource = scenario !== 'alone' && scenario !== 'cpu';
     await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{user:withSource ? {
-      image:`doramcap/dora:${tag}`,network_mode:'host',entrypoint:['/fixture'],
+      image:`doramcap/dora:${tag}`,init:true,network_mode:'host',entrypoint:['/fixture'],
       volumes:[{type:'bind',source:join(bin,'examples/health_fixture'),target:'/fixture',read_only:true}],
-    } : {image:`doramcap/dora:${tag}`,entrypoint:['/bin/sleep','infinity']}}}));
+    } : {image:`doramcap/dora:${tag}`,init:true,entrypoint:['/bin/sleep','infinity']}}}));
     execFileSync('git',['init','--quiet'],{cwd:project});
     execFileSync('git',['add','.'],{cwd:project});
     execFileSync('git',['-c','user.name=Console test','-c','user.email=test@example.invalid','commit','--quiet','-m','Test workload'],{cwd:project});
@@ -117,6 +121,8 @@ try {
       // Assert
       assert.equal(terminal.phase,wire.Phase.FINISHED,JSON.stringify(terminal.outcome));
       assert.equal(terminal.outcome?.boundaryClean,true,JSON.stringify(terminal.outcome));
+      assert.equal(terminal.outcome?.execution,'Completed',JSON.stringify(terminal.outcome));
+      if (scenario !== 'alone') assert.equal(terminal.outcome?.recordingFinalized,true,JSON.stringify(terminal.outcome));
       assert.ok(snapshots>0,'watchdog sent no live snapshots');
       if (withSource) {
         assert.ok(observed.has(3),'active fault missing');
@@ -129,7 +135,7 @@ try {
       }
       if (scenario === 'cpu') assert.ok(components.has('system-monitor'),'CPU monitor health missing');
       if (scenario === 'otel') assert.ok(otlpRecords>0,'collector received no records');
-      console.log(`${scenario}: live snapshots=${snapshots}, components=${[...components].join(',')}, healthy/fault/recovery/stale assertions passed`);
+      console.log(`${scenario}: live snapshots=${snapshots}, components=${[...components].join(',')}, ${withSource ? 'health failure/recovery/staleness verified' : 'live diagnostics verified'}`);
     } finally {unsubscribe();await backend.close();}
   }
 } finally {
