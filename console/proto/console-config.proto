@@ -21,7 +21,7 @@ message ConsoleConfig {
 // Omitted fields preserve defaults; explicit zero is invalid.
 message RuntimeConfig {
   optional uint32 readiness_seconds = 1; // Default: 60.
-  optional uint32 stop_seconds = 2; // Default: 15.
+  optional uint32 stop_seconds = 2; // Stop grace period for services declaring none. Default: 15.
   optional uint32 sample_interval_ms = 3; // Default: 100; also bounds activity publication cadence.
 }
 

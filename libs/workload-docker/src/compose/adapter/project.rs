@@ -20,6 +20,21 @@ use std::{
 
 /// Docker exit status of a process ended by SIGKILL.
 const SIGKILL_EXIT_CODE: i64 = 128 + libc::SIGKILL as i64;
+/// Seconds Docker waits to stop a container created without a stop timeout.
+const ENGINE_DEFAULT_STOP_SECONDS: u64 = 10;
+/// Time a stop request may take beyond the grace periods it waits for.
+const STOP_REQUEST_MARGIN: Duration = Duration::from_secs(10);
+
+/// Return how long Docker waits between the stop signal and SIGKILL for this container.
+fn stop_timeout(info: &bollard::models::ContainerInspectResponse) -> Duration {
+    let seconds = info
+        .config
+        .as_ref()
+        .and_then(|config| config.stop_timeout)
+        .and_then(|seconds| u64::try_from(seconds).ok())
+        .unwrap_or(ENGINE_DEFAULT_STOP_SECONDS);
+    Duration::from_secs(seconds)
+}
 
 /// Borrows one frozen plan and its shared Docker connection for inspection and routing.
 /// Workflow steps control startup and teardown; dropping this view changes no resources.
@@ -452,8 +467,8 @@ impl ComposeExecution<'_> {
     }
     /// Quiesce the whole project, then remove its owned resources.
     /// Retain diagnostics and inspect `verified`; cancellation requires a retry.
-    pub(crate) async fn stop(&self, seconds: u64, allow_volume_deletion: bool) -> Result<Cleanup> {
-        let stopped = self.quiesce(&[], seconds).await?;
+    pub(crate) async fn stop(&self, allow_volume_deletion: bool) -> Result<Cleanup> {
+        let stopped = self.quiesce(&[]).await?;
         if !stopped.stopped {
             return Err(invalid("project failed to quiesce"));
         }
@@ -461,9 +476,9 @@ impl ComposeExecution<'_> {
         result.diagnostics.extend(stopped.diagnostics);
         Ok(result)
     }
-    /// Stop selected writers, retaining containers and volumes for evidence collection.
-    /// `stopped` confirms process termination; diagnostics retain unsuccessful exits.
-    pub(crate) async fn quiesce(&self, services: &[String], seconds: u64) -> Result<Shutdown> {
+    /// Stop selected writers with each container's own stop timeout, retaining containers
+    /// and volumes for evidence. `stopped` confirms termination; diagnostics retain unsuccessful exits.
+    pub(crate) async fn quiesce(&self, services: &[String]) -> Result<Shutdown> {
         let mut result = Shutdown {
             project: self.plan.name.clone(),
             ..Default::default()
@@ -486,10 +501,10 @@ impl ComposeExecution<'_> {
         }
         let mut before = self.containers().await?;
         let all_owned = before.iter().all(|c| self.owned(c));
-        // Preserve dependency-order stop semantics through Compose, with a bounded
-        // grace period. Fall back to per-container Engine operations on CLI error.
+        // Preserve dependency-order stop semantics through Compose; omitting --timeout
+        // applies each container's own. Fall back to per-container Engine operations on CLI error.
         let mut args = self.args();
-        args.extend(["stop".into(), "--timeout".into(), seconds.to_string()]);
+        args.push("stop".into());
         if !services.is_empty() {
             if services
                 .iter()
@@ -506,12 +521,19 @@ impl ComposeExecution<'_> {
             });
         }
         if all_owned && self.verify_manifest().await.is_ok() {
+            // Dependent services stop one after another, so allow for every grace period in turn.
+            let mut deadline = STOP_REQUEST_MARGIN;
+            for id in before.iter().filter_map(|c| c.id.as_deref()) {
+                if let Ok(info) = self.adapter.docker.inspect_container(id, None).await {
+                    deadline += stop_timeout(&info);
+                }
+            }
             if let Err(e) = compose(
                 &self.adapter.socket,
                 Path::new(&self.plan.manifest).parent().unwrap(),
                 &BTreeMap::new(),
                 &args,
-                Duration::from_secs(seconds.saturating_mul(before.len() as u64 + 1) + 10),
+                deadline,
             )
             .await
             {
@@ -538,13 +560,9 @@ impl ComposeExecution<'_> {
                         && let Err(e) = self
                             .adapter
                             .docker
-                            .stop_container(
-                                &id,
-                                Some(StopContainerOptions {
-                                    t: Some(seconds.min(i32::MAX as u64) as i32),
-                                    ..Default::default()
-                                }),
-                            )
+                            .clone()
+                            .with_timeout(stop_timeout(&info) + STOP_REQUEST_MARGIN)
+                            .stop_container(&id, None)
                             .await
                         && !absent(&e)
                     {

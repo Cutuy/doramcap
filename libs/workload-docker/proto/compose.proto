@@ -107,8 +107,7 @@ message StopInput {
   repeated string services = 2;
   // Owned project to stop and inspect.
   ResolvedComposeProject plan = 3;
-  // Grace period passed to shutdown operations, in seconds.
-  uint64 stop_seconds = 4;
+  reserved 4;
 }
 
 // Bounded operation evidence; capture limits and timeouts are reported explicitly.

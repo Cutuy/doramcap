@@ -42,6 +42,7 @@ message AppRegistration {
   optional uint32 port = 5;
   bool headless = 6;
   uint64 readiness_seconds = 7;
+  // Stop grace period for services declaring no stop_grace_period.
   uint64 stop_seconds = 8;
   string result_file = 9;
   bool result_optional = 10;

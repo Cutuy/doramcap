@@ -100,9 +100,9 @@ fn volume_deletion_permission_defaults_off_across_serialization_formats() {
             ""
         };
         let json = if permission {
-            serde_json::json!({"allow_volume_deletion": true, "stop_seconds": 0})
+            serde_json::json!({"allow_volume_deletion": true})
         } else {
-            serde_json::json!({"stop_seconds": 0})
+            serde_json::json!({})
         };
 
         // Act

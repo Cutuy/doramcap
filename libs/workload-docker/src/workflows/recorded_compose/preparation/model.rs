@@ -1,7 +1,11 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
 use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
-use crate::workflows::{dora, shared_dora::DAEMON};
+use crate::workflows::{
+    dora,
+    recorded_compose::{MAX_STOP_SECONDS, MIN_STOP_SECONDS},
+    shared_dora::DAEMON,
+};
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
 
@@ -130,6 +134,34 @@ pub(super) fn configure_dora(
     model["services"][DAEMON]["container_name"] = owner.into();
     model["services"][DAEMON]["labels"][EXPERIMENT_OWNER_LABEL] = "true".into();
     Ok(diagnostics)
+}
+
+/// Give services without a `stop_grace_period` the run's `stop_seconds`.
+/// Errors: a declared period outside `MIN_STOP_SECONDS..=MAX_STOP_SECONDS`, or one that cannot be read.
+/// Docker stores whole seconds, so a shorter period would SIGKILL the service on stop.
+pub(super) fn configure_stop_grace(model: &mut Value, stop_seconds: u64) -> Result<()> {
+    for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
+        let Some(declared) = service.get("stop_grace_period") else {
+            service["stop_grace_period"] = format!("{stop_seconds}s").into();
+            continue;
+        };
+        let period = declared
+            .as_str()
+            .and_then(|period| humantime::parse_duration(period).ok())
+            .ok_or_else(|| {
+                invalid(format!(
+                    "{name}: cannot read stop_grace_period {declared}; use whole seconds or minutes"
+                ))
+            })?;
+        let allowed = std::time::Duration::from_secs(MIN_STOP_SECONDS)
+            ..=std::time::Duration::from_secs(MAX_STOP_SECONDS);
+        if !allowed.contains(&period) {
+            return Err(invalid(format!(
+                "{name}: stop_grace_period {declared} must be from {MIN_STOP_SECONDS}s to {MAX_STOP_SECONDS}s"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Require every graph node to map to a host-networked Compose service.

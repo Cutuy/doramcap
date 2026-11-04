@@ -14,7 +14,7 @@ message RunRequest {
   doramcap.dora.v1.DoraRuntime dora = 6;
   repeated Recording recordings = 7;
   uint64 readiness_seconds = 8;
-  uint64 stop_seconds = 9;
+  uint64 stop_seconds = 9; // Stop grace period for services declaring none.
   repeated string mcap_services = 10; // Services writing recordings through io_uring.
 }
 message Recording { string stream = 1; string recording = 2; }

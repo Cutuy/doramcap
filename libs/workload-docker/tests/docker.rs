@@ -567,7 +567,6 @@ async fn multi_project_lifecycle() {
             allow_volume_deletion: true,
             services: vec![],
             plan: Some(beta),
-            stop_seconds: 3,
         })
         .await
         .unwrap();
@@ -969,7 +968,6 @@ async fn direct_session_lifecycle_and_prerun_reset() {
                     allow_volume_deletion: false,
                     services: vec![],
                     plan: Some(plans[0].clone()),
-                    stop_seconds: 3,
                 })
                 .await
                 .unwrap();
@@ -994,6 +992,90 @@ async fn direct_session_lifecycle_and_prerun_reset() {
                 .containers
                 .is_empty()
         );
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine and DORAMCAP_TEST_IMAGE"]
+async fn stopping_a_run_respects_each_service_grace_period() {
+    // Arrange: `stubborn` ignores the stop signal; `draining` exits cleanly 6 s after it.
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").unwrap();
+    let root = std::env::temp_dir().join(format!("stop-grace-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter);
+    let stubborn = "trap '' TERM INT; while :; do /bin/sleep 1; done";
+    let draining =
+        "trap '/bin/sleep 6; exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done";
+    let program = |command: &str| serde_json::json!({"image":image,"entrypoint":["/bin/sh","-c"],"command":[command]});
+    let with_grace = |mut service: serde_json::Value, period: &str| {
+        service["stop_grace_period"] = period.into();
+        service
+    };
+    let cases = [
+        // A short period ends the stop long before the run's 30 s default.
+        ("short", with_grace(program(stubborn), "2s"), 30, true),
+        // A long period outlasts the run's 2 s default, so the service finishes draining.
+        ("long", with_grace(program(draining), "20s"), 2, false),
+        // No period takes the run's default, which here outlasts Docker's own 10 s.
+        ("unset", program(draining), 20, false),
+    ];
+    for (key, service, stop_seconds, killed) in cases {
+        write(
+            &root.join(format!("{key}.json")),
+            serde_json::json!({"services":{"app":service}}),
+        );
+        let id = format!("stop-grace-{}-{key}", std::process::id());
+        let spec = ComposeRun {
+            id: id.clone(),
+            artifacts: root.join(&id),
+            filesystem: None,
+            dora: Default::default(),
+            recordings: vec![],
+            mcap_writers: Default::default(),
+            repository_root: root.clone(),
+            projects: vec![project(&root, key)],
+            system_apps: vec![],
+            readiness_seconds: 10,
+            stop_seconds,
+        };
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let mut run = Box::pin(runner.run_with_ready(
+            spec,
+            async {
+                let _ = stopped.await;
+            },
+            |_: &orchestrator::Event| {},
+            Some(ready),
+        ));
+        tokio::select! {
+            plan = started => { plan.unwrap(); }
+            result = &mut run => panic!("{key}: run ended before readiness: {result:?}"),
+        }
+
+        // Act
+        let stop_requested = std::time::Instant::now();
+        stop.send(()).unwrap();
+        let report = run.await.unwrap();
+        let elapsed = stop_requested.elapsed();
+
+        // Assert
+        let exit = report
+            .service_exits
+            .iter()
+            .find(|exit| exit.service == "app")
+            .unwrap_or_else(|| panic!("{key}: no exit recorded: {report:?}"));
+        assert_eq!(exit.killed, killed, "{key}: {report:?}");
+        assert_eq!(exit.exit_code, if killed { 137 } else { 0 }, "{key}");
+        if killed {
+            assert!(elapsed >= Duration::from_secs(2), "{key}: {elapsed:?}");
+            assert!(elapsed < Duration::from_secs(20), "{key}: {elapsed:?}");
+        } else {
+            assert!(elapsed >= Duration::from_secs(6), "{key}: {elapsed:?}");
+        }
+        assert!(report.boundary_clean, "{key}: {report:?}");
     }
 }
 
@@ -2632,7 +2714,6 @@ async fn mixed_volume_policies_and_evidence_preservation() {
         plan: Some(plan),
         services: vec![],
         allow_volume_deletion: false,
-        stop_seconds: 3,
     })
     .await
     .unwrap();
@@ -2777,7 +2858,6 @@ async fn incomplete_volume_scan_retains_volumes() {
         allow_volume_deletion: true,
         services: vec![],
         plan: Some(plan),
-        stop_seconds: 3,
     })
     .await
     .unwrap();

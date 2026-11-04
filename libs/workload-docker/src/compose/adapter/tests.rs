@@ -543,7 +543,6 @@ async fn whole_project_teardown_rejects_selected_services_before_engine_access()
     let input = StopInput {
         plan: state().plan,
         services: vec!["worker".into()],
-        stop_seconds: 1,
         allow_volume_deletion: true,
     };
 
