@@ -935,6 +935,7 @@ dependencies = [
  "futures-util",
  "prost",
  "prost-build",
+ "prost-reflect",
  "protoc-bin-vendored",
  "tokio",
 ]

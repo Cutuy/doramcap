@@ -427,7 +427,10 @@ test('the selected live bridge subscribes to declared outputs through generated 
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
     assert.deepEqual([option.label, option.selected, option.required], ['Live telemetry', true, false]);
     assert.equal(compose.services['live-bridge'].image, 'doramcap/live-bridge:local');
-    assert.deepEqual(compose.services['live-bridge'].command, ['--port', '43190', '--max-payload-bytes', String(LIMITS.bridgePayloadBytes)]);
+    assert.deepEqual(compose.services['live-bridge'].command, ['--config', '/config/bridge.pbtxt']);
+    const mount = compose.services['live-bridge'].volumes.find((volume:any) => volume.target === '/config/bridge.pbtxt');
+    assert.equal(mount.read_only, true);
+    assert.equal(await readFile(mount.source, 'utf8'), `port: 43190\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`);
     assert.equal(compose.services['live-bridge'].network_mode, 'host');
     const node = graph.nodes.find((node: { id: string }) => node.id === 'live-bridge');
     assert.equal(node.inputs.recorder_0.source ?? node.inputs.recorder_0, 'monitor/snapshots');

@@ -18,7 +18,7 @@ protobuf TextFormat messages, mounted read-only at stable container paths.
 
 **Validation**
 - [x] Focused release-profile tests pass for watchdog, monitor, recorder and resource-policy without optional features.
-- [ ] Final feature-enabled tests and Clippy pass.
+- [x] Feature-enabled tests and both Clippy configurations pass; complete local CI passed before the final diagnostic/UTF-8 follow-up.
 - [ ] Reference docs and catalog links match the direct configuration contracts.
 
 Evidence: initial focused Rust run passed 28 tests plus the recorder fixture; the
@@ -60,11 +60,12 @@ BPF-only monitor integration test was explicitly ignored in that build.
 - [x] Graph tests cover zero/one/multiple health sources and arbitrary user-message recording inputs.
 - [x] Console server/frontend checks pass (77 server tests, one root-only skip; frontend tests/build pass).
 - [ ] Real release-profile acceptance script passes.
-- [ ] Cloud CI and full local CI pass on the final source.
+- [x] Full local CI passed: boundaries, formatting, default/all-feature Clippy and workspace tests, storage without defaults, examples/binaries and snapshot synchronization.
+- [ ] Hosted CI and final follow-up checks pass.
 - [ ] ARM64 worker validation passes.
 
 Worker observation: started the unprivileged Pueue daemon after finding no socket.
-ARM64 validation has not been submitted yet. Full CI and end-to-end results remain pending.
+ARM64 job 572 exhausted linker memory. The runner now builds with one Cargo job; retry 573 is running. Full CI and end-to-end results remain pending.
 
 Acceptance command (build the release binaries and examples unprivileged first):
 
@@ -75,3 +76,11 @@ sudo node --import ./console/server/node_modules/tsx/dist/loader.mjs \
 
 This uses isolated test image tags and temporary projects; it retains acceptance
 artifacts under the printed `/tmp/console-system-apps-*` directory for inspection.
+
+Validation update: the native Dora equality check preserved all 24 CPU samples.
+Direct zero-input watchdog execution stayed alive until explicit shutdown. Container
+acceptance is being retried with the exact release-pinned Dora CLI archive; the
+initial cached qualification CLI had a different binary digest.
+
+The first-party live bridge also receives a complete `BridgeConfig` pbtxt via a
+read-only bind mount. Dora's third-party coordinator/daemon retain native CLI arguments.

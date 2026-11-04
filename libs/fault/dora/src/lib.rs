@@ -35,11 +35,15 @@ impl Health {
     }
     /// Records bounded failure detail without making transport calls.
     pub fn failure(check: &Check, detail: &str) -> Result<()> {
-        let detail: String = detail.chars().take(128).collect();
+        let mut end = detail.len().min(192);
+        while !detail.is_char_boundary(end) {
+            end -= 1;
+        }
+        let detail = &detail[..end];
         check.failure(Text::new(if detail.is_empty() {
             "operation failed"
         } else {
-            &detail
+            detail
         })?)?;
         Ok(())
     }
@@ -100,5 +104,25 @@ impl Health {
             out.copy_from_slice(&bytes)
         })?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn long_utf8_errors_remain_observable_failures() {
+        // Arrange
+        let health = Health::new().unwrap();
+        let check = health.register("test", "write", None).unwrap();
+        let detail = "磁盘不可用".repeat(100);
+        // Act
+        Health::failure(&check, &detail).unwrap();
+        let snapshot = health.publisher.snapshot();
+        // Assert
+        let latest = snapshot.conditions[0].latest.unwrap();
+        assert_eq!(latest.outcome, fault_reporter::Outcome::Failure);
+        assert!(!latest.detail.as_str().is_empty());
+        assert!(detail.starts_with(latest.detail.as_str()));
     }
 }

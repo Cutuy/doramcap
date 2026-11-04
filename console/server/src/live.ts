@@ -32,11 +32,14 @@ export async function bindBridge(config: Config, apps: App[], workspace: string,
   );
   const graph = join(workspace, `${stage}-${LIVE_BRIDGE.id}.graph.json`);
   await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: LIVE_BRIDGE.id, path: 'dynamic', inputs }] })));
+  const settings = join(workspace, `${stage}-${LIVE_BRIDGE.id}.pbtxt`);
+  await writeOnce(settings, Buffer.from(`port: ${bridge.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
   const ready = `/tmp/${LIVE_BRIDGE.id}.ready`;
   const service = {
     image: bridge.image,
     entrypoint: ['/usr/local/bin/live-bridge'],
-    command: ['--port', String(bridge.port), '--max-payload-bytes', String(LIMITS.bridgePayloadBytes)],
+    command: ['--config', '/config/bridge.pbtxt'],
+    volumes: [{type: 'bind', source: settings, target: '/config/bridge.pbtxt', read_only: true, bind: {create_host_path: false}}],
     ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
     network_mode: 'host',
     init: true,

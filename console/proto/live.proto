@@ -16,3 +16,9 @@ message Frame {
   uint64 received_unix_ns = 3; // Bridge receive time.
   bytes payload = 4; // Producer bytes.
 }
+
+// Complete launch settings for the first-party live relay.
+message BridgeConfig {
+  uint32 port = 1;
+  uint32 max_payload_bytes = 2;
+}

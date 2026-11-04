@@ -49,7 +49,7 @@ const address = collector.address() as {port:number};
 await writeFile(join(apps,'fault-watchdog/watchdog-otel.pbtxt'),(await readFile(join(apps,'fault-watchdog/watchdog-otel.pbtxt'),'utf8')).replace('127.0.0.1:4318',`127.0.0.1:${address.port}`));
 
 try {
-  for (const scenario of ['alone','live','mcap','otel','cpu'] as const) {
+  for (const scenario of ['alone','live','mcap','otel','cpu','faults'] as const) {
     // Arrange: the fixture is a workload participant, separate from the release apps.
     const project = join(directory,scenario,'project'), state = join(directory,scenario,'state');
     await mkdir(project,{recursive:true});
@@ -92,7 +92,7 @@ try {
     let runId = '';
     try {
       const ids = scenario === 'alone' ? ['fault-watchdog','live-bridge'] : ['cpu-monitor','data-recorder','fault-watchdog','live-bridge'];
-      const profiles = {'fault-watchdog':scenario === 'mcap' || scenario === 'otel' ? scenario : 'live', ...(scenario !== 'alone' ? {'data-recorder':withSource ? 'user' : 'cpu'} : {})};
+      const profiles = {'fault-watchdog':scenario === 'mcap' || scenario === 'otel' ? scenario : 'live', ...(scenario !== 'alone' ? {'data-recorder':scenario === 'faults' ? 'faults' : withSource ? 'user' : 'cpu'} : {})};
       const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({systemApps:{ids,profiles}}).finish())));
       assert.ok(review.preparedId); runId = review.runId;
       // Act
@@ -124,7 +124,7 @@ try {
         assert.ok(fresh.has(3),'source staleness missing');
         assert.ok(components.has('mcap-recorder'),'recorder health missing');
         const artifacts = join(state,'runs',runId);
-        execFileSync(join(bin,'examples/check_messages'),[join(artifacts,'messages.mcap')],{stdio:'inherit'});
+        execFileSync(join(bin,'examples/check_messages'),[join(artifacts,'messages.mcap'),scenario === 'faults' ? 'fault-watchdog/faults' : 'user/messages'],{stdio:'inherit'});
         if (scenario === 'mcap') execFileSync(join(bin,'examples/fault_readback'),[join(artifacts,'faults.mcap')],{stdio:'inherit'});
       }
       if (scenario === 'cpu') assert.ok(components.has('system-monitor'),'CPU monitor health missing');
