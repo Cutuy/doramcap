@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+futures-timer = "3"
 tracing = "0.1"
 activity-tracing = { path = "../../libs/activity-tracing", features = ["mcap"] }
 cuda-dora-shm = { path = "../../libs/memory/cuda-dora-shm" }

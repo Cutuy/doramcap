@@ -1,5 +1,6 @@
 //! Injectable bounded event collection and optional MCAP stage metrics.
 mod mcap;
+use crossbeam_channel::{Receiver, Sender, bounded};
 pub use mcap::{McapMetrics, McapMonitor, McapSnapshot};
 use std::{
     collections::VecDeque,
@@ -107,6 +108,8 @@ struct Shared {
     epoch: Instant,
     dropped: AtomicU64,
     history: Mutex<History>,
+    changed: Sender<()>,
+    notifications: Receiver<()>,
 }
 /// Cloneable producer handle. Contains no payload owner and invokes no exporter callback.
 #[derive(Clone, Debug, Default)]
@@ -136,8 +139,11 @@ impl Collector {
         events
             .try_reserve_exact(capacity)
             .map_err(|_| io::ErrorKind::OutOfMemory)?;
+        let (changed, notifications) = bounded(1);
         Ok(Self {
             shared: Arc::new(Shared {
+                changed,
+                notifications,
                 mode: AtomicU8::new(mode as u8),
                 epoch: Instant::now(),
                 dropped: AtomicU64::new(0),
@@ -151,6 +157,11 @@ impl Collector {
                 }),
             }),
         })
+    }
+    /// Coalesced event notifications; cloned receivers compete for signals.
+    /// Drain history with `read_after` after waking. Reading notifications preserves history.
+    pub fn notifications(&self) -> &Receiver<()> {
+        &self.shared.notifications
     }
     pub fn observer(&self) -> Observer {
         Observer {
@@ -272,6 +283,7 @@ impl Observer {
             h.overwritten += 1;
         }
         h.events.push_back(event);
+        let _ = s.changed.try_send(());
     }
 }
 pub(crate) fn elapsed_us(start: Option<Instant>) -> Option<u64> {
@@ -281,6 +293,32 @@ pub(crate) fn elapsed_us(start: Option<Instant>) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn event_notifications_coalesce_without_consuming_history() {
+        // Arrange
+        let collector = Collector::new(4, Mode::Inspect).unwrap();
+        let observer = collector.observer();
+
+        // Act
+        for _ in 0..3 {
+            observer.record(EventKind::Accepted, EventData::default);
+        }
+        collector.notifications().recv().unwrap();
+
+        // Assert
+        assert!(collector.notifications().try_recv().is_err());
+        assert_eq!(collector.read_after(0, 4).events.len(), 3);
+
+        // Act
+        observer.record(EventKind::Written, EventData::default);
+
+        // Assert
+        collector.notifications().recv().unwrap();
+        assert_eq!(
+            collector.read_after(3, 4).events[0].kind,
+            EventKind::Written
+        );
+    }
     #[test]
     fn noop_and_summary_skip_event_factory() {
         Observer::default().record(EventKind::Accepted, || panic!("disabled"));

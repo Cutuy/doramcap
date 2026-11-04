@@ -251,6 +251,9 @@ impl Runtime {
             built.push(ready_rx);
             let stop_rx = stop_rx.clone();
             workers.push(thread::spawn(move || {
+                // Register the worker's silent filtering rule for shared trace points.
+                let silent = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+                let _silent = tracing::dispatcher::set_default(&silent);
                 let mut report = SinkReport {
                     name: String::new(),
                     written: 0,

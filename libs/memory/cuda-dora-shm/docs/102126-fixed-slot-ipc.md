@@ -27,8 +27,7 @@ Implementation: `src/lib.rs`, `src/ledger.rs`, `src/event.rs`, and
 
 `Arc` counts stay process-local. Dora transport acknowledgments do not retire
 payloads. A Returned message means the Done record was submitted; it does not
-mean GPU completion. The producer adapter queries events to retire slots.
-No CUDA host callback is installed.
+mean GPU completion. The producer adapter offers event queries and completion-stream waits to retire slots.
 
 A slot's generation is carried in Frame/Returned, not embedded in CUDA events.
 An event is re-recorded only after its previous generation retires. A consumer
@@ -51,7 +50,8 @@ unpublished reservation may be canceled without exposing its generation.
 - Lost messages or crashed/stalled peers retain slots. No timeout-based reuse.
   Restart the flow to recover. Abnormal exporter teardown retains event resources
   until process exit; kernel errors quarantine local leases.
-- Reclamation uses event queries. Local lease destruction synchronizes its stream;
+- `wait_and_reclaim` queues Ready/Done waits on a caller-supplied stream and synchronizes it.
+  Local lease destruction also synchronizes its stream;
   unrelated later work on that stream can delay retirement. Dedicated streams
   reduce that coupling.
 

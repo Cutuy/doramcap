@@ -43,19 +43,44 @@ fn option(args: &[String], name: &str, default: usize) -> Result<usize> {
         None => Ok(default),
     }
 }
-fn event_message(events: &mut EventStream) -> Result<Option<(String, Message)>> {
-    match events.try_recv() {
-        Ok(Event::Input { id, data, .. }) => Ok(Some((
+fn decode_message(event: Event) -> Result<Option<(String, Message)>> {
+    match event {
+        Event::Input { id, data, .. } => Ok(Some((
             id.to_string(),
             Message::decode(<&[u8]>::try_from(&data)?)?,
         ))),
-        Ok(Event::Error(error)) => bail!("Dora: {error}"),
-        Ok(Event::Stop(_)) | Err(TryRecvError::Closed) => {
-            bail!("Dora stopped before protocol completed")
-        }
-        Ok(_) | Err(TryRecvError::Empty) => Ok(None),
+        Event::Error(error) => bail!("Dora: {error}"),
+        Event::Stop(_) => bail!("Dora stopped before protocol completed"),
+        _ => Ok(None),
     }
 }
+fn event_message(events: &mut EventStream) -> Result<Option<(String, Message)>> {
+    match events.try_recv() {
+        Ok(event) => decode_message(event),
+        Err(TryRecvError::Closed) => bail!("Dora stopped before protocol completed"),
+        Err(TryRecvError::Empty) => Ok(None),
+    }
+}
+async fn receive_until(
+    receive: impl std::future::Future<Output = Option<Event>>,
+    deadline: Instant,
+) -> Result<Option<(String, Message)>> {
+    use dora_node_api::futures::{
+        future::{Either, select},
+        pin_mut,
+    };
+    let timer = futures_timer::Delay::new(deadline.saturating_duration_since(Instant::now()));
+    pin_mut!(receive);
+    match select(receive, timer).await {
+        Either::Left((Some(event), _)) => decode_message(event),
+        Either::Left((None, _)) => bail!("Dora stopped before protocol completed"),
+        Either::Right(_) => Ok(None),
+    }
+}
+fn wait_message(events: &mut EventStream, deadline: Instant) -> Result<Option<(String, Message)>> {
+    dora_node_api::futures::executor::block_on(receive_until(events.recv_async(), deadline))
+}
+
 fn producer(
     args: &[String],
     ctx: Arc<CudaContext>,
@@ -96,6 +121,7 @@ fn producer(
     let streams: Vec<_> = (0..slots)
         .map(|_| ctx.new_stream())
         .collect::<Result<_, _>>()?;
+    let completion = ctx.new_stream()?;
     let manifest = Message::Manifest(pool.manifest().clone());
     let deadline = Instant::now() + timeout;
     let mut last_hello = Instant::now() - Duration::from_secs(1);
@@ -104,15 +130,14 @@ fn producer(
     let mut shutdown = false;
     let mut last_stats = Instant::now();
     let mut last_flush = Instant::now();
+    let mut incoming = None;
     loop {
         telemetry::flush_due(registration, &mut last_flush);
-        if Instant::now() >= deadline {
-            bail!(
-                "TIMEOUT: no unsafe reuse; published={sequence}, full={full}, stats={:?}",
-                pool.stats()
-            );
-        }
-        if let Some((input, message)) = event_message(&mut events)? {
+        let message = match incoming.take() {
+            Some(message) => Some(message),
+            None => event_message(&mut events)?,
+        };
+        if let Some((input, message)) = message {
             let peer = match &message {
                 Message::Attached { peer, .. }
                 | Message::Returned { peer, .. }
@@ -130,8 +155,9 @@ fn producer(
             send(&mut node, "frames", &manifest)?;
             last_hello = Instant::now();
         }
+        let mut published = false;
         if pool.attached() && !shutdown {
-            pool.reclaim_completed()?;
+            pool.wait_and_reclaim(&completion)?;
             if sequence < frames {
                 if let Some(mut writer) = pool.try_acquire(streams[sequence % slots].clone())? {
                     let n = size as u32;
@@ -157,6 +183,7 @@ fn producer(
                     send(&mut node, "frames", &descriptor)?;
                     tracing::info!(target: "activity", event = "frame_sent", sequence = sequence as u64);
                     sequence += 1;
+                    published = true;
                 } else {
                     full += 1;
                 }
@@ -179,7 +206,22 @@ fn producer(
             pool.close()?;
             return Ok(());
         }
-        std::thread::sleep(Duration::from_millis(1));
+        if Instant::now() >= deadline {
+            bail!(
+                "TIMEOUT: no unsafe reuse; published={sequence}, full={full}, stats={:?}",
+                pool.stats()
+            );
+        }
+        if published {
+            continue;
+        }
+        let mut wake = deadline
+            .min(last_stats + Duration::from_millis(100))
+            .min(last_flush + Duration::from_millis(50));
+        if !pool.attached() && !shutdown {
+            wake = wake.min(last_hello + Duration::from_millis(100));
+        }
+        incoming = wait_message(&mut events, wake)?;
     }
 }
 fn consumer(
@@ -207,7 +249,8 @@ fn consumer(
     loop {
         telemetry::flush_due(registration, &mut last_flush);
         ensure!(Instant::now() < deadline, "consumer timeout");
-        if let Some((_, message)) = event_message(&mut events)? {
+        let wake = deadline.min(last_flush + Duration::from_millis(50));
+        if let Some((_, message)) = wait_message(&mut events, wake)? {
             match &message {
                 Message::Manifest(manifest) => {
                     if let Some(old) = &expected_manifest {
@@ -322,7 +365,6 @@ fn consumer(
                 _ => bail!("unexpected consumer message"),
             }
         }
-        std::thread::sleep(Duration::from_millis(1));
     }
 }
 fn run(registration: Option<&activity_tracing::Registration>) -> Result<()> {
@@ -364,4 +406,37 @@ fn main() -> Result<()> {
         "trace sink failed"
     );
     result
+}
+
+#[cfg(test)]
+mod receive_tests {
+    use super::*;
+    use dora_node_api::futures::{executor::block_on, future};
+
+    #[test]
+    fn quiet_receiver_wakes_at_its_deadline() {
+        // Arrange
+        let deadline = Instant::now() + Duration::from_millis(10);
+        // Act
+        let message = block_on(receive_until(future::pending(), deadline)).unwrap();
+        // Assert
+        assert!(message.is_none());
+        assert!(Instant::now() >= deadline);
+    }
+
+    #[test]
+    fn transport_errors_and_closure_remain_failures() {
+        // Arrange
+        let deadline = Instant::now() + Duration::from_secs(30);
+        // Act
+        let error = block_on(receive_until(
+            future::ready(Some(Event::Error("transport failed".into()))),
+            deadline,
+        ))
+        .unwrap_err();
+        let closed = block_on(receive_until(future::ready(None), deadline)).unwrap_err();
+        // Assert
+        assert!(error.to_string().contains("transport failed"));
+        assert!(closed.to_string().contains("Dora stopped"));
+    }
 }

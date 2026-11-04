@@ -40,7 +40,11 @@ fn main() {
     for path in ["managed", "combined", "large", "slab"] {
         assert!(paths.contains(path), "missing {path}");
     }
-    assert!(starts.values().any(|name| name == "storage.combining"));
+    assert!(
+        starts.values().any(|name| name == "storage.combining"),
+        "captured span names: {:?}",
+        starts.values().collect::<BTreeSet<_>>()
+    );
     assert!(starts.values().any(|name| name == "storage.io"));
     println!(
         "Activity capture: {} closed spans; paths {paths:?}; zero recorded loss",

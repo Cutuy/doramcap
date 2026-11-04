@@ -18,7 +18,9 @@ Avoid hardcoded constants in code. Define required fixed values with clear names
 
 ## Concurrency
 
-In Rust code outside tests, use event-driven waits: block on channels, `select!`, condition variables or kernel waits. Replace sleep, timed-park and yield loops used to poll for state changes with explicit signaling. Timers may implement sampling schedules, pacing and real deadlines.
+- Outside tests, use explicit signaling for work arrival, available capacity, state changes, completion, failure and shutdown. Block on channels, `select!`, condition variables or kernel notifications.
+- Avoid hardcoded sleep timeouts and repeated timed waits, parks or yields used to poll state. Subscribe before checking state, recheck after notifications, and ensure shutdown and disconnect wake blocked workers.
+- Use timers for sampling schedules, pacing, simulated work and real deadlines. Give fixed durations descriptive names; derive each deadline from the operation it bounds.
 
 ## Implementation languages
 

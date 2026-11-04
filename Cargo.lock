@@ -1216,6 +1216,7 @@ dependencies = [
  "cudarc",
  "dora-node-api",
  "eyre",
+ "futures-timer",
  "serde_json",
  "tracing",
 ]
@@ -5062,6 +5063,7 @@ version = "0.1.0"
 dependencies = [
  "activity-tracing",
  "axum",
+ "crossbeam-channel",
  "futures-util",
  "mcap",
  "prost",
@@ -5082,6 +5084,7 @@ version = "0.1.0"
 dependencies = [
  "activity-tracing",
  "bytes",
+ "crossbeam-channel",
  "io-uring",
  "libc",
  "mcap",
