@@ -1,5 +1,6 @@
 import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, ScanEye, Network, Waypoints, Workflow } from 'lucide-react';
 import data from './.generated/overview.json';
+import ConsoleInstall from './ConsoleInstall';
 import { componentHref, displayName, routeHref, type Catalog, type Route } from './model';
 import type { OverviewData, Mapping } from './overview-model';
 const overview = data as OverviewData;
@@ -23,6 +24,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     return entries.length ? <section><h3>{kind === 'apps' ? 'Apps' : 'Crates'}</h3><div className="mapping-links">{entries.map(c => <a key={c.id} href={componentHref(c)}>{displayName(c.name)} <span aria-hidden="true">→</span></a>)}</div></section> : null;
   }
   return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
+    <ConsoleInstall repository={catalog.repository} />
     <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
     {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}

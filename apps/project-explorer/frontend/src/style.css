@@ -155,3 +155,35 @@ main.shell{padding-top:28px}
 .launch-unavailable{display:inline-flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
 .launch-link:disabled{opacity:.5;cursor:not-allowed;border:0}
 .launch-status{font-size:12px;color:var(--muted)}
+
+/* Console uses the overview's surfaces and accent, with a compact product preview. */
+.console-install{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:24px 32px;padding:24px;margin-bottom:30px;background:var(--panel);border:1px solid var(--accent);border-top-width:3px;border-radius:6px}
+.console-install-intro .eyebrow{display:flex;align-items:center;gap:7px}
+.console-install h2{font-size:27px;line-height:1.25;letter-spacing:-.5px;margin-bottom:16px}
+.console-install-intro>p{margin-bottom:20px}
+.console-install-actions{display:flex;align-items:center;flex-wrap:wrap;gap:16px 20px}
+.console-install-actions a{display:inline-flex;align-items:center;gap:6px;font-size:13px;text-decoration:none}
+.console-install-actions .launch-link{margin:0}
+.console-install-intro .console-requirements{font-size:12px;margin:20px 0 0}
+.console-preview{margin:0;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:5px;align-self:start}
+.console-preview figcaption{font-size:11px;color:var(--muted);padding:10px 14px;border-bottom:1px solid var(--line)}
+.console-preview-body{display:grid;grid-template-columns:minmax(125px,.8fr) minmax(0,1.4fr)}
+.console-preview h3{font-size:12px;margin:0 0 10px}
+.console-preview-apps,.console-preview-results{padding:14px;min-width:0}
+.console-preview-apps{border-right:1px solid var(--line)}
+.console-preview-apps>div{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin-bottom:6px}
+.console-preview-apps .console-preview-project{padding:6px 10px;margin-bottom:18px;border:1px solid var(--line);border-radius:4px;background:var(--soft);color:var(--accent);font-size:12px}
+.console-preview-results>svg{display:block;width:100%;height:48px;margin-bottom:16px;fill:none;stroke-width:1.5}
+.console-chart-axis{stroke:var(--line)}
+.console-chart-line{stroke:var(--accent);stroke-width:2}
+.console-preview-recording{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:4px;font:11px ui-monospace,monospace}
+.console-preview-recording span{overflow-wrap:anywhere;min-width:0}
+.console-preview-recording svg{color:var(--accent);flex-shrink:0}
+.console-install-command{grid-column:1/-1;border-top:1px solid var(--line);padding-top:16px;min-width:0}
+.console-command-row{display:flex;align-items:center;gap:16px;padding:10px 12px;background:var(--soft);border-radius:5px}
+.console-command-row code{flex:1;min-width:0;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,monospace;user-select:all}
+.console-command-row button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;padding:7px 10px;color:var(--accent);background:var(--panel);border:1px solid var(--line);border-radius:4px;font-size:12px;min-height:36px}
+.console-copy-status{display:block;font-size:12px;color:var(--accent)}
+.console-copy-status:not(:empty){margin-top:8px}
+@media(max-width:950px){.console-install{grid-template-columns:1fr;gap:20px}.console-preview{width:100%}}
+@media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-preview-apps,.console-preview-results{padding:10px}.console-command-row{align-items:flex-start;gap:10px}.console-command-row button{min-height:44px}.console-preview-body{grid-template-columns:minmax(110px,.8fr) minmax(0,1.4fr)}}
