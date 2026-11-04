@@ -6,7 +6,7 @@ Keep main linear: rebase onto current main, then cherry-pick. Never integrate wi
 
 ## Important decisions
 
-For every important decision, ask the user before proceeding. Present your recommended option and alternatives.
+For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives. Using the [architect-design skill](.agents/skills/architect-design/SKILL.md) for these discussions is strongly recommended.
 
 ## Simplicity
 
