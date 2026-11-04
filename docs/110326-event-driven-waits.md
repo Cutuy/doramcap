@@ -10,6 +10,7 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 - Scope: Rust code. Preserve sampling schedules, simulated work and stability deadlines; record each retained timer's purpose in its milestone.
 - Present third-party crates for evaluation before adding any.
 - Bring any wait without an event source to the user before keeping a timer.
+- ARM64 validation is waived by the user for this implementation. Keep local and cloud results separate.
 
 ## Milestone 1: Activity tracing
 
@@ -30,7 +31,7 @@ Approved design: bounded block channels and a shared shutdown channel; no 10 ms 
 - [x] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
 - [x] Record zero-allocation capture and `throughput` results in this milestone's implementation PR.
 
-- [ ] Cloud CI and ARM64 worker validation finish successfully. Local full-workspace CI is deferred to cloud CI; Dora/CUDA checks belong to later milestones.
+- [ ] Cloud CI finishes successfully. Local full-workspace CI is deferred to cloud CI; ARM64 validation is waived by the user. Dora/CUDA checks belong to later milestones.
 
 ## Milestone 2: System monitor
 
