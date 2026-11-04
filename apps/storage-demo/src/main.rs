@@ -209,21 +209,21 @@ fn record(writer: &mut McapWriter, p: &pb::Packet, channel: u16, seq: u32) -> Re
         log_time: timestamp,
         publish_time: timestamp,
     };
-    for attempt in 0..2 {
-        match writer.reserve(message, len) {
-            Ok(mut reservation) => {
-                p.encode(&mut reservation.payload_mut())?;
-                reservation.commit()?;
-                return Ok(len);
-            }
-            Err(error) if attempt == 1 || error.kind() != io::ErrorKind::WouldBlock => {
-                return Err(error.into());
-            }
-            Err(_) => {}
+    let append = |writer: &mut McapWriter| -> io::Result<()> {
+        let mut reservation = writer.reserve(message, len)?;
+        p.encode(&mut reservation.payload_mut())
+            .map_err(io::Error::other)?;
+        reservation.commit()
+    };
+    match append(writer) {
+        // Flushing frees everything except registrations, so a second refusal is permanent.
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+            writer.flush_written()?;
+            append(writer)?;
         }
-        writer.flush_written()?;
+        result => result?,
     }
-    unreachable!("reservation either succeeds or returns its error")
+    Ok(len)
 }
 fn owner(
     o: &Options,
