@@ -6,6 +6,7 @@ import { LIMITS } from './generated/transport.js';
 /** Optional system app listed beside the Dora services. */
 export const LIVE_BRIDGE = { id: 'live-bridge', label: 'Live telemetry' } as const;
 const RECONNECT_MS = 500;
+const BRIDGE_CONFIG_PATH = '/config/bridge.pbtxt';
 type Stream = typeof wire.LiveStream.prototype;
 
 /** Bridge input IDs are `<app>_<index>`; app IDs exclude `_`, so IDs are unique. */
@@ -32,11 +33,14 @@ export async function bindBridge(config: Config, apps: App[], workspace: string,
   );
   const graph = join(workspace, `${stage}-${LIVE_BRIDGE.id}.graph.json`);
   await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: LIVE_BRIDGE.id, path: 'dynamic', inputs }] })));
+  const settings = join(workspace, `${stage}-${LIVE_BRIDGE.id}.pbtxt`);
+  await writeOnce(settings, Buffer.from(`port: ${bridge.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
   const ready = `/tmp/${LIVE_BRIDGE.id}.ready`;
   const service = {
     image: bridge.image,
     entrypoint: ['/usr/local/bin/live-bridge'],
-    command: ['--port', String(bridge.port), '--max-payload-bytes', String(LIMITS.bridgePayloadBytes)],
+    command: ['--config', BRIDGE_CONFIG_PATH],
+    volumes: [{type: 'bind', source: settings, target: BRIDGE_CONFIG_PATH, read_only: true, bind: {create_host_path: false}}],
     ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
     network_mode: 'host',
     init: true,

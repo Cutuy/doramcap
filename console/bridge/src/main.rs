@@ -1,5 +1,6 @@
 //! Console live bridge: relays every Dora input to one loopback WebSocket.
 mod bridge;
+mod config;
 
 use axum::{
     Router,
@@ -46,14 +47,12 @@ async fn serve_socket(socket: WebSocket, bridge: Arc<Bridge>) {
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let (port, max_payload_bytes): (u16, usize) = match args.as_slice() {
-        [port_flag, port, limit_flag, limit]
-            if port_flag == "--port" && limit_flag == "--max-payload-bytes" =>
-        {
-            (port.parse()?, limit.parse()?)
-        }
-        _ => bail!("usage: live-bridge --port PORT --max-payload-bytes BYTES"),
+    let config = match args.as_slice() {
+        [flag, path] if flag == "--config" => config::parse(&std::fs::read_to_string(path)?)?,
+        _ => bail!("usage: live-bridge --config FILE.pbtxt"),
     };
+    let port = config.port as u16;
+    let max_payload_bytes = config.max_payload_bytes as usize;
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
     let bridge = Arc::new(Bridge::new(max_payload_bytes));
     let (attached, ready) = tokio::sync::oneshot::channel();

@@ -17,7 +17,7 @@ stream with the producer's generated protobuf types.
 - **Delivery:** bridge inputs use `drop_oldest`. Each stream keeps its
   latest frame for new clients; slow clients skip frames and observe sequence gaps.
 - **Size limit:** Console passes `LIMITS.bridgePayloadBytes` from the [transport contract](../contract/transport.ts)
-  to the bridge as `--max-payload-bytes`; larger payloads become sequence gaps.
+  to the bridge in `BridgeConfig.max_payload_bytes`; larger payloads become sequence gaps.
 - **Relay:** `/api/live` carries framed `LiveMessage { Status | frame }`. Console
   forwards bridge frames without decoding them.
 - **Durable data:** MCAP recordings remain the run record. Live panels show the
