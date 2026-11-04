@@ -1701,8 +1701,14 @@ async fn public_dora_cleans_up_after_daemon_death() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker Engine, Dora and application binaries"]
-async fn public_dora_marks_forced_writer_shutdown_incomplete() {
+async fn public_dora_keeps_recordings_after_forced_workload_stop() {
     compose_public_run("stalled").await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine, Dora and application binaries"]
+async fn public_dora_marks_forced_mcap_writer_unfinalized() {
+    compose_public_run("stalled-writer").await;
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1927,7 +1933,7 @@ async fn compose_public_run(outcome: &str) {
     adopted["command"] = serde_json::json!([
         "test \"$$DORA_NODE_ID\" = app || exit 43; test -s /runtime/source.ready && test -s /runtime/recorder.ready && test -s /runtime/support.ready || exit 42; touch /runtime/adopted.started; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
     ]);
-    if outcome == "stalled" {
+    if matches!(outcome, "stalled" | "stalled-writer") {
         adopted["command"][0] = adopted["command"][0]
             .as_str()
             .unwrap()
@@ -1961,7 +1967,11 @@ async fn compose_public_run(outcome: &str) {
         dora,
         recordings: vec![],
         mcap_writers: McapWriters {
-            services: vec!["recorder".into()],
+            services: if outcome == "stalled-writer" {
+                vec!["recorder".into(), "app".into()]
+            } else {
+                vec!["recorder".into()]
+            },
             directories: vec![results.clone()],
         },
         readiness_seconds: 15,
@@ -2056,18 +2066,34 @@ async fn compose_public_run(outcome: &str) {
     let report = report.expect("public workflow report");
     let complete = matches!(outcome, "complete" | "timer-consumer");
     assert_eq!(report.successful(), complete, "{report:?}");
-    assert_eq!(report.recording_finalized, complete, "{report:?}");
+    // A killed workload keeps recordings; a killed MCAP writer invalidates them.
+    assert_eq!(
+        report.recording_finalized,
+        complete || outcome == "stalled",
+        "{report:?}"
+    );
     if complete {
         assert!(ready_seen.get());
+        assert!(
+            report
+                .service_exits
+                .iter()
+                .any(|e| e.service == "recorder" && e.exit_code == 0 && !e.killed),
+            "{report:?}"
+        );
     }
     assert!(!runner.blocked(), "{report:?}");
     support::assert_no_run_resources(&adapter, &run).await;
     if !complete {
-        if outcome == "stalled" {
+        if matches!(outcome, "stalled" | "stalled-writer") {
             assert!(
                 report.writers_stopped && report.boundary_clean,
                 "{report:?}"
             );
+            let killed: Vec<_> = report.service_exits.iter().filter(|e| e.killed).collect();
+            assert_eq!(killed.len(), 1, "{report:?}");
+            assert_eq!(killed[0].service, "app", "{report:?}");
+            assert_eq!(killed[0].exit_code, 128 + libc::SIGKILL, "{report:?}");
             assert!(
                 !report.diagnostics.is_empty(),
                 "forced stop must retain diagnostics"

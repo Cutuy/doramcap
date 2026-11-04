@@ -46,6 +46,7 @@ message ExecutionResult {
   optional bool recording_finalized = 4;
   optional bool boundary_clean = 5;
   optional bool event_stream_healthy = 6;
+  repeated doramcap.compose.v1.ServiceExit service_exits = 7;
 }
 // Completion remains available even when the bounded progress queue overflows.
 message ExecutionUpdate {

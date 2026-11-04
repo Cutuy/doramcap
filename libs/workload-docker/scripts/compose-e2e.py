@@ -72,7 +72,7 @@ def main():
                    f'DORAMCAP_TEST_SOCKET={socket}', f'DORAMCAP_TEST_DORA_NODE={fixture}',
                    f'DORAMCAP_TEST_MCAP_RECORDER={recorder}']
     cases = [
-        ('public_dora_', 7),
+        ('public_dora_', 8),
         ('direct_session_lifecycle_and_prerun_reset', 1),
         ('parallel_projects_preserve_readiness_and_shutdown_barriers', 1),
         ('active_experiments_are_exclusive_per_repository_and_independent_between_repositories', 1),

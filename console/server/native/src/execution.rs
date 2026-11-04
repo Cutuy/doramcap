@@ -249,6 +249,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                 error: report.execution_error,
                 writers_stopped: Some(report.writers_stopped),
                 recording_finalized: Some(report.recording_finalized),
+                service_exits: report.service_exits,
                 boundary_clean: Some(report.boundary_clean),
                 event_stream_healthy: Some(report.event_stream_healthy),
             },

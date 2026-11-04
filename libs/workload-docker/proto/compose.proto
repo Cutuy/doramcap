@@ -179,6 +179,18 @@ message Shutdown {
   repeated Diagnostic diagnostics = 2;
   // All inspected owned containers are stopped; containers have not been removed.
   bool stopped = 3;
+  // Exit of each selected container whose process has ended.
+  repeated ServiceExit exits = 4;
+}
+
+// How one service container's main process ended, as reported by Docker.
+message ServiceExit {
+  string service = 1;
+  // Process exit status; 128+N when signal N ended it.
+  int32 exit_code = 2;
+  bool oom_killed = 3;
+  // SIGKILL or the OOM killer ended it, so unsent data may be lost.
+  bool killed = 4;
 }
 
 // Comparable experiment configuration, independent of generated artifact locations.
