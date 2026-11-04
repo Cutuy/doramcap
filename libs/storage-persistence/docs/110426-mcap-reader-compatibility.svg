@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 190" role="img" aria-labelledby="title">
+  <title id="title">Production protobuf serializers and MCAP writer feed Rust and TypeScript protobuf readback</title>
+  <style>text{font:14px sans-serif;fill:#17212b}rect{fill:#f5f8fa;stroke:#647582}path{fill:none;stroke:#647582;stroke-width:1.5}</style>
+  <rect x="10" y="50" width="190" height="86" rx="4"/>
+  <text x="25" y="80">CPU and fault serializers</text><text x="25" y="109">Protobuf + descriptors</text>
+  <path d="M210 93h30m-6-5 6 5-6 5"/>
+  <rect x="250" y="50" width="185" height="86" rx="4"/>
+  <text x="265" y="80">Real MCAP writer</text><text x="265" y="109">All paths + rotation</text>
+  <path d="M445 93h20V43h25m-6-5 6 5-6 5M465 93v52h25m-6-5 6 5-6 5"/>
+  <rect x="500" y="10" width="210" height="66" rx="4"/>
+  <text x="515" y="36">Rust mcap + protobuf</text><text x="515" y="57">Payload and field assertions</text>
+  <rect x="500" y="112" width="210" height="66" rx="4"/>
+  <text x="515" y="138">TypeScript @mcap/core</text><text x="515" y="159">Embedded-schema decoding</text>
+</svg>

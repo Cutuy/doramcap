@@ -1,0 +1,60 @@
+![MCAP reader compatibility](110426-mcap-reader-compatibility.svg)
+
+# MCAP reader compatibility
+
+Created: 2026-11-04. Replaces PR #150's indexing proposal with reader qualification.
+Recordings retain existing uncompressed, unchunked, index-free framing and DMA paths.
+The 1 s batch age landed separately in PR #152.
+
+## M1: Shared protobuf recordings
+
+**Work items**
+
+- [x] Generate CPU telemetry and fault publications with production serializers.
+- [x] Exercise combining, direct reservations, prepared slabs, external records and
+  external payloads, with two independently readable files per path through rotation.
+- [x] Assert payload bytes, channel metadata, timestamps and protobuf values through
+  Rust `mcap::MessageStream`; preserve source bytes for independent readback.
+
+**Validation**
+
+- [x] Release fixture generator passed on local x86_64: 18 recordings. CPU fixtures
+  cover alignment boundaries and aligned external payloads; fault fixtures cover
+  combining, reservation, slab and external-record paths.
+- [x] CPU and fault decoders preserve counters above JavaScript's safe integer range,
+  CPU dictionary Unicode, fault epoch/revision and timestamps.
+
+## M2: TypeScript streaming and CI
+
+**Work items**
+
+- [x] Add locked, test-only `@mcap/core` and existing `protobufjs` tooling.
+- [x] Decode each file independently using only its embedded descriptor set.
+- [x] Integrate fixture generation and verification into the shared Node CI runner.
+
+**Validation**
+
+- [x] Local x86_64: 36 streaming tests passed, feeding each recording in 17-byte
+  and 4,093-byte fragments. Assertions cover payload equality, message order,
+  topics, timestamps, protobuf fields, no indexes/chunks and complete finalization.
+- [x] Release Clippy for the fixture generator, workspace formatting and dependency
+  boundaries pass. All 24 focused storage integration tests pass on local x86_64
+  (combining, MCAP round trip, rotation, mapped inputs and sealed slabs).
+- [ ] GitHub ARM64/x86_64 CI passes.
+- [ ] ARM64 worker validation passes.
+
+Existing production-sink coverage remains in system-monitor's embedded recording
+test, fault-watchdog's MCAP readback test and activity-tracing's output tests.
+The shared corpus exercises serializers and storage APIs; it does not launch BPF,
+Dora or the Console application. Those end-to-end qualifications remain separate.
+
+## Run locally
+
+Use a new output directory on Linux with io_uring and registered-buffer support:
+
+```sh
+cargo run --release --locked -p storage-persistence --example reader_compatibility -- /tmp/mcap-reader-recordings
+cd libs/storage-persistence/tests/readers
+npm ci
+npm test -- /tmp/mcap-reader-recordings
+```

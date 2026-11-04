@@ -1,0 +1,12 @@
+{
+  "name": "mcap-reader-compatibility",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types verify.mts"
+  },
+  "devDependencies": {
+    "@mcap/core": "2.4.0",
+    "protobufjs": "^8.8.1"
+  }
+}

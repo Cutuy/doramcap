@@ -25,6 +25,9 @@ builds/type checks and the browser/server HTTP integration test. The server test
 script builds its native addon using the pinned Rust toolchain and locked dependencies.
 Node workflow paths include Console, app, library and CI changes; npm caching includes
 both Console lockfiles. Live browser, CUDA and Dora qualification remain separate.
+The runner also generates MCAP recordings with the real writer, verifies Rust
+protobuf readback, and runs the locked TypeScript streaming-reader suite against
+the same files using their embedded protobuf descriptors.
 Project Explorer has no `npm test` script.
 
 Privileged native validation and Dora end-to-end checks use the worker below.
