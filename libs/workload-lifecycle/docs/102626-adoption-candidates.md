@@ -1,13 +1,14 @@
 # Robotics adoption feasibility
 
-Reviewed 2026-10-26. The first four entries below were inspected in source;
-remaining entries preserve the user-provided SPA survey as qualification targets.
-No project was executed. Source compatibility does not establish runtime support.
+Updated 2026-11-03. Open AD Kit and the robotics entries below were inspected in
+source; remaining entries preserve the user-provided SPA survey as qualification
+targets. No project was executed. Source compatibility does not establish runtime support.
 
 ## Pilot sequence
 
 | Pilot and pinned source | Observed behavior | Design consequence / open gate |
 |---|---|---|
+| **First:** [Open AD Kit planning simulation](https://github.com/autowarefoundation/openadkit/tree/7256a4febfc763b3292d3db4b4dbbc2be480c714/deployments/planning-simulation) | Eight ROS 2 services from published images; host networking, `ipc: host`, shared PID namespace, map bind and a launcher-supplied env file | Qualify through the Console release. See the [adoption plan](../../../console/docs/110326-adoption-qualification.md). |
 | [vEDGAR Compose](https://github.com/TUMFTM/vEDGAR/blob/5f6ea693c73ffd43d4b52ffde216fb6a56ee3bbc/docker-compose.yml) | Profiles, selected GPUs, host networking, privileged CARLA, source/output bind mounts, interactive shell service | Begin with `singlepc`; lease ports/GPU/output paths, capture mounted code, define CARLA readiness/reset. HiL requires a later multi-host coordinator. |
 | [AnywhereVLA launcher](https://github.com/SelfAI-research/AnywhereVLA/blob/674cd7840b9439f9420bf175bf66110b62b61210/scripts/run.sh) and [CPU Compose](https://github.com/SelfAI-research/AnywhereVLA/blob/674cd7840b9439f9420bf175bf66110b62b61210/src/cpu_part/docker-compose.yaml) | Multiple project directories, platform-dependent files, `extends`, foreground/background host Python bridges | Preserve project boundaries and base paths. Host helpers require an additional executor or explicit packaging. Validate filenames and startup intent before execution. |
 | [Event-Orin simulation](https://github.com/tudelft/event_orin_drone/blob/1a25c6835476d4ea6578cf7b0aab6ea854260b23/sim/px4_gazebo_sim_external_modes.sh) and [recorder](https://github.com/tudelft/event_orin_drone/blob/1a25c6835476d4ea6578cf7b0aab6ea854260b23/ros/src/eo_drone/launch/drone_flight_recorder.launch.py) | tmux launches host programs and a container after a fixed delay; ROS camera and MCAP recorder share a component process | Translate stages with explicit readiness. Preserve composition; qualify drain/close inside the shared process. A generic Compose importer cannot infer these contracts. |
