@@ -27,6 +27,7 @@ import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
+import { compareRuns, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
@@ -671,6 +672,20 @@ export class ConsoleService implements ConsoleBackend {
     const detail = this.runIndex.detail(id);
     if (!detail) throw new Error('Missing');
     return Buffer.from(wire.HistoryDetail.encode(detail).finish());
+  }
+  /** One stored run's comparison inputs, or null when it is unknown. */
+  private side(id: string): Side | null {
+    const detail = this.runIndex.detail(id);
+    return detail && { id, detail, capture: this.runIndex.capture(id), manifest: readManifest(join(this.config.dataRoot, 'runs'), id) };
+  }
+  async historyCompare(input: Buffer) {
+    const { sides } = wire.HistoryComparisonRequest.decode(input);
+    const [left, right] = sides.map(({ runIds }) => {
+      const side = this.side(runIds![0]);
+      if (!side) throw new Error('Missing');
+      return side;
+    });
+    return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
   }
   close() {
     if (!this.closing) this.closing = this.shutdown();

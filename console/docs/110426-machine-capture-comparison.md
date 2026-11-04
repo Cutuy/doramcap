@@ -26,6 +26,7 @@ Concept: [mockups](../mockups/README.md).
 | Presence | Protobuf fields have no explicit presence, so zero, empty and unset are equivalent in Rust and TypeScript. A fact set in only one run is a change. A run with no capture at all reads as unavailable. |
 | Failure | An unreadable field never fails a run. |
 | Storage | `console.db` holds machine and setup facts. The comparison reads environment values and frozen file digests from `runs/<id>/` and masks them at display time. |
+| Comparison shape | The contract holds ordered sides, each with a list of runs, and rows carry one cell per side, so groups of different sizes need no contract change. The server and browser accept one run per side today. |
 | Browser | The server computes comparison rows. The browser receives labels and masked values only. |
 | Condition | Both values are shown side by side, with no thresholds. |
 
@@ -105,7 +106,7 @@ Deferred: pinned baselines, busy-process sampling, condition thresholds and pars
 - [ ] Add a checkbox to each History row. Selection lives in `#/history/compare/<a>/<b>`.
 - [ ] Open the comparison on the History page as soon as two runs are selected, labeling them A and B in selection order. Further rows are disabled until one is cleared.
 - [ ] Add a server diff that reports same, changed or unavailable per field, by walking the capture messages.
-- [ ] Add a `GET` comparison route behind the session and origin checks.
+- [ ] Add a typed `POST` comparison route behind the session and origin checks.
 - [ ] Read environment values and frozen file digests from each run's private files, apply masks on the server and hide Compose secrets.
 - [ ] Show groups for result, setup, configuration and condition, with differences first and matches collapsed.
 - [ ] Show configuration changes between a run's before and after states.

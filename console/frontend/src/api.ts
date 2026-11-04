@@ -63,6 +63,12 @@ export function createClient(fetcher: typeof fetch = fetch) {
     history: (query: { state?: number; cursor?: string; limit?: number }) =>
       request(routes.history, routes.history.request.encode(wire.HistoryQuery.create(query)).finish(), fetcher),
     historyRun: (runId: string) => request({ ...routes.historyRun, path: historyRunPath(runId) }, undefined, fetcher),
+    historyCompare: (a: string, b: string) =>
+      request(
+        routes.historyCompare,
+        routes.historyCompare.request.encode(wire.HistoryComparisonRequest.create({ sides: [wire.ComparisonSelection.create({ label: 'A', runIds: [a] }), wire.ComparisonSelection.create({ label: 'B', runIds: [b] })] })).finish(),
+        fetcher,
+      ),
     live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame?: (frame: Frame) => void) => readLive(consume, signal, fetcher, frame),
   };
 }

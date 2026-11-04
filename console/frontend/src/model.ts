@@ -53,11 +53,19 @@ const STATES: Partial<Record<number, { label: string; tone: 'active' | 'success'
 };
 export const stateLabel = (state: number) => STATES[state]?.label ?? 'Unknown';
 export const stateTone = (state: number) => STATES[state]?.tone ?? 'neutral';
-/** The History view lives at `#/history` and `#/history/<run id>`; other hashes show the run workflow. */
+/** The History view lives at `#/history`, `#/history/<run id>` and `#/history/compare/<a>[/<b>]`; other hashes show the run workflow. */
 export const historyHash = (runId = '') => `#/history${runId && `/${runId}`}`;
-export function historyRoute(hash: string): { runId: string } | null {
+export const compareHash = (runs: string[]) => runs.length ? `#/history/compare/${runs.join('/')}` : historyHash();
+export function historyRoute(hash: string): { runId: string; compare: string[] } | null {
+  const selected = /^#\/history\/compare\/([a-f0-9]{32})(?:\/([a-f0-9]{32}))?$/.exec(hash);
+  if (selected) return { runId: '', compare: selected.slice(1).filter(Boolean).filter((run, index, runs) => runs.indexOf(run) === index) };
   const match = /^#\/history(?:\/([a-f0-9]{32}))?$/.exec(hash);
-  return match ? { runId: match[1] ?? '' } : null;
+  return match ? { runId: match[1] ?? '', compare: [] } : null;
+}
+/** The selection after toggling one run; a third run is ignored until one is cleared. */
+export function toggleCompared(selected: string[], run: string, limit = 2): string[] {
+  if (selected.includes(run)) return selected.filter(item => item !== run);
+  return selected.length < limit ? [...selected, run] : selected;
 }
 export const timeLabel = (ms: unknown) => new Date(Number(ms)).toLocaleString();
 export function durationLabel(entry: Pick<HistoryEntry, 'state' | 'startedAtMs' | 'finishedAtMs'>): string {

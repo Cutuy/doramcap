@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createClient, routes, wire, workflow, Phase, StepState, type HistoryPage } from './api';
 import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
-import { durationLabel, entryRecordingBytes, historyHash, historyRoute } from './model';
+import { compareHash, durationLabel, entryRecordingBytes, historyHash, historyRoute, toggleCompared } from './model';
 import { RunMetrics } from './RunMetrics';
 
 const { HistoryState: State } = wire;
@@ -123,8 +123,8 @@ test('metrics can omit the CPU panels a stored run has no frames for', () => {
 
 test('routes accept only history hashes with strict run ids', () => {
   // Arrange / Act / Assert
-  assert.deepEqual(historyRoute('#/history'), { runId: '' });
-  assert.deepEqual(historyRoute(historyHash(runId)), { runId });
+  assert.deepEqual(historyRoute('#/history'), { runId: '', compare: [] });
+  assert.deepEqual(historyRoute(historyHash(runId)), { runId, compare: [] });
   for (const other of ['', '#/', '#/history/', '#/history/../x', `#/history/${runId.toUpperCase()}`, `#/history/${runId}0`])
     assert.equal(historyRoute(other), null, other);
 });
@@ -175,3 +175,21 @@ test('a run still in progress links to the live view without stale activity', ()
   assert.doesNotMatch(live, /Interrupted run/);
   assert.match(stopped, /Interrupted run/);
 });
+
+const other = 'b'.repeat(32);
+test('the comparison selection lives in the URL, holds two runs and survives a reload', () => {
+  // Arrange / Act
+  const first = toggleCompared([], runId), both = toggleCompared(first, other);
+  // Assert
+  assert.deepEqual(first, [runId]);
+  assert.deepEqual(both, [runId, other]);
+  assert.deepEqual(toggleCompared(both, 'c'.repeat(32)), both);
+  assert.deepEqual(toggleCompared(both, runId), [other]);
+  assert.deepEqual(historyRoute(compareHash(both)), { runId: '', compare: both });
+  assert.deepEqual(historyRoute(compareHash(first)), { runId: '', compare: first });
+  assert.deepEqual(historyRoute(`#/history/compare/${runId}/${runId}`), { runId: '', compare: [runId] });
+  assert.equal(compareHash([]), historyHash());
+  assert.equal(historyRoute('#/history/compare/short'), null);
+  assert.deepEqual(historyRoute(historyHash()), { runId: '', compare: [] });
+});
+
