@@ -3107,6 +3107,7 @@ dependencies = [
 name = "monitor-core"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "crossbeam-queue",
  "serde",
  "task-accounting",
@@ -5169,6 +5170,7 @@ name = "system-monitor"
 version = "0.1.0"
 dependencies = [
  "cgroup-bpf",
+ "crossbeam-channel",
  "ctrlc",
  "dora-app",
  "eyre",
@@ -5193,6 +5195,7 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "futures",
  "prost",
  "telemetry-protocol",
 ]

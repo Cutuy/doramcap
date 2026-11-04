@@ -1,19 +1,51 @@
-use dora_node_api::{DoraNode, Event, EventStream, MetadataParameters, Parameter, TryRecvError};
-use eyre::{Result, bail, eyre};
+use dora_node_api::{DoraNode, Event, EventStream, MetadataParameters, Parameter};
+use eyre::{Result, eyre};
+use futures::{FutureExt, channel::oneshot};
 use prost::Message;
+use std::thread::JoinHandle;
 
 /// Owns Dora exclusively on the publication thread. Calls may allocate/block.
 pub struct Publisher {
     node: Option<DoraNode>,
-    events: EventStream,
+    cancel: Option<oneshot::Sender<()>>,
+    receiver: Option<JoinHandle<()>>,
 }
 impl Publisher {
-    /// Attach using the app environment and own the native connection.
-    pub fn new() -> Result<Self> {
+    /// Attach using the app environment; notify once on Dora stop, disconnect or error.
+    /// Finish and drop cancel and join the event receiver.
+    pub fn new(
+        notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
+    ) -> Result<Self> {
         let (node, events) = dora_app::environment::connect()?;
+        Self::with_events(node, events, notify)
+    }
+
+    fn with_events(
+        node: DoraNode,
+        mut events: EventStream,
+        notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
+    ) -> Result<Self> {
+        let (cancel, cancel_rx) = oneshot::channel();
+        let receiver = std::thread::Builder::new().name("monitor-dora-events".into()).spawn(move || {
+            let result = futures::executor::block_on(async {
+                let mut cancel = cancel_rx.fuse();
+                loop {
+                    futures::select_biased! {
+                        _ = cancel => return None,
+                        event = events.recv_async().fuse() => match event {
+                            Some(Event::Stop(_)) | None => return Some(Ok(())),
+                            Some(Event::Error(error)) => return Some(Err(format!("Dora event error: {error}"))),
+                            _ => {},
+                        },
+                    }
+                }
+            });
+            if let Some(result) = result { notify(result); }
+        })?;
         Ok(Self {
             node: Some(node),
-            events,
+            cancel: Some(cancel),
+            receiver: Some(receiver),
         })
     }
 
@@ -96,24 +128,31 @@ impl Publisher {
         Ok(())
     }
 
-    /// Poll stop/error events without delaying the host's publication loop.
-    pub fn stop_requested(&mut self) -> Result<bool> {
-        loop {
-            match self.events.try_recv() {
-                Ok(Event::Stop(_)) | Err(TryRecvError::Closed) => return Ok(true),
-                Ok(Event::Error(error)) => bail!("Dora event error: {error}"),
-                Err(TryRecvError::Empty) => return Ok(false),
-                _ => {}
-            }
+    fn stop_events(&mut self) -> Result<()> {
+        if let Some(cancel) = self.cancel.take() {
+            let _ = cancel.send(());
         }
+        if let Some(receiver) = self.receiver.take() {
+            receiver
+                .join()
+                .map_err(|_| eyre!("Dora event receiver panicked"))?;
+        }
+        Ok(())
     }
 
     pub fn finish(&mut self) -> Result<()> {
+        self.stop_events()?;
         // close_outputs() only sends a control-plane notification. It can overtake
         // the final direct Zenoh/SHM payload. DoraNode::drop tears down the data
         // transport BEFORE notifying the daemon that outputs are closed.
         drop(self.node.take());
         Ok(())
+    }
+}
+
+impl Drop for Publisher {
+    fn drop(&mut self) {
+        let _ = self.stop_events();
     }
 }
 
@@ -136,6 +175,72 @@ fn encode_into(packet: &telemetry_protocol::pb::Packet, buffer: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn testing_publisher(
+        delay: f64,
+        notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
+    ) -> Publisher {
+        use dora_node_api::integration_testing::integration_testing_format::{
+            IncomingEvent, TimedIncomingEvent,
+        };
+        use dora_node_api::integration_testing::{
+            IntegrationTestInput, TestingInput, TestingOutput, output_channel,
+        };
+        let input = IntegrationTestInput::new(
+            "monitor-test".parse().unwrap(),
+            vec![TimedIncomingEvent {
+                time_offset_secs: delay,
+                event: IncomingEvent::Stop,
+            }],
+        );
+        let (output, _outputs) = output_channel();
+        let (node, events) = DoraNode::init_testing(
+            TestingInput::Input(input),
+            TestingOutput::ToChannel(output),
+            Default::default(),
+        )
+        .unwrap();
+        Publisher::with_events(node, events, notify).unwrap()
+    }
+
+    #[test]
+    fn dora_stop_notifies_the_publisher() {
+        // Arrange
+        let (notify, events) = std::sync::mpsc::channel();
+        let mut publisher = testing_publisher(0.0, move |event| {
+            notify.send(event).unwrap();
+        });
+
+        // Act
+        let event = events
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        publisher.finish().unwrap();
+
+        // Assert
+        assert!(event.is_ok());
+        assert!(publisher.receiver.is_none());
+    }
+
+    #[test]
+    fn finish_cancels_a_receiver_waiting_for_a_future_event() {
+        // Arrange
+        let (done, result) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let mut publisher =
+                testing_publisher(30.0, |_| panic!("canceled receiver must not notify stop"));
+
+            // Act
+            publisher.finish().unwrap();
+            done.send(()).unwrap();
+        });
+
+        // Assert: completion occurs before the scheduled Dora event.
+        result
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        worker.join().unwrap();
+    }
+
     #[test]
     fn direct_destination_preserves_wire_bytes_and_bounds() {
         let packet = telemetry_protocol::dictionary_packet(&telemetry_protocol::DictionaryFrame {

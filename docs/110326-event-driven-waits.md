@@ -41,17 +41,25 @@ Approved design: bounded block channels and a shared shutdown channel; no 10 ms 
 
 **Work items**
 
-- [ ] Add a blocking receive to the `monitor-core` handoff, and use it at `apps/system-monitor/src/main.rs:431`.
-- [ ] Forward Dora events from a thread blocking on `recv` into one channel, replacing `stop_requested` polling.
-- [ ] Keep the sampling deadline at `main.rs:262`, waiting on a stop channel so stopping is immediate.
-- [ ] Signal collector completion and errors to the publishing loop; drain queued snapshots before exit and join the Dora receiver on shutdown.
+- [x] Add a blocking receive to the `monitor-core` handoff, and use it at `apps/system-monitor/src/main.rs:431`.
+- [x] Forward Dora terminal events from a cancelable receiver thread into the control channel, replacing `stop_requested` polling.
+- [x] Keep the sampling deadline at `main.rs:262`, waiting on a stop channel so stopping is immediate.
+- [x] Signal collector completion and errors to the publishing loop; drain queued snapshots before exit and join the Dora receiver on shutdown.
+
+Approved design: retain synchronous collection/publication with `crossbeam-channel` snapshot and stop/error waits. The Dora receiver uses `futures` cancellation and is joined on finish/drop. Both dependencies reuse locked versions already in the repository. Recording uses its existing buffered-data flush deadline.
 
 **Validation**
 
-- [ ] Ctrl-C and Dora stop wake waits without waiting for the next sampling tick.
-- [ ] Collector completion, failure and producer disconnect wake the publisher; queued snapshots drain before exit.
-- [ ] The idle publishing loop makes no periodic wake-ups.
-- [ ] System Monitor tests and its recording checks pass.
+- Release locked default tests pass (17); Dora-feature tests plus the adapter pass (20). Strict Clippy passes for default and Dora-feature configurations.
+- Dora in-process tests verify stop notification and cancellation before a scheduled 30-second event. The sampling test verifies stop before a 30-second tick.
+- Zero-allocation handoff, overload recovery, selected receive and producer-disconnect drain tests pass. `strace` shows an indefinite selected wait until the control signal.
+- All-feature compilation and strict Clippy pass with `CLANG=/usr/bin/clang-18`. The privileged native recording/rotation test passes: 24 samples, zero drops, valid dictionary checkpoints. ARM64 is waived; full-workspace cloud CI is pending.
+
+- [x] Ctrl-C and Dora stop wake waits without waiting for the next sampling tick.
+- [x] Collector completion, failure and producer disconnect wake the publisher; queued snapshots drain before exit.
+- [x] The idle publishing loop makes no periodic wake-ups.
+- [x] System Monitor tests and its recording checks pass.
+- [ ] Full-workspace cloud CI finishes successfully.
 
 ## Milestone 3: Demo apps
 

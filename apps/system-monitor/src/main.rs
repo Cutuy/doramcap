@@ -1,12 +1,11 @@
 use config::MonitorConfig;
+use crossbeam_channel::{Select, bounded};
 use eyre::{Result, WrapErr, bail, ensure, eyre};
 use monitor_core::{CgroupDictionary, CpuRecord, Snapshot, handoff_with_tasks};
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use telemetry_protocol::{DictionaryEntry, Frame as Envelope, VERSION};
 
@@ -198,11 +197,39 @@ fn check(attach_records: Option<usize>) -> Result<()> {
     Ok(())
 }
 
+/// Collect on a fixed sampling grid; stop signals interrupt the wait between samples.
+fn collect_until_stopped(
+    stop: crossbeam_channel::Receiver<()>,
+    limit: u64,
+    period: Duration,
+    mut collect: impl FnMut(u64, Instant) -> Result<(), String>,
+) -> Result<u64, String> {
+    let origin = Instant::now();
+    let mut deadline = origin;
+    let mut sequence = 0;
+    while limit == 0 || sequence < limit {
+        match stop.recv_deadline(deadline) {
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            _ => break,
+        }
+        collect(sequence, origin)?;
+        sequence += 1;
+        deadline += period;
+        // Keep the sampling grid after slow collection without a catch-up storm.
+        let now = Instant::now();
+        while deadline < now {
+            deadline += period;
+        }
+    }
+    Ok(sequence)
+}
+
 fn run(config: MonitorConfig) -> Result<()> {
     let records = config.records as usize;
     let slots = config.queue_slots as usize;
     let tasks = config.task_capacity as usize;
     let dora = config.dora.is_some();
+    let (control_tx, control_rx) = bounded::<std::result::Result<(), String>>(1);
     if tasks != 0 && !cfg!(feature = "task-bpf") {
         bail!("task_capacity requires --features task-bpf");
     }
@@ -215,7 +242,12 @@ fn run(config: MonitorConfig) -> Result<()> {
     };
     #[cfg(feature = "dora")]
     let mut publisher = if dora {
-        Some(system_monitor_dora::Publisher::new()?)
+        Some(system_monitor_dora::Publisher::new({
+            let control_tx = control_tx.clone();
+            move |event| {
+                let _ = control_tx.try_send(event);
+            }
+        })?)
     } else {
         None
     };
@@ -236,64 +268,47 @@ fn run(config: MonitorConfig) -> Result<()> {
         .map(recording::Recorder::create)
         .transpose()?;
     let (producer, consumer) = handoff_with_tasks(slots, records, tasks).map_err(|e| eyre!(e))?;
-    let stop = Arc::new(AtomicBool::new(false));
-    let signal_stop = stop.clone();
-    ctrlc::set_handler(move || signal_stop.store(true, Ordering::Release))
-        .wrap_err("installing shutdown signal handler")?;
-    let done = Arc::new(AtomicBool::new(false));
-    let worker_stop = stop.clone();
-    let worker_done = done.clone();
+    let (stop_tx, stop_rx) = bounded::<()>(1);
+    ctrlc::set_handler(move || {
+        let _ = control_tx.try_send(Ok(()));
+    })
+    .wrap_err("installing shutdown signal handler")?;
     let limit = config.samples;
     // Preallocate the discard batch before entering the periodic loop.
     let mut discard = Snapshot::with_capacities(records, tasks);
     let worker = std::thread::Builder::new()
         .name("monitor-collector".into())
         .spawn(move || {
-            let result = (|| -> Result<(u64, u64), String> {
+            (|| -> Result<(u64, u64), String> {
                 let mut backend = backend;
                 #[cfg(feature = "task-bpf")]
                 let mut task_backend = task_backend;
-                let origin = Instant::now();
-                let mut deadline = origin;
-                let mut sequence = 0u64;
                 let mut dropped = 0u64;
-                while !worker_stop.load(Ordering::Acquire) && (limit == 0 || sequence < limit) {
-                    if let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-                        std::thread::sleep(remaining);
-                    }
-                    if worker_stop.load(Ordering::Acquire) {
-                        break;
-                    }
-                    collect_sample(
-                        &producer,
-                        &mut discard,
-                        sequence,
-                        &mut dropped,
-                        origin,
-                        |snapshot| {
-                            backend.collect(snapshot)?;
-                            #[cfg(feature = "task-bpf")]
-                            if let Some(tasks) = task_backend.as_mut() {
-                                snapshot.task_losses = tasks
-                                    .collect_into(&mut snapshot.task_records)
-                                    .map_err(|e| e.to_string())?;
-                            }
-                            Ok(())
-                        },
-                    )?;
-                    sequence += 1;
-                    deadline += PERIOD;
-                    // Avoid a catch-up storm after a slow collection. Keep future deadlines on the grid.
-                    let now = Instant::now();
-                    while deadline < now {
-                        deadline += PERIOD;
-                    }
-                }
+                let sequence =
+                    collect_until_stopped(stop_rx, limit, PERIOD, |sequence, origin| {
+                        collect_sample(
+                            &producer,
+                            &mut discard,
+                            sequence,
+                            &mut dropped,
+                            origin,
+                            |snapshot| {
+                                backend.collect(snapshot)?;
+                                #[cfg(feature = "task-bpf")]
+                                if let Some(tasks) = task_backend.as_mut() {
+                                    snapshot.task_losses = tasks
+                                        .collect_into(&mut snapshot.task_records)
+                                        .map_err(|e| e.to_string())?;
+                                }
+                                Ok(())
+                            },
+                        )?;
+                        Ok(())
+                    })?;
                 Ok((sequence, dropped))
-            })();
-            worker_done.store(true, Ordering::Release);
-            result
+            })()
         })?;
+    let mut event_error = None;
     let mut dictionary = CgroupDictionary::new(records);
     let mut dictionary_entries: Vec<DictionaryEntry> = Vec::with_capacity(records);
     let mut payload = Vec::new();
@@ -306,14 +321,29 @@ fn run(config: MonitorConfig) -> Result<()> {
             if let Some(recorder) = recorder.as_mut() {
                 recorder.poll()?;
             }
-            #[cfg(feature = "dora")]
-            if let Some(publisher) = publisher.as_mut()
-                && publisher.stop_requested()?
+            let mut select = Select::new_biased();
+            let control = select.recv(&control_rx);
+            let sample = consumer.register_recv(&mut select);
+            let selected = if let Some(deadline) = recorder
+                .as_ref()
+                .and_then(recording::Recorder::next_flush_deadline)
             {
-                stop.store(true, Ordering::Release);
+                match select.select_deadline(deadline) {
+                    Ok(selected) => selected,
+                    Err(_) => continue,
+                }
+            } else {
+                select.select()
+            };
+            if selected.index() == control {
+                if let Ok(Err(error)) = selected.recv(&control_rx) {
+                    event_error.get_or_insert(error);
+                }
+                let _ = stop_tx.try_send(());
+                continue;
             }
-            let finished = done.load(Ordering::Acquire) || worker.is_finished();
-            if let Some(lease) = consumer.try_recv() {
+            debug_assert_eq!(selected.index(), sample);
+            if let Ok(lease) = consumer.recv_selected(selected) {
                 let snapshot = lease.snapshot();
                 let rotated = recorder.as_ref().is_some_and(|r| r.rotation_due());
                 if rotated {
@@ -425,10 +455,8 @@ fn run(config: MonitorConfig) -> Result<()> {
                     output.flush()?;
                 }
                 published += 1;
-            } else if finished {
-                break;
             } else {
-                std::thread::sleep(Duration::from_millis(1));
+                break;
             }
         }
         if let Some(output) = output.as_mut() {
@@ -441,9 +469,12 @@ fn run(config: MonitorConfig) -> Result<()> {
         if let Some(publisher) = publisher.as_mut() {
             publisher.finish()?;
         }
+        if let Some(error) = event_error {
+            bail!(error);
+        }
         Ok(())
     })();
-    stop.store(true, Ordering::Release);
+    let _ = stop_tx.try_send(());
     let collected = worker
         .join()
         .map_err(|_| eyre!("collection thread panicked"))?
@@ -538,5 +569,66 @@ mod tests {
         assert_eq!(dropped, 3);
         drop(release);
         reader.join().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod wait_tests {
+    use super::*;
+
+    #[test]
+    fn stop_interrupts_sampling_before_the_next_tick() {
+        // Arrange
+        let (stop, stop_rx) = bounded(1);
+        let (sample, samples) = bounded(1);
+        let (done, result) = bounded(1);
+        let worker = std::thread::spawn(move || {
+            let count =
+                collect_until_stopped(stop_rx, 0, Duration::from_secs(30), |sequence, _| {
+                    sample.send(sequence).unwrap();
+                    Ok(())
+                });
+            done.send(count).unwrap();
+        });
+        assert_eq!(samples.recv_timeout(Duration::from_secs(2)).unwrap(), 0);
+
+        // Act
+        stop.send(()).unwrap();
+        let count = result
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+
+        // Assert
+        assert_eq!(count, 1);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn collection_failure_is_returned_and_closes_the_snapshot_stream() {
+        // Arrange
+        let (producer, consumer) = monitor_core::handoff(2, 1).unwrap();
+        let (_stop, stop_rx) = bounded(1);
+        let worker = std::thread::spawn(move || {
+            collect_until_stopped(stop_rx, 0, PERIOD, |_, _| {
+                producer.try_acquire().unwrap().publish();
+                Err("collector failed".into())
+            })
+        });
+
+        // Act
+        let selected = {
+            let mut select = Select::new();
+            consumer.register_recv(&mut select);
+            consumer
+                .recv_selected(select.select_timeout(Duration::from_secs(2)).unwrap())
+                .is_ok()
+        };
+        let error = worker.join().unwrap().unwrap_err();
+
+        // Assert
+        assert!(selected);
+        assert_eq!(error, "collector failed");
+        assert!(consumer.recv().is_err());
     }
 }
