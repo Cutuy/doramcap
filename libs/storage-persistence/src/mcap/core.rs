@@ -15,6 +15,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+const MAX_BATCH_AGE: Duration = Duration::from_millis(100);
 const MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
 pub(super) struct McapCore {
     combining_timeline: Timeline,
@@ -27,7 +28,6 @@ pub(super) struct McapCore {
     active: Option<BufferLease>,
     used: usize,
     since: Option<Instant>,
-    max_age: Duration,
     metrics: crate::observability::McapMetrics,
     metadata: Vec<u8>,
     prepared_format: Arc<PreparedFormat>,
@@ -160,7 +160,6 @@ impl McapCore {
             active: None,
             used: 0,
             since: None,
-            max_age: Duration::from_millis(100),
             metrics,
             metadata: Vec::new(),
         };
@@ -432,7 +431,7 @@ impl McapCore {
         self.buffer_size - ALIGNMENT
     }
     pub(super) fn next_flush_deadline(&self) -> Option<Instant> {
-        self.since.and_then(|t| t.checked_add(self.max_age))
+        self.since.and_then(|t| t.checked_add(MAX_BATCH_AGE))
     }
     /// Optional refresh; submissions also drive completions and aged batches.
     pub(super) fn poll(&mut self, now: Instant) -> io::Result<()> {

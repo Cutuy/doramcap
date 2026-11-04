@@ -1,4 +1,5 @@
 use crate::{ActivitySubscriber, Result};
+use crossbeam_channel::{Receiver, Sender, bounded};
 use crossbeam_queue::ArrayQueue;
 use std::{
     cell::RefCell,
@@ -148,19 +149,17 @@ pub(crate) struct Slot {
 }
 /// One sink's bounded queue of published blocks.
 pub(crate) struct Output {
-    pub queue: ArrayQueue<Arc<Slot>>,
+    pub sender: Sender<Arc<Slot>>,
+    pub receiver: Receiver<Arc<Slot>>,
     pub dropped: AtomicUsize,
-    /// Queue length that wakes the sink's worker.
-    pub wake_at: AtomicUsize,
-    pub thread: OnceLock<std::thread::Thread>,
 }
 impl Output {
     pub fn new(capacity: usize) -> Self {
+        let (sender, receiver) = bounded(capacity);
         Self {
-            queue: ArrayQueue::new(capacity),
+            sender,
+            receiver,
             dropped: AtomicUsize::new(0),
-            wake_at: AtomicUsize::new(1),
-            thread: OnceLock::new(),
         }
     }
 }
@@ -247,18 +246,9 @@ impl Core {
         self.ready.fetch_add(1, Ordering::Relaxed);
         slot.readers.store(outputs.len() + 1, Ordering::Release);
         for output in outputs {
-            match output.queue.push(slot.clone()) {
-                Ok(()) => {
-                    if output.queue.len() >= output.wake_at.load(Ordering::Relaxed)
-                        && let Some(thread) = output.thread.get()
-                    {
-                        thread.unpark();
-                    }
-                }
-                Err(slot) => {
-                    output.dropped.fetch_add(1, Ordering::Relaxed);
-                    self.release(slot);
-                }
+            if let Err(error) = output.sender.try_send(slot.clone()) {
+                output.dropped.fetch_add(1, Ordering::Relaxed);
+                self.release(error.into_inner());
             }
         }
         self.release(slot);
@@ -579,7 +569,7 @@ mod tests {
         );
         registration.flush();
         assert_eq!(handle.buffers().capture_ready, 1);
-        core.release(output.queue.pop().unwrap());
+        core.release(output.receiver.try_recv().unwrap());
         assert_eq!(handle.buffers().capture_free, 2);
         drop(registration);
         assert_eq!(handle.buffers().registered_threads, 0);
@@ -610,7 +600,7 @@ mod tests {
         );
         assert_eq!(core.losses.snapshot().records, 1);
         assert!(core.free.is_empty());
-        core.release(output.queue.pop().unwrap());
+        core.release(output.receiver.try_recv().unwrap());
         core.emit(
             Record {
                 kind: 1,
@@ -618,7 +608,7 @@ mod tests {
             },
             |_, _| {},
         );
-        assert_eq!(output.queue.len(), 1);
+        assert_eq!(output.receiver.len(), 1);
         drop(reg);
     }
     #[test]
@@ -647,7 +637,7 @@ mod tests {
             }
         });
         let mut received = 0;
-        while let Some(slot) = output.queue.pop() {
+        while let Ok(slot) = output.receiver.try_recv() {
             received += slot.block.read().unwrap().records.len();
             core.release(slot);
         }

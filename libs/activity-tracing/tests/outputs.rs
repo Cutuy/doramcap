@@ -1,5 +1,14 @@
 use activity_tracing::{BatchView, Config, Result, Runtime, Sink, SinkBuilder};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+const TEST_TIMEOUT: Duration = Duration::from_secs(5);
+const RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+const IDLE_OBSERVATION_WINDOW: Duration = Duration::from_millis(150);
+const TEST_FLUSH_DELAY: Duration = Duration::from_millis(100);
+
 #[test]
 fn sink_build_failure_fails_start() {
     // Arrange
@@ -10,7 +19,13 @@ fn sink_build_failure_fails_start() {
         }
     }
     // Act
-    let result = Runtime::start(Config::default(), vec![Box::new(Refuse)]);
+    let result = Runtime::start(
+        Config::default(),
+        vec![
+            Box::new(Collect(Arc::new(Mutex::new(Vec::new())))),
+            Box::new(Refuse),
+        ],
+    );
     // Assert
     assert_eq!(result.err().unwrap().to_string(), "refused");
 }
@@ -228,7 +243,7 @@ fn panicking_sink_is_reported_and_returns_every_block() {
 #[test]
 fn sequence_gap_counts_blocks_the_sink_dropped() {
     // Arrange
-    use std::{sync::mpsc, time::Duration};
+    use std::sync::mpsc;
     struct Gated {
         seen: Arc<Mutex<Vec<u64>>>,
         entered: mpsc::Sender<()>,
@@ -241,7 +256,7 @@ fn sequence_gap_counts_blocks_the_sink_dropped() {
         fn write(&mut self, b: BatchView<'_>) -> Result<()> {
             self.seen.lock().unwrap().push(b.sequence);
             let _ = self.entered.send(());
-            self.release.recv_timeout(Duration::from_secs(5))?;
+            self.release.recv_timeout(TEST_TIMEOUT)?;
             Ok(())
         }
     }
@@ -263,13 +278,13 @@ fn sequence_gap_counts_blocks_the_sink_dropped() {
     let h = rt.handle();
     let reg = h.register_thread("test").unwrap();
     let step = || {
-        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        entered.recv_timeout(TEST_TIMEOUT).unwrap();
         release.send(()).unwrap();
     };
     // Act: while the first write blocks, one block queues and four drop.
     tracing::subscriber::with_default(h.subscriber(), || {
         tracing::info!(target:"activity",n = 0);
-        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        entered.recv_timeout(TEST_TIMEOUT).unwrap();
         for n in 1..6 {
             tracing::info!(target:"activity",n);
         }
@@ -336,25 +351,19 @@ fn concurrent_producers_deliver_ascending_sequences_to_every_sink() {
 #[test]
 fn websocket_binary_frame_decodes() {
     use activity_tracing::wire;
-    use std::{
-        net::{TcpListener, TcpStream},
-        time::Duration,
-    };
+    use std::net::{TcpListener, TcpStream};
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
     let client = std::thread::spawn(move || {
         let stream = TcpStream::connect(addr).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .unwrap();
+        stream.set_read_timeout(Some(TEST_TIMEOUT)).unwrap();
         let (mut ws, _) = tungstenite::client(format!("ws://{addr}/"), stream).unwrap();
         let message = ws.read().unwrap();
         assert!(message.is_binary());
         wire::decode(&message.into_data()).unwrap()
     });
     let (stream, _) = listener.accept().unwrap();
-    let sink =
-        activity_tracing::sinks::WebSocketSink::accept(stream, Duration::from_secs(2)).unwrap();
+    let sink = activity_tracing::sinks::WebSocketSink::accept(stream, RESPONSE_TIMEOUT).unwrap();
     let mut rt = Runtime::start(Config::default(), vec![Box::new(sink)]).unwrap();
     let h = rt.handle();
     let reg = h.register_thread("test").unwrap();
@@ -370,10 +379,7 @@ fn websocket_binary_frame_decodes() {
 
 #[test]
 fn slow_sink_drops_independently_without_starving_fast_sink() {
-    use std::{
-        sync::mpsc,
-        time::{Duration, Instant},
-    };
+    use std::{sync::mpsc, time::Instant};
     struct Slow {
         entered: mpsc::Sender<()>,
         release: mpsc::Receiver<()>,
@@ -384,7 +390,7 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
         }
         fn write(&mut self, _: BatchView<'_>) -> Result<()> {
             let _ = self.entered.send(());
-            self.release.recv_timeout(Duration::from_secs(5))?;
+            self.release.recv_timeout(TEST_TIMEOUT)?;
             Ok(())
         }
     }
@@ -411,9 +417,9 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
         for n in 0..10 {
             tracing::info!(target:"activity",n);
             if n == 0 {
-                entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                entered_rx.recv_timeout(TEST_TIMEOUT).unwrap();
             }
-            let deadline = Instant::now() + Duration::from_secs(5);
+            let deadline = Instant::now() + TEST_TIMEOUT;
             while shared.lock().unwrap().len() < n + 1 {
                 assert!(Instant::now() < deadline, "fast sink stalled");
                 std::thread::yield_now();
@@ -429,4 +435,179 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
     assert_eq!(report.sinks[1].written, 10);
     assert_eq!(report.sinks[1].dropped, 0);
     assert_eq!(report.capture.records, 0);
+}
+
+#[test]
+fn idle_worker_waits_for_work_and_shutdown_without_polling() {
+    // Arrange
+    use std::sync::mpsc;
+    struct Notice(mpsc::Sender<&'static str>);
+    impl Sink for Notice {
+        fn name(&self) -> &str {
+            "notice"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            self.0.send("write")?;
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<()> {
+            self.0.send("poll")?;
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<()> {
+            self.0.send("finish")?;
+            Ok(())
+        }
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut runtime = Runtime::start(Config::default(), vec![Box::new(Notice(tx))]).unwrap();
+    let handle = runtime.handle();
+    let registration = handle.register_thread("wake-test").unwrap();
+
+    // Act / Assert: an empty worker has no recurring poll calls.
+    assert_eq!(
+        rx.recv_timeout(IDLE_OBSERVATION_WINDOW),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+    tracing::subscriber::with_default(handle.subscriber(), || {
+        tracing::info!(target: "activity", value = 1);
+    });
+    assert_eq!(rx.recv_timeout(RESPONSE_TIMEOUT).unwrap(), "write");
+    assert_eq!(rx.recv_timeout(RESPONSE_TIMEOUT).unwrap(), "poll");
+    assert_eq!(
+        rx.recv_timeout(IDLE_OBSERVATION_WINDOW),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+
+    // Act: wake the worker for shutdown while no work is queued.
+    drop(registration);
+    let report = runtime.shutdown().unwrap();
+
+    // Assert
+    assert_eq!(rx.recv_timeout(RESPONSE_TIMEOUT).unwrap(), "finish");
+    assert_eq!(report.sinks[0].written, 1);
+    assert!(report.sinks[0].error.is_none());
+}
+
+#[test]
+fn buffered_data_flushes_on_its_deadline_without_another_write() {
+    // Arrange
+    use std::{sync::mpsc, time::Instant};
+    struct Buffered {
+        deadline: Option<Instant>,
+        flushed: mpsc::Sender<Instant>,
+    }
+    impl Sink for Buffered {
+        fn name(&self) -> &str {
+            "buffered"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            self.deadline
+                .get_or_insert_with(|| Instant::now() + TEST_FLUSH_DELAY);
+            Ok(())
+        }
+        fn next_flush_deadline(&self) -> Option<Instant> {
+            self.deadline
+        }
+        fn poll(&mut self) -> Result<()> {
+            if let Some(deadline) = self.deadline
+                && Instant::now() >= deadline
+            {
+                self.deadline = None;
+                self.flushed.send(deadline)?;
+            }
+            Ok(())
+        }
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut runtime = Runtime::start(
+        Config::default(),
+        vec![Box::new(Buffered {
+            deadline: None,
+            flushed: tx,
+        })],
+    )
+    .unwrap();
+    let handle = runtime.handle();
+    let registration = handle.register_thread("deadline-test").unwrap();
+
+    // Act
+    tracing::subscriber::with_default(handle.subscriber(), || {
+        tracing::info!(target: "activity", value = 1);
+    });
+    let deadline = rx.recv_timeout(RESPONSE_TIMEOUT).unwrap();
+
+    // Assert
+    assert!(Instant::now() >= deadline);
+    assert_eq!(
+        rx.recv_timeout(IDLE_OBSERVATION_WINDOW),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+
+    // Act
+    drop(registration);
+    let report = runtime.shutdown().unwrap();
+
+    // Assert
+    assert_eq!(report.sinks[0].written, 1);
+    assert!(report.sinks[0].error.is_none());
+}
+
+#[test]
+fn expired_flush_deadline_stops_waking_after_resolution_or_error() {
+    use std::{sync::mpsc, time::Instant};
+    struct Expired {
+        deadline: Option<Instant>,
+        fail: bool,
+        polled: mpsc::Sender<()>,
+    }
+    impl Sink for Expired {
+        fn name(&self) -> &str {
+            "expired"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            Ok(())
+        }
+        fn next_flush_deadline(&self) -> Option<Instant> {
+            self.deadline
+        }
+        fn poll(&mut self) -> Result<()> {
+            self.polled.send(())?;
+            if self.fail {
+                return Err("flush failed".into());
+            }
+            self.deadline = None;
+            Ok(())
+        }
+    }
+
+    for fail in [false, true] {
+        // Arrange
+        let (tx, rx) = mpsc::channel();
+        let sink = Expired {
+            deadline: Some(Instant::now()),
+            fail,
+            polled: tx,
+        };
+
+        // Act
+        let mut runtime = Runtime::start(Config::default(), vec![Box::new(sink)]).unwrap();
+
+        // Assert: even an already-expired deadline causes only one poll.
+        rx.recv_timeout(RESPONSE_TIMEOUT).unwrap();
+        assert_eq!(
+            rx.recv_timeout(IDLE_OBSERVATION_WINDOW),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+
+        // Act
+        let report = runtime.shutdown().unwrap();
+
+        // Assert
+        assert_eq!(
+            report.sinks[0].error.as_deref(),
+            fail.then_some("flush failed")
+        );
+        assert_eq!(report.sinks[0].written, 0);
+    }
 }

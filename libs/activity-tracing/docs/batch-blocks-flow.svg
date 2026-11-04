@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="660" viewBox="0 0 1000 660" role="img" aria-labelledby="title desc">
+<title id="title">Who requests and receives batched capture blocks</title>
+<desc id="desc">Application threads publish references to separate capture blocks into a sink queue. The sink worker reads the sink's batching preference once, drains available references, and calls the sink's write_blocks method. MCAP serializes the blocks into a contiguous output payload.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10Z" fill="#475569"/></marker>
+<marker id="purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#7c3aed"/></marker>
+<style>
+text {font-family:Arial,sans-serif;fill:#172033;font-size:17px} .heading{font-size:25px;font-weight:600} .label{font-size:19px;font-weight:600} .small{font-size:15px;fill:#475569} .box{fill:#f8fafc;stroke:#94a3b8;stroke-width:1.5} .flow{fill:none;stroke:#475569;stroke-width:2;marker-end:url(#arrow)} .control{fill:none;stroke:#7c3aed;stroke-width:2;stroke-dasharray:6 5;marker-end:url(#purple)}
+</style></defs>
+<rect width="1000" height="660" fill="#fff"/>
+<text x="36" y="44" class="heading">Block batching: producer → worker → sink</text>
+<rect x="36" y="114" width="228" height="124" rx="10" class="box"/>
+<text x="56" y="147" class="label">Application threads</text>
+<text x="56" y="180">Record events</text>
+<text x="56" y="207">Publish capture blocks</text>
+<path d="M264 176 H355" class="flow"/>
+<text x="280" y="159" class="small">refs</text>
+<rect x="356" y="114" width="248" height="124" rx="10" class="box"/>
+<text x="376" y="147" class="label">Queue for this sink</text>
+<rect x="377" y="165" width="60" height="42" rx="4" fill="#dbeafe"/><text x="389" y="192">ref A</text>
+<rect x="445" y="165" width="60" height="42" rx="4" fill="#dbeafe"/><text x="457" y="192">ref B</text>
+<rect x="513" y="165" width="60" height="42" rx="4" fill="#dbeafe"/><text x="525" y="192">ref C</text>
+<path d="M604 176 H694" class="flow"/>
+<text x="615" y="159" class="small">drain</text>
+<rect x="696" y="114" width="268" height="124" rx="10" class="box"/>
+<text x="716" y="147" class="label">Dedicated sink worker</text>
+<text x="716" y="180">Takes available blocks</text>
+<text x="716" y="207">Up to sink_queue; no wait</text>
+<path d="M407 208 V278 M475 208 V296 M543 208 V278" fill="none" stroke="#94a3b8" stroke-dasharray="4 4"/>
+<rect x="351" y="278" width="78" height="49" rx="4" fill="#eff6ff" stroke="#60a5fa"/><text x="364" y="309">Block A</text>
+<rect x="445" y="296" width="78" height="49" rx="4" fill="#eff6ff" stroke="#60a5fa"/><text x="458" y="327">Block B</text>
+<rect x="539" y="278" width="78" height="49" rx="4" fill="#eff6ff" stroke="#60a5fa"/><text x="552" y="309">Block C</text>
+<text x="354" y="375" class="small">Separate capture-block allocations</text>
+<path d="M800 238 V406" class="flow"/>
+<text x="633" y="279" class="small">Worker calls</text>
+<text x="633" y="302">write_blocks(A, B, C)</text>
+<path d="M932 406 V249" class="control"/>
+<text x="840" y="332" fill="#7c3aed" style="fill:#7c3aed">true</text>
+<rect x="650" y="407" width="314" height="130" rx="10" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="670" y="439" class="label">McapSink implementation</text>
+<text x="670" y="470">batch_blocks() → true</text>
+<text x="670" y="499">write_blocks(): serialize + pack</text>
+<text x="698" y="568" class="small">Sink opts in; worker reads once at startup</text>
+<path d="M650 472 H594" class="flow"/>
+<rect x="36" y="415" width="558" height="122" rx="10" fill="#f0fdf4" stroke="#86b59a" stroke-width="1.5"/>
+<text x="56" y="448" class="label">MCAP writer: contiguous encoded payload</text>
+<rect x="56" y="465" width="165" height="47" fill="#bbf7d0" stroke="#4c9270"/>
+<rect x="221" y="465" width="165" height="47" fill="#bbf7d0" stroke="#4c9270"/>
+<rect x="386" y="465" width="187" height="47" fill="#bbf7d0" stroke="#4c9270"/>
+<text x="72" y="495">Records from A</text><text x="237" y="495">Records from B</text><text x="402" y="495">Records from C</text>
+<text x="56" y="568" class="small">Blocks that fit share one message; larger groups produce more messages</text>
+</svg>

@@ -12,6 +12,10 @@ For every important decision, ask the user before proceeding. Present your recom
 
 Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
+## Constants
+
+Avoid hardcoded constants in code. Define required fixed values with clear names that express their purpose, and reuse those names at call sites.
+
 ## Concurrency
 
 In Rust code outside tests, use event-driven waits: block on channels, `select!`, condition variables or kernel waits. Replace sleep, timed-park and yield loops used to poll for state changes with explicit signaling. Timers may implement sampling schedules, pacing and real deadlines.

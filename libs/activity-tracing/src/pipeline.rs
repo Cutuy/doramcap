@@ -3,12 +3,12 @@ use crate::{
     capture::{Block, Config, Core, Handle, Losses, Output, Slot},
     wire::Encoder,
 };
-use crossbeam_channel::bounded;
+use crossbeam_channel::{Receiver, Sender, at, bounded, never, select_biased};
 use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, RwLockReadGuard, atomic::Ordering},
     thread::{self, JoinHandle},
-    time::Duration,
+    time::Instant,
 };
 
 /// A borrowed immutable batch; sinks may use it only during `write`.
@@ -87,11 +87,20 @@ pub trait Sink: 'static {
     fn write_blocks(&mut self, blocks: &mut Blocks<'_>) -> Result<()> {
         blocks.for_each_batch(|batch| self.write(batch))
     }
-    /// Period for collecting blocks between calls. `None` delivers promptly after each publish.
-    fn batch_interval(&self) -> Option<Duration> {
+    /// Opts into delivering queued blocks together to [`Self::write_blocks`] (default: false); read once at worker startup.
+    /// Takes up to [`Config::sink_queue`] blocks without waiting; separately allocated blocks stay pinned until the call returns.
+    /// Override `write_blocks` to amortize serialization or I/O; its default still emits one message per block.
+    fn batch_blocks(&self) -> bool {
+        false
+    }
+    /// Next buffered-data flush deadline. `None` leaves an idle worker blocked on channels.
+    /// An expired deadline triggers [`Self::poll`] immediately.
+    fn next_flush_deadline(&self) -> Option<Instant> {
         None
     }
-    /// Runs on every worker wake, including idle ones.
+    /// Refreshes I/O after deliveries and when the flush deadline expires.
+    /// Before returning `Ok(())`, clear or advance any expired flush deadline to avoid busy spinning.
+    /// An error disables further deliveries and polling; the worker keeps releasing queued blocks.
     fn poll(&mut self) -> Result<()> {
         Ok(())
     }
@@ -121,7 +130,6 @@ pub struct ShutdownReport {
     pub capture: Losses,
     pub sinks: Vec<SinkReport>,
 }
-const PROMPT_POLL: Duration = Duration::from_millis(2);
 /// Runs one sink call, recording its error or panic so the worker keeps releasing blocks.
 fn guarded(report: &mut SinkReport, call: impl FnOnce() -> Result<()>) {
     match catch_unwind(AssertUnwindSafe(call)) {
@@ -163,24 +171,29 @@ fn deliver(
         core.release(slot);
     }
 }
-fn run_worker(core: &Core, output: &Output, sink: &mut dyn Sink, report: &mut SinkReport) {
+fn run_worker(
+    core: &Core,
+    output: &Output,
+    stop: &Receiver<()>,
+    sink: &mut dyn Sink,
+    report: &mut SinkReport,
+) {
     let mut encoder = Encoder::new(core.config.records_per_block);
     let mut buffer = Vec::new();
     let mut taken = Vec::with_capacity(core.config.sink_queue);
-    let interval = sink.batch_interval();
-    let park = interval.unwrap_or(PROMPT_POLL);
-    // Without batching, take one block at a time so each returns to the pool promptly.
-    let take = interval.map_or(1, |_| core.config.sink_queue);
+    let take = if sink.batch_blocks() {
+        core.config.sink_queue
+    } else {
+        1
+    };
+    let mut stopping = false;
     loop {
-        // Read first: publishing has stopped, so an empty queue afterward is the end.
-        let closed = !core.accepting.load(Ordering::Acquire);
         while taken.len() < take
-            && let Some(slot) = output.queue.pop()
+            && let Ok(slot) = output.receiver.try_recv()
         {
             taken.push(slot);
         }
-        let idle = taken.is_empty();
-        if !idle {
+        if !taken.is_empty() {
             deliver(
                 core,
                 sink,
@@ -190,21 +203,36 @@ fn run_worker(core: &Core, output: &Output, sink: &mut dyn Sink, report: &mut Si
                 report,
                 output,
             );
+            if report.error.is_none() {
+                guarded(report, || sink.poll());
+            }
         }
-        if report.error.is_none() {
-            guarded(report, || sink.poll());
+        if stopping {
+            if output.receiver.is_empty() {
+                return;
+            }
+            continue;
         }
-        if closed && idle {
-            return;
-        }
-        if output.queue.is_empty() && !closed {
-            thread::park_timeout(park);
+        let deadline = if report.error.is_none() {
+            sink.next_flush_deadline().map_or_else(never, at)
+        } else {
+            never()
+        };
+        select_biased! {
+            recv(stop) -> _ => stopping = true,
+            recv(deadline) -> _ => guarded(report, || sink.poll()),
+            recv(output.receiver) -> message => match message {
+                Ok(slot) => taken.push(slot),
+                Err(_) => return,
+            },
         }
     }
 }
+
 pub struct Runtime {
     core: Arc<Core>,
     sinks: Vec<JoinHandle<SinkReport>>,
+    stop: Option<Sender<()>>,
 }
 impl Runtime {
     /// Starts capture after building each sink on its worker.
@@ -214,12 +242,14 @@ impl Runtime {
         let mut outputs = Vec::new();
         let mut workers = Vec::new();
         let mut built = Vec::new();
+        let (stop, stop_rx) = bounded::<()>(0);
         for builder in sinks {
             let output = Arc::new(Output::new(core.config.sink_queue));
             outputs.push(output.clone());
             let c = core.clone();
             let (ready, ready_rx) = bounded(1);
             built.push(ready_rx);
+            let stop_rx = stop_rx.clone();
             workers.push(thread::spawn(move || {
                 let mut report = SinkReport {
                     name: String::new(),
@@ -235,14 +265,8 @@ impl Runtime {
                     }
                 };
                 report.name = sink.name().into();
-                // A batching sink wakes early at half a queue so bursts are not dropped.
-                if sink.batch_interval().is_some() {
-                    let half = (c.config.sink_queue / 2).max(1);
-                    output.wake_at.store(half, Ordering::Relaxed);
-                }
-                let _ = output.thread.set(thread::current());
                 let _ = ready.send(None);
-                run_worker(&c, &output, sink.as_mut(), &mut report);
+                run_worker(&c, &output, &stop_rx, sink.as_mut(), &mut report);
                 if let Err(e) = sink.finish() {
                     report.error.get_or_insert_with(|| e.to_string());
                 }
@@ -257,6 +281,7 @@ impl Runtime {
         });
         if let Some(error) = failure {
             core.accepting.store(false, Ordering::Release);
+            drop(stop);
             for worker in workers {
                 let _ = worker.join();
             }
@@ -266,6 +291,7 @@ impl Runtime {
         Ok(Self {
             core,
             sinks: workers,
+            stop: Some(stop),
         })
     }
     pub fn handle(&self) -> Handle {
@@ -283,9 +309,8 @@ impl Runtime {
         self.join()
     }
     fn join(&mut self) -> Result<ShutdownReport> {
-        for worker in &self.sinks {
-            worker.thread().unpark();
-        }
+        // Disconnect wakes every worker, including those waiting after a startup failure.
+        self.stop.take();
         let mut sinks = Vec::new();
         for worker in self.sinks.drain(..) {
             sinks.push(worker.join().map_err(|_| "sink worker panicked")?);
