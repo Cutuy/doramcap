@@ -10,7 +10,7 @@ fn main() -> activity_tracing::Result<()> {
             encoded_buffers: 32,
             ..Default::default()
         },
-        vec![Box::new(McapSink::create(path)?)],
+        vec![Box::new(McapSink::new(path))],
     )?;
     let handle = runtime.handle();
     let registration = handle.register_thread("camera")?;

@@ -31,7 +31,7 @@ pub fn start(dir: &Path, role: &str) -> Result<Runtime> {
         },
         vec![
             Box::new(live),
-            Box::new(McapSink::create(dir.join(format!("{stem}.mcap")))?),
+            Box::new(McapSink::new(dir.join(format!("{stem}.mcap")))),
         ],
     )
 }

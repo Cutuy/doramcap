@@ -417,7 +417,7 @@ async fn main() -> Result<()> {
             ..Default::default()
         },
         vec![
-            Box::new(McapSink::create(&record)?),
+            Box::new(McapSink::new(&record)),
             Box::new(LiveSink(feed.clone())),
         ],
     )?;

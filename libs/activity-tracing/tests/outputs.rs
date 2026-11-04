@@ -1,5 +1,19 @@
-use activity_tracing::{BatchView, Config, Result, Runtime, Sink};
+use activity_tracing::{BatchView, Config, Result, Runtime, Sink, SinkBuilder};
 use std::sync::{Arc, Mutex};
+#[test]
+fn sink_build_failure_fails_start() {
+    // Arrange
+    struct Refuse;
+    impl SinkBuilder for Refuse {
+        fn build(self: Box<Self>) -> Result<Box<dyn Sink>> {
+            Err("refused".into())
+        }
+    }
+    // Act
+    let result = Runtime::start(Config::default(), vec![Box::new(Refuse)]);
+    // Assert
+    assert_eq!(result.err().unwrap().to_string(), "refused");
+}
 struct Collect(Arc<Mutex<Vec<Vec<u8>>>>);
 impl Sink for Collect {
     fn name(&self) -> &str {
@@ -22,14 +36,16 @@ fn mcap_preserves_shared_bytes_schema_and_timestamps() {
             .unwrap()
             .as_nanos()
     ));
-    let sink = McapSink::create(&path).unwrap();
-    assert!(McapSink::create(&path).is_err());
     let shared = Arc::new(Mutex::new(Vec::new()));
     let mut rt = Runtime::start(
         Config::default(),
-        vec![Box::new(sink), Box::new(Collect(shared.clone()))],
+        vec![
+            Box::new(McapSink::new(&path)),
+            Box::new(Collect(shared.clone())),
+        ],
     )
     .unwrap();
+    assert!(Runtime::start(Config::default(), vec![Box::new(McapSink::new(&path))]).is_err());
     let h = rt.handle();
     let reg = h.register_thread("test").unwrap();
     tracing::subscriber::with_default(h.subscriber(), || {

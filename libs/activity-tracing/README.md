@@ -19,7 +19,7 @@ use activity_tracing::{Config, Runtime, sinks::McapSink};
 # fn main() -> activity_tracing::Result<()> {
 let mut runtime = Runtime::start(
     Config::default(),
-    vec![Box::new(McapSink::create("activity.mcap")?)],
+    vec![Box::new(McapSink::new("activity.mcap"))],
 )?;
 let handle = runtime.handle();
 let registration = handle.register_thread("camera")?;
