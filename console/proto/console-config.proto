@@ -34,7 +34,10 @@ message LaunchProfile {
   string config = 3; // Absolute pbtxt path, mounted read-only at the app's config_mount.
   repeated RecordingOutput recordings = 4;
   repeated LiveOutput live_outputs = 5;
-  string graph = 6; // Optional complete native Dora graph for this profile.
+  // Optional absolute path to a Dora dataflow file, which lists nodes and wires outputs to inputs.
+  // Replaces the app's `graph` when this profile launches.
+  // Example: console/docs/configuration.md, "Profile graphs".
+  string graph = 6;
 }
 message SystemAppDefinition {
   string id = 1;
