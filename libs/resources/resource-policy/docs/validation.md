@@ -9,7 +9,7 @@
 
 ## Shared pbtxt resolver extraction
 
-- `pbtxt-config` owns App/Fragment/Deployment, typed `Any` payloads, includes, provenance, and fingerprints. Resource policy provides the domain adapter; observations use `ThreadResources`.
+- Resource policy loads its domain Deployment directly from standard protobuf TextFormat; observations use `ThreadResources`.
 - x86_64: ten resolver/policy tests, focused Clippy, full workspace all-feature tests, and native enforcement passed.
 - ARM64 job **66** succeeded: workspace default/all-feature checks, native enforcement, Python/Rust interoperability, and smoke tests.
 - All 20 implementation/schema/fixture/test files matched the worker snapshot. Native coverage retained goal expansion/narrowing, drift repair, inheritance, RR priorities 0/1/30, permission denial, and cleanup.

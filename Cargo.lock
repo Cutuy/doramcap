@@ -3581,19 +3581,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
-name = "pbtxt-config"
-version = "0.1.0"
-dependencies = [
- "prost",
- "prost-build",
- "prost-reflect",
- "prost-types",
- "protoc-bin-vendored",
- "sha2",
- "thiserror 2.0.21",
-]
-
-[[package]]
 name = "pem"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4332,9 +4319,9 @@ version = "0.1.0"
 dependencies = [
  "cpulist",
  "libc",
- "pbtxt-config",
  "prost",
  "prost-build",
+ "prost-reflect",
  "protoc-bin-vendored",
  "thiserror 2.0.21",
 ]

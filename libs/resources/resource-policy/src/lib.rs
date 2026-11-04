@@ -1,5 +1,5 @@
 //! Declarative CPU placement and scheduling with explicit caller-side enforcement.
-//! Resolve configuration before app initialization. Linux updates are non-atomic;
+//! Load configuration before app initialization. Linux updates are non-atomic;
 //! inspect `ApplyError` for partial progress. This crate starts no background work.
 pub mod config;
 #[cfg(target_os = "linux")]
@@ -89,7 +89,7 @@ impl Goal {
         let placement = policy
             .placement
             .as_ref()
-            .ok_or_else(|| Error::Invalid("resolved policy requires placement.cpus".into()))?;
+            .ok_or_else(|| Error::Invalid("policy requires placement.cpus".into()))?;
         Ok(Self {
             cpus: CpuSet::parse(&placement.cpus)?,
             rt_priority: policy.rt_priority.unwrap_or(0),

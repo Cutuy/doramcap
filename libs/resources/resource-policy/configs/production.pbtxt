@@ -1,1 +1,2 @@
-include: "base.pbtxt"
+app { id: "perception" policy { placement { cpus: "4,5-7,9-11" } rt_priority: 30 } }
+app { id: "recorder" policy { placement { cpus: "2-3" } rt_priority: 0 } }

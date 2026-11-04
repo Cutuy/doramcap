@@ -13,7 +13,6 @@
     "libs/activity-tracing": "Observability",
     "libs/step-provenance": "Observability",
     "libs/storage-persistence": "Storage",
-    "libs/pbtxt-config": "Configuration",
     "libs/resources": "Resources",
     "libs/memory": "Memory",
     "libs/fault": "Faults",
