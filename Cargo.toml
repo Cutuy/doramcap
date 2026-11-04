@@ -17,6 +17,7 @@ members = [
     "libs/workload-docker",
     "libs/orchestrator",
     "libs/storage-persistence",
+    "libs/resources/system-config",
     "libs/resources/task-accounting",
     "libs/telemetry/protocol",
     "libs/telemetry/workflow-protocol",

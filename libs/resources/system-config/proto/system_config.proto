@@ -1,0 +1,57 @@
+syntax = "proto3";
+package doramcap.system_config.v1;
+
+// One per-CPU setting value and the online CPUs reporting it, in Linux cpulist notation.
+message CpuValue {
+  string value = 1;
+  string cpus = 2;
+}
+// Container runtime settings; filled by the caller that owns the Docker connection.
+message DockerConfiguration {
+  string server_version = 1;
+  string compose_version = 2;
+  string cgroup_driver = 3;
+  string cgroup_version = 4;
+  string storage_driver = 5;
+}
+// Settings that can change results when they differ. Zero, empty and unavailable are equivalent.
+message MachineConfiguration {
+  string machine_fingerprint = 1; // SHA-256 of the machine ID.
+  string architecture = 2;
+  string cpu_model = 3;
+  string online_cpus = 4;
+  uint32 numa_nodes = 5;
+  uint64 memory_total_bytes = 6;
+  string kernel_release = 7;
+  string kernel_build = 8;
+  string boot_flags = 9;
+  string isolated_cpus = 10;
+  string nohz_full_cpus = 11;
+  repeated CpuValue governor = 12;
+  repeated CpuValue frequency_driver = 13;
+  repeated CpuValue energy_preference = 14;
+  bool turbo_enabled = 15;
+  bool smt_active = 16;
+  string transparent_hugepages = 17;
+  uint32 swappiness = 18;
+  int64 rt_runtime_us = 19;
+  string cgroup_controllers = 20;
+  string gpu_driver = 21;
+  repeated string gpu_models = 22;
+  DockerConfiguration docker = 23;
+}
+// Facts expected to vary between runs. Zero, empty and unavailable are equivalent.
+message MachineCondition {
+  string boot_id = 1;
+  double uptime_seconds = 2;
+  double load_1m = 3;
+  uint64 memory_available_bytes = 4;
+  uint64 disk_free_bytes = 5;
+  double max_temperature_celsius = 6;
+  repeated string other_containers = 7; // Filled by the caller that owns the Docker connection.
+}
+message MachineState {
+  uint64 captured_unix_ms = 1;
+  MachineConfiguration configuration = 2;
+  MachineCondition condition = 3;
+}

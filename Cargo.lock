@@ -5240,6 +5240,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "system-config"
+version = "0.1.0"
+dependencies = [
+ "cpulist",
+ "hex",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "rustix",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "system-monitor"
 version = "0.1.0"
 dependencies = [

@@ -9,6 +9,7 @@ cgroup accounting, snapshot handoff, CPU placement, and scheduling policy.
 | [cgroup-bpf](cgroup-bpf/) | Native per-CPU cgroup counters through BPF |
 | [task-accounting](task-accounting/) | Experimental kernel-thread runtime diagnostics |
 | [resource-policy](resource-policy/) | CPU affinity, real-time scheduling, and cgroup bootstrap |
+| [system-config](system-config/) | Typed observation of machine configuration and condition |
 
 The [system-monitor application](../../apps/system-monitor/) owns collection
 scheduling. [Telemetry](../telemetry/) owns publication and recording contracts.
