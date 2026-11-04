@@ -44,7 +44,7 @@ before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocke
 `OtelSink` (`otel`). Hosts can also implement `Sink`.
 
 `McapSink` merges already queued blocks and serializes them directly into `McapWriter`'s
-pinned buffer. A deadline flushes buffered data after at most 100 ms; empty workers wait
+pinned buffer. A deadline flushes buffered data after at most 1 s; empty workers wait
 on work and shutdown channels. Other sinks receive one `Batch` per block.
 Workers build the generated Protobuf `Batch` with repeated records; Prost measures and
 encodes it. Message construction allocates on the sink worker.
