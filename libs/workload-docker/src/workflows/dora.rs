@@ -6,6 +6,9 @@ use std::{collections::BTreeMap, time::Duration};
 
 include!(concat!(env!("OUT_DIR"), "/doramcap.dora.v1.rs"));
 
+// Startup polling is an approved exception until the existing Dora API reports readiness.
+const DORA_STARTUP_CHECK_INTERVAL: Duration = Duration::from_millis(100);
+
 /// Build typed Compose declarations for the owned coordinator and daemon.
 pub(crate) fn services(runtime: &DoraRuntime) -> BTreeMap<String, RuntimeService> {
     let bind = |source: &str, read_only| BindMount {
@@ -118,7 +121,7 @@ impl ExperimentOwner {
             if tokio::time::Instant::now() >= deadline {
                 return Err(invalid("Dora daemon did not connect to coordinator"));
             }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(DORA_STARTUP_CHECK_INTERVAL).await;
         }
     }
     pub(super) async fn inspect_runtime(&self) -> Result<()> {

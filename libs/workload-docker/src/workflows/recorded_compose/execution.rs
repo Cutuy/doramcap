@@ -4,6 +4,10 @@ use crate::compose::FORCED_STOP_OPERATION;
 use orchestrator::{LocalExecutor, Output};
 use std::time::Duration;
 
+// Approved polling exception: detect a stopped graph while containers remain running.
+const DORA_GRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+const SYSTEM_APPS_STABILITY_INTERVAL: Duration = Duration::from_millis(500);
+
 /// Stop requests win ties; callers always perform teardown after this future returns.
 pub(super) async fn until_stop(
     stop: impl Future<Output = ()>,
@@ -60,7 +64,7 @@ pub(super) async fn launch_apps(
             )
             .await?;
         if !prepared.value().user_services.is_empty() {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(SYSTEM_APPS_STABILITY_INTERVAL).await;
             let mut state = executor
                 .run::<InspectCompose>(plan.clone())
                 .await?
@@ -117,23 +121,37 @@ pub(super) async fn monitor(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     resources: &super::super::experiment::SharedExperiment,
+    mut changes: tokio::sync::watch::Receiver<()>,
 ) -> orchestrator::Result<()> {
-    loop {
-        let state = executor.run::<InspectCompose>(plan.clone()).await?;
-        if !state
-            .value()
-            .ready()
-            .map_err(|error| orchestrator::Error::message(error.to_string()))?
-        {
-            return Err(orchestrator::Error::message("experiment lost readiness"));
+    let containers = async {
+        loop {
+            let state = executor.run::<InspectCompose>(plan.clone()).await?;
+            if !state
+                .value()
+                .ready()
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?
+            {
+                return Err(orchestrator::Error::message("experiment lost readiness"));
+            }
+            changes.changed().await.map_err(|error| {
+                orchestrator::Error::message(format!("Docker event notifications ended: {error}"))
+            })?;
         }
-        resources
-            .lock()
-            .await
-            .inspect()
-            .await
-            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    let dora = async {
+        loop {
+            resources
+                .lock()
+                .await
+                .inspect()
+                .await
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+            tokio::time::sleep(DORA_GRAPH_CHECK_INTERVAL).await;
+        }
+    };
+    tokio::select! {
+        result = containers => result,
+        result = dora => result,
     }
 }
 

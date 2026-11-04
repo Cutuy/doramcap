@@ -410,22 +410,12 @@ impl Service {
             )
             .await;
         }
-        loop {
-            let mut pending = false;
-            let mut results = Vec::new();
-            for app in self.manager.iter() {
-                let status = app.lifecycle.status().await;
-                pending |= matches!(
-                    status,
-                    Status::Starting { .. } | Status::Ready { .. } | Status::Stopping { .. }
-                );
-                results.push((app.registration.id.to_owned(), status));
-            }
-            if !pending {
-                return results;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let mut results = Vec::new();
+        for app in self.manager.iter() {
+            let status = app.lifecycle.wait_until_stopped().await;
+            results.push((app.registration.id.to_owned(), status));
         }
+        results
     }
 }
 

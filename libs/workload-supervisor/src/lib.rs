@@ -5,7 +5,15 @@ pub mod steps;
 
 use orchestrator::{Input, LocalExecutor, Observer, Output};
 use prost::Message;
-use std::{cell::RefCell, future::Future, path::Path, rc::Rc};
+use std::{
+    cell::RefCell,
+    future::Future,
+    io,
+    os::fd::{AsRawFd, OwnedFd},
+    path::Path,
+    rc::Rc,
+};
+use tokio::io::{Interest, unix::AsyncFd};
 use workload_lifecycle::{
     recorded_run::{self, Phases},
     recording::{FinalizeRecordings, ReadinessInput, Recording, WaitForRecordings},
@@ -108,6 +116,7 @@ impl SupervisorRunner {
             launched: None,
             stopped: None,
             ready,
+            exits: None,
         };
         let outcome = recorded_run::run(&mut phases, stop).await;
         let mut diagnostics = outcome.completion_errors;
@@ -143,6 +152,7 @@ struct SupervisorPhases {
     launched: Option<Output<Ownership>>,
     stopped: Option<Output<steps::Quiesced>>,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
+    exits: Option<(AsyncFd<OwnedFd>, AsyncFd<OwnedFd>)>,
 }
 impl SupervisorPhases {
     fn recordings(&self) -> Vec<Recording> {
@@ -178,6 +188,20 @@ impl Phases for SupervisorPhases {
             .run::<WaitForRecordings>(input)
             .await
             .map_err(error)?;
+        let (daemon_pid, monitor_pid) = {
+            let state = self.state.borrow();
+            let ownership = &state.as_ref().unwrap().ledger;
+            (ownership.daemon_pid, ownership.monitor_pid)
+        };
+        let observe = |pid: u32| -> Result<AsyncFd<OwnedFd>> {
+            let pid = rustix::process::Pid::from_raw(pid.try_into().map_err(error)?)
+                .ok_or("process ID absent")?;
+            let fd = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())
+                .map_err(error)?;
+            // SAFETY: OwnedFd keeps this descriptor open and unchanged until it is dropped.
+            unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }.map_err(error)
+        };
+        self.exits = Some((observe(daemon_pid)?, observe(monitor_pid)?));
         self.inspect().await
     }
     fn ready(&mut self) -> Result<()> {
@@ -196,6 +220,19 @@ impl Phases for SupervisorPhases {
             .await
             .map_err(error)?;
         Ok(())
+    }
+    async fn wait_for_change(&mut self) -> Result<()> {
+        let (daemon, monitor) = self.exits.as_ref().ok_or("process-exit handles absent")?;
+        tokio::select! {
+            exit = wait_for_exit(daemon) => {
+                exit.map_err(error)?;
+                Err("Supervisor exited early".into())
+            }
+            exit = wait_for_exit(monitor) => {
+                exit.map_err(error)?;
+                Err("monitor exited early".into())
+            }
+        }
     }
     async fn quiesce(&mut self) -> Result<bool> {
         let mut input = Input::new(self.run.clone());
@@ -246,9 +283,93 @@ impl Phases for SupervisorPhases {
     }
 }
 
+/// Confirm pidfd readiness; spurious notifications return to the reactor.
+async fn wait_for_exit(process: &AsyncFd<OwnedFd>) -> io::Result<()> {
+    const CHECK_CURRENT_READINESS: libc::c_int = 0;
+    const PIDFD_COUNT: libc::nfds_t = 1;
+    process
+        .async_io(Interest::READABLE, |fd| {
+            let mut descriptor = libc::pollfd {
+                fd: fd.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            // SAFETY: descriptor is initialized and valid for one entry throughout poll.
+            let ready =
+                unsafe { libc::poll(&mut descriptor, PIDFD_COUNT, CHECK_CURRENT_READINESS) };
+            if ready < 0 {
+                return Err(io::Error::last_os_error());
+            }
+            if descriptor.revents & (libc::POLLIN | libc::POLLHUP) != 0 {
+                Ok(())
+            } else {
+                Err(io::ErrorKind::WouldBlock.into())
+            }
+        })
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn process_exit_ends_observation_before_supervisor_status_catches_up() {
+        use std::{process::Stdio, time::Duration};
+        const EXIT_DEADLINE: Duration = Duration::from_secs(5);
+
+        for (exited_process, expected_error) in
+            [(0, "Supervisor exited early"), (1, "monitor exited early")]
+        {
+            // Arrange: both processes stay alive until explicitly killed.
+            let mut children = [0, 1].map(|_| {
+                tokio::process::Command::new("/bin/cat")
+                    .stdin(Stdio::piped())
+                    .kill_on_drop(true)
+                    .spawn()
+                    .unwrap()
+            });
+            let exits = children.each_ref().map(|child| {
+                let pid = rustix::process::Pid::from_raw(child.id().unwrap() as i32).unwrap();
+                let fd =
+                    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).unwrap();
+                // SAFETY: OwnedFd retains the unchanged pidfd until the wait finishes.
+                unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }.unwrap()
+            });
+            let [daemon, monitor] = exits;
+            let mut phases = SupervisorPhases {
+                executor: LocalExecutor::new(|_: &orchestrator::Event| {}),
+                run: MonitorRun::default(),
+                state: Rc::new(RefCell::new(None)),
+                prepared: None,
+                launched: None,
+                stopped: None,
+                ready: None,
+                exits: Some((daemon, monitor)),
+            };
+            let wait = phases.wait_for_change();
+            tokio::pin!(wait);
+
+            // Act / Assert: observation stays pending while both processes live.
+            tokio::select! {
+                biased;
+                result = &mut wait => panic!("live processes ended observation: {result:?}"),
+                _ = std::future::ready(()) => {}
+            }
+
+            // Act: exit is observable before any Supervisor status inspection.
+            children[exited_process].start_kill().unwrap();
+            let result = tokio::time::timeout(EXIT_DEADLINE, &mut wait)
+                .await
+                .expect("process exit did not wake observation");
+
+            // Assert: exit ends execution immediately, allowing the driver to clean up.
+            assert_eq!(result.unwrap_err(), expected_error);
+            for child in &mut children {
+                child.kill().await.unwrap();
+            }
+        }
+    }
+
     #[test]
     fn strict_pbtxt_and_unsafe_paths_reject_before_launch() {
         // Arrange / Act

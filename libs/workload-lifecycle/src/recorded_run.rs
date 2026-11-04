@@ -1,5 +1,5 @@
 //! Cooperative lifecycle driver; backend hooks retain resource and evidence policy.
-use std::{future::Future, time::Duration};
+use std::future::Future;
 
 pub type PhaseResult<T = ()> = Result<T, String>;
 
@@ -10,6 +10,8 @@ pub trait Phases {
     async fn launch(&mut self) -> PhaseResult;
     fn ready(&mut self) -> PhaseResult;
     async fn inspect(&mut self) -> PhaseResult;
+    /// Await a backend state change after a successful inspection.
+    async fn wait_for_change(&mut self) -> PhaseResult;
     async fn quiesce(&mut self) -> PhaseResult<bool>;
     async fn finalize(&mut self, writers_stopped: bool) -> PhaseResult;
     async fn remove(&mut self) -> PhaseResult<bool>;
@@ -37,7 +39,7 @@ pub async fn run(phases: &mut impl Phases, stop: impl Future<Output = ()>) -> Ou
         phases.ready()?;
         loop {
             Box::pin(phases.inspect()).await?;
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            Box::pin(phases.wait_for_change()).await?;
         }
         #[allow(unreachable_code)]
         Ok::<(), String>(())
@@ -105,6 +107,9 @@ mod tests {
         async fn inspect(&mut self) -> PhaseResult {
             self.call("inspect")?;
             Err("observation ended".into())
+        }
+        async fn wait_for_change(&mut self) -> PhaseResult {
+            std::future::pending().await
         }
         async fn quiesce(&mut self) -> PhaseResult<bool> {
             self.call("quiesce")?;

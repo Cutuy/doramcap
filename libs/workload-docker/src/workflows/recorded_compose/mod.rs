@@ -235,7 +235,6 @@ impl ComposeRunner {
         )?;
         let events = EventCapture::start(
             self.adapter.docker.clone(),
-            spec.id.clone(),
             plan.name.clone(),
             artifacts.join("docker-events.jsonl"),
         );
@@ -257,7 +256,7 @@ impl ComposeRunner {
             // Give a concurrent stop request priority over publishing readiness.
             tokio::task::yield_now().await;
             signals.notify_ready(plan.clone());
-            execution::monitor(&executor, &plan, &resources).await
+            execution::monitor(&executor, &plan, &resources, events.changes()).await
         })
         .await;
 
