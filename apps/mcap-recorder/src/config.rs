@@ -10,30 +10,14 @@ pub use pb::{Input, RecorderConfig, RecordingReport, recording_report::State};
 pub const METADATA_TOPIC_SUFFIX: &str = "/dora_metadata";
 const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/recorder.bin"));
 
-/// Loads pbtxt; relative schema, recording and report paths use its directory.
+/// Parses standard TextFormat and validates the supplied settings.
 pub fn load(path: &Path) -> Result<RecorderConfig> {
     let descriptor = DescriptorPool::decode(DESCRIPTOR)?
         .get_message_by_name("doramcap.recorder.v1.RecorderConfig")
         .expect("compiled configuration");
-    let mut config: RecorderConfig =
+    let config: RecorderConfig =
         DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
             .transcode_to()?;
-    let directory = path.parent().unwrap_or(Path::new("."));
-    let resolve = |value: &mut String| -> Result<()> {
-        if !value.is_empty() {
-            *value = directory
-                .join(&*value)
-                .to_str()
-                .ok_or_else(|| eyre::eyre!("path is not UTF-8"))?
-                .into();
-        }
-        Ok(())
-    };
-    resolve(&mut config.output_path)?;
-    resolve(&mut config.report_path)?;
-    for input in &mut config.input {
-        resolve(&mut input.schema_path)?;
-    }
     validate(&config)?;
     Ok(config)
 }
@@ -42,7 +26,7 @@ pub fn load(path: &Path) -> Result<RecorderConfig> {
 pub fn validate(config: &RecorderConfig) -> Result<()> {
     ensure!(!config.output_path.is_empty(), "output_path is required");
     ensure!(
-        config.report_path.is_empty() || config.report_path != config.output_path,
+        !config.report_path.is_empty() && config.report_path != config.output_path,
         "report_path must differ from output_path"
     );
     ensure!(!config.input.is_empty(), "at least one input is required");

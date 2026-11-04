@@ -3,7 +3,7 @@ package doramcap.recorder.v1;
 
 message RecorderConfig {
   string output_path = 1;
-  // Defaults to output_path + ".report.pbtxt". Both files are created exclusively.
+  // Required recording report path. Both files are created exclusively.
   string report_path = 2;
   repeated Input input = 3;
 }
@@ -16,7 +16,7 @@ message Input {
   string schema_name = 4;
   string schema_encoding = 5;
   // File embedded as the schema, such as a binary FileDescriptorSet for "protobuf".
-  // Read once at startup. Relative to the config file.
+  // Read once at startup. Paths use the process working directory.
   string schema_path = 6;
   // Metadata key with decimal-string Unix nanoseconds. Empty means unavailable.
   string timestamp_key = 7;

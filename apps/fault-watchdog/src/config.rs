@@ -1,21 +1,17 @@
-//! Typed runtime configuration. Includes/overrides preserve scalar presence.
-use pbtxt_config::{Error, Payload, Result};
+//! Standard WatchdogConfig TextFormat parsing and launch validation.
+use eyre::{Result, ensure};
+use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::time::Duration;
 pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.watchdog.v1.rs"));
 }
 pub use pb::WatchdogConfig;
 fn require(ok: bool, message: &str) -> Result<()> {
-    if ok {
-        Ok(())
-    } else {
-        Err(Error::Invalid(message.into()))
-    }
+    ensure!(ok, "{message}");
+    Ok(())
 }
-impl Payload for WatchdogConfig {
-    const NAME: &'static str = "doramcap.watchdog.v1.WatchdogConfig";
-    const DESCRIPTOR: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/config.bin"));
-    fn validate_partial(&self) -> Result<()> {
+impl WatchdogConfig {
+    pub fn validate(&self) -> Result<()> {
         for (name, value, max) in [
             ("max_sources", self.max_sources, 1024),
             (
@@ -35,29 +31,22 @@ impl Payload for WatchdogConfig {
             ("retry_delay_ms", self.retry_delay_ms, 10000),
         ] {
             require(
-                value.is_none_or(|v| v > 0 && v <= max),
+                value.is_some_and(|v| v > 0 && v <= max),
                 &format!("invalid {name}"),
             )?;
         }
         require(
-            self.retry_count.is_none_or(|v| v <= 10),
+            self.retry_count.is_some_and(|v| v <= 10),
             "retry_count exceeds 10",
         )?;
         require(
-            self.transport_allowance_ms.is_none_or(|v| v <= 60000),
+            self.transport_allowance_ms.is_some_and(|v| v <= 60000),
             "transport allowance exceeds 60s",
         )?;
         require(
-            self.inputs.len() <= 1023
-                && self.inputs.iter().all(|v| !v.is_empty() && v.len() <= 128),
-            "invalid inputs",
-        )?;
-        let unique: std::collections::BTreeSet<_> = self.inputs.iter().collect();
-        require(unique.len() == self.inputs.len(), "duplicate inputs")?;
-        require(
             self.live_output
                 .as_ref()
-                .is_none_or(|s| !s.is_empty() && s.len() <= 128),
+                .is_some_and(|s| !s.is_empty() && s.len() <= 128),
             "invalid live_output",
         )?;
         if let Some(m) = &self.mcap {
@@ -92,58 +81,17 @@ impl Payload for WatchdogConfig {
         }
         Ok(())
     }
-    fn overlay(&self, target: &mut Self) -> Vec<&'static str> {
-        let mut changed = Vec::new();
-        if !self.inputs.is_empty() {
-            target.inputs = self.inputs.clone();
-            changed.push("inputs");
-        }
-        macro_rules! copy { ($($f:ident),*) => { $(if self.$f.is_some(){target.$f.clone_from(&self.$f);changed.push(stringify!($f));})* }; }
-        copy!(
-            max_sources,
-            max_conditions_per_source,
-            max_batch_records,
-            output_capacity,
-            dedup_window,
-            transport_allowance_ms,
-            source_timeout_ms,
-            snapshot_interval_ms,
-            maintenance_ms,
-            max_frame_bytes,
-            queue_capacity,
-            shutdown_ms,
-            retry_count,
-            retry_delay_ms,
-            live_output,
-            mcap,
-            otel
-        );
-        changed
-    }
-    fn normalize(&self) -> Result<Self> {
-        self.validate_partial()?;
-        let mut v = self.clone();
-        macro_rules! default { ($($f:ident=$n:expr),*) => { $(v.$f.get_or_insert($n);)* }; }
-        default!(
-            max_sources = 64,
-            max_conditions_per_source = 256,
-            max_batch_records = 512,
-            output_capacity = 1024,
-            dedup_window = 128,
-            transport_allowance_ms = 0,
-            source_timeout_ms = 5000,
-            snapshot_interval_ms = 1000,
-            maintenance_ms = 10,
-            max_frame_bytes = 2 * 1024 * 1024,
-            queue_capacity = 32,
-            shutdown_ms = 5000,
-            retry_count = 2,
-            retry_delay_ms = 100
-        );
-        v.live_output.get_or_insert_with(|| "faults".into());
-        require(!v.inputs.is_empty(), "at least one input is required")?;
+    fn validate_inputs(&self, inputs: &[String]) -> Result<()> {
+        self.validate()?;
         require(
-            v.max_sources.unwrap() as usize > v.inputs.len(),
+            inputs.len() <= 1023 && inputs.iter().all(|v| !v.is_empty() && v.len() <= 128),
+            "invalid inputs",
+        )?;
+        let unique: std::collections::BTreeSet<_> = inputs.iter().collect();
+        require(unique.len() == inputs.len(), "duplicate inputs")?;
+        let v = self;
+        require(
+            v.max_sources.unwrap() as usize > inputs.len(),
             "max_sources must include all inputs and local diagnostics",
         )?;
         require(
@@ -161,7 +109,7 @@ impl Payload for WatchdogConfig {
             "condition budget exceeds 16384",
         )?;
         let conditions =
-            (v.inputs.len() as u64 + 1) * u64::from(v.max_conditions_per_source.unwrap());
+            (inputs.len() as u64 + 1) * u64::from(v.max_conditions_per_source.unwrap());
         require(
             v.max_conditions_per_source.unwrap() >= 4,
             "reserve four host diagnostic conditions",
@@ -175,13 +123,16 @@ impl Payload for WatchdogConfig {
                 <= u64::from(v.max_frame_bytes.unwrap()),
             "frame budget cannot hold worst-case batch",
         )?;
-        Ok(v)
+        Ok(())
     }
 }
 impl WatchdogConfig {
-    /// Validates, applies defaults and returns the reconciliation engine's settings.
+    /// Validates explicit settings before constructing the engine.
     pub fn settings(&self) -> Result<fault_reconciliation::Settings> {
-        let c = self.normalize()?;
+        let inputs = self.inputs.clone();
+        require(!inputs.is_empty(), "at least one input is required")?;
+        self.validate_inputs(&inputs)?;
+        let c = self;
         let ms = |v: Option<u32>| Duration::from_millis(v.unwrap().into());
         Ok(fault_reconciliation::Settings {
             aggregation: fault_aggregation::Config {
@@ -196,11 +147,19 @@ impl WatchdogConfig {
             snapshot_interval: ms(c.snapshot_interval_ms),
             maintenance: ms(c.maintenance_ms),
             max_frame_bytes: c.max_frame_bytes.unwrap() as usize,
-            inputs: c.inputs,
+            inputs,
         })
     }
 }
-/// Resolve the `watchdog` app from a TextFormat fragment, validating requested features.
+/// Parses one WatchdogConfig TextFormat file and validates explicit settings.
 pub fn load(path: &std::path::Path) -> Result<WatchdogConfig> {
-    pbtxt_config::resolve::<WatchdogConfig>(path, &["watchdog"])?.config("watchdog")
+    let descriptor =
+        DescriptorPool::decode(include_bytes!(concat!(env!("OUT_DIR"), "/config.bin")).as_slice())?
+            .get_message_by_name("doramcap.watchdog.v1.WatchdogConfig")
+            .expect("compiled configuration");
+    let config: WatchdogConfig =
+        DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
+            .transcode_to()?;
+    config.settings()?;
+    Ok(config)
 }
