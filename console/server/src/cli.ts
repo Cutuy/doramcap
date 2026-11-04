@@ -10,6 +10,7 @@ import { launchInstructions, portNumber } from './launch.js';
 import { doctor, initialize, installRelease, privateState, projectId, readRelease } from './release.js';
 import { discover } from './system-apps.js';
 const exec = promisify(execFile);
+const RUNNING_STATES = new Set(['active', 'activating', 'reloading']);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   state: { type: 'string', default: '/var/lib/doramcap-console' },
@@ -63,8 +64,11 @@ Files, one directory per project under STATE/projects/:
 
 Logs: sudo journalctl -u doramcap-console-<project>.service`;
 
+/** True from unit start through shutdown; an interrupted start stays activating until ready or timeout. */
 async function active() {
-  return exec('systemctl', ['is-active', '--quiet', unit]).then(() => true, () => false);
+  // systemctl reports non-running states through a non-zero exit, with the state on stdout.
+  const { stdout } = await exec('systemctl', ['is-active', unit]).catch(error => error as { stdout: string });
+  return RUNNING_STATES.has(stdout.trim());
 }
 
 /** Current access instructions; a running service without them is starting or uses another state root. */
@@ -169,7 +173,7 @@ async function main() {
     // systemd-run returns once the server reports ready; systemd stops one that never does.
     await exec('systemd-run', ['--unit', unit, '--collect', '--service-type=notify', '--property=NotifyAccess=all',
       '--property=TimeoutStartSec=60', '--property=TimeoutStopSec=130', '--property=KillMode=mixed', '--', process.execPath, '--disable-warning=ExperimentalWarning', ...args])
-      .catch(async () => { throw await startupFailure('Console startup failed', since); });
+      .catch(async (error: { stderr: string }) => { throw await startupFailure(`Console startup failed: ${error.stderr.trim()}`, since); });
     console.log((await readFile(launchFile, 'utf8')).replace(/^Open: /m, 'Launch browser: '));
   } finally { lock.close(); }
 }
