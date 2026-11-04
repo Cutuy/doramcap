@@ -92,10 +92,13 @@ pub trait Sink: 'static {
         false
     }
     /// Next buffered-data flush deadline. `None` leaves an idle worker blocked on channels.
+    /// An expired deadline triggers [`Self::poll`] immediately.
     fn next_flush_deadline(&self) -> Option<Instant> {
         None
     }
     /// Refreshes I/O after deliveries and when the flush deadline expires.
+    /// Before returning `Ok(())`, clear or advance any expired flush deadline to avoid busy spinning.
+    /// An error disables further deliveries and polling; the worker keeps releasing queued blocks.
     fn poll(&mut self) -> Result<()> {
         Ok(())
     }

@@ -555,3 +555,65 @@ fn buffered_data_flushes_on_its_deadline_without_another_write() {
     assert_eq!(report.sinks[0].written, 1);
     assert!(report.sinks[0].error.is_none());
 }
+
+#[test]
+fn expired_flush_deadline_stops_waking_after_resolution_or_error() {
+    use std::{
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+    struct Expired {
+        deadline: Option<Instant>,
+        fail: bool,
+        polled: mpsc::Sender<()>,
+    }
+    impl Sink for Expired {
+        fn name(&self) -> &str {
+            "expired"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            Ok(())
+        }
+        fn next_flush_deadline(&self) -> Option<Instant> {
+            self.deadline
+        }
+        fn poll(&mut self) -> Result<()> {
+            self.polled.send(())?;
+            if self.fail {
+                return Err("flush failed".into());
+            }
+            self.deadline = None;
+            Ok(())
+        }
+    }
+
+    for fail in [false, true] {
+        // Arrange
+        let (tx, rx) = mpsc::channel();
+        let sink = Expired {
+            deadline: Some(Instant::now()),
+            fail,
+            polled: tx,
+        };
+
+        // Act
+        let mut runtime = Runtime::start(Config::default(), vec![Box::new(sink)]).unwrap();
+
+        // Assert: even an already-expired deadline causes only one poll.
+        rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            rx.recv_timeout(Duration::from_millis(150)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+
+        // Act
+        let report = runtime.shutdown().unwrap();
+
+        // Assert
+        assert_eq!(
+            report.sinks[0].error.as_deref(),
+            fail.then_some("flush failed")
+        );
+        assert_eq!(report.sinks[0].written, 0);
+    }
+}
