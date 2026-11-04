@@ -1,9 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Flow, Integration } from '../overview-model';
 import { pairOffset, type NodeState, type StackNode, type StackView, type Tier } from '../stack';
 
@@ -18,7 +16,7 @@ const HERO_GAP = 1.25, STORY_GAP = 3.1, PARTICLES = 64, SPREAD = .22;
 const damp = (current: number, target: number, rate: number, dt: number) => current + (target - current) * (1 - Math.exp(-rate * dt));
 
 interface Place { x: number; z: number; w: number; d: number; }
-interface Block { node: StackNode; mesh: THREE.Mesh; body: THREE.MeshStandardMaterial; edge: THREE.LineBasicMaterial; label: HTMLDivElement; glow: number; alpha: number; line: number; delay: number; }
+interface Block { node: StackNode; mesh: THREE.Mesh; body: THREE.MeshPhysicalMaterial; edge: THREE.LineBasicMaterial; label: HTMLDivElement; tint: number; alpha: number; line: number; delay: number; }
 // One particle stream per flow; per-particle offset, speed and jitter keep the stream loose and organic.
 interface Trail { flow: Flow; curve: THREE.CubicBezierCurve3; points: THREE.Points; offset: Float32Array; speed: Float32Array; jitter: Float32Array; size: Float32Array; }
 export interface SceneEvents { hover(node: StackNode | null, x: number, y: number): void; select(node: StackNode | null): void; }
@@ -40,11 +38,11 @@ function layout(nodes: StackNode[], integrations: Integration[]): Map<string, Pl
 const particleVertex = `
 attribute float aSize; attribute float aAlpha; uniform float uScale; varying float vAlpha;
 void main() { vAlpha = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`;
-// Soft gaussian sprites: a hot core on dark (additive), plain tinted haze on light.
+// Soft gaussian sprites: a faint core on dark (additive), plain tinted haze on light.
 const particleFragment = `
 uniform vec3 uColor; uniform float uFade; uniform float uLight; varying float vAlpha;
 void main() { float d = length(gl_PointCoord - 0.5) * 2.0; if (d > 1.0) discard; float a = exp(-d * d * 3.0);
-  gl_FragColor = vec4(mix(uColor * (1.0 + a * 0.8), uColor, uLight), a * vAlpha * uFade * mix(0.85, 1.0, uLight)); }`;
+  gl_FragColor = vec4(mix(uColor * (1.0 + a * 0.3), uColor, uLight), a * vAlpha * uFade * mix(0.7, 1.0, uLight)); }`;
 
 /** Cinematic platform stack: hero orbit at progress 0, isometric story view from progress 1.
  * Owns its renderer, labels and loop; callers drive it with setProgress/setView/setSelected and must dispose().
@@ -53,8 +51,6 @@ void main() { float d = length(gl_PointCoord - 0.5) * 2.0; if (d > 1.0) discard;
 export class StoryScene {
   private renderer: THREE.WebGLRenderer;
   private labels = new CSS2DRenderer();
-  private composer: EffectComposer;
-  private bloom: UnrealBloomPass;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(30, 1, .1, 400);
   private clock = new THREE.Clock();
@@ -101,6 +97,10 @@ export class StoryScene {
     this.labels.domElement.className = 'scene-labels';
     this.probe.hidden = true;
     this.readPalette();
+    // Reflections of a soft studio room give the glass blocks their highlights.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+    pmrem.dispose();
 
     this.scene.fog = new THREE.FogExp2(this.palette.bg, .014);
     this.key.position.set(-8, 22, 14);
@@ -126,7 +126,8 @@ export class StoryScene {
     }
     for (const node of nodes) {
       const place = places.get(node.id)!, slab = this.slabs.find(s => s.tier === node.tier)!;
-      const body = new THREE.MeshStandardMaterial({ color: this.palette.panel.clone().lerp(this.palette[node.tier], .1), emissive: this.palette[node.tier], emissiveIntensity: 0, roughness: .45, metalness: .25, transparent: true });
+      // Frosted glass: transmission blurs what lies behind, the tier tints it, clearcoat adds the specular rim.
+      const body = new THREE.MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, thickness: 1.4, ior: 1.5, roughness: .22, metalness: 0, clearcoat: 1, clearcoatRoughness: .06, specularIntensity: 1, attenuationColor: this.palette[node.tier], attenuationDistance: 2.4, emissive: this.palette[node.tier], emissiveIntensity: 0, transparent: true });
       const mesh = new THREE.Mesh(new RoundedBoxGeometry(place.w, TILE_H, place.d, 3, .06), body);
       mesh.position.set(place.x, TILE_H / 2 + .02, place.z);
       mesh.userData.node = node;
@@ -138,7 +139,7 @@ export class StoryScene {
       const labelObject = new CSS2DObject(label); labelObject.position.y = TILE_H / 2 + .08; mesh.add(labelObject);
       // Blocks assemble tier by tier, left to right.
       const delay = .35 + tiers.indexOf(node.tier) * .22 + (place.x + 9) / 18 * .3;
-      this.blocks.push({ node, mesh, body, edge, label, glow: 0, alpha: 1, line: .3, delay });
+      this.blocks.push({ node, mesh, body, edge, label, tint: 0, alpha: 1, line: .3, delay });
     }
 
     // A scan sheet that sweeps up through the stack in the hero and on every chapter change.
@@ -150,11 +151,6 @@ export class StoryScene {
     }));
     this.sweepPlane.rotation.x = -Math.PI / 2;
     this.scene.add(this.sweepPlane);
-
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), .62, .5, .16);
-    this.composer.addPass(this.bloom);
 
     this.applyTheme();
     // Follow the system theme and the header toggle (data-theme) live.
@@ -183,11 +179,12 @@ export class StoryScene {
     this.running = running;
     if (running) { this.clock.getDelta(); this.loop(); } else cancelAnimationFrame(this.frame);
   }
-  /** Re-read CSS tokens and restyle the scene: glow and additive light on dark, tinted solids on light. */
+  /** Re-read CSS tokens and restyle the scene: dimmer reflections and additive particles on dark, brighter glass on light. */
   applyTheme = () => {
     this.readPalette();
     const p = this.palette, light = this.light = p.bg.r + p.bg.g + p.bg.b > 1.5;
     (this.scene.fog as THREE.FogExp2).color.copy(p.bg);
+    this.scene.environmentIntensity = light ? 1 : 1.3;
     this.hemi.intensity = light ? 2.3 : .9; this.key.intensity = light ? 1.2 : 1.1;
     this.hemi.color.set(light ? 0xffffff : 0xb8c8ff); this.hemi.groundColor.set(light ? 0xdfe3ea : 0x101418);
     if (this.grid) { this.scene.remove(this.grid); this.grid.geometry.dispose(); (this.grid.material as THREE.Material).dispose(); }
@@ -197,11 +194,10 @@ export class StoryScene {
     Object.assign(this.dust.material, { opacity: light ? .3 : .45 });
     (this.dust.material as THREE.PointsMaterial).color.copy(p.muted);
     for (const s of this.slabs) { s.fill.color.copy(p[s.tier]); s.edge.color.copy(p[s.tier]); }
-    for (const b of this.blocks) { b.body.color.copy(p.panel).lerp(p[b.node.tier], .1); b.body.emissive.copy(p[b.node.tier]); b.edge.color.copy(p[b.node.tier]); }
+    for (const b of this.blocks) { b.body.attenuationColor.copy(p[b.node.tier]); b.body.emissive.copy(p[b.node.tier]); b.edge.color.copy(p[b.node.tier]).lerp(new THREE.Color(1, 1, 1), light ? 0 : .45); }
     this.sweepPlane.material.uniforms.uColor.value = p.foundation;
     this.sweepPlane.material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
     this.sweepPlane.material.needsUpdate = true;
-    this.bloom.enabled = !light;
     this.buildTrails(this.view.flows);
   };
   /** Re-read CSS tokens. */
@@ -222,7 +218,7 @@ export class StoryScene {
     this.scene.traverse(o => {
       if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Line || o instanceof THREE.Points) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
     });
-    this.composer.dispose();
+    this.scene.environment?.dispose();
     this.renderer.dispose();
     this.host.replaceChildren();
   }
@@ -230,8 +226,7 @@ export class StoryScene {
   private resize() {
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (!w || !h) return;
-    this.renderer.setSize(w, h); this.labels.setSize(w, h); this.composer.setSize(w, h);
-    this.bloom.resolution.set(w / 2, h / 2);
+    this.renderer.setSize(w, h); this.labels.setSize(w, h);
     this.camera.aspect = w / h;
     const scale = h * this.renderer.getPixelRatio() / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     for (const t of this.trails) (t.points.material as THREE.ShaderMaterial).uniforms.uScale.value = scale;
@@ -337,7 +332,7 @@ export class StoryScene {
     if (!this.reduce && story < .5 && this.intro >= 1 && this.sweepTimer > 7) { this.sweep = 0; this.sweepTimer = 0; }
     if (this.sweep < 1) this.sweep = Math.min(1, this.sweep + dt / 1.6);
     const sweepY = THREE.MathUtils.lerp(-1.5, 3 * this.gap + 1.5, THREE.MathUtils.smootherstep(this.sweep, 0, 1));
-    const sweepAlpha = this.sweep < 1 ? Math.sin(Math.PI * this.sweep) * .5 : 0;
+    const sweepAlpha = this.sweep < 1 ? Math.sin(Math.PI * this.sweep) * .24 : 0;
     this.sweepPlane.position.y = sweepY;
     this.sweepPlane.material.uniforms.uAlpha.value = sweepAlpha;
 
@@ -353,15 +348,15 @@ export class StoryScene {
     for (const b of this.blocks) {
       const state = (this.view.states[b.node.id] as NodeState | undefined) ?? 'rest';
       const hover = this.hovered?.id === b.node.id ? .35 : 0;
-      const glow = { rest: .22, on: .36, selected: .55, dim: .02 }[state] + hover * .6;
-      b.glow = damp(b.glow, glow, 6, dt);
+      const tint = { rest: .18, on: .45, selected: .8, dim: 0 }[state] + hover * .5;
+      b.tint = damp(b.tint, tint, 6, dt);
       const a = appear(b.delay);
       const scan = Math.max(0, 1 - Math.abs(b.mesh.parent!.position.y + b.mesh.position.y - sweepY) / 1.2) * sweepAlpha * 1.6;
-      if (this.light) {
-        // Light: tint the block toward its tier instead of glowing.
-        b.body.emissiveIntensity = 0;
-        b.body.color.copy(this.palette.panel).lerp(this.palette[b.node.tier], Math.min(1, b.glow * 1.5 + scan * .3));
-      } else b.body.emissiveIntensity = b.glow * (state === 'rest' ? .6 + .4 * Math.sin(time * 1.3 + b.mesh.position.x) * (1 - story) : 1) + scan;
+      // Active blocks fill with their tier color; resting ones breathe slowly in the hero.
+      const breathe = state === 'rest' ? .75 + .25 * Math.sin(time * 1.3 + b.mesh.position.x) * (1 - story) : 1;
+      b.body.color.setRGB(1, 1, 1).lerp(this.palette[b.node.tier], Math.min(1, b.tint * breathe + scan * .4));
+      b.body.emissiveIntensity = this.light ? 0 : b.tint * .18 + scan * .5;
+      b.body.attenuationDistance = 1.4 + (1 - Math.min(1, b.tint)) * 6;
       b.alpha = damp(b.alpha, state === 'dim' ? .32 : 1, 6, dt);
       b.line = damp(b.line, { rest: .35, on: .95, selected: 1, dim: .1 }[state], 6, dt);
       b.body.opacity = b.alpha * a;
@@ -400,7 +395,7 @@ export class StoryScene {
       pos.needsUpdate = alpha.needsUpdate = size.needsUpdate = true;
     }
 
-    this.composer.render(dt);
+    this.renderer.render(this.scene, this.camera);
     this.labels.render(this.scene, this.camera);
   };
 }

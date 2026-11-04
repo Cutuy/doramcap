@@ -1,6 +1,6 @@
 # SPA design and implementation
 
-- Keep explorer pages professional and restrained; avoid emojis and decorative clutter. The overview landing is the brand showcase and may use cinematic 3D and motion.
+- Keep explorer pages professional and restrained; avoid emojis and decorative clutter. The overview landing is the brand showcase and may use cinematic 3D and motion; keep it B2B-restrained: liquid-glass surfaces, no bloom, neon glows or gradient text, and accent color only for small signals.
 - Use short, natural labels: Compute, Platform, Data, Runtime, Embodiments, Existing middleware, Dora IPC, MCAP, OpenTelemetry. Avoid redundant prefixes and slash-separated synonyms.
 - Remove explanations that repeat headings, links, or obvious interactions. Use one useful description; omit secondary caveats, disclaimers, graph captions, and repeated card calls to action.
 - Link to each app/crate once per detail panel. Its page already contains its README; omit duplicate documentation/evidence links and audit links from the overview.
@@ -11,7 +11,7 @@
 - Effects must not invent data: copy, counts and flows come from `overview.json` and the catalog.
 - The root README art mirrors the landing stack; after changing the manifest or the stack's layout, palette or camera, update `scripts/readme.ts` to match and run `npm run readme`.
 - Keep the 2D schematic as the WebGL fallback and `view=2d`, and honor reduced motion.
-- Support light and dark themes: follow the system by default; the header toggle pins a choice. Style through tokens, and give the 3D scene both its dark glow and its light tinted treatment.
+- Support light and dark themes: follow the system by default; the header toggle pins a choice. Style through tokens (`--glass*` for surfaces), and render 3D blocks as frosted glass that tints by state in both themes.
 - Keep Apps and Crates in separate galleries. Display readable names such as “My Name” for `my-name`, preserving technical acronyms.
 - On app/crate pages, show direct dependencies with an Explore link. In Dependencies, show transitive dependents above the highlighted selection and dependencies below; omit the declarations list.
 - Preserve the original React Flow graph appearance, connection handles, arrows, layout, and controls. When asked to restore a design, recover the actual implementation from Git history instead of approximating it with a new renderer.
