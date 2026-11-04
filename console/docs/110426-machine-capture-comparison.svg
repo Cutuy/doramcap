@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 360" font-family="system-ui, sans-serif" font-size="13">
+  <title>Machine capture and A/B comparison</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+  </defs>
+  <rect width="860" height="360" fill="#fff"/>
+
+  <rect x="20" y="124" width="170" height="72" rx="6" fill="#eef5f3" stroke="#177763" stroke-width="1.5"/>
+  <text x="105" y="154" text-anchor="middle">system-config</text>
+  <text x="105" y="172" text-anchor="middle" fill="#555" font-size="12">observe()</text>
+
+  <rect x="290" y="20" width="170" height="72" rx="6" fill="#f3effb" stroke="#6650a4" stroke-width="1.5"/>
+  <text x="375" y="50" text-anchor="middle">Review</text>
+  <text x="375" y="68" text-anchor="middle" fill="#555" font-size="12">preview</text>
+
+  <rect x="290" y="124" width="170" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="375" y="154" text-anchor="middle">Prepare step</text>
+  <text x="375" y="172" text-anchor="middle" fill="#555" font-size="12">before state</text>
+
+  <rect x="290" y="228" width="170" height="72" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="375" y="258" text-anchor="middle">Report step</text>
+  <text x="375" y="276" text-anchor="middle" fill="#555" font-size="12">after state</text>
+
+  <rect x="660" y="20" width="180" height="72" rx="6" fill="#f3effb" stroke="#6650a4" stroke-width="1.5"/>
+  <text x="750" y="50" text-anchor="middle">Review panel</text>
+  <text x="750" y="68" text-anchor="middle" fill="#555" font-size="12">grouped differences</text>
+
+  <rect x="540" y="124" width="150" height="72" rx="6" fill="#eef5f3" stroke="#177763" stroke-width="1.5"/>
+  <text x="615" y="154" text-anchor="middle">console.db</text>
+  <text x="615" y="172" text-anchor="middle" fill="#555" font-size="12">facts · hashes</text>
+
+  <rect x="540" y="228" width="150" height="72" rx="6" fill="#eef5f3" stroke="#177763" stroke-width="1.5"/>
+  <text x="615" y="258" text-anchor="middle">runs/&lt;id&gt;/</text>
+  <text x="615" y="276" text-anchor="middle" fill="#555" font-size="12">private values</text>
+
+  <rect x="730" y="176" width="110" height="72" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <text x="785" y="206" text-anchor="middle">History A/B</text>
+  <text x="785" y="224" text-anchor="middle" fill="#555" font-size="12">on selection</text>
+
+  <g fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#a)">
+    <path d="M190,140 L288,64"/>
+    <path d="M190,160 L288,160"/>
+    <path d="M190,180 L288,256"/>
+    <path d="M460,56 L658,56"/>
+    <path d="M460,160 L538,160"/>
+    <path d="M460,264 L538,176"/>
+    <path d="M660,124 L700,94"/>
+    <path d="M690,170 L728,195"/>
+    <path d="M690,264 L728,232"/>
+  </g>
+</svg>
