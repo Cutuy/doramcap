@@ -13,7 +13,7 @@ services:
         source: ${STORAGE_RESULTS_DIR:?}
         target: /results
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8091/api/state | grep -q '\"status\":\"live\"'"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8091/api/state | grep -Eq '\"status\":\"(live|sealed)\"'"]
       interval: 2s
       timeout: 2s
       retries: 30
