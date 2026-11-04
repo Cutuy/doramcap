@@ -64,56 +64,9 @@ launch_profiles {
 launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
 ```
 
-### Profile graphs
-
-A graph is a Dora dataflow file: it lists nodes and wires outputs to inputs. A profile's
-`graph` replaces the app's `graph`; Console merges it with `dora.graph` and the other
-selected apps' graphs into one dataflow.
-
-This example records `messages` from a user node, `user`, into `messages.mcap`.
-
-`dora.graph` declares the producer:
-
-```yaml
-nodes:
-  - id: user
-    path: dynamic
-    outputs: [messages]
-```
-
-`/absolute/user-messages.yml`, the profile graph, wires it to the recorder's `data` input:
-
-```yaml
-nodes:
-  - id: data-recorder
-    path: dynamic
-    outputs: [health]
-    inputs:
-      data: {source: user/messages, queue_size: 64, queue_policy: backpressure}
-```
-
-`/absolute/user-messages.pbtxt`, the profile config, names the same `data` input:
-
-```protobuf
-output_path: "/results/messages.mcap"
-report_path: "/results/messages.report.pbtxt"
-input { input: "data" topic: "user/messages" message_encoding: "application/octet-stream" }
-```
-
-The profile pairs the two files:
-
-```protobuf
-launch_profiles {
-  id: "user-messages"
-  label: "User messages"
-  config: "/absolute/user-messages.pbtxt"
-  graph: "/absolute/user-messages.yml"
-  recordings { id: "messages" path: "messages.mcap" }
-}
-```
-
-Typed messages also need their schema file bind-mounted; see `schema_path` in the
-[recorder proto](../../apps/mcap-recorder/proto/recorder.proto).
+A profile's `graph` is a Dora dataflow file that replaces the app's `graph`. Console
+merges it with `dora.graph` and the other selected apps' graphs. Mount schema files
+explicitly. Example: [user-messages](../examples/user-messages/console.pbtxt).
 
 ## Live bridge
 

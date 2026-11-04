@@ -36,7 +36,7 @@ message LaunchProfile {
   repeated LiveOutput live_outputs = 5;
   // Optional absolute path to a Dora dataflow file, which lists nodes and wires outputs to inputs.
   // Replaces the app's `graph` when this profile launches.
-  // Example: console/docs/configuration.md, "Profile graphs".
+  // Example: console/examples/user-messages/flow.yml.
   string graph = 6;
 }
 message SystemAppDefinition {

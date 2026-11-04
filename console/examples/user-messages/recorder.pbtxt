@@ -1,0 +1,3 @@
+output_path: "/results/messages.mcap"
+report_path: "/results/messages.mcap.report.pbtxt"
+input { input: "data" topic: "user/messages" message_encoding: "application/octet-stream" }

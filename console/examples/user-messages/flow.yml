@@ -1,0 +1,6 @@
+nodes:
+  - id: data-recorder
+    path: dynamic
+    outputs: [health]
+    inputs:
+      data: {source: user/messages, queue_size: 64, queue_policy: backpressure}
