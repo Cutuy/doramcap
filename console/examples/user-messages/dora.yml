@@ -1,0 +1,4 @@
+nodes:
+  - id: user
+    path: dynamic
+    outputs: [messages]

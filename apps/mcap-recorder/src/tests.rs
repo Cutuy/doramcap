@@ -346,6 +346,20 @@ fn pbtxt_preserves_paths_and_rejects_invalid_settings() -> Result<()> {
 }
 
 #[test]
+fn console_user_messages_example_loads() -> Result<()> {
+    // Arrange
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../console/examples/user-messages/recorder.pbtxt"
+    );
+    // Act
+    let config = config::load(std::path::Path::new(path))?;
+    // Assert
+    assert_eq!(config.input[0].topic, "user/messages");
+    Ok(())
+}
+
+#[test]
 fn workflow_stop_drains_buffered_tail_and_validates_declared_source_time() -> Result<()> {
     // Arrange
     let temp = Temp::new()?;

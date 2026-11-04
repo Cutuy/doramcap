@@ -50,7 +50,10 @@ export function releaseConfig(template: Config, project: string, systemApps: str
     app.input.directory = input(systemApps, app.input.directory || '.');
     for (const file of [...(app.input.files ?? []), ...(app.input.envFiles ?? [])]) input(systemApps, file, app.input.directory);
     if (app.graph) app.graph = input(systemApps, app.graph);
-    for (const profile of app.launchProfiles ?? []) profile.config = input(systemApps, profile.config ?? '');
+    for (const profile of app.launchProfiles ?? []) {
+      profile.config = input(systemApps, profile.config ?? '');
+      if (profile.graph) profile.graph = input(systemApps, profile.graph);
+    }
   }
   return config;
 }

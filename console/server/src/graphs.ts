@@ -2,15 +2,24 @@ import type { doramcap } from './generated/console.js';
 type App = doramcap.console.v1.ISystemAppDefinition;
 type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };
 
-/** Combine approved native graph fragments; Rust expands modules and validates the result. */
+/**
+ * Merge Dora dataflow files into one run graph; Rust expands modules and validates the result.
+ * A file lists nodes and wires outputs to inputs: `{nodes:[{id:'recorder',path:'dynamic',inputs:{data:'user/messages'}}]}`.
+ */
 export class Graphs {
   constructor(private native: {expandGraph(path:string):Promise<Buffer>}, private apps: App[], private base: string) {}
-  /** `extra` adds generated fragments, such as the live bridge node. */
-  async build(requested?: string[], extra: string[] = []): Promise<Buffer> {
+  /**
+   * Return merged graph JSON from `dora.graph`, each selected app's file and `extra` paths, such as the live bridge node.
+   * `profiles` maps app ID to launch profile ID; that profile's `graph` replaces the app's.
+   */
+  async build(requested?: string[], extra: string[] = [], profiles: Record<string, string> = {}): Promise<Buffer> {
     const ids = requested ?? this.apps.filter(app => app.defaultSelected).map(app => app.id!);
     const selected = new Set(ids);
     if (selected.size !== ids.length || ids.some(id => !this.apps.some(app => app.id === id))) throw new Error('InvalidInput');
-    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => app.graph ?? ''), ...extra].filter(Boolean);
+    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => {
+      const profile = app.launchProfiles?.find(profile => profile.id === profiles[app.id!]);
+      return profile?.graph || app.graph || '';
+    }), ...extra].filter(Boolean);
     if (!paths.length) return Buffer.alloc(0);
     const merged: NativeGraph = {nodes:[]};
     const nodes = new Set<string>();

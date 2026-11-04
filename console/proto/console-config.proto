@@ -34,6 +34,10 @@ message LaunchProfile {
   string config = 3; // Absolute pbtxt path, mounted read-only at the app's config_mount.
   repeated RecordingOutput recordings = 4;
   repeated LiveOutput live_outputs = 5;
+  // Optional absolute path to a Dora dataflow file, which lists nodes and wires outputs to inputs.
+  // Replaces the app's `graph` when this profile launches.
+  // Example: console/examples/user-messages/flow.yml.
+  string graph = 6;
 }
 message SystemAppDefinition {
   string id = 1;

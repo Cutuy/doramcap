@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Graphs } from '../src/graphs.js';
+import { capabilities } from '../src/native.js';
+import { releaseConfig } from '../src/release.js';
+import { validateApps } from '../src/system-apps.js';
+
+const consoleRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 test('selection composes approved nodes and fresh reads detect graph changes', async () => {
   // Arrange
@@ -17,4 +25,35 @@ test('selection composes approved nodes and fresh reads detect graph changes', a
   await assert.rejects(graphs.build(['unknown']));
   fragments.set('recorder',{nodes:[{id:'worker',path:'dynamic'}]});
   await assert.rejects(graphs.build(['recording']));
+});
+
+test('recorder profiles select a complete native graph for arbitrary user outputs', async () => {
+  // Arrange
+  const fragments: Record<string, unknown> = {
+    user: {nodes:[{id:'user',path:'dynamic',outputs:['messages']}]},
+    cpu: {nodes:[{id:'recorder',path:'dynamic',inputs:{data:'cpu/snapshots'}}]},
+    custom: {nodes:[{id:'recorder',path:'dynamic',inputs:{data:'user/messages'}}]},
+  };
+  const graphs = new Graphs({expandGraph: async (path:string) => Buffer.from(JSON.stringify(fragments[path]))},
+    [{id:'recorder',graph:'cpu',launchProfiles:[{id:'custom',graph:'custom'}]}], 'user');
+  // Act
+  const graph = JSON.parse((await graphs.build(['recorder'], [], {recorder:'custom'})).toString());
+  // Assert
+  assert.equal(graph.nodes.find((node:any) => node.id === 'recorder').inputs.data, 'user/messages');
+});
+
+test('user-messages example merges its producer with the profile recorder', async () => {
+  // Arrange
+  const example = join(consoleRoot, 'examples/user-messages');
+  const template = capabilities.parseConfig(await readFile(join(example, 'console.pbtxt'), 'utf8'));
+  const config = releaseConfig(template, example, consoleRoot, '/state');
+  validateApps(config.systemApps);
+  const graphs = new Graphs(capabilities, config.systemApps, config.dora!.graph!);
+  // Act
+  const graph = JSON.parse((await graphs.build(['data-recorder'], [], {'data-recorder':'user-messages'})).toString());
+  // Assert
+  assert.deepEqual(graph.nodes.map((node:any) => node.id), ['user', 'data-recorder']);
+  const recorder = graph.nodes.find((node:any) => node.id === 'data-recorder');
+  assert.equal(recorder.inputs.data.source, 'user/messages');
+  assert.match(await readFile(join(example, 'recorder.pbtxt'), 'utf8'), /input: "data"/);
 });

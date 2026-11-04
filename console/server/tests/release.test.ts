@@ -17,7 +17,7 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 test('release configuration resolves native inputs and round-trips canonical pbtxt', () => {
   // Arrange
   const template = capabilities.parseConfig(`project_root:"projects" dora {image:"registry/dora@sha256:abc" graph:"graphs/flow.yml" shm_bytes:134217728}
-    system_apps {id:"capture" input {directory:"capture" files:"compose.yaml" files:"../override.yaml"} graph:"capture/flow.yml"}`);
+    system_apps {id:"capture" input {directory:"capture" files:"compose.yaml" files:"../override.yaml"} graph:"capture/flow.yml" launch_profiles {id:"capture" label:"Capture" config:"capture/run.pbtxt" graph:"capture/profile.yml"}}`);
   // Act
   const config = releaseConfig(template, '/state/playground', '/release/system-apps', '/state');
   const decoded = capabilities.parseConfig(capabilities.formatConfig(config));
@@ -27,6 +27,7 @@ test('release configuration resolves native inputs and round-trips canonical pbt
   assert.equal(decoded.dora!.graph, '/state/playground/graphs/flow.yml');
   assert.equal(decoded.systemApps[0].input!.directory, '/release/system-apps/capture');
   assert.equal(decoded.systemApps[0].graph, '/release/system-apps/capture/flow.yml');
+  assert.equal(decoded.systemApps[0].launchProfiles![0].graph, '/release/system-apps/capture/profile.yml');
   assert.equal(decoded.downloadMissingImages, true);
   assert.equal(decoded.accessSecretFile, '');
   assert.equal(String(decoded.dora!.shmBytes), '134217728');
@@ -163,9 +164,13 @@ test('the repository release template resolves to existing current app inputs', 
     if (app.liveRelay) continue;
     await access(app.graph!);
     const profiles = app.launchProfiles ?? [];
-    for (const profile of profiles) await access(profile.config!);
+    for (const profile of profiles) {
+      await access(profile.config!);
+      if (profile.graph) await access(profile.graph);
+    }
     assert.ok(app.recordings!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
+  assert.deepEqual(config.systemApps.map(app => app.id), ['live-bridge', 'cpu-monitor', 'data-recorder']);
   const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
   const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');

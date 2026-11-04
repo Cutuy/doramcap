@@ -64,6 +64,10 @@ launch_profiles {
 launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
 ```
 
+A profile's `graph` is a Dora dataflow file that replaces the app's `graph`. Console
+merges it with `dora.graph` and the other selected apps' graphs. Mount schema files
+explicitly. Example: [user-messages](../examples/user-messages/console.pbtxt).
+
 ## Live bridge
 
 `live_relay` marks the one system app that relays the selected apps' `live_outputs`.
