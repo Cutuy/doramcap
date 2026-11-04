@@ -15,6 +15,7 @@ async fn cancelled_failure_wait_keeps_capture_alive_and_preserves_the_error() {
     let capture = EventCapture {
         finish,
         fault,
+        changes: watch::channel(()).1,
         task,
     };
 

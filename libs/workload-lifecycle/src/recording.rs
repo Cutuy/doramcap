@@ -64,7 +64,16 @@ impl Step for FinalizeRecordings {
 }
 
 async fn wait_ready(output: &Recording, timeout: u64) -> std::io::Result<()> {
-    let start = tokio::time::Instant::now();
+    let parents = [&output.recording, &output.stream]
+        .into_iter()
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(|path| {
+            path.parent()
+                .ok_or_else(|| invalid("recording parent absent"))
+        })
+        .collect::<std::io::Result<std::collections::BTreeSet<_>>>()?;
+    let (_watcher, mut changes) = crate::files::watch_changes(parents)?;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(timeout);
     let mut previous = None;
     loop {
         let stream_ready = if output.stream.as_os_str().is_empty() {
@@ -79,12 +88,16 @@ async fn wait_ready(output: &Recording, timeout: u64) -> std::io::Result<()> {
         if stream_ready && tokio::fs::try_exists(&output.recording).await? {
             return Ok(());
         }
-        if start.elapsed() > Duration::from_secs(timeout) {
+        if tokio::time::Instant::now() >= deadline {
             return Err(invalid(
                 "system app did not arm its recording or advance its configured stream",
             ));
         }
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::timeout_at(deadline, crate::files::wait_for_change(&mut changes))
+            .await
+            .map_err(|_| {
+                invalid("system app did not arm its recording or advance its configured stream")
+            })??;
     }
 }
 /// Verify the terminal MCAP footer and stable length after its writer exits.

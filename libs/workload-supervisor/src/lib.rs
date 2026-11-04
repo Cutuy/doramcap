@@ -5,7 +5,8 @@ pub mod steps;
 
 use orchestrator::{Input, LocalExecutor, Observer, Output};
 use prost::Message;
-use std::{cell::RefCell, future::Future, path::Path, rc::Rc};
+use std::{cell::RefCell, future::Future, os::fd::OwnedFd, path::Path, rc::Rc};
+use tokio::io::{Interest, unix::AsyncFd};
 use workload_lifecycle::{
     recorded_run::{self, Phases},
     recording::{FinalizeRecordings, ReadinessInput, Recording, WaitForRecordings},
@@ -108,6 +109,7 @@ impl SupervisorRunner {
             launched: None,
             stopped: None,
             ready,
+            exits: None,
         };
         let outcome = recorded_run::run(&mut phases, stop).await;
         let mut diagnostics = outcome.completion_errors;
@@ -143,6 +145,7 @@ struct SupervisorPhases {
     launched: Option<Output<Ownership>>,
     stopped: Option<Output<steps::Quiesced>>,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
+    exits: Option<(AsyncFd<OwnedFd>, AsyncFd<OwnedFd>)>,
 }
 impl SupervisorPhases {
     fn recordings(&self) -> Vec<Recording> {
@@ -178,6 +181,20 @@ impl Phases for SupervisorPhases {
             .run::<WaitForRecordings>(input)
             .await
             .map_err(error)?;
+        let (daemon_pid, monitor_pid) = {
+            let state = self.state.borrow();
+            let ownership = &state.as_ref().unwrap().ledger;
+            (ownership.daemon_pid, ownership.monitor_pid)
+        };
+        let observe = |pid: u32| -> Result<AsyncFd<OwnedFd>> {
+            let pid = rustix::process::Pid::from_raw(pid.try_into().map_err(error)?)
+                .ok_or("process ID absent")?;
+            let fd = rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty())
+                .map_err(error)?;
+            // SAFETY: OwnedFd keeps this descriptor open and unchanged until it is dropped.
+            unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }.map_err(error)
+        };
+        self.exits = Some((observe(daemon_pid)?, observe(monitor_pid)?));
         self.inspect().await
     }
     fn ready(&mut self) -> Result<()> {
@@ -195,6 +212,14 @@ impl Phases for SupervisorPhases {
             .run::<steps::Inspect>(input)
             .await
             .map_err(error)?;
+        Ok(())
+    }
+    async fn wait_for_change(&mut self) -> Result<()> {
+        let (daemon, monitor) = self.exits.as_ref().ok_or("process-exit handles absent")?;
+        tokio::select! {
+            ready = daemon.readable() => { let _ = ready.map_err(error)?; }
+            ready = monitor.readable() => { let _ = ready.map_err(error)?; }
+        }
         Ok(())
     }
     async fn quiesce(&mut self) -> Result<bool> {

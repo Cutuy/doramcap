@@ -15,7 +15,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 /// Docker exit status of a process ended by SIGKILL.
@@ -202,6 +202,18 @@ impl ComposeExecution<'_> {
             args.push("--no-recreate".into());
             args.extend(services.iter().cloned());
         }
+        // Replay from before startup so readiness changes cannot precede the subscription.
+        let since = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| invalid(error.to_string()))?
+            .as_secs()
+            .to_string();
+        let events = self.adapter.docker.events(Some(EventsOptions {
+            since: Some(since),
+            filters: project_filters(&self.plan.name),
+            ..Default::default()
+        }));
+        tokio::pin!(events);
         self.command(args, seconds).await?;
         let deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
@@ -221,7 +233,11 @@ impl ComposeExecution<'_> {
             if Instant::now() >= deadline {
                 return Err(invalid(format!("{} readiness timeout", self.plan.name)));
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::timeout_at(deadline.into(), events.next())
+                .await
+                .map_err(|_| invalid(format!("{} readiness timeout", self.plan.name)))?
+                .ok_or_else(|| invalid("Docker readiness event stream ended"))?
+                .map_err(|error| engine("Docker readiness events", error))?;
         }
     }
     /// Create the named IPC owner without starting it, before workload side effects.

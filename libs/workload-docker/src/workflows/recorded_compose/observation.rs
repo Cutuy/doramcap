@@ -1,9 +1,5 @@
 //! Passive host snapshots and a bounded, cancellation-owned Docker event stream.
-use crate::compose::{
-    Result,
-    adapter::{RUN_LABEL, private_write},
-    error::invalid,
-};
+use crate::compose::{Result, adapter::private_write, error::invalid};
 use futures_util::StreamExt;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -16,19 +12,17 @@ use tokio::{io::AsyncWriteExt, sync::watch};
 pub(super) struct EventCapture {
     finish: watch::Sender<bool>,
     fault: watch::Receiver<Option<String>>,
+    changes: watch::Receiver<()>,
     task: tokio::task::JoinHandle<Result<()>>,
 }
 impl EventCapture {
-    pub fn start(
-        docker: bollard::Docker,
-        run: String,
-        project: String,
-        path: std::path::PathBuf,
-    ) -> Self {
+    pub fn start(docker: bollard::Docker, project: String, path: std::path::PathBuf) -> Self {
         let (finish, finished) = watch::channel(false);
         let (fault_tx, fault) = watch::channel(None);
+        let (changed, changes) = watch::channel(());
+        let since = SystemTime::now();
         let task = tokio::spawn(async move {
-            let result = record_events(docker, run, project, &path, finished).await;
+            let result = record_events(docker, project, &path, finished, changed, since).await;
             if let Err(error) = &result {
                 let _ = fault_tx.send(Some(error.to_string()));
             }
@@ -37,8 +31,13 @@ impl EventCapture {
         Self {
             finish,
             fault,
+            changes,
             task,
         }
+    }
+    /// Subscribe before inspecting container state; event notifications coalesce.
+    pub fn changes(&self) -> watch::Receiver<()> {
+        self.changes.clone()
     }
     /// Cancelling this wait leaves event capture running and preserves pending failures.
     pub fn failure(&self) -> impl std::future::Future<Output = String> + use<> {
@@ -78,10 +77,11 @@ pub(super) async fn snapshot(root: &Path, phase: &str) -> Result<()> {
 }
 async fn record_events(
     docker: bollard::Docker,
-    run: String,
     project: String,
     path: &Path,
     mut finish: watch::Receiver<bool>,
+    changed: watch::Sender<()>,
+    since: SystemTime,
 ) -> Result<()> {
     let mut file = tokio::fs::OpenOptions::new()
         .create_new(true)
@@ -89,19 +89,17 @@ async fn record_events(
         .mode(0o600)
         .open(path)
         .await?;
-    let since = SystemTime::now()
+    let since = since
         .duration_since(UNIX_EPOCH)
         .map_err(|e| invalid(e.to_string()))?
         .as_secs()
         .to_string();
     let stream = docker.events(Some(bollard::query_parameters::EventsOptions {
         since: Some(since),
+        // Include foreign ownership within the project so inspection can reject it.
         filters: Some(HashMap::from([(
             "label".into(),
-            vec![
-                format!("{RUN_LABEL}={run}"),
-                format!("com.docker.compose.project={project}"),
-            ],
+            vec![format!("com.docker.compose.project={project}")],
         )])),
         ..Default::default()
     }));
@@ -121,6 +119,7 @@ async fn record_events(
             }
             event = stream.next() => {
                 let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| crate::compose::error::engine("Docker events", e))?;
+                changed.send_replace(());
                 let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');
                 file.write_all(&bytes).await?;
                 if draining { quiet.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(200)); }

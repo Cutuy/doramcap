@@ -150,6 +150,19 @@ impl AppLifecycle {
             notified.await;
         }
     }
+    /// Await completed cleanup and return its retained diagnostic.
+    pub(crate) async fn wait_until_stopped(&self) -> Status {
+        loop {
+            let notified = self.changed.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let status = self.status().await;
+            if matches!(status, Status::Stopped { .. }) {
+                return status;
+            }
+            notified.await;
+        }
+    }
     /// Renew an existing, unexpired session of the current generation. Expired
     /// sessions are removed and cannot be revived by a late heartbeat.
     pub async fn heartbeat(&self, generation: Token, session: Token, now: Instant) -> bool {

@@ -4,6 +4,8 @@ use crate::compose::FORCED_STOP_OPERATION;
 use orchestrator::{LocalExecutor, Output};
 use std::time::Duration;
 
+const DORA_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+
 /// Stop requests win ties; callers always perform teardown after this future returns.
 pub(super) async fn until_stop(
     stop: impl Future<Output = ()>,
@@ -117,23 +119,38 @@ pub(super) async fn monitor(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     resources: &super::super::experiment::SharedExperiment,
+    mut changes: tokio::sync::watch::Receiver<()>,
 ) -> orchestrator::Result<()> {
-    loop {
-        let state = executor.run::<InspectCompose>(plan.clone()).await?;
-        if !state
-            .value()
-            .ready()
-            .map_err(|error| orchestrator::Error::message(error.to_string()))?
-        {
-            return Err(orchestrator::Error::message("experiment lost readiness"));
+    let containers = async {
+        loop {
+            let state = executor.run::<InspectCompose>(plan.clone()).await?;
+            if !state
+                .value()
+                .ready()
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?
+            {
+                return Err(orchestrator::Error::message("experiment lost readiness"));
+            }
+            changes.changed().await.map_err(|error| {
+                orchestrator::Error::message(format!("Docker event notifications ended: {error}"))
+            })?;
         }
-        resources
-            .lock()
-            .await
-            .inspect()
-            .await
-            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-        tokio::time::sleep(Duration::from_millis(500)).await;
+    };
+    // Dora's internal graph-state subscription remains a separate open decision.
+    let dora = async {
+        loop {
+            resources
+                .lock()
+                .await
+                .inspect()
+                .await
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+            tokio::time::sleep(DORA_HEALTH_CHECK_INTERVAL).await;
+        }
+    };
+    tokio::select! {
+        result = containers => result,
+        result = dora => result,
     }
 }
 

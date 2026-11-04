@@ -257,6 +257,11 @@ impl Launch {
             ownership::save(&runtime.ledger)?;
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(run.readiness_seconds);
+        let (_watcher, mut changes) =
+            workload_lifecycle::files::watch_changes([Path::new(&run.output_directory)])
+                .map_err(error)?;
+        let mut exits =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child()).map_err(error)?;
         loop {
             if let Some(status) = self
                 .state
@@ -273,9 +278,6 @@ impl Launch {
                     "Supervisor exited before control readiness: {status}"
                 ));
             }
-            if control::ctl(run, "status", 1).await.is_ok() {
-                break;
-            }
             // STOPPED uses a nonzero CLI exit; socket existence permits an explicit start.
             if Path::new(&run.output_directory)
                 .join("control.sock")
@@ -286,7 +288,19 @@ impl Launch {
             if tokio::time::Instant::now() >= deadline {
                 return Err("Supervisor control readiness deadline exceeded".into());
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::select! {
+                result = workload_lifecycle::files::wait_for_change(&mut changes) => {
+                    result.map_err(error)?;
+                }
+                signal = exits.recv() => {
+                    if signal.is_none() {
+                        return Err("Supervisor exit notification stream ended".into());
+                    }
+                }
+                _ = tokio::time::sleep_until(deadline) => {
+                    return Err("Supervisor control readiness deadline exceeded".into());
+                }
+            }
         }
         control::ctl(run, "start", run.readiness_seconds).await?;
         let status = control::ctl(run, "status", 2).await?;
@@ -419,6 +433,10 @@ impl Quiesce {
             }
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(run.stop_seconds);
+        let events =
+            Path::new(&self.state.borrow().as_ref().unwrap().ledger.cgroup).join("cgroup.events");
+        let (_watcher, mut changes) =
+            workload_lifecycle::files::watch_changes([events]).map_err(error)?;
         loop {
             let empty = ownership::empty(&self.state.borrow().as_ref().unwrap().ledger)?;
             if empty {
@@ -427,7 +445,13 @@ impl Quiesce {
             if tokio::time::Instant::now() >= deadline {
                 return Err("owned cgroup remains populated".into());
             }
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::timeout_at(
+                deadline,
+                workload_lifecycle::files::wait_for_change(&mut changes),
+            )
+            .await
+            .map_err(|_| "owned cgroup remains populated".to_string())?
+            .map_err(error)?;
         }
         let state = self.state.borrow();
         Ok(Quiesced {

@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 libc = "0.2"
+notify = { version = "8.2.1", default-features = false }
 orchestrator = { path = "../orchestrator" }
 serde = { version = "1", features = ["derive"] }
 futures-util = "0.3"
