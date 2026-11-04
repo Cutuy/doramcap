@@ -3,11 +3,12 @@ import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, type LucideIcon } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, Sun, Moon, type LucideIcon } from 'lucide-react';
 import generated from './.generated/catalog.json';
 import { componentHref, displayName, parseRoute, resolveLink, routeHref, type Catalog, type Component, type Kind, type Route } from './model';
 import Dependencies from './Dependencies';
 import Overview from './Overview';
+import { chooseTheme, useTheme } from './theme';
 import './style.css';
 
 const catalog = generated as Catalog;
@@ -113,12 +114,17 @@ function Explorer({ route }: { route: Route }) {
   return <><div className="intro"><h1>Dependencies.</h1></div><div className="toolbar graph-toolbar"><label>Component <select aria-label="Dependency component" value={focus} onChange={e => updateParams(route, { focus: e.target.value })}><option value="">Whole workspace</option>{catalog.components.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}{focus && !catalog.components.some(c => c.id === focus) && <option value={focus}>{focus}</option>}</select></label><div className="dependency-kind-controls">{['build', 'dev'].map(kind => <label key={kind}><input type="checkbox" checked={route.params.get(kind) === '1'} onChange={e => updateParams(route, { [kind]: e.target.checked ? '1' : '' })} />{kind === 'build' ? 'Build' : 'Dev'}</label>)}</div></div>{valid ? <Suspense fallback={<p role="status">Loading dependency graph…</p>}><DependencyGraph catalog={catalog} focus={focus} build={route.params.get('build') === '1'} dev={route.params.get('dev') === '1'} /></Suspense> : <p role="alert">Unknown component. <a href="#/dependencies">Show workspace</a>.</p>}</>;
 
 }
+function ThemeSwitch() {
+  const dark = useTheme() === 'dark';
+  const Icon = dark ? Moon : Sun;
+  return <button type="button" role="switch" aria-checked={dark} aria-label="Dark mode" className="theme-switch" onClick={() => chooseTheme(dark ? 'light' : 'dark')}><span className="theme-track"><span className="theme-thumb"><Icon size={11} strokeWidth={2.2} aria-hidden="true" /></span></span></button>;
+}
 function App() {
   const route = useRoute();
   const component = catalog.components.find(c => `/${c.id}` === route.path);
   const active = route.path === '/' || route.path === '/overview' ? 'overview' : route.path.startsWith('/crates') ? 'crates' : route.path === '/dependencies' ? 'dependencies' : route.path.startsWith('/docs') ? 'docs' : 'apps';
   useEffect(() => { document.title = `${component ? displayName(component.name) : active === 'overview' ? 'Overview' : active === 'dependencies' ? 'Dependencies' : active === 'crates' ? 'Crates' : active === 'docs' ? 'Documentation' : 'Apps'} · doramcap`; if (!route.params.has('heading')) window.scrollTo(0, 0); }, [route.path, route.params.get('path'), component, active]);
-  return <><a href="#main" className="skip" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a><header className="site-header"><div className="shell header-inner"><a className="brand" href="#/overview">doramcap<span>.</span></a><nav aria-label="Main navigation">{[['overview', 'Overview'], ['apps', 'Apps'], ['crates', 'Crates'], ['dependencies', 'Dependencies']].map(([path, label]) => <a key={path} href={`#/${path}`} aria-current={active === path ? 'page' : undefined}>{label}</a>)}</nav><a className="repository" href={catalog.repository}>Repository <ArrowUpRight size={14} /></a></div></header>
+  return <><a href="#main" className="skip" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a><header className="site-header"><div className="shell header-inner"><a className="brand" href="#/overview">doramcap<span>.</span></a><nav aria-label="Main navigation">{[['overview', 'Overview'], ['apps', 'Apps'], ['crates', 'Crates'], ['dependencies', 'Dependencies']].map(([path, label]) => <a key={path} href={`#/${path}`} aria-current={active === path ? 'page' : undefined}>{label}</a>)}</nav><div className="header-actions"><ThemeSwitch /><a className="repository" href={catalog.repository}>Repository <ArrowUpRight size={14} /></a></div></div></header>
     <main id="main" tabIndex={-1} className="shell">{component ? <Detail component={component} route={route} /> : route.path === '/' || route.path === '/overview' ? <Overview catalog={catalog} route={route} /> : route.path === '/apps' ? <Gallery kind="apps" route={route} /> : route.path === '/crates' ? <Gallery kind="crates" route={route} /> : route.path === '/dependencies' ? <Explorer route={route} /> : route.path === '/docs' ? <><a className="back" href="#/overview"><ArrowLeft size={14} />Overview</a><DocumentView path={route.params.get('path') ?? 'README.md'} route={route} /></> : <div className="empty"><h1>Page not found</h1><a href="#/apps">Browse applications</a></div>}</main>
     <footer className="shell footer"><span>doramcap project explorer</span><a href={`${catalog.repository}/tree/${catalog.revision}`}>Source {catalog.revision.slice(0, 7)}</a><a href="#/docs?path=README.md">Workspace README</a></footer></>;
 }

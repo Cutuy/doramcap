@@ -3,9 +3,11 @@ import { ReactFlow, Background, Controls, MarkerType, Position, type Node, type 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import '@xyflow/react/dist/style.css';
 import { componentHref, dependencyChain, type Catalog } from './model';
+import { useTheme } from './theme';
 
 const elk = new ELK();
 export default function DependencyGraph({ catalog, focus, build, dev }: { catalog: Catalog; focus: string; build: boolean; dev: boolean }) {
+  const theme = useTheme();
   const graph = useMemo(() => dependencyChain(catalog, focus, ['normal', ...(build ? ['build'] : []), ...(dev ? ['dev'] : [])]), [catalog, focus, build, dev]);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -51,7 +53,7 @@ export default function DependencyGraph({ catalog, focus, build, dev }: { catalo
   return <>
     <div className="graph-canvas original-graph" aria-label="Interactive package dependency graph">
       {error ? <p role="alert">Graph layout failed. Please reload to try again.</p> : !ready ? <p className="loading" role="status">Arranging dependencies…</p> :
-        <ReactFlow key={JSON.stringify({ focus, build, dev })} nodes={nodes} edges={edges} fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }} minZoom={0.12} maxZoom={1.8} nodesDraggable={false} nodesConnectable={false} elementsSelectable colorMode="system" onNodeClick={(_, node) => setSelected(node.id)} onSelectionChange={({ nodes: selection }) => { if (selection[0]) setSelected(selection[0].id); }}>
+        <ReactFlow key={JSON.stringify({ focus, build, dev })} nodes={nodes} edges={edges} fitView fitViewOptions={{ padding: 0.2, maxZoom: 1 }} minZoom={0.12} maxZoom={1.8} nodesDraggable={false} nodesConnectable={false} elementsSelectable colorMode={theme} onNodeClick={(_, node) => setSelected(node.id)} onSelectionChange={({ nodes: selection }) => { if (selection[0]) setSelected(selection[0].id); }}>
           <Background gap={22} size={1} /><Controls showInteractive={false} />
         </ReactFlow>}
     </div>
