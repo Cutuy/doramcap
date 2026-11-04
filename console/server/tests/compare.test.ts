@@ -108,15 +108,16 @@ test('a run in progress does not read as interrupted', () => {
   assert.equal(cell(row(comparison, 'execution'), 0), 'In progress');
 });
 
-test('a saved configuration opens without its run ID, so paths compare across runs', async () => {
+test('a saved configuration opens without its run ID or per-run ports, so runs compare cleanly', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-compare-')), id = 'a'.repeat(32);
   await mkdir(join(root, id));
-  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { environment: { OUTPUT: `/data/runs/${id}/out` } } } }));
+  await writeFile(join(root, id, 'experiment.input.json'), JSON.stringify({ services: { worker: { environment: { OUTPUT: `/data/runs/${id}/out`, DORA_DAEMON_LOCAL_LISTEN_PORT: '1000' } } } }));
   // Act
   const facts = manifestFacts(readManifest(root, id));
   // Assert
   assert.equal(facts.get('environment.worker.OUTPUT')?.value, '/data/runs/@run/out');
+  assert.equal(facts.has('environment.worker.DORA_DAEMON_LOCAL_LISTEN_PORT'), false);
 });
 
 test('a review compares setup and configuration with its baseline, and shows condition as current values', () => {
