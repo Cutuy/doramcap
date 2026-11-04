@@ -216,19 +216,22 @@ pub fn resolve<P: Payload>(path: &Path, registry: &[&str]) -> Result<Resolved<P>
     })
 }
 /// Handle `--resolve-config FILE`: print the complete pbtxt to stdout and return true.
-/// Returns false for any other arguments. Errors: any `resolve` or formatting failure.
+/// Returns false when the first argument is any other value.
+/// Errors: `--resolve-config` without exactly one FILE, or any `resolve` or formatting failure.
 pub fn resolve_flag<P: Payload>(args: &[String], registry: &[&str]) -> Result<bool> {
-    let [flag, path] = args else {
-        return Ok(false);
-    };
-    if flag != "--resolve-config" {
-        return Ok(false);
+    match args {
+        [flag, path] if flag == "--resolve-config" => {
+            print!(
+                "{}",
+                resolve::<P>(Path::new(path), registry)?.fragment_text()?
+            );
+            Ok(true)
+        }
+        [flag, ..] if flag == "--resolve-config" => {
+            Err(Error::Invalid("usage: --resolve-config FILE".into()))
+        }
+        _ => Ok(false),
     }
-    print!(
-        "{}",
-        resolve::<P>(Path::new(path), registry)?.fragment_text()?
-    );
-    Ok(true)
 }
 struct Loader<P: Payload> {
     payloads: BTreeMap<String, P>,
@@ -453,8 +456,9 @@ mod tests {
         // Act / Assert
         assert!(flag(&["--resolve-config", path]).unwrap());
         assert!(!flag(&["--config", path]).unwrap());
-        assert!(!flag(&["--resolve-config"]).unwrap());
-        assert!(!flag(&["--resolve-config", path, "extra"]).unwrap());
+        assert!(!flag(&[]).unwrap());
+        assert!(flag(&["--resolve-config"]).is_err());
+        assert!(flag(&["--resolve-config", path, "extra"]).is_err());
         assert!(flag(&["--resolve-config", "/missing"]).is_err());
     }
 
