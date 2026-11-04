@@ -8,6 +8,10 @@ Keep main linear: rebase onto current main, then cherry-pick. Never integrate wi
 
 Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
+## Concurrency
+
+Use proper event-driven mechanisms: block on channels, `select!`, condition variables or kernel waits. Avoid sleep loops, including timed-park and yield loops, outside tests. Use a timeout only for a real deadline.
+
 ## Implementation languages
 
 Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, benchmarks, and development tooling. Do not use Python in the application serving stack. Avoid Python, Bash, and other scripting languages in production environments and workflows unless absolutely necessary.
