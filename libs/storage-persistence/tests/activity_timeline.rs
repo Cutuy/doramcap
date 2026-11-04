@@ -87,12 +87,12 @@ fn activity_capture_correlates_every_path_and_split_io() {
             log_time: 0,
             publish_time: 0,
         };
-        let mut small = w.reserve(msg(0), 17).unwrap();
-        small.payload_mut().fill(3);
-        small.commit().unwrap();
-        let mut large = w.reserve(msg(1), 12000).unwrap();
+        let mut large = w.reserve(msg(0), 12000).unwrap();
         large.payload_mut().fill(4);
         large.commit().unwrap();
+        let mut small = w.reserve(msg(1), 17).unwrap();
+        small.payload_mut().fill(3);
+        small.commit().unwrap();
         let pool = SlabPool::new(1, 8192, 4096).unwrap();
         let mut slab = w.prepare_records(pool.acquire().unwrap());
         slab.reserve(msg(2), 7000).unwrap().fill(5);
