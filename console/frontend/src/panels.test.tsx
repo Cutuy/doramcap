@@ -192,3 +192,17 @@ test('system apps offer a profile picker only when an app has several profiles',
   assert.deepEqual(selectedProfiles([...apps, wire.SystemApp.fromObject({ id: 'other', selected: true })]), { monitor: 'live' });
   assert.deepEqual(selectedProfiles(off), {});
 });
+
+test('a saved recording reports how killed services exited', () => {
+  // Arrange
+  const status = (serviceExits: object[]) => wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'a'.repeat(32), recordings: [{ id: 'cpu', path: 'cpu.mcap', cpu: true }], reportAvailable: true, outcome: { execution: 'Completed', boundaryClean: true, recordingFinalized: true, serviceExits } }) as Snapshot;
+  // Act
+  const killed = renderToStaticMarkup(<Result snapshot={status([{ service: 'perception', exitCode: 137, killed: true }, { service: 'control', exitCode: 137, oomKilled: true, killed: true }, { service: 'planner', exitCode: 143 }])} newRun={() => {}}/>);
+  const clean = renderToStaticMarkup(<Result snapshot={status([{ service: 'planner', exitCode: 143 }])} newRun={() => {}}/>);
+  // Assert
+  assert.match(killed, /Saved/);
+  assert.match(killed, /Download cpu recording/);
+  assert.match(killed, /Killed: perception \(exit 137\), control \(exit 137, out of memory\)\. Final messages may be missing/);
+  assert.doesNotMatch(killed, /planner/);
+  assert.doesNotMatch(clean, /Killed:/);
+});

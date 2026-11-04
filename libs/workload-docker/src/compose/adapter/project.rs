@@ -3,7 +3,8 @@ use super::{
     DockerAdapter, EXPERIMENT_OWNER_LABEL, RUN_LABEL, digest, private_write, validate_name,
 };
 use crate::compose::{
-    Cleanup, ComposeProjectState, Container, ResolvedComposeProject, Result, Shutdown,
+    Cleanup, ComposeProjectState, Container, FORCED_STOP_OPERATION, ResolvedComposeProject, Result,
+    ServiceExit, Shutdown,
     command::compose,
     error::{absent, engine, invalid},
     state::append_output,
@@ -16,6 +17,9 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+/// Docker exit status of a process ended by SIGKILL.
+const SIGKILL_EXIT_CODE: i64 = 128 + libc::SIGKILL as i64;
 
 /// Borrows one frozen plan and its shared Docker connection for inspection and routing.
 /// Workflow steps control startup and teardown; dropping this view changes no resources.
@@ -534,13 +538,37 @@ impl ComposeExecution<'_> {
                     }
                     match self.adapter.docker.inspect_container(&id, None).await {
                         Ok(stopped) => {
-                            if stopped.state.as_ref().is_some_and(|s| {
-                                s.running == Some(true)
-                                    || s.pid.unwrap_or(0) != 0
-                                    || s.exit_code == Some(137)
-                                    || s.oom_killed == Some(true)
-                                    || (self.plan.key == "system" && s.exit_code != Some(0))
-                            }) {
+                            let exited = stopped
+                                .state
+                                .as_ref()
+                                .filter(|s| s.running != Some(true) && s.pid.unwrap_or(0) == 0);
+                            if let Some(state) = exited {
+                                let oom_killed = state.oom_killed == Some(true);
+                                let killed =
+                                    oom_killed || state.exit_code == Some(SIGKILL_EXIT_CODE);
+                                result.exits.push(ServiceExit {
+                                    service: summary
+                                        .labels
+                                        .as_ref()
+                                        .and_then(|l| l.get("com.docker.compose.service"))
+                                        .cloned()
+                                        .unwrap_or_else(|| id.clone()),
+                                    exit_code: state.exit_code.unwrap_or_default() as i32,
+                                    oom_killed,
+                                    killed,
+                                });
+                                if killed {
+                                    result.diagnostics.push(
+                                        invalid(format!("{id}: forced/unclean shutdown"))
+                                            .diagnostic(FORCED_STOP_OPERATION),
+                                    );
+                                } else if self.plan.key == "system" && state.exit_code != Some(0) {
+                                    result.diagnostics.push(
+                                        invalid(format!("{id}: forced/unclean shutdown"))
+                                            .diagnostic("stop"),
+                                    );
+                                }
+                            } else if stopped.state.is_some() {
                                 result.diagnostics.push(
                                     invalid(format!("{id}: forced/unclean shutdown"))
                                         .diagnostic("stop"),

@@ -515,6 +515,7 @@ export class ConsoleService implements ConsoleBackend {
       boundaryClean: !!clean,
       writersStopped: this.accepted ? result.writersStopped : null,
       recordingFinalized: this.marker!.recordings.length ? result.recordingFinalized : null,
+      serviceExits: result.serviceExits ?? [],
       eventStreamHealthy: this.accepted ? result.eventStreamHealthy : null,
     });
     this.marker!.phase = this.snapshot.phase;
@@ -538,6 +539,12 @@ export class ConsoleService implements ConsoleBackend {
               error: result.error ?? null,
               writers_stopped: this.snapshot.outcome.writersStopped,
               recording_finalized: this.snapshot.outcome.recordingFinalized,
+              service_exits: (this.snapshot.outcome.serviceExits ?? []).map(exit => ({
+                service: exit.service,
+                exit_code: exit.exitCode,
+                oom_killed: exit.oomKilled,
+                killed: exit.killed,
+              })),
               boundary_clean: this.snapshot.outcome.boundaryClean,
               event_stream_healthy: this.snapshot.outcome.eventStreamHealthy,
               system_apps: this.snapshot.systemApps?.ids ?? [],

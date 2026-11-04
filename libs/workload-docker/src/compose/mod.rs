@@ -11,12 +11,14 @@ mod model;
 pub mod overlay;
 mod state;
 mod steps;
+/// Diagnostic operation for a service killed by SIGKILL or the OOM killer during stop.
+pub(crate) const FORCED_STOP_OPERATION: &str = "forced stop";
 pub use adapter::{ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
 pub(crate) use model::{BindMount, ResolvedBind, ResourceLimit, RuntimeService};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, ConfigurationSnapshot, Container,
-    Diagnostic, ResolveInput, ResolvedComposeProject, Shutdown, StartInput, StopInput,
+    Diagnostic, ResolveInput, ResolvedComposeProject, ServiceExit, Shutdown, StartInput, StopInput,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,
