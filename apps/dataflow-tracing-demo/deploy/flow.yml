@@ -1,0 +1,50 @@
+nodes:
+- id: dataflow-tracing-demo-hosted-camera
+  path: dynamic
+  outputs:
+  - data
+  - telemetry
+- id: dataflow-tracing-demo-hosted-lidar
+  path: dynamic
+  outputs:
+  - data
+  - telemetry
+- id: dataflow-tracing-demo-hosted-detect
+  path: dynamic
+  inputs:
+    camera:
+      source: dataflow-tracing-demo-hosted-camera/data
+      queue_size: 512
+    lidar:
+      source: dataflow-tracing-demo-hosted-lidar/data
+      queue_size: 512
+  outputs:
+  - data
+  - telemetry
+- id: dataflow-tracing-demo-hosted-control
+  path: dynamic
+  inputs:
+    objects:
+      source: dataflow-tracing-demo-hosted-detect/data
+      queue_size: 512
+  outputs:
+  - data
+  - telemetry
+- id: dataflow-tracing-demo-hosted-monitor
+  path: dynamic
+  inputs:
+    camera:
+      source: dataflow-tracing-demo-hosted-camera/telemetry
+      queue_size: 512
+    lidar:
+      source: dataflow-tracing-demo-hosted-lidar/telemetry
+      queue_size: 512
+    detect:
+      source: dataflow-tracing-demo-hosted-detect/telemetry
+      queue_size: 512
+    control:
+      source: dataflow-tracing-demo-hosted-control/telemetry
+      queue_size: 512
+    keepalive:
+      source: dora/timer/millis/1000
+      queue_size: 512

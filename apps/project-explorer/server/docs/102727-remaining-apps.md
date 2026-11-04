@@ -211,7 +211,7 @@ and writes rotated names such as `faults.mcap.000001`.
 
 ## M6 — Dataflow Tracing (complete)
 
-The [launcher](../../../dataflow-tracing/run.py) starts dynamic Dora nodes and a
+The [launcher](../../../dataflow-tracing-demo/run.py) starts dynamic Dora nodes and a
 separate monitor. Its standalone pipeline has a finite default duration.
 
 ### Work items

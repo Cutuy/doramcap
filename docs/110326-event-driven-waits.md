@@ -65,7 +65,7 @@ Approved design: retain synchronous collection/publication with `crossbeam-chann
 
 **Work items**
 
-- [ ] `apps/dataflow-tracing/server/src/pipeline.rs:303`: block on Dora `recv_timeout` until the next real deadline.
+- [ ] `apps/dataflow-tracing-demo/server/src/pipeline.rs:303`: block on Dora `recv_timeout` until the next real deadline.
 - [ ] `pipeline.rs:121`, `:319`: replace `control_idle` and `drained` flags with a channel or condition variable.
 - [ ] `apps/storage-demo/src/main.rs:407`, `:409`: wait with `recv_deadline` on commands until the next publish, and pace bursts on writer backpressure.
 - [ ] `apps/storage-demo/src/observation.rs:159`: notify from the collector.

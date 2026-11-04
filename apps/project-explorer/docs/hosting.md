@@ -21,7 +21,7 @@ Hash routes support refresh, browser history, copied links and new tabs:
 
 - `#/apps?q=activity`
 - `#/crates/activity-tracing`
-- `#/dependencies?focus=apps/dataflow-tracing`
+- `#/dependencies?focus=apps/dataflow-tracing-demo`
 - `#/overview?useCase=perception`
 - `#/overview?capability=recording`
 - `#/overview?integration=mcap`

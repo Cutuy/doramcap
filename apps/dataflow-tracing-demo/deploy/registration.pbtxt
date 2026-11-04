@@ -1,4 +1,4 @@
-id: "dataflow-tracing"
+id: "dataflow-tracing-demo"
 compose_file: "compose.yaml"
 service: "monitor"
 network: "default"
