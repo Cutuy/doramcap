@@ -114,5 +114,10 @@ jobs:
           ulimit -l
           cargo test --profile ci --locked --workspace --all-features
 
+      - name: TEMP report peak disk
+        run: |
+          du -sh target/ci
+          df -h /
+
       - name: Test CI snapshot synchronization
         run: python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
