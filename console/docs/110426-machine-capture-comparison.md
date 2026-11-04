@@ -2,7 +2,7 @@
 
 # Machine capture and A/B comparison
 
-Created: 2026-11-04. Status: implemented on x86; ARM64, CUDA, governor-change and failure-injection checks remain open in their milestones.
+Created: 2026-11-04. Status: implemented on x86; ARM64, CUDA and failure-injection checks remain open in their milestones.
 
 Each run saves what it ran and the machine it ran on. Selecting two runs on the History page shows what is the same and what differs.
 
@@ -113,8 +113,8 @@ Evidence: `tests/history.test.ts` and `tests/source.test.ts` pass. A real `kill 
 - [x] Add a server diff that reports same, changed or unavailable per field, by walking the capture messages.
 - [x] Add a `GET` comparison route behind the session and origin checks.
 - [x] Read environment values and frozen file digests from each run's private files, apply masks on the server and hide Compose secrets.
-- [x] Show groups for result, setup, configuration and condition, with differences first and matches collapsed.
-- [x] Show configuration changes between a run's before and after states.
+- [x] Show groups for result, setup, configuration and condition, with differences first and one action that shows all matches.
+- [x] Show a setting that changed during a run in the machine configuration group, with its start and end values.
 - [x] Keep comparison on the History page; add no separate page.
 
 **Validation**
@@ -153,16 +153,18 @@ Evidence: a real unchanged review showed 0 differences against its baseline; the
 ## Milestone 6: Real experiments
 
 **Work items**
-- [ ] Run real Compose A/B pairs through a real Console with a parameter change and a governor change.
+- [x] Run real Compose A/B pairs through a real Console with a parameter change and a governor change.
 - [ ] Run the capture on ARM64, WSL and a CUDA host, and on a Jetson when one is available.
 - [x] Capture screenshots of History comparison and Review for this plan.
 
 **Validation**
 - [x] The parameter change appears under setup with both values.
-- [ ] The governor change appears as a configuration warning.
-- [ ] A governor change during a run appears as a before and after difference.
+- [x] The governor change appears as a configuration warning.
+- [x] A governor change during a run appears as a before and after difference.
 - [ ] Facts missing on each platform show as unavailable.
 - [x] History comparison survives `kill -9` and SIGTERM restarts.
 - [ ] Full local CI and ARM64 validation pass at the PR integration point.
 
-Evidence: real A/B pairs with parameter changes ran on x86. The history comparison survived SIGTERM and `kill -9`, and the next run cleaned up leftover containers. Changing the governor needs separate approval, so those checks stay open.
+Evidence (2026-11-04, x86, real Console, Chromium): the parameter pairs and restart checks passed, and the next run cleaned up leftover containers. Switching from `powersave` to `performance` between runs warned at Review and in History for the governor and energy preference. Switching during a run appeared in that group's table as start and end values, and it warned. The original settings were restored and verified on all 20 CPUs. ARM64 job 588 was stopped on request before finishing, so ARM64 worker validation has not completed.
+
+![Governor changed during a run](110426-governor-during-run.png)
