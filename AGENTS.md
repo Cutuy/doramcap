@@ -74,6 +74,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ## Documentation style
 
 - All Markdown: brief prose, short bullets, compact tables; no walls of text.
+- Validation records: keep only the latest result and unresolved blockers in a few short bullets. Link to CI or logs for details; replace stale results instead of appending test histories, counts or command transcripts.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
 - In functions with lengthy business logic, prefer concise, one-line inline comments explaining the key steps.
 - Document APIs primarily in docstrings/Rust doc comments. Keep docstrings to at most three lines; use named sections or bullet points when more detail is necessary. Follow Linux API manpage precision for behavior, parameters, return values, errors, ownership and concurrency as applicable. Keep API details beside the code; link to them from READMEs.
