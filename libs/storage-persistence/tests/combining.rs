@@ -105,7 +105,8 @@ fn submissions_flush_aged_batches_and_reclaim_without_polling() {
     };
     writer.reserve(meta, 1).unwrap().commit().unwrap();
     let baseline = monitor.snapshot().unwrap().writer.counters.accepted;
-    std::thread::sleep(Duration::from_millis(110));
+    let batch_deadline = writer.next_flush_deadline().unwrap();
+    std::thread::sleep(batch_deadline.saturating_duration_since(Instant::now()));
     // A new reservation flushes the expired batch without an explicit poll.
     writer.reserve(meta, 1).unwrap().commit().unwrap();
     assert!(monitor.snapshot().unwrap().writer.counters.accepted > baseline);

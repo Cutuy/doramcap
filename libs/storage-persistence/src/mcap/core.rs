@@ -15,7 +15,8 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-const MAX_BATCH_AGE: Duration = Duration::from_millis(100);
+/// Oldest a partial batch may get before it is padded and written; a crash can lose this much.
+const MAX_BATCH_AGE: Duration = Duration::from_secs(1);
 const MAGIC: &[u8; 8] = b"\x89MCAP0\r\n";
 pub(super) struct McapCore {
     combining_timeline: Timeline,
