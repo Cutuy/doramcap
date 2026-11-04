@@ -7,14 +7,12 @@ CI scripts and the workflow itself. Documentation, worktree tooling and unrelate
 frontend edits skip Rust CI; manual dispatch always runs it.
 ARM64 and x86_64 jobs report independently; both consume runner minutes for private repositories.
 It checks [library dependency boundaries](boundaries.json), formatting, default/all-feature Clippy and Rust tests, storage without
-default features, example/binary builds, and snapshot synchronization tests.
+default features, and snapshot synchronization tests.
 Rust follows `rust-toolchain.toml`; Cargo downloads are cached. Hosted builds use the
-`ci` Cargo profile: no optimization or incremental compilation, line-table debug
-information, debug assertions and overflow checks. Reproduce checks locally with
-`cargo test --profile ci --locked --workspace --all-features`.
-CI removes generated test artifacts before the standalone example/binary build
-to bound peak disk usage; that final build recompiles dependencies. Runs have a
-45-minute timeout and superseded runs on the same ref are cancelled.
+`ci` Cargo profile to fit the runner disk: no optimization, incremental compilation
+or debug information, with debug assertions and overflow checks enabled. Reproduce
+checks locally with `cargo test --profile ci --locked --workspace --all-features`.
+Runs have a 45-minute timeout and superseded runs on the same ref are cancelled.
 Test shells receive a 256 MiB locked-memory limit for registered I/O buffers;
 Cargo and test binaries run as the unprivileged runner user.
 Private repositories use the owner's included Actions minutes and billing policy.

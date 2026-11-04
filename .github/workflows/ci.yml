@@ -114,11 +114,5 @@ jobs:
           ulimit -l
           cargo test --profile ci --locked --workspace --all-features
 
-      - name: Free test artifacts before standalone build
-        run: cargo clean --profile ci
-
-      - name: Build examples and binaries
-        run: cargo build --profile ci --locked --workspace --all-features --examples --bins
-
       - name: Test CI snapshot synchronization
         run: python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
