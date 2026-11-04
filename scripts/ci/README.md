@@ -40,6 +40,10 @@ CUDA-capable host for GPU execution and CUDA IPC qualification.
 systemd service, with one job at a time and a private Unix socket. SSH provides
 remote access; no Pueue TCP service is exposed.
 
+Jobs use Cargo's dev profile with line-table debug information to bound link memory.
+If `ld` dies with signal 9, the worker ran out of memory (21 GiB, no swap). Lower
+debug information or parallelism first; LTO applies only to the release profile.
+
 ## Submit and inspect
 
 From a checkout containing the native validation example and script:
