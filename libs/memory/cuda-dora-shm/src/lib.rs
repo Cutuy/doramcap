@@ -319,16 +319,44 @@ impl Producer {
                 self.stats.completion_blocks += 1;
             }
             if completed {
-                if let Some(writer) = self.slots[index].writer.take() {
-                    writer.wait()?;
-                }
-                tracing::info!(target: "activity", event = "reclaimed", slot = index as u64, generation = self.ledger.generation(index));
-                self.ledger.reclaim(index);
+                self.reclaim(index)?;
                 count += 1;
-                self.stats.reclaimed += 1;
             }
         }
         Ok(count)
+    }
+    /// Wait on `stream` for all fully returned generations, then reclaim them.
+    /// Requires a stream in this pool's context. CUDA errors preserve unreclaimed slots.
+    /// Blocks through GPU completion; returns zero when no generation has every return.
+    pub fn wait_and_reclaim(&mut self, stream: &CudaStream) -> Result<usize> {
+        ensure!(
+            stream.context().as_ref() == self.ctx.as_ref(),
+            "foreign stream context"
+        );
+        let candidates = self.ledger.candidates();
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+        for &index in &candidates {
+            self.slots[index].ready.wait(stream)?;
+            for peer in self.peers.values() {
+                peer.done[index].wait(stream)?;
+            }
+        }
+        stream.synchronize()?;
+        for &index in &candidates {
+            self.reclaim(index)?;
+        }
+        Ok(candidates.len())
+    }
+    fn reclaim(&mut self, index: usize) -> Result<()> {
+        if let Some(writer) = self.slots[index].writer.take() {
+            writer.wait()?;
+        }
+        tracing::info!(target: "activity", event = "reclaimed", slot = index as u64, generation = self.ledger.generation(index));
+        self.ledger.reclaim(index);
+        self.stats.reclaimed += 1;
+        Ok(())
     }
     /// Reserve a free slot. Readiness is recorded during `WriteFrame::publish`.
     pub fn try_acquire(&mut self, stream: Arc<CudaStream>) -> Result<Option<WriteFrame<'_>>> {

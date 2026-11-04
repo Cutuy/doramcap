@@ -12,6 +12,7 @@ use axum::{
     response::{Html, IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
+use crossbeam_channel::{Receiver, Sender, at, bounded, select_biased};
 use prost::Message as _;
 use serde_json::{Value, json};
 use std::{
@@ -21,7 +22,6 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc::{self, SyncSender},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -94,7 +94,7 @@ struct Web {
     snapshots: watch::Receiver<Value>,
     binary: watch::Receiver<axum::body::Bytes>,
     stop: Arc<AtomicBool>,
-    commands: SyncSender<Control>,
+    commands: Sender<Control>,
     root: PathBuf,
     sealed: Arc<AtomicU64>,
 }
@@ -165,7 +165,7 @@ async fn control(State(s): State<Web>, Json(body): Json<Value>) -> StatusCode {
         hold_reader,
     }) {
         Ok(()) => StatusCode::ACCEPTED,
-        Err(mpsc::TrySendError::Full(_)) => StatusCode::TOO_MANY_REQUESTS,
+        Err(crossbeam_channel::TrySendError::Full(_)) => StatusCode::TOO_MANY_REQUESTS,
         Err(_) => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
@@ -209,17 +209,29 @@ fn record(writer: &mut McapWriter, p: &pb::Packet, channel: u16, seq: u32) -> Re
         log_time: timestamp,
         publish_time: timestamp,
     };
-    let mut r = writer.reserve(message, len)?;
-    p.encode(&mut r.payload_mut())?;
-    r.commit()?;
-    Ok(len)
+    for attempt in 0..2 {
+        match writer.reserve(message, len) {
+            Ok(mut reservation) => {
+                p.encode(&mut reservation.payload_mut())?;
+                reservation.commit()?;
+                return Ok(len);
+            }
+            Err(error) if attempt == 1 || error.kind() != io::ErrorKind::WouldBlock => {
+                return Err(error.into());
+            }
+            Err(_) => {}
+        }
+        writer.flush_written()?;
+    }
+    unreachable!("reservation either succeeds or returns its error")
 }
 fn owner(
     o: &Options,
     tx: watch::Sender<Value>,
-    commands: &mpsc::Receiver<Control>,
+    commands: &Receiver<Control>,
     stop: Arc<AtomicBool>,
     sealed: Arc<AtomicU64>,
+    shutdown: &Receiver<()>,
 ) -> Result<bool> {
     let schema = Schema {
         name: telemetry_protocol::MCAP_SCHEMA_NAME,
@@ -280,14 +292,24 @@ fn owner(
     let mut burst_remaining = 0usize;
     let mut burst_interval = Duration::from_millis(5);
     let mut next_probe = Instant::now();
+    let mut next_command = None;
     while !stop.load(Ordering::Relaxed) && (o.seconds == 0 || start.elapsed().as_secs() < o.seconds)
     {
+        let now = Instant::now();
+        if writer
+            .next_flush_deadline()
+            .is_some_and(|deadline| now >= deadline)
+        {
+            writer.flush_written()?;
+        } else {
+            writer.poll(now)?;
+        }
         let mut pending = Vec::with_capacity(32);
         let mut action = None;
         let mut manual_kind = None;
         let mut manual_rows = Vec::with_capacity(16);
         let mut manual_us = 0u128;
-        if let Ok(command) = commands.try_recv() {
+        if let Some(command) = next_command.take().or_else(|| commands.try_recv().ok()) {
             match command.action.as_str() {
                 "managed_large" | "sealed_slab" | "release_readers" | "retire_slabs" => {
                     exercises.run(
@@ -403,10 +425,25 @@ fn owner(
                 "receipts":receipts,"messages":recent,"events":observation.events,"file":disk,"lastSealed":last_sealed}));
             publish = Instant::now() + Duration::from_millis(40);
         }
-        if burst_remaining > 0 && burst_interval.is_zero() {
-            std::thread::yield_now();
-        } else {
-            std::thread::sleep(Duration::from_millis(5));
+        let mut deadline = heartbeat.min(publish);
+        if burst_remaining > 0 {
+            deadline = deadline.min(next_probe);
+        }
+        if let Some(flush) = writer.next_flush_deadline() {
+            deadline = deadline.min(flush);
+        }
+        if o.seconds > 0
+            && let Some(end) = start.checked_add(Duration::from_secs(o.seconds))
+        {
+            deadline = deadline.min(end);
+        }
+        select_biased! {
+            recv(shutdown) -> _ => break,
+            recv(commands) -> command => match command {
+                Ok(command) => next_command = Some(command),
+                Err(_) => break,
+            },
+            recv(at(deadline)) -> _ => {},
         }
     }
     exercises.release();
@@ -460,7 +497,8 @@ async fn main() -> Result<()> {
         o.root.display()
     );
     let (tx, rx) = watch::channel(json!({"status":if o.start_paused {"idle"} else {"starting"}}));
-    let (commands, command_rx) = mpsc::sync_channel(16);
+    let (commands, command_rx) = bounded(16);
+    let (shutdown, shutdown_rx) = bounded::<()>(0);
     let stop = Arc::new(AtomicBool::new(false));
     let sealed = Arc::new(AtomicU64::new(0));
     let binary = snapshot::relay(rx.clone(), stop.clone());
@@ -485,10 +523,13 @@ async fn main() -> Result<()> {
             let mut restart = !o.start_paused;
             while !owner_stop.load(Ordering::Relaxed) {
                 if !restart {
-                    match command_rx.recv_timeout(Duration::from_millis(50)) {
-                        Ok(command) if command.action == "restart" => restart = true,
-                        Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                        _ => continue,
+                    select_biased! {
+                        recv(shutdown_rx) -> _ => break,
+                        recv(command_rx) -> command => match command {
+                            Ok(command) if command.action == "restart" => restart = true,
+                            Err(_) => break,
+                            _ => continue,
+                        },
                     }
                 }
                 if restart {
@@ -501,6 +542,7 @@ async fn main() -> Result<()> {
                             &command_rx,
                             owner_stop.clone(),
                             sealed.clone(),
+                            &shutdown_rx,
                         )
                     });
                     match result {
@@ -553,6 +595,7 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(async move {
             let _ = tokio::signal::ctrl_c().await;
             shutdown_stop.store(true, Ordering::Relaxed);
+            drop(shutdown);
             #[cfg(feature = "activity-tracing")]
             feed.shutdown();
             drop(keepalive);

@@ -35,7 +35,7 @@ Approved design: bounded block channels and a shared shutdown channel; no 10 ms 
 - [x] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
 - [x] Record zero-allocation capture and `throughput` results in this milestone's implementation PR.
 
-- [ ] Cloud CI finishes successfully. Local full-workspace CI is deferred to cloud CI; ARM64 validation is waived by the user. Dora/CUDA checks belong to later milestones.
+- [x] Cloud CI finishes successfully: Rust CI [41765714665](https://github.com/Cutuy/doramcap/actions/runs/41765714665) and Node CI [41765714525](https://github.com/Cutuy/doramcap/actions/runs/41765714525) passed on PR #128's final head `aab868c`. ARM64 validation is waived by the user. Dora/CUDA checks belong to later milestones.
 
 ## Milestone 2: System monitor
 
@@ -53,33 +53,55 @@ Approved design: retain synchronous collection/publication with `crossbeam-chann
 - Release locked default tests pass (17); Dora-feature tests plus the adapter pass (20). Strict Clippy passes for default and Dora-feature configurations.
 - Dora in-process tests verify stop notification and cancellation before a scheduled 30-second event. The sampling test verifies stop before a 30-second tick.
 - Zero-allocation handoff, overload recovery, selected receive and producer-disconnect drain tests pass. `strace` shows an indefinite selected wait until the control signal.
-- All-feature compilation and strict Clippy pass with `CLANG=/usr/bin/clang-18`. The privileged native recording/rotation test passes: 24 samples, zero drops, valid dictionary checkpoints. ARM64 is waived; full-workspace cloud CI is pending.
+- All-feature compilation and strict Clippy pass with `CLANG=/usr/bin/clang-18`. The privileged native recording/rotation test passes: 24 samples, zero drops, valid dictionary checkpoints. ARM64 is waived.
 
 - [x] Ctrl-C and Dora stop wake waits without waiting for the next sampling tick.
 - [x] Collector completion, failure and producer disconnect wake the publisher; queued snapshots drain before exit.
 - [x] The idle publishing loop makes no periodic wake-ups.
 - [x] System Monitor tests and its recording checks pass.
-- [ ] Full-workspace cloud CI finishes successfully.
+- [x] Full-workspace cloud CI finishes successfully: Rust CI [41766188922](https://github.com/Cutuy/doramcap/actions/runs/41766188922) and Node CI [41766188935](https://github.com/Cutuy/doramcap/actions/runs/41766188935) passed on PR #129's final head `819c50c`.
 
 ## Milestone 3: Demo apps
 
+Approved CUDA design: use a completion stream and CPU stream synchronization. Keep returns asynchronous; add no CUDA host callbacks or helper threads. GPU waits pause producer event handling until completion.
+
+Approved message-wait design: select Dora `recv_async()` against `futures-timer::Delay`, using the next real deadline. This is separate from CUDA completion and uses the version already locked through Dora.
+
+Approved exporter design: coalesced Collector notifications and collector-replacement messages use the existing workspace `crossbeam-channel` dependency.
+
+Approved dataflow design: use the existing Tokio runtime to select on Dora events, activity batches, shutdown and real deadlines on the existing worker threads.
+
 **Work items**
 
-- [ ] `apps/dataflow-tracing-demo/server/src/pipeline.rs:303`: block on Dora `recv_timeout` until the next real deadline.
-- [ ] `pipeline.rs:121`, `:319`: replace `control_idle` and `drained` flags with a channel or condition variable.
-- [ ] `apps/storage-demo/src/main.rs:407`, `:409`: wait with `recv_deadline` on commands until the next publish, and pace bursts on writer backpressure.
-- [ ] `apps/storage-demo/src/observation.rs:159`: notify from the collector.
-- [ ] `apps/cuda-shm-demo/src/main.rs:325`: block the consumer on Dora `recv`.
-- [ ] `apps/cuda-shm-demo/src/main.rs:182`: signal the producer when a frame slot frees.
+- [x] `apps/dataflow-tracing-demo/server/src/pipeline.rs`: use Tokio selection for input, activity, stop and real deadlines.
+- [x] Replace `control_idle` with a readiness channel and `drained` with activity-channel closure.
+- [x] `apps/storage-demo/src/main.rs`: wait with `recv_deadline` on commands until the next publish, and pace bursts on writer backpressure.
+- [x] `apps/storage-demo/src/observation.rs`: notify from the collector.
+- [x] Reuse tracing's `NoSubscriber` on sink workers so their storage trace points stay silent without disabling application capture.
+- [x] `apps/cuda-shm-demo/src/main.rs`: select Dora asynchronous receive against the next real deadline in both producer and consumer.
+- [x] `apps/cuda-shm-demo/src/main.rs`: enqueue Ready/Done waits on a completion stream after every consumer returns a generation, then synchronize the stream and reclaim its slots.
 
 **Validation**
 
-- [ ] Preserve dataflow simulated-work delays and storage publish pacing.
+- Real CUDA/Dora qualification passes for one-byte, partial-block, cross-page, large-tail and asynchronous GPU-only payloads, CPU/GPU corruption rejection, and stalled-reader timeout without reuse, including the final asynchronous message-wait implementation. Release locked CUDA library/demo tests pass (8/4); strict demo Clippy passes. Duplicate-return qualification passes with the approved acceptance of duplicate or stale-generation rejection after reclamation. CUDA frontend/runner tests pass (11).
+- Storage HTTP/readback, rotation, stop/restart and blocked-exporter checks pass, including 256 zero-interval probes. Three interleaved baseline/current runs with activity capture disabled show median probe-record timestamp spans of 13.72/13.55 ms; dashboard refresh timing is coarser.
+- Real dataflow validation passes with four nodes in one process, a separate monitor, exact latency pairs, activity delivery, bounded retention and orderly shutdown.
+- The worker-first regression failed before the fix: a recorder's first use of a shared trace point disabled the application's later span. The approved `NoSubscriber` guard fixes it while recorder spans remain disabled. Release locked activity tests pass with default/all features (26/32), including zero-allocation capture; strict all-feature Clippy passes. Ten consecutive real Storage Demo activity runs pass with 17 closed spans, every required path and zero recorded loss, including `storage.combining`.
+- Final focused strict Clippy passes for Storage Demo (all features), Dataflow Tracing, CUDA SHM Demo and the CUDA library. Formatting, dependency boundaries and whitespace checks pass. Cloud CI remains pending publication; ARM64 is waived.
+- Retained timers: dataflow source cadence (50/100 ms), 1 s status, configured delayed reports and simulated compute; storage 5 ms heartbeats, 40 ms dashboard publication, configured probe/session deadlines and 100 ms buffered writer flush. CUDA transport timers retain handshake/statistics/trace-flush and overall run deadlines.
+
+
+- [x] Preserve dataflow simulated-work delays and storage publish pacing.
 - [ ] Each app's existing tests pass; stop and disconnect wake blocked workers.
-- [ ] CUDA SHM Demo passes on a CUDA-capable host.
-- [ ] Storage Demo bursts still reach their previous throughput.
+- [x] CUDA SHM Demo passes on a CUDA-capable host.
+- [x] Storage Demo bursts retain baseline throughput in the recorded comparison.
+
+- [x] Remove CUDA Dora message polling after reviewing the separate transport-wait design; keep CUDA completion independent of Dora.
+- [ ] Final focused lint/tests and cloud CI pass on the published milestone revision.
 
 ## Milestone 4: Orchestration
+
+File-watch choice: stable `notify` 8.2.1, selected under the user's maintenance criterion; its Linux backend uses inotify. Reuse the existing Bollard dependency for Docker events.
 
 **Work items**
 
@@ -100,6 +122,4 @@ Approved design: retain synchronous collection/publication with `crossbeam-chann
 
 ## Open decisions
 
-- Crates for `inotify` and Docker events.
-- Whether CUDA offers a blocking wait or callback for frame completion.
 - Whether the Dora CLI offers any connection event.

@@ -60,7 +60,9 @@ try {
   require(!timedOut, 'Dora did not terminate');
   if (values.failure) {
     const expected: Record<string, string> = { stall: 'TIMEOUT: no unsafe reuse', duplicate: 'duplicate return', 'corrupt-cpu': 'CPU_CONTENT_MISMATCH', 'corrupt-gpu': 'GPU_CONTENT_MISMATCH' };
-    require(status !== 0 && output.includes(expected[values.failure]), 'expected deterministic rejection missing');
+    // Reclamation can make the second return stale before it is received.
+    const rejected = output.includes(expected[values.failure]) || (values.failure === 'duplicate' && output.includes('stale/unpublished generation'));
+    require(status !== 0 && rejected, 'expected deterministic rejection missing');
     if (values.failure.startsWith('corrupt')) require(!output.includes('CONSUMER_SUMMARY'), 'corrupt contents reported success');
     if (values.failure === 'stall') { const m = output.match(/TIMEOUT: no unsafe reuse; published=(\d+).*reclaimed: (\d+)/); require(m && Number(m[1]) === slots && Number(m[2]) === 0, 'unexpected stall accounting'); }
   } else {

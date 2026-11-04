@@ -128,13 +128,18 @@ pub fn active(monitor: &McapMonitor) -> Value {
 #[cfg(feature = "tracing-export")]
 pub struct TraceExport;
 #[cfg(feature = "tracing-export")]
+struct Export {
+    current: tokio::sync::watch::Sender<(u64, Collector)>,
+    wake: crossbeam_channel::Sender<()>,
+}
+#[cfg(feature = "tracing-export")]
 impl TraceExport {
     pub fn start(collector: Collector) {
         use std::sync::{
             OnceLock,
             atomic::{AtomicU64, Ordering},
         };
-        static EXPORT: OnceLock<tokio::sync::watch::Sender<(u64, Collector)>> = OnceLock::new();
+        static EXPORT: OnceLock<Export> = OnceLock::new();
         static GENERATION: AtomicU64 = AtomicU64::new(1);
         if std::env::var_os("STORAGE_TRACE_STDERR").is_none() {
             return;
@@ -142,6 +147,7 @@ impl TraceExport {
         let generation = GENERATION.fetch_add(1, Ordering::Relaxed);
         let sender = EXPORT.get_or_init(|| {
             let (sender, mut receiver) = tokio::sync::watch::channel((generation, collector.clone()));
+            let (wake, changed) = crossbeam_channel::bounded::<()>(1);
             std::thread::spawn(move || {
                 let subscriber=tracing_subscriber::fmt().with_writer(std::io::stderr).with_ansi(false).finish();
                 tracing::subscriber::with_default(subscriber, || {
@@ -152,17 +158,23 @@ impl TraceExport {
                         if generation != seen_generation { cursor=0; seen_generation=generation; }
                         let batch=collector.read_after(cursor,256);
                         cursor=batch.next_cursor;
+                        let full = batch.events.len() == 256;
                         for e in batch.events {
                             tracing::info!(target:"storage_observation",sequence=e.sequence,kind=?e.kind,ids=?e.data.ids,offset=e.data.offset,len=e.data.len,result=?e.data.result,duration_us=?e.data.duration_us);
                         }
                         if batch.missed_before_cursor>0 { tracing::warn!(target:"storage_observation",missed=batch.missed_before_cursor,"history gap"); }
-                        std::thread::sleep(Duration::from_millis(100));
+                        if full { continue; }
+                        crossbeam_channel::select_biased! {
+                            recv(changed) -> _ => {},
+                            recv(collector.notifications()) -> _ => {},
+                        }
                     }
                 });
             });
-            sender
+            Export { current: sender, wake }
         });
-        sender.send_replace((generation, collector));
+        sender.current.send_replace((generation, collector));
+        let _ = sender.wake.try_send(());
     }
 }
 

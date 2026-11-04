@@ -1,6 +1,6 @@
 use crate::{envelope, node_id, pb, publish};
 use activity_tracing::{BatchView, Config, Handle, Runtime, Sink};
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{Sender, bounded};
 use dora_node_api::{DoraNode, Event, TryRecvError};
 use eyre::{Result, bail, eyre};
 use prost::Message;
@@ -8,15 +8,16 @@ use std::{
     collections::VecDeque,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
     thread,
     time::{Duration, Instant},
 };
 use step_provenance::pb::{GenerationRef, Inputs, StepUpdate};
+use tokio::sync::{mpsc, watch};
 
 struct ActivitySink {
-    tx: Sender<Vec<u8>>,
+    tx: mpsc::Sender<Vec<u8>>,
     drops: Arc<AtomicU64>,
 }
 impl Sink for ActivitySink {
@@ -31,9 +32,7 @@ impl Sink for ActivitySink {
     }
 }
 struct Shared {
-    stop: AtomicBool,
-    drained: AtomicBool,
-    control_idle: AtomicBool,
+    stop: watch::Sender<bool>,
     queue_drops: Arc<AtomicU64>,
     report_drops: AtomicU64,
     deadline: Option<Instant>,
@@ -59,7 +58,10 @@ pub fn run(args: &[String]) -> Result<()> {
             _ => bail!("unknown pipeline option {}", pair[0]),
         }
     }
-    let (tx, rx) = bounded(64);
+    let (tx, rx) = mpsc::channel(64);
+    let (control_idle, control_ready) = bounded(1);
+    let mut batches = Some(rx);
+    let (stop, _) = watch::channel(false);
     let drops = Arc::new(AtomicU64::new(0));
     let mut runtime = Runtime::start(
         Config {
@@ -75,9 +77,7 @@ pub fn run(args: &[String]) -> Result<()> {
     .map_err(|e| eyre!(e.to_string()))?;
     let handle = runtime.handle();
     let shared = Arc::new(Shared {
-        stop: AtomicBool::new(false),
-        drained: AtomicBool::new(false),
-        control_idle: AtomicBool::new(false),
+        stop,
         queue_drops: drops,
         report_drops: AtomicU64::new(0),
         deadline: duration.map(|seconds| Instant::now() + Duration::from_secs(seconds)),
@@ -87,24 +87,32 @@ pub fn run(args: &[String]) -> Result<()> {
     let signal = shared.clone();
     let signal_task = tokio::spawn(async move {
         let _ = tokio::signal::ctrl_c().await;
-        signal.stop.store(true, Ordering::Release);
+        signal.stop.send_replace(true);
     });
     let mut workers = Vec::new();
     for name in ["camera", "lidar", "detect", "control"] {
         let h = handle.clone();
         let s = shared.clone();
-        let rx = rx.clone();
+        let rx = if name == "control" {
+            batches.take()
+        } else {
+            None
+        };
+        let idle = if name == "control" {
+            Some(control_idle.clone())
+        } else {
+            None
+        };
+        let executor = tokio::runtime::Handle::current();
         workers.push(thread::Builder::new().name(name.into()).spawn(move || {
-            let result = worker(name, h, s.clone(), rx);
+            let result = executor.block_on(worker(name, h, s.clone(), rx, idle));
             if result.is_err() {
-                s.stop.store(true, Ordering::Release);
-            }
-            if name == "control" {
-                s.control_idle.store(true, Ordering::Release);
+                s.stop.send_replace(true);
             }
             result
         })?);
     }
+    drop(control_idle);
     let control = workers.pop().unwrap();
     let mut error = None;
     for worker in workers {
@@ -115,12 +123,9 @@ pub fn run(args: &[String]) -> Result<()> {
             error.get_or_insert(e);
         }
     }
-    shared.stop.store(true, Ordering::Release);
-    while !shared.control_idle.load(Ordering::Acquire) {
-        thread::sleep(Duration::from_millis(2));
-    }
+    shared.stop.send_replace(true);
+    let _ = control_ready.recv();
     let shutdown = runtime.shutdown().map_err(|e| eyre!(e.to_string()));
-    shared.drained.store(true, Ordering::Release);
     if let Err(e) = control
         .join()
         .unwrap_or_else(|_| Err(eyre!("control thread panicked")))
@@ -139,11 +144,12 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     Ok(())
 }
-fn worker(
+async fn worker(
     name: &'static str,
     handle: Handle,
     shared: Arc<Shared>,
-    batches: Receiver<Vec<u8>>,
+    mut batches: Option<mpsc::Receiver<Vec<u8>>>,
+    idle: Option<Sender<()>>,
 ) -> Result<()> {
     // Dynamic IDs allow independent connections without mutating process environment.
     let (mut node, mut events) = DoraNode::init_from_node_id(node_id(name).into())?;
@@ -162,7 +168,8 @@ fn worker(
     };
     publish(&mut node, "telemetry", &status())?;
     let dispatch = tracing::Dispatch::new(handle.subscriber());
-    tracing::dispatcher::with_default(&dispatch, || -> Result<()> {
+    let _default = tracing::dispatcher::set_default(&dispatch);
+    {
         let registration = handle
             .register_thread(name)
             .map_err(|e| eyre!(e.to_string()))?;
@@ -172,14 +179,16 @@ fn worker(
         let mut heartbeat = Instant::now();
         let mut delayed = VecDeque::new();
         let mut transport_open = true;
-        while !shared.stop.load(Ordering::Acquire)
+        let mut incoming = None;
+        let mut stop = shared.stop.subscribe();
+        while !*shared.stop.borrow()
             && shared
                 .deadline
                 .is_none_or(|deadline| Instant::now() < deadline)
         {
             let mut inputs = Vec::new();
             for _ in 0..64 {
-                match events.try_recv() {
+                match incoming.take().map(Ok).unwrap_or_else(|| events.try_recv()) {
                     Ok(Event::Input { id, data, .. }) => {
                         if data.null_count() != 0 {
                             bail!("null payload bytes");
@@ -201,7 +210,7 @@ fn worker(
                         }
                     }
                     Ok(Event::Stop(_)) | Err(TryRecvError::Closed) => {
-                        shared.stop.store(true, Ordering::Release);
+                        shared.stop.send_replace(true);
                         transport_open = false;
                         break;
                     }
@@ -292,14 +301,42 @@ fn worker(
             {
                 publish(&mut node, "telemetry", &delayed.pop_front().unwrap().1)?;
             }
-            if name == "control" {
-                drain(&mut node, &batches, &handle)?;
+            if let Some(batches) = batches.as_mut() {
+                while let Ok(bytes) = batches.try_recv() {
+                    publish_batch(&mut node, &bytes, &handle)?;
+                }
             }
             if heartbeat.elapsed() >= Duration::from_secs(1) {
                 publish(&mut node, "telemetry", &status())?;
                 heartbeat = Instant::now();
             }
-            thread::sleep(Duration::from_millis(1));
+            let mut deadline = heartbeat + Duration::from_secs(1);
+            if name == "camera" || name == "lidar" {
+                deadline = deadline.min(tick);
+            }
+            if let Some((due, _)) = delayed.front() {
+                deadline = deadline.min(*due);
+            }
+            if let Some(end) = shared.deadline {
+                deadline = deadline.min(end);
+            }
+            tokio::select! {
+                biased;
+                _ = stop.changed() => break,
+                event = events.recv_async() => match event {
+                    Some(event) => incoming = Some(event),
+                    None => {
+                        shared.stop.send_replace(true);
+                        transport_open = false;
+                        break;
+                    },
+                },
+                batch = async { batches.as_mut().unwrap().recv().await }, if batches.is_some() => {
+                    if let Some(bytes) = batch { publish_batch(&mut node, &bytes, &handle)?; }
+                    else { batches = None; }
+                },
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {},
+            }
         }
         if transport_open {
             for (_, message) in delayed {
@@ -307,42 +344,38 @@ fn worker(
             }
         }
         drop(registration);
-        if name == "control" {
-            shared.control_idle.store(true, Ordering::Release);
-            while !shared.drained.load(Ordering::Acquire) {
-                if transport_open {
-                    drain(&mut node, &batches, &handle)?;
-                } else {
-                    while batches.try_recv().is_ok() {}
+        if let Some(idle) = idle {
+            let _ = idle.send(());
+            if let Some(batches) = batches.as_mut() {
+                while let Some(bytes) = batches.recv().await {
+                    if transport_open {
+                        publish_batch(&mut node, &bytes, &handle)?;
+                    }
                 }
-                thread::sleep(Duration::from_millis(2));
             }
             if transport_open {
-                drain(&mut node, &batches, &handle)?;
                 publish(&mut node, "telemetry", &status())?;
             }
         }
         Ok(())
-    })
-}
-fn drain(node: &mut DoraNode, batches: &Receiver<Vec<u8>>, handle: &Handle) -> Result<()> {
-    for bytes in batches.try_iter() {
-        let batch = activity_tracing::wire::proto::Batch::decode(bytes.as_slice())?;
-        let clock = handle.clock();
-        publish(
-            node,
-            "telemetry",
-            &envelope(pb::envelope::Body::Clock(pb::Clock {
-                session: clock.session,
-                unix_origin_ns: clock.unix_origin_ns,
-                domain: format!("activity/{:016x}", clock.session),
-            })),
-        )?;
-        publish(
-            node,
-            "telemetry",
-            &envelope(pb::envelope::Body::Activity(batch)),
-        )?;
     }
-    Ok(())
+}
+
+fn publish_batch(node: &mut DoraNode, bytes: &[u8], handle: &Handle) -> Result<()> {
+    let batch = activity_tracing::wire::proto::Batch::decode(bytes)?;
+    let clock = handle.clock();
+    publish(
+        node,
+        "telemetry",
+        &envelope(pb::envelope::Body::Clock(pb::Clock {
+            session: clock.session,
+            unix_origin_ns: clock.unix_origin_ns,
+            domain: format!("activity/{:016x}", clock.session),
+        })),
+    )?;
+    publish(
+        node,
+        "telemetry",
+        &envelope(pb::envelope::Body::Activity(batch)),
+    )
 }
