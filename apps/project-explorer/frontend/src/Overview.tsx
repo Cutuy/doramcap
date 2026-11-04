@@ -68,18 +68,32 @@ function Story({ catalog, route }: { catalog: Catalog; route: Route }) {
   const selected: Capability | Integration | undefined = capability ?? integration;
   const useCase = chapter >= 0 ? chapters[chapter] : undefined;
   const flat = route.params.get('view') === '2d' || !webgl;
-  const view: StackView = useMemo(() => useCase || selected ? stackView(overview, useCase, capability, integration) : { states: {}, flows: heroFlows }, [useCase, selected, capability, integration]);
+  const view: StackView = useMemo(() => useCase || selected ? stackView(overview, useCase, capability, integration, heroFlows) : { states: {}, flows: heroFlows }, [useCase, selected, capability, integration]);
   const selectedNode = capability ? capability.id : integration?.id ?? null;
 
+  // Chapter i sits at progress i + 1; measure the scroll range useScroll maps, since vh, svh and innerHeight can differ.
   const scrollTo = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
-    const top = (story.current?.offsetTop ?? 0) + (index + 1) * window.innerHeight;
-    window.scrollTo({ top, behavior });
+    const el = story.current;
+    if (!el) return;
+    window.scrollTo({ top: el.offsetTop + (index + 1) / chapters.length * (el.offsetHeight - window.innerHeight), behavior });
   }, []);
   // Deep links open their chapter; wait for the router's scroll reset first.
   useEffect(() => {
     const index = chapters.findIndex(u => u.id === route.params.get('useCase'));
     requestAnimationFrame(() => requestAnimationFrame(() => { if (index >= 0) scrollTo(index, 'instant'); ready.current = true; }));
   }, []);
+  // Navigation to another use case, or to the bare overview, scrolls the story to match.
+  const shown = useRef('');
+  shown.current = useCase?.id ?? '';
+  useEffect(() => {
+    const follow = () => {
+      const id = currentParams().get('useCase') ?? '';
+      if (ready.current && id !== shown.current) scrollTo(chapters.findIndex(u => u.id === id));
+    };
+    window.addEventListener('locationchange', follow);
+    window.addEventListener('popstate', follow);
+    return () => { window.removeEventListener('locationchange', follow); window.removeEventListener('popstate', follow); };
+  }, [scrollTo]);
   // Scrolling to a new chapter records it in the URL and closes any open selection.
   useEffect(() => {
     if (!ready.current) return;

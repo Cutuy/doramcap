@@ -23,8 +23,10 @@ export function stackNodes(overview: OverviewData): StackNode[] {
   ];
 }
 
-/** Light the selected use case, or narrow it to one capability or integration and its flows. */
-export function stackView(overview: OverviewData, useCase?: UseCase, capability?: Capability, integration?: Integration): StackView {
+/** Light the selected use case, or narrow it to one capability or integration and its flows.
+ * Without a use case, `allFlows` supplies the flows to narrow (the hero's combined set).
+ */
+export function stackView(overview: OverviewData, useCase?: UseCase, capability?: Capability, integration?: Integration, allFlows: Flow[] = []): StackView {
   const lit = new Set<string>();
   if (integration) [integration.id, ...overview.capabilities.filter(c => c.integrations.includes(integration.id)).map(c => c.id)].forEach(id => lit.add(id));
   else if (capability) [capability.id, ...capability.integrations].forEach(id => lit.add(id));
@@ -33,7 +35,7 @@ export function stackView(overview: OverviewData, useCase?: UseCase, capability?
   const focus = integration?.id ?? capability?.id;
   const states: Record<string, NodeState> = {};
   for (const id of [...overview.capabilities.map(c => c.id), 'middleware', ...overview.integrations.map(i => i.id)]) states[id] = id === focus ? 'selected' : lit.has(id) ? 'on' : 'dim';
-  const flows = (useCase?.flows ?? []).filter(f => !focus || f.from === focus || f.to === focus);
+  const flows = (useCase?.flows ?? allFlows).filter(f => !focus || f.from === focus || f.to === focus);
   return { states, flows };
 }
 

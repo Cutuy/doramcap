@@ -198,7 +198,14 @@ export class StoryScene {
     this.sweepPlane.material.uniforms.uColor.value = p.foundation;
     this.sweepPlane.material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
     this.sweepPlane.material.needsUpdate = true;
-    this.buildTrails(this.view.flows);
+    // Restyle the live streams in place so a theme change keeps them flowing.
+    for (const t of this.trails) {
+      const material = t.points.material as THREE.ShaderMaterial;
+      material.uniforms.uColor.value = p[t.flow.kind];
+      material.uniforms.uLight.value = light ? 1 : 0;
+      material.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
+      material.needsUpdate = true;
+    }
   };
   /** Re-read CSS tokens. */
   readPalette() {
