@@ -145,6 +145,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         &dora,
         super::super::shared_dora::owner(&spec.repository_root),
     )?);
+    model::configure_stop_grace(&mut model, spec.stop_seconds)?;
     if !dora.graph.is_empty() {
         let graph = super::super::shared_dora::graph(
             &dora,

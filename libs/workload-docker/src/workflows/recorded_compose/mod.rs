@@ -268,7 +268,6 @@ impl ComposeRunner {
             &executor,
             &plan,
             &prepared.value().user_services,
-            spec.stop_seconds,
             &diagnostics,
         )
         .await;
@@ -290,7 +289,6 @@ impl ComposeRunner {
             &executor,
             &plan,
             &prepared.value().system_services,
-            spec.stop_seconds,
             &diagnostics,
         )
         .await;
@@ -319,7 +317,6 @@ impl ComposeRunner {
                 allow_volume_deletion: false,
                 services: vec![],
                 plan: Some(plan.clone()),
-                stop_seconds: spec.stop_seconds,
             })
             .after(&prepared);
             if let Some(launched) = &last_launch {
@@ -364,7 +361,6 @@ impl ComposeRunner {
                             allow_volume_deletion: !finalized.value().preserve_volumes,
                             services: vec![],
                             plan: Some(plan.clone()),
-                            stop_seconds: spec.stop_seconds,
                         })
                         .after(&shutdown)
                         .after(&finalized),
@@ -482,17 +478,23 @@ pub struct ComposeRun {
     /// Positive startup/readiness budget in seconds; default 60.
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,
-    /// Graceful stop budget per project in seconds, from 1 through 300; default 15.
+    /// Stop grace period in seconds for services declaring no `stop_grace_period`,
+    /// from 1 through `MAX_STOP_SECONDS`; default 15. Declared periods apply as written.
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
+/// Longest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
+pub const MAX_STOP_SECONDS: u64 = 300;
+
 /// Validate the shared startup and per-project shutdown budgets before side effects.
 pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()> {
     if readiness_seconds == 0 {
         return Err(invalid("readiness_seconds must be positive"));
     }
-    if !(1..=300).contains(&stop_seconds) {
-        return Err(invalid("stop_seconds must be in 1..=300"));
+    if !(1..=MAX_STOP_SECONDS).contains(&stop_seconds) {
+        return Err(invalid(format!(
+            "stop_seconds must be in 1..={MAX_STOP_SECONDS}"
+        )));
     }
     Ok(())
 }

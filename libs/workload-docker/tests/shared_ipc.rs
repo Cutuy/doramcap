@@ -401,7 +401,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         allow_volume_deletion: true,
         services: vec![],
         plan: Some(plan.clone()),
-        stop_seconds: 5,
     })
     .await
     .unwrap();
@@ -469,7 +468,6 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
         allow_volume_deletion: true,
         services: vec![],
         plan: Some(plan.clone()),
-        stop_seconds: 5,
     })
     .await
     .unwrap();
@@ -506,7 +504,6 @@ async fn cleanup_interrupted_shared_ipc_test() {
         allow_volume_deletion: true,
         services: vec![],
         plan: Some(plan),
-        stop_seconds: 5,
     })
     .await
     .unwrap();
@@ -561,7 +558,7 @@ async fn volume_deletion_requires_opt_in_and_respects_retention_policy() {
         names.push(name);
     }
     let input = |plan: &ResolvedComposeProject, permission: Option<bool>| {
-        let mut input = serde_json::json!({"plan": plan, "services": [], "stop_seconds": 1});
+        let mut input = serde_json::json!({"plan": plan, "services": []});
         if let Some(permission) = permission {
             input["allow_volume_deletion"] = permission.into();
         }

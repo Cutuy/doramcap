@@ -222,6 +222,40 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
 }
 
 #[test]
+fn stop_grace_defaults_to_stop_seconds_and_keeps_declared_periods() {
+    // Arrange
+    let mut model = json!({"services":{
+        "unset": {},
+        "short": {"stop_grace_period": "2s"},
+        "limit": {"stop_grace_period": "5m0s"},
+    }});
+
+    // Act
+    configure_stop_grace(&mut model, 30).unwrap();
+
+    // Assert
+    assert_eq!(model["services"]["unset"]["stop_grace_period"], "30s");
+    assert_eq!(model["services"]["short"]["stop_grace_period"], "2s");
+    assert_eq!(model["services"]["limit"]["stop_grace_period"], "5m0s");
+}
+
+#[test]
+fn stop_grace_refuses_periods_over_the_limit_or_unreadable() {
+    for period in ["5m1s", "1h0m0s", "soon"] {
+        // Arrange
+        let mut model = json!({"services":{"perception":{"stop_grace_period": period}}});
+
+        // Act
+        let error = configure_stop_grace(&mut model, 30)
+            .unwrap_err()
+            .to_string();
+
+        // Assert: the error names the service to change.
+        assert!(error.contains("perception"), "{error}");
+    }
+}
+
+#[test]
 fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
     for target in ["/", "/dev", "/dev/shm", "/run/experiment/zenoh.json5"] {
         // Arrange

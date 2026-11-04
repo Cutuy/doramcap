@@ -76,7 +76,7 @@ step!(
                     .as_ref()
                     .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?,
             )
-            .stop(input.stop_seconds, input.allow_volume_deletion)
+            .stop(input.allow_volume_deletion)
             .await
     },
     "Stop and reconcile one project; inspect cleanup diagnostics and verified status."
@@ -119,7 +119,7 @@ step!(
                 .as_ref()
                 .ok_or_else(|| super::error::invalid("Compose execution plan missing"))?
         )
-        .quiesce(&input.services, input.stop_seconds)
+        .quiesce(&input.services)
         .await,
     "Stop writers while preserving containers and volumes for filesystem evidence."
 );

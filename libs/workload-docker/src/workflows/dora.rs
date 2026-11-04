@@ -153,7 +153,7 @@ impl ExperimentOwner {
         let stopped = self
             .adapter
             .project(&self.plan)
-            .quiesce(&[COORDINATOR.into(), DAEMON.into()], self.stop_seconds)
+            .quiesce(&[COORDINATOR.into(), DAEMON.into()])
             .await?;
         if !stopped.stopped {
             return Err(invalid(format!(

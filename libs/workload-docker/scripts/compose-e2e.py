@@ -74,6 +74,7 @@ def main():
     cases = [
         ('public_dora_', 8),
         ('direct_session_lifecycle_and_prerun_reset', 1),
+        ('stopping_a_run_respects_each_service_grace_period', 1),
         ('parallel_projects_preserve_readiness_and_shutdown_barriers', 1),
         ('active_experiments_are_exclusive_per_repository_and_independent_between_repositories', 1),
         ('reset_failure_blocks_preparation_and_retries_after_partial_removal', 1),

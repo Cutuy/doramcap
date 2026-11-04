@@ -167,7 +167,6 @@ pub(super) async fn quiesce_services(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
     services: &[String],
-    stop_seconds: u64,
     diagnostics: &Diagnostics,
 ) -> QuiescedServices {
     let mut result = QuiescedServices {
@@ -182,7 +181,6 @@ pub(super) async fn quiesce_services(
             plan: Some(plan.clone()),
             services: services.to_vec(),
             allow_volume_deletion: false,
-            stop_seconds,
         })
         .await
     else {
