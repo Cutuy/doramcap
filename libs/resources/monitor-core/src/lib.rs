@@ -2,6 +2,7 @@
 //!
 //! Parent cgroup values are always supplied by the kernel backend. This crate
 //! performs no hierarchy aggregation. Collection never serializes names.
+use crossbeam_channel::{Receiver, RecvError, Select, SelectedOperation, Sender, bounded};
 use crossbeam_queue::ArrayQueue;
 use serde::Serialize;
 use std::sync::Arc;
@@ -94,13 +95,18 @@ pub trait Monitor {
 
 struct Shared {
     free: ArrayQueue<Snapshot>,
-    ready: ArrayQueue<Snapshot>,
 }
 
 /// A single producer owns this endpoint. No cloning or blocking send API.
-pub struct Producer(Arc<Shared>);
+pub struct Producer {
+    shared: Arc<Shared>,
+    ready: Sender<Snapshot>,
+}
 /// A single consumer owns this endpoint.
-pub struct Consumer(Arc<Shared>);
+pub struct Consumer {
+    shared: Arc<Shared>,
+    ready: Receiver<Snapshot>,
+}
 
 pub fn handoff(
     slots: usize,
@@ -118,7 +124,6 @@ pub fn handoff_with_tasks(
     }
     let shared = Arc::new(Shared {
         free: ArrayQueue::new(slots),
-        ready: ArrayQueue::new(slots),
     });
     for _ in 0..slots {
         shared
@@ -126,7 +131,17 @@ pub fn handoff_with_tasks(
             .push(Snapshot::with_capacities(records_per_slot, tasks_per_slot))
             .unwrap();
     }
-    Ok((Producer(shared.clone()), Consumer(shared)))
+    let (sender, receiver) = bounded(slots);
+    Ok((
+        Producer {
+            shared: shared.clone(),
+            ready: sender,
+        },
+        Consumer {
+            shared,
+            ready: receiver,
+        },
+    ))
 }
 
 pub struct WriteLease<'a> {
@@ -136,7 +151,7 @@ pub struct WriteLease<'a> {
 
 impl Producer {
     pub fn try_acquire(&self) -> Option<WriteLease<'_>> {
-        let mut snapshot = self.0.free.pop()?;
+        let mut snapshot = self.shared.free.pop()?;
         snapshot.reset();
         Some(WriteLease {
             owner: self,
@@ -151,16 +166,16 @@ impl WriteLease<'_> {
     pub fn publish(mut self) {
         // A free slot was removed before this publish; ready cannot be full.
         let snapshot = self.snapshot.take().unwrap();
-        if let Err(snapshot) = self.owner.0.ready.push(snapshot) {
-            self.snapshot = Some(snapshot);
-            panic!("handoff ownership invariant violated");
+        if let Err(error) = self.owner.ready.try_send(snapshot) {
+            // The consumer may have exited; return the unobserved snapshot to the pool.
+            self.snapshot = Some(error.into_inner());
         }
     }
 }
 impl Drop for WriteLease<'_> {
     fn drop(&mut self) {
         if let Some(snapshot) = self.snapshot.take() {
-            assert!(self.owner.0.free.push(snapshot).is_ok());
+            assert!(self.owner.shared.free.push(snapshot).is_ok());
         }
     }
 }
@@ -171,12 +186,34 @@ pub struct ReadLease<'a> {
 }
 impl Consumer {
     pub fn try_recv(&self) -> Option<ReadLease<'_>> {
-        self.0.ready.pop().map(|snapshot| ReadLease {
+        self.ready.try_recv().ok().map(|snapshot| ReadLease {
+            owner: self,
+            snapshot: Some(snapshot),
+        })
+    }
+    /// Block for a snapshot. Disconnection is returned after queued snapshots drain.
+    pub fn recv(&self) -> Result<ReadLease<'_>, RecvError> {
+        self.ready.recv().map(|snapshot| ReadLease {
+            owner: self,
+            snapshot: Some(snapshot),
+        })
+    }
+    /// Register snapshot receipt alongside other channel operations; returns its index.
+    pub fn register_recv<'a>(&'a self, select: &mut Select<'a>) -> usize {
+        select.recv(&self.ready)
+    }
+    /// Complete this consumer's selected receive. A different selected channel panics.
+    pub fn recv_selected(
+        &self,
+        selected: SelectedOperation<'_>,
+    ) -> Result<ReadLease<'_>, RecvError> {
+        selected.recv(&self.ready).map(|snapshot| ReadLease {
             owner: self,
             snapshot: Some(snapshot),
         })
     }
 }
+
 impl ReadLease<'_> {
     pub fn snapshot(&self) -> &Snapshot {
         self.snapshot.as_ref().unwrap()
@@ -185,7 +222,7 @@ impl ReadLease<'_> {
 impl Drop for ReadLease<'_> {
     fn drop(&mut self) {
         if let Some(snapshot) = self.snapshot.take() {
-            assert!(self.owner.0.free.push(snapshot).is_ok());
+            assert!(self.owner.shared.free.push(snapshot).is_ok());
         }
     }
 }
@@ -351,5 +388,61 @@ mod reporting_tests {
         assert_eq!(virtuals[0].runtime_ns, 30);
         assert_eq!(virtuals[1].runtime_ns, 0);
         assert_eq!(output.task_losses.dropped_events, 3);
+    }
+}
+
+#[cfg(test)]
+mod wait_tests {
+    use super::*;
+
+    #[test]
+    fn blocking_receive_drains_snapshots_before_producer_disconnect() {
+        // Arrange
+        let (producer, consumer) = handoff(2, 1).unwrap();
+        let worker = std::thread::spawn(move || {
+            let mut lease = producer.try_acquire().unwrap();
+            lease.snapshot_mut().sequence = 17;
+            lease.publish();
+        });
+
+        // Act
+        let sequence = consumer.recv().unwrap().snapshot().sequence;
+        worker.join().unwrap();
+
+        // Assert
+        assert_eq!(sequence, 17);
+        assert!(consumer.recv().is_err());
+    }
+
+    #[test]
+    fn selected_receive_can_be_interrupted_then_drain_a_snapshot() {
+        // Arrange
+        let (producer, consumer) = handoff(1, 1).unwrap();
+        let (stop, stop_rx) = bounded::<()>(1);
+        let signal = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            stop.send(()).unwrap();
+        });
+        let mut select = Select::new();
+        let snapshot = consumer.register_recv(&mut select);
+        let interrupted = select.recv(&stop_rx);
+
+        // Act
+        let operation = select.select();
+
+        // Assert
+        assert_eq!(operation.index(), interrupted);
+        operation.recv(&stop_rx).unwrap();
+        signal.join().unwrap();
+        select.remove(interrupted);
+
+        // Act
+        producer.try_acquire().unwrap().publish();
+        let operation = select.select();
+
+        // Assert
+        assert_eq!(operation.index(), snapshot);
+        drop(consumer.recv_selected(operation).unwrap());
+        assert!(producer.try_acquire().is_some());
     }
 }

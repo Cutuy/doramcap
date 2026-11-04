@@ -78,11 +78,24 @@ impl Recorder {
         self.snapshots = 0;
         Ok(())
     }
+    /// Next deadline for buffered recording data; absent while empty.
+    pub fn next_flush_deadline(&self) -> Option<Instant> {
+        self.writer.next_flush_deadline()
+    }
     /// Refresh completions and flush aged buffers on the caller's thread.
     /// Returns storage errors, including failures discovered after record acceptance.
-    /// Call periodically when idle output should advance before the next record.
+    /// Call at the buffered-data deadline when no records arrive.
     pub fn poll(&mut self) -> Result<()> {
-        self.writer.poll(Instant::now())?;
+        let now = Instant::now();
+        if self
+            .writer
+            .next_flush_deadline()
+            .is_some_and(|deadline| now >= deadline)
+        {
+            self.writer.flush_written()?;
+        } else {
+            self.writer.poll(now)?;
+        }
         Ok(())
     }
     /// Encode and publish the packet, then commit the same bytes to storage.
