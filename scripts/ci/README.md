@@ -153,10 +153,7 @@ No sudo password is stored in the CI account or submitted snapshots.
 
 Source snapshots include `libs/`, `apps/`, and the Console source, contracts and
 package/build inputs. Operator configuration and secrets are excluded. The native integration test lives
-at `apps/system-monitor/tests/validate_native.ts`; new privileged launchers use
-that path. Submission adds small forwarding scripts at the old Python paths inside
-the worker archive so previously installed launchers continue to work. These shims
-exist only in the submitted snapshot.
+at `apps/system-monitor/tests/validate_native.ts`, the path the privileged launcher runs.
 
 Source archives carry the snapshot creation timestamp. The rsync content check
 prevents those timestamps from invalidating unchanged cached source files.

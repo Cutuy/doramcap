@@ -52,22 +52,6 @@ with tempfile.TemporaryDirectory(prefix='doramcap-submit-') as tmp:
             info.size = len(data)
             info.mode = path.stat().st_mode & 0o777
             tar.addfile(info, io.BytesIO(data))
-        # Installed root-owned launchers invoke these Python paths. Forward them to the
-        # TypeScript suite until those launchers are reinstalled.
-        for name, depth in (('examples/validate_native.py', 1), ('apps/system-monitor/tests/validate_native.py', 3)):
-            compatibility = f"""import os, sys
-from pathlib import Path
-test = Path(__file__).resolve().parents[{depth}] / 'apps/system-monitor/tests/validate_native.ts'
-node = '/home/doramcap-ci/.local/bin/node'
-os.execv(node, [node, str(test), *sys.argv[1:]])
-""".encode()
-            info = tarfile.TarInfo(name)
-            info.mtime = snapshot_mtime
-            info.size = len(compatibility)
-            info.mode = 0o644
-            tar.addfile(info, io.BytesIO(compatibility))
-            manifest['files_sha256'][info.name] = hashlib.sha256(compatibility).hexdigest()
-            manifest['files_mode'][info.name] = info.mode
         runner = Path(__file__).with_name('run-worker-job.sh').read_bytes()
         manifest['runner_sha256'] = hashlib.sha256(runner).hexdigest()
         prepare = Path(__file__).with_name('prepare-build.py').read_bytes()
