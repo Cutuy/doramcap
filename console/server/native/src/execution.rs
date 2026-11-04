@@ -12,7 +12,9 @@ use std::{
 use tokio::sync::{oneshot, watch};
 use workload_docker::{
     compose::DockerAdapter,
-    workflows::recorded_compose::{ComposeRun, ComposeRunner, McapWriters, Recording, RunSignals},
+    workflows::recorded_compose::{
+        ComposeRun, ComposeRunner, MachineCapture, McapWriters, Recording, RunSignals,
+    },
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 512;
@@ -182,12 +184,25 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
     });
     let (stopping_tx, mut stopping_rx) = watch::channel(Vec::new());
     let stopping = updates.clone();
+    let stopping_id = run_id.clone();
     tokio::task::spawn_local(async move {
         while stopping_rx.changed().await.is_ok() {
             let waiting = stopping_rx.borrow_and_update().clone();
             let mut update = stopping.lock().unwrap();
-            if update.run_id == run_id {
+            if update.run_id == stopping_id {
                 update.stopping_services = waiting;
+            }
+        }
+    });
+    let (machine_tx, mut machine_rx) = watch::channel(MachineCapture::default());
+    let machine = updates.clone();
+    tokio::task::spawn_local(async move {
+        while machine_rx.changed().await.is_ok() {
+            let capture = machine_rx.borrow_and_update().clone();
+            let mut update = machine.lock().unwrap();
+            if update.run_id == run_id {
+                update.machine_before = capture.before;
+                update.machine_after = capture.after;
             }
         }
     });
@@ -219,6 +234,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                     ready: Some(ready_tx),
                     quiescing: Some(teardown_tx),
                     stopping: stopping_tx,
+                    machine: machine_tx,
                 },
                 move |prepared| {
                     let rejection = if stopped.get() {

@@ -1,7 +1,7 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
 mod execution;
 pub mod finalization;
-mod observation;
+pub mod observation;
 pub mod preparation;
 pub mod reset;
 
@@ -20,6 +20,7 @@ use crate::compose::{
 use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
+use system_config::MachineState;
 use tokio::sync::{oneshot, watch};
 pub use workload_lifecycle::recording::Recording;
 
@@ -32,6 +33,15 @@ pub struct RunSignals {
     pub quiescing: Option<oneshot::Sender<()>>,
     /// Publishes the services given a stop signal and not yet exited.
     pub stopping: watch::Sender<Vec<StoppingService>>,
+    /// Publishes this run's machine states as each is captured.
+    pub machine: watch::Sender<MachineCapture>,
+}
+
+/// One run's machine states: before any service starts, and after the workload is gone.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MachineCapture {
+    pub before: Option<MachineState>,
+    pub after: Option<MachineState>,
 }
 
 impl RunSignals {
@@ -187,6 +197,10 @@ impl ComposeRunner {
             .run::<PrepareRun>(spec.clone())
             .await
             .map_err(step_error)?;
+        let before = observation::machine_state(&self.adapter, &prepared.value().artifacts).await;
+        signals
+            .machine
+            .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
         if spec.filesystem.is_some() {
             overlay::verify_namespace(self.adapter.socket_path()).await?;
@@ -423,6 +437,10 @@ impl ComposeRunner {
         if executor.observer_failures() != 0 {
             execution::record_failure(&diagnostics, "observer", "workflow observer lost events");
         }
+        let after = observation::machine_state(&self.adapter, &artifacts).await;
+        signals
+            .machine
+            .send_modify(|capture| capture.after = Some(after));
         let mut report = completion?;
         report.event_stream_healthy = event_result.is_ok();
         let boundary_clean = report.boundary_clean;
