@@ -156,6 +156,7 @@ test('the repository release template resolves to existing current app inputs', 
   // Assert
   assert.deepEqual(config.systemApps.filter(app => app.defaultSelected).map(app => app.id), ['live-bridge', 'cpu-monitor']);
   assert.equal(config.systemApps.filter(app => app.liveRelay).map(app => app.id).join(), 'live-bridge');
+  assert.ok(capabilities.parseConfig(capabilities.formatConfig(config)).systemApps.find(app => app.id === 'live-bridge')!.liveRelay);
   await access(config.projectRoot);
   for (const app of config.systemApps) {
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
