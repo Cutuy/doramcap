@@ -48,11 +48,16 @@ try {
   assert.deepEqual(codes, [0, 0, 0]);
   console.log(`PASS native resource-policy on ${process.arch}`);
 } finally {
-  // Timeout kills the probe; remove empty owned leaves, never recursively delete.
-  if (createdRoot) {
-    for (const entry of readdirSync(root, { withFileTypes: true })) if (entry.isDirectory()) rmdirSync(join(root, entry.name));
-    rmdirSync(root);
+  try {
+    if (createdRoot) {
+      // The kernel refuses the root restore while a surviving child still delegates cpuset.
+      writeFileSync(join(root, 'cgroup.subtree_control'), '-cpuset');
+      // Timeout kills the probe; remove empty owned leaves, never recursively delete.
+      for (const entry of readdirSync(root, { withFileTypes: true })) if (entry.isDirectory()) rmdirSync(join(root, entry.name));
+      rmdirSync(root);
+    }
+  } finally {
+    if (enabledRoot) writeFileSync(control, '-cpuset');
+    pin(allowed);
   }
-  if (enabledRoot) writeFileSync(control, '-cpuset');
-  pin(allowed);
 }
