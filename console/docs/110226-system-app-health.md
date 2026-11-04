@@ -2,7 +2,7 @@
 
 # System app health and protobuf launches
 
-Created: 2026-11-02. Updated: 2026-11-03. Status: implemented; final hosted/ARM64 checks running.
+Created: 2026-11-02. Updated: 2026-11-03. Status: complete; PR 96 is open for user review.
 Updates [PR 96](https://github.com/Cutuy/doramcap/pull/96); leave it open for user review.
 
 CPU monitor records itself. Watchdog aggregates selected health outputs. The generic
@@ -61,12 +61,12 @@ BPF-only monitor integration test was explicitly ignored in that build.
 - [x] Console server/frontend checks pass (77 server tests, one root-only skip; frontend tests/build pass).
 - [x] All six real release-profile scenarios pass: alone, live, MCAP, OTLP, CPU topics and watchdog publications.
 - [x] Full local CI passed: boundaries, formatting, default/all-feature Clippy and workspace tests, storage without defaults, examples/binaries and snapshot synchronization.
-- [ ] Hosted CI and final follow-up checks pass.
+- [x] Hosted Node and Rust CI pass on x86_64 and ARM64 for implementation revision `bbd53c7`; final follow-up local checks pass.
 - [x] ARM64 job 573 passes Node, lint, default/all-feature Rust and native accounting/allocation checks.
-- [ ] Final budget/UTF-8 snapshot job 574 passes.
+- [x] Final budget/UTF-8 snapshot job 574 passes; its Rust/protobuf/config hashes match the implementation.
 
 Worker observation: started the unprivileged Pueue daemon after finding no socket.
-ARM64 job 572 exhausted linker memory. The runner now builds with one Cargo job; retry 573 passed, including native tests. Final snapshot job 574 is running. Full CI and end-to-end results remain pending.
+ARM64 job 572 exhausted linker memory. The runner now builds with one Cargo job; retry 573 passed, including native tests. Final snapshot job 574 passed. Full CI and end-to-end checks passed.
 
 Acceptance command (build the release binaries and examples unprivileged first):
 
@@ -80,8 +80,7 @@ artifacts under the printed `/tmp/console-system-apps-*` directory for inspectio
 
 Validation update: the native Dora equality check preserved all 24 CPU samples.
 Direct zero-input watchdog execution stayed alive until explicit shutdown. Container
-acceptance is being retried with the exact release-pinned Dora CLI archive; the
-initial cached qualification CLI had a different binary digest.
+acceptance passed with the exact release-pinned Dora CLI archive and isolated image tags.
 
 The first-party live bridge also receives a complete `BridgeConfig` pbtxt via a
 read-only bind mount. Dora's third-party coordinator/daemon retain native CLI arguments.
@@ -95,3 +94,13 @@ the OTLP collector received records. The health/recording graph cycle ran cleanl
 The bundled `cpu-recorder` app is now `data-recorder`. Operator profiles pair a
 complete recorder pbtxt with a complete native Dora graph; the `user/messages`
 acceptance workload demonstrates this integration without a special message codec.
+
+Final evidence for Milestone 3: [hosted Rust CI](https://github.com/Cutuy/doramcap/actions/runs/41762914364)
+and [hosted Node CI](https://github.com/Cutuy/doramcap/actions/runs/41762914378) pass
+on both architectures at `bbd53c7`. The subsequent documentation commit changes
+no application or test source. PR 96 remains open and unmerged.
+
+Additional compatibility evidence for Milestone 2: the existing demo reporter
+produced 140 independently decoded watchdog MCAP publications through the direct
+configuration loader. The native BPF/MCAP rotation test passed with all 24 samples
+and zero loss. GPU qualification is outside this change.
