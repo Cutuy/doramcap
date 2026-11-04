@@ -64,7 +64,6 @@ pub fn run(args: &[String]) -> Result<()> {
     let mut runtime = Runtime::start(
         Config {
             blocks: 128,
-            encoded_buffers: 68,
             sink_queue: 32,
             ..Default::default()
         },

@@ -710,17 +710,11 @@ footer span {
   overflow: hidden;
   background: #24303c;
 }
-.pool-budget i:first-child,
+.pool-budget i,
 .capture-key {
   background: #64d9b2;
 }
-.pool-budget i:last-child,
-.encoded-key {
-  background: #74a9e8;
-  flex: 1;
-}
-.capture-key,
-.encoded-key {
+.capture-key {
   display: inline-block;
   width: 7px;
   height: 7px;

@@ -45,7 +45,6 @@ fn activity_capture_correlates_every_path_and_split_io() {
     let mut runtime = Runtime::start(
         Config {
             blocks: 128,
-            encoded_buffers: 128,
             sink_queue: 64,
             ..Default::default()
         },
@@ -203,7 +202,6 @@ fn failed_and_cancelled_writes_close_their_spans() {
     // This test checks span closure, not sink backpressure; retain the complete burst.
     let mut runtime = Runtime::start(
         Config {
-            encoded_buffers: 64,
             sink_queue: 32,
             ..Default::default()
         },

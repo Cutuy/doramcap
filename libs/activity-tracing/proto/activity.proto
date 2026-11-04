@@ -3,6 +3,7 @@ package doramcap.activity.v1;
 message Batch {
   uint32 version = 1;
   fixed64 session = 2;
+  // Ascending within one sink's stream; a gap means that sink lost blocks.
   uint64 sequence = 3;
   uint64 unix_origin_ns = 4;
   uint64 dropped_records = 5;

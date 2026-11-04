@@ -35,5 +35,5 @@ with tempfile.TemporaryDirectory(prefix='storage-activity-') as directory:
         _, err=proc.communicate(timeout=15)
         assert proc.returncode==0, err
     assert 'storage activity capture:' in err, err
-    assert not re.search(r'(?:records|fields|spans|unregistered|encoded_batches|dropped): [1-9]', err), err
+    assert not re.search(r'(?:records|fields|spans|unregistered|dropped): [1-9]', err), err
     subprocess.run([str(bins/'examples'/'validate_activity'), capture], check=True)
