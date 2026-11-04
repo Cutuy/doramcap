@@ -72,6 +72,14 @@ export class History {
     status.reportAvailable = this.store.available(id, 'console-report.json');
     return wire.HistoryDetail.create({ entry, status });
   }
+  /** The newest completed run with a machine capture, or null when none has one. */
+  latestCaptured() {
+    const rows = this.store.db.prepare(
+      'SELECT run_id FROM runs WHERE state = ? AND capture IS NOT NULL ORDER BY started_at_ms DESC, run_id DESC',
+    ).iterate(State.HISTORY_COMPLETED) as Iterable<{ run_id: string }>;
+    for (const { run_id: id } of rows) if (this.capture(id).before) return id;
+    return null;
+  }
   /** One run's capture; empty for an earlier or unreadable one. */
   capture(id: string): Capture {
     const row = this.store.db.prepare('SELECT capture FROM runs WHERE run_id = ?').get(id) as { capture: Uint8Array | null } | undefined;

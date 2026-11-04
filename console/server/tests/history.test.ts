@@ -512,3 +512,27 @@ test('an oversized capture is refused without changing what is saved', async () 
   assert.equal(history.capture(runId).setup?.images?.[0].imageId, 'sha256:a');
   await run.backend.close();
 });
+
+test('a review compares with the latest completed captured run, or with the run it came from', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const prepare = async (baselineRunId = '') => wire.Review.decode(await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({ baselineRunId }).finish())));
+  const [old, recent, failed, uncaptured] = ['a', 'b', 'c', 'd'].map(letter => letter.repeat(32));
+  for (const [index, id] of [old, recent, uncaptured].entries()) {
+    await checkpoint(run.store, id);
+    run.store.db.prepare('UPDATE runs SET started_at_ms = ? WHERE run_id = ?').run(index + 1, id);
+  }
+  await checkpoint(run.store, failed, { outcome: { execution: 'Failed' } });
+  run.store.db.prepare('UPDATE runs SET started_at_ms = 10 WHERE run_id = ?').run(failed);
+  const history = new History(run.store);
+  // Act
+  const first = await prepare();
+  for (const id of [old, recent, failed]) history.saveCapture(id, { before: execution.RunCapture.fromObject({ before: machine('performance') }).before });
+  const latest = await prepare();
+  const again = await prepare(old);
+  // Assert
+  assert.equal(first.comparison?.baseline, null);
+  assert.equal(latest.comparison?.baseline?.runId, recent);
+  assert.equal(again.comparison?.baseline?.runId, old);
+  await run.backend.close();
+});

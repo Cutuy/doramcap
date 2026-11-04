@@ -19,7 +19,8 @@ message SystemApp {
   repeated ProfileOption profiles = 5;
   string profile = 6; // The profile this app launches with when selected.
 }
-message PrepareRequest { repeated string profiles = 2; SystemAppSelection system_apps = 3; }
+// `baseline_run_id` names the run a Run again review compares with; empty selects the latest completed run.
+message PrepareRequest { repeated string profiles = 2; SystemAppSelection system_apps = 3; string baseline_run_id = 4; }
 message StartRequest { string prepared_id = 1; string request_key = 2; }
 message StopRequest { string run_id = 1; }
 message StartResponse { string run_id = 1; }
@@ -35,6 +36,7 @@ message Review {
   repeated SystemApp system_apps = 7;
   repeated RecordingOutput recordings = 8;
   repeated LiveStream live_streams = 10;
+  ReviewComparison comparison = 11;
 }
 
 enum Phase {
@@ -205,4 +207,10 @@ message ComparisonSelection {
 }
 message HistoryComparisonRequest {
   repeated ComparisonSelection sides = 1;
+}
+// What this review would run on, compared with an earlier run. Row `a` is the baseline and `b` is now.
+message ReviewComparison {
+  HistoryEntry baseline = 1; // Absent when no earlier run has a capture.
+  repeated ComparisonRow rows = 2;
+  bool truncated = 3;
 }

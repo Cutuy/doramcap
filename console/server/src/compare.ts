@@ -19,6 +19,8 @@ const FINGERPRINT_CHARS = 12;
 const SENSITIVE_NAME = /pass(word|wd|phrase)?|secret|token|credential|auth|cookie|session|private|(^|[_.-])(api|access|ssh|signing|encryption)?[_.-]?key($|[_.-])/i;
 /** A URL carrying a username, a password or both. */
 const URL_CREDENTIALS = /:\/\/[^\s/@]+@/;
+/** Assigned by Console for each run, so a difference says nothing about the experiment. */
+const GENERATED_ENVIRONMENT = new Set(['DORA_DAEMON_LOCAL_LISTEN_PORT']);
 const FROZEN_FILE = /\/inputs\/([0-9a-f]{16,}-[0-7]+)$/;
 
 export const isSensitive = (name: string, value: string) => SENSITIVE_NAME.test(name) || URL_CREDENTIALS.test(value);
@@ -78,6 +80,7 @@ const file = (source: string): Fact => {
 export function manifestFacts(manifest: Manifest, facts: Facts = new Map()): Facts {
   for (const [service, definition] of Object.entries<any>(manifest?.services ?? {})) {
     for (const [name, value] of Object.entries(definition.environment ?? {})) {
+      if (GENERATED_ENVIRONMENT.has(name)) continue;
       const text = String(value ?? '');
       facts.set(`environment.${service}.${name}`, { value: text, hidden: isSensitive(name, text) });
     }
@@ -164,4 +167,16 @@ export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A',
   ]);
   const compared = (label: string, side: Side) => ({ label, runs: [{ entry: side.detail.entry, captured: !!side.capture.before }] });
   return wire.HistoryComparison.create({ sides: [compared(labelA, a), compared(labelB, b)], rows, truncated });
+}
+
+const emptyFacts: Facts = new Map();
+/** Compare what a review would run with a baseline run. Machine condition shows current values only. */
+export function compareReview(baseline: Side | null, current: SetupSide) {
+  const state = current.capture.before;
+  const { rows, truncated } = boundRows([
+    ...(baseline ? setupRows(setupSide(baseline), current) : []),
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, baseline ? configurationFacts(baseline.capture.before) : emptyFacts, configurationFacts(state)),
+    ...diffFacts(Group.COMPARISON_CONDITION, emptyFacts, conditionFacts(state)),
+  ]);
+  return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, rows, truncated });
 }
