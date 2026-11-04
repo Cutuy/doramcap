@@ -68,6 +68,12 @@ A profile's `graph` is a Dora dataflow file that replaces the app's `graph`. Con
 merges it with `dora.graph` and the other selected apps' graphs. Mount schema files
 explicitly. Example: [user-messages](../examples/user-messages/console.pbtxt).
 
+Apps publish [ReporterPublication](../../libs/fault/schema/proto/reporter.proto)
+messages on `health` outputs. `health_inputs: true` subscribes the app's graph node
+(same ID) to other selected nodes' health outputs using bounded `drop_oldest` queues.
+Watchdog supports zero inputs; its profiles reserve one of 16 source slots for local
+diagnostics and allow 32 conditions per source.
+
 ## Live bridge
 
 `live_relay` marks the one system app that relays the selected apps' `live_outputs`.

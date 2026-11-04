@@ -27,6 +27,29 @@ test('selection composes approved nodes and fresh reads detect graph changes', a
   await assert.rejects(graphs.build(['recording']));
 });
 
+test('watchdog links only selected health outputs and can run alone', async () => {
+  // Arrange
+  const fragments: Record<string, unknown> = {
+    monitor: {nodes:[{id:'monitor',path:'dynamic',outputs:['health']}]},
+    recorder: {nodes:[{id:'recorder',path:'dynamic',outputs:['health']}]},
+    watchdog: {nodes:[{id:'watchdog',path:'dynamic',outputs:['faults']}]},
+  };
+  const native = {expandGraph: async (path:string) => Buffer.from(JSON.stringify(fragments[path]))};
+  const graphs = new Graphs(native, [{id:'monitor',graph:'monitor'},{id:'recorder',graph:'recorder'},{id:'watchdog',graph:'watchdog',healthInputs:true}], '');
+  for (const sources of [[], ['monitor'], ['monitor','recorder']]) {
+    // Act
+    const graph = JSON.parse((await graphs.build([...sources,'watchdog'])).toString());
+    // Assert
+    const inputs = graph.nodes.find((node:any) => node.id === 'watchdog').inputs;
+    assert.deepEqual(Object.values(inputs).map((input:any) => input.source), sources.map(id => `${id}/health`));
+    assert.ok(Object.values(inputs).every((input:any) => input.queue_policy === 'drop_oldest'));
+  }
+  // Act
+  const graph = JSON.parse((await graphs.build(['monitor'])).toString());
+  // Assert
+  assert.deepEqual(graph.nodes.map((node:any) => node.id), ['monitor']);
+});
+
 test('recorder profiles select a complete native graph for arbitrary user outputs', async () => {
   // Arrange
   const fragments: Record<string, unknown> = {

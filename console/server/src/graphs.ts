@@ -1,4 +1,5 @@
 import type { doramcap } from './generated/console.js';
+const HEALTH_QUEUE_SIZE = 32;
 type App = doramcap.console.v1.ISystemAppDefinition;
 type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };
 
@@ -37,6 +38,18 @@ export class Graphs {
         if (key in merged && JSON.stringify(merged[key]) !== JSON.stringify(value)) throw new Error('InvalidInput');
         merged[key] = value;
       }
+    }
+    const sources = merged.nodes.filter(node => Array.isArray(node.outputs) && node.outputs.includes('health'));
+    for (const app of this.apps.filter(app => selected.has(app.id!) && app.healthInputs)) {
+      const node = merged.nodes.find(node => node.id === app.id);
+      if (!node) throw new Error('Health subscriber requires a graph node matching its app ID');
+      const inputs = (node.inputs ?? {}) as Record<string, unknown>;
+      for (const [index, source] of sources.filter(source => source.id !== node.id).entries()) {
+        const id = `health_${index}`;
+        if (id in inputs) throw new Error('Health input ID collision');
+        inputs[id] = {source: `${source.id}/health`, queue_size: HEALTH_QUEUE_SIZE, queue_policy: 'drop_oldest'};
+      }
+      node.inputs = inputs;
     }
     const bytes = Buffer.from(JSON.stringify(merged));
     if (bytes.length > 2 * 1024 * 1024) throw new Error('InvalidInput');

@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,7 @@ import { capabilities, wire } from '../src/native.js';
 import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
+import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
 import { mcapServices } from '../src/system-apps.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -149,7 +150,10 @@ test('root setup pins one project config and preserves later edits',
 
 test('the repository release template resolves to existing current app inputs', async () => {
   // Arrange
-  const playground = join(repository, 'console/release/playground'), systemApps = join(repository, 'console/release/system-apps');
+  const playground = join(repository, 'console/release/playground');
+  const systemApps = join(await mkdtemp(join(tmpdir(), 'release-template-')), 'system-apps');
+  await cp(join(repository, 'console/release/system-apps'), systemApps, { recursive: true });
+  stageSystemAppInputs(repository, systemApps);
   const template = capabilities.parseConfig(await readFile(join(repository, 'console/release/console.pbtxt'), 'utf8'));
   // Act
   const config = releaseConfig(template, playground, systemApps, '/state');
@@ -168,9 +172,10 @@ test('the repository release template resolves to existing current app inputs', 
       await access(profile.config!);
       if (profile.graph) await access(profile.graph);
     }
-    assert.ok(app.recordings!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
+    // An app's default launch produces something the user can see or download.
+    assert.ok(app.recordings!.length + app.liveOutputs!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
-  assert.deepEqual(config.systemApps.map(app => app.id), ['live-bridge', 'cpu-monitor', 'data-recorder']);
+  assert.deepEqual(config.systemApps.map(app => app.id), ['live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
   const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
   const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
@@ -179,6 +184,11 @@ test('the repository release template resolves to existing current app inputs', 
   const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
+  const watchdog = config.systemApps.find(app => app.id === 'fault-watchdog')!;
+  assert.equal(watchdog.defaultSelected, false);
+  assert.equal(watchdog.healthInputs, true);
+  assert.deepEqual(watchdog.launchProfiles!.map(profile => [profile.id, profile.recordings!.length]), [['live', 0], ['mcap', 1], ['otel', 0]]);
+  await rm(dirname(systemApps), { recursive: true });
 });
 
 test('only recording apps name MCAP writer services', () => {
