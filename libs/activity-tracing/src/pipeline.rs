@@ -48,7 +48,7 @@ impl Blocks<'_> {
             let sequence = self.sequence();
             let plan = self.encoder.plan(self.core, blocks, sequence, usize::MAX);
             self.buffer.resize(plan.len, 0);
-            self.encoder.write(self.core, blocks, &plan, self.buffer);
+            self.encoder.write(self.buffer);
             write(BatchView {
                 bytes: self.buffer,
                 sequence: plan.sequence,
@@ -67,11 +67,10 @@ impl Blocks<'_> {
         let blocks = self.blocks.get(self.done..).filter(|b| !b.is_empty())?;
         Some(self.encoder.plan(self.core, blocks, sequence, limit))
     }
-    /// Serializes `plan`, the latest result of [`Self::plan`], into `out`.
+    /// Serializes the latest batch from [`Self::plan`] into `out`.
     #[cfg(feature = "mcap")]
-    pub(crate) fn encode(&self, plan: &crate::wire::Plan, out: &mut [u8]) {
-        let blocks = &self.blocks[self.done..self.done + plan.blocks];
-        self.encoder.write(self.core, blocks, plan, out);
+    pub(crate) fn encode(&self, out: &mut [u8]) {
+        self.encoder.write(out);
     }
     /// Marks `plan`'s blocks as written.
     #[cfg(feature = "mcap")]

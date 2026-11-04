@@ -84,7 +84,7 @@ fn mcap_merges_blocks_and_keeps_every_record_and_string() {
         let b = wire::decode(&message.data).unwrap();
         assert_eq!(
             message.log_time,
-            b.unix_origin_ns + b.records[0].monotonic_ns
+            b.unix_origin_ns + b.records.iter().map(|r| r.monotonic_ns).min().unwrap()
         );
         assert_eq!(
             message.channel.schema.as_ref().unwrap().data.as_ref(),
@@ -97,6 +97,67 @@ fn mcap_merges_blocks_and_keeps_every_record_and_string() {
     }
     let expected: Vec<_> = (0..EVENTS).map(|n| format!("value-{n}")).collect();
     assert_eq!(values, expected);
+    std::fs::remove_file(path).unwrap();
+}
+#[cfg(feature = "mcap")]
+#[test]
+fn mcap_writes_oversized_blocks_without_losing_records() {
+    // Arrange
+    use activity_tracing::{sinks::McapSink, wire};
+    const EVENTS: usize = 3000;
+    let path = std::env::temp_dir().join(format!("activity-large-{}.mcap", std::process::id()));
+    let mut rt = Runtime::start(
+        Config {
+            blocks: 8,
+            records_per_block: 1500,
+            string_bytes_per_block: 512 * 1024,
+            sink_queue: 8,
+            flush_events: false,
+            ..Default::default()
+        },
+        vec![Box::new(McapSink::new(&path))],
+    )
+    .unwrap();
+    let h = rt.handle();
+    let reg = h.register_thread("large").unwrap();
+    let text = "x".repeat(256);
+
+    // Act: each block exceeds the writer's 256 KiB inline buffer.
+    tracing::subscriber::with_default(h.subscriber(), || {
+        for _ in 0..EVENTS {
+            tracing::info!(target: "activity", text = text.as_str());
+        }
+    });
+    drop(reg);
+    let report = rt.shutdown().unwrap();
+
+    // Assert
+    assert_eq!(report.capture.records, 0);
+    assert_eq!(report.sinks[0].dropped, 0);
+    assert!(
+        report.sinks[0].error.is_none(),
+        "{:?}",
+        report.sinks[0].error
+    );
+    let data = std::fs::read(&path).unwrap();
+    let messages = mcap::MessageStream::new(&data)
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(messages.len(), 2);
+    let mut records = 0;
+    for (index, message) in messages.iter().enumerate() {
+        assert!(message.data.len() > 256 * 1024);
+        assert_eq!(message.sequence as usize, index + 1);
+        let batch = wire::decode(&message.data).unwrap();
+        records += batch.records.len();
+        for record in &batch.records {
+            let field = &record.fields[0];
+            let range = field.offset as usize..(field.offset + field.length) as usize;
+            assert_eq!(&batch.strings[range], text.as_bytes());
+        }
+    }
+    assert_eq!(records, EVENTS);
     std::fs::remove_file(path).unwrap();
 }
 struct Fail;

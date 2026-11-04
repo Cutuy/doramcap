@@ -69,22 +69,20 @@ impl Sink for Writer {
             if plan.len > limit {
                 writer.flush_written()?;
             }
-            let mut flushed = false;
-            loop {
+            for attempt in 0..2 {
                 match writer.reserve(message, plan.len) {
                     Ok(mut reservation) => {
-                        blocks.encode(&plan, reservation.payload_mut());
+                        blocks.encode(reservation.payload_mut());
                         reservation.try_commit()?;
                         break;
                     }
-                    // Flushing frees everything except registrations, so a second refusal is permanent.
-                    Err(error) if flushed || error.kind() != io::ErrorKind::WouldBlock => {
+                    // Retry once after draining; retained registrations can still refuse capacity.
+                    Err(error) if attempt == 1 || error.kind() != io::ErrorKind::WouldBlock => {
                         return Err(error.into());
                     }
                     Err(_) => {}
                 }
                 writer.flush_written()?;
-                flushed = true;
             }
             blocks.commit(&plan);
         }

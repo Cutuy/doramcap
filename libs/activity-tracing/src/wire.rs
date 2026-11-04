@@ -1,5 +1,6 @@
 //! Versioned, self-contained Protobuf batches. Dictionary IDs are zero-based.
-use crate::capture::{Block, Core, FIELDS, Field, Losses, Record};
+use crate::capture::{Block, Core};
+use prost::Message;
 use std::ops::Deref;
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.activity.v1.rs"));
@@ -7,126 +8,64 @@ pub mod proto {
 pub const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/activity.bin"));
 pub const SCHEMA: &str = "doramcap.activity.v1.Batch";
 pub const VERSION: u32 = 1;
-/// Receives encoded bytes; a [`Counter`] measures what a [`Slice`] then writes.
-trait Out {
-    fn put(&mut self, bytes: &[u8]);
-}
-struct Counter(usize);
-impl Out for Counter {
-    fn put(&mut self, bytes: &[u8]) {
-        self.0 += bytes.len();
-    }
-}
-struct Slice<'a>(&'a mut [u8]);
-impl Out for Slice<'_> {
-    fn put(&mut self, bytes: &[u8]) {
-        let (head, tail) = std::mem::take(&mut self.0).split_at_mut(bytes.len());
-        head.copy_from_slice(bytes);
-        self.0 = tail;
-    }
-}
-fn varint(mut n: u64, out: &mut impl Out) {
-    let mut buffer = [0; 10];
-    let mut len = 0;
-    while n >= 0x80 {
-        buffer[len] = n as u8 | 0x80;
-        n >>= 7;
-        len += 1;
-    }
-    buffer[len] = n as u8;
-    out.put(&buffer[..=len]);
-}
-fn number(tag: u32, n: u64, out: &mut impl Out) {
-    varint((tag as u64) << 3, out);
-    varint(n, out);
-}
-fn fixed(tag: u32, n: u64, out: &mut impl Out) {
-    varint((tag as u64) << 3 | 1, out);
-    out.put(&n.to_le_bytes());
-}
-fn prefix(tag: u32, len: usize, out: &mut impl Out) {
-    varint((tag as u64) << 3 | 2, out);
-    varint(len as u64, out);
-}
-fn bytes(tag: u32, b: &[u8], out: &mut impl Out) {
-    prefix(tag, b.len(), out);
-    out.put(b);
-}
-fn id(names: &[&'static str], s: &'static str) -> u64 {
-    names.iter().position(|n| *n == s).unwrap() as u64
-}
-fn field(names: &[&'static str], f: &Field, base: usize, out: &mut impl Out) {
-    number(1, id(names, f.name), out);
-    number(2, f.kind as u64, out);
-    fixed(3, f.bits, out);
-    number(4, f.offset as u64 + base as u64, out);
-    number(5, f.len as u64, out);
-}
-fn record(names: &[&'static str], r: &Record, base: usize, out: &mut impl Out) {
-    for (tag, n) in [
-        (1, r.kind as u64),
-        (2, r.time),
-        (3, r.span),
-        (4, r.root),
-        (5, r.parent),
-        (6, r.linked),
-        (7, r.linked_root),
-        (8, r.tid as u64),
-    ] {
-        number(tag, n, out);
-    }
-    number(9, id(names, r.thread), out);
-    number(10, id(names, r.name), out);
-    for f in &r.fields[..r.count] {
-        let mut len = Counter(0);
-        field(names, f, base, &mut len);
-        prefix(11, len.0, out);
-        field(names, f, base, out);
-    }
-}
-/// The size and header of one message over the first `blocks` measured blocks.
+
+/// The size and header of the generated batch ready to encode.
 pub(crate) struct Plan {
     pub blocks: usize,
     pub len: usize,
     pub sequence: u64,
     pub unix_ns: u64,
-    losses: Losses,
 }
 pub(crate) struct Encoder {
-    names: Vec<&'static str>,
-    /// Encoded length of each planned record, reused by [`Self::write`].
-    lengths: Vec<usize>,
+    batch: proto::Batch,
 }
 impl Encoder {
     pub fn new(records: usize) -> Self {
         Self {
-            names: Vec::with_capacity(records * (FIELDS + 2)),
-            lengths: Vec::with_capacity(records),
+            batch: proto::Batch {
+                records: Vec::with_capacity(records),
+                ..Default::default()
+            },
         }
     }
-    /// Adds `s` to the dictionary; returns the encoded bytes this adds.
-    fn intern(&mut self, s: &'static str) -> usize {
-        if self.names.contains(&s) {
-            return 0;
+    fn intern(&mut self, name: &str) -> u32 {
+        if let Some(id) = self.batch.dictionary.iter().position(|n| n == name) {
+            return id as u32;
         }
-        self.names.push(s);
-        let mut len = Counter(0);
-        bytes(7, s.as_bytes(), &mut len);
-        len.0
+        let id = self.batch.dictionary.len() as u32;
+        self.batch.dictionary.push(name.into());
+        id
     }
-    fn header(core: &Core, sequence: u64, losses: &Losses, out: &mut impl Out) {
-        number(1, VERSION as u64, out);
-        fixed(2, core.session, out);
-        number(3, sequence, out);
-        number(4, core.unix_origin, out);
-        number(5, losses.records, out);
-        number(6, std::process::id() as u64, out);
-        number(10, losses.fields, out);
-        number(11, losses.spans, out);
-        number(12, losses.unregistered, out);
+    fn append(&mut self, block: &Block) {
+        let base = self.batch.strings.len() as u32;
+        self.batch.strings.extend_from_slice(&block.strings);
+        for r in &block.records {
+            let record = proto::Record {
+                kind: r.kind as i32,
+                monotonic_ns: r.time,
+                span_id: r.span,
+                trace_root: r.root,
+                parent_id: r.parent,
+                linked_id: r.linked,
+                linked_root: r.linked_root,
+                tid: r.tid,
+                thread_name: self.intern(r.thread),
+                name: self.intern(r.name),
+                fields: r.fields[..r.count]
+                    .iter()
+                    .map(|f| proto::Field {
+                        name: self.intern(f.name),
+                        kind: f.kind as i32,
+                        bits: f.bits,
+                        offset: f.offset + base,
+                        length: f.len,
+                    })
+                    .collect(),
+            };
+            self.batch.records.push(record);
+        }
     }
-    /// Measures the longest prefix of nonempty `blocks` fitting `limit` bytes, always taking
-    /// the first block. Pass the same prefix to [`Self::write`] before planning again.
+    /// Builds a batch from the longest prefix fitting `limit`, always taking the first block.
     pub fn plan<B: Deref<Target = Block>>(
         &mut self,
         core: &Core,
@@ -135,84 +74,57 @@ impl Encoder {
         limit: usize,
     ) -> Plan {
         let losses = core.losses.snapshot();
-        let mut header = Counter(0);
-        Self::header(core, sequence, &losses, &mut header);
-        let unix_ns = core
-            .unix_origin
-            .saturating_add(blocks[0].records.first().map_or(0, |r| r.time));
-        self.names.clear();
-        self.lengths.clear();
-        let (mut count, mut len, mut dictionary, mut strings, mut records) = (0, 0, 0, 0, 0);
+        self.batch.version = VERSION;
+        self.batch.session = core.session;
+        self.batch.sequence = sequence;
+        self.batch.unix_origin_ns = core.unix_origin;
+        self.batch.pid = std::process::id();
+        self.batch.dropped_records = losses.records;
+        self.batch.dropped_fields = losses.fields;
+        self.batch.rejected_spans = losses.spans;
+        self.batch.unregistered_records = losses.unregistered;
+        self.batch.dictionary.clear();
+        self.batch.strings.clear();
+        self.batch.records.clear();
+        let mut plan = Plan {
+            blocks: 0,
+            len: 0,
+            sequence,
+            unix_ns: core.unix_origin,
+        };
         for block in blocks {
-            let names = self.names.len();
-            let lengths = self.lengths.len();
-            let mut grown = 0;
-            for r in &block.records {
-                grown += self.intern(r.thread) + self.intern(r.name);
-                for f in &r.fields[..r.count] {
-                    grown += self.intern(f.name);
-                }
-            }
-            let mut framed = 0;
-            for r in &block.records {
-                let mut body = Counter(0);
-                record(&self.names, r, strings, &mut body);
-                self.lengths.push(body.0);
-                let mut with_prefix = Counter(body.0);
-                prefix(9, body.0, &mut with_prefix);
-                framed += with_prefix.0;
-            }
-            let next_strings = strings + block.strings.len();
-            let mut arena = Counter(next_strings);
-            prefix(8, next_strings, &mut arena);
-            let next = header.0 + dictionary + grown + arena.0 + records + framed;
-            if count > 0 && next > limit {
-                self.names.truncate(names);
-                self.lengths.truncate(lengths);
+            let (names, strings, records) = (
+                self.batch.dictionary.len(),
+                self.batch.strings.len(),
+                self.batch.records.len(),
+            );
+            self.append(block);
+            let len = self.batch.encoded_len();
+            if plan.blocks > 0 && len > limit {
+                self.batch.dictionary.truncate(names);
+                self.batch.strings.truncate(strings);
+                self.batch.records.truncate(records);
                 break;
             }
-            count += 1;
-            len = next;
-            dictionary += grown;
-            strings = next_strings;
-            records += framed;
+            plan.blocks += 1;
+            plan.len = len;
         }
-        Plan {
-            blocks: count,
-            len,
-            sequence,
-            unix_ns,
-            losses,
-        }
+        plan.unix_ns = core.unix_origin.saturating_add(
+            self.batch
+                .records
+                .iter()
+                .map(|r| r.monotonic_ns)
+                .min()
+                .unwrap_or(0),
+        );
+        plan
     }
-    /// Serializes the blocks `plan` measured; `out` must be exactly `plan.len` bytes.
-    pub fn write<B: Deref<Target = Block>>(
-        &self,
-        core: &Core,
-        blocks: &[B],
-        plan: &Plan,
-        out: &mut [u8],
-    ) {
-        let mut out = Slice(out);
-        Self::header(core, plan.sequence, &plan.losses, &mut out);
-        for name in &self.names {
-            bytes(7, name.as_bytes(), &mut out);
-        }
-        // One string arena: each block's offsets shift by the bytes before it.
-        prefix(8, blocks.iter().map(|b| b.strings.len()).sum(), &mut out);
-        for block in blocks {
-            out.put(&block.strings);
-        }
-        let mut base = 0;
-        let mut lengths = self.lengths.iter();
-        for block in blocks {
-            for r in &block.records {
-                prefix(9, *lengths.next().unwrap(), &mut out);
-                record(&self.names, r, base, &mut out);
-            }
-            base += block.strings.len();
-        }
-        assert!(out.0.is_empty());
+    /// Encodes the latest planned batch directly into its reserved output slice.
+    pub fn write(&self, mut out: &mut [u8]) {
+        self.batch
+            .encode(&mut out)
+            .expect("batch fits its measured reservation");
+        assert!(out.is_empty());
     }
 }
 /// Decode and validate external or recorded bytes before using dictionary/arena offsets.
@@ -252,6 +164,121 @@ pub fn decode(bytes: &[u8]) -> crate::Result<proto::Batch> {
 mod tests {
     use super::*;
     use prost::Message;
+    #[test]
+    fn batches_preserve_records_and_strings_across_size_limits() {
+        // Arrange
+        use crate::capture::{Config, Field, Record};
+        let core = Core::new(Config::default()).unwrap();
+        let blocks: Vec<_> = ["first", "second"]
+            .into_iter()
+            .map(|value| {
+                let mut record = Record {
+                    kind: 1,
+                    thread: "worker",
+                    name: value,
+                    count: 1,
+                    ..Default::default()
+                };
+                record.fields[0] = Field {
+                    name: "text",
+                    kind: 4,
+                    len: value.len() as u32,
+                    ..Default::default()
+                };
+                Box::new(Block {
+                    records: vec![record],
+                    strings: value.as_bytes().to_vec(),
+                })
+            })
+            .collect();
+        let mut encoder = Encoder::new(1);
+        let read = |encoder: &Encoder, plan: &Plan| {
+            let mut bytes = vec![0; plan.len];
+            encoder.write(&mut bytes);
+            decode(&bytes).unwrap()
+        };
+
+        // Act: even an oversized first block must make progress.
+        let first = encoder.plan(&core, &blocks, 1, 0);
+        let batch = read(&encoder, &first);
+        // Assert
+        assert_eq!(first.blocks, 1);
+        assert_eq!(batch.records.len(), 1);
+        assert_eq!(batch.strings, b"first");
+
+        // Act: rejecting the second block leaves a self-contained first batch.
+        let limited = encoder.plan(&core, &blocks, 1, first.len);
+        let batch = read(&encoder, &limited);
+        // Assert
+        assert_eq!(limited.blocks, 1);
+        assert_eq!(batch.dictionary[batch.records[0].name as usize], "first");
+        assert!(!batch.dictionary.iter().any(|name| name == "second"));
+        assert_eq!(batch.strings, b"first");
+
+        // Act: remaining blocks can be encoded independently.
+        let remaining = encoder.plan(&core, &blocks[1..], 2, usize::MAX);
+        let batch = read(&encoder, &remaining);
+        // Assert
+        assert_eq!(batch.sequence, 2);
+        assert_eq!(batch.strings, b"second");
+        assert_eq!(batch.records[0].fields[0].offset, 0);
+
+        // Act: a larger reservation combines both blocks into one protobuf batch.
+        let merged = encoder.plan(&core, &blocks, 3, usize::MAX);
+        let batch = read(&encoder, &merged);
+        // Assert
+        assert_eq!(merged.blocks, 2);
+        assert_eq!(batch.sequence, 3);
+        let values: Vec<_> = batch
+            .records
+            .iter()
+            .map(|r| {
+                assert_eq!(batch.dictionary[r.thread_name as usize], "worker");
+                let field = &r.fields[0];
+                assert_eq!(batch.dictionary[field.name as usize], "text");
+                &batch.strings[field.offset as usize..(field.offset + field.length) as usize]
+            })
+            .collect();
+        assert_eq!(values, [b"first".as_slice(), b"second".as_slice()]);
+    }
+    #[test]
+    fn timestamp_is_the_earliest_record_in_the_accepted_blocks() {
+        // Arrange
+        use crate::capture::{Config, Record};
+        let core = Core::new(Config::default()).unwrap();
+        let blocks: Vec<_> = [[80, 60], [40, 20], [10, 5]]
+            .into_iter()
+            .map(|times| {
+                Box::new(Block {
+                    records: times
+                        .into_iter()
+                        .map(|time| Record {
+                            time,
+                            ..Default::default()
+                        })
+                        .collect(),
+                    strings: Vec::new(),
+                })
+            })
+            .collect();
+        let mut encoder = Encoder::new(2);
+
+        // Act: an earlier record can follow the first record within a block.
+        let first = encoder.plan(&core, &blocks[..1], 1, usize::MAX);
+        // Assert
+        assert_eq!(first.unix_ns, core.unix_origin + 60);
+
+        // Act: published blocks can also arrive out of timestamp order.
+        let merged = encoder.plan(&core, &blocks[..2], 1, usize::MAX);
+        // Assert
+        assert_eq!(merged.unix_ns, core.unix_origin + 20);
+
+        // Act: records from a block rejected by the size limit must be excluded.
+        let limited = encoder.plan(&core, &blocks, 1, merged.len);
+        // Assert
+        assert_eq!(limited.blocks, 2);
+        assert_eq!(limited.unix_ns, core.unix_origin + 20);
+    }
     #[test]
     fn invalid_dictionary_and_arena_ranges_are_rejected() {
         let mut b = proto::Batch {

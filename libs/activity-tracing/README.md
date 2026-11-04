@@ -44,6 +44,8 @@ before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocke
 
 `McapSink` merges published blocks every 10 ms, or sooner under load, and serializes them
 directly into `McapWriter`'s pinned buffer. Other sinks receive one `Batch` per block.
+Workers build the generated Protobuf `Batch` with repeated records; Prost measures and
+encodes it. Message construction allocates on the sink worker.
 
 ## Run
 
