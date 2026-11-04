@@ -1065,6 +1065,10 @@ impl Writer {
     fn drain_progress(&mut self, mut wait: bool) -> io::Result<()> {
         loop {
             self.submit_and_reap(wait)?;
+            // Kernel taskrun flags can remain set after every owned operation retires.
+            if self.outstanding == 0 && self.cancellations == 0 {
+                return Ok(());
+            }
             let submission = self.ring.submission();
             if !submission.taskrun() && !submission.cq_overflow() {
                 return Ok(());
@@ -1972,6 +1976,59 @@ mod tests {
                 .any(|e| matches!(e.kind, EventKind::Failed(_)) && e.data.ids.write == id)
         );
         drop(writer);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn one_progress_call_retires_a_burst_of_ready_completions() {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        // Arrange
+        const WRITE_COUNT: usize = 64;
+        const BLOCK_BYTES: usize = 4096;
+        const COMPLETION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+        let path = std::env::temp_dir().join(format!("doramcap-burst-{}", std::process::id()));
+        let file = File::options()
+            .write(true)
+            .create_new(true)
+            .custom_flags(libc::O_DIRECT)
+            .open(&path)
+            .unwrap();
+        let pool = BufferPool::new(WRITE_COUNT, BLOCK_BYTES, BLOCK_BYTES).unwrap();
+        let mut writer = Writer::with_config(
+            file,
+            WriterConfig {
+                queue_depth: WRITE_COUNT as u32,
+                ..WriterConfig::default()
+            },
+        )
+        .unwrap();
+        for _ in 0..WRITE_COUNT {
+            writer.append(pool.reserve(BLOCK_BYTES).unwrap()).unwrap();
+        }
+        writer.schedule().unwrap();
+        // Wait for the whole burst without consuming completions before the call under test.
+        let timeout = types::Timespec::from(COMPLETION_TIMEOUT);
+        let args = types::SubmitArgs::new().timespec(&timeout);
+        loop {
+            match writer.ring.submitter().submit_with_args(WRITE_COUNT, &args) {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                result => {
+                    result.unwrap();
+                    break;
+                }
+            }
+        }
+        assert_eq!(writer.ring.completion().len(), WRITE_COUNT);
+        assert_eq!(writer.snapshot().pending, WRITE_COUNT);
+
+        // Act
+        writer.progress(false).unwrap();
+
+        // Assert
+        assert_eq!(writer.snapshot().pending, 0);
+        assert_eq!(pool.available(), WRITE_COUNT);
+        assert_eq!(writer.written_bytes(), (WRITE_COUNT * BLOCK_BYTES) as u64);
+        writer.flush_written().unwrap();
         std::fs::remove_file(path).unwrap();
     }
     #[test]
