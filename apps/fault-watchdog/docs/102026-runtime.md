@@ -23,7 +23,7 @@ mcap { enabled: true path: "/tmp/faults.mcap" flush_ms: 100 rotation_bytes: 6710
 otel { enabled: true endpoint: "http://127.0.0.1:4318/v1/logs" timeout_ms: 1000 service_name: "watchdog" }
 ```
 
-Add these fields inside the typed payload in `config/default.pbtxt`; compile the
+Add these fields directly in `config/default.pbtxt`; compile the
 corresponding features. Startup rejects unavailable features and frame/queue budgets
 that cannot contain the configured maximum state. Source timeout and producer
 condition deadline are independent.

@@ -305,13 +305,13 @@ fn unsupported_payload_or_upstream_error_keeps_partial_failure_evidence() -> Res
 }
 
 #[test]
-fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<()> {
+fn pbtxt_preserves_paths_and_rejects_invalid_settings() -> Result<()> {
     // Arrange
     let temp = Temp::new()?;
     let path = temp.0.join("recorder.pbtxt");
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Example' schema_encoding: 'jsonschema' schema_path: 'schema.json' }",
+        "output_path: 'session.mcap' report_path: 'report.pbtxt' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Example' schema_encoding: 'jsonschema' schema_path: 'schema.json' }",
     )?;
     std::fs::write(temp.0.join("schema.json"), b"{}")?;
     // Act
@@ -319,16 +319,16 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Assert
     assert_eq!(
         std::path::Path::new(&config.output_path),
-        temp.0.join("session.mcap")
+        std::path::Path::new("session.mcap")
     );
     assert_eq!(
         std::path::Path::new(&config.input[0].schema_path),
-        temp.0.join("schema.json")
+        std::path::Path::new("schema.json")
     );
     // Arrange
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Incomplete' }",
+        "output_path: 'session.mcap' report_path: 'report.pbtxt' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Incomplete' }",
     )?;
     // Act / Assert
     assert!(config::load(&path).is_err());
@@ -336,7 +336,7 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Arrange
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'protobuf' }",
+        "output_path: 'session.mcap' report_path: 'report.pbtxt' input { input: 'data' topic: '/test' message_encoding: 'protobuf' }",
     )?;
     // Act
     let error = config::load(&path).unwrap_err();

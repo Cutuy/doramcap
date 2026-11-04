@@ -44,9 +44,11 @@ with tempfile.TemporaryDirectory(prefix='fault-dora-') as directory:
     if args.sinks:
         optional = f'''mcap {{enabled: true path: {json.dumps(str(root/'faults.mcap'))} flush_ms: 50}}
         otel {{enabled: true endpoint: "http://127.0.0.1:{collector.server_port}/v1/logs" timeout_ms: 500 service_name: "fault-demo"}}'''
-    config.write_text('''app {id: "watchdog" config {[type.googleapis.com/doramcap.watchdog.v1.WatchdogConfig] {
-    inputs: "source_a" inputs: "source_b" source_timeout_ms: 1000 snapshot_interval_ms: 100
-    ''' + optional + '}}}')
+    config.write_text('''inputs: "source_a" inputs: "source_b" source_timeout_ms: 1000 snapshot_interval_ms: 100
+    maintenance_ms: 10 max_sources: 16 max_conditions_per_source: 32 max_batch_records: 512
+    output_capacity: 1024 dedup_window: 128 transport_allowance_ms: 0 max_frame_bytes: 2097152
+    queue_capacity: 32 shutdown_ms: 5000 retry_count: 2 retry_delay_ms: 100 live_output: "faults"
+    ''' + optional)
     controls = root/'controls.sock'
     def backpressure(source):
         return {'source': source, 'queue_policy': 'backpressure'}
