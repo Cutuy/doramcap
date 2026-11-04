@@ -1060,7 +1060,19 @@ impl Writer {
             self.error.get_or_insert(error.kind());
         }
     }
-    fn drain_progress(&mut self, wait: bool) -> io::Result<()> {
+    /// Retire every ready completion; `wait` blocks at most on the first kernel entry.
+    /// One entry runs a bounded batch of deferred work, so repeat while the ring flags more.
+    fn drain_progress(&mut self, mut wait: bool) -> io::Result<()> {
+        loop {
+            self.submit_and_reap(wait)?;
+            let submission = self.ring.submission();
+            if !submission.taskrun() && !submission.cq_overflow() {
+                return Ok(());
+            }
+            wait = false;
+        }
+    }
+    fn submit_and_reap(&mut self, wait: bool) -> io::Result<()> {
         #[cfg(test)]
         if self.fail_submit {
             self.counters.submit_failures += 1;
