@@ -51,7 +51,6 @@ jobs:
           cache-dependency-path: |
             apps/*/frontend/package-lock.json
             console/*/package-lock.json
-            libs/storage-persistence/tests/readers/package-lock.json
       - name: Set up Rust for the Console native bridge
         run: rustup show
       - name: Cache Cargo downloads
@@ -64,6 +63,4 @@ jobs:
           key: node-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: node-cargo-${{ runner.os }}-${{ runner.arch }}-
       - name: Test Node suites
-        run: |
-          sudo prlimit --pid "$$" --memlock=268435456:268435456
-          node scripts/ci/test-node.mts
+        run: node scripts/ci/test-node.mts

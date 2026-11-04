@@ -30,7 +30,8 @@ The 1 s batch age landed separately in PR #152.
 
 - [x] Add locked, test-only `@mcap/core` and existing `protobufjs` tooling.
 - [x] Decode each file independently using only its embedded descriptor set.
-- [x] Integrate fixture generation and verification into the shared Node CI runner.
+- [x] Run fixture generation and verification in a dedicated MCAP CI workflow on
+  ARM64/x86_64, with its own runner also invoked by the ARM64 worker.
 
 **Validation**
 
@@ -40,10 +41,14 @@ The 1 s batch age landed separately in PR #152.
 - [x] Release Clippy for the fixture generator, workspace formatting and dependency
   boundaries pass. All 24 focused storage integration tests pass on local x86_64
   (combining, MCAP round trip, rotation, mapped inputs and sealed slabs).
-- [ ] GitHub ARM64/x86_64 CI passes.
+- [ ] Dedicated GitHub MCAP CI passes on ARM64/x86_64.
 - [x] ARM64 worker job 583 passed for code revision `846e5d6`: shared Node suites,
   all 36 streaming/protobuf checks, default/all-feature Rust validation and native
-  checks. The completion record is in PR #150; GitHub checks remain pending.
+  checks. The completion record is in PR #150.
+- [x] Extracted MCAP runner passed locally: Rust readback and all 36 TypeScript
+  checks. Workflow YAML and Node/Python/shell entry points pass syntax checks;
+  Node CI workflow and runner match their pre-PR contents.
+- [ ] Updated worker snapshot submission passes with the separate MCAP runner.
 
 Existing production-sink coverage remains in system-monitor's embedded recording
 test, fault-watchdog's MCAP readback test and activity-tracing's output tests.

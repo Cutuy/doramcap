@@ -1,0 +1,70 @@
+name: MCAP CI
+
+on:
+  push:
+    branches: [main]
+    paths: &mcap-inputs
+      - '.github/workflows/mcap.yml'
+      - 'scripts/ci/test-mcap.mts'
+      - '.node-version'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'libs/storage-persistence/**'
+      - 'libs/telemetry/protocol/**'
+      - 'libs/resources/monitor-core/**'
+      - 'libs/resources/task-accounting/**'
+      - 'libs/fault/**'
+      - 'libs/activity-tracing/**'
+      - '!**/*.md'
+      - '!**/*.svg'
+  pull_request:
+    paths: *mcap-inputs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcap-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcap:
+    name: MCAP (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: ARM64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: libs/storage-persistence/tests/readers/package-lock.json
+      - name: Set up Rust
+        run: rustup show
+      - name: Cache Cargo downloads
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: mcap-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: mcap-cargo-${{ runner.os }}-${{ runner.arch }}-
+      - name: Test MCAP reader and protobuf compatibility
+        run: |
+          sudo prlimit --pid "$$" --memlock=268435456:268435456
+          node scripts/ci/test-mcap.mts

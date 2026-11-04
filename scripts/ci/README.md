@@ -25,9 +25,12 @@ builds/type checks and the browser/server HTTP integration test. The server test
 script builds its native addon using the pinned Rust toolchain and locked dependencies.
 Node workflow paths include Console, app, library and CI changes; npm caching includes
 both Console lockfiles. Live browser, CUDA and Dora qualification remain separate.
-The runner also generates MCAP recordings with the real writer, verifies Rust
+
+[MCAP CI](../../.github/workflows/mcap.yml) runs independently on ARM64 and x86_64.
+`node scripts/ci/test-mcap.mts` generates real-writer recordings, verifies Rust
 protobuf readback, and runs the locked TypeScript streaming-reader suite against
-the same files using their embedded protobuf descriptors.
+the same files using their embedded descriptors. The ARM64 worker invokes this
+runner separately from the app and Console Node suites.
 Project Explorer has no `npm test` script.
 
 Privileged native validation and Dora end-to-end checks use the worker below.
@@ -64,8 +67,8 @@ snapshot. Git pushes run Actions; they do not submit Pueue jobs. Keep native tes
 default group.
 
 Submission copies an allowlisted snapshot of Cargo files, libraries and applications,
-all of `console`, uncommitted source changes and the three boundary checker/rules/test
-files from `scripts/ci`, excluding Git-ignored files. It adds a
+all of `console`, uncommitted source changes, boundary checker/rules/tests and the
+Node/MCAP runners from `scripts/ci`, excluding Git-ignored files. It adds a
 runner and a `SOURCE.json` manifest with HEAD, dirty status and per-file SHA256.
 The transferred archive's checksum is verified before enqueueing. Passwords,
 `.git`, and local build directories are not copied. Each job retains a separate

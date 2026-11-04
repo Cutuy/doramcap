@@ -24,6 +24,7 @@ python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
 python3 scripts/ci/test_boundaries.py
 test "$(node --version)" = "v$(cat .node-version)"
 node scripts/ci/test-node.mts
+node scripts/ci/test-mcap.mts
 cargo fmt --all -- --check
 cargo clippy --workspace --no-deps --all-targets --locked -- -D warnings
 cargo clippy --workspace --no-deps --all-targets --all-features --locked -- -D warnings

@@ -1,7 +1,6 @@
 // Run the existing standalone Node suites in both CI environments.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,7 +12,7 @@ const suites = [
 const run = (command: string, args: string[], cwd: string) => {
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} failed: ${result.signal ?? result.status}`);
+  if (result.status !== 0) process.exit(result.status ?? 1);
 };
 for (const suite of suites) {
   const directory = join(root, suite);
@@ -29,15 +28,4 @@ for (const suite of suites) {
 if (existsSync(join(root, 'console/contract/browser.test.ts'))) {
   console.log('\nConsole browser/server contract');
   run('npm', ['exec', '--', 'tsx', '--test', '../contract/browser.test.ts'], join(root, 'console/server'));
-}
-console.log('\nMCAP cross-language protobuf round trips');
-const readerSuite = join(root, 'libs/storage-persistence/tests/readers');
-const temporary = mkdtempSync(join(tmpdir(), 'mcap-reader-compatibility-'));
-try {
-  const fixtures = join(temporary, 'recordings');
-  run('npm', ['ci', '--no-audit', '--no-fund'], readerSuite);
-  run('cargo', ['run', '--profile', 'ci', '--locked', '-p', 'storage-persistence', '--example', 'reader_compatibility', '--', fixtures], root);
-  run('npm', ['test', '--', fixtures], readerSuite);
-} finally {
-  rmSync(temporary, { recursive: true, force: true });
 }
