@@ -87,7 +87,9 @@ pub trait Sink: 'static {
     fn write_blocks(&mut self, blocks: &mut Blocks<'_>) -> Result<()> {
         blocks.for_each_batch(|batch| self.write(batch))
     }
-    /// Merge blocks already queued into one call; otherwise deliver one block at a time.
+    /// Opts into delivering queued blocks together to [`Self::write_blocks`] (default: false); read once at worker startup.
+    /// Takes up to [`Config::sink_queue`] blocks without waiting; separately allocated blocks stay pinned until the call returns.
+    /// Override `write_blocks` to amortize serialization or I/O; its default still emits one message per block.
     fn batch_blocks(&self) -> bool {
         false
     }
