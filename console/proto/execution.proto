@@ -49,6 +49,23 @@ message ExecutionResult {
   optional bool event_stream_healthy = 6;
   repeated doramcap.compose.v1.ServiceExit service_exits = 7;
 }
+// The local image one service ran.
+message ServiceImage {
+  string service = 1;
+  string image_id = 2;
+}
+// What one run ran; empty fields were unavailable when it started.
+message ExperimentSetup {
+  string source_commit = 1;
+  bool source_dirty = 2;
+  repeated ServiceImage images = 3;
+}
+// What one run ran and the machine it ran on, saved as each part becomes known.
+message RunCapture {
+  ExperimentSetup setup = 1;
+  doramcap.system_config.v1.MachineState before = 2;
+  doramcap.system_config.v1.MachineState after = 3;
+}
 // Completion remains available even when the bounded progress queue overflows.
 message ExecutionUpdate {
   string run_id = 1;

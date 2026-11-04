@@ -25,6 +25,8 @@ export const MIGRATIONS = [
   // Each Console now serves one project.
   `DROP INDEX runs_by_project;
    ALTER TABLE runs DROP COLUMN project_directory;`,
+  // What each run ran and the machine it ran on; empty for earlier runs.
+  `ALTER TABLE runs ADD COLUMN capture BLOB;`,
 ];
 
 /** Apply pending steps. A failed step throws and leaves the file at its last complete version. */
