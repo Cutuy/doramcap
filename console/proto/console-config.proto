@@ -49,6 +49,7 @@ message SystemAppDefinition {
   repeated OutputMount output_mounts = 8;
   repeated LiveOutput live_outputs = 9; // Relayed when the live bridge is selected.
   OutputMount config_mount = 10; // Required with launch_profiles.
+  bool health_inputs = 12; // Consume other selected nodes' health outputs.
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
   LiveRelay live_relay = 13; // Relays the selected apps' live outputs to Console.
 }

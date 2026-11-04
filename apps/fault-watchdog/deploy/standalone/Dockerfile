@@ -4,6 +4,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY fault-watchdog /usr/local/bin/fault-watchdog
 WORKDIR /tmp
 ENV HOME=/tmp
-USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/fault-watchdog"]
 CMD ["/etc/fault-watchdog/watchdog.pbtxt"]

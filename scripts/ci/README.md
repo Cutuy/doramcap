@@ -77,6 +77,7 @@ bytecode that the next synchronization can remove. The lock stays held through
 all builds and tests, including native/Dora checks.
 
 Builds run from the stable source path with the existing shared Cargo target.
+Cargo uses one build job to bound peak linker memory for Dora-based binaries.
 The log identifies the submitted snapshot and prints its `SOURCE.json`, which
 records source hashes/modes, Git HEAD/dirty status, and runner/helper hashes.
 Subsequent jobs replace the source cache; saved snapshots retain their inputs.

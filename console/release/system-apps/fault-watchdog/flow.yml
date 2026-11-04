@@ -1,0 +1,4 @@
+nodes:
+  - id: fault-watchdog
+    path: dynamic
+    outputs: [faults]

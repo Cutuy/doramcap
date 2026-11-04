@@ -1,0 +1,3 @@
+output_path: "/results/messages.mcap"
+report_path: "/results/messages.report.pbtxt"
+input { input: "faults" topic: "fault-watchdog/faults" message_encoding: "application/octet-stream" }

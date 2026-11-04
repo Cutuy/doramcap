@@ -9,8 +9,8 @@ cp target/release/fault-watchdog apps/fault-watchdog/deploy/standalone/fault-wat
 docker compose -f apps/fault-watchdog/deploy/standalone/compose.yaml build
 ```
 
-Connect [flow.yml](flow.yml) to the workload's fault output. Override the Compose
-user to match the Dora participant and mount a fresh writable results directory.
+Connect [flow.yml](flow.yml) to the workload's fault output. The image runs as root,
+which matches a release Console's Dora participant; override the Compose user for any other participant, and mount a fresh writable results directory.
 The service mounts one self-contained pbtxt. Each [live](config/watchdog.pbtxt),
 [OTLP](config/watchdog-otel.pbtxt) or [MCAP](config/watchdog-mcap.pbtxt) file is a
 complete profile; Console selects one during Review through
