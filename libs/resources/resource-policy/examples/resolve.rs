@@ -5,12 +5,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.len() < 2 {
         return Err("usage: resolve PATH APP_ID...".into());
     }
-    let registry = args[1..].iter().map(String::as_str).collect::<Vec<_>>();
-    let resolved = config::resolve(std::path::Path::new(&args[0]), &registry)?;
-    for id in registry {
+    let deployment = config::load(std::path::Path::new(&args[0]))?;
+    for id in &args[1..] {
+        let policy = deployment
+            .app
+            .iter()
+            .find(|app| &app.id == id)
+            .and_then(|app| app.policy.as_ref())
+            .ok_or("unknown app ID")?;
         println!(
             "# {id}\n[Service]\n{}",
-            targets::systemd_service_directives(&Goal::from_proto(&resolved.config(id)?)?)
+            targets::systemd_service_directives(&Goal::from_proto(policy)?)
         );
     }
     Ok(())

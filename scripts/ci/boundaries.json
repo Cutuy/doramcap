@@ -4,7 +4,6 @@
     {"from": "monitor-core", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "task-accounting", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "resource-policy", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
-    {"from": "pbtxt-config", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "step-provenance", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "session", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "dora-app", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},

@@ -6,10 +6,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let iterations = 100;
     let start = Instant::now();
     for _ in 0..iterations {
-        black_box(config::resolve(&path, &["perception", "recorder"])?);
+        black_box(config::load(&path)?);
     }
     println!(
-        "resolve_mean_us={:.2} iterations={iterations}",
+        "load_mean_us={:.2} iterations={iterations}",
         start.elapsed().as_secs_f64() * 1e6 / iterations as f64
     );
     #[cfg(target_os = "linux")]

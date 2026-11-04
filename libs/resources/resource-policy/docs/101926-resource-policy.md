@@ -1,5 +1,7 @@
 ![Resource policy architecture](resource-policy.svg)
 
+Updated 2026-11-03: the former configuration composition design below is superseded. Apps load complete standard protobuf TextFormat messages directly; the custom resolver has been deleted.
+
 # Resource policy: implementation plan
 
 Crate: `libs/resources/resource-policy` (`resource_policy` in Rust). It owns resource goals, validation, reconciliation APIs, and backend contracts. `libs/pbtxt-config` owns shared App/Fragment/Deployment schemas and composition. Initial enforcement covers Linux CPU placement and real-time scheduling. Future adapters generate orchestration configurations; future policies cover GPU, memory bandwidth, and budgets.

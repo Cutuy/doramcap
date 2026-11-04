@@ -8,7 +8,6 @@ members = [
     "libs/memory/cuda-dora-shm",
     "apps/cuda-shm-demo",
     "libs/resources/monitor-core",
-    "libs/pbtxt-config",
     "libs/resources/resource-policy",
     "libs/step-provenance",
     "libs/session",
