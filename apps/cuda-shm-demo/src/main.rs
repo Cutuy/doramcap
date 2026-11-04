@@ -133,12 +133,6 @@ fn producer(
     let mut incoming = None;
     loop {
         telemetry::flush_due(registration, &mut last_flush);
-        if Instant::now() >= deadline {
-            bail!(
-                "TIMEOUT: no unsafe reuse; published={sequence}, full={full}, stats={:?}",
-                pool.stats()
-            );
-        }
         let message = match incoming.take() {
             Some(message) => Some(message),
             None => event_message(&mut events)?,
@@ -211,6 +205,12 @@ fn producer(
             );
             pool.close()?;
             return Ok(());
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "TIMEOUT: no unsafe reuse; published={sequence}, full={full}, stats={:?}",
+                pool.stats()
+            );
         }
         if published {
             continue;
