@@ -192,6 +192,13 @@ message ServiceExit {
   bool killed = 4;
 }
 
+// One service container given its stop signal and not yet exited.
+message StoppingService {
+  string service = 1;
+  // Unix time in milliseconds at which Docker force-kills the container.
+  uint64 force_stop_unix_ms = 2;
+}
+
 // Comparable experiment configuration, independent of generated artifact locations.
 message ConfigurationSnapshot {
   string manifest_sha256 = 1;

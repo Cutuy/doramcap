@@ -20,7 +20,7 @@ use crate::compose::{
 use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 pub use workload_lifecycle::recording::Recording;
 
 /// Compose-specific notifications to an in-process listener; delivery never controls the run.
@@ -30,6 +30,8 @@ pub struct RunSignals {
     pub ready: Option<oneshot::Sender<ResolvedComposeProject>>,
     /// Notify when teardown begins, before stopping writers; delivery does not confirm shutdown.
     pub quiescing: Option<oneshot::Sender<()>>,
+    /// Publishes the services given a stop signal and not yet exited.
+    pub stopping: watch::Sender<Vec<StoppingService>>,
 }
 
 impl RunSignals {
@@ -237,6 +239,7 @@ impl ComposeRunner {
             self.adapter.docker.clone(),
             plan.name.clone(),
             artifacts.join("docker-events.jsonl"),
+            signals.stopping.clone(),
         );
         // Race startup and observation against stop; teardown runs outside this boundary.
         let mut signals = signals;

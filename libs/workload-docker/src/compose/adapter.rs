@@ -3,6 +3,7 @@ mod project;
 mod scope;
 use configuration::ComposeConfiguration;
 pub use project::ComposeExecution;
+pub(crate) use project::stop_timeout;
 use scope::ExperimentResources;
 
 use super::{

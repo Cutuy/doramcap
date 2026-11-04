@@ -79,6 +79,22 @@ test('historical run freezes elapsed time and unavailable metrics remain distinc
   assert.doesNotMatch(zero, /Inclusive ancestors|recorder boundary/);
 });
 
+test('a stopping run names the services it is waiting on until they exit', () => {
+  // Arrange
+  const stopping: Snapshot = wire.Status.fromObject({ phase: Phase.STOPPING, runId: 'run', steps: [], sequence: '0', truncatedSteps: '0', stoppingServices: [{ service: 'perception', forceStopInSeconds: 12 }, { service: 'control' }] });
+  const exited: Snapshot = wire.Status.fromObject({ phase: Phase.STOPPING, runId: 'run', steps: [], sequence: '0', truncatedSteps: '0' });
+  // Act
+  const waiting = renderToStaticMarkup(<RunActivity snapshot={stopping} stopping disconnected={false}/>);
+  const none = renderToStaticMarkup(<RunActivity snapshot={exited} stopping disconnected={false}/>);
+  const past = renderToStaticMarkup(<RunActivity snapshot={stopping} stopping={false} disconnected={false} historical/>);
+  // Assert
+  assert.match(waiting, /Waiting for services to stop/);
+  assert.match(waiting, /perception<\/span> <span[^>]*>force stop in 12 s/);
+  assert.match(waiting, /control<\/span> <span[^>]*>force stopping/);
+  assert.doesNotMatch(none, /Waiting for services/);
+  assert.doesNotMatch(past, /Waiting for services/);
+});
+
 test('completed runs without retained activity do not imply that events will arrive', () => {
   // Arrange
   const snapshot: Snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId: 'old-run', steps: [], sequence: '0', truncatedSteps: '0', lostEvents: '0', overflowSteps: '0', progressIncomplete: false, outcome: null, cpuAvailable: false, reportAvailable: false, monitorReady: false });

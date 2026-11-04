@@ -1,5 +1,10 @@
 //! Passive host snapshots and a bounded, cancellation-owned Docker event stream.
-use crate::compose::{Result, adapter::private_write, error::invalid};
+use crate::compose::{
+    Result, StoppingService,
+    adapter::{private_write, stop_timeout},
+    error::invalid,
+};
+use bollard::models::EventMessage;
 use futures_util::StreamExt;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -7,6 +12,76 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{io::AsyncWriteExt, sync::watch};
+
+/// Signal number Docker reports in the `kill` event that ends a stop wait.
+const SIGKILL_SIGNAL: &str = "9";
+const NANOS_PER_MILLI: i64 = 1_000_000;
+
+/// One container's progress through a stop, read from a Docker event.
+#[derive(Debug, PartialEq)]
+enum StopProgress {
+    Signaled {
+        container: String,
+        service: String,
+        signaled_unix_ms: u64,
+    },
+    Exited {
+        container: String,
+    },
+}
+
+/// Classify a stop-related event; other events, and the final SIGKILL, return `None`.
+fn stop_progress(event: &EventMessage) -> Option<StopProgress> {
+    let actor = event.actor.as_ref()?;
+    let container = actor.id.clone()?;
+    let attributes = actor.attributes.as_ref()?;
+    match event.action.as_deref()? {
+        "kill" if attributes.get("signal")? != SIGKILL_SIGNAL => Some(StopProgress::Signaled {
+            container,
+            service: attributes.get("com.docker.compose.service")?.clone(),
+            signaled_unix_ms: u64::try_from(event.time_nano? / NANOS_PER_MILLI).ok()?,
+        }),
+        "die" | "destroy" => Some(StopProgress::Exited { container }),
+        _ => None,
+    }
+}
+
+/// Keep `waiting` current and publish its changes; a container Docker cannot inspect is left out.
+async fn track_stop(
+    docker: &bollard::Docker,
+    waiting: &mut BTreeMap<String, StoppingService>,
+    stopping: &watch::Sender<Vec<StoppingService>>,
+    event: &EventMessage,
+) {
+    let changed = match stop_progress(event) {
+        Some(StopProgress::Signaled {
+            container,
+            service,
+            signaled_unix_ms,
+        }) if !waiting.contains_key(&container) => {
+            match docker.inspect_container(&container, None).await {
+                Ok(info) => {
+                    let force_stop_unix_ms =
+                        signaled_unix_ms + stop_timeout(&info).as_millis() as u64;
+                    waiting.insert(
+                        container,
+                        StoppingService {
+                            service,
+                            force_stop_unix_ms,
+                        },
+                    );
+                    true
+                }
+                Err(_) => false,
+            }
+        }
+        Some(StopProgress::Exited { container }) => waiting.remove(&container).is_some(),
+        _ => false,
+    };
+    if changed {
+        stopping.send_replace(waiting.values().cloned().collect());
+    }
+}
 
 /// Own the background stream until teardown; dropping the owner aborts capture.
 pub(super) struct EventCapture {
@@ -16,13 +91,19 @@ pub(super) struct EventCapture {
     task: tokio::task::JoinHandle<Result<()>>,
 }
 impl EventCapture {
-    pub fn start(docker: bollard::Docker, project: String, path: std::path::PathBuf) -> Self {
+    pub fn start(
+        docker: bollard::Docker,
+        project: String,
+        path: std::path::PathBuf,
+        stopping: watch::Sender<Vec<StoppingService>>,
+    ) -> Self {
         let (finish, finished) = watch::channel(false);
         let (fault_tx, fault) = watch::channel(None);
         let (changed, changes) = watch::channel(());
         let since = SystemTime::now();
         let task = tokio::spawn(async move {
-            let result = record_events(docker, project, &path, finished, changed, since).await;
+            let result =
+                record_events(docker, project, &path, finished, changed, stopping, since).await;
             if let Err(error) = &result {
                 let _ = fault_tx.send(Some(error.to_string()));
             }
@@ -81,6 +162,7 @@ async fn record_events(
     path: &Path,
     mut finish: watch::Receiver<bool>,
     changed: watch::Sender<()>,
+    stopping: watch::Sender<Vec<StoppingService>>,
     since: SystemTime,
 ) -> Result<()> {
     let mut file = tokio::fs::OpenOptions::new()
@@ -94,6 +176,7 @@ async fn record_events(
         .map_err(|e| invalid(e.to_string()))?
         .as_secs()
         .to_string();
+    let mut waiting = BTreeMap::new();
     let stream = docker.events(Some(bollard::query_parameters::EventsOptions {
         since: Some(since),
         // Include foreign ownership within the project so inspection can reject it.
@@ -120,6 +203,7 @@ async fn record_events(
             event = stream.next() => {
                 let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| crate::compose::error::engine("Docker events", e))?;
                 changed.send_replace(());
+                track_stop(&docker, &mut waiting, &stopping, &event).await;
                 let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');
                 file.write_all(&bytes).await?;
                 if draining { quiet.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(200)); }

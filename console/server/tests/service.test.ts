@@ -7,7 +7,8 @@ import { ConsoleService } from '../src/service.js';
 import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
 import { readFile } from 'node:fs/promises';
-import { live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
+import { compose, live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
+import Long from 'long';
 import { LIMITS, PREPARING_RUN } from '../src/generated/transport.js';
 
 class Engine implements NativeExecution {
@@ -232,6 +233,19 @@ test('declared recording sizes and downloads are built in the TypeScript view', 
     assert.equal(running.metrics.at(-1)!.recordingBytes!.toString(), '17');
     await assert.rejects(backend.openArtifact(review.runId, 'messages'), /Missing/);
     // Act
+    engine.update.teardownStarted = true;
+    engine.update.stoppingServices = [compose.StoppingService.create({ service: 'perception', forceStopUnixMs: Long.fromNumber(Date.now() + 12_000, true) })];
+    const stopping = wire.Status.decode(await backend.status());
+    // Assert
+    assert.equal(stopping.stoppingServices[0].service, 'perception');
+    const remaining = stopping.stoppingServices[0].forceStopInSeconds!;
+    assert.ok(remaining > 0 && remaining <= 12);
+    // Act
+    engine.update.stoppingServices = [compose.StoppingService.create({ service: 'perception', forceStopUnixMs: Long.fromNumber(Date.now() - 1_000, true) })];
+    const overdue = wire.Status.decode(await backend.status());
+    // Assert
+    assert.equal(overdue.stoppingServices[0].forceStopInSeconds, 0);
+    // Act
     engine.update.result = execution.ExecutionResult.create({
       blocked: false,
       boundaryClean: true,
@@ -244,6 +258,7 @@ test('declared recording sizes and downloads are built in the TypeScript view', 
     const fd = await backend.openArtifact(review.runId, 'messages');
     const { readFileSync, closeSync } = await import('node:fs');
     // Assert
+    assert.equal(finished.stoppingServices.length, 0);
     assert.equal(finished.outcome!.recordingFinalized, true);
     assert.equal(finished.outcome!.serviceExits![0].service, 'perception');
     assert.equal(finished.outcome!.serviceExits![0].exitCode, 137);

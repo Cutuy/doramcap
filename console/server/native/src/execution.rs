@@ -9,7 +9,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 use workload_docker::{
     compose::DockerAdapter,
     workflows::recorded_compose::{ComposeRun, ComposeRunner, McapWriters, Recording, RunSignals},
@@ -171,11 +171,23 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         }
     });
     let teardown = updates.clone();
+    let teardown_id = run_id.clone();
     tokio::task::spawn_local(async move {
         if teardown_rx.await.is_ok() {
             let mut update = teardown.lock().unwrap();
-            if update.run_id == run_id {
+            if update.run_id == teardown_id {
                 update.teardown_started = true;
+            }
+        }
+    });
+    let (stopping_tx, mut stopping_rx) = watch::channel(Vec::new());
+    let stopping = updates.clone();
+    tokio::task::spawn_local(async move {
+        while stopping_rx.changed().await.is_ok() {
+            let waiting = stopping_rx.borrow_and_update().clone();
+            let mut update = stopping.lock().unwrap();
+            if update.run_id == run_id {
+                update.stopping_services = waiting;
             }
         }
     });
@@ -206,6 +218,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                 RunSignals {
                     ready: Some(ready_tx),
                     quiescing: Some(teardown_tx),
+                    stopping: stopping_tx,
                 },
                 move |prepared| {
                     let rejection = if stopped.get() {

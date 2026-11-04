@@ -56,4 +56,5 @@ message ExecutionUpdate {
   bool ready = 4;
   bool teardown_started = 5;
   ExecutionResult result = 6;
+  repeated doramcap.compose.v1.StoppingService stopping_services = 7;
 }
