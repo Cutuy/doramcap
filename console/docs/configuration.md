@@ -64,6 +64,10 @@ launch_profiles {
 launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
 ```
 
+A launch profile may supply a complete native `graph` alongside its pbtxt. The
+recorder uses matching graph/config input names to record CPU or user messages.
+Declare user producers in `dora.graph`; mount schema files explicitly.
+
 ## Live bridge
 
 `live_relay` marks the one system app that relays the selected apps' `live_outputs`.

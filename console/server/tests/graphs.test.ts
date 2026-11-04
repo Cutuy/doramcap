@@ -18,3 +18,18 @@ test('selection composes approved nodes and fresh reads detect graph changes', a
   fragments.set('recorder',{nodes:[{id:'worker',path:'dynamic'}]});
   await assert.rejects(graphs.build(['recording']));
 });
+
+test('recorder profiles select a complete native graph for arbitrary user outputs', async () => {
+  // Arrange
+  const fragments: Record<string, unknown> = {
+    user: {nodes:[{id:'user',path:'dynamic',outputs:['messages']}]},
+    cpu: {nodes:[{id:'recorder',path:'dynamic',inputs:{data:'cpu/snapshots'}}]},
+    custom: {nodes:[{id:'recorder',path:'dynamic',inputs:{data:'user/messages'}}]},
+  };
+  const graphs = new Graphs({expandGraph: async (path:string) => Buffer.from(JSON.stringify(fragments[path]))},
+    [{id:'recorder',graph:'cpu',launchProfiles:[{id:'custom',graph:'custom'}]}], 'user');
+  // Act
+  const graph = JSON.parse((await graphs.build(['recorder'], [], {recorder:'custom'})).toString());
+  // Assert
+  assert.equal(graph.nodes.find((node:any) => node.id === 'recorder').inputs.data, 'user/messages');
+});

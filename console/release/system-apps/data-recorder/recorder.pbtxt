@@ -1,4 +1,4 @@
-output_path: "/results/cpu-topics.mcap"
-report_path: "/results/cpu-topics.mcap.report.pbtxt"
+output_path: "/results/messages.mcap"
+report_path: "/results/messages.mcap.report.pbtxt"
 input { input: "snapshots" topic: "doramcap/cpuacct" message_encoding: "protobuf" schema_name: "doramcap.telemetry.v1.Packet" schema_encoding: "protobuf" schema_path: "/config/telemetry_descriptor.bin" }
 input { input: "dictionary" topic: "doramcap/cpuacct/dictionary" message_encoding: "protobuf" schema_name: "doramcap.telemetry.v1.Packet" schema_encoding: "protobuf" schema_path: "/config/telemetry_descriptor.bin" }

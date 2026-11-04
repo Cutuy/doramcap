@@ -266,7 +266,7 @@ export class ConsoleService implements ConsoleBackend {
   ): Promise<Run> {
     const relay = relayApp(apps);
     const bound = relay && (await bindRelay(relay, apps, this.config.dora, workspace, stage));
-    const graph = await this.graphs.build(apps.map((app) => app.id!), bound ? [bound.graph] : []);
+    const graph = await this.graphs.build(apps.map((app) => app.id!), bound ? [bound.graph] : [], appProfiles(apps));
     const dora = { ...this.config.dora };
     if (graph.length) {
       const path = join(workspace, `${stage}.graph.json`);

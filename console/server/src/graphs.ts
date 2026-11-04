@@ -6,11 +6,14 @@ type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: 
 export class Graphs {
   constructor(private native: {expandGraph(path:string):Promise<Buffer>}, private apps: App[], private base: string) {}
   /** `extra` adds generated fragments, such as the live bridge node. */
-  async build(requested?: string[], extra: string[] = []): Promise<Buffer> {
+  async build(requested?: string[], extra: string[] = [], profiles: Record<string, string> = {}): Promise<Buffer> {
     const ids = requested ?? this.apps.filter(app => app.defaultSelected).map(app => app.id!);
     const selected = new Set(ids);
     if (selected.size !== ids.length || ids.some(id => !this.apps.some(app => app.id === id))) throw new Error('InvalidInput');
-    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => app.graph ?? ''), ...extra].filter(Boolean);
+    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => {
+      const profile = app.launchProfiles?.find(profile => profile.id === profiles[app.id!]);
+      return profile?.graph || app.graph || '';
+    }), ...extra].filter(Boolean);
     if (!paths.length) return Buffer.alloc(0);
     const merged: NativeGraph = {nodes:[]};
     const nodes = new Set<string>();

@@ -1,5 +1,5 @@
 nodes:
-  - id: cpu-recorder
+  - id: data-recorder
     path: dynamic
     outputs: [health]
     inputs:

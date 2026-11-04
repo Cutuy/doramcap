@@ -60,6 +60,7 @@ export function validateApps(apps: App[]) {
     for (const profile of profiles) {
       if (!/^[-a-z0-9]{1,40}$/.test(profile.id ?? '') || profileIds.has(profile.id!) || !profile.label || !isAbsolute(profile.config ?? ''))
         throw new Error('launch profile requires a unique id, a label and an absolute config');
+      if (profile.graph && !isAbsolute(profile.graph)) throw new Error('profile graph must be absolute');
       profileIds.add(profile.id!);
       // Only one profile launches, so profiles of one app may reuse recording IDs.
       const seen = new Set(shared);

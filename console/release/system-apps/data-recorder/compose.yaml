@@ -1,5 +1,5 @@
 services:
-  cpu-recorder:
+  data-recorder:
     image: doramcap/mcap-recorder:local
     entrypoint: [/usr/local/bin/mcap-recorder]
     command: [--config, /config/recorder.pbtxt]
@@ -12,9 +12,9 @@ services:
     stop_signal: SIGINT
     stop_grace_period: 15s
     environment:
-      DORAMCAP_READY_FILE: /tmp/cpu-recorder.ready
+      DORAMCAP_READY_FILE: /tmp/data-recorder.ready
     healthcheck:
-      test: [CMD, test, -s, /tmp/cpu-recorder.ready]
+      test: [CMD, test, -s, /tmp/data-recorder.ready]
       interval: 200ms
       timeout: 1s
       retries: 150
