@@ -2,7 +2,7 @@
 mod model;
 mod snapshot;
 
-use super::{ComposeRun, observation};
+use super::ComposeRun;
 use crate::compose::{
     adapter::{digest, private_write},
     error::invalid,
@@ -281,7 +281,6 @@ impl PrepareRun {
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(&resolved.dora)?;
-        observation::snapshot(&resolved.artifacts, "before").await?;
         // Capture the filesystem baseline only for execution.
         let executor = self
             .executor

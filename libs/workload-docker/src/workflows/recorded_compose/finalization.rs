@@ -1,5 +1,5 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
-use super::{ComposeRunReport, observation};
+use super::ComposeRunReport;
 use crate::compose::{
     Diagnostics,
     adapter::private_write,
@@ -147,7 +147,7 @@ pub struct ReportInput {
     pub artifacts: PathBuf,
     pub report: ComposeRunReport,
 }
-/// Capture post-state and write the private final report after event capture ends.
+/// Write the private final report after event capture ends.
 /// A report-writing error preserves the caller's blocked admission state.
 pub struct WriteRunReport {
     pub diagnostics: Diagnostics,
@@ -158,11 +158,6 @@ impl Step for WriteRunReport {
     type Input = ReportInput;
     type Output = ComposeRunReport;
     async fn run(&mut self, mut input: ReportInput) -> orchestrator::Result<ComposeRunReport> {
-        if let Err(error) = observation::snapshot(&input.artifacts, "after").await {
-            self.diagnostics
-                .borrow_mut()
-                .push(error.diagnostic("post-state"));
-        }
         input.report.diagnostics = self.diagnostics.borrow().clone();
         let bytes = serde_json::to_vec_pretty(&input.report)
             .map_err(|e| orchestrator::Error::message(e.to_string()))?;

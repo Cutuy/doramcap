@@ -1,21 +1,22 @@
 //! Passive host snapshots and a bounded, cancellation-owned Docker event stream.
 use crate::compose::{
-    Result, StoppingService,
-    adapter::{private_write, stop_timeout},
-    error::invalid,
+    DockerAdapter, Result, StoppingService, adapter::stop_timeout, command, error::invalid,
 };
-use bollard::models::EventMessage;
+use bollard::{models::EventMessage, query_parameters::ListContainersOptions};
 use futures_util::StreamExt;
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use system_config::{DockerConfiguration, MachineState};
 use tokio::{io::AsyncWriteExt, sync::watch};
 
 /// Signal number Docker reports in the `kill` event that ends a stop wait.
 const SIGKILL_SIGNAL: &str = "9";
 const NANOS_PER_MILLI: i64 = 1_000_000;
+/// Bounds each Docker fact source in a machine capture, so a slow daemon cannot hold up a run.
+const DOCKER_FACTS_DEADLINE: Duration = Duration::from_secs(5);
 
 /// One container's progress through a stop, read from a Docker event.
 #[derive(Debug, PartialEq)]
@@ -142,19 +143,71 @@ impl Drop for EventCapture {
     }
 }
 
-pub(super) async fn snapshot(root: &Path, phase: &str) -> Result<()> {
-    let mut state = BTreeMap::new();
-    for name in ["meminfo", "loadavg", "uptime", "sys/kernel/random/boot_id"] {
-        state.insert(
-            name,
-            tokio::fs::read_to_string(format!("/proc/{name}")).await?,
-        );
+/// Read the Docker facts, each within its own deadline, so one slow source only leaves its own facts unset.
+async fn docker_facts(adapter: &DockerAdapter, data_directory: &Path, state: &mut MachineState) {
+    let docker = &adapter.docker;
+    let (version, info, containers, compose_version) = tokio::join!(
+        tokio::time::timeout(DOCKER_FACTS_DEADLINE, docker.version()),
+        tokio::time::timeout(DOCKER_FACTS_DEADLINE, docker.info()),
+        tokio::time::timeout(
+            DOCKER_FACTS_DEADLINE,
+            docker.list_containers(None::<ListContainersOptions>)
+        ),
+        compose_version(adapter, data_directory),
+    );
+    let info = info.ok().and_then(std::result::Result::ok);
+    if let Some(configuration) = &mut state.configuration {
+        configuration.docker = Some(DockerConfiguration {
+            server_version: version
+                .ok()
+                .and_then(std::result::Result::ok)
+                .and_then(|version| version.version)
+                .unwrap_or_default(),
+            compose_version,
+            cgroup_driver: info
+                .as_ref()
+                .and_then(|i| i.cgroup_driver)
+                .map(|d| d.to_string())
+                .unwrap_or_default(),
+            cgroup_version: info
+                .as_ref()
+                .and_then(|i| i.cgroup_version)
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            storage_driver: info.and_then(|i| i.driver).unwrap_or_default(),
+        });
     }
-    private_write(
-        &root.join(format!("machine-{phase}.json")),
-        &serde_json::to_vec_pretty(&state)?,
+    if let (Some(condition), Ok(Ok(containers))) = (&mut state.condition, containers) {
+        let mut names: Vec<String> = containers
+            .into_iter()
+            .filter_map(|container| container.names?.into_iter().next())
+            .map(|name| name.trim_start_matches('/').to_owned())
+            .collect();
+        names.sort();
+        condition.other_containers = names;
+    }
+}
+/// The installed Compose client version, through the helper that owns its plugin's process group.
+/// Empty when it cannot be run within the deadline.
+async fn compose_version(adapter: &DockerAdapter, directory: &Path) -> String {
+    let socket = adapter.socket_path().to_string_lossy();
+    let arguments = ["version".to_owned(), "--short".to_owned()];
+    command::compose(
+        &socket,
+        directory,
+        &BTreeMap::new(),
+        &arguments,
+        DOCKER_FACTS_DEADLINE,
     )
     .await
+    .map_or_else(|_| String::new(), |(version, _)| version.trim().to_owned())
+}
+/// Observe this machine with its Docker facts. `data_directory` selects the disk reported as free.
+/// Unreadable facts stay unset, so this never fails a run.
+pub async fn machine_state(adapter: &DockerAdapter, data_directory: &Path) -> MachineState {
+    let mut state = system_config::observe(data_directory);
+    docker_facts(adapter, data_directory, &mut state).await;
+    state
 }
 async fn record_events(
     docker: bollard::Docker,

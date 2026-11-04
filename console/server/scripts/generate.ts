@@ -8,6 +8,7 @@ execFileSync('node_modules/.bin/pbjs', [
   '-p', '../proto', '-p', '../../libs/workload-docker/proto',
   '-p', '../../libs/telemetry/workflow-protocol/proto',
   '-p', '../../libs/telemetry/protocol/proto',
+  '-p', '../../libs/resources/system-config/proto',
   '-o', 'src/generated/console.js', '../proto/console.proto', '../proto/execution.proto', '../proto/live.proto',
 ], { stdio: 'inherit' });
 writeFileSync('src/generated/console.js', readFileSync('src/generated/console.js', 'utf8').replace(
