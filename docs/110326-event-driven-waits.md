@@ -15,16 +15,18 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 
 **Work items**
 
-- [ ] Follow up on merged #122 and coordinate with #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
-- [ ] Block the MCAP worker on its channel while idle; arm merge-window and batch-age deadlines only while data is pending.
-- [ ] Add a public `McapWriter` wait that blocks while writes are in flight, for `McapSink` to use.
+- [ ] Follow up on merged #122 and #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
+- [ ] Remove the 10 ms merge window. Merge already queued blocks and use the existing 100 ms writer flush deadline only while data is buffered.
+- [ ] Reuse `McapWriter::flush_written()` at the flush deadline; add no public wait API.
 
 **Validation**
+
+Approved design: bounded block channels and a shared shutdown channel; no 10 ms merge window. Buffered data uses the existing 100 ms flush deadline and `flush_written()`.
 
 - [ ] Idle workers make no periodic wake-ups, measured by context switches with `strace` or `perf`.
 - [ ] A new block and a stop request each wake an idle worker. Shutdown drains accepted blocks.
 - [ ] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
-- [ ] Zero-allocation capture and `throughput` results are recorded in #123.
+- [ ] Record zero-allocation capture and `throughput` results in this milestone's implementation PR.
 
 ## Milestone 2: System monitor
 
