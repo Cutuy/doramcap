@@ -2,6 +2,8 @@
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
 export CARGO_TARGET_DIR="$HOME/target"
+# Full debug info makes concurrent test binary links exhaust the worker's memory.
+export CARGO_PROFILE_DEV_DEBUG=line-tables-only
 export CLANG=clang-18
 export RUSTUP_TOOLCHAIN=1.99.1
 # Hold the lock until all consumers of this source/target pair have finished.
