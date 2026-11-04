@@ -14,11 +14,22 @@ async fn main() -> Result<()> {
         .next()
         .ok_or_else(|| eyre::eyre!("usage: fault-watchdog CONFIG.pbtxt"))?;
     let config = config::load(std::path::Path::new(&path))?;
-    let mut engine = Engine::new(config.settings()?, incarnation()?, incarnation()?)?;
+
     if args.next().is_some() {
         eyre::bail!("unexpected argument");
     }
     let (node, mut events) = dora_app::environment::connect()?;
+    let inputs: Vec<String> = node
+        .node_config()
+        .inputs
+        .keys()
+        .map(ToString::to_string)
+        .collect();
+    let mut engine = Engine::new(
+        config.settings(inputs.clone())?,
+        incarnation()?,
+        incarnation()?,
+    )?;
     let mut outputs = Vec::new();
     let output = config.live_output.clone().unwrap();
     outputs.push(Output::spawn(
@@ -55,6 +66,7 @@ async fn main() -> Result<()> {
     }
     dora_app::environment::ready()?;
     let start = Instant::now();
+    let mut events_closed = false;
     // Keep the subscription alive while draining publications between selects.
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
@@ -77,7 +89,7 @@ async fn main() -> Result<()> {
                 }
             }
             tokio::select! {
-                event = events.next() => match event {
+                event = events.next(), if !events_closed => match event {
                     Some(Event::Input { id, data, .. }) => {
                         match <&[u8]>::try_from(&data) {
                             Ok(bytes) => {
@@ -97,15 +109,16 @@ async fn main() -> Result<()> {
                         }
                     }
                     Some(Event::Stop(dora_node_api::StopCause::AllInputsClosed)) => {},
-                    Some(Event::Stop(_)) | None => break,
+                    Some(Event::Stop(cause)) => { eprintln!("watchdog stopping: {cause:?}"); break; },
+                    None => { eprintln!("watchdog input stream closed; retaining diagnostics"); events_closed = true; },
                     Some(Event::Error(e)) => engine.reject("transport", &e, start.elapsed())?,
                     _ => {}
                 },
                 _ = tokio::time::sleep(engine.wait(now)) => {},
-                _ = &mut shutdown => break,
+                _ = &mut shutdown => { eprintln!("watchdog received SIGINT"); break; },
             }
         }
-        for id in &config.inputs {
+        for id in &inputs {
             engine.disconnect(id, start.elapsed())?;
         }
         engine.advance(start.elapsed())?;

@@ -1833,7 +1833,7 @@ async fn compose_public_run(outcome: &str) {
     let daemon_port = daemon.local_addr().unwrap().port();
     drop((coordinator, daemon));
     let graph = root.join("graph.yml");
-    let mut flow = "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: observer\n    path: dynamic\n    inputs:\n      data: source/data\n      tick: dora/timer/millis/100\n  - id: recorder\n    path: dynamic\n    inputs:\n      snapshots: {source: source/data, queue_size: 64, queue_policy: backpressure}\n".to_string();
+    let mut flow = "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: observer\n    path: dynamic\n    inputs:\n      data: source/data\n      tick: dora/timer/millis/100\n  - id: recorder\n    path: dynamic\n    outputs: [health]\n    inputs:\n      snapshots: {source: source/data, queue_size: 64, queue_policy: backpressure}\n".to_string();
     if outcome == "complete" {
         flow = flow.replace("      tick: dora/timer/millis/100\n", "");
     }

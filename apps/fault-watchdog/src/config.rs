@@ -127,10 +127,8 @@ impl WatchdogConfig {
     }
 }
 impl WatchdogConfig {
-    /// Validates explicit settings before constructing the engine.
-    pub fn settings(&self) -> Result<fault_reconciliation::Settings> {
-        let inputs = self.inputs.clone();
-        require(!inputs.is_empty(), "at least one input is required")?;
+    /// Validates explicit settings and Dora inputs before constructing the engine.
+    pub fn settings(&self, inputs: Vec<String>) -> Result<fault_reconciliation::Settings> {
         self.validate_inputs(&inputs)?;
         let c = self;
         let ms = |v: Option<u32>| Duration::from_millis(v.unwrap().into());
@@ -160,6 +158,6 @@ pub fn load(path: &std::path::Path) -> Result<WatchdogConfig> {
     let config: WatchdogConfig =
         DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
             .transcode_to()?;
-    config.settings()?;
+    config.validate()?;
     Ok(config)
 }

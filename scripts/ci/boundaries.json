@@ -10,6 +10,7 @@
     {"from": "telemetry-protocol", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "workflow-protocol", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "fault-schema", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
+    {"from": "fault-dora", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "fault-reporter", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "fault-aggregation", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "fault-protocol", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},

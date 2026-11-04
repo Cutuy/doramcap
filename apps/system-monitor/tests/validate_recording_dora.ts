@@ -37,8 +37,8 @@ input { input: "snapshots" topic: "${topic}" message_encoding: "protobuf" schema
   // JSON is a YAML subset and safely quotes filesystem paths.
   const flow = join(root, 'flow.yml');
   writeFileSync(flow, JSON.stringify({ nodes: [
-    { id: 'monitor', path: join(bin, 'system-monitor'), args: `--config ${join(root, 'monitor.pbtxt')}`, outputs: ['snapshots', 'dictionary'] },
-    { id: 'recorder', path: join(bin, 'mcap-recorder'), args: `--config ${join(root, 'recorder.pbtxt')}`,
+    { id: 'monitor', path: join(bin, 'system-monitor'), args: `--config ${join(root, 'monitor.pbtxt')}`, outputs: ['snapshots', 'dictionary', 'health'] },
+    { id: 'recorder', outputs: ['health'], path: join(bin, 'mcap-recorder'), args: `--config ${join(root, 'recorder.pbtxt')}`,
       inputs: { snapshots: { source: 'monitor/snapshots', queue_size: 64 } } },
   ] }));
   await runDora(flow, 45_000);

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+fault-dora = { path = "../../../libs/fault/dora" }
 futures = "0.3"
 dora-app = { path = "../../../libs/dora-app" }
 telemetry-protocol = { path = "../../../libs/telemetry/protocol" }

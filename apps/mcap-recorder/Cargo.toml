@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+tokio = { version = "1", features = ["rt", "time", "macros"] }
+fault-dora = { path = "../../libs/fault/dora" }
 dora-app = { path = "../../libs/dora-app" }
 storage-persistence = { path = "../../libs/storage-persistence" }
 dora-node-api = { version = "=1.1.0", default-features = false }

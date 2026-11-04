@@ -1733,10 +1733,22 @@ dependencies = [
  "dora-node-api",
  "eyre",
  "fault-aggregation",
+ "fault-dora",
  "fault-protocol",
  "fault-reporter",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "fault-dora"
+version = "0.1.0"
+dependencies = [
+ "dora-app",
+ "dora-node-api",
+ "eyre",
+ "fault-protocol",
+ "fault-reporter",
 ]
 
 [[package]]
@@ -3035,6 +3047,7 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "fault-dora",
  "mcap",
  "prost",
  "prost-build",
@@ -3043,6 +3056,7 @@ dependencies = [
  "serde_json",
  "storage-persistence",
  "telemetry-protocol",
+ "tokio",
 ]
 
 [[package]]
@@ -5182,6 +5196,7 @@ dependencies = [
  "dora-app",
  "dora-node-api",
  "eyre",
+ "fault-dora",
  "futures",
  "prost",
  "telemetry-protocol",

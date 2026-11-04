@@ -276,6 +276,10 @@ fn run(config: MonitorConfig) -> Result<()> {
     let limit = config.samples;
     // Preallocate the discard batch before entering the periodic loop.
     let mut discard = Snapshot::with_capacities(records, tasks);
+    #[cfg(feature = "dora")]
+    let sampling_check = publisher
+        .as_ref()
+        .map(|publisher| publisher.sampling_check());
     let worker = std::thread::Builder::new()
         .name("monitor-collector".into())
         .spawn(move || {
@@ -303,6 +307,10 @@ fn run(config: MonitorConfig) -> Result<()> {
                                 Ok(())
                             },
                         )?;
+                        #[cfg(feature = "dora")]
+                        if let Some(check) = &sampling_check {
+                            check.success().map_err(|error| error.to_string())?;
+                        }
                         Ok(())
                     })?;
                 Ok((sequence, dropped))
@@ -324,9 +332,21 @@ fn run(config: MonitorConfig) -> Result<()> {
             let mut select = Select::new_biased();
             let control = select.recv(&control_rx);
             let sample = consumer.register_recv(&mut select);
-            let selected = if let Some(deadline) = recorder
+            // Health also wakes this loop so a stalled collector stays observable.
+            #[cfg(feature = "dora")]
+            let health_deadline = publisher
+                .as_mut()
+                .map(|publisher| publisher.tick_health())
+                .transpose()?;
+            #[cfg(not(feature = "dora"))]
+            let health_deadline = None;
+            let flush_deadline = recorder
                 .as_ref()
-                .and_then(recording::Recorder::next_flush_deadline)
+                .and_then(recording::Recorder::next_flush_deadline);
+            let selected = if let Some(deadline) = [flush_deadline, health_deadline]
+                .into_iter()
+                .flatten()
+                .min()
             {
                 match select.select_deadline(deadline) {
                     Ok(selected) => selected,
@@ -465,10 +485,6 @@ fn run(config: MonitorConfig) -> Result<()> {
         if let Some(recorder) = recorder.take() {
             recorder.finish()?;
         }
-        #[cfg(feature = "dora")]
-        if let Some(publisher) = publisher.as_mut() {
-            publisher.finish()?;
-        }
         if let Some(error) = event_error {
             bail!(error);
         }
@@ -479,6 +495,19 @@ fn run(config: MonitorConfig) -> Result<()> {
         .join()
         .map_err(|_| eyre!("collection thread panicked"))?
         .map_err(|e| eyre!(e));
+    #[cfg(feature = "dora")]
+    if let Err(error) = &publish_result
+        && let Some(publisher) = publisher.as_mut()
+    {
+        let _ = publisher.report_failure(&error.to_string());
+    }
+    #[cfg(feature = "dora")]
+    if let Some(publisher) = publisher.as_mut() {
+        if let Err(error) = &collected {
+            let _ = publisher.report_sampling_failure(&error.to_string());
+        }
+        publisher.finish()?;
+    }
     publish_result?;
     let (collected, dropped) = collected?;
     if !config.published_count_path.is_empty() {
