@@ -5152,11 +5152,13 @@ dependencies = [
  "activity-tracing",
  "bytes",
  "crossbeam-channel",
+ "fault-protocol",
  "io-uring",
  "libc",
  "mcap",
  "memmap2",
  "prost",
+ "telemetry-protocol",
  "tracing",
  "zenoh",
 ]
