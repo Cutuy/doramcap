@@ -30,5 +30,7 @@ export function validateOverview(value: unknown, catalog: Catalog): asserts valu
     for (const id of item.components) if (!members.has(id)) throw new Error(`${item.id}: component ${id} is outside its capabilities`);
     const partners = new Set(item.capabilities.flatMap(id => capabilities.get(id)!.integrations));
     for (const id of item.integrations) if (!partners.has(id)) throw new Error(`${item.id}: integration ${id} is outside its capabilities`);
+    const endpoints = new Set(['applications', ...item.capabilities, ...item.integrations]);
+    for (const flow of item.flows) for (const id of [flow.from, flow.to]) if (!endpoints.has(id)) throw new Error(`${item.id}: flow endpoint ${id} is not one of its capabilities or integrations`);
   }
 }

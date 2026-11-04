@@ -10,7 +10,7 @@ For every important decision, ask the user and wait for their answer before proc
 
 ## Simplicity
 
-Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
+Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Discuss new subsystems, abstractions or dependencies with the user before introducing them.
 
 ## Constants
 
@@ -36,7 +36,7 @@ Environment-based application configuration is highly discouraged. Every new env
 
 ## Third-party crates
 
-Always present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adopting a dependency or implementing a custom solution.
+Present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adding a dependency. When a reputable crate clearly fits a planned custom implementation, mention it.
 
 ## Test structure
 

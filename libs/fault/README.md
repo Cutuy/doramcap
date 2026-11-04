@@ -11,5 +11,6 @@ Bounded fault capture, state aggregation and Protobuf publication for host-manag
 | [fault-reconciliation](reconciliation/) | Input binding, source liveness and host frames |
 | [fault-schema](schema/) | Generated Protobuf contracts and enums |
 | [fault-protocol](protocol/) | Checked record translation and byte codecs |
+| [fault-dora](dora/) | Reporter draining on a Dora publication loop |
 
 [State transitions and workflow](protocol/docs/102026-event-driven-faults.md). Cargo package names remain `fault-*`.

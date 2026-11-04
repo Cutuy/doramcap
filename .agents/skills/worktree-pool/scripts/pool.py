@@ -108,6 +108,7 @@ def main():
     release_mode = r.add_mutually_exclusive_group(required=True)
     release_mode.add_argument('--pr', help='Published GitHub PR URL; verified with gh')
     release_mode.add_argument('--main', action='store_true', help='Release after user-requested cherry-pick integration into main')
+    release_mode.add_argument('--abandon', action='store_true', help='Free the slot without integration; branch, commits and files stay')
     args = p.parse_args()
     common = Path(git(args.repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').decode().strip()).resolve()
     records = git(args.repo, 'worktree', 'list', '--porcelain', '-z').split(b'\0')
@@ -128,7 +129,8 @@ def main():
             if path.exists() and Path(git(path, 'rev-parse', '--show-toplevel').decode().strip()).resolve() != path:
                 raise RuntimeError('Pool directory is not a worktree root')
             return path
-        if args.command == 'init':
+        if args.command in ('init', 'acquire', 'acq'):
+            # Acquire creates any missing slots, so a fresh clone needs no separate init step.
             for i in range(1, 6):
                 if any(s['id'] == i for s in state['slots']):
                     continue
@@ -139,9 +141,7 @@ def main():
                 git(main_root, 'worktree', 'add', '--detach', str(path), 'HEAD')
                 state['slots'].append(slot)
                 save(statefile, state)
-        elif args.command in ('acquire', 'acq'):
-            if len(state['slots']) != 5:
-                raise RuntimeError('Run init first; pool must contain five slots')
+        if args.command in ('acquire', 'acq'):
             git(main_root, 'check-ref-format', '--branch', args.branch)
             if subprocess.run(['git', '-C', str(main_root), 'show-ref', '--verify', '--quiet', 'refs/heads/' + args.branch]).returncode != 1:
                 raise RuntimeError('Branch already exists or could not be checked; use a new branch')
@@ -198,18 +198,25 @@ def main():
                 slot['lease']['state'] = 'active'
                 save(statefile, state)
             except Exception:
-                print(f'Refresh failed; slot remains reserved with token {token}. Inspect status and repair manually; never steal a lease.', file=sys.stderr)
+                print(f'Refresh failed; slot remains reserved with token {token}. Inspect it, then release with --abandon.', file=sys.stderr)
                 raise
             print(json.dumps(slot, indent=2))
             return
-        elif args.command == 'release':
+        if args.command == 'release':
             slot = next((s for s in state['slots'] if s['lease'] and s['lease']['token'] == args.token), None)
             if slot is None:
                 raise RuntimeError('Unknown lease token')
             path = safe(slot)
             lease = slot['lease']
+            if args.abandon:
+                # Nothing is deleted: a dirty slot is skipped by acquire until it is cleaned.
+                slot['last_abandoned'] = {'branch': lease['branch'], 'state': lease['state']}
+                slot['lease'] = None
+                save(statefile, state)
+                print(json.dumps(state, indent=2))
+                return
             if lease['state'] != 'active':
-                raise RuntimeError('Incomplete acquisition needs manual repair; cannot release')
+                raise RuntimeError('Incomplete acquisition; release with --abandon after inspecting the slot')
             branch = git(path, 'branch', '--show-current').decode().strip()
             head = git(path, 'rev-parse', 'HEAD').decode().strip()
             if branch != lease['branch']:

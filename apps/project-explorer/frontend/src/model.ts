@@ -19,15 +19,35 @@ export function displayName(name: string): string {
   return name.split('-').map(word => acronyms[word] ?? word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 export function componentHref(component: Component): string {
-  return `#/${component.id}`;
+  return routeHref(`/${component.id}`, new URLSearchParams());
 }
 export interface Route { path: string; params: URLSearchParams; }
-export function parseRoute(hash: string): Route {
-  const [path, query = ''] = (hash.replace(/^#/, '') || '/overview').split('?');
-  return { path, params: new URLSearchParams(query) };
+// Base path with a trailing slash: `/`, or `/doramcap/` for a subpath build. Absent when scripts import this module.
+const base: string = import.meta.env?.BASE_URL ?? '/';
+const sections = new Set(['overview', 'apps', 'crates', 'dependencies', 'docs']);
+/** Map a location inside the base to a route; the root and the legacy `/overview` are the overview. */
+export function parseRoute(location: { pathname: string; search: string }): Route {
+  const rest = (location.pathname.startsWith(base) ? location.pathname.slice(base.length) : location.pathname.slice(1)).replace(/\/+$/, '');
+  return { path: rest ? `/${decodeURI(rest)}` : '/overview', params: new URLSearchParams(location.search) };
 }
+/** Build a link for a route path such as `/apps`; the overview lives at the base itself. */
 export function routeHref(path: string, params: URLSearchParams): string {
-  return `#${path}${params.size ? `?${params}` : ''}`;
+  const rest = path === '/overview' ? '' : path.replace(/^\//, '');
+  return `${base}${rest}${params.size ? `?${params}` : ''}`;
+}
+export function href(path: string, values: Record<string, string> = {}): string {
+  return routeHref(path, new URLSearchParams(values));
+}
+/** True for same-origin links into a known explorer section; server routes such as `running/` are excluded. */
+export function isAppLink(url: URL): boolean {
+  if (url.origin !== window.location.origin || !url.pathname.startsWith(base)) return false;
+  const first = url.pathname.slice(base.length).split('/')[0];
+  return first === '' || sections.has(first);
+}
+/** Push or replace a client route and notify the router. */
+export function navigate(target: string, replace = false) {
+  window.history[replace ? 'replaceState' : 'pushState'](null, '', target);
+  window.dispatchEvent(new Event('locationchange'));
 }
 /** Resolve a repository-relative reference; return null if it escapes the root. */
 export function relativePath(document: string, reference: string): string | null {

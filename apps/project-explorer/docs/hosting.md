@@ -6,26 +6,34 @@ npm --prefix apps/project-explorer/frontend run build
 npm --prefix apps/project-explorer/frontend run preview
 ```
 
-`frontend/dist/` is self-contained. Serve it with any static HTTP server. Building
-uses `cargo metadata --offline --no-deps`; it does not compile Rust or require
+`frontend/dist/` is self-contained. Serve it with any static HTTP server that
+answers unknown paths with `index.html`; the gallery server and `vite preview` do.
+Building uses `cargo metadata --offline --no-deps`; it does not compile Rust or require
 system headers. Regenerate after editing repository documentation or manifests.
 
-## GitHub Pages
+## GitHub Pages and subpaths
 
-Upload the contents of `frontend/dist/` as the Pages artifact using the repository’s
-chosen deployment workflow. Vite emits relative asset paths, so the same build
-works at `/` or `/doramcap/`. No server-side rewrite rules are required.
-Publication is separate from building; this app does not deploy automatically.
+Assets use absolute paths. For a subpath, build with its base:
 
-Hash routes support refresh, browser history, copied links and new tabs:
+```sh
+npm --prefix apps/project-explorer/frontend run build -- --base /doramcap/
+```
 
-- `#/apps?q=activity`
-- `#/crates/activity-tracing`
-- `#/dependencies?focus=apps/dataflow-tracing-demo`
-- `#/overview?useCase=perception`
-- `#/overview?capability=recording`
-- `#/overview?integration=mcap`
-- `#/docs?path=docs/repository-layout.md&heading=component-ownership`
+The build also writes `404.html`, which Pages serves for deep links. Upload the
+contents of `frontend/dist/` as the Pages artifact using the repository’s chosen
+deployment workflow; this app does not deploy automatically.
+
+Clean URLs support refresh, browser history, copied links and new tabs. Links in
+the old `#/path` form redirect to the same route.
+
+- `/apps?q=activity`
+- `/crates/activity-tracing`
+- `/dependencies?focus=apps/dataflow-tracing-demo`
+- `/?useCase=perception`
+- `/?capability=recording`
+- `/?integration=mcap`
+- `/?useCase=latency&view=2d`
+- `/docs?path=docs/repository-layout.md&heading=component-ownership`
 
 The overview is the default route. Capability and integration links retain the
 selected use case. Dependencies use `focus`; the explorer shows full transitive chains. `build=1` and `dev=1` include

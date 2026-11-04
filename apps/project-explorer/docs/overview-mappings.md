@@ -19,6 +19,7 @@ continue to come from the repository.
 | `group` | Integration presentation group: `execution` or `communication` (default) |
 | `status` | Explicit maturity; illustrative use cases describe composition possibilities |
 | `limits` | Capability-specific boundaries and future scope |
+| `flows` | Use-case edges (`data`, `control`, `evidence`) between its capabilities, integrations or `applications`; drawn in the stack views |
 
 ## Editing
 
@@ -41,10 +42,10 @@ Generation runs Ajv against the strict JSON Schema, then verifies duplicate IDs,
 component/capability/integration references, evidence documents, and membership.
 Any failure exits nonzero before emitting the overview.
 
-Deep links use `#/overview?useCase=perception`, `?capability=memory`, or
-`?integration=dora`. The first use case in manifest order is selected when `useCase` is omitted.
-The selected use case can accompany a capability or integration.
-Unknown IDs produce a recoverable message.
+Deep links use `/?useCase=perception`, `?capability=memory`, or
+`?integration=dora`. Without `useCase` the story opens on its hero.
+The selected use case can accompany a capability or integration. `view=2d` shows the flat schematic, which is also the fallback without WebGL. Scrolling the story updates `useCase`.
+Unknown IDs are ignored.
 
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is

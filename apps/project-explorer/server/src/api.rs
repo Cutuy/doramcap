@@ -15,7 +15,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::PathBuf;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 
 #[derive(Clone)]
 struct ApiState {
@@ -73,7 +73,12 @@ pub fn router(service: Service, origin: String, assets: PathBuf, heartbeat_secon
             get(collection_file),
         )
         .with_state(state)
-        .fallback_service(ServeDir::new(assets).append_index_html_on_directories(true))
+        // Unknown paths are SPA routes such as /apps; the client router renders them from index.html.
+        .fallback_service(
+            ServeDir::new(&assets)
+                .append_index_html_on_directories(true)
+                .fallback(ServeFile::new(assets.join("index.html"))),
+        )
 }
 fn authorized(headers: &HeaderMap, origin: &str) -> bool {
     headers.get_all(header::ORIGIN).iter().count() == 1

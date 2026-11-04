@@ -7,22 +7,26 @@
     "generate": "tsx scripts/generate.ts",
     "dev": "npm run generate && vite --host 127.0.0.1",
     "build": "npm run generate && tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "readme": "npm run generate && tsx scripts/readme.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",
     "elkjs": "^0.11.0",
     "lucide-react": "^0.468.0",
+    "motion": "^14.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "rehype-slug": "^6.0.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.181.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/three": "^0.181.0",
     "ajv": "^8.17.1",
     "mdast-util-to-string": "^4.0.0",
     "remark-parse": "^11.0.0",
