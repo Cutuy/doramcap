@@ -2,11 +2,12 @@
 
 ![Event-driven workers](110326-event-driven-waits.svg)
 
-Replace sleep, timed-park and yield loops outside tests with blocking waits on real events. Timeouts remain only for real deadlines.
+Replace Rust sleep, timed-park and yield loops used to poll for state changes outside tests with explicit event-driven signaling. Timers may implement sampling schedules, pacing and real deadlines.
 
 ## Plan
 
-- One PR per milestone, in order. Milestones 2–4 are independent of milestone 1.
+- One implementation PR per milestone. Milestones 2–4 are independent of milestone 1.
+- Scope: Rust code. Preserve sampling schedules, simulated work and stability deadlines; record each retained timer's purpose in its milestone.
 - Present third-party crates for evaluation before adding any.
 - Bring any wait without an event source to the user before keeping a timer.
 
@@ -14,14 +15,15 @@ Replace sleep, timed-park and yield loops outside tests with blocking waits on r
 
 **Work items**
 
-- [ ] Replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with a bounded channel and `select!`, in #122.
-- [ ] Block the MCAP worker on its channel, using a deadline only for the merge window or batch age, in #123.
+- [ ] Follow up on merged #122 and coordinate with #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
+- [ ] Block the MCAP worker on its channel while idle; arm merge-window and batch-age deadlines only while data is pending.
 - [ ] Add a public `McapWriter` wait that blocks while writes are in flight, for `McapSink` to use.
 
 **Validation**
 
 - [ ] Idle workers make no periodic wake-ups, measured by context switches with `strace` or `perf`.
-- [ ] A new block and a stop request each wake an idle worker.
+- [ ] A new block and a stop request each wake an idle worker. Shutdown drains accepted blocks.
+- [ ] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
 - [ ] Zero-allocation capture and `throughput` results are recorded in #123.
 
 ## Milestone 2: System monitor
@@ -31,10 +33,12 @@ Replace sleep, timed-park and yield loops outside tests with blocking waits on r
 - [ ] Add a blocking receive to the `monitor-core` handoff, and use it at `apps/system-monitor/src/main.rs:431`.
 - [ ] Forward Dora events from a thread blocking on `recv` into one channel, replacing `stop_requested` polling.
 - [ ] Keep the sampling deadline at `main.rs:262`, waiting on a stop channel so stopping is immediate.
+- [ ] Signal collector completion and errors to the publishing loop; drain queued snapshots before exit and join the Dora receiver on shutdown.
 
 **Validation**
 
-- [ ] Stop takes effect without waiting for the next sampling tick.
+- [ ] Ctrl-C and Dora stop wake waits without waiting for the next sampling tick.
+- [ ] Collector completion, failure and producer disconnect wake the publisher; queued snapshots drain before exit.
 - [ ] The idle publishing loop makes no periodic wake-ups.
 - [ ] System Monitor tests and its recording checks pass.
 
@@ -51,7 +55,8 @@ Replace sleep, timed-park and yield loops outside tests with blocking waits on r
 
 **Validation**
 
-- [ ] Each app's existing tests pass.
+- [ ] Preserve dataflow simulated-work delays and storage publish pacing.
+- [ ] Each app's existing tests pass; stop and disconnect wake blocked workers.
 - [ ] CUDA SHM Demo passes on a CUDA-capable host.
 - [ ] Storage Demo bursts still reach their previous throughput.
 
@@ -65,13 +70,14 @@ Replace sleep, timed-park and yield loops outside tests with blocking waits on r
 - [ ] `libs/workload-docker/src/compose/adapter/project.rs:220`, `workflows/recorded_compose/execution.rs:62`, `:135`: use Docker's event stream.
 - [ ] `libs/workload-docker/src/workflows/dora.rs:121`: find a Dora daemon connection signal.
 - [ ] `apps/project-explorer/server/src/runtime.rs:427`: wait on status with `tokio::sync::watch`.
-- [ ] `console/server/src/service.ts:91`: replace the 100 ms `tick` with notifications from its sources.
 
 **Validation**
 
+- [ ] Subscribe before inspecting state; recheck readiness after notifications and handle event-stream closure.
 - [ ] Readiness and stop timeouts still fail on their deadlines.
+- [ ] Preserve or explicitly revise the recording footer stability deadline and system-app readiness stabilization interval.
 - [ ] Dora end-to-end and Console tests pass.
-- [ ] A final audit of non-test code finds no timer-driven polling, apart from deadlines listed in this plan.
+- [ ] A final audit of Rust code outside tests finds no timer-driven state polling; retained timers have documented sampling, pacing or deadline behavior.
 
 ## Open decisions
 

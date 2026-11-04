@@ -10,7 +10,7 @@ Strongly favor deletion, less code, and explicit behavior. Keep changes as simpl
 
 ## Concurrency
 
-Use proper event-driven mechanisms: block on channels, `select!`, condition variables or kernel waits. Avoid sleep loops, including timed-park and yield loops, outside tests. Use a timeout only for a real deadline.
+In Rust code outside tests, use event-driven waits: block on channels, `select!`, condition variables or kernel waits. Replace sleep, timed-park and yield loops used to poll for state changes with explicit signaling. Timers may implement sampling schedules, pacing and real deadlines.
 
 ## Implementation languages
 
