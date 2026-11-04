@@ -26,6 +26,8 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 
 Evidence: release locked tests passed with default features (24) and all features (30), including zero-allocation capture, startup failure, sink error/panic, idle wake and deadline regressions. Strict Clippy passed for both configurations; formatting, library boundaries and whitespace checks passed. `strace -ff -e futex,clock_nanosleep` showed two indefinite worker waits spanning the idle intervals, with work and shutdown wakes. Paced throughput (100,000 events, 1,000 us/64) delivered 1,564 batches with no drops; three unpaced runs delivered 930–1,329 and counted 235–634 sink drops. These are post-change measurements, not a before/after comparison.
 
+Named-constant follow-up: timing call sites in the output tests use named durations; the writer uses `MAX_BATCH_AGE` for its flush deadline. Release locked output tests passed with default features (9) and all features (12); MCAP roundtrip tests passed (6). Capability-required executables ran with sudo after unprivileged builds. Formatting and whitespace checks passed.
+
 Approved design: bounded block channels and a shared shutdown channel; no 10 ms merge window. Buffered data uses the existing 100 ms flush deadline and `flush_written()`.
 
 - [x] Idle workers make no periodic wake-ups, verified by kernel wait tracing with `strace`.

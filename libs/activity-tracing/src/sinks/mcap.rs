@@ -92,7 +92,7 @@ impl Sink for Writer {
     fn next_flush_deadline(&self) -> Option<Instant> {
         self.0.as_ref().and_then(McapWriter::next_flush_deadline)
     }
-    /// Flushes the 100 ms batch deadline even while no blocks arrive.
+    /// Flushes buffered data at the writer's deadline even while no blocks arrive.
     fn poll(&mut self) -> Result<()> {
         if let Some(writer) = self.0.as_mut() {
             let now = Instant::now();
