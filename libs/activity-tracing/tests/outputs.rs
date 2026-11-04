@@ -26,7 +26,7 @@ impl Sink for Collect {
 }
 #[cfg(feature = "mcap")]
 #[test]
-fn mcap_preserves_shared_bytes_schema_and_timestamps() {
+fn mcap_preserves_bytes_schema_and_timestamps() {
     use activity_tracing::{sinks::McapSink, wire};
     let path = std::env::temp_dir().join(format!(
         "activity-{}-{}.mcap",
@@ -111,6 +111,149 @@ fn failure_is_reported_and_other_output_survives() {
     assert_eq!(shared.lock().unwrap().len(), 2);
     assert_eq!(report.sinks[0].dropped, 2);
 }
+#[test]
+fn panicking_sink_is_reported_and_returns_every_block() {
+    // Arrange
+    struct Panic;
+    impl Sink for Panic {
+        fn name(&self) -> &str {
+            "panic"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            panic!("injected");
+        }
+    }
+    let mut rt = Runtime::start(
+        Config {
+            blocks: 8,
+            sink_queue: 2,
+            ..Default::default()
+        },
+        vec![Box::new(Panic)],
+    )
+    .unwrap();
+    let h = rt.handle();
+    let reg = h.register_thread("test").unwrap();
+    // Act
+    tracing::subscriber::with_default(h.subscriber(), || {
+        for n in 0..10 {
+            tracing::info!(target:"activity",n);
+        }
+    });
+    drop(reg);
+    let report = rt.shutdown().unwrap();
+    // Assert
+    assert!(report.sinks[0].error.as_ref().unwrap().contains("panicked"));
+    let buffers = h.buffers();
+    assert_eq!(buffers.capture_free, buffers.capture_blocks);
+}
+#[test]
+fn sequence_gap_counts_blocks_the_sink_dropped() {
+    // Arrange
+    use std::{sync::mpsc, time::Duration};
+    struct Gated {
+        seen: Arc<Mutex<Vec<u64>>>,
+        entered: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+    impl Sink for Gated {
+        fn name(&self) -> &str {
+            "gated"
+        }
+        fn write(&mut self, b: BatchView<'_>) -> Result<()> {
+            self.seen.lock().unwrap().push(b.sequence);
+            let _ = self.entered.send(());
+            self.release.recv_timeout(Duration::from_secs(5))?;
+            Ok(())
+        }
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let (entered_tx, entered) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    let mut rt = Runtime::start(
+        Config {
+            sink_queue: 1,
+            ..Default::default()
+        },
+        vec![Box::new(Gated {
+            seen: seen.clone(),
+            entered: entered_tx,
+            release: release_rx,
+        })],
+    )
+    .unwrap();
+    let h = rt.handle();
+    let reg = h.register_thread("test").unwrap();
+    let step = || {
+        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        release.send(()).unwrap();
+    };
+    // Act: while the first write blocks, one block queues and four drop.
+    tracing::subscriber::with_default(h.subscriber(), || {
+        tracing::info!(target:"activity",n = 0);
+        entered.recv_timeout(Duration::from_secs(5)).unwrap();
+        for n in 1..6 {
+            tracing::info!(target:"activity",n);
+        }
+        release.send(()).unwrap();
+        step();
+        tracing::info!(target:"activity",n = 6);
+        step();
+    });
+    drop(reg);
+    let report = rt.shutdown().unwrap();
+    // Assert
+    assert_eq!(*seen.lock().unwrap(), [1, 6, 7]);
+    assert_eq!(report.sinks[0].written, 3);
+    assert_eq!(report.sinks[0].dropped, 4);
+}
+#[test]
+fn concurrent_producers_deliver_ascending_sequences_to_every_sink() {
+    // Arrange
+    struct Sequences(Arc<Mutex<Vec<u64>>>);
+    impl Sink for Sequences {
+        fn name(&self) -> &str {
+            "sequences"
+        }
+        fn write(&mut self, b: BatchView<'_>) -> Result<()> {
+            self.0.lock().unwrap().push(b.sequence);
+            Ok(())
+        }
+    }
+    let seen = [Arc::default(), Arc::default()];
+    let mut rt = Runtime::start(
+        Config {
+            blocks: 4096,
+            sink_queue: 2048,
+            ..Default::default()
+        },
+        vec![
+            Box::new(Sequences(Arc::clone(&seen[0]))),
+            Box::new(Sequences(Arc::clone(&seen[1]))),
+        ],
+    )
+    .unwrap();
+    // Act
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            let h = rt.handle();
+            scope.spawn(move || {
+                let _reg = h.register_thread("test").unwrap();
+                tracing::subscriber::with_default(h.subscriber(), || {
+                    for n in 0..5000 {
+                        tracing::info!(target:"activity",n);
+                    }
+                });
+            });
+        }
+    });
+    rt.shutdown().unwrap();
+    // Assert
+    for sink in &seen {
+        let sequences: std::sync::MutexGuard<'_, Vec<u64>> = sink.lock().unwrap();
+        assert!(sequences.is_sorted_by(|a, b| a < b));
+    }
+}
 #[cfg(feature = "websocket")]
 #[test]
 fn websocket_binary_frame_decodes() {
@@ -173,7 +316,6 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
     let mut rt = Runtime::start(
         Config {
             sink_queue: 1,
-            encoded_buffers: 5,
             ..Default::default()
         },
         vec![
@@ -208,5 +350,5 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
     assert_eq!(report.sinks[0].dropped, 8);
     assert_eq!(report.sinks[1].written, 10);
     assert_eq!(report.sinks[1].dropped, 0);
-    assert_eq!(report.capture.encoded_batches, 0);
+    assert_eq!(report.capture.records, 0);
 }

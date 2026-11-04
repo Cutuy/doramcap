@@ -8,7 +8,6 @@ export interface Resources {
     ready: number;
     reserved_bytes: number;
   };
-  encoded: { used: number; capacity: number; reserved_bytes: number };
   replay: {
     bytes: number;
     byte_capacity: number;
@@ -103,7 +102,6 @@ type Sample = {
   total: number;
   rate: number | null;
   capture: number;
-  encoded: number;
 };
 export function ResourcePanel({
   resources: r,
@@ -133,7 +131,6 @@ export function ResourcePanel({
           total: r.live.total_bytes,
           rate,
           capture: r.capture.used,
-          encoded: r.encoded.used,
         },
       ]
         .filter((s) => s.time >= time - 60000)
@@ -141,7 +138,7 @@ export function ResourcePanel({
     });
   }, [r]);
   const rate = history.at(-1)?.rate ?? null;
-  const reserved = r.capture.reserved_bytes + r.encoded.reserved_bytes;
+  const reserved = r.capture.reserved_bytes;
   return (
     <section
       className="panel resources-panel"
@@ -171,19 +168,11 @@ export function ResourcePanel({
           <span className="metric-label">RESERVED POOL PAYLOAD</span>
           <strong>{bytes(reserved)}</strong>
           <div className="pool-budget">
-            <i
-              style={{
-                width: `${(r.capture.reserved_bytes / reserved) * 100}%`,
-              }}
-            />
-            <i />
+            <i style={{ width: "100%" }} />
           </div>
           <small>
             <i className="capture-key" /> Capture{" "}
             {bytes(r.capture.reserved_bytes)}
-            <br />
-            <i className="encoded-key" /> Encoded{" "}
-            {bytes(r.encoded.reserved_bytes)}
           </small>
         </div>
         <div>
@@ -207,13 +196,7 @@ export function ResourcePanel({
           label="Capture blocks in use"
           used={r.capture.used}
           capacity={r.capture.capacity}
-          detail={`${r.capture.ready} queued for encoding · observed peak ${Math.max(r.capture.used, ...history.map((s) => s.capture))}`}
-        />
-        <Gauge
-          label="Encoded buffers leased"
-          used={r.encoded.used}
-          capacity={r.encoded.capacity}
-          detail={`Shared across sinks · observed peak ${Math.max(r.encoded.used, ...history.map((s) => s.encoded))}`}
+          detail={`${r.capture.ready} awaiting sinks · observed peak ${Math.max(r.capture.used, ...history.map((s) => s.capture))}`}
         />
         <Gauge
           label="Replay bytes"

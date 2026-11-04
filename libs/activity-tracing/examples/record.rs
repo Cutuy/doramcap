@@ -7,7 +7,6 @@ fn main() -> activity_tracing::Result<()> {
     let mut runtime = Runtime::start(
         Config {
             sink_queue: 16,
-            encoded_buffers: 32,
             ..Default::default()
         },
         vec![Box::new(McapSink::new(path))],

@@ -256,7 +256,6 @@ async fn status(State(a): State<App>) -> Json<Status> {
     let resources = serde_json::json!({
         "rss_bytes": rss, "peak_rss_bytes": peak_rss,
         "capture": {"used": buffers.capture_blocks.saturating_sub(buffers.capture_free), "capacity": buffers.capture_blocks, "ready": buffers.capture_ready, "reserved_bytes": buffers.capture_reserved_bytes},
-        "encoded": {"used": buffers.encoded_buffers.saturating_sub(buffers.encoded_free), "capacity": buffers.encoded_buffers, "reserved_bytes": buffers.encoded_reserved_bytes},
         "replay": {"bytes": feed.bytes, "byte_capacity": HISTORY_BYTES, "batches": feed.history.len(), "batch_capacity": 512},
         "live": {"clients": feed.tx.receiver_count(), "pending_batches": feed.tx.len(), "capacity": 256, "total_bytes": feed.total_bytes, "total_batches": feed.total_batches},
         "mailboxes": a.broker.mailboxes.iter().enumerate().map(|(i, tx)| serde_json::json!({"name": NAMES[i], "used": tx.len(), "capacity": tx.capacity().unwrap_or(0)})).collect::<Vec<_>>(),
@@ -273,7 +272,7 @@ async fn status(State(a): State<App>) -> Json<Status> {
         published: a.broker.published.load(Ordering::Relaxed),
         received: a.broker.received.load(Ordering::Relaxed),
         mailbox_drops: a.broker.dropped.load(Ordering::Relaxed),
-        capture_drops: losses.records + losses.encoded_batches + losses.unregistered,
+        capture_drops: losses.records + losses.unregistered,
         field_losses: losses.fields,
         recording: a.recording.to_string(),
     })
@@ -412,7 +411,6 @@ async fn main() -> Result<()> {
     let mut runtime = Runtime::start(
         Config {
             blocks: 128,
-            encoded_buffers: 68,
             sink_queue: 32,
             ..Default::default()
         },

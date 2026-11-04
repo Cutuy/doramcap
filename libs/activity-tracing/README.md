@@ -1,7 +1,7 @@
 # Activity tracing
 
-Embedded recording of `tracing` spans and events, with bounded capture buffers,
-background encoding, and MCAP, WebSocket or OpenTelemetry outputs.
+Embedded recording of `tracing` spans and events, with bounded capture blocks
+and MCAP, WebSocket or OpenTelemetry outputs. Each sink's worker serializes for itself.
 
 ![Architecture](docs/architecture.svg)
 

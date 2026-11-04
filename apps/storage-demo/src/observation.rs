@@ -182,8 +182,8 @@ pub fn capture_activity(
     // while sink workers are descheduled, preserving bounded nonblocking capture.
     let sink_queue = 64;
     let config = activity_tracing::Config {
+        blocks: 4 * sink_queue,
         sink_queue,
-        encoded_buffers: sinks.len() * (sink_queue + 1) + 1,
         ..Default::default()
     };
     let mut runtime = activity_tracing::Runtime::start(config, sinks)?;

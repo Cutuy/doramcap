@@ -3,10 +3,9 @@
 [Architecture](architecture.svg)
 
 Implement an embedded recording library with standard `tracing` instrumentation,
-Crossbeam queues, reusable capture blocks and encoded buffers. Register producer
+Crossbeam queues and reusable capture blocks. Register producer
 threads before capture. Bound records, strings, active spans, queues and memory.
-MCAP and live consumers share encoded batches; OpenTelemetry conversion runs in
-its own worker. Initialization and output libraries may allocate. Measure the
+Sinks share capture blocks, and each sink's worker serializes for itself. Initialization and output libraries may allocate. Measure the
 complete steady-state producer path and publish its limitations.
 
 ## M1 — Bounded capture and ownership
