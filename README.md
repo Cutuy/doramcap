@@ -14,8 +14,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Cutuy/doramcap/actions/workflows/ci.yml"><img alt="CI: x86_64 + ARM64" src="https://github.com/Cutuy/doramcap/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Cutuy/doramcap/actions/workflows/console-release.yml"><img alt="Console release" src="https://github.com/Cutuy/doramcap/actions/workflows/console-release.yml/badge.svg"></a>
+  <a href="https://github.com/Cutuy/doramcap/actions/workflows/ci.yml"><img alt="Rust CI" src="https://github.com/Cutuy/doramcap/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Cutuy/doramcap/actions/workflows/node.yml"><img alt="Node CI" src="https://github.com/Cutuy/doramcap/actions/workflows/node.yml/badge.svg"></a>
   <a href="rust-toolchain.toml"><img alt="Rust 1.99.1" src="https://img.shields.io/badge/Rust-1.99.1-orange?logo=rust"></a>
+  <a href="https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates"><img alt="Dependabot Updates" src="https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates/badge.svg"></a>
   <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue"></a>
 </p>
 
@@ -49,13 +52,13 @@ see what happened and test a fix.
       <br><sub><a href="console/">Console</a> · <a href="apps/orchestrator-demo/">Orchestrator demo</a> · <a href="apps/system-monitor/">System monitor</a></sub>
     </td>
     <td width="50%" valign="top">
-      <a href="apps/dataflow-tracing/"><picture>
+      <a href="apps/dataflow-tracing-demo/"><picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/readme/use-case-perception-dark.svg">
         <img alt="Run a perception pipeline: data, control and evidence flows through the stack" src="docs/readme/use-case-perception-light.svg" width="100%">
       </picture></a>
       <h3>Run a perception pipeline</h3>
       Move a payload through a dataflow, keep its buffer until processing completes, trace the work and capture evidence.
-      <br><sub><a href="apps/dataflow-tracing/">Dataflow tracing</a> · <a href="apps/cuda-shm-demo/">CUDA shared memory</a> · <a href="apps/mcap-recorder/">MCAP recorder</a></sub>
+      <br><sub><a href="apps/dataflow-tracing-demo/">Dataflow tracing</a> · <a href="apps/cuda-shm-demo/">CUDA shared memory</a> · <a href="apps/mcap-recorder/">MCAP recorder</a></sub>
     </td>
   </tr>
   <tr>
@@ -91,13 +94,13 @@ npm --prefix apps/project-explorer/frontend run dev
 ```
 
 Then follow inputs through a four-node Dora pipeline with the
-[dataflow tracing demo](apps/dataflow-tracing/) (requires Dora CLI 1.1.0):
+[dataflow tracing demo](apps/dataflow-tracing-demo/) (requires Dora CLI 1.1.0):
 
 ```sh
-cargo build --locked -p dataflow-tracing
-npm --prefix apps/dataflow-tracing/frontend ci
-npm --prefix apps/dataflow-tracing/frontend run build
-python3 apps/dataflow-tracing/run.py --dora /path/to/dora
+cargo build --locked -p dataflow-tracing-demo
+npm --prefix apps/dataflow-tracing-demo/frontend ci
+npm --prefix apps/dataflow-tracing-demo/frontend run build
+python3 apps/dataflow-tracing-demo/run.py --dora /path/to/dora
 ```
 
 ## Repository
