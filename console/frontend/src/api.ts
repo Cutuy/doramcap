@@ -36,13 +36,14 @@ async function request<T>(
 /** Create the browser client with an explicit transport for HTTP integration tests. */
 export function createClient(fetcher: typeof fetch = fetch) {
   return {
-    prepare: (profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}) =>
+    prepare: (profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}, baselineRunId = '') =>
       request(
         routes.prepare,
         routes.prepare.request
           .encode(
             wire.PrepareRequest.create({
               profiles,
+              baselineRunId,
               ...(systemApps === undefined
                 ? {}
                 : { systemApps: wire.SystemAppSelection.create({ ids: systemApps, profiles: appProfiles }) }),

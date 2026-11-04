@@ -212,9 +212,16 @@ impl Execution {
                                 e.to_string()
                             }
                         })?;
+                    let machine =
+                        workload_docker::workflows::recorded_compose::observation::machine_state(
+                            &adapter,
+                            &resolved.artifacts,
+                        )
+                        .await;
                     Ok(protocol::Inspection {
                         plan: Some(resolved.plan),
                         snapshot: Some(resolved.snapshot),
+                        machine: Some(machine),
                     }
                     .encode_to_vec())
                 }

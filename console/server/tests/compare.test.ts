@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareRuns, diffFacts, manifestFacts, readManifest } from '../src/compare.js';
+import { compareReview, compareRuns, diffFacts, manifestFacts, readManifest } from '../src/compare.js';
 import { execution, wire } from '../src/native.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
@@ -117,4 +117,32 @@ test('a saved configuration opens without its run ID, so paths compare across ru
   const facts = manifestFacts(readManifest(root, id));
   // Assert
   assert.equal(facts.get('environment.worker.OUTPUT')?.value, '/data/runs/@run/out');
+});
+
+test('a review compares setup and configuration with its baseline, and shows condition as current values', () => {
+  // Arrange
+  const baseline = side('a'.repeat(32), { setup: { sourceCommit: 'old' }, before: machine('performance', 1) }, null, ['gpu']);
+  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave', 3) }), manifest: null, profiles: ['gpu'], apps: null };
+  // Act
+  const comparison = compareReview(baseline, current);
+  const rowNamed = (name: string) => comparison.rows.find(item => item.name === name);
+  // Assert
+  assert.equal(comparison.baseline?.runId, 'a'.repeat(32));
+  assert.equal(rowNamed('source_commit')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(rowNamed('profiles')?.result, Result.COMPARISON_SAME);
+  assert.equal(cell(rowNamed('governor'), 0), 'performance: 0-3');
+  assert.equal(cell(rowNamed('governor'), 1), 'powersave: 0-3');
+  assert.equal(cell(rowNamed('load_1m'), 0), '');
+  assert.equal(cell(rowNamed('load_1m'), 1), '3');
+});
+
+test('a first review shows the current machine with no baseline', () => {
+  // Arrange
+  const current = { capture: execution.RunCapture.fromObject({ setup: { sourceCommit: 'new' }, before: machine('powersave') }), manifest: null, profiles: [], apps: null };
+  // Act
+  const comparison = compareReview(null, current);
+  // Assert
+  assert.equal(comparison.baseline, null);
+  assert.ok(comparison.rows.every(row => row.group !== Group.COMPARISON_SETUP));
+  assert.equal(comparison.rows.find(row => row.name === 'governor')?.cells?.[1]?.values?.[0], 'powersave: 0-3');
 });

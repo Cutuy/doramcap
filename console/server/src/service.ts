@@ -27,7 +27,7 @@ import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
-import { compareRuns, readManifest, type Side } from './compare.js';
+import { compareReview, compareRuns, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
@@ -235,6 +235,7 @@ export class ConsoleService implements ConsoleBackend {
         systemApps: appOptions(this.config.systemApps, chosen),
         recordings: outputs(apps),
         warnings: [],
+        comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
       });
       this.prepared = {
         review,
@@ -686,6 +687,25 @@ export class ConsoleService implements ConsoleBackend {
       return side;
     });
     return Buffer.from(wire.HistoryComparison.encode(compareRuns(left, right, sides.map(side => side.label!))).finish());
+  }
+  /** Compare this review with its baseline. A failure leaves the preview empty, and the review continues. */
+  private async reviewComparison(baselineId: string, id: string, project: Project, apps: SelectedApp[], inspected: Inspection) {
+    try {
+      const chosen = baselineId || this.runIndex.latestCaptured();
+      const setup = execution.ExperimentSetup.create({
+        ...(await sourceState(project.directory!)),
+        images: Object.entries(inspected.plan?.services ?? {}).map(([name, service]) => ({ service: name, imageId: service.imageId })),
+      });
+      return compareReview(chosen ? this.side(chosen) : null, {
+        capture: execution.RunCapture.create({ setup, before: inspected.machine }),
+        manifest: readManifest(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved/experiment.input.json`),
+        profiles: project.profiles ?? [],
+        apps: wire.SystemAppSelection.create({ ids: apps.map((app) => app.id!), profiles: appProfiles(apps) }),
+      });
+    } catch (error) {
+      console.error('Could not compare this review', error);
+      return null;
+    }
   }
   close() {
     if (!this.closing) this.closing = this.shutdown();

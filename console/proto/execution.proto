@@ -22,6 +22,7 @@ message Recording { string stream = 1; string recording = 2; }
 message Inspection {
   doramcap.compose.v1.ResolvedComposeProject plan = 1;
   doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;
+  doramcap.system_config.v1.MachineState machine = 3;
 }
 message ProfilesRequest {
   string run_id = 1;

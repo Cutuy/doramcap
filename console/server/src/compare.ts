@@ -165,3 +165,15 @@ export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A',
   const compared = (label: string, side: Side) => ({ label, runs: [{ entry: side.detail.entry, captured: !!side.capture.before }] });
   return wire.HistoryComparison.create({ sides: [compared(labelA, a), compared(labelB, b)], rows, truncated });
 }
+
+const emptyFacts: Facts = new Map();
+/** Compare what a review would run with a baseline run. Machine condition shows current values only. */
+export function compareReview(baseline: Side | null, current: SetupSide) {
+  const state = current.capture.before;
+  const { rows, truncated } = boundRows([
+    ...(baseline ? setupRows(setupSide(baseline), current) : []),
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, baseline ? configurationFacts(baseline.capture.before) : emptyFacts, configurationFacts(state)),
+    ...diffFacts(Group.COMPARISON_CONDITION, emptyFacts, conditionFacts(state)),
+  ]);
+  return wire.ReviewComparison.create({ baseline: baseline?.detail.entry, rows, truncated });
+}

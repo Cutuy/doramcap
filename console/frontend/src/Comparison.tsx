@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiError, api, wire, type HistoryComparison, type HistoryEntry } from './api';
+import { ApiError, api, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
 import { durationLabel, historyHash, stateLabel, stateTone, timeLabel } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
@@ -50,6 +50,26 @@ function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; 
     <div className="comparison-runs">{comparison.sides.flatMap(side => side.runs.map(run => <RunHeader key={run.entry!.runId} label={side.label} entry={run.entry!}/>))}</div>
     {missing.length > 0 && <p className="notice">No machine capture for run {missing.join(' or ')}.</p>}
     {GROUPS.map(({ group, title }) => <GroupSection key={group} group={group} title={title} rows={comparison.rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
+    {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
+  </section>;
+}
+/** Values only, for facts with nothing to compare against. */
+function CurrentFacts({ title, rows }: { title: string; rows: Row[] }) {
+  return <section className="comparison-group"><h3>{title}</h3><dl className="detail-grid">{rows.map(row => <div className="comparison-fact" key={row.name}><dt className="break">{row.name}</dt><dd>{value(row, 1)}</dd></div>)}</dl></section>;
+}
+/** What this review would run on, compared with an earlier run; differences warn and never block. */
+export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) {
+  const [showMatching, setShowMatching] = useState(false);
+  const rows = (group: number) => comparison.rows.filter(row => row.group === group);
+  const baseline = comparison.baseline;
+  return <section className="panel comparison" aria-label="Machine review">
+    <div className="panel-heading"><h2>Compared with</h2>{baseline && <ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton>}</div>
+    {baseline ? <p><a className="history-back mono" href={historyHash(baseline.runId)}>{baseline.runId.slice(0, 8)}</a> <span className="muted">{timeLabel(baseline.startedAtMs)}</span></p> : <p className="muted">No earlier capture to compare with.</p>}
+    {baseline && <GroupSection group={Group.COMPARISON_SETUP} title="Experiment setup" rows={rows(Group.COMPARISON_SETUP)} warn={false} showMatching={showMatching} sides={['Then', 'Now']}/>}
+    {baseline
+      ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
+      : <CurrentFacts title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)}/>}
+    <CurrentFacts title="Machine condition" rows={rows(Group.COMPARISON_CONDITION)}/>
     {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
   </section>;
 }
