@@ -24,8 +24,8 @@ pub struct Config {
     pub max_depth: usize,
     pub max_threads: usize,
     /// Published blocks each sink may queue. A slow sink's excess is dropped and counted.
-    /// A sink also pins the block it is writing. Keep `blocks` above the sum across sinks
-    /// so none can exhaust capture.
+    /// A sink also pins what it is writing: one block, or a full queue when it batches like
+    /// `McapSink`. Keep `blocks` above the sum across sinks so none can exhaust capture.
     pub sink_queue: usize,
     /// Flush every standalone event for prompt live delivery. Span boundaries always flush.
     pub flush_events: bool,
@@ -150,6 +150,8 @@ pub(crate) struct Slot {
 pub(crate) struct Output {
     pub queue: ArrayQueue<Arc<Slot>>,
     pub dropped: AtomicUsize,
+    /// Queue length that wakes the sink's worker.
+    pub wake_at: AtomicUsize,
     pub thread: OnceLock<std::thread::Thread>,
 }
 impl Output {
@@ -157,6 +159,7 @@ impl Output {
         Self {
             queue: ArrayQueue::new(capacity),
             dropped: AtomicUsize::new(0),
+            wake_at: AtomicUsize::new(1),
             thread: OnceLock::new(),
         }
     }
@@ -246,7 +249,9 @@ impl Core {
         for output in outputs {
             match output.queue.push(slot.clone()) {
                 Ok(()) => {
-                    if let Some(thread) = output.thread.get() {
+                    if output.queue.len() >= output.wake_at.load(Ordering::Relaxed)
+                        && let Some(thread) = output.thread.get()
+                    {
                         thread.unpark();
                     }
                 }

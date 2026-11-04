@@ -26,8 +26,10 @@ impl Sink for Collect {
 }
 #[cfg(feature = "mcap")]
 #[test]
-fn mcap_preserves_bytes_schema_and_timestamps() {
+fn mcap_merges_blocks_and_keeps_every_record_and_string() {
+    // Arrange
     use activity_tracing::{sinks::McapSink, wire};
+    const EVENTS: usize = 200;
     let path = std::env::temp_dir().join(format!(
         "activity-{}-{}.mcap",
         std::process::id(),
@@ -38,7 +40,11 @@ fn mcap_preserves_bytes_schema_and_timestamps() {
     ));
     let shared = Arc::new(Mutex::new(Vec::new()));
     let mut rt = Runtime::start(
-        Config::default(),
+        Config {
+            blocks: 512,
+            sink_queue: 256,
+            ..Default::default()
+        },
         vec![
             Box::new(McapSink::new(&path)),
             Box::new(Collect(shared.clone())),
@@ -48,13 +54,15 @@ fn mcap_preserves_bytes_schema_and_timestamps() {
     assert!(Runtime::start(Config::default(), vec![Box::new(McapSink::new(&path))]).is_err());
     let h = rt.handle();
     let reg = h.register_thread("test").unwrap();
+    // Act
     tracing::subscriber::with_default(h.subscriber(), || {
-        let span = tracing::info_span!(target:"activity","work");
-        let _e = span.enter();
-        tracing::info!(target:"activity",value=42);
+        for n in 0..EVENTS {
+            tracing::info!(target:"activity",text=format!("value-{n}").as_str());
+        }
     });
     drop(reg);
     let report = rt.shutdown().unwrap();
+    // Assert
     assert!(
         report
             .sinks
@@ -66,11 +74,14 @@ fn mcap_preserves_bytes_schema_and_timestamps() {
         .unwrap()
         .collect::<std::result::Result<Vec<_>, _>>()
         .unwrap();
-    let recorded = shared.lock().unwrap();
-    assert_eq!(messages.len(), recorded.len());
-    for (message, bytes) in messages.iter().zip(recorded.iter()) {
-        assert_eq!(message.data.as_ref(), bytes);
-        let b = wire::decode(bytes).unwrap();
+    assert!(messages.len() < EVENTS);
+    // Nothing dropped, so merging leaves no sequence gaps.
+    let sequences: Vec<_> = messages.iter().map(|m| m.sequence as usize).collect();
+    assert_eq!(sequences, (1..=messages.len()).collect::<Vec<_>>());
+    assert_eq!(shared.lock().unwrap().len(), EVENTS);
+    let mut values = Vec::new();
+    for message in &messages {
+        let b = wire::decode(&message.data).unwrap();
         assert_eq!(
             message.log_time,
             b.unix_origin_ns + b.records[0].monotonic_ns
@@ -79,7 +90,13 @@ fn mcap_preserves_bytes_schema_and_timestamps() {
             message.channel.schema.as_ref().unwrap().data.as_ref(),
             wire::DESCRIPTOR
         );
+        for field in b.records.iter().flat_map(|r| &r.fields) {
+            let range = field.offset as usize..(field.offset + field.length) as usize;
+            values.push(String::from_utf8(b.strings[range].to_vec()).unwrap());
+        }
     }
+    let expected: Vec<_> = (0..EVENTS).map(|n| format!("value-{n}")).collect();
+    assert_eq!(values, expected);
     std::fs::remove_file(path).unwrap();
 }
 struct Fail;

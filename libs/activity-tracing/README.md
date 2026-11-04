@@ -6,7 +6,7 @@ and MCAP, WebSocket or OpenTelemetry outputs. Each sink's worker serializes for 
 ![Architecture](docs/architecture.svg)
 
 [Buffer lifetimes](docs/buffer-lifetimes.svg) ·
-[Proposed external-buffer ownership](docs/external-buffer-ownership.svg) ·
+[Buffer ownership](docs/external-buffer-ownership.svg) ·
 [Roadmap and validation gates](docs/101826-my-roadmpa.md) ·
 [Validation evidence](docs/validation.md) ·
 [Wire schema](proto/activity.proto)
@@ -41,6 +41,9 @@ assert!(report.sinks.iter().all(|sink| sink.error.is_none()));
 Register every emitting thread, use the `activity` target, and drop registrations
 before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocketSink` (`websocket`) and
 `OtelSink` (`otel`). Hosts can also implement `Sink`.
+
+`McapSink` merges published blocks every 10 ms, or sooner under load, and serializes them
+directly into `McapWriter`'s pinned buffer. Other sinks receive one `Batch` per block.
 
 ## Run
 
