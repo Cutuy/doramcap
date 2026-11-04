@@ -97,8 +97,7 @@
         "linux"
       ],
       "evidence": [
-        "libs/storage-persistence/README.md",
-        "libs/telemetry/mcap/README.md"
+        "libs/storage-persistence/README.md"
       ]
     },
     {
@@ -242,7 +241,6 @@
         "apps/mcap-recorder"
       ],
       "evidence": [
-        "libs/telemetry/mcap/README.md",
         "libs/storage-persistence/README.md"
       ],
       "group": "communication"
