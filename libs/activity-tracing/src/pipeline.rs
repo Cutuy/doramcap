@@ -22,11 +22,21 @@ pub struct BatchView<'a> {
     pub unix_ns: u64,
 }
 /// Runs on its own worker. Implementations must bound external I/O timeouts.
-pub trait Sink: Send + 'static {
+pub trait Sink: 'static {
     fn name(&self) -> &str;
     fn write(&mut self, batch: BatchView<'_>) -> Result<()>;
     fn finish(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+/// Creates a sink on its worker, for sinks bound to the thread that creates them.
+/// Every `Send` sink builds itself; an error fails [`Runtime::start`].
+pub trait SinkBuilder: Send + 'static {
+    fn build(self: Box<Self>) -> Result<Box<dyn Sink>>;
+}
+impl<S: Sink + Send> SinkBuilder for S {
+    fn build(self: Box<Self>) -> Result<Box<dyn Sink>> {
+        Ok(self)
     }
 }
 #[derive(Debug)]
@@ -89,7 +99,9 @@ pub struct Runtime {
     drop_counts: Vec<Arc<AtomicUsize>>,
 }
 impl Runtime {
-    pub fn start(config: Config, sinks: Vec<Box<dyn Sink>>) -> Result<Self> {
+    /// Starts capture after building each sink on its worker.
+    /// Errors: invalid capacities and the first sink build failure; built sinks finish first.
+    pub fn start(config: Config, sinks: Vec<Box<dyn SinkBuilder>>) -> Result<Self> {
         let required = sinks
             .len()
             .checked_mul(
@@ -131,18 +143,30 @@ impl Runtime {
         let mut outputs = Vec::new();
         let mut workers = Vec::new();
         let mut drop_counts = Vec::new();
-        for mut sink in sinks {
+        let mut built = Vec::new();
+        for builder in sinks {
             let (tx, rx) = bounded::<Lease>(core.config.sink_queue);
             let dropped = Arc::new(AtomicUsize::new(0));
             let count = dropped.clone();
             drop_counts.push(dropped.clone());
+            let (ready, ready_rx) = bounded(1);
+            built.push(ready_rx);
             workers.push(thread::spawn(move || {
                 let mut report = SinkReport {
-                    name: sink.name().into(),
+                    name: String::new(),
                     written: 0,
                     dropped: 0,
                     error: None,
                 };
+                let mut sink = match builder.build() {
+                    Ok(sink) => sink,
+                    Err(e) => {
+                        let _ = ready.send(Some(e.to_string()));
+                        return report;
+                    }
+                };
+                report.name = sink.name().into();
+                let _ = ready.send(None);
                 for lease in rx {
                     if report.error.is_some() {
                         count.fetch_add(1, Ordering::Relaxed);
@@ -168,6 +192,18 @@ impl Runtime {
                 report
             }));
             outputs.push(Output { tx, dropped });
+        }
+        let failure = built.iter().find_map(|ready| {
+            ready
+                .recv()
+                .unwrap_or_else(|_| Some("sink worker panicked".into()))
+        });
+        if let Some(error) = failure {
+            drop(outputs);
+            for worker in workers {
+                let _ = worker.join();
+            }
+            return Err(error.into());
         }
         let c = core.clone();
         let encoder = thread::spawn(move || {
