@@ -5,7 +5,7 @@ services:
     init: true
     read_only: true
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true, seccomp=unconfined] # The MCAP writer uses io_uring.
+    security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
     stop_signal: SIGINT
     stop_grace_period: 15s

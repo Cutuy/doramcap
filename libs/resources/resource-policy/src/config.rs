@@ -1,34 +1,31 @@
-//! Resource-policy adapter for the shared pbtxt resolver.
-use crate::{Goal, proto};
-pub use pbtxt_config::{Override, Resolved};
-use pbtxt_config::{Payload, Result};
-impl Payload for proto::Policy {
-    const NAME: &'static str = "resource_policy.v1.Policy";
-    const DESCRIPTOR: &'static [u8] = crate::DESCRIPTOR;
-    fn validate_partial(&self) -> Result<()> {
-        crate::validate_partial(self).map_err(|e| pbtxt_config::Error::Invalid(e.to_string()))
-    }
-    fn overlay(&self, target: &mut Self) -> Vec<&'static str> {
-        let mut fields = Vec::new();
-        if self.placement.is_some() {
-            target.placement = self.placement.clone();
-            fields.push("placement");
-        }
-        if self.rt_priority.is_some() {
-            target.rt_priority = self.rt_priority;
-            fields.push("rt_priority");
-        }
-        fields
-    }
-    fn normalize(&self) -> Result<Self> {
-        Goal::from_proto(self)
-            .map(|goal| goal.to_proto())
-            .map_err(|e| pbtxt_config::Error::Invalid(e.to_string()))
-    }
+//! Direct resource-policy Deployment TextFormat loading.
+use crate::{Error, Goal, Result, proto};
+use prost_reflect::{DescriptorPool, DynamicMessage};
+/// Parses a Deployment and rejects duplicate IDs and incomplete policies.
+pub fn load(path: &std::path::Path) -> Result<proto::Deployment> {
+    let text =
+        std::fs::read_to_string(path).map_err(|e| crate::io(path.display().to_string(), e))?;
+    parse(&text)
 }
-pub fn parse_fragment(text: &str) -> Result<pbtxt_config::Fragment<proto::Policy>> {
-    pbtxt_config::parse_fragment(text)
-}
-pub fn resolve(path: &std::path::Path, registry: &[&str]) -> Result<Resolved<proto::Policy>> {
-    pbtxt_config::resolve(path, registry)
+/// Decodes standard TextFormat without includes, overrides or injected settings.
+pub fn parse(text: &str) -> Result<proto::Deployment> {
+    let decode = || -> std::result::Result<proto::Deployment, Box<dyn std::error::Error>> {
+        let descriptor = DescriptorPool::decode(crate::DESCRIPTOR)?
+            .get_message_by_name("resource_policy.v1.Deployment")
+            .expect("compiled configuration");
+        Ok(DynamicMessage::parse_text_format(descriptor, text)?.transcode_to()?)
+    };
+    let deployment = decode().map_err(|e| Error::Invalid(e.to_string()))?;
+    let mut ids = std::collections::BTreeSet::new();
+    for app in &deployment.app {
+        if app.id.is_empty() || !ids.insert(&app.id) {
+            return Err(Error::Invalid("empty or duplicate app ID".into()));
+        }
+        Goal::from_proto(
+            app.policy
+                .as_ref()
+                .ok_or_else(|| Error::Invalid(format!("{}: policy required", app.id)))?,
+        )?;
+    }
+    Ok(deployment)
 }

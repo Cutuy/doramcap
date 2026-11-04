@@ -161,10 +161,14 @@ test('the repository release template resolves to existing current app inputs', 
     await access(app.graph!);
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
     const profiles = app.launchProfiles ?? [];
-    for (const profile of profiles) await access(profile.config!);
+    for (const profile of profiles) {
+      await access(profile.config!);
+      if (profile.graph) await access(profile.graph);
+    }
     // An app's default launch produces something the user can see or download.
     assert.ok(app.recordings!.length + app.liveOutputs!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
+  assert.deepEqual(config.systemApps.map(app => app.id), ['cpu-monitor', 'data-recorder', 'fault-watchdog']);
   const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
   const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
@@ -175,6 +179,7 @@ test('the repository release template resolves to existing current app inputs', 
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
   const watchdog = config.systemApps.find(app => app.id === 'fault-watchdog')!;
   assert.equal(watchdog.defaultSelected, false);
+  assert.equal(watchdog.healthInputs, true);
   assert.deepEqual(watchdog.launchProfiles!.map(profile => [profile.id, profile.recordings!.length]), [['live', 0], ['mcap', 1], ['otel', 0]]);
   for (const name of ['watchdog', 'watchdog-mcap', 'watchdog-otel'])
     assert.equal(await readFile(join(systemApps, `fault-watchdog/${name}.pbtxt`), 'utf8'), await readFile(join(repository, `apps/fault-watchdog/deploy/standalone/config/${name}.pbtxt`), 'utf8'));

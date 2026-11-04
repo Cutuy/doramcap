@@ -3,6 +3,7 @@
 nodes:
   - id: workload-recorder
     path: dynamic
+    outputs: [health]
     inputs:
       data:
         source: workload/data

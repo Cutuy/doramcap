@@ -267,7 +267,7 @@ export class ConsoleService implements ConsoleBackend {
     stage: string,
   ): Promise<Run> {
     const bridge = live ? await bindBridge(this.config, apps, workspace, stage) : undefined;
-    const graph = await this.graphs.build(apps.map((app) => app.id!), bridge ? [bridge.graph] : []);
+    const graph = await this.graphs.build(apps.map((app) => app.id!), bridge ? [bridge.graph] : [], appProfiles(apps));
     const dora = { ...this.config.dora };
     if (graph.length) {
       const path = join(workspace, `${stage}.graph.json`);

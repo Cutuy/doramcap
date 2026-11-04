@@ -1,7 +1,7 @@
 syntax = "proto3";
 package doramcap.monitor.v1;
 
-// One collector launch. Relative paths resolve beside the pbtxt.
+// One collector launch. Paths use the process working directory.
 // With no output, Dora or recording section, snapshots go to stdout.
 message MonitorConfig {
   uint32 records = 1; // Rows per snapshot, 1..1048576.

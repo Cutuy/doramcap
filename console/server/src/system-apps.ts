@@ -54,6 +54,7 @@ export function validateApps(apps: App[]) {
     for (const profile of profiles) {
       if (!/^[-a-z0-9]{1,40}$/.test(profile.id ?? '') || profileIds.has(profile.id!) || !profile.label || !isAbsolute(profile.config ?? ''))
         throw new Error('launch profile requires a unique id, a label and an absolute config');
+      if (profile.graph && !isAbsolute(profile.graph)) throw new Error('profile graph must be absolute');
       profileIds.add(profile.id!);
       // Only one profile launches, so profiles of one app may reuse recording IDs.
       const seen = new Set(shared);
@@ -143,17 +144,6 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
       input.files.push(path);
     }
     run.systemApps.push(input);
-  }
-}
-/** The Dora graph beside a project's Compose file; undefined when the project declares none. */
-export async function projectGraph(directory: string): Promise<string | undefined> {
-  const path = join(directory, 'flow.yml');
-  try {
-    if (!(await lstat(path)).isFile()) throw new Error('non-regular project graph');
-    return path;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw error;
   }
 }
 /** Discover the native Compose inputs of one project directory. */

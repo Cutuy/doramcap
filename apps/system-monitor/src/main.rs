@@ -246,6 +246,10 @@ fn run(config: MonitorConfig) -> Result<()> {
     let limit = config.samples;
     // Preallocate the discard batch before entering the periodic loop.
     let mut discard = Snapshot::with_capacities(records, tasks);
+    #[cfg(feature = "dora")]
+    let sampling_check = publisher
+        .as_ref()
+        .map(|publisher| publisher.sampling_check());
     let worker = std::thread::Builder::new()
         .name("monitor-collector".into())
         .spawn(move || {
@@ -281,6 +285,10 @@ fn run(config: MonitorConfig) -> Result<()> {
                             Ok(())
                         },
                     )?;
+                    #[cfg(feature = "dora")]
+                    if let Some(check) = &sampling_check {
+                        check.success().map_err(|error| error.to_string())?;
+                    }
                     sequence += 1;
                     deadline += PERIOD;
                     // Avoid a catch-up storm after a slow collection. Keep future deadlines on the grid.
@@ -437,10 +445,6 @@ fn run(config: MonitorConfig) -> Result<()> {
         if let Some(recorder) = recorder.take() {
             recorder.finish()?;
         }
-        #[cfg(feature = "dora")]
-        if let Some(publisher) = publisher.as_mut() {
-            publisher.finish()?;
-        }
         Ok(())
     })();
     stop.store(true, Ordering::Release);
@@ -448,6 +452,19 @@ fn run(config: MonitorConfig) -> Result<()> {
         .join()
         .map_err(|_| eyre!("collection thread panicked"))?
         .map_err(|e| eyre!(e));
+    #[cfg(feature = "dora")]
+    if let Err(error) = &publish_result
+        && let Some(publisher) = publisher.as_mut()
+    {
+        let _ = publisher.report_failure(&error.to_string());
+    }
+    #[cfg(feature = "dora")]
+    if let Some(publisher) = publisher.as_mut() {
+        if let Err(error) = &collected {
+            let _ = publisher.report_failure(&error.to_string());
+        }
+        publisher.finish()?;
+    }
     publish_result?;
     let (collected, dropped) = collected?;
     if !config.published_count_path.is_empty() {

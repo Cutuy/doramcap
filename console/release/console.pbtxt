@@ -26,16 +26,30 @@ system_apps {
   }
 }
 system_apps {
-  id: "cpu-recorder"
-  label: "Dora topic recording (needs CPU monitoring)"
-  input { directory: "cpu-recorder" files: "compose.yaml" }
-  graph: "cpu-recorder/flow.yml"
-  output_mounts { service: "cpu-recorder" target: "/results" }
-  recordings { id: "cpu-topics" path: "cpu-topics.mcap" }
+  id: "data-recorder"
+  label: "Data recorder"
+  input { directory: "data-recorder" files: "compose.yaml" }
+  graph: "data-recorder/flow.yml"
+  output_mounts { service: "data-recorder" target: "/results" }
+  config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
+  launch_profiles {
+    id: "cpu"
+    label: "CPU topics (requires CPU monitoring)"
+    config: "data-recorder/recorder.pbtxt"
+    recordings { id: "messages" path: "messages.mcap" }
+  }
+  launch_profiles {
+    id: "faults"
+    label: "Watchdog publications (requires watchdog)"
+    config: "data-recorder/faults.pbtxt"
+    graph: "data-recorder/faults.yml"
+    recordings { id: "messages" path: "messages.mcap" }
+  }
 }
 system_apps {
   id: "fault-watchdog"
-  label: "Fault Watchdog (needs workload/faults)"
+  label: "Fault Watchdog"
+  health_inputs: true
   input { directory: "fault-watchdog" files: "compose.yaml" }
   graph: "fault-watchdog/flow.yml"
   output_mounts { service: "fault-watchdog" target: "/results" }

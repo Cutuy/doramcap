@@ -1,5 +1,7 @@
 ![Production watchdog proposal](production-watchdog.svg)
 
+Updated 2026-11-03: the former configuration composition design below is superseded. Apps load complete standard protobuf TextFormat messages directly; the custom resolver has been deleted.
+
 # Production watchdog
 
 Created 2026-10-20. Implementation and validation checklist.

@@ -20,7 +20,7 @@
   <g text-anchor="middle" fill="#04342c">
     <text x="120" y="156" font-weight="600">cpu-monitor</text>
     <text x="120" y="175" font-size="12">fault-reporter</text>
-    <text x="120" y="276" font-weight="600">cpu-recorder</text>
+    <text x="120" y="276" font-weight="600">data-recorder</text>
     <text x="120" y="295" font-size="12">fault-reporter</text>
     <text x="380" y="210" font-weight="600">fault-watchdog</text>
     <text x="380" y="229" font-size="12">inputs from Dora</text>

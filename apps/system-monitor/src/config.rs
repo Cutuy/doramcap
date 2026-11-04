@@ -10,7 +10,7 @@ pub use pb::{MonitorConfig, Recording};
 
 const MAX_ACQUISITION_BYTES: usize = 512 * 1024 * 1024;
 
-/// Loads pbtxt, resolves relative paths beside it and validates the launch.
+/// Parses standard TextFormat and validates the supplied settings.
 /// Errors: unreadable or malformed files and any `validate` failure.
 pub fn load(path: &Path) -> Result<MonitorConfig> {
     let descriptor = DescriptorPool::decode(
@@ -18,25 +18,9 @@ pub fn load(path: &Path) -> Result<MonitorConfig> {
     )?
     .get_message_by_name("doramcap.monitor.v1.MonitorConfig")
     .expect("compiled configuration");
-    let mut config: MonitorConfig =
+    let config: MonitorConfig =
         DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
             .transcode_to()?;
-    let directory = path.parent().unwrap_or(Path::new("."));
-    let resolve = |value: &mut String| -> Result<()> {
-        if !value.is_empty() {
-            *value = directory
-                .join(&*value)
-                .to_str()
-                .ok_or_else(|| eyre!("path is not UTF-8"))?
-                .into();
-        }
-        Ok(())
-    };
-    resolve(&mut config.output_path)?;
-    resolve(&mut config.published_count_path)?;
-    if let Some(recording) = config.recording.as_mut() {
-        resolve(&mut recording.path)?;
-    }
     validate(&config)?;
     Ok(config)
 }
@@ -105,19 +89,18 @@ mod tests {
     }
 
     #[test]
-    fn relative_paths_resolve_beside_the_config() {
+    fn paths_preserve_protobuf_values() {
         // Arrange
         let path = format!("{ROOT}/deploy/supervisor/monitor.pbtxt");
-        let directory = Path::new(&path).parent().unwrap();
 
         // Act
         let config = load(Path::new(&path)).unwrap();
 
         // Assert
-        assert_eq!(Path::new(&config.output_path), directory.join("cpu.pb"));
+        assert_eq!(Path::new(&config.output_path), Path::new("cpu.pb"));
         assert_eq!(
             Path::new(&config.recording.unwrap().path),
-            directory.join("cpu.mcap")
+            Path::new("cpu.mcap")
         );
     }
 

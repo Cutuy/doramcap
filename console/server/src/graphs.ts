@@ -1,28 +1,19 @@
 import type { doramcap } from './generated/console.js';
 type App = doramcap.console.v1.ISystemAppDefinition;
-type NativeNode = { id: string; outputs?: string[]; inputs?: Record<string, string | { source?: string }>; [field: string]: unknown };
-type NativeGraph = { nodes: NativeNode[]; [field: string]: unknown };
-
-/** A selected node subscribes to an output no selected graph provides. */
-export class MissingSource extends Error {}
-function requireSources(nodes: NativeNode[]) {
-  for (const node of nodes) for (const input of Object.values(node.inputs ?? {})) {
-    const source = typeof input === 'string' ? input : input.source ?? '';
-    const [from, output] = source.split('/');
-    if (from === 'dora' || nodes.some(item => item.id === from && item.outputs?.includes(output))) continue;
-    throw new MissingSource(`${node.id} needs Dora output ${source}, which this selection does not provide. Deselect it or add the output to the project's flow.yml.`);
-  }
-}
+type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: string]: unknown };
 
 /** Combine approved native graph fragments; Rust expands modules and validates the result. */
 export class Graphs {
   constructor(private native: {expandGraph(path:string):Promise<Buffer>}, private apps: App[], private base: string) {}
   /** `extra` adds generated fragments, such as the live bridge node. */
-  async build(requested?: string[], extra: string[] = []): Promise<Buffer> {
+  async build(requested?: string[], extra: string[] = [], profiles: Record<string, string> = {}): Promise<Buffer> {
     const ids = requested ?? this.apps.filter(app => app.defaultSelected).map(app => app.id!);
     const selected = new Set(ids);
     if (selected.size !== ids.length || ids.some(id => !this.apps.some(app => app.id === id))) throw new Error('InvalidInput');
-    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => app.graph ?? ''), ...extra].filter(Boolean);
+    const paths = [this.base, ...this.apps.filter(app => selected.has(app.id!)).map(app => {
+      const profile = app.launchProfiles?.find(profile => profile.id === profiles[app.id!]);
+      return profile?.graph || app.graph || '';
+    }), ...extra].filter(Boolean);
     if (!paths.length) return Buffer.alloc(0);
     const merged: NativeGraph = {nodes:[]};
     const nodes = new Set<string>();
@@ -41,7 +32,18 @@ export class Graphs {
         merged[key] = value;
       }
     }
-    requireSources(merged.nodes);
+    const sources = merged.nodes.filter(node => Array.isArray(node.outputs) && node.outputs.includes('health'));
+    for (const app of this.apps.filter(app => selected.has(app.id!) && app.healthInputs)) {
+      const node = merged.nodes.find(node => node.id === app.id);
+      if (!node) throw new Error('Health subscriber requires a graph node matching its app ID');
+      const inputs = (node.inputs ?? {}) as Record<string, unknown>;
+      for (const [index, source] of sources.filter(source => source.id !== node.id).entries()) {
+        const id = `health_${index}`;
+        if (id in inputs) throw new Error('Health input ID collision');
+        inputs[id] = {source: `${source.id}/health`, queue_size: 32, queue_policy: 'drop_oldest'};
+      }
+      node.inputs = inputs;
+    }
     const bytes = Buffer.from(JSON.stringify(merged));
     if (bytes.length > 2 * 1024 * 1024) throw new Error('InvalidInput');
     return bytes;

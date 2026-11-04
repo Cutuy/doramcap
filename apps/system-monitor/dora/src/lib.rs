@@ -6,12 +6,27 @@ use prost::Message;
 pub struct Publisher {
     node: Option<DoraNode>,
     events: EventStream,
+    health: fault_dora::Health,
+    sampling: fault_dora::Check,
+    recording: fault_dora::Check,
 }
 impl Publisher {
     /// Attach using the app environment and own the native connection.
     pub fn new() -> Result<Self> {
         let (node, events) = dora_app::environment::connect()?;
+        let health = fault_dora::Health::new()?;
+        let sampling = health.register(
+            "system-monitor",
+            "sampling",
+            Some(std::time::Duration::from_secs(1)),
+        )?;
+        let recording = health.register("system-monitor", "publication", None)?;
+        sampling.success()?;
+        recording.success()?;
         Ok(Self {
+            health,
+            sampling,
+            recording,
             node: Some(node),
             events,
         })
@@ -96,8 +111,24 @@ impl Publisher {
         Ok(())
     }
 
+    pub fn sampling_check(&self) -> fault_dora::Check {
+        self.sampling.clone()
+    }
+    pub fn report_failure(&mut self, error: &str) -> Result<()> {
+        fault_dora::Health::failure(&self.recording, error)?;
+        self.health.tick(
+            self.node
+                .as_mut()
+                .ok_or_else(|| eyre!("publisher already finished"))?,
+        )
+    }
     /// Poll stop/error events without delaying the host's publication loop.
     pub fn stop_requested(&mut self) -> Result<bool> {
+        self.health.tick(
+            self.node
+                .as_mut()
+                .ok_or_else(|| eyre!("publisher already finished"))?,
+        )?;
         loop {
             match self.events.try_recv() {
                 Ok(Event::Stop(_)) | Err(TryRecvError::Closed) => return Ok(true),

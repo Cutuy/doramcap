@@ -35,7 +35,6 @@ message Review {
   repeated SystemApp system_apps = 7;
   repeated RecordingOutput recordings = 8;
   repeated LiveStream live_streams = 10;
-  bool selection_blocked = 11; // Warnings explain a system app selection that cannot start.
 }
 
 enum Phase {

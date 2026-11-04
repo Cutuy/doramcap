@@ -34,6 +34,7 @@ message LaunchProfile {
   string config = 3; // Absolute pbtxt path, mounted read-only at the app's config_mount.
   repeated RecordingOutput recordings = 4;
   repeated LiveOutput live_outputs = 5;
+  string graph = 6; // Optional complete native Dora graph for this profile.
 }
 message SystemAppDefinition {
   string id = 1;
@@ -45,6 +46,7 @@ message SystemAppDefinition {
   repeated OutputMount output_mounts = 8;
   repeated LiveOutput live_outputs = 9; // Relayed when the live bridge is selected.
   OutputMount config_mount = 10; // Required with launch_profiles.
+  bool health_inputs = 12; // Subscribe this app's graph node to selected health outputs.
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
 }
 

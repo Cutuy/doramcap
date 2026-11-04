@@ -1,0 +1,6 @@
+nodes:
+  - id: data-recorder
+    path: dynamic
+    inputs:
+      faults: {source: fault-watchdog/faults, queue_size: 64, queue_policy: backpressure}
+    outputs: [health]

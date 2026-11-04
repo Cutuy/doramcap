@@ -2,7 +2,7 @@
   "$schema": "./overview.schema.json",
   "version": 1,
   "title": "Your runtime foundation for Physical AI.",
-  "summary": "Run perception, learned policies, and control on a shared SoC—with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
+  "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
   "workloads": [
     "Perception",
     "Learned policies",
@@ -126,15 +126,15 @@
       "id": "configuration",
       "title": "Configuration",
       "category": "Configuration",
-      "summary": "Compose typed configuration and retain provenance and deployment fingerprints.",
+      "summary": "Load typed protobuf configuration and validate explicit application settings.",
       "status": "building-blocks",
-      "limits": "Configuration composition is available; a unified platform lifecycle is future work.",
+      "limits": "Applications own their protobuf configuration contracts.",
       "components": [
-        "crates/pbtxt-config"
+        "crates/resource-policy"
       ],
       "integrations": [],
       "evidence": [
-        "libs/pbtxt-config/README.md"
+        "libs/resources/resource-policy/README.md"
       ]
     },
     {

@@ -5,28 +5,25 @@ use fault_watchdog::{
     config::{self, WatchdogConfig},
     sinks::{Output, Packet, Sink},
 };
-use pbtxt_config::Payload;
 use std::time::{Duration, Instant};
 fn cfg() -> WatchdogConfig {
-    WatchdogConfig {
-        inputs: vec!["a".into(), "b".into()],
-        ..Default::default()
-    }
-    .normalize()
-    .unwrap()
+    config::load(std::path::Path::new("config/default.pbtxt")).unwrap()
 }
 #[test]
 fn configuration_presence_features_and_budgets() {
     let c = config::load(std::path::Path::new("config/default.pbtxt")).unwrap();
     assert_eq!(c.source_timeout_ms, Some(3000));
-    let mut base = cfg();
-    WatchdogConfig {
+    // Arrange
+    let base = WatchdogConfig {
         retry_count: Some(0),
         transport_allowance_ms: Some(0),
-        ..Default::default()
-    }
-    .overlay(&mut base);
-    assert_eq!(base.normalize().unwrap().retry_count, Some(0));
+        ..cfg()
+    };
+    // Act / Assert
+    assert_eq!(base.settings(vec![]).unwrap().inputs.len(), 0);
+    assert_eq!(base.retry_count, Some(0));
+    assert!(base.settings(vec!["a".into(), "a".into()]).is_err());
+    assert!(WatchdogConfig::default().validate().is_err());
     for invalid in [
         WatchdogConfig {
             queue_capacity: Some(1000),
@@ -36,12 +33,8 @@ fn configuration_presence_features_and_budgets() {
             max_frame_bytes: Some(1024),
             ..cfg()
         },
-        WatchdogConfig {
-            inputs: vec!["a".into(), "a".into()],
-            ..cfg()
-        },
     ] {
-        assert!(invalid.normalize().is_err());
+        assert!(invalid.settings(vec!["a".into(), "b".into()]).is_err());
     }
     let c = WatchdogConfig {
         mcap: Some(config::pb::McapConfig {
@@ -52,7 +45,10 @@ fn configuration_presence_features_and_budgets() {
         }),
         ..cfg()
     };
-    assert_eq!(c.normalize().is_ok(), cfg!(feature = "mcap"));
+    assert_eq!(
+        c.settings(vec!["a".into(), "b".into()]).is_ok(),
+        cfg!(feature = "mcap")
+    );
     let c = WatchdogConfig {
         otel: Some(config::pb::OtelConfig {
             enabled: true,
@@ -62,7 +58,10 @@ fn configuration_presence_features_and_budgets() {
         }),
         ..cfg()
     };
-    assert_eq!(c.normalize().is_ok(), cfg!(feature = "otel"));
+    assert_eq!(
+        c.settings(vec!["a".into(), "b".into()]).is_ok(),
+        cfg!(feature = "otel")
+    );
 }
 struct Gate {
     started: crossbeam_channel::Sender<()>,
@@ -79,7 +78,12 @@ impl Sink for Gate {
 fn blocked_sink_bounds_loss_repair_and_shutdown() {
     let mut config = cfg();
     config.queue_capacity = Some(1);
-    let e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
+    let e = Engine::new(
+        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        10,
+        11,
+    )
+    .unwrap();
     let (started, ready) = crossbeam_channel::unbounded();
     let (release, gate) = crossbeam_channel::unbounded();
     let out = Output::spawn(
@@ -121,7 +125,12 @@ impl Sink for Capture {
 #[test]
 fn own_fault_is_filtered_other_sink_faults_survive() {
     let config = cfg();
-    let mut e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
+    let mut e = Engine::new(
+        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        10,
+        11,
+    )
+    .unwrap();
     let own = e.sink_check("live").unwrap();
     let key = own.key();
     let other = e.sink_check("mcap").unwrap();
@@ -170,7 +179,12 @@ impl Sink for Flaky {
 fn retries_are_bounded_and_success_clears_failure() {
     let mut config = cfg();
     config.retry_delay_ms = Some(1);
-    let e = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
+    let e = Engine::new(
+        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        10,
+        11,
+    )
+    .unwrap();
     let attempts = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let worker = attempts.clone();
     let (tx, rx) = crossbeam_channel::unbounded();
@@ -196,7 +210,12 @@ fn retries_are_bounded_and_success_clears_failure() {
 #[test]
 fn shutdown_closes_healthy_sink_while_another_is_blocked() {
     let config = cfg();
-    let engine = Engine::new(config.settings().unwrap(), 10, 11).unwrap();
+    let engine = Engine::new(
+        config.settings(vec!["a".into(), "b".into()]).unwrap(),
+        10,
+        11,
+    )
+    .unwrap();
     let (started, ready) = crossbeam_channel::unbounded();
     let (release, gate) = crossbeam_channel::unbounded();
     let blocked = Output::spawn(

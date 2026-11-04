@@ -44,7 +44,7 @@ live_bridge { image: "doramcap/live-bridge:local" }
 mounts the chosen `config` read-only at `config_mount`; the first profile is the
 default. A profile's `recordings` and `live_outputs` add to the app's own. Only the
 chosen file is mounted and frozen for the run, so each `config` must be self-contained,
-without `include`.
+using standard protobuf TextFormat. Apps parse and validate the supplied message; settings and paths are used directly.
 
 ```protobuf
 config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
@@ -56,6 +56,18 @@ launch_profiles {
 }
 launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.pbtxt" }
 ```
+
+A profile may also specify `graph`, an absolute path to a complete native Dora graph
+that replaces the app's graph for that launch. The data recorder uses this to pair
+its input mappings with the matching pbtxt. Add a user-message profile by supplying
+a graph input such as `data: user/messages` and a recorder `input` named `data`.
+Declare the producer in `dora.graph` and its Compose service in the workload.
+Mount schema files explicitly when the recording uses protobuf or another schema.
+
+`health_inputs: true` links an app's graph node (matching its app ID) to every
+selected node declaring `health`, using bounded `drop_oldest` queues. Watchdog reads
+its inputs from Dora and can run with zero inputs. The release watchdog requires
+no workload graph. CPU monitor and data recorder publish health independently.
 
 ## Live bridge
 
@@ -70,12 +82,8 @@ bind the current run's artifact directory; recording paths are relative to it.
 Services of recording apps get `seccomp=unconfined` for io_uring and a memlock limit automatically.
 The runtime requires stream growth before workload launch.
 
-`dora.graph` supplies a base graph. A project's own Dora nodes go in `flow.yml` beside
-its Compose file, each with a host-networked Compose service of the same name. Selected app graphs
-add nodes; duplicate node IDs or conflicting graph settings reject preparation. When a
-selected node subscribes to an output nothing provides, Review names it and disables
-Start until the selection changes. The release [Fault Watchdog](../release/system-apps/fault-watchdog/flow.yml)
-reads `workload/faults`, so the project needs a `workload` node publishing fault reports. Source graphs are read
+`dora.graph` supplies the workload graph. Selected app graphs add nodes; duplicate
+node IDs or conflicting graph settings reject preparation. Source graphs are read
 again on Start. Console never injects demo producers. Reusable deployments must
 supply healthchecks for subscriber/sink readiness before their producers start.
 

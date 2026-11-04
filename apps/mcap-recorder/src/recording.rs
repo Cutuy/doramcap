@@ -46,11 +46,7 @@ impl Recording {
             };
             prepared.push((input, bytes));
         }
-        let report_path = if config.report_path.is_empty() {
-            format!("{}.report.pbtxt", config.output_path)
-        } else {
-            config.report_path
-        };
+        let report_path = config.report_path;
         let writer = create_writer(&config.output_path, &prepared)?;
         let mut report_file = File::options()
             .write(true)
