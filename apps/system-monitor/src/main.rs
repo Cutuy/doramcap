@@ -29,10 +29,6 @@ impl Launch {
         let args: Vec<_> = args.iter().map(String::as_str).collect();
         match args.as_slice() {
             ["--config", path] => Ok(Self::Run(config::load(Path::new(path))?)),
-            ["--resolve-config", path] => {
-                print!("{}", config::resolved_text(Path::new(path))?);
-                std::process::exit(0);
-            }
             ["--check"] => Ok(Self::Check {
                 attach_records: None,
             }),
@@ -462,6 +458,9 @@ fn run(config: MonitorConfig) -> Result<()> {
 }
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if pbtxt_config::resolve_flag::<MonitorConfig>(&args, &[config::APP])? {
+        return Ok(());
+    }
     match Launch::parse(&args)? {
         Launch::Check { attach_records } => check(attach_records),
         Launch::Run(config) => run(config),

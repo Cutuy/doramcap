@@ -215,6 +215,21 @@ pub fn resolve<P: Payload>(path: &Path, registry: &[&str]) -> Result<Resolved<P>
         marker: std::marker::PhantomData,
     })
 }
+/// Handle `--resolve-config FILE`: print the complete pbtxt to stdout and return true.
+/// Returns false for any other arguments. Errors: any `resolve` or formatting failure.
+pub fn resolve_flag<P: Payload>(args: &[String], registry: &[&str]) -> Result<bool> {
+    let [flag, path] = args else {
+        return Ok(false);
+    };
+    if flag != "--resolve-config" {
+        return Ok(false);
+    }
+    print!(
+        "{}",
+        resolve::<P>(Path::new(path), registry)?.fragment_text()?
+    );
+    Ok(true)
+}
 struct Loader<P: Payload> {
     payloads: BTreeMap<String, P>,
     stack: Vec<PathBuf>,
@@ -424,6 +439,23 @@ mod tests {
         assert_eq!(again.digest(), resolved.digest());
         assert_eq!(again.fragment_text().unwrap(), text);
         assert_eq!(again.config("a").unwrap().id, "overlay");
+    }
+
+    #[test]
+    fn resolve_flag_handles_only_its_own_arguments() {
+        // Arrange
+        let temp = Temp::new();
+        let path = temp.put("app", &entry("a", "value"));
+        let args = |values: &[&str]| values.iter().map(|v| v.to_string()).collect::<Vec<_>>();
+        let flag = |values: &[&str]| resolve_flag::<proto::App>(&args(values), &["a"]);
+        let path = path.to_str().unwrap();
+
+        // Act / Assert
+        assert!(flag(&["--resolve-config", path]).unwrap());
+        assert!(!flag(&["--config", path]).unwrap());
+        assert!(!flag(&["--resolve-config"]).unwrap());
+        assert!(!flag(&["--resolve-config", path, "extra"]).unwrap());
+        assert!(flag(&["--resolve-config", "/missing"]).is_err());
     }
 
     #[test]

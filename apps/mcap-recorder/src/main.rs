@@ -9,12 +9,11 @@ use eyre::{Result, bail, eyre};
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if pbtxt_config::resolve_flag::<config::RecorderConfig>(&args, &[config::APP])? {
+        return Ok(());
+    }
     let config = match args.as_slice() {
         [flag, path] if flag == "--config" => config::load(std::path::Path::new(path))?,
-        [flag, path] if flag == "--resolve-config" => {
-            print!("{}", config::resolved_text(std::path::Path::new(path))?);
-            return Ok(());
-        }
         _ => bail!("usage: mcap-recorder (--config | --resolve-config) FILE.pbtxt"),
     };
     let (_node, mut events) = dora_app::environment::connect()?;

@@ -5,6 +5,10 @@ use fault_reporter::{Definition, Reporter, Text};
 use fault_watchdog::config;
 use std::{path::Path, time::Duration};
 
+fn resolved_text(path: &Path) -> pbtxt_config::Result<String> {
+    pbtxt_config::resolve::<config::WatchdogConfig>(path, &[config::APP])?.fragment_text()
+}
+
 fn source(engine: &Engine, now: Duration) -> fault_aggregation::SourceView {
     match engine.snapshot(now).payload {
         AggregationPayload::Snapshot(view) => view
@@ -88,16 +92,16 @@ fn resolved_profile_loads_alone_with_the_config_of_its_includes() {
     // Arrange
     let source = Path::new("deploy/standalone/config/watchdog-otel.pbtxt");
     if !cfg!(feature = "otel") {
-        assert!(config::resolved_text(source).is_err());
+        assert!(resolved_text(source).is_err());
         return;
     }
     let output = std::env::temp_dir().join(format!("watchdog-resolved-{}", std::process::id()));
 
     // Act
-    let text = config::resolved_text(source).unwrap();
+    let text = resolved_text(source).unwrap();
     std::fs::write(&output, &text).unwrap();
     let alone = config::load(&output);
-    let again = config::resolved_text(&output);
+    let again = resolved_text(&output);
     std::fs::remove_file(&output).unwrap();
 
     // Assert

@@ -80,7 +80,7 @@ Complete.
 
 **Work items**
 - [x] Load `MonitorConfig` and `RecorderConfig` through `pbtxt_config::resolve`, under app IDs `monitor` and `recorder`.
-- [x] Add `--resolve-config` to `system-monitor` and `mcap-recorder`.
+- [x] Add `--resolve-config` to `system-monitor` and `mcap-recorder`, with every app sharing `pbtxt_config::resolve_flag`.
 - [x] Make `task_capacity` and `samples` optional, so an overlay can set either back to zero.
 - [x] Migrate every shipped and test-written monitor and recorder pbtxt to the shared format.
 - [x] Make the release `record` profile include `live`, declare its resolver, and mount `live.pbtxt` by default in its Compose file.

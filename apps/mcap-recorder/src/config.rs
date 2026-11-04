@@ -10,7 +10,8 @@ pub use pb::{Input, RecorderConfig, RecordingReport, recording_report::State};
 /// Each input's `<topic><suffix>` channel holds per-message Dora metadata.
 pub const METADATA_TOPIC_SUFFIX: &str = "/dora_metadata";
 const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/recorder.bin"));
-const APP: &str = "recorder";
+/// The app ID of this config in a pbtxt fragment.
+pub const APP: &str = "recorder";
 
 fn invalid(error: eyre::Report) -> pbtxt_config::Error {
     pbtxt_config::Error::Invalid(error.to_string())
@@ -31,11 +32,6 @@ impl Payload for RecorderConfig {
         validate(self).map_err(invalid)?;
         Ok(self.clone())
     }
-}
-
-/// Format the resolved recorder as one complete pbtxt, keeping relative paths relative.
-pub fn resolved_text(path: &Path) -> Result<String> {
-    Ok(pbtxt_config::resolve::<RecorderConfig>(path, &[APP])?.fragment_text()?)
 }
 
 /// Loads pbtxt and its includes; relative schema, recording and report paths use `path`'s directory.

@@ -9,22 +9,15 @@ use fault_watchdog::{
 use std::time::{Duration, Instant};
 #[tokio::main(flavor = "multi_thread", worker_threads = 1)]
 async fn main() -> Result<()> {
-    let mut args = std::env::args().skip(1);
-    const USAGE: &str = "usage: fault-watchdog [--resolve-config] CONFIG.pbtxt";
-    let mut path = args.next().ok_or_else(|| eyre::eyre!(USAGE))?;
-    if path == "--resolve-config" {
-        path = args.next().ok_or_else(|| eyre::eyre!(USAGE))?;
-        if args.next().is_some() {
-            eyre::bail!("unexpected argument");
-        }
-        print!("{}", config::resolved_text(std::path::Path::new(&path))?);
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if pbtxt_config::resolve_flag::<config::WatchdogConfig>(&args, &[config::APP])? {
         return Ok(());
     }
-    let config = config::load(std::path::Path::new(&path))?;
+    let [path] = args.as_slice() else {
+        eyre::bail!("usage: fault-watchdog [--resolve-config] CONFIG.pbtxt");
+    };
+    let config = config::load(std::path::Path::new(path))?;
     let mut engine = Engine::new(config.settings()?, incarnation()?, incarnation()?)?;
-    if args.next().is_some() {
-        eyre::bail!("unexpected argument");
-    }
     let (node, mut events) = dora_app::environment::connect()?;
     let mut outputs = Vec::new();
     let output = config.live_output.clone().unwrap();

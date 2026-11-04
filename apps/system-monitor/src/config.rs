@@ -9,7 +9,8 @@ pub mod pb {
 pub use pb::{MonitorConfig, Recording};
 
 const MAX_ACQUISITION_BYTES: usize = 512 * 1024 * 1024;
-const APP: &str = "monitor";
+/// The app ID of this config in a pbtxt fragment.
+pub const APP: &str = "monitor";
 
 fn invalid(error: eyre::Report) -> pbtxt_config::Error {
     pbtxt_config::Error::Invalid(error.to_string())
@@ -39,11 +40,6 @@ impl Payload for MonitorConfig {
         validate(self).map_err(invalid)?;
         Ok(self.clone())
     }
-}
-
-/// Format the resolved launch as one complete pbtxt, keeping relative paths relative.
-pub fn resolved_text(path: &Path) -> Result<String> {
-    Ok(pbtxt_config::resolve::<MonitorConfig>(path, &[APP])?.fragment_text()?)
 }
 
 /// Loads pbtxt and its includes, resolves relative paths beside `path` and validates the launch.
@@ -124,6 +120,10 @@ mod tests {
     use super::*;
 
     const ROOT: &str = env!("CARGO_MANIFEST_DIR");
+
+    fn resolved_text(path: &Path) -> pbtxt_config::Result<String> {
+        pbtxt_config::resolve::<MonitorConfig>(path, &[APP])?.fragment_text()
+    }
 
     #[test]
     fn shipped_launches_select_their_documented_outputs() {

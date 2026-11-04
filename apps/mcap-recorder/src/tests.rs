@@ -304,6 +304,10 @@ fn unsupported_payload_or_upstream_error_keeps_partial_failure_evidence() -> Res
     Ok(())
 }
 
+fn resolved_text(path: &std::path::Path) -> pbtxt_config::Result<String> {
+    pbtxt_config::resolve::<RecorderConfig>(path, &[config::APP])?.fragment_text()
+}
+
 #[test]
 fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<()> {
     // Arrange
@@ -370,7 +374,7 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     )?;
     // Act
     let overlaid = config::load(&path)?;
-    let text = config::resolved_text(&path)?;
+    let text = resolved_text(&path)?;
     let alone = temp.0.join("alone.pbtxt");
     std::fs::write(&alone, &text)?;
     // Assert
@@ -380,7 +384,7 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     );
     assert_eq!(overlaid.input.len(), 1);
     assert_eq!(config::load(&alone)?, overlaid);
-    assert_eq!(config::resolved_text(&alone)?, text);
+    assert_eq!(resolved_text(&alone)?, text);
     Ok(())
 }
 

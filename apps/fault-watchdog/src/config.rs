@@ -5,6 +5,8 @@ pub mod pb {
     include!(concat!(env!("OUT_DIR"), "/doramcap.watchdog.v1.rs"));
 }
 pub use pb::WatchdogConfig;
+/// The app ID of this config in a pbtxt fragment.
+pub const APP: &str = "watchdog";
 fn require(ok: bool, message: &str) -> Result<()> {
     if ok {
         Ok(())
@@ -202,9 +204,5 @@ impl WatchdogConfig {
 }
 /// Resolve the `watchdog` app from a TextFormat fragment, validating requested features.
 pub fn load(path: &std::path::Path) -> Result<WatchdogConfig> {
-    pbtxt_config::resolve::<WatchdogConfig>(path, &["watchdog"])?.config("watchdog")
-}
-/// Format the resolved `watchdog` app as one complete pbtxt, loadable by `load`.
-pub fn resolved_text(path: &std::path::Path) -> Result<String> {
-    pbtxt_config::resolve::<WatchdogConfig>(path, &["watchdog"])?.fragment_text()
+    pbtxt_config::resolve::<WatchdogConfig>(path, &[APP])?.config(APP)
 }
