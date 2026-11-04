@@ -1,4 +1,5 @@
 import { closeSync, readFileSync } from 'node:fs';
+import Long from 'long';
 import { capabilities, execution, systemConfig, wire } from './native.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
@@ -38,19 +39,19 @@ const display = (name: string, value: unknown): string => {
   if (Array.isArray(value)) return value.map((item) => (typeof item === 'object' ? `${item.value}: ${item.cpus}` : String(item))).join(', ');
   return String(value);
 };
-/** Protobuf has no presence here: zero, false and empty all mean unset. */
-const isUnset = (value: unknown) => value == null || value === '' || value === 0 || value === '0' || value === false || (Array.isArray(value) && !value.length);
+/** Numeric zero, false and empty fields mean unset; string values retain their meaning. */
+const isUnset = (value: unknown) => value == null || value === '' || value === 0 || (Long.isLong(value) && value.isZero()) || value === false || (Array.isArray(value) && !value.length);
 /** Flatten decoded protobuf fields into named facts; unset fields have none. */
 function flatten(object: Record<string, unknown>, prefix = '', facts: Facts = new Map()): Facts {
   for (const [key, value] of Object.entries(object)) {
     if (isUnset(value)) continue;
     const name = prefix + snake(key);
-    if (value && typeof value === 'object' && !Array.isArray(value)) flatten(value as Record<string, unknown>, `${name}.`, facts);
+    if (value && typeof value === 'object' && !Array.isArray(value) && !Long.isLong(value)) flatten(value as Record<string, unknown>, `${name}.`, facts);
     else facts.set(name, { value: display(name, value) });
   }
   return facts;
 }
-const options = { longs: String, enums: String, arrays: false } as const;
+const options = { enums: String, arrays: false } as const;
 const { MachineConfiguration, MachineCondition } = systemConfig;
 export const configurationFacts = (state: Capture['before']) =>
   state?.configuration ? flatten(MachineConfiguration.toObject(MachineConfiguration.fromObject(state.configuration), options)) : new Map() as Facts;
@@ -104,7 +105,8 @@ function selectionFacts({ profiles, apps }: SetupSide): Facts {
 function capturedSetupFacts({ capture: { setup } }: SetupSide): Facts {
   const facts: Facts = new Map();
   if (setup?.sourceCommit) facts.set('source_commit', { value: setup.sourceCommit });
-  if (setup?.sourceDirty) facts.set('source_dirty', { value: 'true' });
+  if (setup) facts.set('source_state', { value: setup.sourceState === execution.SourceState.SOURCE_STATE_CLEAN ? 'Clean'
+    : setup.sourceState === execution.SourceState.SOURCE_STATE_DIRTY ? 'Dirty' : 'Unknown' });
   for (const { service, imageId } of setup?.images ?? []) facts.set(`image.${service}`, { value: imageId! });
   return facts;
 }

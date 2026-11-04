@@ -39,7 +39,7 @@ test('zero and false machine values equal an unset one, and differ from a set on
   const state = (fields: object) => ({ configuration: { kernelRelease: '7.0', ...fields } });
   // Act
   const comparison = compareRuns(
-    side('a'.repeat(32), { before: state({ turboEnabled: false, swappiness: 0 }) }),
+    side('a'.repeat(32), { before: state({ turboEnabled: false, swappiness: 0, memoryTotalBytes: 0 }) }),
     side('b'.repeat(32), { before: state({ turboEnabled: true }) }),
   );
   // Assert
@@ -47,6 +47,7 @@ test('zero and false machine values equal an unset one, and differ from a set on
   assert.equal(cell(row(comparison, 'turbo_enabled'), 0), '');
   assert.equal(cell(row(comparison, 'turbo_enabled'), 1), 'true');
   assert.equal(row(comparison, 'swappiness'), undefined);
+  assert.equal(row(comparison, 'memory_total_bytes'), undefined);
 });
 
 test('two captured runs compare by group, and a setting changed during a run differs in its group', () => {
@@ -146,4 +147,33 @@ test('a first review shows the current machine with no baseline', () => {
   assert.equal(comparison.baseline, null);
   assert.ok(comparison.rows.every(row => row.group !== Group.COMPARISON_SETUP));
   assert.equal(comparison.rows.find(row => row.name === 'governor')?.cells?.[1]?.values?.[0], 'powersave: 0-3');
+});
+
+test('CPU zero remains a string fact for online, isolated and nohz CPUs', () => {
+  // Arrange
+  const zero = { before: { configuration: { kernelRelease: '7.0', onlineCpus: '0', isolatedCpus: '0', nohzFullCpus: '0' } } };
+  const empty = { before: { configuration: { kernelRelease: '7.0' } } };
+  // Act
+  const comparison = compareRuns(side('a'.repeat(32), zero), side('b'.repeat(32), empty));
+  // Assert
+  for (const name of ['online_cpus', 'isolated_cpus', 'nohz_full_cpus']) {
+    assert.equal(cell(row(comparison, name), 0), '0');
+    assert.equal(row(comparison, name)?.result, Result.COMPARISON_CHANGED);
+  }
+});
+
+test('unknown source state compares distinctly from verified clean and dirty states', () => {
+  // Arrange
+  const { SourceState } = execution;
+  const captured = (sourceState: number) => side('a'.repeat(32), { setup: { sourceCommit: 'abc', sourceState } });
+  const unknown = captured(SourceState.SOURCE_STATE_UNKNOWN);
+  // Act
+  const clean = compareRuns(unknown, captured(SourceState.SOURCE_STATE_CLEAN));
+  const dirty = compareRuns(unknown, captured(SourceState.SOURCE_STATE_DIRTY));
+  // Assert
+  assert.equal(cell(row(clean, 'source_state'), 0), 'Unknown');
+  assert.equal(cell(row(clean, 'source_state'), 1), 'Clean');
+  assert.equal(cell(row(dirty, 'source_state'), 1), 'Dirty');
+  assert.equal(row(clean, 'source_state')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(dirty, 'source_state')?.result, Result.COMPARISON_CHANGED);
 });
