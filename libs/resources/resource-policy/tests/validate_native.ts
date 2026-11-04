@@ -2,7 +2,7 @@
 // Run prebuilt policy probes with timeouts; mutate only a unique test cgroup subtree.
 import { spawn, spawnSync } from 'node:child_process';
 import { strict as assert } from 'node:assert';
-import { mkdirSync, readFileSync, readdirSync, rmdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, rmdirSync, watch, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -25,6 +25,16 @@ const rt = cpus.at(-1)!;
 // Keep watchdog execution on a housekeeping CPU, separate from RT workloads.
 pin(String(cpus[0]));
 const root = `/sys/fs/cgroup/resource-policy-validation-${process.pid}`, control = '/sys/fs/cgroup/cgroup.subtree_control';
+const DRAIN_TIMEOUT_MS = 10_000;
+// Resolve once the cgroup subtree has no live processes; reject at the deadline.
+const drained = (cgroup: string) => new Promise<void>((done, fail) => {
+  const events = join(cgroup, 'cgroup.events');
+  const finish = (settle: () => void) => { clearTimeout(deadline); watcher.close(); settle(); };
+  const check = () => { if (/^populated 0$/m.test(readFileSync(events, 'utf8'))) finish(done); };
+  const watcher = watch(events, check);
+  const deadline = setTimeout(() => finish(() => fail(new Error(`${cgroup} still populated after kill`))), DRAIN_TIMEOUT_MS);
+  check();
+});
 let enabledRoot = false, createdRoot = false;
 try {
   if (!readFileSync(control, 'utf8').split(/\s+/).includes('cpuset')) {
@@ -48,8 +58,10 @@ try {
   assert.deepEqual(codes, [0, 0, 0]);
   console.log(`PASS native resource-policy on ${process.arch}`);
 } finally {
-  // Timeout kills the probe; remove empty owned leaves, never recursively delete.
   if (createdRoot) {
+    // Timeouts signal only the direct probe; kill surviving descendants, then remove empty owned leaves.
+    writeFileSync(join(root, 'cgroup.kill'), '1');
+    await drained(root);
     for (const entry of readdirSync(root, { withFileTypes: true })) if (entry.isDirectory()) rmdirSync(join(root, entry.name));
     rmdirSync(root);
   }

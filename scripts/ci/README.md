@@ -174,6 +174,6 @@ contains its HTTP and activity-capture validation commands.
 The aggregate native suite also invokes `libs/resources/resource-policy/tests/validate_native.ts`
 against the unprivileged-built `native_policy` example. It checks cpuset placement,
 RR scheduling, inheritance, denial, contention and cleanup. Its `--enable-root-cpuset` test option temporarily enables root
-cpuset delegation when absent, then restores the previous setting after removing
-its test subtree. This host-level test setup was explicitly approved on 2026-10-19.
+cpuset delegation when absent, then kills and removes its test subtree and restores
+the previous setting. This host-level test setup was explicitly approved on 2026-10-19.
 Run only on the trusted serial CI worker or an equivalently authorized test host.
