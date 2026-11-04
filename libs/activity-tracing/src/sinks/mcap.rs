@@ -2,13 +2,11 @@ use crate::{BatchView, Blocks, Result, Sink, SinkBuilder, wire};
 use std::{
     io,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
+    time::Instant,
 };
 use storage_persistence::mcap::{Channel, McapConfig, McapWriter, Message, Schema};
 
 const CHANNEL: u16 = 1;
-/// Upper bound added to persistence latency by combining blocks into one message.
-const BATCH_INTERVAL: Duration = Duration::from_millis(10);
 
 /// Direct-I/O MCAP output; its writer is created on the sink worker that owns it.
 pub struct McapSink {
@@ -88,13 +86,24 @@ impl Sink for Writer {
         }
         Ok(())
     }
-    fn batch_interval(&self) -> Option<Duration> {
-        Some(BATCH_INTERVAL)
+    fn batch_blocks(&self) -> bool {
+        true
     }
-    /// Flushes aged data even while no blocks arrive.
+    fn next_flush_deadline(&self) -> Option<Instant> {
+        self.0.as_ref().and_then(McapWriter::next_flush_deadline)
+    }
+    /// Flushes the 100 ms batch deadline even while no blocks arrive.
     fn poll(&mut self) -> Result<()> {
         if let Some(writer) = self.0.as_mut() {
-            writer.poll(Instant::now())?;
+            let now = Instant::now();
+            if writer
+                .next_flush_deadline()
+                .is_some_and(|deadline| now >= deadline)
+            {
+                writer.flush_written()?;
+            } else {
+                writer.poll(now)?;
+            }
         }
         Ok(())
     }

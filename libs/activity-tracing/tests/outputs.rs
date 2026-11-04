@@ -10,7 +10,13 @@ fn sink_build_failure_fails_start() {
         }
     }
     // Act
-    let result = Runtime::start(Config::default(), vec![Box::new(Refuse)]);
+    let result = Runtime::start(
+        Config::default(),
+        vec![
+            Box::new(Collect(Arc::new(Mutex::new(Vec::new())))),
+            Box::new(Refuse),
+        ],
+    );
     // Assert
     assert_eq!(result.err().unwrap().to_string(), "refused");
 }
@@ -429,4 +435,123 @@ fn slow_sink_drops_independently_without_starving_fast_sink() {
     assert_eq!(report.sinks[1].written, 10);
     assert_eq!(report.sinks[1].dropped, 0);
     assert_eq!(report.capture.records, 0);
+}
+
+#[test]
+fn idle_worker_waits_for_work_and_shutdown_without_polling() {
+    // Arrange
+    use std::{sync::mpsc, time::Duration};
+    struct Notice(mpsc::Sender<&'static str>);
+    impl Sink for Notice {
+        fn name(&self) -> &str {
+            "notice"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            self.0.send("write")?;
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<()> {
+            self.0.send("poll")?;
+            Ok(())
+        }
+        fn finish(&mut self) -> Result<()> {
+            self.0.send("finish")?;
+            Ok(())
+        }
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut runtime = Runtime::start(Config::default(), vec![Box::new(Notice(tx))]).unwrap();
+    let handle = runtime.handle();
+    let registration = handle.register_thread("wake-test").unwrap();
+
+    // Act / Assert: an empty worker has no recurring poll calls.
+    assert_eq!(
+        rx.recv_timeout(Duration::from_millis(150)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+    tracing::subscriber::with_default(handle.subscriber(), || {
+        tracing::info!(target: "activity", value = 1);
+    });
+    assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), "write");
+    assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), "poll");
+    assert_eq!(
+        rx.recv_timeout(Duration::from_millis(150)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+
+    // Act: wake the worker for shutdown while no work is queued.
+    drop(registration);
+    let report = runtime.shutdown().unwrap();
+
+    // Assert
+    assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), "finish");
+    assert_eq!(report.sinks[0].written, 1);
+    assert!(report.sinks[0].error.is_none());
+}
+
+#[test]
+fn buffered_data_flushes_on_its_deadline_without_another_write() {
+    // Arrange
+    use std::{
+        sync::mpsc,
+        time::{Duration, Instant},
+    };
+    struct Buffered {
+        deadline: Option<Instant>,
+        flushed: mpsc::Sender<Instant>,
+    }
+    impl Sink for Buffered {
+        fn name(&self) -> &str {
+            "buffered"
+        }
+        fn write(&mut self, _: BatchView<'_>) -> Result<()> {
+            self.deadline
+                .get_or_insert_with(|| Instant::now() + Duration::from_millis(100));
+            Ok(())
+        }
+        fn next_flush_deadline(&self) -> Option<Instant> {
+            self.deadline
+        }
+        fn poll(&mut self) -> Result<()> {
+            if let Some(deadline) = self.deadline
+                && Instant::now() >= deadline
+            {
+                self.deadline = None;
+                self.flushed.send(deadline)?;
+            }
+            Ok(())
+        }
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut runtime = Runtime::start(
+        Config::default(),
+        vec![Box::new(Buffered {
+            deadline: None,
+            flushed: tx,
+        })],
+    )
+    .unwrap();
+    let handle = runtime.handle();
+    let registration = handle.register_thread("deadline-test").unwrap();
+
+    // Act
+    tracing::subscriber::with_default(handle.subscriber(), || {
+        tracing::info!(target: "activity", value = 1);
+    });
+    let deadline = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+
+    // Assert
+    assert!(Instant::now() >= deadline);
+    assert_eq!(
+        rx.recv_timeout(Duration::from_millis(150)),
+        Err(mpsc::RecvTimeoutError::Timeout)
+    );
+
+    // Act
+    drop(registration);
+    let report = runtime.shutdown().unwrap();
+
+    // Assert
+    assert_eq!(report.sinks[0].written, 1);
+    assert!(report.sinks[0].error.is_none());
 }

@@ -42,8 +42,9 @@ Register every emitting thread, use the `activity` target, and drop registration
 before `shutdown()`. Optional outputs by feature: `McapSink` (`mcap`), `WebSocketSink` (`websocket`) and
 `OtelSink` (`otel`). Hosts can also implement `Sink`.
 
-`McapSink` merges published blocks every 10 ms, or sooner under load, and serializes them
-directly into `McapWriter`'s pinned buffer. Other sinks receive one `Batch` per block.
+`McapSink` merges already queued blocks and serializes them directly into `McapWriter`'s
+pinned buffer. A deadline flushes buffered data after at most 100 ms; empty workers wait
+on work and shutdown channels. Other sinks receive one `Batch` per block.
 Workers build the generated Protobuf `Batch` with repeated records; Prost measures and
 encodes it. Message construction allocates on the sink worker.
 

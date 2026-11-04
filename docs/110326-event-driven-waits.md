@@ -15,18 +15,22 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 
 **Work items**
 
-- [ ] Follow up on merged #122 and #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
-- [ ] Remove the 10 ms merge window. Merge already queued blocks and use the existing 100 ms writer flush deadline only while data is buffered.
-- [ ] Reuse `McapWriter::flush_written()` at the flush deadline; add no public wait API.
+- [x] Follow up on merged #122 and #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
+- [x] Remove the 10 ms merge window. Merge already queued blocks and use the existing 100 ms writer flush deadline only while data is buffered.
+- [x] Reuse `McapWriter::flush_written()` at the flush deadline; add no public wait API.
 
 **Validation**
 
+Evidence: release locked tests passed with default features (24) and all features (30), including zero-allocation capture, startup failure, sink error/panic, idle wake and deadline regressions. Strict Clippy passed for both configurations; formatting, library boundaries and whitespace checks passed. `strace -ff -e futex,clock_nanosleep` showed two indefinite worker waits spanning the idle intervals, with work and shutdown wakes. Paced throughput (100,000 events, 1,000 us/64) delivered 1,564 batches with no drops; three unpaced runs delivered 930–1,329 and counted 235–634 sink drops. These are post-change measurements, not a before/after comparison.
+
 Approved design: bounded block channels and a shared shutdown channel; no 10 ms merge window. Buffered data uses the existing 100 ms flush deadline and `flush_written()`.
 
-- [ ] Idle workers make no periodic wake-ups, measured by context switches with `strace` or `perf`.
-- [ ] A new block and a stop request each wake an idle worker. Shutdown drains accepted blocks.
-- [ ] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
-- [ ] Record zero-allocation capture and `throughput` results in this milestone's implementation PR.
+- [x] Idle workers make no periodic wake-ups, verified by kernel wait tracing with `strace`.
+- [x] A new block and a stop request each wake an idle worker. Shutdown drains accepted blocks.
+- [x] Sink build failure, write failure and panic release blocks and allow shutdown to finish.
+- [x] Record zero-allocation capture and `throughput` results in this milestone's implementation PR.
+
+- [ ] Cloud CI and ARM64 worker validation finish successfully. Local full-workspace CI is deferred to cloud CI; Dora/CUDA checks belong to later milestones.
 
 ## Milestone 2: System monitor
 
