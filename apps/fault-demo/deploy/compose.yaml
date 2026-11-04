@@ -42,6 +42,7 @@ services:
     healthcheck: {test: [CMD, test, -s, "${DORAMCAP_DORA_RUNTIME_DIR:?}/watchdog.ready"], interval: 200ms, timeout: 1s, retries: 150}
     depends_on: {dashboard: {condition: service_healthy}}
     entrypoint: [/usr/local/bin/fault-watchdog]
+    stop_signal: SIGINT
     command: ["/opt/fault-demo/watchdog.pbtxt"]
     volumes:
       - *runtime
