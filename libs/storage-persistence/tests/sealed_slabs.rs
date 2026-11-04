@@ -90,10 +90,6 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             let expected = reader.as_slice().to_vec();
             let range = writer.append_prepared_records(block).unwrap();
             assert_eq!(range.len, size as u64);
-            assert_eq!(
-                writer.retire_slabs(&pool).unwrap_err().kind(),
-                io::ErrorKind::WouldBlock
-            );
             writer.flush_written().unwrap();
             assert_eq!(pool.available(), 0); // reader outlives CQEs
             assert_eq!(reader.as_slice(), expected);
@@ -147,6 +143,10 @@ fn warmed_reuse_has_zero_updates_and_retirement_keeps_readers_valid() {
         let sealed = slab.seal(4096).unwrap();
         writer.try_append_slab(sealed).unwrap();
         assert_eq!(pool.available(), 0); // no reader, I/O still owns it
+        assert_eq!(
+            writer.retire_slabs(&pool).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
         writer.flush_written().unwrap();
         assert_eq!(pool.available(), 1);
         writer.prepare_slabs(&pool).unwrap();
