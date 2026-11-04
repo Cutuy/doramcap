@@ -177,7 +177,7 @@ function scene(o: SceneOptions) {
     comets += `<path class="comet" d="${d}" pathLength="100" stroke="${color}" stroke-width="${f1(unit * (dark ? 3.4 : 2.2))}" stroke-dasharray="7 26.33" style="${speed}"/>`;
     comets += `<path class="comet head" d="${d}" pathLength="100" stroke="${dark ? mix(color, '#ffffff', .6) : color}" stroke-width="${f1(unit * (dark ? 5 : 3.2))}" stroke-dasharray="0.01 33.32" style="${speed}"/>`;
   });
-  out += `<g fill="none" stroke-linecap="round"><g stroke-width="${f1(Math.max(1, unit * 1.2))}">${tracks}</g><g>${comets}</g></g>`;
+  out += `<g fill="none" stroke-linecap="round"><g stroke-width="${f1(Math.max(1, unit * 1.2))}">${tracks}</g><g${dark ? ' filter="url(#glow)"' : ''}>${comets}</g></g>`;
   return { svg: out, tags, at };
 }
 
@@ -220,6 +220,8 @@ const defs = (theme: Theme, w: number, h: number, fadeAt: [number, number]) => {
 <linearGradient id="sheet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${p.foundation}" stop-opacity=".04"/><stop offset=".5" stop-color="${p.foundation}" stop-opacity=".2"/><stop offset="1" stop-color="${p.foundation}" stop-opacity=".04"/></linearGradient>
 <linearGradient id="vignette" x1="0" x2="1"><stop offset="0" stop-color="${p.bg}" stop-opacity=".94"/><stop offset=".34" stop-color="${p.bg}" stop-opacity=".6"/><stop offset=".56" stop-color="${p.bg}" stop-opacity="0"/></linearGradient>
 <linearGradient id="floor" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="${p.bg}"/><stop offset=".2" stop-color="${p.bg}" stop-opacity="0"/></linearGradient>
+<filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+<filter id="halo" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="16"/></filter>
 </defs>`;
 };
 
@@ -240,6 +242,7 @@ function hero(theme: Theme, stats: [number, string][]) {
   const x = 72, size = 86;
   const accent = mix(p.accent, p.ink, dark ? .3 : .12);
   const title = lines.map((l, i) => `<text class="display" x="${x}" y="${222 + i * 82}" font-size="${size}" letter-spacing="-.86" fill="${i === 2 ? accent : p.ink}">${esc(l)}</text>`).join('');
+  const halo = dark ? `<text class="display" x="${x}" y="${222 + 2 * 82}" font-size="${size}" letter-spacing="-.86" fill="${p.accent}" opacity=".5" filter="url(#halo)">${esc(lines[2])}</text>` : '';
   const summary = wrap(overview.summary, 'body', 20, 500).map((l, i) => `<text x="${x}" y="${440 + i * 31}">${esc(l)}</text>`).join('');
   const statsSvg = stats.map(([n, label], i) => `<g><text class="display" x="${x + i * 150}" y="${H - 82}" font-size="40" fill="${p.ink}">${n}</text><text class="mono" x="${x + i * 150}" y="${H - 56}" font-size="11.5" letter-spacing=".5" fill="${p.muted}" style="text-transform:none">${esc(label)}</text></g>`).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(overview.title)} ${esc(overview.summary)}">
@@ -253,7 +256,7 @@ ${st.svg}
 <rect width="${W}" height="${H}" fill="url(#floor)"/>
 <g><circle cx="${x + 4}" cy="126" r="4" fill="${p.accent}"/><circle class="beacon" cx="${x + 4}" cy="126" r="4" fill="${p.accent}"/>
 <text class="mono" x="${x + 20}" y="130.5" font-size="12.5" letter-spacing="1.75" fill="${p.muted}">Source-available runtime · Rust · Dora · MCAP</text></g>
-${title}
+${halo}${title}
 <g class="body" font-size="20" fill="${p.muted}">${summary}</g>
 ${statsSvg}
 </g>

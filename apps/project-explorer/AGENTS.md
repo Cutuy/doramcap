@@ -1,6 +1,6 @@
 # SPA design and implementation
 
-- Keep explorer pages professional and restrained; avoid emojis and decorative clutter. The overview landing is the brand showcase and may use cinematic 3D and motion; keep it B2B-restrained: liquid-glass surfaces, no bloom, neon glows or gradient text, and accent color only for small signals.
+- Keep explorer pages professional and restrained; avoid emojis and decorative clutter. The overview landing is the brand showcase and may use cinematic 3D and motion; keep it B2B-restrained: flat liquid-glass surfaces without sheen or decorative background gradients.
 - Use short, natural labels: Compute, Platform, Data, Runtime, Embodiments, Existing middleware, Dora IPC, MCAP, OpenTelemetry. Avoid redundant prefixes and slash-separated synonyms.
 - Remove explanations that repeat headings, links, or obvious interactions. Use one useful description; omit secondary caveats, disclaimers, graph captions, and repeated card calls to action.
 - Link to each app/crate once per detail panel. Its page already contains its README; omit duplicate documentation/evidence links and audit links from the overview.
