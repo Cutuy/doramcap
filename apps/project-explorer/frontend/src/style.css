@@ -21,7 +21,13 @@ p{color:var(--muted)}
 nav{display:flex;gap:25px}
 nav a{text-decoration:none;color:var(--muted);padding:28px 0}
 nav a[aria-current=page]{color:var(--ink);box-shadow:inset 0 -2px var(--accent)}
-.repository{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:12px;text-decoration:none;color:var(--muted)}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:14px}
+.repository{display:flex;align-items:center;gap:5px;font-size:12px;text-decoration:none;color:var(--muted)}
+.theme-switch{display:flex;align-items:center;min-height:44px;padding:0;border:0;background:none}
+.theme-track{display:flex;width:38px;padding:2px;border:1px solid var(--line);border-radius:11px;background:var(--soft)}
+.theme-thumb{display:flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--accent);color:var(--panel);transition:transform .15s}
+.theme-switch[aria-checked=true] .theme-thumb{transform:translateX(18px)}
+@media(prefers-reduced-motion:reduce){.theme-thumb{transition:none}}
 main.shell{padding-top:40px;padding-bottom:50px;min-height:calc(100vh - 146px)}
 .intro{max-width:660px;margin-bottom:30px}
 .intro p{font-size:15px;margin-bottom:0}
