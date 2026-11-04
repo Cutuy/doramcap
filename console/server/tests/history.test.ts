@@ -100,7 +100,7 @@ test('each migration step raises user_version and a failed step leaves the last 
   // Assert
   assert.equal(version(), MIGRATIONS.length);
   assert.deepEqual((db.prepare("SELECT name FROM pragma_table_info('runs')").all() as { name: string }[]).map(row => row.name),
-    ['run_id', 'state', 'started_at_ms', 'entry', 'detail']);
+    ['run_id', 'state', 'started_at_ms', 'entry', 'detail', 'capture']);
   // Act
   assert.throws(() => migrate(db, [...MIGRATIONS, 'CREATE TABLE half (x); SELECT missing FROM nowhere']));
   // Assert
@@ -458,4 +458,57 @@ test('past artifacts download only through safe paths and only when finalized', 
     await run.backend.close();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+const machine = (governor: string) => ({ capturedUnixMs: 1, configuration: { governor: [{ value: governor, cpus: '0-3' }] } });
+
+test('a run keeps its setup and machine states, including after a failure', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  // Act
+  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
+  await run.backend.status();
+  const history = new History(run.store);
+  const before = history.capture(runId);
+  run.engine.update.machineAfter = execution.ExecutionUpdate.fromObject({ machineAfter: machine('powersave') }).machineAfter;
+  await finishRun(run, runId, { error: 'failed' });
+  const after = history.capture(runId);
+  // Assert
+  assert.deepEqual(before.setup?.images?.map(({ service, imageId }) => [service, imageId]), [['worker', 'sha256:a']]);
+  assert.equal(before.before?.configuration?.governor?.[0].value, 'performance');
+  assert.equal(before.after, null);
+  assert.equal(after.before?.configuration?.governor?.[0].value, 'performance');
+  assert.equal(after.after?.configuration?.governor?.[0].value, 'powersave');
+  assert.equal((await detail(run, runId)).entry?.state, State.HISTORY_FAILED);
+  await run.backend.close();
+});
+
+test('an interrupted run keeps its before state, and an earlier run reads an empty capture', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  await checkpoint(run.store, 'b'.repeat(32));
+  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
+  await run.backend.status();
+  // Act
+  new History(run.store).closeInterrupted();
+  const history = new History(run.store);
+  // Assert
+  assert.equal(history.capture(runId).before?.configuration?.governor?.[0].value, 'performance');
+  assert.equal((await detail(run, runId)).entry?.state, State.HISTORY_INTERRUPTED);
+  assert.equal(history.capture('b'.repeat(32)).before, null);
+  await run.backend.close();
+});
+
+test('an oversized capture is refused without changing what is saved', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  const history = new History(run.store);
+  const images = [{ service: 'large', imageId: 'x'.repeat(512 * 1024) }];
+  // Act / Assert
+  assert.throws(() => history.saveCapture(runId, { setup: execution.ExperimentSetup.create({ images }) }), /too large/);
+  assert.equal(history.capture(runId).setup?.images?.[0].imageId, 'sha256:a');
+  await run.backend.close();
 });

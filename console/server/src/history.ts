@@ -1,12 +1,14 @@
 import { LIMITS } from './generated/transport.js';
-import { browserError, wire, type Snapshot } from './native.js';
+import { browserError, execution, wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
 
 const { HistoryState: State, Phase } = wire;
 type Row = { entry: Uint8Array; detail: Uint8Array };
 
 const MAX_DETAIL_BYTES = 2 * 1024 * 1024,
-  MAX_PAGE_BYTES = 1024 * 1024;
+  MAX_PAGE_BYTES = 1024 * 1024,
+  MAX_CAPTURE_BYTES = 256 * 1024;
+type Capture = typeof execution.RunCapture.prototype;
 
 /** Map one Console status to its history result. */
 export function historyState(status: Pick<Snapshot, 'phase' | 'outcome'>) {
@@ -69,6 +71,21 @@ export class History {
     entry.artifacts = this.artifacts(status);
     status.reportAvailable = this.store.available(id, 'console-report.json');
     return wire.HistoryDetail.create({ entry, status });
+  }
+  /** One run's capture; empty for an earlier or unreadable one. */
+  capture(id: string): Capture {
+    const row = this.store.db.prepare('SELECT capture FROM runs WHERE run_id = ?').get(id) as { capture: Uint8Array | null } | undefined;
+    try {
+      return row?.capture ? execution.RunCapture.decode(row.capture) : execution.RunCapture.create();
+    } catch {
+      return execution.RunCapture.create();
+    }
+  }
+  /** Merge newly known parts into one run's capture. Errors: a database failure throws; an oversized capture is left unsaved. */
+  saveCapture(id: string, parts: Partial<Capture>) {
+    const bytes = execution.RunCapture.encode({ ...this.capture(id), ...parts }).finish();
+    if (bytes.length > MAX_CAPTURE_BYTES) throw new Error('run capture too large');
+    this.store.db.prepare('UPDATE runs SET capture = ? WHERE run_id = ?').run(bytes, id);
   }
   private upsert(status: Snapshot, state: number, startedAt: number, finishedAt: number | undefined, error: string) {
     const entry = wire.HistoryEntry.create({

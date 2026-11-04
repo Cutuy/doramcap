@@ -27,6 +27,7 @@ import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
+import { sourceState } from './source.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
@@ -77,6 +78,8 @@ export class ConsoleService implements ConsoleBackend {
   private closing?: Promise<void>;
   private closed = false;
   private startedAt = 0;
+  private machineBefore = false;
+  private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
   constructor(
@@ -340,6 +343,7 @@ export class ConsoleService implements ConsoleBackend {
       liveStreams: prepared.review.liveStreams,
     });
     this.startedAt = Date.now();
+    this.machineBefore = this.machineAfter = false;
     this.recordTransition();
     this.startPromise = this.startRequest(prepared);
     return this.startPromise;
@@ -350,6 +354,7 @@ export class ConsoleService implements ConsoleBackend {
       this.store.write(this.marker!);
       this.recorded = this.snapshot.phase;
       this.runIndex.record(this.enriched(), this.startedAt);
+      this.saveCapture({ setup: await this.setup(prepared) });
       const fresh = await discover(this.config.projectRoot, prepared.project.profiles ?? []).catch(() => {
         throw new Error('StaleReview');
       });
@@ -434,8 +439,31 @@ export class ConsoleService implements ConsoleBackend {
     // A finished run has nothing left to read, and the addon would re-encode its whole result.
     if (!this.completed) await this.consume(this.engine.poll());
   }
+  private async setup(prepared: Prepared) {
+    const images = prepared.review.services.map(({ name, imageId }) => ({ service: name, imageId }));
+    return execution.ExperimentSetup.create({ ...(await sourceState(prepared.project.directory!)), images });
+  }
+  /** Save newly known parts of the run's capture; comparison loses them on failure, but the run continues. */
+  private saveCapture(parts: Partial<typeof execution.RunCapture.prototype>) {
+    try {
+      this.runIndex.saveCapture(this.snapshot.runId, parts);
+    } catch (error) {
+      console.error('Could not save run capture', error);
+    }
+  }
+  private saveMachineStates(update: typeof execution.ExecutionUpdate.prototype) {
+    if (update.machineBefore && !this.machineBefore) {
+      this.machineBefore = true;
+      this.saveCapture({ before: update.machineBefore });
+    }
+    if (update.machineAfter && !this.machineAfter) {
+      this.machineAfter = true;
+      this.saveCapture({ after: update.machineAfter });
+    }
+  }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
     if (!this.completed && update.runId === this.snapshot.runId) {
+      this.saveMachineStates(update);
       for (const event of update.events) this.progress.apply(event);
       this.snapshot.steps = this.progress.rows;
       this.snapshot.sequence = Long.fromString(this.progress.sequence.toString(), true);
