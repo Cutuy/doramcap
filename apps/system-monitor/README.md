@@ -37,16 +37,24 @@ the image and output directory, then snapshots the selected
 template into each run’s private artifacts.
 
 ```pbtxt
-records: 4096
-queue_slots: 8
-dora {}
-recording {
-  path: "capture.mcap"
-  rotation_bytes: 67108864
-  samples_topic: "doramcap/cpuacct"
-  dictionary_topic: "doramcap/cpuacct/dictionary"
+app {
+  id: "monitor"
+  config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {
+    records: 4096
+    queue_slots: 8
+    dora {}
+    recording {
+      path: "capture.mcap"
+      rotation_bytes: 67108864
+      samples_topic: "doramcap/cpuacct"
+      dictionary_topic: "doramcap/cpuacct/dictionary"
+    }
+  } }
 }
 ```
+
+Configs compose through [`pbtxt-config`](../../libs/pbtxt-config/README.md) includes.
+`system-monitor --resolve-config FILE` prints one complete pbtxt.
 
 Recording uses the publication owner thread and an eight-buffer, 512-KiB pool.
 Recordings use direct I/O with 4-KiB alignment.

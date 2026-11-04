@@ -1,10 +1,15 @@
-records: 4096
-queue_slots: 8
-task_capacity: 32768
-published_count_path: "/results/published.count"
-dora {}
-recording {
-  path: "/results/cpu.mcap"
-  samples_topic: "doramcap/cpuacct"
-  dictionary_topic: "doramcap/cpuacct/dictionary"
+app {
+  id: "monitor"
+  config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {
+    records: 4096
+    queue_slots: 8
+    task_capacity: 32768
+    published_count_path: "/results/published.count"
+    dora {}
+    recording {
+      path: "/results/cpu.mcap"
+      samples_topic: "doramcap/cpuacct"
+      dictionary_topic: "doramcap/cpuacct/dictionary"
+    }
+  } }
 }

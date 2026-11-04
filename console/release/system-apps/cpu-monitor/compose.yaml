@@ -22,4 +22,4 @@ services:
     volumes:
       - {type: bind, source: /sys/fs/cgroup, target: /sys/fs/cgroup, read_only: true}
       - {type: bind, source: /sys/kernel/btf, target: /sys/kernel/btf, read_only: true}
-      - {type: bind, source: ./monitor.pbtxt, target: /config/monitor.pbtxt, read_only: true}
+      - {type: bind, source: ./live.pbtxt, target: /config/monitor.pbtxt, read_only: true}

@@ -1,4 +1,9 @@
-records: 4096
-queue_slots: 8
-task_capacity: 4096
-output_path: "/results/monitor.pb"
+app {
+  id: "monitor"
+  config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {
+    records: 4096
+    queue_slots: 8
+    task_capacity: 4096
+    output_path: "/results/monitor.pb"
+  } }
+}

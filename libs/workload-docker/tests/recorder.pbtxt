@@ -1,9 +1,14 @@
-output_path: "/results/cpu.mcap"
-report_path: "/results/cpu.report.pbtxt"
-input {
-  input: "snapshots"
-  topic: "doramcap/cpuacct"
-  message_encoding: "application/octet-stream"
-  timestamp_key: "capture_unix_ns"
-  sequence_key: "sequence"
+app {
+  id: "recorder"
+  config { [type.googleapis.com/doramcap.recorder.v1.RecorderConfig] {
+    output_path: "/results/cpu.mcap"
+    report_path: "/results/cpu.report.pbtxt"
+    input {
+      input: "snapshots"
+      topic: "doramcap/cpuacct"
+      message_encoding: "application/octet-stream"
+      timestamp_key: "capture_unix_ns"
+      sequence_key: "sequence"
+    }
+  } }
 }

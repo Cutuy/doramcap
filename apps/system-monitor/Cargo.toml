@@ -15,7 +15,7 @@ task-bpf = ["task-accounting/bpf"]
 dora-app = { path = "../../libs/dora-app", default-features = false }
 storage-persistence = { path = "../../libs/storage-persistence" }
 prost = "0.14"
-prost-reflect = { version = "0.16", features = ["text-format"] }
+pbtxt-config = { path = "../../libs/pbtxt-config" }
 task-accounting = { path = "../../libs/resources/task-accounting" }
 telemetry-protocol = { path = "../../libs/telemetry/protocol" }
 monitor-core = { path = "../../libs/resources/monitor-core" }

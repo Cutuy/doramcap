@@ -13,6 +13,7 @@ system_apps {
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
   live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
   config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
+  config_resolver { command: "/usr/local/bin/system-monitor" command: "--resolve-config" }
   launch_profiles {
     id: "record"
     label: "Live panels and recording"

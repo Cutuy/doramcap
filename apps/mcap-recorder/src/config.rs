@@ -1,4 +1,5 @@
 use eyre::{Result, ensure};
+use pbtxt_config::Payload;
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::{collections::BTreeSet, path::Path};
 
@@ -9,15 +10,37 @@ pub use pb::{Input, RecorderConfig, RecordingReport, recording_report::State};
 /// Each input's `<topic><suffix>` channel holds per-message Dora metadata.
 pub const METADATA_TOPIC_SUFFIX: &str = "/dora_metadata";
 const DESCRIPTOR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/recorder.bin"));
+const APP: &str = "recorder";
 
-/// Loads pbtxt; relative schema, recording and report paths use its directory.
+fn invalid(error: eyre::Report) -> pbtxt_config::Error {
+    pbtxt_config::Error::Invalid(error.to_string())
+}
+impl Payload for RecorderConfig {
+    const NAME: &'static str = "doramcap.recorder.v1.RecorderConfig";
+    const DESCRIPTOR: &'static [u8] = DESCRIPTOR;
+    fn validate_partial(&self) -> pbtxt_config::Result<()> {
+        validate_inputs(self).map_err(invalid)
+    }
+    fn overlay(&self, target: &mut Self) -> Vec<&'static str> {
+        let mut changed = Vec::new();
+        macro_rules! assign { ($($f:ident),*) => { $(if pbtxt_config::assign(&self.$f, &mut target.$f) { changed.push(stringify!($f)); })* }; }
+        assign!(output_path, report_path, input);
+        changed
+    }
+    fn normalize(&self) -> pbtxt_config::Result<Self> {
+        validate(self).map_err(invalid)?;
+        Ok(self.clone())
+    }
+}
+
+/// Format the resolved recorder as one complete pbtxt, keeping relative paths relative.
+pub fn resolved_text(path: &Path) -> Result<String> {
+    Ok(pbtxt_config::resolve::<RecorderConfig>(path, &[APP])?.fragment_text()?)
+}
+
+/// Loads pbtxt and its includes; relative schema, recording and report paths use `path`'s directory.
 pub fn load(path: &Path) -> Result<RecorderConfig> {
-    let descriptor = DescriptorPool::decode(DESCRIPTOR)?
-        .get_message_by_name("doramcap.recorder.v1.RecorderConfig")
-        .expect("compiled configuration");
-    let mut config: RecorderConfig =
-        DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
-            .transcode_to()?;
+    let mut config = pbtxt_config::resolve::<RecorderConfig>(path, &[APP])?.config(APP)?;
     let directory = path.parent().unwrap_or(Path::new("."));
     let resolve = |value: &mut String| -> Result<()> {
         if !value.is_empty() {
@@ -38,7 +61,7 @@ pub fn load(path: &Path) -> Result<RecorderConfig> {
     Ok(config)
 }
 
-/// Rejects ambiguous mappings and incomplete schema settings.
+/// Rejects incomplete recorders, ambiguous mappings and incomplete schema settings.
 pub fn validate(config: &RecorderConfig) -> Result<()> {
     ensure!(!config.output_path.is_empty(), "output_path is required");
     ensure!(
@@ -46,6 +69,11 @@ pub fn validate(config: &RecorderConfig) -> Result<()> {
         "report_path must differ from output_path"
     );
     ensure!(!config.input.is_empty(), "at least one input is required");
+    validate_inputs(config)
+}
+
+/// Rejects ambiguous mappings and incomplete schema settings among assigned inputs.
+fn validate_inputs(config: &RecorderConfig) -> Result<()> {
     let mut names = BTreeSet::new();
     let mut topics = BTreeSet::new();
     for input in &config.input {

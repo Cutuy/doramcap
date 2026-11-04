@@ -6,6 +6,9 @@ App, Fragment, and Deployment schema; payloads use protobuf `Any`.
 `resolve::<P>(path, registry)` loads ordered relative includes, validates every
 fragment, and returns normalized app configs, provenance, source bytes, and a digest.
 Implement `Payload` for a protobuf type to define validation, overrides, and normalization.
+`fragment_text` formats the result as one complete, include-free file.
+
+Used by `fault-watchdog`, `system-monitor`, `mcap-recorder` and `resource-policy`.
 
 - Local assignments follow includes; repeated includes reapply cached source bytes.
 - Unknown app IDs, duplicates within a fragment, type mismatches, and cycles fail.

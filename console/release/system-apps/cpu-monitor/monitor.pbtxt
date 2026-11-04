@@ -1,10 +1,12 @@
-records: 4096
-queue_slots: 8
-task_capacity: 32768
-output_path: "/results/cpu.pb"
-dora {}
-recording {
-  path: "/results/cpu.mcap"
-  samples_topic: "doramcap/cpuacct"
-  dictionary_topic: "doramcap/cpuacct/dictionary"
+include: "live.pbtxt"
+app {
+  id: "monitor"
+  config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {
+    output_path: "/results/cpu.pb"
+    recording {
+      path: "/results/cpu.mcap"
+      samples_topic: "doramcap/cpuacct"
+      dictionary_topic: "doramcap/cpuacct/dictionary"
+    }
+  } }
 }

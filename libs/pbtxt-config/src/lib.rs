@@ -39,6 +39,14 @@ pub trait Payload: Message + Default + Clone {
     fn overlay(&self, target: &mut Self) -> Vec<&'static str>;
     fn normalize(&self) -> Result<Self>;
 }
+/// Overlay helper: copy a non-default `source` over `target`; returns whether it copied.
+pub fn assign<T: Default + PartialEq + Clone>(source: &T, target: &mut T) -> bool {
+    let assigned = *source != T::default();
+    if assigned {
+        target.clone_from(source);
+    }
+    assigned
+}
 #[derive(Clone, Debug)]
 pub struct App<P> {
     pub id: String,

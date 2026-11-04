@@ -1,7 +1,12 @@
-output_path: "/results/workload.mcap"
-report_path: "/results/workload.report.pbtxt"
-input {
-  input: "data"
-  topic: "workload/data"
-  message_encoding: "application/octet-stream"
+app {
+  id: "recorder"
+  config { [type.googleapis.com/doramcap.recorder.v1.RecorderConfig] {
+    output_path: "/results/workload.mcap"
+    report_path: "/results/workload.report.pbtxt"
+    input {
+      input: "data"
+      topic: "workload/data"
+      message_encoding: "application/octet-stream"
+    }
+  } }
 }

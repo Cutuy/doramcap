@@ -14,8 +14,10 @@ fn recording_rotation_preserves_every_sample() {
     std::fs::write(
         &config,
         format!(
-            r#"records: 32768 queue_slots: 24 samples: 24
-            recording {{ path: "{}" rotation_bytes: 1 samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary" }}"#,
+            r#"app {{ id: "monitor" config {{ [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {{
+            records: 32768 queue_slots: 24 samples: 24
+            recording {{ path: "{}" rotation_bytes: 1 samples_topic: "doramcap/cpuacct" dictionary_topic: "doramcap/cpuacct/dictionary" }}
+            }} }} }}"#,
             path.display()
         ),
     )

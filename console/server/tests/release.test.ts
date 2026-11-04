@@ -167,11 +167,12 @@ test('the repository release template resolves to existing current app inputs', 
   const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
   const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
-  assert.match(live, /^dora \{\}/m);
+  assert.match(live, /^\s*dora \{\}/m);
   assert.doesNotMatch(live, /recording/);
   const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
-  assert.match(monitor, /^dora \{\}/m);
+  assert.match(monitor, /^include: "live.pbtxt"/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
+  assert.ok(config.systemApps.find(app => app.id === 'cpu-monitor')!.configResolver);
 });
 
 test('only recording apps name MCAP writer services', () => {

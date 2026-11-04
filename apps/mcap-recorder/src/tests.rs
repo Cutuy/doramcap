@@ -309,9 +309,16 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Arrange
     let temp = Temp::new()?;
     let path = temp.0.join("recorder.pbtxt");
+    let entry = |fields: &str| {
+        format!(
+            "app {{ id: 'recorder' config {{ [type.googleapis.com/doramcap.recorder.v1.RecorderConfig] {{ {fields} }} }} }}"
+        )
+    };
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Example' schema_encoding: 'jsonschema' schema_path: 'schema.json' }",
+        entry(
+            "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Example' schema_encoding: 'jsonschema' schema_path: 'schema.json' }",
+        ),
     )?;
     std::fs::write(temp.0.join("schema.json"), b"{}")?;
     // Act
@@ -328,7 +335,9 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Arrange
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Incomplete' }",
+        entry(
+            "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' schema_name: 'Incomplete' }",
+        ),
     )?;
     // Act / Assert
     assert!(config::load(&path).is_err());
@@ -336,12 +345,42 @@ fn pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail() -> Result<
     // Arrange
     std::fs::write(
         &path,
-        "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'protobuf' }",
+        entry(
+            "output_path: 'session.mcap' input { input: 'data' topic: '/test' message_encoding: 'protobuf' }",
+        ),
     )?;
     // Act
     let error = config::load(&path).unwrap_err();
     // Assert
     assert!(error.to_string().contains("protobuf requires a schema"));
+    // Arrange: an overlay inherits its base's inputs; output keeps resolving beside the entry file.
+    let base = temp.0.join("base.pbtxt");
+    std::fs::write(
+        &base,
+        entry(
+            "output_path: 'base.mcap' input { input: 'data' topic: '/test' message_encoding: 'json' }",
+        ),
+    )?;
+    std::fs::write(
+        &path,
+        format!(
+            "include: 'base.pbtxt' {}",
+            entry("output_path: 'overlay.mcap'")
+        ),
+    )?;
+    // Act
+    let overlaid = config::load(&path)?;
+    let text = config::resolved_text(&path)?;
+    let alone = temp.0.join("alone.pbtxt");
+    std::fs::write(&alone, &text)?;
+    // Assert
+    assert_eq!(
+        std::path::Path::new(&overlaid.output_path),
+        temp.0.join("overlay.mcap")
+    );
+    assert_eq!(overlaid.input.len(), 1);
+    assert_eq!(config::load(&alone)?, overlaid);
+    assert_eq!(config::resolved_text(&alone)?, text);
     Ok(())
 }
 

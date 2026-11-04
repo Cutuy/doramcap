@@ -10,7 +10,8 @@ resolves the selected profile once, and the run launches exactly that result.
 - **Resolver:** the app, running from its own image. Include order, overlays, defaults and validation are app code.
 - **Trigger:** Review, after images are present and before inspection.
 - **Output:** one complete pbtxt, frozen with the run's inputs and mounted at `config_mount`.
-- **Opt-in:** apps without a resolver keep today's mount, including `system-monitor` and `mcap-recorder`.
+- **Format:** `fault-watchdog`, `system-monitor` and `mcap-recorder` all load `pbtxt-config` fragments.
+- **Opt-in:** an app without a resolver keeps today's mount, including the single-config `cpu-recorder`.
 
 ```protobuf
 config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
@@ -25,6 +26,7 @@ launch_profiles { id: "mcap" label: "Live and MCAP" config: "/absolute/config/wa
 | Resolver input, one-shot only | profile's directory, read-only | No |
 | `config_mount` | resolver output in the review workspace, mode 0644 | Yes, keeping its mode |
 | Standalone Compose `/etc/fault-watchdog` | `config/`, read-only | No; Console covers the launched file |
+| Release `cpu-monitor` `/config/monitor.pbtxt` | `live.pbtxt`, self-contained | Replaced by the resolved file at the same target |
 
 ## Alternatives
 
@@ -73,3 +75,22 @@ Complete.
 - [ ] Real Console runs of the live, MCAP and OTLP profiles finish clean with their expected outputs. Pending: needs Docker access.
 - [ ] A direct Compose launch resolves a profile's include. Pending: needs Docker access.
 - [x] The Console release session's watchdog app uses the resolver, or its plan records why it waits: the app is unmerged in [#96](https://github.com/Cutuy/doramcap/pull/96), which adopts `config_resolver` when it rebases.
+
+## Milestone 4: Unified config format
+
+**Work items**
+- [x] Load `MonitorConfig` and `RecorderConfig` through `pbtxt_config::resolve`, under app IDs `monitor` and `recorder`.
+- [x] Add `--resolve-config` to `system-monitor` and `mcap-recorder`.
+- [x] Make `task_capacity` and `samples` optional, so an overlay can set either back to zero.
+- [x] Migrate every shipped and test-written monitor and recorder pbtxt to the shared format.
+- [x] Make the release `record` profile include `live`, declare its resolver, and mount `live.pbtxt` by default in its Compose file.
+
+**Validation**
+- [x] An overlay inherits its base, and an explicit `task_capacity: 0` clears it: `a_profile_overrides_its_base_and_resolves_to_one_complete_file`.
+- [x] Each resolved file loads alone to the same config and resolves to identical bytes: the same test, and `pbtxt_paths_resolve_relative_to_config_and_invalid_settings_fail`.
+- [x] Relative paths keep resolving beside the entry file: both tests above and `relative_paths_resolve_beside_the_config`.
+- [x] Shipped configs still load: `shipped_launches_select_their_documented_outputs`, and the release test checks the `record` profile's include and resolver.
+- [ ] BPF, all-feature and native runs parse the new format. Pending: the local host has no `clang`, and these need CI and root.
+- [ ] A real Console run of the `record` and `live` profiles finishes clean. Pending: needs Docker access.
+
+`dataflow-tracing` measurements, Supervisor `MonitorRun` and project registrations stay as they are: each is a single document with no launch profiles.

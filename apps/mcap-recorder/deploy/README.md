@@ -9,6 +9,8 @@ mcap-recorder --config bytes.pbtxt
 Mount a [`RecorderConfig`](../proto/recorder.proto) such as [bytes.pbtxt](bytes.pbtxt)
 at `/config/recorder.pbtxt` and a writable directory at `/results`. Relative paths
 resolve beside the config. No BPF privileges are needed.
+Configs compose through [`pbtxt-config`](../../../libs/pbtxt-config/README.md) includes;
+`mcap-recorder --resolve-config FILE` prints one complete pbtxt.
 
 The writer uses io_uring and direct I/O, which need Linux 6.1+, a syscall policy that
 allows io_uring, a memlock limit and an output filesystem that supports `O_DIRECT`.

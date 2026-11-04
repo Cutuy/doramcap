@@ -1,6 +1,6 @@
 //! Launch configuration: generated `MonitorConfig` types loaded from pbtxt.
 use eyre::{Result, ensure, eyre};
-use prost_reflect::{DescriptorPool, DynamicMessage};
+use pbtxt_config::Payload;
 use std::path::Path;
 
 pub mod pb {
@@ -9,18 +9,47 @@ pub mod pb {
 pub use pb::{MonitorConfig, Recording};
 
 const MAX_ACQUISITION_BYTES: usize = 512 * 1024 * 1024;
+const APP: &str = "monitor";
 
-/// Loads pbtxt, resolves relative paths beside it and validates the launch.
+fn invalid(error: eyre::Report) -> pbtxt_config::Error {
+    pbtxt_config::Error::Invalid(error.to_string())
+}
+impl Payload for MonitorConfig {
+    const NAME: &'static str = "doramcap.monitor.v1.MonitorConfig";
+    const DESCRIPTOR: &'static [u8] = include_bytes!(concat!(env!("OUT_DIR"), "/monitor.bin"));
+    fn validate_partial(&self) -> pbtxt_config::Result<()> {
+        validate_assigned(self).map_err(invalid)
+    }
+    fn overlay(&self, target: &mut Self) -> Vec<&'static str> {
+        let mut changed = Vec::new();
+        macro_rules! assign { ($($f:ident),*) => { $(if pbtxt_config::assign(&self.$f, &mut target.$f) { changed.push(stringify!($f)); })* }; }
+        assign!(
+            records,
+            queue_slots,
+            task_capacity,
+            samples,
+            output_path,
+            published_count_path,
+            dora,
+            recording
+        );
+        changed
+    }
+    fn normalize(&self) -> pbtxt_config::Result<Self> {
+        validate(self).map_err(invalid)?;
+        Ok(self.clone())
+    }
+}
+
+/// Format the resolved launch as one complete pbtxt, keeping relative paths relative.
+pub fn resolved_text(path: &Path) -> Result<String> {
+    Ok(pbtxt_config::resolve::<MonitorConfig>(path, &[APP])?.fragment_text()?)
+}
+
+/// Loads pbtxt and its includes, resolves relative paths beside `path` and validates the launch.
 /// Errors: unreadable or malformed files and any `validate` failure.
 pub fn load(path: &Path) -> Result<MonitorConfig> {
-    let descriptor = DescriptorPool::decode(
-        include_bytes!(concat!(env!("OUT_DIR"), "/monitor.bin")).as_slice(),
-    )?
-    .get_message_by_name("doramcap.monitor.v1.MonitorConfig")
-    .expect("compiled configuration");
-    let mut config: MonitorConfig =
-        DynamicMessage::parse_text_format(descriptor, &std::fs::read_to_string(path)?)?
-            .transcode_to()?;
+    let mut config = pbtxt_config::resolve::<MonitorConfig>(path, &[APP])?.config(APP)?;
     let directory = path.parent().unwrap_or(Path::new("."));
     let resolve = |value: &mut String| -> Result<()> {
         if !value.is_empty() {
@@ -41,18 +70,37 @@ pub fn load(path: &Path) -> Result<MonitorConfig> {
     Ok(config)
 }
 
-/// Rejects capacities outside documented bounds and incomplete recording sections.
-pub fn validate(config: &MonitorConfig) -> Result<()> {
+/// Rejects assigned values outside documented bounds and incomplete recording sections.
+fn validate_assigned(config: &MonitorConfig) -> Result<()> {
     ensure!(
-        (1..=1_048_576).contains(&config.records)
-            && (1..=1024).contains(&config.queue_slots)
-            && config.task_capacity <= 1_048_576,
+        config.records <= 1_048_576
+            && config.queue_slots <= 1024
+            && config.task_capacity() <= 1_048_576,
+        "invalid capacities: records 1..1048576, queue_slots 1..1024, task_capacity 0..1048576"
+    );
+    if let Some(recording) = &config.recording {
+        ensure!(!recording.path.is_empty(), "recording path is required");
+        ensure!(
+            !recording.samples_topic.is_empty()
+                && !recording.dictionary_topic.is_empty()
+                && recording.samples_topic != recording.dictionary_topic,
+            "recording topics must be nonempty and distinct"
+        );
+    }
+    Ok(())
+}
+
+/// Rejects incomplete launches, storage over budget and outputs that share one path.
+pub fn validate(config: &MonitorConfig) -> Result<()> {
+    validate_assigned(config)?;
+    ensure!(
+        config.records >= 1 && config.queue_slots >= 1,
         "invalid capacities: records 1..1048576, queue_slots 1..1024, task_capacity 0..1048576"
     );
     let bytes = (config.records as usize)
         .checked_mul(std::mem::size_of::<monitor_core::CpuRecord>())
         .and_then(|n| {
-            (config.task_capacity as usize)
+            (config.task_capacity() as usize)
                 .checked_mul(std::mem::size_of::<task_accounting::TaskRecord>())
                 .and_then(|t| n.checked_add(t))
         })
@@ -63,16 +111,9 @@ pub fn validate(config: &MonitorConfig) -> Result<()> {
         "configured acquisition storage exceeds 512 MiB; reduce capacities"
     );
     if let Some(recording) = &config.recording {
-        ensure!(!recording.path.is_empty(), "recording path is required");
         ensure!(
             recording.path != config.output_path,
             "recording path must differ from output_path"
-        );
-        ensure!(
-            !recording.samples_topic.is_empty()
-                && !recording.dictionary_topic.is_empty()
-                && recording.samples_topic != recording.dictionary_topic,
-            "recording topics must be nonempty and distinct"
         );
     }
     Ok(())
@@ -102,6 +143,46 @@ mod tests {
         assert!(recording_only.dora.is_none() && recording_only.recording.is_some());
         assert!(combined.dora.is_some() && combined.recording.is_some());
         assert_eq!(combined.published_count_path, "/results/published.count");
+    }
+
+    #[test]
+    fn a_profile_overrides_its_base_and_resolves_to_one_complete_file() {
+        // Arrange: the release profile adds outputs to its base; an overlay may clear diagnostics.
+        let record = format!("{ROOT}/../../console/release/system-apps/cpu-monitor/monitor.pbtxt");
+        let directory =
+            std::env::temp_dir().join(format!("monitor-resolved-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        let base = directory.join("base.pbtxt");
+        let overlay = directory.join("overlay.pbtxt");
+        let entry = |fields: &str| {
+            format!(
+                "app {{ id: 'monitor' config {{ [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {{ {fields} }} }} }}"
+            )
+        };
+        std::fs::write(&base, entry("records: 1 queue_slots: 1 task_capacity: 8")).unwrap();
+        std::fs::write(
+            &overlay,
+            format!("include: 'base.pbtxt' {}", entry("task_capacity: 0")),
+        )
+        .unwrap();
+
+        // Act
+        let inherited = load(Path::new(&record)).unwrap();
+        let cleared = load(&overlay).unwrap();
+        let text = resolved_text(Path::new(&record)).unwrap();
+        let alone = directory.join("alone.pbtxt");
+        std::fs::write(&alone, &text).unwrap();
+        let resolved = load(&alone).unwrap();
+        let again = resolved_text(&alone).unwrap();
+        std::fs::remove_dir_all(&directory).unwrap();
+
+        // Assert
+        assert_eq!(inherited.records, 4096);
+        assert!(inherited.dora.is_some() && inherited.recording.is_some());
+        assert_eq!(inherited.output_path, "/results/cpu.pb");
+        assert_eq!(cleared.task_capacity(), 0);
+        assert_eq!(resolved, inherited);
+        assert_eq!(again, text);
     }
 
     #[test]
@@ -146,7 +227,7 @@ mod tests {
             edit(|c| c.records = 0),
             edit(|c| c.records = 1_048_577),
             edit(|c| c.queue_slots = 0),
-            edit(|c| c.task_capacity = 1_048_577),
+            edit(|c| c.task_capacity = Some(1_048_577)),
             edit(|c| {
                 c.records = 1_048_576;
                 c.queue_slots = 1024;

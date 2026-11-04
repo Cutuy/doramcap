@@ -83,7 +83,7 @@ const monitor = resolve(values.monitor);
 assert.equal(process.geteuid!(), 0, 'native validation requires privilege');
 const work = mkdtempSync(join(tmpdir(), 'doramcap-native-'));
 const config = (name: string, text: string) => {
-  writeFileSync(join(work, name), `records: 16384 queue_slots: 8 ${text}`);
+  writeFileSync(join(work, name), `app { id: "monitor" config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] { records: 16384 queue_slots: 8 ${text} } } }`);
   return ['--config', join(work, name)];
 };
 

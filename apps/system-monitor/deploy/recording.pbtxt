@@ -1,8 +1,13 @@
-records: 32768
-queue_slots: 8
-output_path: "/recordings/cpu.pb"
-recording {
-  path: "/recordings/cpu.mcap"
-  samples_topic: "doramcap/cpuacct"
-  dictionary_topic: "doramcap/cpuacct/dictionary"
+app {
+  id: "monitor"
+  config { [type.googleapis.com/doramcap.monitor.v1.MonitorConfig] {
+    records: 32768
+    queue_slots: 8
+    output_path: "/recordings/cpu.pb"
+    recording {
+      path: "/recordings/cpu.mcap"
+      samples_topic: "doramcap/cpuacct"
+      dictionary_topic: "doramcap/cpuacct/dictionary"
+    }
+  } }
 }

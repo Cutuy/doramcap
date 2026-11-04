@@ -1,6 +1,8 @@
 syntax = "proto3";
 package doramcap.recorder.v1;
 
+// The payload of a pbtxt-config app with ID "recorder". An include's fields apply first;
+// a later nonempty value replaces them, and a later input list replaces its whole predecessor.
 message RecorderConfig {
   string output_path = 1;
   // Defaults to output_path + ".report.pbtxt". Both files are created exclusively.

@@ -17,7 +17,7 @@ const PERIOD: Duration = Duration::from_millis(100);
 
 const DEFAULT_CHECK_RECORDS: usize = 4096;
 const SOURCE: &str = "bpf";
-const USAGE: &str = "system-monitor --config FILE.pbtxt\nsystem-monitor --check\nsystem-monitor --check-bpf [--records N]\nCollection is fixed at 10 Hz. Configuration schema: proto/monitor.proto.\nBPF collection requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf.";
+const USAGE: &str = "system-monitor --config FILE.pbtxt\nsystem-monitor --resolve-config FILE.pbtxt\nsystem-monitor --check\nsystem-monitor --check-bpf [--records N]\nCollection is fixed at 10 Hz. Configuration schema: proto/monitor.proto.\nBPF collection requires --features bpf and privileged BPF access.\nTask diagnostics are experimental and require --features task-bpf.";
 
 /// One process invocation: a capability probe or a configured session.
 enum Launch {
@@ -29,6 +29,10 @@ impl Launch {
         let args: Vec<_> = args.iter().map(String::as_str).collect();
         match args.as_slice() {
             ["--config", path] => Ok(Self::Run(config::load(Path::new(path))?)),
+            ["--resolve-config", path] => {
+                print!("{}", config::resolved_text(Path::new(path))?);
+                std::process::exit(0);
+            }
             ["--check"] => Ok(Self::Check {
                 attach_records: None,
             }),
@@ -201,7 +205,7 @@ fn check(attach_records: Option<usize>) -> Result<()> {
 fn run(config: MonitorConfig) -> Result<()> {
     let records = config.records as usize;
     let slots = config.queue_slots as usize;
-    let tasks = config.task_capacity as usize;
+    let tasks = config.task_capacity() as usize;
     let dora = config.dora.is_some();
     if tasks != 0 && !cfg!(feature = "task-bpf") {
         bail!("task_capacity requires --features task-bpf");
@@ -243,7 +247,7 @@ fn run(config: MonitorConfig) -> Result<()> {
     let done = Arc::new(AtomicBool::new(false));
     let worker_stop = stop.clone();
     let worker_done = done.clone();
-    let limit = config.samples;
+    let limit = config.samples();
     // Preallocate the discard batch before entering the periodic loop.
     let mut discard = Snapshot::with_capacities(records, tasks);
     let worker = std::thread::Builder::new()
