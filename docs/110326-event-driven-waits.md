@@ -14,6 +14,8 @@ Replace Rust sleep, timed-park and yield loops used to poll for state changes ou
 
 ## Milestone 1: Activity tracing
 
+![Sink block batching and MCAP serialization](110326-batch-blocks-flow.svg)
+
 **Work items**
 
 - [x] Follow up on merged #122 and #123: replace sink worker `park_timeout` in `libs/activity-tracing/src/pipeline.rs` with bounded channel signaling and `select!` for work, shutdown and active deadlines.
