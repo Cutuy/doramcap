@@ -6,7 +6,6 @@ docker_socket: "/var/run/docker.sock"
 dora { image: "doramcap/dora:local" }
 # Optional apps use approved Compose inputs; no gallery demos are injected.
 # See release/console.pbtxt for the CPU monitoring and Dora recording apps.
-# Optional live telemetry relay for apps' live_outputs.
-# live_bridge { image: "doramcap/live-bridge:local" }
+# See release/system-apps/live-bridge for the live telemetry relay of apps' live_outputs.
 # Optional runtime policy; omitted fields preserve these defaults.
 runtime { readiness_seconds: 60 stop_seconds: 15 sample_interval_ms: 100 }

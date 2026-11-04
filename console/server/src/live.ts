@@ -3,14 +3,12 @@ import { live, wire, type App, type Config } from './native.js';
 import { writeOnce } from './files.js';
 import { LIMITS } from './generated/transport.js';
 
-/** Optional system app listed beside the Dora services. */
-export const LIVE_BRIDGE = { id: 'live-bridge', label: 'Live telemetry' } as const;
 const RECONNECT_MS = 500;
-const BRIDGE_CONFIG_PATH = '/config/bridge.pbtxt';
 type Stream = typeof wire.LiveStream.prototype;
 
-/** Bridge input IDs are `<app>_<index>`; app IDs exclude `_`, so IDs are unique. */
+/** Streams relayed for the selected apps; empty without a selected relay. Input IDs are `<app>_<index>`; app IDs exclude `_`. */
 export function liveStreams(apps: App[]): Stream[] {
+  if (!apps.some((app) => app.liveRelay)) return [];
   return apps.flatMap((app) =>
     (app.liveOutputs ?? []).map((output, index) =>
       wire.LiveStream.create({ id: `${app.id}_${index}`, appId: app.id!, kind: output.kind! }),
@@ -18,10 +16,9 @@ export function liveStreams(apps: App[]): Stream[] {
   );
 }
 
-/** Write the bridge's graph fragment and Compose project for the selected apps' outputs. */
-export async function bindBridge(config: Config, apps: App[], workspace: string, stage: string) {
-  const bridge = config.liveBridge!;
-  const dora = config.dora;
+/** Write the relay's graph fragment and its Compose overlay with the generated BridgeConfig. */
+export async function bindRelay(relay: App, apps: App[], dora: Config['dora'], workspace: string, stage: string) {
+  const { service, target } = relay.configMount!;
   const inputs = Object.fromEntries(
     apps.flatMap((app) =>
       (app.liveOutputs ?? []).map((output, index) => [
@@ -31,31 +28,16 @@ export async function bindBridge(config: Config, apps: App[], workspace: string,
       ]),
     ),
   );
-  const graph = join(workspace, `${stage}-${LIVE_BRIDGE.id}.graph.json`);
-  await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: LIVE_BRIDGE.id, path: 'dynamic', inputs }] })));
-  const settings = join(workspace, `${stage}-${LIVE_BRIDGE.id}.pbtxt`);
-  await writeOnce(settings, Buffer.from(`port: ${bridge.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
-  const ready = `/tmp/${LIVE_BRIDGE.id}.ready`;
-  const service = {
-    image: bridge.image,
-    entrypoint: ['/usr/local/bin/live-bridge'],
-    command: ['--config', BRIDGE_CONFIG_PATH],
-    volumes: [{type: 'bind', source: settings, target: BRIDGE_CONFIG_PATH, read_only: true, bind: {create_host_path: false}}],
+  const graph = join(workspace, `${stage}-${relay.id}.graph.json`);
+  await writeOnce(graph, Buffer.from(JSON.stringify({ nodes: [{ id: service, path: 'dynamic', inputs }] })));
+  const settings = join(workspace, `${stage}-${relay.id}.pbtxt`);
+  await writeOnce(settings, Buffer.from(`port: ${relay.liveRelay!.port}\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`));
+  const overlay = join(workspace, `${stage}-${relay.id}-relay.json`);
+  await writeOnce(overlay, Buffer.from(JSON.stringify({ services: { [service!]: {
+    volumes: [{ type: 'bind', source: settings, target, read_only: true, bind: { create_host_path: false } }],
     ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
-    network_mode: 'host',
-    init: true,
-    read_only: true,
-    cap_drop: ['ALL'],
-    security_opt: ['no-new-privileges:true'],
-    tmpfs: ['/tmp'],
-    stop_signal: 'SIGINT',
-    stop_grace_period: '15s',
-    environment: { DORAMCAP_READY_FILE: ready },
-    healthcheck: { test: ['CMD', 'test', '-s', ready], interval: '200ms', timeout: '1s', retries: 150 },
-  };
-  const file = join(workspace, `${stage}-${LIVE_BRIDGE.id}.json`);
-  await writeOnce(file, Buffer.from(JSON.stringify({ services: { [LIVE_BRIDGE.id]: service } })));
-  return { graph, project: { key: LIVE_BRIDGE.id, directory: workspace, files: [file] } };
+  } } })));
+  return { graph, overlay };
 }
 
 /**

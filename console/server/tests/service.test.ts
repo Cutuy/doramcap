@@ -66,9 +66,18 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
   });
-  if (liveOutput) config.liveBridge = { image: 'doramcap/live-bridge:local', port: 43190 };
   if (recording || liveOutput)
     config.systemApps = [
+      ...(liveOutput
+        ? [{
+            id: 'live-bridge',
+            label: 'Live telemetry',
+            defaultSelected: true,
+            input: { directory: project, files: ['compose.yaml'] },
+            configMount: { service: 'live-bridge', target: '/config/bridge.pbtxt' },
+            liveRelay: { port: 43190 },
+          }]
+        : []),
       {
         id: 'recorder',
         defaultSelected: true,
@@ -414,24 +423,21 @@ test('runs without live outputs report no live streams or metric samples', async
   }
 });
 
-test('the selected live bridge subscribes to declared outputs through generated Dora and Compose inputs', async () => {
+test('the selected live bridge subscribes to declared outputs through a generated graph node and config', async () => {
   // Arrange
   const { root, engine, backend, review } = await fixture(false, true);
   try {
     const run = engine.inspected!;
     const bridge = run.systemApps.find((project) => project.key === 'live-bridge')!;
-    const compose = JSON.parse(await readFile(bridge.files![0], 'utf8'));
+    const compose = JSON.parse(await readFile(bridge.files!.at(-1)!, 'utf8'));
     const graph = JSON.parse(await readFile(run.dora!.graph!, 'utf8'));
     // Assert
     assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.CPU_ACCOUNTING]]);
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
     assert.deepEqual([option.label, option.selected, option.required], ['Live telemetry', true, false]);
-    assert.equal(compose.services['live-bridge'].image, 'doramcap/live-bridge:local');
-    assert.deepEqual(compose.services['live-bridge'].command, ['--config', '/config/bridge.pbtxt']);
     const mount = compose.services['live-bridge'].volumes.find((volume:any) => volume.target === '/config/bridge.pbtxt');
     assert.equal(mount.read_only, true);
     assert.equal(await readFile(mount.source, 'utf8'), `port: 43190\nmax_payload_bytes: ${LIMITS.bridgePayloadBytes}\n`);
-    assert.equal(compose.services['live-bridge'].network_mode, 'host');
     const node = graph.nodes.find((node: { id: string }) => node.id === 'live-bridge');
     assert.equal(node.inputs.recorder_0.source ?? node.inputs.recorder_0, 'monitor/snapshots');
     // Act

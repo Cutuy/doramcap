@@ -51,7 +51,11 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
   assert.throws(() => selectApps(apps, ['recorder', 'recorder']));
   assert.equal(appOptions(apps, []).filter((app) => app.required && app.selected).length, 2);
   assert.throws(() => validateApps([{ ...apps[0], recordings: [{ id: 'messages', path: '../outside' }] }]));
-  assert.throws(() => validateApps([{ ...apps[0], id: 'live-bridge' }]));
+  const relay = { ...apps[0], recordings: [], configMount: { service: 'recorder', target: '/config/bridge.pbtxt' }, liveRelay: {} };
+  validateApps([relay]);
+  assert.throws(() => validateApps([relay, { ...relay, id: 'second' }]));
+  assert.throws(() => validateApps([{ ...relay, configMount: undefined }]));
+  assert.throws(() => validateApps([{ ...relay, liveRelay: { port: 65536 } }]));
   for (const liveOutputs of [
     [{ source: 'monitor', kind: live.Kind.CPU_ACCOUNTING }],
     [{ source: 'monitor/snapshots' }],

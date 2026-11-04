@@ -15,7 +15,7 @@ message ConsoleConfig {
   doramcap.dora.v1.DoraRuntime dora = 9;
   string public_origin = 7;
   RuntimeConfig runtime = 8;
-  LiveBridge live_bridge = 10; // Absent hides the live bridge system app.
+  reserved 10;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
@@ -46,10 +46,12 @@ message SystemAppDefinition {
   repeated LiveOutput live_outputs = 9; // Relayed when the live bridge is selected.
   OutputMount config_mount = 10; // Required with launch_profiles.
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
+  LiveRelay live_relay = 13; // Relays the selected apps' live outputs to Console.
 }
 
-// Prebuilt bridge image and its loopback WebSocket port; zero selects a free one at startup.
-message LiveBridge { string image = 1; uint32 port = 2; }
+// Console generates the relay's Dora node and BridgeConfig, mounted at config_mount.
+// `port` is its loopback WebSocket; zero selects a free one at startup.
+message LiveRelay { uint32 port = 1; }
 // One Dora output, "node/output", and the codec of its payload bytes.
 message LiveOutput { string source = 1; doramcap.console.live.v1.Kind kind = 2; }
 
