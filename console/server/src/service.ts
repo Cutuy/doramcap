@@ -27,7 +27,7 @@ import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
-import { compareReview, compareRuns, readManifest, type Side } from './compare.js';
+import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
@@ -460,7 +460,7 @@ export class ConsoleService implements ConsoleBackend {
     }
     if (update.machineAfter && !this.machineAfter) {
       this.machineAfter = true;
-      this.saveCapture({ after: update.machineAfter });
+      this.snapshot.machineChanges = machineChanges(update.machineBefore, update.machineAfter);
     }
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {

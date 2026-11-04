@@ -76,6 +76,18 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
     {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
   </section>;
 }
+/** What changed on the machine during the run that just ended; configuration changes warn. */
+export function MachineChanges({ rows }: { rows: Row[] }) {
+  const inGroup = (group: number) => rows.filter(row => row.group === group);
+  const configuration = inGroup(Group.COMPARISON_CONFIGURATION);
+  return <section className="panel comparison machine-changes" aria-label="Machine changes during this run">
+    <h2>Machine during this run</h2>
+    {configuration.length
+      ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={configuration} warn showMatching={false} sides={['Before', 'After']}/>
+      : <p className="muted">Machine configuration did not change.</p>}
+    <GroupSection group={Group.COMPARISON_CONDITION} title="Machine condition" rows={inGroup(Group.COMPARISON_CONDITION)} warn={false} showMatching={false} sides={['Before', 'After']}/>
+  </section>;
+}
 export function ComparisonPanel({ a, b, refresh, clear }: { a: string; b: string; refresh: string; clear: string }) {
   const [comparison, setComparison] = useState<HistoryComparison | null>(null);
   const [error, setError] = useState('');

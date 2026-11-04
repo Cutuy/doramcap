@@ -19,7 +19,8 @@ Concept: [mockups](../mockups/README.md).
 | Entry point | History. Selecting two rows opens the comparison on that page, and the URL keeps the selection. There is no separate Compare page or run picker. |
 | Owner | New `libs/resources/system-config` crate. `observe()` ships first; apply and verify reuse the schema later. |
 | Differences | Result, setup, configuration and condition are grouped. Only configuration differences warn. Nothing blocks Start or a comparison. |
-| Timing | Review shows an unsaved preview. Prepare saves the before state and Report saves the after state. |
+| Timing | Machine state is captured three times and saved once. Review shows differences from a baseline, Prepare is saved, and post-run shows what changed since Prepare on the Result page. |
+| Past runs | History shows Prepare captures only, so a change during a run is visible only on the Result page when the run ends. Saving the differences can be added later if drift matters. |
 | Values | Shown unless a name pattern masks them. Compose secrets are always hidden. |
 | Baseline | Review uses the latest completed run with a capture. Run again uses its source run. |
 | Fields | Performance focused, listed below. No new crates. |
@@ -77,7 +78,7 @@ Evidence: crate tests and Clippy pass, the boundary check passes, and a real rea
 **Work items**
 - [x] Replace `machine-before.json` and `machine-after.json` with `system-config` capture in the Prepare and Report steps.
 - [x] Add Docker configuration and condition facts through the existing `bollard` client.
-- [x] Publish before and after states through `ExecutionUpdate` as each is captured.
+- [x] Publish Prepare and post-run states through `ExecutionUpdate` as each is captured.
 
 **Validation**
 - [x] The before state is taken after reset and before any service starts.
@@ -85,7 +86,7 @@ Evidence: crate tests and Clippy pass, the boundary check passes, and a real rea
 - [ ] The after state still arrives after a failed run.
 - [ ] Existing recorded workflow tests pass with the old snapshot files removed.
 
-Evidence: Clippy and `workload-docker` unit tests pass. Real runs saved before and after states, with Docker facts, through a real Console. Failure-injection checks stay open.
+Evidence: Clippy and `workload-docker` unit tests pass. Real runs captured both states, with Docker facts, through a real Console. Failure-injection checks stay open.
 
 ## Milestone 3: Run record
 
@@ -114,7 +115,6 @@ Evidence: `tests/history.test.ts` and `tests/source.test.ts` pass. A real `kill 
 - [x] Add a `GET` comparison route behind the session and origin checks.
 - [x] Read environment values and frozen file digests from each run's private files, apply masks on the server and hide Compose secrets.
 - [x] Show groups for result, setup, configuration and condition, with differences first and one action that shows all matches.
-- [x] Show a setting that changed during a run in the machine configuration group, with its start and end values.
 - [x] Keep comparison on the History page; add no separate page.
 
 **Validation**
@@ -160,11 +160,9 @@ Evidence: a real unchanged review showed 0 differences against its baseline; the
 **Validation**
 - [x] The parameter change appears under setup with both values.
 - [x] The governor change appears as a configuration warning.
-- [x] A governor change during a run appears as a before and after difference.
+- [ ] A governor change during a run appears on the Result page as a before and after difference.
 - [ ] Facts missing on each platform show as unavailable.
 - [x] History comparison survives `kill -9` and SIGTERM restarts.
 - [ ] Full local CI and ARM64 validation pass at the PR integration point.
 
-Evidence (2026-11-04, x86, real Console, Chromium): the parameter pairs and restart checks passed, and the next run cleaned up leftover containers. Switching from `powersave` to `performance` between runs warned at Review and in History for the governor and energy preference. Switching during a run appeared in that group's table as start and end values, and it warned. The original settings were restored and verified on all 20 CPUs. ARM64 job 588 was stopped on request before finishing, so ARM64 worker validation has not completed.
-
-![Governor changed during a run](110426-governor-during-run.png)
+Evidence (2026-11-04, x86, real Console, Chromium): the parameter pairs and restart checks passed, and the next run cleaned up leftover containers. Switching from `powersave` to `performance` between runs warned at Review and in History for the governor and energy preference. The original settings were restored and verified on all 20 CPUs. A real run then showed condition changes on the Result page and none on its History page. The configuration warning there has only unit coverage. ARM64 job 588 was stopped on request before finishing, so ARM64 worker validation has not completed.

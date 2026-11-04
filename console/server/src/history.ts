@@ -18,10 +18,11 @@ export function historyState(status: Pick<Snapshot, 'phase' | 'outcome'>) {
   return status.outcome.execution === 'Cancelled' ? State.HISTORY_CANCELLED : State.HISTORY_COMPLETED;
 }
 const failedStep = (status: Snapshot) => [...status.steps].reverse().find((step) => step.error)?.error ?? '';
+/** Encode a run's status for storage; post-run machine changes are shown once and never saved. */
 const encodeDetail = (status: Snapshot) => {
-  const bytes = wire.Status.encode(status).finish();
+  const bytes = wire.Status.encode({ ...status, machineChanges: [] }).finish();
   if (bytes.length <= MAX_DETAIL_BYTES) return bytes;
-  return wire.Status.encode({ ...status, steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true }).finish();
+  return wire.Status.encode({ ...status, machineChanges: [], steps: [], metrics: [], progressIncomplete: true, metricsIncomplete: true }).finish();
 };
 /**
  * Past and current runs, stored in `console.db` as protobuf blobs with indexed query columns.

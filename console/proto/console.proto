@@ -96,6 +96,7 @@ message Status {
   repeated RecordingOutput recordings = 21;
   repeated LiveStream live_streams = 23; // Empty when the live bridge is not selected.
   repeated StoppingService stopping_services = 24; // Empty once the run finishes.
+  repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {
