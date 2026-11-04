@@ -1,6 +1,6 @@
-use dora_node_api::{DoraNode, Event, EventStream, MetadataParameters, Parameter};
+use dora_node_api::{DoraNode, Event, MetadataParameters, Parameter};
 use eyre::{Result, eyre};
-use futures::{FutureExt, channel::oneshot};
+use futures::{FutureExt, Stream, StreamExt, channel::oneshot};
 use prost::Message;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -29,7 +29,7 @@ impl Publisher {
 
     fn with_events(
         node: DoraNode,
-        mut events: EventStream,
+        mut events: impl Stream<Item = Event> + Unpin + Send + 'static,
         notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
     ) -> Result<Self> {
         let health = fault_dora::Health::new()?;
@@ -45,7 +45,7 @@ impl Publisher {
                 loop {
                     futures::select_biased! {
                         _ = cancel => return None,
-                        event = events.recv_async().fuse() => match event {
+                        event = events.next().fuse() => match event {
                             Some(Event::Stop(_)) | None => return Some(Ok(())),
                             Some(Event::Error(error)) => return Some(Err(format!("Dora event error: {error}"))),
                             _ => {},
@@ -214,45 +214,44 @@ fn encode_into(packet: &telemetry_protocol::pb::Packet, buffer: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn testing_publisher(
-        delay: f64,
-        notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
-    ) -> Publisher {
-        use dora_node_api::integration_testing::integration_testing_format::{
-            IncomingEvent, TimedIncomingEvent,
-        };
+    const TEST_DEADLINE: Duration = Duration::from_secs(2);
+
+    fn testing_node(
+        events: Vec<
+            dora_node_api::integration_testing::integration_testing_format::TimedIncomingEvent,
+        >,
+    ) -> (DoraNode, dora_node_api::EventStream) {
         use dora_node_api::integration_testing::{
             IntegrationTestInput, TestingInput, TestingOutput, output_channel,
         };
-        let input = IntegrationTestInput::new(
-            "monitor-test".parse().unwrap(),
-            vec![TimedIncomingEvent {
-                time_offset_secs: delay,
-                event: IncomingEvent::Stop,
-            }],
-        );
+        let input = IntegrationTestInput::new("monitor-test".parse().unwrap(), events);
         let (output, _outputs) = output_channel();
-        let (node, events) = DoraNode::init_testing(
+        DoraNode::init_testing(
             TestingInput::Input(input),
             TestingOutput::ToChannel(output),
             Default::default(),
         )
-        .unwrap();
-        Publisher::with_events(node, events, notify).unwrap()
+        .unwrap()
     }
 
     #[test]
     fn dora_stop_notifies_the_publisher() {
+        use dora_node_api::integration_testing::integration_testing_format::{
+            IncomingEvent, TimedIncomingEvent,
+        };
         // Arrange
+        let (node, stream) = testing_node(vec![TimedIncomingEvent {
+            time_offset_secs: 0.0,
+            event: IncomingEvent::Stop,
+        }]);
         let (notify, events) = std::sync::mpsc::channel();
-        let mut publisher = testing_publisher(0.0, move |event| {
+        let mut publisher = Publisher::with_events(node, stream, move |event| {
             notify.send(event).unwrap();
-        });
+        })
+        .unwrap();
 
         // Act
-        let event = events
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .unwrap();
+        let event = events.recv_timeout(TEST_DEADLINE).unwrap();
         publisher.finish().unwrap();
 
         // Assert
@@ -261,22 +260,23 @@ mod tests {
     }
 
     #[test]
-    fn finish_cancels_a_receiver_waiting_for_a_future_event() {
+    fn finish_cancels_a_receiver_waiting_for_an_event() {
         // Arrange
         let (done, result) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
-            let mut publisher =
-                testing_publisher(30.0, |_| panic!("canceled receiver must not notify stop"));
+            let (node, _stream) = testing_node(Vec::new());
+            let mut publisher = Publisher::with_events(node, futures::stream::pending(), |_| {
+                panic!("canceled receiver must not notify")
+            })
+            .unwrap();
 
             // Act
             publisher.finish().unwrap();
             done.send(()).unwrap();
         });
 
-        // Assert: completion occurs before the scheduled Dora event.
-        result
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .unwrap();
+        // Assert: only cancellation can end a wait on a stream that never yields.
+        result.recv_timeout(TEST_DEADLINE).unwrap();
         worker.join().unwrap();
     }
 
