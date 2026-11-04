@@ -390,10 +390,8 @@ host configuration restoration → device/external-service hooks → measurement
 - [ ] Measure large-model copy-up, staging cost, peak metadata memory and disk usage.
 - [ ] Qualify additional backing filesystems and rootless/private-namespace daemons.
 - [ ] Add explicit policies for single-file/device binds and live host readers.
-- [ ] Establish release-only Docker nginx-golang adoption on a clean GPU-less VM;
-  see the [baseline plan](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m4--release-only-adoption-on-a-clean-vm).
-  Then qualify OpenPI LIBERO on a supported GPU host; see the
-  [robotics plan](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m5--later-robotics-qualification-openpi-libero).
+- [ ] Qualify Open AD Kit through Console; see the
+  [adoption plan](../../../console/docs/110326-adoption-qualification.md).
   Qualify vEDGAR/AnywhereVLA separately on their required GPU/robot hardware.
 
 ### Validation

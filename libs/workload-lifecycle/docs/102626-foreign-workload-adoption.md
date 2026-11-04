@@ -18,12 +18,9 @@ milestones below remain open until those upstream workloads have actually run.
   Gate: profiles, environment, paths, extends/includes, dependency conditions,
   mount ownership, and policy-conflict fixtures match a pinned Compose version.
   Adding/removing services must pass with identical workflow code and step registry.
-- [ ] M2: Qualify Docker nginx-golang using a downloadable Doramcap release on a
-  fresh, modest GPU-less Linux VM. Gate: no Doramcap checkout or build toolchain,
-  unchanged sample files, working HTTP, two managed runs, readable CPU recordings
-  and verified cleanup. See [release acceptance criteria](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m4--release-only-adoption-on-a-clean-vm).
-- [ ] After M2: qualify pinned OpenPI LIBERO on its required GPU host; see
-  [robotics work items and validation](../../../apps/project-explorer/server/docs/102726-experiment-preparation.md#m5--later-robotics-qualification-openpi-libero).
+- [ ] M2: Qualify Open AD Kit through the published Console release. Gate: unchanged
+  tracked files, matching drive check, two managed runs, readable CPU recordings and
+  verified cleanup. See the [adoption plan](../../../console/docs/110326-adoption-qualification.md).
 - [ ] M3: Add AnywhereVLA project groups, mediated exec, and host helper ownership.
   Gate: terminal disconnect, helper failure, ordinary restart, and idempotent cleanup.
 - [ ] M4: Add Event-Orin staged launch and composed-recorder finalization.
