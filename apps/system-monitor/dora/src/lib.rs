@@ -147,8 +147,14 @@ impl Publisher {
     pub fn sampling_check(&self) -> fault_dora::Check {
         self.sampling.clone()
     }
+    /// Reports and publishes a failure on the `publication` check.
     pub fn report_failure(&mut self, error: &str) -> Result<()> {
         fault_dora::Health::failure(&self.recording, error)?;
+        self.tick_health().map(|_| ())
+    }
+    /// Reports and publishes a collector failure on the `sampling` check.
+    pub fn report_sampling_failure(&mut self, error: &str) -> Result<()> {
+        fault_dora::Health::failure(&self.sampling, error)?;
         self.tick_health().map(|_| ())
     }
     /// Publishes due health and returns when the host's publication loop must call again.

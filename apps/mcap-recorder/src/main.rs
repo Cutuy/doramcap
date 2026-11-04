@@ -73,15 +73,16 @@ fn main() -> Result<()> {
                             }
                             _ => Ok(()),
                         };
+                        // Health loss leaves the recording and its event handling untouched.
                         if let Err(error) = observed {
-                            return Some(Event::Error(error.to_string()));
+                            eprintln!("mcap-recorder: health update failed: {error}");
                         }
                         return Some(event);
                     }
                     Some(None) => return None,
                     None => {
                         if let Err(error) = health.tick(&mut node) {
-                            return Some(Event::Error(error.to_string()));
+                            eprintln!("mcap-recorder: health publication failed: {error}");
                         }
                     }
                 }

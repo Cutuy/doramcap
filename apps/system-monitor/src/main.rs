@@ -343,8 +343,10 @@ fn run(config: MonitorConfig) -> Result<()> {
             let flush_deadline = recorder
                 .as_ref()
                 .and_then(recording::Recorder::next_flush_deadline);
-            let selected = if let Some(deadline) =
-                [flush_deadline, health_deadline].into_iter().flatten().min()
+            let selected = if let Some(deadline) = [flush_deadline, health_deadline]
+                .into_iter()
+                .flatten()
+                .min()
             {
                 match select.select_deadline(deadline) {
                     Ok(selected) => selected,
@@ -502,7 +504,7 @@ fn run(config: MonitorConfig) -> Result<()> {
     #[cfg(feature = "dora")]
     if let Some(publisher) = publisher.as_mut() {
         if let Err(error) = &collected {
-            let _ = publisher.report_failure(&error.to_string());
+            let _ = publisher.report_sampling_failure(&error.to_string());
         }
         publisher.finish()?;
     }
