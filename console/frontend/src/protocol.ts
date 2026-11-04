@@ -15,3 +15,4 @@ export type HistoryEntry = doramcap.console.v1.HistoryEntry;
 export type HistoryArtifact = doramcap.console.v1.HistoryArtifact;
 export type HistoryPage = doramcap.console.v1.HistoryPage;
 export type HistoryDetail = doramcap.console.v1.HistoryDetail;
+export type HistoryComparison = doramcap.console.v1.HistoryComparison;

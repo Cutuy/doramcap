@@ -14,6 +14,9 @@ export const LIMITS = {
   liveIntervalMs: 100,
   historyPageDefault: 50,
   historyPageMax: 200,
+  // The server and browser compare one run per side today; the contract allows more.
+  comparisonSides: 2,
+  comparisonRunsPerSide: 1,
 } as const;
 export const ERROR_STATUS = {
   Unauthorized: 401,
@@ -44,10 +47,13 @@ export const routes = {
   // POST carries the typed query; it reads only.
   history: { method: 'POST', path: '/api/history', status: 200, request: wire.HistoryQuery, response: wire.HistoryPage },
   historyRun: { method: 'GET', path: '/api/history', status: 200, response: wire.HistoryDetail },
+  // POST carries the typed selection; it reads only.
+  historyCompare: { method: 'POST', path: '/api/history/compare', status: 200, request: wire.HistoryComparisonRequest, response: wire.HistoryComparison },
   error: wire.ConsoleError,
 } as const;
 export const historyRunPath = (runId: string) => `/api/history/${encodeURIComponent(runId)}`;
 export const historyRunRoute = /^\/api\/history\/([a-f0-9]{32})$/;
+export const runId = /^[a-f0-9]{32}$/;
 export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;

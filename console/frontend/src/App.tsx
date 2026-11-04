@@ -152,7 +152,7 @@ export function App() {
   const navigateRun = (target: PagePhase) => { viewingRun.current = target === 'Run'; selecting.current = false; setPhase(target); };
   const refresh = `${snapshot?.runId}:${snapshot?.phase}`;
   return <PageFrame phase={phase} history={!!route} onNavigate={historical && (phase === 'Run' || phase === 'Result') ? navigateRun : undefined}>
-    {route ? <>{active.has(state) && !!snapshot?.runId && <p className="notice" role="status">A run is in progress. <a href="#/">View live run</a></p>}{route.runId ? <HistoryRunPage id={route.runId} refresh={refresh} runAgain={runAgain} runActive={runAgainBlocked(snapshot, busy)}/> : <HistoryList refresh={refresh}/>}</> : <>
+    {route ? <>{active.has(state) && !!snapshot?.runId && <p className="notice" role="status">A run is in progress. <a href="#/">View live run</a></p>}{route.runId ? <HistoryRunPage id={route.runId} refresh={refresh} runAgain={runAgain} runActive={runAgainBlocked(snapshot, busy)}/> : <HistoryList refresh={refresh} selected={route.compare}/>}</> : <>
     {error && <div className="notice failure-notice" role="alert">{error}{retry && canStopRun(snapshot, stopPending) && <ActionButton variant="secondary" onClick={() => void start()}>Start run</ActionButton>}</div>}
     {disconnected && <div className="notice"><span role="status">Connection lost; run may still be active.</span> <span aria-live="off">{updated && `Last update ${Math.max(0, Math.floor((clock - updated) / 1000))} s ago.`}</span></div>}
     <div className="sr-only" aria-live="polite">{phase} {state === Phase.STOPPING ? 'Stopping run' : ''}</div>

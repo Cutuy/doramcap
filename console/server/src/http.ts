@@ -7,7 +7,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { extname, resolve, sep } from 'node:path';
 import { streamArtifact } from './artifacts.js';
 import { wire, type ConsoleBackend } from './native.js';
-import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, historyCursor, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
+import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
 
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
 class HttpError extends Error { constructor(public status: number, public code: ErrorCode, public detail = '') { super(code); } }
@@ -154,6 +154,15 @@ export function createConsoleServer(config: HttpOptions) {
             (value.cursor && !historyCursor.test(value.cursor)) || !(value.state in wire.HistoryState))
           throw new HttpError(400, 'InvalidInput');
         reply(response, routes.history.status, await config.backend.history(input)); return;
+      }
+      if (request.method === routes.historyCompare.method && url.pathname === routes.historyCompare.path) {
+        const input = await body(request), { sides } = decode(routes.historyCompare.request, input);
+        const runs = sides.flatMap(side => side.runIds ?? []);
+        if (sides.length !== LIMITS.comparisonSides || sides.some(side => side.runIds?.length !== LIMITS.comparisonRunsPerSide) ||
+            !runs.every(run => runId.test(run)) || new Set(runs).size !== runs.length)
+          throw new HttpError(400, 'InvalidInput');
+        sides.forEach(side => string(side.label));
+        reply(response, routes.historyCompare.status, await config.backend.historyCompare(input)); return;
       }
       const past = historyRunRoute.exec(url.pathname);
       if (request.method === routes.historyRun.method && past) {

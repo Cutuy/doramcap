@@ -5,7 +5,7 @@
 Select a Compose project and optional system apps, inspect the resolved services,
 then run the shared experiment and download its recordings. Dora coordinator and
 IPC daemon are included automatically. [History](docs/110226-experiment-history.md)
-keeps past runs, their recordings and a **Run again** action.
+keeps past runs, their recordings and a **Run again** action, and compares any two selected runs.
 
 ![Console architecture](docs/102926-console-boundary.svg)
 

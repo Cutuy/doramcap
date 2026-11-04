@@ -156,3 +156,53 @@ message HistoryPage {
   string next_cursor = 2; // Empty on the last page.
 }
 message HistoryDetail { HistoryEntry entry = 1; Status status = 2; }
+
+// How one compared fact differs. A fact unset in both runs has no row.
+enum ComparisonResult {
+  COMPARISON_RESULT_UNSPECIFIED = 0;
+  COMPARISON_SAME = 1;
+  COMPARISON_CHANGED = 2;
+  COMPARISON_UNAVAILABLE = 3; // One run recorded nothing of this kind.
+}
+enum ComparisonGroup {
+  COMPARISON_GROUP_UNSPECIFIED = 0;
+  COMPARISON_OUTCOME = 1;
+  COMPARISON_SETUP = 2;
+  COMPARISON_CONFIGURATION = 3; // Differences here can change results.
+  COMPARISON_CONDITION = 4;
+}
+// One side's values for one fact, aligned with that side's runs. Empty values are unset, or withheld when the row is hidden.
+message ComparisonCell {
+  repeated string values = 1;
+}
+// One compared fact, with one cell per side in the comparison's order.
+message ComparisonRow {
+  ComparisonGroup group = 1;
+  string name = 2;
+  repeated ComparisonCell cells = 3;
+  ComparisonResult result = 4;
+  bool hidden = 5;
+}
+// One run in a comparison. `captured` is false when the run has no machine capture.
+message ComparedRun {
+  HistoryEntry entry = 1;
+  bool captured = 2;
+}
+// One side of a comparison, such as A or B, holding any number of runs.
+message ComparisonSide {
+  string label = 1;
+  repeated ComparedRun runs = 2;
+}
+message HistoryComparison {
+  repeated ComparisonSide sides = 1;
+  repeated ComparisonRow rows = 2;
+  bool truncated = 3; // True when bounded rows left some matching facts out.
+}
+// The runs selected for one side.
+message ComparisonSelection {
+  string label = 1;
+  repeated string run_ids = 2;
+}
+message HistoryComparisonRequest {
+  repeated ComparisonSelection sides = 1;
+}

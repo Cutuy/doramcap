@@ -19,6 +19,7 @@ test('authentication, Origin, size and field validation precede native mutations
     frames: () => () => {},
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => { throw new Error('Missing'); },
+    historyCompare: async (input) => { if (wire.HistoryComparisonRequest.decode(input).sides[0].runIds?.[0] === 'f'.repeat(32)) throw new Error('Missing'); return Buffer.from(wire.HistoryComparison.encode({ truncated: true }).finish()); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
     start: async input => { const key = wire.StartRequest.decode(input).requestKey; if (key === 'stopped') throw new Error('Stopped'); if (key === 'rejected') throw new Error('PreflightRejected'); if (key === 'closing') throw new Error('Closing'); starts++; return Buffer.from(wire.StartResponse.encode({ runId: 'run' }).finish()); },
     stop: async () => { stops++; return Buffer.from(wire.StopResponse.encode({ accepted: true }).finish()); },
@@ -42,6 +43,18 @@ test('authentication, Origin, size and field validation precede native mutations
       assert.equal((await fetch(base + '/api/session', { method: 'POST', headers })).status, 403);
     assert.equal((await fetch(base + '/api/current', { headers: { authorization: 'Basic bad' } })).status, 401);
     assert.equal((await post(routes.start.path, start('key'), 'http://evil.test')).status, 403);
+    const [runA, runB, unknown] = ['a', 'b', 'f'].map(letter => letter.repeat(32));
+    const compare = (...sides: string[][]) => wire.HistoryComparisonRequest.encode({ sides: sides.map((runIds, index) => ({ label: `S${index}`, runIds })) }).finish();
+    assert.equal((await fetch(base + routes.historyCompare.path, { method: 'POST', headers: { origin: 'http://console.test' }, body: new Blob([new Uint8Array(compare([runA], [runB]))]) })).status, 401);
+    assert.equal((await post(routes.historyCompare.path, compare([runA], [runB]), 'http://evil.test')).status, 403);
+    assert.equal((await post(routes.historyCompare.path, compare([runA], [runA]))).status, 400);
+    assert.equal((await post(routes.historyCompare.path, compare([runA]))).status, 400);
+    assert.equal((await post(routes.historyCompare.path, compare([runA, runB], [unknown]))).status, 400);
+    assert.equal((await post(routes.historyCompare.path, compare(['short'], [runB]))).status, 400);
+    assert.equal((await post(routes.historyCompare.path, compare([unknown], [runB]))).status, 404);
+    const compared = await post(routes.historyCompare.path, compare([runA], [runB]));
+    assert.equal(compared.status, 200);
+    assert.equal(wire.HistoryComparison.decode(new Uint8Array(await compared.arrayBuffer())).truncated, true);
     assert.equal((await post(routes.start.path, Uint8Array.of(0xff))).status, 400);
     assert.equal((await post(routes.stop.path, wire.StopRequest.encode({}).finish())).status, 400);
     assert.equal((await post(routes.start.path, new Uint8Array(LIMITS.bodyBytes + 1))).status, 400);
@@ -89,7 +102,7 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
   const native: ConsoleBackend = {
     frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
     close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
-    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0),
+    history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0), historyCompare: async () => Buffer.alloc(0),
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
     status: async () => { statuses++; return Buffer.alloc(0); },
     update: async cursor => {

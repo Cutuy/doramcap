@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiError, api, wire, type HistoryDetail, type HistoryEntry, type HistoryPage } from './api';
-import { historyHash, durationLabel, entryRecordingBytes, latestRequest, stateLabel, stateTone, timeLabel } from './model';
+import { compareHash, historyHash, toggleCompared, durationLabel, entryRecordingBytes, latestRequest, stateLabel, stateTone, timeLabel } from './model';
+import { ComparisonPanel } from './Comparison';
 import { Result } from './Result';
 import { RunActivity } from './RunActivity';
 import { RunMetrics, bytesLabel } from './RunMetrics';
@@ -11,8 +12,10 @@ const { HistoryState: State } = wire;
 const filters = [State.HISTORY_COMPLETED, State.HISTORY_FAILED, State.HISTORY_CANCELLED, State.HISTORY_BLOCKED, State.HISTORY_INTERRUPTED, State.HISTORY_RUNNING];
 const failure = (error: unknown) => error instanceof ApiError && error.code === 'Missing' ? 'This run is not in the history.' : error instanceof ApiError && error.code === 'Unauthorized' ? 'Session ended. Open the access link printed by the running Console.' : 'History could not be loaded. Try again.';
 
-function Row({ entry }: { entry: HistoryEntry }) {
-  return <tr>
+function Row({ entry, selected }: { entry: HistoryEntry; selected: string[] }) {
+  const position = selected.indexOf(entry.runId);
+  return <tr className={position >= 0 ? 'history-selected' : undefined}>
+    <td className="history-select"><label><input type="checkbox" aria-label={`Compare run ${entry.runId.slice(0, 8)}`} checked={position >= 0} disabled={position < 0 && selected.length >= 2} onChange={() => { location.hash = compareHash(toggleCompared(selected, entry.runId)); }}/>{position >= 0 && <strong>{position ? 'B' : 'A'}</strong>}</label></td>
     <td><StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/></td>
     <td><a className="mono break" href={historyHash(entry.runId)}>{entry.runId.slice(0, 8)}</a>{entry.profiles.length > 0 && <div className="muted">{entry.profiles.join(', ')}</div>}{entry.errorSummary && <div className="history-error" title={entry.errorSummary}>{entry.errorSummary}</div>}</td>
     <td className="hide-narrow">{timeLabel(entry.startedAtMs)}</td>
@@ -22,19 +25,22 @@ function Row({ entry }: { entry: HistoryEntry }) {
 }
 
 /** Filtered run table; loading, failure and empty states come from its props. */
-export function HistoryTable({ page, loading, error, state, setState, more }: {
+export function HistoryTable({ page, loading, error, state, setState, more, selected = [], comparison }: {
   page: HistoryPage | null; loading: boolean; error: string; state: number;
-  setState: (state: number) => void; more: () => void;
+  setState: (state: number) => void; more: () => void; selected?: string[]; comparison?: ReactNode;
 }) {
   const filtered = state !== 0;
   return <>
     <div className="heading"><div><h1>Experiment history</h1></div></div>
     {error && <p className="notice failure-notice" role="alert">{error}</p>}
+    {comparison}
     <section className="panel">
+      {selected.length === 1 && <p className="notice" role="status">Select one more run to compare with <span className="mono">{selected[0].slice(0, 8)}</span>. <a href={historyHash()}>Clear</a></p>}
+      {selected.length === 0 && page && page.entries.length > 1 && <p className="muted">Select two runs to compare them.</p>}
       <div className="history-filters">
         <div><label htmlFor="history-state">Status</label><select id="history-state" value={state} onChange={event => setState(Number(event.target.value))}><option value={0}>All</option>{filters.map(item => <option key={item} value={item}>{stateLabel(item)}</option>)}</select></div>
       </div>
-      {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-status">Status</th><th>Run</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry}/>)}</tbody></table>}
+      {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-select"><span className="sr-only">Compare</span></th><th className="history-status">Status</th><th>Run</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry} selected={selected}/>)}</tbody></table>}
       {loading && <p className="muted" role="status">Loading history…</p>}
       {!loading && !error && page?.entries.length === 0 && <p className="muted">{filtered ? 'No runs match these filters.' : 'No runs yet. Finished and interrupted experiments appear here.'}</p>}
       {page?.nextCursor && <div className="actions"><ActionButton variant="secondary" disabled={loading} onClick={more}>Load more</ActionButton></div>}
@@ -42,7 +48,7 @@ export function HistoryTable({ page, loading, error, state, setState, more }: {
   </>;
 }
 
-export function HistoryList({ refresh }: { refresh: string }) {
+export function HistoryList({ refresh, selected = [] }: { refresh: string; selected?: string[] }) {
   const [state, setState] = useState(0);
   const [page, setPage] = useState<HistoryPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,7 +66,7 @@ export function HistoryList({ refresh }: { refresh: string }) {
     finally { if (current()) setLoading(false); }
   };
   useEffect(() => { void load(''); return requests.cancel; }, [state, refresh]);
-  return <HistoryTable page={page} loading={loading} error={error} state={state} setState={setState} more={() => void load(page!.nextCursor)}/>;
+  return <HistoryTable page={page} loading={loading} error={error} state={state} setState={setState} more={() => void load(page!.nextCursor)} selected={selected} comparison={selected.length === 2 ? <ComparisonPanel a={selected[0]} b={selected[1]} refresh={refresh} clear={historyHash()}/> : undefined}/>;
 }
 
 /** One stored run: the live Result, timeline and metrics components over its saved status. */

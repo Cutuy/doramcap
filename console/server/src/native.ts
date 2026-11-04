@@ -10,6 +10,7 @@ export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
 export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
+export const systemConfig = doramcap.system_config.v1;
 // The addon ABI stays private; application code uses the generated message types.
 type RawExecution = Omit<NativeExecution, 'profiles' | 'inspect' | 'start' | 'poll'> & {
   profiles(input: Buffer): Promise<Buffer>;
@@ -77,5 +78,7 @@ export interface ConsoleBackend {
   history(input: Buffer): Promise<Buffer>;
   /** Encoded HistoryDetail; rejects with `Missing` for an unknown id. */
   historyRun(runId: string): Promise<Buffer>;
+  /** Encoded HistoryComparisonRequest to encoded HistoryComparison; rejects with `Missing` for an unknown id. */
+  historyCompare(input: Buffer): Promise<Buffer>;
   close(): Promise<void>;
 }
