@@ -20,6 +20,8 @@ Created: 2026-11-02. PR 96 integrates the prerequisites below; all PRs remain op
 
 **Validation**
 
-- [ ] Graph and release tests pass.
-- [ ] Six container scenarios and CPU recording equality pass.
-- [ ] Full local CI, hosted x86/ARM64 CI and ARM64 native checks pass.
+- [x] Graph and release tests pass.
+- [x] Six container scenarios and CPU recording equality pass.
+- [x] Full local CI and ARM64 worker checks pass.
+- [x] Hosted Node checks pass on x86 and ARM64.
+- [ ] Hosted Rust checks pass on x86 and ARM64 (running).
