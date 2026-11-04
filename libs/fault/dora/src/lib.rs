@@ -38,6 +38,12 @@ impl Health {
         definition.policy.deadline = deadline;
         Ok(self.reporter.register(definition)?)
     }
+    /// Registers a condition reported only at state transitions; its first success clears it.
+    pub fn register_transition(&self, app: &str, operation: &str) -> Result<Check> {
+        let mut definition = Definition::new(app, "runtime", operation)?;
+        definition.policy.recovery = Duration::ZERO;
+        Ok(self.reporter.register(definition)?)
+    }
     /// Records bounded failure detail without making transport calls.
     pub fn failure(check: &Check, detail: &str) -> Result<()> {
         let mut end = detail.len().min(MAX_DETAIL_BYTES);

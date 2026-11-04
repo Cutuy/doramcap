@@ -28,7 +28,7 @@ fn main() -> Result<()> {
     let (mut node, mut events) = dora_app::environment::connect()?;
     let mut health = Health::new()?;
     let writes = health.register("mcap-recorder", "recording", None)?;
-    let inputs = health.register("mcap-recorder", "inputs", None)?;
+    let inputs = health.register_transition("mcap-recorder", "inputs")?;
     let mut recording = match recording::Recording::create(config) {
         Ok(recording) => recording,
         Err(error) => {
@@ -40,7 +40,10 @@ fn main() -> Result<()> {
     writes.success()?;
     inputs.success()?;
     if let Err(error) = dora_app::environment::ready() {
-        return recording.finish(config::State::Failed, Err(eyre!(error)));
+        let error = eyre!(error);
+        let _ = Health::failure(&writes, &error.to_string());
+        let _ = health.tick(&mut node);
+        return recording.finish(config::State::Failed, Err(error));
     }
     let mut closed = BTreeSet::new();
     let (state, result) = recording::consume(
@@ -91,6 +94,10 @@ fn main() -> Result<()> {
     );
     if let Err(error) = &result {
         let _ = Health::failure(&writes, &error.to_string());
+    }
+    // Closed inputs are the normal end of a drained recording.
+    if state == config::State::Drained {
+        let _ = inputs.success();
     }
     let _ = health.tick(&mut node);
     let finished = recording.finish(state, result);

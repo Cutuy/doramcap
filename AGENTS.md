@@ -88,3 +88,4 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - Use the first two lines for a brief summary and a single-line validation summary. Put detailed explanations afterward.
 - Favor small paragraphs and bullet points for detail. Favor architectural graphs.
 - For complex PRs, explain the idea without listing too many component names.
+- For targeted bug fixes, write the title and description in plain language: what went wrong, what happens now, and what stays the same. Leave out code terms. Add an SVG when the situation is hard to follow in words.
