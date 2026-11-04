@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createClient, routes, wire, workflow, Phase, StepState, type HistoryPage } from './api';
 import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
-import { compareHash, durationLabel, entryRecordingBytes, historyHash, historyRoute, toggleCompared } from './model';
+import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, toggleCompared } from './model';
 import { RunMetrics } from './RunMetrics';
 
 const { HistoryState: State } = wire;
@@ -193,3 +193,13 @@ test('the comparison selection lives in the URL, holds two runs and survives a r
   assert.deepEqual(historyRoute(historyHash()), { runId: '', compare: [] });
 });
 
+test('compared facts read by their unit, and exact names stay exact', () => {
+  // Arrange / Act / Assert
+  assert.equal(factLabel('memory_available_bytes'), 'Memory available');
+  assert.equal(factLabel('cpu_model'), 'CPU model');
+  assert.equal(factLabel('environment.worker.FIXED_DT'), 'environment.worker.FIXED_DT');
+  assert.equal(factValue('disk_free_bytes', String(2 * 1024 ** 3)), '2.0 GiB');
+  assert.equal(factValue('uptime_seconds', '172800'), '2.0 days');
+  assert.equal(factValue('max_temperature_celsius', '49'), '49 °C');
+  assert.equal(factValue('kernel_release', '7.0'), '7.0');
+});
