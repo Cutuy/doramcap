@@ -21,8 +21,8 @@ fn standalone_config_accepts_external_reporter_and_retains_disconnected_faults()
     // Arrange
     let config = config::load(Path::new("deploy/standalone/config/watchdog.pbtxt")).unwrap();
     let timeout = Duration::from_millis(config.source_timeout_ms.unwrap().into());
-    let input = config.inputs[0].clone();
-    let mut engine = Engine::new(config.settings().unwrap(), 43, 44).unwrap();
+    let input = "workload_faults".to_string();
+    let mut engine = Engine::new(config.settings(vec![input.clone()]).unwrap(), 43, 44).unwrap();
     let (reporter, publisher) = Reporter::new(42, Default::default()).unwrap();
     let condition = reporter
         .register(Definition::new("workload", "disk", "write").unwrap())
@@ -86,4 +86,52 @@ fn standalone_sink_configs_use_existing_feature_gates() {
         assert_eq!(config.is_ok(), enabled, "{name}: {config:?}");
     }
     std::fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+fn zero_inputs_publish_local_diagnostics_and_excess_inputs_fail() {
+    // Arrange
+    let config = config::load(Path::new("deploy/standalone/config/watchdog.pbtxt")).unwrap();
+    // Act
+    let mut engine = Engine::new(config.settings(vec![]).unwrap(), 43, 44).unwrap();
+    engine.advance(Duration::ZERO).unwrap();
+    // Assert
+    assert!(matches!(
+        engine.snapshot(Duration::ZERO).payload,
+        AggregationPayload::Snapshot(_)
+    ));
+    // Act / Assert
+    let inputs = (0..config.max_sources.unwrap())
+        .map(|index| format!("health_{index}"))
+        .collect();
+    assert!(
+        config
+            .settings(inputs)
+            .unwrap_err()
+            .to_string()
+            .contains("max_sources")
+    );
+}
+
+#[test]
+fn standalone_profiles_fit_the_declared_health_fan_in() {
+    // Arrange
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("deploy/standalone/config");
+    for (name, enabled) in [
+        ("watchdog", true),
+        ("watchdog-mcap", cfg!(feature = "mcap")),
+        ("watchdog-otel", cfg!(feature = "otel")),
+    ] {
+        // Act
+        let config = config::load(&root.join(format!("{name}.pbtxt")));
+        // Assert
+        assert_eq!(config.is_ok(), enabled, "{name}");
+        if let Ok(config) = config {
+            // Act / Assert: the reserved local source plus every configured external source fit.
+            let inputs = (0..config.max_sources.unwrap() - 1)
+                .map(|id| format!("health_{id}"))
+                .collect();
+            assert!(config.settings(inputs).is_ok(), "{name}");
+        }
+    }
 }

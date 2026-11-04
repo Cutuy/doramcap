@@ -1,7 +1,7 @@
 nodes:
   - id: monitor
     path: dynamic
-    outputs: [snapshots, dictionary]
+    outputs: [snapshots, dictionary, health]
   - id: viewer
     path: dynamic
     inputs:

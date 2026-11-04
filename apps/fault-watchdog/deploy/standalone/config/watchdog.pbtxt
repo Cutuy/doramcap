@@ -1,4 +1,3 @@
-inputs: "workload_faults"
 source_timeout_ms: 3000
 snapshot_interval_ms: 500
 maintenance_ms: 10

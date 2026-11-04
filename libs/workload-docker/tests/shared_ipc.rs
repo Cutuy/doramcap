@@ -54,7 +54,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
     let overlay = root.join("zenoh.json5");
     std::fs::write(&overlay, "{transport:{shared_memory:{enabled:true}}}\n").unwrap();
     let graph = root.join("graph.yml");
-    std::fs::write(&graph, "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: recorder\n    path: dynamic\n    inputs:\n      data: {source: source/data, queue_size: 64, queue_policy: drop_oldest}\n").unwrap();
+    std::fs::write(&graph, "nodes:\n  - id: source\n    path: dynamic\n    outputs: [data]\n  - id: recorder\n    path: dynamic\n    outputs: [health]\n    inputs:\n      data: {source: source/data, queue_size: 64, queue_policy: drop_oldest}\n").unwrap();
     let payload = telemetry_protocol::pb::Packet {
         body: Some(telemetry_protocol::pb::packet::Body::Snapshot(
             telemetry_protocol::pb::SnapshotFrame {

@@ -3,12 +3,19 @@ use eyre::{Result, eyre};
 use futures::{FutureExt, channel::oneshot};
 use prost::Message;
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+const SAMPLING_HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
+const HEALTH_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Owns Dora exclusively on the publication thread. Calls may allocate/block.
 pub struct Publisher {
     node: Option<DoraNode>,
     cancel: Option<oneshot::Sender<()>>,
     receiver: Option<JoinHandle<()>>,
+    health: fault_dora::Health,
+    sampling: fault_dora::Check,
+    recording: fault_dora::Check,
 }
 impl Publisher {
     /// Attach using the app environment; notify once on Dora stop, disconnect or error.
@@ -25,6 +32,12 @@ impl Publisher {
         mut events: EventStream,
         notify: impl FnOnce(std::result::Result<(), String>) + Send + 'static,
     ) -> Result<Self> {
+        let health = fault_dora::Health::new()?;
+        let sampling =
+            health.register("system-monitor", "sampling", Some(SAMPLING_HEALTH_TIMEOUT))?;
+        let recording = health.register("system-monitor", "publication", None)?;
+        sampling.success()?;
+        recording.success()?;
         let (cancel, cancel_rx) = oneshot::channel();
         let receiver = std::thread::Builder::new().name("monitor-dora-events".into()).spawn(move || {
             let result = futures::executor::block_on(async {
@@ -43,6 +56,9 @@ impl Publisher {
             if let Some(result) = result { notify(result); }
         })?;
         Ok(Self {
+            health,
+            sampling,
+            recording,
             node: Some(node),
             cancel: Some(cancel),
             receiver: Some(receiver),
@@ -126,6 +142,23 @@ impl Publisher {
                 fill,
             )?;
         Ok(())
+    }
+
+    pub fn sampling_check(&self) -> fault_dora::Check {
+        self.sampling.clone()
+    }
+    pub fn report_failure(&mut self, error: &str) -> Result<()> {
+        fault_dora::Health::failure(&self.recording, error)?;
+        self.tick_health().map(|_| ())
+    }
+    /// Publishes due health and returns when the host's publication loop must call again.
+    pub fn tick_health(&mut self) -> Result<Instant> {
+        self.health.tick(
+            self.node
+                .as_mut()
+                .ok_or_else(|| eyre!("publisher already finished"))?,
+        )?;
+        Ok(Instant::now() + HEALTH_INTERVAL)
     }
 
     fn stop_events(&mut self) -> Result<()> {

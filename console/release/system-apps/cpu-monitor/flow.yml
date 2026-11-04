@@ -1,4 +1,4 @@
 nodes:
   - id: cpu-monitor
     path: dynamic
-    outputs: [snapshots, dictionary]
+    outputs: [snapshots, dictionary, health]

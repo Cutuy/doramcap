@@ -2,7 +2,8 @@ syntax = "proto3";
 package doramcap.watchdog.v1;
 // Runtime capabilities are validated against the compiled Cargo features.
 message WatchdogConfig {
-  repeated string inputs = 1; // One source incarnation per Dora input.
+  reserved 1;
+  reserved "inputs"; // Dora supplies the node input list.
   optional uint32 max_sources = 2;
   optional uint32 max_conditions_per_source = 3;
   optional uint32 max_batch_records = 4;
