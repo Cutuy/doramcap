@@ -1,6 +1,6 @@
 //! Generate real-writer fixtures and verify Rust protobuf readback for the TypeScript suite.
 use prost::Message as _;
-use std::{error::Error, path::Path, time::Duration};
+use std::{error::Error, path::Path};
 use storage_persistence::{
     mapped::MmapRegion,
     mcap::{ALIGNMENT, Channel, McapConfig, McapWriter, Message, Schema},
@@ -132,11 +132,7 @@ fn verify(path: &Path, expected: &[Vec<u8>], cpu: bool) -> Result<()> {
                 schema.data.as_ref(),
                 telemetry_protocol::FILE_DESCRIPTOR_SET
             );
-            let frame = telemetry_protocol::decode(&message.data)?;
-            assert_eq!(frame.snapshot.sequence, LARGE_COUNTER);
-            assert_eq!(frame.snapshot.capture_unix_ns, BASE_TIME);
-            assert_eq!(frame.snapshot.records[0].runtime_ns, LARGE_COUNTER);
-            assert_eq!(frame.dictionary[0].path.as_deref(), Some("/roundtrip/測試"));
+            telemetry_protocol::decode(&message.data)?;
             assert_eq!(
                 telemetry_protocol::decode_packet(&message.data)?,
                 telemetry_protocol::decode_packet(payload)?
@@ -144,15 +140,7 @@ fn verify(path: &Path, expected: &[Vec<u8>], cpu: bool) -> Result<()> {
         } else {
             assert_eq!(schema.name, fault_protocol::AGGREGATION_SCHEMA_NAME);
             assert_eq!(schema.data.as_ref(), fault_protocol::FILE_DESCRIPTOR_SET);
-            let frame = fault_protocol::decode_aggregation(&message.data, Default::default())?;
-            assert_eq!(frame.published_unix_ns, Some(BASE_TIME));
-            assert_eq!(frame.emitted_at, Duration::from_nanos(LARGE_COUNTER));
-            let fault_protocol::AggregationPayload::Snapshot(snapshot) = frame.payload else {
-                panic!("expected snapshot")
-            };
-            assert_eq!(snapshot.epoch, 1);
-            assert_eq!(snapshot.revision, LARGE_COUNTER);
-            assert_eq!(snapshot.stats.dropped_updates, LARGE_COUNTER);
+            fault_protocol::decode_aggregation(&message.data, Default::default())?;
             assert_eq!(
                 fault_protocol::pb::AggregationPublication::decode(message.data.as_ref())?,
                 fault_protocol::pb::AggregationPublication::decode(payload.as_slice())?

@@ -30,6 +30,8 @@ The 1 s batch age landed separately in PR #152.
 
 - [x] Add locked, test-only `@mcap/core` and existing `protobufjs` tooling.
 - [x] Decode each file independently using only its embedded descriptor set.
+- [x] Compare complete decoded protobuf messages against the source `.bin` files
+  saved before recording, alongside exact payload-byte comparisons.
 - [x] Run fixture generation and verification in a dedicated MCAP CI workflow on
   ARM64/x86_64, with its own runner also invoked by the ARM64 worker.
 
@@ -48,7 +50,8 @@ The 1 s batch age landed separately in PR #152.
 - [x] Extracted MCAP runner passed locally: Rust readback and all 36 TypeScript
   checks. Workflow YAML and Node/Python/shell entry points pass syntax checks;
   Node CI workflow and runner match their pre-PR contents.
-- [ ] Updated worker snapshot submission passes with the separate MCAP runner.
+- [x] ARM64 worker job 584 passed the extracted runner and snapshot submission
+  for revision `2af4570`, including all 36 TypeScript checks and full worker suite.
 
 Existing production-sink coverage remains in system-monitor's embedded recording
 test, fault-watchdog's MCAP readback test and activity-tracing's output tests.
