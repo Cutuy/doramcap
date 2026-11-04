@@ -14,7 +14,7 @@ worker; Dora integration is the next milestone.
 [Contracts and selectors](docs/contracts.md) ·
 [Implementation plan](docs/102026-step-provenance.md) ·
 [Protobuf schema](proto/provenance.proto) ·
-[Demo proposal](../../apps/dataflow-tracing/docs/102026-dataflow-tracing.md)
+[Demo proposal](../../apps/dataflow-tracing-demo/docs/102026-dataflow-tracing.md)
 
 ```sh
 cargo test --locked -p step-provenance --all-features

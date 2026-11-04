@@ -27,7 +27,7 @@ Jetson qualification and integrated runtime capabilities follow the
 
 ## Explore a run
 
-The [dataflow tracing demo](apps/dataflow-tracing/) follows inputs through a
+The [dataflow tracing demo](apps/dataflow-tracing-demo/) follows inputs through a
 four-node Dora pipeline. Select an output, inspect the inputs that produced it,
 and compare processing spans with measured latency on linked timelines.
 

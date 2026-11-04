@@ -1,4 +1,4 @@
-# Dataflow Tracing
+# Dataflow Tracing Demo
 
 Four Dora nodes share one pipeline process. A dedicated monitor tracks which inputs
 produce each output, computes four fixed latency measurements, and streams runtime activities
@@ -11,10 +11,10 @@ and steps to linked timelines.
 Requires Rust, Node.js 22+, and Dora CLI 1.1.0. From the repository root:
 
 ```sh
-cargo build --locked -p dataflow-tracing
-npm --prefix apps/dataflow-tracing/frontend ci
-npm --prefix apps/dataflow-tracing/frontend run build
-python3 apps/dataflow-tracing/run.py --dora /path/to/dora
+cargo build --locked -p dataflow-tracing-demo
+npm --prefix apps/dataflow-tracing-demo/frontend ci
+npm --prefix apps/dataflow-tracing-demo/frontend run build
+python3 apps/dataflow-tracing-demo/run.py --dora /path/to/dora
 ```
 
 Open <http://127.0.0.1:8090>. Scroll to zoom, drag to pan, and select a generation,
@@ -28,7 +28,7 @@ Ctrl-C stops this demo's flow; shared Dora infrastructure stays running.
 - `--port 8091`: choose another HTTP port.
 - `--output /tmp/demo.json`: save final diagnostic evidence.
 
-The `dataflow-tracing pipeline` executable also accepts `--duration until-stopped`
+The `dataflow-tracing-demo pipeline` executable also accepts `--duration until-stopped`
 for a long-running host that sends the shutdown signal.
 
 Dora 1.1.0 may print “failed to receive finished signal” while starting dynamic
@@ -38,10 +38,10 @@ and traffic; startup and runtime failures still fail the check.
 ## Validate
 
 ```sh
-cargo test --locked -p dataflow-tracing -p activity-tracing -p step-provenance
-npm --prefix apps/dataflow-tracing/frontend test
+cargo test --locked -p dataflow-tracing-demo -p activity-tracing -p step-provenance
+npm --prefix apps/dataflow-tracing-demo/frontend test
 # While a demo is running:
-npm --prefix apps/dataflow-tracing/frontend run test:live
+npm --prefix apps/dataflow-tracing-demo/frontend run test:live
 ```
 
 [Implementation plan and evidence](docs/102026-dataflow-tracing.md) ·
