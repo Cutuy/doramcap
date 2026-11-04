@@ -479,10 +479,12 @@ pub struct ComposeRun {
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,
     /// Stop grace period in seconds for services declaring no `stop_grace_period`,
-    /// from 1 through `MAX_STOP_SECONDS`; default 15. Declared periods apply as written.
+    /// from `MIN_STOP_SECONDS` through `MAX_STOP_SECONDS`; default 15. Declared periods apply as written.
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
+/// Shortest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
+pub const MIN_STOP_SECONDS: u64 = 1;
 /// Longest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
 pub const MAX_STOP_SECONDS: u64 = 300;
 
@@ -491,9 +493,9 @@ pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()>
     if readiness_seconds == 0 {
         return Err(invalid("readiness_seconds must be positive"));
     }
-    if !(1..=MAX_STOP_SECONDS).contains(&stop_seconds) {
+    if !(MIN_STOP_SECONDS..=MAX_STOP_SECONDS).contains(&stop_seconds) {
         return Err(invalid(format!(
-            "stop_seconds must be in 1..={MAX_STOP_SECONDS}"
+            "stop_seconds must be in {MIN_STOP_SECONDS}..={MAX_STOP_SECONDS}"
         )));
     }
     Ok(())

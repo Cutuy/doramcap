@@ -227,6 +227,7 @@ fn stop_grace_defaults_to_stop_seconds_and_keeps_declared_periods() {
     let mut model = json!({"services":{
         "unset": {},
         "short": {"stop_grace_period": "2s"},
+        "minimum": {"stop_grace_period": "1s"},
         "limit": {"stop_grace_period": "5m0s"},
     }});
 
@@ -236,12 +237,13 @@ fn stop_grace_defaults_to_stop_seconds_and_keeps_declared_periods() {
     // Assert
     assert_eq!(model["services"]["unset"]["stop_grace_period"], "30s");
     assert_eq!(model["services"]["short"]["stop_grace_period"], "2s");
+    assert_eq!(model["services"]["minimum"]["stop_grace_period"], "1s");
     assert_eq!(model["services"]["limit"]["stop_grace_period"], "5m0s");
 }
 
 #[test]
-fn stop_grace_refuses_periods_over_the_limit_or_unreadable() {
-    for period in ["5m1s", "1h0m0s", "soon"] {
+fn stop_grace_refuses_periods_out_of_range_or_unreadable() {
+    for period in ["5m1s", "1h0m0s", "500ms", "0s", "soon"] {
         // Arrange
         let mut model = json!({"services":{"perception":{"stop_grace_period": period}}});
 
