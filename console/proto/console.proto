@@ -64,6 +64,11 @@ message ServiceExit {
   bool oom_killed = 3;
   bool killed = 4; // SIGKILL or the OOM killer ended it, so unsent data may be lost.
 }
+// One service the stopping run is waiting on.
+message StoppingService {
+  string service = 1;
+  uint32 force_stop_in_seconds = 2; // 0 once Docker's force stop is due.
+}
 // One relayed bridge input; frames carry `id` as their stream.
 message LiveStream { string id = 1; string app_id = 2; doramcap.console.live.v1.Kind kind = 3; }
 // One `/api/live` message: an encoded Status, or a live.v1.Frame relayed unmodified.
@@ -88,6 +93,7 @@ message Status {
   SystemAppSelection system_apps = 19;
   repeated RecordingOutput recordings = 21;
   repeated LiveStream live_streams = 23; // Empty when the live bridge is not selected.
+  repeated StoppingService stopping_services = 24; // Empty once the run finishes.
 }
 message ConsoleError { string code = 1; string message = 2; }
 message Marker {

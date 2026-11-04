@@ -19,6 +19,7 @@ pub(crate) use model::{BindMount, ResolvedBind, ResourceLimit, RuntimeService};
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, ConfigurationSnapshot, Container,
     Diagnostic, ResolveInput, ResolvedComposeProject, ServiceExit, Shutdown, StartInput, StopInput,
+    StoppingService,
 };
 pub use steps::{
     Diagnostics, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose, StartCompose,

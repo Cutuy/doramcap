@@ -446,6 +446,13 @@ export class ConsoleService implements ConsoleBackend {
       this.snapshot.activityAvailable = this.progress.rows.length > 0;
       if (update.teardownStarted) this.snapshot.phase = Phase.STOPPING;
       else if (update.ready && this.snapshot.phase === Phase.STARTING) this.snapshot.phase = Phase.RUNNING;
+      const now = Date.now();
+      this.snapshot.stoppingServices = update.stoppingServices.map(({ service, forceStopUnixMs }) =>
+        wire.StoppingService.create({
+          service,
+          forceStopInSeconds: Math.max(0, Math.ceil((Number(forceStopUnixMs) - now) / 1000)),
+        }),
+      );
       await this.sample();
       if (this.snapshot.phase === Phase.RUNNING && this.snapshot.liveStreams.length) this.relay?.open(this.snapshot.runId);
       else this.relay?.close();
@@ -502,6 +509,7 @@ export class ConsoleService implements ConsoleBackend {
   }
   private async finish(result: ExecutionResult) {
     this.completed = true;
+    this.snapshot.stoppingServices = [];
     const clean = result.boundaryClean ?? !result.blocked;
     this.snapshot.phase =
       this.metadataFailed || result.blocked || !clean

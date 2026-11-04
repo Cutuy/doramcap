@@ -1042,13 +1042,20 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         };
         let (ready, started) = tokio::sync::oneshot::channel();
         let (stop, stopped) = tokio::sync::oneshot::channel();
-        let mut run = Box::pin(runner.run_with_ready(
+        let stopping = tokio::sync::watch::Sender::default();
+        let mut waiting = stopping.subscribe();
+        let mut run = Box::pin(runner.run_with_signals(
             spec,
             async {
                 let _ = stopped.await;
             },
             |_: &orchestrator::Event| {},
-            Some(ready),
+            RunSignals {
+                ready: Some(ready),
+                stopping,
+                ..Default::default()
+            },
+            |_: &preparation::PreparedRun| Ok(()),
         ));
         tokio::select! {
             plan = started => { plan.unwrap(); }
@@ -1058,8 +1065,19 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         // Act
         let stop_requested = std::time::Instant::now();
         stop.send(()).unwrap();
-        let report = run.await.unwrap();
-        let elapsed = stop_requested.elapsed();
+        let waited_on = async {
+            let mut services = Vec::new();
+            while waiting.changed().await.is_ok() {
+                let current: Vec<StoppingService> = waiting.borrow_and_update().clone();
+                services.extend(current.into_iter().map(|waited| waited.service));
+            }
+            services
+        };
+        let timed_run = async {
+            let report = run.await.unwrap();
+            (report, stop_requested.elapsed())
+        };
+        let ((report, elapsed), waited_on) = tokio::join!(timed_run, waited_on);
 
         // Assert
         let exit = report
@@ -1076,6 +1094,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
             assert!(elapsed >= Duration::from_secs(6), "{key}: {elapsed:?}");
         }
         assert!(report.boundary_clean, "{key}: {report:?}");
+        assert!(waited_on.iter().any(|s| s == "app"), "{key}: {waited_on:?}");
     }
 }
 

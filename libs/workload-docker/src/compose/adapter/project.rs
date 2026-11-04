@@ -26,7 +26,7 @@ const ENGINE_DEFAULT_STOP_SECONDS: u64 = 10;
 const STOP_REQUEST_MARGIN: Duration = Duration::from_secs(10);
 
 /// Return how long Docker waits between the stop signal and SIGKILL for this container.
-fn stop_timeout(info: &bollard::models::ContainerInspectResponse) -> Duration {
+pub(crate) fn stop_timeout(info: &bollard::models::ContainerInspectResponse) -> Duration {
     let seconds = info
         .config
         .as_ref()
