@@ -34,8 +34,8 @@
   <text x="615" y="276" text-anchor="middle" fill="#555" font-size="12">private values</text>
 
   <rect x="730" y="176" width="110" height="72" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
-  <text x="785" y="206" text-anchor="middle">Compare</text>
-  <text x="785" y="224" text-anchor="middle" fill="#555" font-size="12">A · B diff</text>
+  <text x="785" y="206" text-anchor="middle">History A/B</text>
+  <text x="785" y="224" text-anchor="middle" fill="#555" font-size="12">on selection</text>
 
   <g fill="none" stroke="#555" stroke-width="1.5" marker-end="url(#a)">
     <path d="M190,140 L288,64"/>
