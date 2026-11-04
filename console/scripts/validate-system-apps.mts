@@ -14,6 +14,7 @@ import { Store } from '../server/src/store.js';
 import { releaseConfig } from '../server/src/release.js';
 import { availablePort } from '../server/src/launch.js';
 import { doramcap } from '../frontend/src/generated/console.js';
+import { stageSystemAppInputs } from './system-app-inputs.mts';
 
 const {values} = parseArgs({options:{dora:{type:'string'},'bin-dir':{type:'string'}}});
 assert.ok(values.dora && values['bin-dir'], 'usage: --dora DORA --bin-dir TARGET_PROFILE_DIR');
@@ -41,7 +42,7 @@ for (const name of await readdir(apps)) {
   const path = join(apps,name,'compose.yaml');
   await writeFile(path,(await readFile(path,'utf8')).replaceAll(':local',`:${tag}`));
 }
-await cp(join(root,'libs/telemetry/protocol/proto/telemetry_descriptor.bin'),join(apps,'data-recorder/telemetry_descriptor.bin'));
+stageSystemAppInputs(root, apps);
 const template = capabilities.parseConfig((await readFile(join(root,'console/release/console.pbtxt'),'utf8')).replaceAll(':local',`:${tag}`));
 let otlpRecords = 0;
 const collector = createServer((request,response) => {

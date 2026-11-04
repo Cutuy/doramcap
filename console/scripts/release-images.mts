@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { stageSystemAppInputs } from './system-app-inputs.mts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values, positionals: [command] } = parseArgs({ allowPositionals: true, options: {
@@ -40,7 +41,7 @@ if (command === 'build') {
   if (!values.output) throw new Error('merge requires --output');
   const template = resolve(values.output);
   cpSync(join(root, 'console/release'), template, { recursive: true });
-  cpSync(join(root, 'libs/telemetry/protocol/proto/telemetry_descriptor.bin'), join(template, 'system-apps/data-recorder/telemetry_descriptor.bin'));
+  stageSystemAppInputs(root, join(template, 'system-apps'));
   const index = (name: string, sources: string[]) => {
     const tag = `${registry}/${name}:${version}`;
     docker('buildx', 'imagetools', 'create', '--tag', tag, ...sources);

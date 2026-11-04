@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
-# Bound peak memory when linking Dora-based test binaries.
-export CARGO_BUILD_JOBS=1
 export CARGO_TARGET_DIR="$HOME/target"
 export CLANG=clang-18
 export RUSTUP_TOOLCHAIN=1.99.1
