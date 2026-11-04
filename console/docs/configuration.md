@@ -64,12 +64,11 @@ a graph input such as `data: user/messages` and a recorder `input` named `data`.
 Declare the producer in `dora.graph` and its Compose service in the workload.
 Mount schema files explicitly when the recording uses protobuf or another schema.
 
-`health_inputs: true` links an app's graph node (matching its app ID) to every
-selected node declaring `health`, using bounded `drop_oldest` queues. Watchdog reads
-its inputs from Dora and can run with zero inputs. The release watchdog requires
-no workload graph. CPU monitor and data recorder publish health independently.
-Release watchdog profiles reserve one of 16 source slots for local diagnostics
-and allow 32 conditions per source; their frame and queue limits are explicit.
+Apps publish [ReporterPublication](../../libs/fault/schema/proto/reporter.proto)
+messages on `health` outputs. `health_inputs: true` subscribes the app's graph node
+(same ID) to other selected nodes' health outputs using bounded `drop_oldest` queues.
+Watchdog consumes these inputs through Dora and supports zero inputs. Its profiles
+reserve one of 16 source slots for local diagnostics and allow 32 conditions per source.
 
 ## Live bridge
 
