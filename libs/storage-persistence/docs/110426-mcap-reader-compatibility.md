@@ -41,7 +41,9 @@ The 1 s batch age landed separately in PR #152.
   boundaries pass. All 24 focused storage integration tests pass on local x86_64
   (combining, MCAP round trip, rotation, mapped inputs and sealed slabs).
 - [ ] GitHub ARM64/x86_64 CI passes.
-- [ ] ARM64 worker validation passes.
+- [x] ARM64 worker job 583 passed for code revision `846e5d6`: shared Node suites,
+  all 36 streaming/protobuf checks, default/all-feature Rust validation and native
+  checks. The completion record is in PR #150; GitHub checks remain pending.
 
 Existing production-sink coverage remains in system-monitor's embedded recording
 test, fault-watchdog's MCAP readback test and activity-tracing's output tests.
