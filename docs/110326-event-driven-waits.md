@@ -88,11 +88,12 @@ Approved dataflow design: use the existing Tokio runtime to select on Dora event
 - Real dataflow validation passes with four nodes in one process, a separate monitor, exact latency pairs, activity delivery, bounded retention and orderly shutdown.
 - The worker-first regression failed before the fix: a recorder's first use of a shared trace point disabled the application's later span. The approved `NoSubscriber` guard fixes it while recorder spans remain disabled. Release locked activity tests pass with default/all features (26/32), including zero-allocation capture; strict all-feature Clippy passes. Ten consecutive real Storage Demo activity runs pass with 17 closed spans, every required path and zero recorded loss, including `storage.combining`.
 - Final focused strict Clippy passes for Storage Demo (all features), Dataflow Tracing, CUDA SHM Demo and the CUDA library. Formatting, dependency boundaries and whitespace checks pass. Cloud CI remains pending publication; ARM64 is waived.
+- On rebased milestone commit `26f158d`, release locked all-feature tests for the five changed packages pass (51 tests; three CUDA mapping tests remain ignored). Strict all-target Clippy, formatting, boundaries and whitespace checks also pass. Published as [PR #138](https://github.com/Cutuy/doramcap/pull/138); full-workspace cloud CI is pending.
 - Retained timers: dataflow source cadence (50/100 ms), 1 s status, configured delayed reports and simulated compute; storage 5 ms heartbeats, 40 ms dashboard publication, configured probe/session deadlines and 100 ms buffered writer flush. CUDA transport timers retain handshake/statistics/trace-flush and overall run deadlines.
 
 
 - [x] Preserve dataflow simulated-work delays and storage publish pacing.
-- [ ] Each app's existing tests pass; stop and disconnect wake blocked workers.
+- [x] Each app's existing tests pass; native dataflow shutdown, storage stop/restart and CUDA timeout/rejection checks pass with event-driven waits.
 - [x] CUDA SHM Demo passes on a CUDA-capable host.
 - [x] Storage Demo bursts retain baseline throughput in the recorded comparison.
 
@@ -103,6 +104,8 @@ Approved dataflow design: use the existing Tokio runtime to select on Dora event
 
 File-watch choice: stable `notify` 8.2.1, selected under the user's maintenance criterion; its Linux backend uses inotify. Reuse the existing Bollard dependency for Docker events.
 
+Approved Console design: reuse the lifecycle's existing `Notify` for cleanup completion; add no status watch channel.
+
 **Work items**
 
 - [ ] `libs/workload-supervisor/src/steps.rs:430`: wait on `cgroup.events` with `inotify`.
@@ -110,7 +113,7 @@ File-watch choice: stable `notify` 8.2.1, selected under the user's maintenance 
 - [ ] `libs/workload-lifecycle/src/recording.rs:87`: wait on recording file changes with `inotify`.
 - [ ] `libs/workload-docker/src/compose/adapter/project.rs:220`, `workflows/recorded_compose/execution.rs:62`, `:135`: use Docker's event stream.
 - [ ] `libs/workload-docker/src/workflows/dora.rs:121`: find a Dora daemon connection signal.
-- [ ] `apps/project-explorer/server/src/runtime.rs:427`: wait on status with `tokio::sync::watch`.
+- [ ] `apps/project-explorer/server/src/runtime.rs`: await cleanup completion through the existing lifecycle notification.
 
 **Validation**
 
