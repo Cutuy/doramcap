@@ -4,6 +4,10 @@ Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire
 
 Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
 
+## Important decisions
+
+For every important decision, ask the user before proceeding. Present your recommended option and alternatives.
+
 ## Simplicity
 
 Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
