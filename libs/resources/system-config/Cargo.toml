@@ -1,0 +1,23 @@
+[package]
+name = "system-config"
+description = "Typed observation of host machine configuration and condition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cpulist = "1.1.5"
+hex = "0.4"
+prost = "0.14"
+rustix = { version = "1.1.5", features = ["fs"] }
+sha2 = "0.11"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
