@@ -4,7 +4,9 @@ use crate::compose::FORCED_STOP_OPERATION;
 use orchestrator::{LocalExecutor, Output};
 use std::time::Duration;
 
-const DORA_HEALTH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+// Approved polling exception: detect a stopped graph while containers remain running.
+const DORA_GRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
+const SYSTEM_APPS_STABILITY_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Stop requests win ties; callers always perform teardown after this future returns.
 pub(super) async fn until_stop(
@@ -62,7 +64,7 @@ pub(super) async fn launch_apps(
             )
             .await?;
         if !prepared.value().user_services.is_empty() {
-            tokio::time::sleep(Duration::from_millis(500)).await;
+            tokio::time::sleep(SYSTEM_APPS_STABILITY_INTERVAL).await;
             let mut state = executor
                 .run::<InspectCompose>(plan.clone())
                 .await?
@@ -136,7 +138,6 @@ pub(super) async fn monitor(
             })?;
         }
     };
-    // Dora's internal graph-state subscription remains a separate open decision.
     let dora = async {
         loop {
             resources
@@ -145,7 +146,7 @@ pub(super) async fn monitor(
                 .inspect()
                 .await
                 .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-            tokio::time::sleep(DORA_HEALTH_CHECK_INTERVAL).await;
+            tokio::time::sleep(DORA_GRAPH_CHECK_INTERVAL).await;
         }
     };
     tokio::select! {
