@@ -1,0 +1,20 @@
+services:
+  live-bridge:
+    image: doramcap/live-bridge:local
+    entrypoint: [/usr/local/bin/live-bridge]
+    command: [--config, /config/bridge.pbtxt]
+    network_mode: host
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    stop_signal: SIGINT
+    stop_grace_period: 15s
+    environment:
+      DORAMCAP_READY_FILE: /tmp/live-bridge.ready
+    healthcheck:
+      test: [CMD, test, -s, /tmp/live-bridge.ready]
+      interval: 200ms
+      timeout: 1s
+      retries: 150

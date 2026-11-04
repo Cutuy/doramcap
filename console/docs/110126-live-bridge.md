@@ -9,15 +9,14 @@ subscribes to the outputs that selected apps declare and serves them to Console.
 Console relays opaque frames to authorized browsers; the browser decodes each
 stream with the producer's generated protobuf types.
 
-- **Selection:** Console lists the bridge beside the Dora coordinator and daemon.
-  It is optional and selected by default when `live_bridge` is configured.
+- **Selection:** the bridge is a `system_apps` entry marked `live_relay`, selected by default.
   Deselecting it removes every live subscriber for the run.
 - **Producers:** apps declare `live_outputs` (Dora `node/output` plus a payload kind).
-  Console generates the bridge's graph node and Compose service from the selection.
+  Console generates the bridge's graph node and `BridgeConfig` from the selection.
 - **Delivery:** bridge inputs use `drop_oldest`. Each stream keeps its
   latest frame for new clients; slow clients skip frames and observe sequence gaps.
 - **Size limit:** Console passes `LIMITS.bridgePayloadBytes` from the [transport contract](../contract/transport.ts)
-  to the bridge as `--max-payload-bytes`; larger payloads become sequence gaps.
+  to the bridge in `BridgeConfig.max_payload_bytes`; larger payloads become sequence gaps.
 - **Relay:** `/api/live` carries framed `LiveMessage { Status | frame }`. Console
   forwards bridge frames without decoding them.
 - **Durable data:** MCAP recordings remain the run record. Live panels show the
@@ -40,9 +39,9 @@ Evidence: `cargo test --release --locked -p console-live-bridge` 3/3; release Cl
 ## Milestone 2: Console configuration and selection
 
 **Work items**
-- [x] `ConsoleConfig.live_bridge { image, port }`; `SystemAppDefinition.live_outputs`.
-- [x] Built-in optional `live-bridge` app in review options.
-- [x] Generated bridge graph fragment and Compose service for selected outputs.
+- [x] `SystemAppDefinition.live_relay { port }` and `live_outputs`.
+- [x] Packaged `live-bridge` system app in review options.
+- [x] Generated bridge graph fragment and `BridgeConfig` for selected outputs.
 
 **Validation**
 - [x] Server tests: selection, generated graph inputs and service, invalid outputs rejected.

@@ -15,6 +15,7 @@ dora-node-api = { version = "=1.1.0", default-features = false }
 eyre = "0.6"
 futures-util = "0.3"
 prost = "0.14"
+prost-reflect = { version = "0.16", features = ["text-format"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "signal"] }
 
 [build-dependencies]

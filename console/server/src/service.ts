@@ -28,7 +28,7 @@ import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
-import { LIVE_BRIDGE, LiveRelay, bindBridge, liveStreams } from './live.js';
+import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
 
 type Inspection = doramcap.console.execution.v1.Inspection;
@@ -37,7 +37,6 @@ type Prepared = {
   review: typeof wire.Review.prototype;
   project: Project;
   apps: SelectedApp[];
-  live: boolean;
   workspace: string;
   snapshot: doramcap.compose.v1.ConfigurationSnapshot;
 };
@@ -45,7 +44,7 @@ const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
 const MAX_METRICS = 1200;
 const integer = (value: unknown) => BigInt(String(value ?? 0));
-const selectedIds = (apps: App[], live: boolean) => [...(live ? [LIVE_BRIDGE.id] : []), ...apps.map((app) => app.id!)];
+const relayApp = (apps: App[]) => apps.find((app) => app.liveRelay);
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
 /** A browser error code that keeps its cause, when the cause says more than the code. */
 const failure = (code: string, cause: unknown) =>
@@ -87,7 +86,8 @@ export class ConsoleService implements ConsoleBackend {
   ) {
     this.runIndex = new History(store);
     this.graphs = new Graphs(capabilities, config.systemApps, config.dora?.graph ?? '');
-    if (config.liveBridge) this.relay = new LiveRelay(`ws://127.0.0.1:${config.liveBridge.port}/stream`);
+    const relay = relayApp(config.systemApps);
+    if (relay) this.relay = new LiveRelay(`ws://127.0.0.1:${relay.liveRelay!.port}/stream`);
     this.timer = setInterval(
       () =>
         void this.tick().catch(() => {
@@ -103,7 +103,8 @@ export class ConsoleService implements ConsoleBackend {
     config.dataRoot = store.root;
     try {
       // One port for this service's life keeps Review and Start on the same bridge inputs.
-      if (config.liveBridge && !config.liveBridge.port) config.liveBridge.port = await availablePort();
+      const relay = relayApp(config.systemApps);
+      if (relay && !relay.liveRelay!.port) relay.liveRelay!.port = await availablePort();
       const engine = await capabilities.open(config.dockerSocket, 1);
       new History(store).closeInterrupted();
       const backend = new ConsoleService(config, engine, store);
@@ -176,10 +177,9 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const ids = request.systemApps?.ids ?? undefined;
       const project = await discover(this.config.projectRoot, request.profiles),
-        apps = selectApps(this.config.systemApps, this.config.liveBridge ? ids?.filter((id) => id !== LIVE_BRIDGE.id) : ids, request.systemApps?.profiles ?? {}),
-        selected = this.config.liveBridge ? (ids?.includes(LIVE_BRIDGE.id) ?? true) : undefined,
-        // The bridge runs only when a selected app declares a live output.
-        live = !!selected && liveStreams(apps).length > 0;
+        chosen = selectApps(this.config.systemApps, ids, request.systemApps?.profiles ?? {}),
+        // The relay runs only when a selected app declares a live output.
+        apps = chosen.filter((app) => !app.liveRelay || chosen.some((other) => other.liveOutputs?.length));
       const profiles = (
         await this.engine.profiles(
           execution.ProfilesRequest.create({
@@ -197,7 +197,7 @@ export class ConsoleService implements ConsoleBackend {
       workspace = join(this.config.dataRoot, 'reviews', id);
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
-      const run = await this.runRequest(id, project, apps, live, workspace, join(workspace, 'resolved'), 'review');
+      const run = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
       if (this.config.downloadMissingImages)
         await ensureImages(this.config, [...run.projects, ...run.systemApps] as Project[], this.preparation.signal);
       let inspected: Inspection;
@@ -210,7 +210,7 @@ export class ConsoleService implements ConsoleBackend {
           return Buffer.from(
             wire.Review.encode({
               availableProfiles: profiles,
-              systemApps: appOptions(this.config.systemApps, apps, selected),
+              systemApps: appOptions(this.config.systemApps, chosen),
               warnings: ['Select a profile to enable at least one service.'],
             }).finish(),
           );
@@ -222,13 +222,13 @@ export class ConsoleService implements ConsoleBackend {
         preparedId: id,
         runId: id,
         availableProfiles: profiles,
-        liveStreams: live ? liveStreams(apps) : [],
+        liveStreams: liveStreams(apps),
         selectedProfiles: request.profiles,
         services: Object.entries(inspected.plan!.services ?? {}).map(([name, service]) => ({
           name,
           imageId: service.imageId,
         })),
-        systemApps: appOptions(this.config.systemApps, apps, selected),
+        systemApps: appOptions(this.config.systemApps, chosen),
         recordings: outputs(apps),
         warnings: [],
       });
@@ -236,7 +236,6 @@ export class ConsoleService implements ConsoleBackend {
         review,
         project,
         apps,
-        live,
         workspace,
         snapshot: compose.ConfigurationSnapshot.fromObject(inspected.snapshot!),
       };
@@ -244,7 +243,7 @@ export class ConsoleService implements ConsoleBackend {
         phase: Phase.REVIEWED,
         runId: id,
         profiles: request.profiles,
-        systemApps: { ids: selectedIds(apps, live), profiles: appProfiles(apps) },
+        systemApps: { ids: apps.map((app) => app.id!), profiles: appProfiles(apps) },
         recordings: outputs(apps),
         liveStreams: review.liveStreams,
       });
@@ -261,13 +260,13 @@ export class ConsoleService implements ConsoleBackend {
     id: string,
     project: Project,
     apps: SelectedApp[],
-    live: boolean,
     workspace: string,
     artifacts: string,
     stage: string,
   ): Promise<Run> {
-    const bridge = live ? await bindBridge(this.config, apps, workspace, stage) : undefined;
-    const graph = await this.graphs.build(apps.map((app) => app.id!), bridge ? [bridge.graph] : []);
+    const relay = relayApp(apps);
+    const bound = relay && (await bindRelay(relay, apps, this.config.dora, workspace, stage));
+    const graph = await this.graphs.build(apps.map((app) => app.id!), bound ? [bound.graph] : []);
     const dora = { ...this.config.dora };
     if (graph.length) {
       const path = join(workspace, `${stage}.graph.json`);
@@ -289,7 +288,7 @@ export class ConsoleService implements ConsoleBackend {
       mcapServices: mcapServices(apps),
     });
     await bindOutputs(apps, run, workspace, stage);
-    if (bridge) run.systemApps.push(compose.ComposeProject.create(bridge.project));
+    if (bound) run.systemApps.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
     return run;
   }
   start(input: Buffer): Promise<Buffer> {
@@ -329,7 +328,7 @@ export class ConsoleService implements ConsoleBackend {
       phase: Phase.STARTING,
       artifactReference: request.preparedId,
       profiles: prepared.project.profiles,
-      systemApps: { ids: selectedIds(prepared.apps, prepared.live), profiles: appProfiles(prepared.apps) },
+      systemApps: { ids: prepared.apps.map((app) => app.id!), profiles: appProfiles(prepared.apps) },
       recordings: outputs(prepared.apps),
       startAccepted: false,
     });
@@ -363,7 +362,6 @@ export class ConsoleService implements ConsoleBackend {
           this.startId,
           fresh,
           prepared.apps,
-          prepared.live,
           prepared.workspace,
           join(runs, this.startId),
           'execution',

@@ -2,7 +2,6 @@ import { isAbsolute, join } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './files.js';
-import { LIVE_BRIDGE } from './live.js';
 
 const INFRASTRUCTURE = [
   { id: 'dora-coordinator', label: 'Dora coordinator' },
@@ -29,19 +28,26 @@ function validateOutputs(recordings: Output[], live: NonNullable<App['liveOutput
 export function validateApps(apps: App[]) {
   const ids = new Set<string>(),
     outputs = new Set<string>();
+  let relayed = false;
   for (const app of apps) {
     if (
       !app.id ||
       !/^[-a-z0-9]{1,40}$/.test(app.id) ||
       ids.has(app.id) ||
-      INFRASTRUCTURE.some((item) => item.id === app.id) ||
-      app.id === LIVE_BRIDGE.id
+      INFRASTRUCTURE.some((item) => item.id === app.id)
     )
       throw new Error('empty, duplicate or reserved system app id');
     ids.add(app.id);
     if (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length)
       throw new Error('system app requires absolute directory and Compose files');
     if (app.graph && !isAbsolute(app.graph)) throw new Error('system app graph must be absolute');
+    if (app.liveRelay) {
+      if (relayed) throw new Error('only one system app may set live_relay');
+      relayed = true;
+      if (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '') || app.graph || app.launchProfiles?.length || app.liveOutputs?.length)
+        throw new Error('live_relay requires a config mount and excludes graph, launch profiles and live outputs');
+      if ((app.liveRelay.port ?? 0) > 65535) throw new Error('live_relay port must be in 0..65535');
+    }
     for (const mount of app.outputMounts ?? [])
       if (!mount.service || !isAbsolute(mount.target ?? ''))
         throw new Error('output mount requires a service and absolute target');
@@ -89,11 +95,9 @@ export function selectApps(apps: App[], requested?: string[], profiles: Record<s
 /** App IDs and launch profiles for one selection, as stored with a run. */
 export const appProfiles = (apps: SelectedApp[]) =>
   Object.fromEntries(apps.flatMap((app) => (app.profile ? [[app.id!, app.profile.id!]] : [])));
-/** `live` is undefined when no bridge is configured. */
-export function appOptions(apps: App[], selected: SelectedApp[], live?: boolean) {
+export function appOptions(apps: App[], selected: SelectedApp[]) {
   return [
     ...INFRASTRUCTURE.map((app) => ({ ...app, selected: true, required: true })),
-    ...(live === undefined ? [] : [{ ...LIVE_BRIDGE, selected: live, required: false }]),
     ...apps.map((app) => {
       const chosen = selected.find((item) => item.id === app.id),
         options = app.launchProfiles ?? [];

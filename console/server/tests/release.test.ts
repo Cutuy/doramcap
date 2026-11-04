@@ -154,12 +154,14 @@ test('the repository release template resolves to existing current app inputs', 
   const config = releaseConfig(template, playground, systemApps, '/state');
   validateConfig(config);
   // Assert
-  assert.equal(config.systemApps.find(app => app.defaultSelected)!.id, 'cpu-monitor');
-  assert.ok(config.liveBridge?.image);
+  assert.deepEqual(config.systemApps.filter(app => app.defaultSelected).map(app => app.id), ['live-bridge', 'cpu-monitor']);
+  assert.equal(config.systemApps.filter(app => app.liveRelay).map(app => app.id).join(), 'live-bridge');
+  assert.ok(capabilities.parseConfig(capabilities.formatConfig(config)).systemApps.find(app => app.id === 'live-bridge')!.liveRelay);
   await access(config.projectRoot);
   for (const app of config.systemApps) {
-    await access(app.graph!);
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
+    if (app.liveRelay) continue;
+    await access(app.graph!);
     const profiles = app.launchProfiles ?? [];
     for (const profile of profiles) await access(profile.config!);
     assert.ok(app.recordings!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);

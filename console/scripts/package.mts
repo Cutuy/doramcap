@@ -54,7 +54,7 @@ const { imageReferences, requireMultiArch } = await import(pathToFileURL(join(ro
 const projects = await Promise.all([...projectDirectories].map(path => discover(path, ['*'])));
 projects.push(...deployed.systemApps.map((app: { input: unknown }) => app.input));
 if (!projects.length) throw new Error('Playground must contain a Compose project');
-const images = new Set<string>([config.dora?.image ?? '', ...(config.liveBridge ? [config.liveBridge.image] : [])]);
+const images = new Set<string>([config.dora?.image ?? '']);
 for (const project of projects) for (const image of await imageReferences(deployed.dockerSocket, project)) images.add(image);
 for (const image of images) {
   if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin release image by digest: ${image || 'Dora'}`);

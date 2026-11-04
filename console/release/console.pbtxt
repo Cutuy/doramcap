@@ -1,8 +1,15 @@
 # Release template: system app paths are relative to system-apps, project paths to the playground.
 # The release workflow replaces each :local image with its multi-arch digest.
 dora { image: "doramcap/dora:local" }
-live_bridge { image: "doramcap/live-bridge:local" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
+system_apps {
+  id: "live-bridge"
+  label: "Live telemetry"
+  default_selected: true
+  input { directory: "live-bridge" files: "compose.yaml" }
+  config_mount { service: "live-bridge" target: "/config/bridge.pbtxt" }
+  live_relay {}
+}
 system_apps {
   id: "cpu-monitor"
   label: "CPU monitoring"
