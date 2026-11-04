@@ -65,6 +65,7 @@ fn mcap(
 #[test]
 fn prepared_blocks_share_bytes_across_threads_and_rotation() {
     for size in [4096, 65536] {
+        // Arrange
         let first = path(&format!("prepared-{size}-a"));
         let second = path(&format!("prepared-{size}-b"));
         let pool = SlabPool::new(1, size, 4096).unwrap();
@@ -73,6 +74,10 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
         writer.prepare_slabs(&pool).unwrap();
         let updates = monitor.snapshot().unwrap().writer.registration_updates;
         for iteration in 0..2 {
+            // Arrange
+            if iteration == 1 {
+                writer.rotate(&second).unwrap();
+            }
             let mut small = writer.reserve(message(0), 3).unwrap();
             small.payload_mut().fill(9);
             small.commit().unwrap();
@@ -86,18 +91,22 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             .join()
             .unwrap();
             let reader = block.slab().clone();
-            assert_eq!(reader.as_slice().len(), size);
             let expected = reader.as_slice().to_vec();
+
+            // Act
             let range = writer.append_prepared_records(block).unwrap();
-            assert_eq!(range.len, size as u64);
-            assert_eq!(
-                writer.retire_slabs(&pool).unwrap_err().kind(),
-                io::ErrorKind::WouldBlock
-            );
             writer.flush_written().unwrap();
+
+            // Assert
+            assert_eq!(reader.as_slice().len(), size);
+            assert_eq!(range.len, size as u64);
             assert_eq!(pool.available(), 0); // reader outlives CQEs
             assert_eq!(reader.as_slice(), expected);
+
+            // Act
             drop(reader);
+
+            // Assert
             assert_eq!(pool.available(), 1);
             assert_eq!(
                 monitor.snapshot().unwrap().writer.registration_updates,
@@ -105,11 +114,12 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
             );
             let bytes = std::fs::read(if iteration == 0 { &first } else { &second }).unwrap();
             assert_eq!(&bytes[range.offset as usize..][..size], expected);
-            if iteration == 0 {
-                writer.rotate(&second).unwrap();
-            }
         }
+
+        // Act
         writer.finish().unwrap();
+
+        // Assert
         for file in [first, second] {
             let bytes = std::fs::read(&file).unwrap();
             let messages = mcap::MessageStream::new(&bytes)
@@ -134,6 +144,7 @@ fn prepared_blocks_share_bytes_across_threads_and_rotation() {
 }
 #[test]
 fn warmed_reuse_has_zero_updates_and_retirement_keeps_readers_valid() {
+    // Arrange
     let file = path("reuse");
     let managed = BufferPool::new(1, 4096, 4096).unwrap();
     let pool = SlabPool::new(1, 4096, 4096).unwrap();
@@ -142,25 +153,56 @@ fn warmed_reuse_has_zero_updates_and_retirement_keeps_readers_valid() {
     let updates = writer.registration_updates();
     let bytes = writer.registered_bytes();
     for i in 0..1000 {
+        // Arrange
         let mut slab = pool.acquire().unwrap();
         slab.bytes_mut().fill(i as u8);
         let sealed = slab.seal(4096).unwrap();
+
+        // Act
         writer.try_append_slab(sealed).unwrap();
+
+        // Assert
         assert_eq!(pool.available(), 0); // no reader, I/O still owns it
+        assert_eq!(
+            writer.retire_slabs(&pool).unwrap_err().kind(),
+            io::ErrorKind::WouldBlock
+        );
+
+        // Act
         writer.flush_written().unwrap();
+
+        // Assert
         assert_eq!(pool.available(), 1);
+
+        // Act
         writer.prepare_slabs(&pool).unwrap();
     }
+
+    // Assert
     assert_eq!(writer.registration_updates(), updates);
     assert_eq!(writer.registered_bytes(), bytes);
+
+    // Arrange
     let reader = pool.acquire().unwrap().seal(4096).unwrap();
+
+    // Act
     writer.retire_slabs(&pool).unwrap();
+
+    // Assert
     assert_eq!(reader.as_slice()[0], 999_u32 as u8);
     assert_eq!(writer.registered_bytes(), bytes - 4096);
+
+    // Act
     writer.prepare_slabs(&pool).unwrap();
+
+    // Assert
     assert_eq!(writer.registration_updates(), updates + 2);
+
+    // Act
     drop(reader);
     writer.close().unwrap();
+
+    // Assert
     let data = std::fs::read(&file).unwrap();
     for (i, block) in data.as_chunks::<4096>().0.iter().enumerate() {
         assert!(block.iter().all(|&b| b == i as u8));
