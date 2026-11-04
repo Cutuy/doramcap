@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 420" font-family="system-ui, sans-serif" font-size="13" role="img" aria-labelledby="title">
+  <title id="title">Profile resolution on the host</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker>
+  </defs>
+  <rect width="680" height="420" fill="#fff"/>
+  <rect x="30" y="20" width="390" height="380" rx="12" fill="none" stroke="#999" stroke-dasharray="5 4"/>
+  <rect x="470" y="20" width="180" height="380" rx="12" fill="none" stroke="#999" stroke-dasharray="5 4"/>
+  <text x="225" y="48" text-anchor="middle" font-weight="500">Host</text>
+  <text x="560" y="48" text-anchor="middle" font-weight="500">Containers</text>
+  <rect x="50" y="66" width="165" height="56" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <text x="132" y="89" text-anchor="middle">Console TypeScript</text>
+  <text x="132" y="108" text-anchor="middle" fill="#555" font-size="12">Picks, marks mount</text>
+  <rect x="235" y="66" width="165" height="56" rx="6" fill="#eef5f3" stroke="#177763" stroke-width="1.5"/>
+  <text x="317" y="89" text-anchor="middle">Raw host files</text>
+  <text x="317" y="108" text-anchor="middle" fill="#555" font-size="12">Profiles, descriptor</text>
+  <rect x="50" y="160" width="350" height="52" rx="6" fill="#f4f4f4" stroke="#777" stroke-width="1.5"/>
+  <text x="225" y="181" text-anchor="middle">preparation::resolve, Rust</text>
+  <text x="225" y="199" text-anchor="middle" fill="#555" font-size="12">Flatten named mounts, snapshot other binds</text>
+  <rect x="50" y="250" width="350" height="130" rx="6" fill="#eef5f3" stroke="#177763" stroke-width="1.5"/>
+  <text x="225" y="296" text-anchor="middle">Frozen inputs</text>
+  <text x="225" y="318" text-anchor="middle" fill="#555" font-size="12">Flat profiles, no includes</text>
+  <text x="225" y="338" text-anchor="middle" fill="#555" font-size="12">telemetry_descriptor.bin</text>
+  <rect x="485" y="252" width="150" height="56" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="560" y="275" text-anchor="middle">cpu-monitor app</text>
+  <text x="560" y="294" text-anchor="middle" fill="#555" font-size="12">Validates flat config</text>
+  <rect x="485" y="322" width="150" height="56" rx="6" fill="#eef2fb" stroke="#3b5bab" stroke-width="1.5"/>
+  <text x="560" y="345" text-anchor="middle">cpu-recorder app</text>
+  <text x="560" y="364" text-anchor="middle" fill="#555" font-size="12">Validates flat config</text>
+  <g stroke="#555" stroke-width="1.5" fill="none" marker-end="url(#a)">
+    <path d="M132 122 V158"/>
+    <path d="M317 122 V158"/>
+    <path d="M225 212 V248"/>
+    <path d="M402 280 H483"/>
+    <path d="M402 350 H483"/>
+  </g>
+  <text x="140" y="144" fill="#555" font-size="12">RunRequest</text>
+  <text x="325" y="144" fill="#555" font-size="12">Read</text>
+  <text x="445" y="270" text-anchor="middle" fill="#555" font-size="12">RO bind</text>
+  <text x="445" y="340" text-anchor="middle" fill="#555" font-size="12">RO binds</text>
+</svg>

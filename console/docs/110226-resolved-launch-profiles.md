@@ -1,8 +1,21 @@
-![Resolved launch profiles](110226-resolved-launch-profiles.svg)
+![Profile resolution on the host](110326-host-profile-resolution.svg)
 
 # Resolved launch profiles
 
-Created: 2026-11-02. Status: implemented; real Docker validation pending.
+Created: 2026-11-02. Status: Milestones 1-4 implemented; [Milestone 5](#milestone-5-host-resolution) approved and replaces the container resolver.
+
+## Approved architecture
+
+- **Resolver:** `preparation::resolve` in Rust on the host, for the picked profile, at Review and again in "Prepare project".
+- **Merge:** schema-free: a field set in an overlay replaces that top-level payload field.
+- **Raw profiles:** stay on the host, outside the images.
+- **Console:** names the picked profile's mount in `RunRequest`.
+- **Apps:** load flat files only and run app-specific validation in their containers.
+- **Every app with a config:** launches from a profile; an app with no profiles launches as Compose defines it.
+
+## Implemented container resolver
+
+![Container resolver](110226-resolved-launch-profiles.svg)
 
 Launch profiles mount one pbtxt, so each profile repeats its base config. Review
 resolves the selected profile once, and the run launches exactly that result.
@@ -94,3 +107,24 @@ Complete.
 - [ ] A real Console run of the `record` and `live` profiles finishes clean. Pending: needs Docker access.
 
 `dataflow-tracing` measurements, Supervisor `MonitorRun` and project registrations stay as they are: each is a single document with no launch profiles.
+
+## Milestone 5: Host resolution
+
+Approved 2026-11-03. Not started.
+
+**Work items**
+- [ ] Present reputable schema-free pbtxt parser crates for evaluation; otherwise add a small parser to `pbtxt-config`.
+- [ ] Add a schema-free flatten to `pbtxt-config`, keeping its cycle and size limits.
+- [ ] Flatten named mounts in `freeze_files`, writing mode 0644, and snapshot other binds as they are.
+- [ ] Add the profile mount field to `RunRequest`, and have Console bind the raw profile and name its mount.
+- [ ] Delete `config-resolver.ts`, `config_resolver`, the resolver's image lookup, `resolve_flag` and `fragment_text`.
+- [ ] Give `cpu-recorder` a profile and `config_mount`, and remove the release Compose config mounts.
+- [ ] Reject `include` when an app loads its config; move `fault-watchdog` standalone direct Compose to flat files.
+- [ ] Fail a release test when an app with a config has no profile.
+
+**Validation**
+- [ ] Flattening matches the existing overlay results for the shipped `cpu-monitor` and `fault-watchdog` profiles.
+- [ ] A bad include fails Review, and fails "Prepare project" when it first appears at Start.
+- [ ] A raw profile changed after Review fails the Start snapshot comparison.
+- [ ] An app rejects a flat config with a bad value at Start, as a failed Compose workflow step.
+- [ ] A real Console run of every release profile launches the frozen flat file and finishes clean.
