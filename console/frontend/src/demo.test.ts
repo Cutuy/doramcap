@@ -110,7 +110,7 @@ test('a run progresses through its phases to Completed and joins History', async
   assert.equal(screen.last().outcome!.execution, 'Completed');
   assert.ok(screen.seen.some(status => status.phase === Phase.STOPPING));
   assert.equal(screen.model.view().cpu!.history.length, RUN_SAMPLES - 1);
-  assert.match(screen.model.view().cpu!.groups[0].name, /^docker-[0-9a-f]{64}\.scope$/);
+  assert.ok(screen.model.view().cpu!.groups.every(group => [...prepared.services.map(service => service.name), 'cpu-monitor', 'live-bridge'].includes(group.name)));
   assert.ok(screen.model.view().cpu!.groups.length > 1);
   assert.deepEqual((await client.history({})).entries.map(entry => entry.runId), [runId, BUILTIN_RUN_ID]);
 });

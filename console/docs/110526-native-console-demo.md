@@ -73,6 +73,7 @@ Agreed with the project owner on 2026-11-05.
 - [x] MCAP write rate of at least 10 MiB/s with 30% variation while services run.
 - [x] CPU total updates at 10 Hz, with spikes from the busiest services.
 - [x] Visitor runs report their recording size in comparisons.
+- [x] Top CPU consumers names the demo's services.
 
 **Validation**
 
