@@ -79,7 +79,7 @@ writeFileSync(`${packageRoot}/bin/doramcap-console`, `#!/bin/sh\nset -eu\nroot=$
 writeFileSync(`${packageRoot}/release.pb`, wire.ReleaseManifest.encode({
   version: values.version, platform: `linux-${process.arch}`, config,
 }).finish());
-cpSync(`${root}/console/docs/install.md`, `${packageRoot}/README.md`);
+cpSync(`${root}/console/scripts/release-readme.md`, `${packageRoot}/README.md`);
 const arch = process.arch === 'x64' ? 'amd64' : 'arm64';
 const filename = `doramcap-console-${values.version}-linux-${arch}.tar.gz`;
 run('tar', ['-czf', join(output, filename), '-C', output, 'package']);
