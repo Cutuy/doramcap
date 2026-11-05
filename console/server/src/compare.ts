@@ -35,7 +35,6 @@ const maskBootFlags = (flags: string) =>
   }).join(' ');
 const display = (name: string, value: unknown): string => {
   if (name === 'machine_fingerprint') return String(value).slice(0, FINGERPRINT_CHARS);
-  if (name === 'boot_flags') return maskBootFlags(String(value));
   if (Array.isArray(value)) return value.map((item) => (typeof item === 'object' ? `${item.value}: ${item.cpus}` : String(item))).join(', ');
   return String(value);
 };
@@ -136,7 +135,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
     const hidden = !!(left?.hidden || right?.hidden);
     return wire.ComparisonRow.create({
       group, name, result, hidden,
-      cells: [left, right].map((fact) => ({ values: [fact && !hidden ? bounded(fact.value) : ''] })),
+      cells: [left, right].map((fact) => ({ values: [fact && !hidden ? bounded(name === 'boot_flags' ? maskBootFlags(fact.value) : fact.value) : ''] })),
     });
   });
 }
