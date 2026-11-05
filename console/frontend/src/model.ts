@@ -53,10 +53,16 @@ const STATES: Partial<Record<number, { label: string; tone: 'active' | 'success'
 };
 export const stateLabel = (state: number) => STATES[state]?.label ?? 'Unknown';
 export const stateTone = (state: number) => STATES[state]?.tone ?? 'neutral';
-/** The History view lives at `#/history`, `#/history/<run id>` and `#/history/compare/<a>[/<b>]`; other hashes show the run workflow. */
-export const historyHash = (runId = '') => `#/history${runId && `/${runId}`}`;
-export const compareHash = (runs: string[]) => runs.length ? `#/history/compare/${runs.join('/')}` : historyHash();
-export function historyRoute(hash: string): { runId: string; compare: string[] } | null {
+/**
+ * The History view lives at `#<base>/history`, `#<base>/history/<run id>` and `#<base>/history/compare/<a>[/<b>]`;
+ * other hashes under `base` show the run workflow. `base` is empty or starts with `/`.
+ */
+export const runHash = (base = '') => base ? `#${base}` : '#/';
+export const historyHash = (runId = '', base = '') => `#${base}/history${runId && `/${runId}`}`;
+export const compareHash = (runs: string[], base = '') => runs.length ? `#${base}/history/compare/${runs.join('/')}` : historyHash('', base);
+export function historyRoute(prefixed: string, base = ''): { runId: string; compare: string[] } | null {
+  if (!prefixed.startsWith(`#${base}/`)) return null;
+  const hash = `#${prefixed.slice(base.length + 1)}`;
   const selected = /^#\/history\/compare\/([a-f0-9]{32})(?:\/([a-f0-9]{32}))?$/.exec(hash);
   if (selected) return { runId: '', compare: selected.slice(1).filter(Boolean).filter((run, index, runs) => runs.indexOf(run) === index) };
   const match = /^#\/history(?:\/([a-f0-9]{32}))?$/.exec(hash);

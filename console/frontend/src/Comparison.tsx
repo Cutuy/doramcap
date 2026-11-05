@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ApiError, api, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
+import { ApiError, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
+import { useConsole } from './context';
 import { durationLabel, factLabel, factValue, historyHash, stateLabel, stateTone, timeLabel } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
@@ -41,7 +42,8 @@ function GroupSection({ group, title, rows, warn, showMatching, sides }: { group
   </section>;
 }
 function RunHeader({ label, entry }: { label: string; entry: HistoryEntry }) {
-  return <div className="comparison-run"><strong>{label}</strong> <a className="mono" href={historyHash(entry.runId)}>{entry.runId.slice(0, 8)}</a> <StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/><div className="muted">{timeLabel(entry.startedAtMs)} · {durationLabel(entry)}</div></div>;
+  const { basePath } = useConsole();
+  return <div className="comparison-run"><strong>{label}</strong> <a className="mono" href={historyHash(entry.runId, basePath)}>{entry.runId.slice(0, 8)}</a> <StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/><div className="muted">{timeLabel(entry.startedAtMs)} · {durationLabel(entry)}</div></div>;
 }
 /** Differences between two runs, grouped by what they mean. */
 function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; clear: string }) {
@@ -62,12 +64,13 @@ function CurrentFacts({ title, rows }: { title: string; rows: Row[] }) {
 }
 /** What this review would run on, compared with an earlier run; differences warn and never block. */
 export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) {
+  const { basePath } = useConsole();
   const [showMatching, setShowMatching] = useState(false);
   const rows = (group: number) => comparison.rows.filter(row => row.group === group);
   const baseline = comparison.baseline;
   return <section className="panel comparison" aria-label="Machine review">
     <div className="panel-heading"><h2>Compared with</h2>{baseline && <ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton>}</div>
-    {baseline ? <p><a className="history-back mono" href={historyHash(baseline.runId)}>{baseline.runId.slice(0, 8)}</a> <span className="muted">{timeLabel(baseline.startedAtMs)}</span></p> : <p className="muted">No earlier capture to compare with.</p>}
+    {baseline ? <p><a className="history-back mono" href={historyHash(baseline.runId, basePath)}>{baseline.runId.slice(0, 8)}</a> <span className="muted">{timeLabel(baseline.startedAtMs)}</span></p> : <p className="muted">No earlier capture to compare with.</p>}
     {baseline && <GroupSection group={Group.COMPARISON_SETUP} title="Experiment setup" rows={rows(Group.COMPARISON_SETUP)} warn={false} showMatching={showMatching} sides={['Then', 'Now']}/>}
     {baseline
       ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
@@ -89,12 +92,13 @@ export function MachineChanges({ rows }: { rows: Row[] }) {
   </section>;
 }
 export function ComparisonPanel({ a, b, refresh, clear }: { a: string; b: string; refresh: string; clear: string }) {
+  const { client } = useConsole();
   const [comparison, setComparison] = useState<HistoryComparison | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
     setComparison(null); setError('');
-    api.historyCompare(a, b).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
+    client.historyCompare(a, b).then(next => { if (live) setComparison(next); }, failed => { if (live) setError(failure(failed)); });
     return () => { live = false; };
   }, [a, b, refresh]);
   if (error) return <section className="panel comparison"><div className="panel-heading"><h2>Compare runs</h2><a className="history-back" href={clear}>Clear selection</a></div><p className="notice failure-notice" role="alert">{error}</p></section>;
