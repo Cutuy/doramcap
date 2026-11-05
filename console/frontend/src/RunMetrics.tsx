@@ -19,7 +19,7 @@ function Sparkline({ points, label, scale }: { points: Point[]; label: string; s
     const point = `${connected ? 'L' : 'M'}${((seconds - start) / span * 280).toFixed(2)},${(70 - value / max * 60).toFixed(2)}`;
     connected = true; return point;
   }).join(' ');
-  return <svg className="metric-chart" viewBox="0 0 280 80" role="img" aria-label={label}><line x1="0" x2="280" y1="70" y2="70" className="timeline-grid"/><path d={path} fill="none" stroke="#177763" strokeWidth="2"/><text x="0" y="12" className="metric-scale">{scale(max)}</text></svg>;
+  return <svg className="metric-chart" viewBox="0 0 280 80" role="img" aria-label={label}><line x1="0" x2="280" y1="70" y2="70" className="timeline-grid"/><path d={path} fill="none" stroke="var(--console-step-running)" strokeWidth="2"/><text x="0" y="12" className="metric-scale">{scale(max)}</text></svg>;
 }
 function CpuPanels({ cpu, disconnected }: { cpu?: CpuView; disconnected: boolean }) {
   const last = cpu?.history.at(-1);

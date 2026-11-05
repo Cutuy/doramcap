@@ -1,1 +1,1 @@
-body{margin:0;background:#f5f7f6}.console-root{min-height:100vh}
+:root{color-scheme:light dark}body{margin:0;background:light-dark(#fafaf8,#181b1d)}.console-root{min-height:100vh}

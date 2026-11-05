@@ -37,17 +37,17 @@ Agreed with the project owner on 2026-11-05.
 
 **Work items**
 
-- [ ] Replace hardcoded colours in styles and charts with `--console-*` tokens.
-- [ ] Add tokens for font, corners, panel padding, heading weight and button size, with the site's values as defaults.
-- [ ] Inherit `color-scheme`; the standalone page follows the browser or OS.
-- [ ] Map the site's theme to the tokens in one block.
+- [x] Replace hardcoded colours in styles and charts with `--console-*` tokens.
+- [x] Add tokens for font, corners, panel padding, heading weight and button size, with the site's values as defaults.
+- [x] Inherit `color-scheme`; the standalone page follows the browser or OS.
+- [x] Map the site's theme to the tokens in one block.
 
 **Validation**
 
-- [ ] Console frontend tests and build; project explorer build.
-- [ ] Visual check of every Console phase, History and comparison, light and dark, in the demo.
-- [ ] Standalone Console renders in light and dark.
-- [ ] Touch targets on phone width.
+- [x] Console frontend tests and build; project explorer build.
+- [x] Visual check of every Console phase, History and comparison, light and dark, in the demo.
+- [x] Standalone Console Project screen renders in light and dark. Other screens were checked in the demo, which uses the same CSS.
+- [x] Touch targets on phone width.
 
 ## Milestone 3: layout prop
 
