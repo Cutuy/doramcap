@@ -1,11 +1,15 @@
 import { useRef, useState } from 'react';
-import { ArrowUpRight, Copy, Cpu, Laptop, Terminal } from 'lucide-react';
+import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, Terminal } from 'lucide-react';
 import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
-const DEFAULT_PORT = 43187;
-const TUNNEL_COMMAND = `ssh -N -L ${DEFAULT_PORT}:127.0.0.1:${DEFAULT_PORT} you@your-soc`;
+/** Side-by-side groups on the SoC: doramcap Console next to example user workloads. */
+const SOC_GROUPS = [
+  { label: 'doramcap', Icon: Activity, items: ['Console'], className: 'console-soc-doramcap' },
+  { label: 'Containers', Icon: Box, items: ['camera', 'planner'], className: '' },
+  { label: 'supervisord', Icon: Cog, items: ['can-bus', 'gps'], className: '' },
+];
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
 function Command({ text, label }: { text: string; label: string }) {
@@ -51,15 +55,23 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <div className="console-topology" role="img" aria-label="A browser on your computer reaches Console on your SoC or workstation through an SSH tunnel">
-      <div><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
+    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel; Console runs beside Docker containers and supervisord units on your SoC or workstation, over an optional doramcap runtime">
+      <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
-      <div><Cpu size={18} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong><span>Console · Compose apps</span></div>
+      <div className="console-soc">
+        <div className="console-soc-title"><Cpu size={16} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong></div>
+        <div className="console-soc-body">
+          {SOC_GROUPS.map(({ label, Icon, items, className }) => <div key={label} className={className}>
+            <span>{label}</span>
+            {items.map((name) => <div key={name}><Icon size={13} aria-hidden="true" />{name}</div>)}
+          </div>)}
+        </div>
+        <div className="console-soc-runtime"><Layers size={13} aria-hidden="true" /><strong>doramcap runtime</strong><span>optional</span></div>
+      </div>
     </div>
     <ol className="console-install-steps">
       <li><h3>Install on your SoC or workstation</h3><Command text={installCommand} label="Copy Console installation command" /></li>
       <li><h3>Start it there, from your Compose project</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
-      <li><h3>Connect from your computer</h3><Command text={TUNNEL_COMMAND} label="Copy SSH tunnel command" /><p>Keep it running, then open Console's link. Use the link's port if it differs.</p></li>
     </ol>
   </section>;
 }
