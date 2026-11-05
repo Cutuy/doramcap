@@ -31,7 +31,7 @@ Agreed with the project owner on 2026-11-04.
 | Comparison | A small diff inside the demo turns per-run named facts into real comparison rows. The server is unchanged. |
 | Artifacts | The built-in run offers its matching MCAP file and report. Visitor runs offer a matching JSON report and report no recording file or size. |
 | Theme | Console stays light inside the SPA for now. |
-| Limits | Runs last 30 s unless stopped. Visitor runs have no count limit; refresh clears them. |
+| Limits | Runs last 15 s at 10 Hz unless stopped. Visitor runs have no count limit; refresh clears them. |
 
 The package uses the existing React, TypeScript, Vite and protobuf dependencies.
 Each host compiles the shared source in its own build. The production import graph
@@ -51,6 +51,7 @@ Made during implementation while the owner was away. Each stays easy to revise.
 | Sample recording | Generated from the same code as live packets, with synthetic `/docker/...` names. | Reproducible, and contains no real host data. |
 | `@mcap/core` | Dev dependency of `console/frontend`, pinned to 2.4.0. | Writes and checks the recording; the repository's reader tests already use this version. Outside both bundles. |
 | Scenario content | Optional `load` profile adds a `load-generator` service; the machine differs from the built-in run in governor and swappiness. | Gives the first comparison and Review visible differences. |
+| Live clock | Elapsed times and the timeline tick every 100 ms in production too, using the existing live interval. | Requested for the demo, and the screens are shared. |
 | Stop timing | Stop always ends as Completed, two simulated seconds later. | Matches a graceful stop; no Cancelled scenario. |
 | Filename rule | `artifactFilename` moves to the shared contract, a one-line server change. | Avoids a second copy for `download` attributes. |
 | Explorer install | `npm --prefix console/frontend ci` is a required step before building the explorer. | npm does not install a linked package's dependencies. |
@@ -130,7 +131,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] Support prepare, start, stop, current, history, historyRun, historyCompare and live. Model the configured sample project's real options, including live-only versus recording.
 - [x] Seed one successful capture. Build Review and History comparison rows with a demo-local diff over per-run named facts.
 - [x] Deliver workflow statuses and real-format CPU telemetry packets through the existing UI models and reducers; use deterministic sample data.
-- [x] Run for 30 s through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
+- [x] Run for 15 s at 10 Hz through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
 
 **Validation**
 - [x] Existing Console test infrastructure covers successful completion, early Stop, preparation cancellation, duplicate Start, stale review, recording disabled and Run again.
@@ -141,7 +142,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] The demo completes the walkthrough with all Console-server network requests blocked.
 
 Evidence (2026-11-04, local unless noted):
-- 12 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
+- 13 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
 
 ## Milestone 4: Example files and per-run reports
 
@@ -158,8 +159,8 @@ Evidence (2026-11-04, local unless noted):
 - [x] Verify sample URLs under `/` and `/doramcap/`.
 
 Evidence (2026-11-04, local unless noted):
-- A test decodes the MCAP with CRCs on and checks schema, 30 samples, timestamps, names and the exact 8416-byte size.
-- Browser downloads gave `cpu.mcap` (8416 bytes) and `console-report.json` without leaving the page; report fields match the server's.
+- A test decodes the MCAP with CRCs on and checks schema, 150 samples, timestamps, names and the exact 25347-byte size.
+- Browser downloads gave `cpu.mcap` (25347 bytes) and `console-report.json` without leaving the page; report fields match the server's.
 - The recording downloaded correctly at both `/` and `/doramcap/`.
 
 ## Milestone 5: SPA section and integration checks
@@ -176,7 +177,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] Walk through prepare, profile changes, start, early Stop, completion, History, comparison, Run again, downloads and Reset in a local browser preview.
 - [x] Navigate to another SPA section during a run and return; verify continued progression, retained history and restored live state. Refresh restores the built-in run and handles a visitor-created deep link clearly.
 - [x] Check direct URLs, browser history, keyboard use, responsive layout, the light Console in a dark SPA and static hosting at both root and repository subpaths. Refresh the local preview after final visual changes.
-- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether 30 s feels right.
+- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether the 15 s run at 10 Hz feels right.
 - [ ] Verify production Console against its real server for session entry, review, live updates and downloads; elevate only capability-requiring test executables under repository rules.
 - [ ] At PR integration, verify x86 and ARM64 Node CI and submit the repository's required ARM64 validation unless waived. Record local, ARM64 and blocked checks separately.
 
@@ -186,7 +187,7 @@ Rust CI is reserved for an integration point or changes that warrant it under
 [AGENTS.md](../../AGENTS.md).
 
 Evidence (2026-11-04, local unless noted):
-- Chromium walkthrough passed at `/` and `/doramcap/`, including leaving during a run, Reset, refresh, a natural 30.0 s run, dark mode and a 390 px layout. The only browser error is a missing `favicon.ico`.
+- Chromium walkthrough passed at `/` and `/doramcap/`, including leaving during a run, Reset, refresh, a natural 15 s run, dark mode and a 390 px layout. The only browser error is a missing `favicon.ico`.
 - Not done: the production Console check against a real server (Node CI covers the browser contract test), the ARM64 worker submission, and the owner's review of wording and run length.
 
 ## Plan validation
