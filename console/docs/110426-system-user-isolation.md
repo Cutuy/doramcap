@@ -26,7 +26,7 @@ therefore our default. Running several user projects stays out of scope.
 - **System project:** always present, holding the Dora runtime and selected system apps, all on host network and host IPC.
 - **User project:** `projects[]` entries merge into it as they do today; Console sends one. Names stay generated from repository and key, and may repeat system names.
 - **Host IPC:** a user service with no `ipc:` setting gets `ipc: host`. Declared settings stay as written.
-- **Networking:** a user service's declared network settings stay as written. Dora graph nodes still require host networking.
+- **Networking:** services sending messages to the recorder use host networking; other user services keep their declared network settings. Review rejects a Dora graph node off host networking, and warns about a recorded ROS 2 producer once [ROS 2 recording](https://github.com/Cutuy/doramcap/pull/91) exists.
 - **Failure:** a startup failure in either project stops both.
 - **Compose checks:** other existing rejections and overrides stay as they are.
 - **Dora nodes:** a graph node resolves to a service in either project; a name present in both is rejected.
