@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createClient, routes, wire, workflow, Phase, StepState, type HistoryPage } from './api';
 import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
+import { ReviewPreview } from './Comparison';
 import { ConsoleContext } from './context';
 import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, runHash, toggleCompared } from './model';
 import { Result } from './Result';
@@ -246,4 +247,29 @@ test('embedded screens leave the page header and main landmark to the host', () 
   assert.doesNotMatch(html, /<main|<header/);
   assert.match(html, /href="#\/console"[^>]*>Run/);
   assert.match(html, /href="#\/console\/history"[^>]*>History/);
+});
+
+test('matching comparison facts collapse behind a control that expands them', () => {
+  // Arrange
+  const row = (name: string, result: number) => wire.ComparisonRow.create({ group: wire.ComparisonGroup.COMPARISON_SETUP, name, result, cells: [wire.ComparisonCell.create({ values: ['x'] }), wire.ComparisonCell.create({ values: ['y'] })] });
+  const comparison = wire.ReviewComparison.create({ baseline: entry(), rows: [row('profiles', wire.ComparisonResult.COMPARISON_CHANGED), row('source_state', wire.ComparisonResult.COMPARISON_SAME)] });
+  // Act
+  const html = renderToStaticMarkup(<ReviewPreview comparison={comparison}/>);
+  // Assert
+  assert.match(html, /<button[^>]*class="comparison-matching"[^>]*aria-expanded="false"/);
+  assert.match(html, /1 matching/);
+  assert.match(html, /Profiles/);
+  assert.doesNotMatch(html, /Source state/);
+});
+
+test('the view tabs and run phases share one navigation row', () => {
+  // Arrange
+  const client = createClient(async () => new Response());
+  // Act
+  const embedded = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}><PageFrame phase="Run">Body</PageFrame></ConsoleContext.Provider>);
+  const standalone = renderToStaticMarkup(<PageFrame phase="Run">Body</PageFrame>);
+  // Assert
+  assert.match(embedded, /class="console-nav"><nav[^>]*Console views.*<nav[^>]*Run phases/);
+  assert.match(standalone, /<header[^>]*>.*Console views.*Run phases.*<\/header><main/);
+  assert.doesNotMatch(embedded + standalone, /<small>/);
 });

@@ -34,10 +34,12 @@ function ConditionSection({ title, rows, sides }: { title: string; rows: Row[]; 
 function GroupSection({ group, title, rows, warn, showMatching, sides }: { group: number; title: string; rows: Row[]; warn: boolean; showMatching: boolean; sides: string[] }) {
   const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME), same = rows.filter(row => row.result === Result.COMPARISON_SAME);
   const count = rows.filter(row => row.result === Result.COMPARISON_CHANGED).length;
+  const [expanded, setExpanded] = useState(false);
   return <section className="comparison-group" data-group={group}>
     <div className="panel-heading"><h3>{title}</h3>{warn && count > 0 ? <StatusLabel label={`${count} can change results`} tone="attention"/> : <span className="muted">{count} changed</span>}</div>
     {changed.length > 0 && <Rows rows={changed} warn={warn} sides={sides}/>}
-    {same.length > 0 && (showMatching ? <Rows rows={same} warn={false} sides={sides}/> : <p className="comparison-matching muted">{same.length} matching</p>)}
+    {same.length > 0 && !showMatching && <button type="button" className="comparison-matching" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}><span aria-hidden="true">{expanded ? '▾' : '▸'}</span> {same.length} matching</button>}
+    {same.length > 0 && (showMatching || expanded) && <Rows rows={same} warn={false} sides={sides}/>}
     {rows.length === 0 && <p className="muted">Nothing recorded.</p>}
   </section>;
 }
