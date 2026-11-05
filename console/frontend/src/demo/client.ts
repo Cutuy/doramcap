@@ -40,7 +40,7 @@ const DEFAULT_SELECTION: Selection = { apps: SYSTEM_APPS.filter(app => app.selec
 /** The built-in run; `BUILTIN_RECORDING_BYTES` matches the published file. */
 export const BUILTIN_RUN_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 export const BUILTIN_STARTED_AT_MS = Date.UTC(2026, 10, 3, 9, 30);
-export const BUILTIN_RECORDING_BYTES = 42678;
+export const BUILTIN_RECORDING_BYTES = 22329;
 /** Published as a release asset; `scripts/generate-demo-recording.ts` produces it. */
 const RECORDING_RELEASE_TAG = 'console-demo-recording-2026-11-04';
 const BUILTIN_RECORDING_URL = `https://github.com/Cutuy/doramcap/releases/download/${RECORDING_RELEASE_TAG}/${CPU_RECORDING}.mcap`;
@@ -110,22 +110,22 @@ const setupFacts = (selection: Selection): Facts => ({
 const type = (path: string) => `workload_docker::${path}`;
 const lifecycle = (name: string) => `workload_lifecycle::recording::${name}`;
 const STEP = {
-  reset: { step: 'compose.reset', displayName: 'Reset experiment', samples: 3 },
-  prepare: { step: 'compose.prepare', displayName: 'Prepare project', samples: 8 },
-  baseline: { step: type('compose::filesystem::CaptureFilesystemBaseline'), samples: 3 },
-  dora: { step: type('workflows::experiment::StartDoraRuntime'), samples: 5 },
-  graph: { step: type('workflows::experiment::RegisterDoraGraph'), samples: 3 },
-  start: { step: type('compose::steps::StartCompose'), samples: 6 },
-  wait: { step: lifecycle('WaitForRecordings'), samples: 4 },
+  reset: { step: 'compose.reset', displayName: 'Reset experiment', samples: 2 },
+  prepare: { step: 'compose.prepare', displayName: 'Prepare project', samples: 5 },
+  baseline: { step: type('compose::filesystem::CaptureFilesystemBaseline'), samples: 2 },
+  dora: { step: type('workflows::experiment::StartDoraRuntime'), samples: 3 },
+  graph: { step: type('workflows::experiment::RegisterDoraGraph'), samples: 2 },
+  start: { step: type('compose::steps::StartCompose'), samples: 3 },
+  wait: { step: lifecycle('WaitForRecordings'), samples: 2 },
   inspect: { step: 'compose.inspect', displayName: 'Inspect project', samples: 1 },
-  apps: { step: type('compose::steps::StartCompose'), samples: 4 },
-  quiesceApps: { step: type('compose::steps::QuiesceCompose'), samples: 4 },
-  stopDora: { step: type('workflows::experiment::StopDoraRuntime'), samples: 3 },
-  quiesceSystem: { step: type('compose::steps::QuiesceCompose'), samples: 3 },
-  finalize: { step: 'compose.finalize', displayName: 'Finalize recording', samples: 4 },
-  finalizeRecordings: { step: lifecycle('FinalizeRecordings'), samples: 2 },
-  remove: { step: type('compose::steps::RemoveCompose'), samples: 3 },
-  report: { step: 'compose.report', displayName: 'Write run report', samples: 3 },
+  apps: { step: type('compose::steps::StartCompose'), samples: 2 },
+  quiesceApps: { step: type('compose::steps::QuiesceCompose'), samples: 2 },
+  stopDora: { step: type('workflows::experiment::StopDoraRuntime'), samples: 2 },
+  quiesceSystem: { step: type('compose::steps::QuiesceCompose'), samples: 2 },
+  finalize: { step: 'compose.finalize', displayName: 'Finalize recording', samples: 2 },
+  finalizeRecordings: { step: lifecycle('FinalizeRecordings'), samples: 1 },
+  remove: { step: type('compose::steps::RemoveCompose'), samples: 1 },
+  report: { step: 'compose.report', displayName: 'Write run report', samples: 1 },
 };
 const INSPECT_EVERY_SAMPLES = 10;
 const startup = (saving: boolean) => [STEP.reset, STEP.prepare, STEP.dora, STEP.graph, STEP.start, ...(saving ? [STEP.wait] : []), STEP.inspect, STEP.apps];

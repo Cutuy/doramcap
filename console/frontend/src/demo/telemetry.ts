@@ -8,9 +8,9 @@ const ROOT_FLAGS = 17;
 const LEAF_FLAGS = 1;
 const ROOT_CGROUP = '1';
 const SESSION_ID = 'c4f1e29a7b3d4e60';
-/** Ten samples per second, for a 15 s run. */
+/** Ten samples per second, for a 7 s run. */
 export const SAMPLE_MS = 100;
-export const RUN_SAMPLES = 150;
+export const RUN_SAMPLES = 70;
 const NS_PER_SAMPLE = BigInt(SAMPLE_MS) * NS_PER_MS;
 /** The load changes twice per second, so the charts move without flickering. */
 const SAMPLES_PER_LOAD_STEP = 5;

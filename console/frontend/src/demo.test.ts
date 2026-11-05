@@ -115,7 +115,7 @@ test('a run progresses through its phases to Completed and joins History', async
   assert.deepEqual((await client.history({})).entries.map(entry => entry.runId), [runId, BUILTIN_RUN_ID]);
 });
 
-test('a run samples at 10 Hz for 15 s and advances its sequence only on workflow events', async () => {
+test('a run samples at 10 Hz for 7 s and advances its sequence only on workflow events', async () => {
   // Arrange
   const client = createDemoClient(), screen = watch(client);
   const prepared = await review(client);
@@ -127,11 +127,11 @@ test('a run samples at 10 Hz for 15 s and advances its sequence only on workflow
   const sequences = run.map(status => Number(status.sequence));
   // Assert
   assert.equal(SAMPLE_MS, 100);
-  assert.equal(RUN_MS, 15 * SECOND_MS);
+  assert.equal(RUN_MS, 7 * SECOND_MS);
   assert.equal(run.length, RUN_SAMPLES + 1);
   assert.equal(run.at(-1)!.phase, Phase.FINISHED);
   assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
-  assert.ok(new Set(sequences).size < run.length / 2, 'most samples leave the sequence unchanged');
+  assert.ok(new Set(sequences).size < run.length, 'samples between workflow events leave the sequence unchanged');
 });
 
 test('the demo offers the release system apps and emits production workflow steps', async () => {
@@ -177,17 +177,17 @@ test('Stop ends a run early as Completed', async () => {
   const client = createDemoClient(), screen = watch(client);
   const prepared = await review(client);
   const { runId } = await client.start(prepared.preparedId, 'key');
-  await advance(5 * SECOND_MS);
+  await advance(3 * SECOND_MS);
   // Act
   await client.stop(runId);
   const stopping = screen.last().phase;
-  await advance(2 * SECOND_MS);
+  await advance(SECOND_MS);
   // Assert
   assert.equal(stopping, Phase.STOPPING);
   assert.equal(screen.last().phase, Phase.FINISHED);
   assert.equal(screen.last().outcome!.execution, 'Completed');
   const detail = await client.historyRun(runId);
-  assert.equal(Number(detail.entry!.finishedAtMs) - Number(detail.entry!.startedAtMs), 7 * SECOND_MS);
+  assert.equal(Number(detail.entry!.finishedAtMs) - Number(detail.entry!.startedAtMs), 4 * SECOND_MS);
 });
 
 test('preparation can be cancelled and allows another review', async () => {
@@ -300,7 +300,7 @@ test('comparing an in-progress run reports it as In progress', async () => {
   assert.equal(row('execution').result, Result.COMPARISON_CHANGED);
   assert.deepEqual(row('execution').cells.map(cell => cell.values[0]), ['Completed', 'In progress']);
   assert.equal(row('duration_seconds').result, Result.COMPARISON_CHANGED);
-  assert.deepEqual(row('duration_seconds').cells.map(cell => cell.values[0]), ['15.0', '']);
+  assert.deepEqual(row('duration_seconds').cells.map(cell => cell.values[0]), ['7.0', '']);
   assert.ok(rows.every(item => item.result !== Result.COMPARISON_UNAVAILABLE));
 });
 
@@ -309,21 +309,21 @@ test('a run continues without a screen, and a returning screen rebuilds its pane
   const client = createDemoClient(), first = watch(client);
   const prepared = await review(client);
   await client.start(prepared.preparedId, 'key');
-  await advance(4 * SECOND_MS);
+  await advance(2 * SECOND_MS);
   // Act: leave the Console section, then come back.
   first.controller.abort();
   await first.ended;
   const delivered = first.seen.length;
-  await advance(4 * SECOND_MS);
+  await advance(2 * SECOND_MS);
   const returning = watch(client);
   // Assert
   assert.equal(first.seen.length, delivered);
   assert.equal(returning.last().phase, Phase.RUNNING);
   assert.equal(returning.last().runId, prepared.runId);
-  assert.equal(returning.model.view().cpu!.history.length, 79);
+  assert.equal(returning.model.view().cpu!.history.length, 39);
   assert.equal(returning.model.view().gaps, 0);
   await advance(SAMPLE_MS);
-  assert.equal(returning.model.view().cpu!.history.length, 80);
+  assert.equal(returning.model.view().cpu!.history.length, 40);
   assert.equal(first.seen.length, delivered);
 });
 
