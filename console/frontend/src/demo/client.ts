@@ -3,7 +3,7 @@ import { LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
 import { createRequestKey } from '../model';
 import type { Frame } from '../streams';
-import { RUN_SAMPLES, SAMPLE_MS, cpuPacket, dictionaryPacket, faultPacket } from './telemetry';
+import { RUN_SAMPLES, SAMPLE_MS, WORKLOAD_SERVICES, createWorkload, digest, faultPacket, noise } from './telemetry';
 
 type Client = ReturnType<typeof createClient>;
 type Facts = Record<string, string>;
@@ -20,11 +20,12 @@ const NS_PER_SAMPLE = SAMPLE_MS * 1e6;
 const RUN_SECONDS = RUN_SAMPLES * SAMPLE_MS / 1000;
 const REPORT = 'report', COMPLETED = 'Completed', IN_PROGRESS = 'In progress';
 const JSON_DATA_URL = 'data:application/json;charset=utf-8,';
-const WORKER_EXIT_ON_SIGTERM = 143, STOP_SECONDS = 30;
+const EXIT_ON_SIGTERM = 143, STOP_SECONDS = 30;
+const RECORDING_RATE_BYTES_PER_SECOND = 10 * 1024 * 1024, RECORDING_RATE_VARIATION = 0.3;
 
-/** The release's sample project, installed by the Console package. */
-const PROJECT_DIRECTORY = '/opt/doramcap-console/playground/cpu-burn';
-const WORKER = { name: 'worker', imageId: 'sha256:7a3f92c1e04b58d6f2a91c07d3e8b5463fa1c8e92d70b64135ea8f7c29d0416b' };
+/** A sample robotics project with several Compose services. */
+const PROJECT_DIRECTORY = '/home/robot/perception-stack';
+const SERVICES = WORKLOAD_SERVICES.map(({ name }) => ({ name, imageId: `sha256:${digest(`image:${name}`)}` }));
 const SOURCE_COMMIT = '431ea4c6d0f2b8e17a94c35d60e8f1b27c9d3a56';
 const BRIDGE = 'live-bridge', CPU_MONITOR = 'cpu-monitor', DATA_RECORDER = 'data-recorder', WATCHDOG = 'fault-watchdog';
 const CPU_RECORDING = 'cpu', MESSAGES_RECORDING = 'messages', FAULTS_RECORDING = 'faults';
@@ -98,12 +99,12 @@ const liveStreams = (selection: Selection) => [
   ...(relaysCpu(selection) ? [CPU_SNAPSHOTS, CPU_DICTIONARY].map(id => wire.LiveStream.create({ id, appId: CPU_MONITOR, kind: Kind.CPU_ACCOUNTING })) : []),
   ...(relaysFaults(selection) ? [wire.LiveStream.create({ id: FAULTS, appId: WATCHDOG, kind: Kind.FAULT_PUBLICATION })] : []),
 ];
-const services = () => [wire.Service.create(WORKER)];
+const services = () => SERVICES.map(service => wire.Service.create(service));
 const appSelection = (selection: Selection) => wire.SystemAppSelection.create({ ids: selection.apps, profiles: Object.fromEntries(selection.apps.filter(id => profileOf(selection, id)).map(id => [id, profileOf(selection, id)])) });
 const setupFacts = (selection: Selection): Facts => ({
   profiles: 'Default', system_apps: selection.apps.join(', ') || 'None',
   ...Object.fromEntries(selection.apps.filter(id => profileOf(selection, id)).map(id => [`system_app_profile.${id}`, profileOf(selection, id)])),
-  [`image.${WORKER.name}`]: WORKER.imageId, source_commit: SOURCE_COMMIT, source_state: 'Clean',
+  ...Object.fromEntries(SERVICES.map(service => [`image.${service.name}`, service.imageId])), source_commit: SOURCE_COMMIT, source_state: 'Clean',
 });
 
 /** Production's step IDs and display names, in workflow order; durations are in samples. */
@@ -169,26 +170,39 @@ function stepsAt(sample: number, stopAt: number | null, finished: boolean, savin
     });
   });
 }
-const metricsAt = (sample: number) => Array.from({ length: sample }, (_, index) => wire.RunMetric.create({
+/** The built-in run's write history, matching its published file. */
+const builtinMetricsAt = (sample: number) => Array.from({ length: sample }, (_, index) => wire.RunMetric.create({
   elapsedNs: (index + 1) * NS_PER_SAMPLE,
   recordingBytes: Math.floor(BUILTIN_RECORDING_BYTES * (index + 1) / RUN_SAMPLES),
   writeBytesPerSecond: BUILTIN_RECORDING_BYTES / RUN_SECONDS,
 }));
 
-function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null, conditions: Facts, after: Facts) {
+/** A visitor run's write history: at least the base rate while services run, nothing otherwise. */
+function liveMetricsAt(sample: number, stopAt: number | null, runningFrom: number, seed: number) {
+  let bytes = 0;
+  return Array.from({ length: sample }, (_, index) => {
+    const at = index + 1;
+    const rate = at >= runningFrom && (stopAt === null || at <= stopAt) ? Math.round(RECORDING_RATE_BYTES_PER_SECOND * (1 + RECORDING_RATE_VARIATION * noise(seed, at))) : 0;
+    bytes += rate * SAMPLE_MS / 1000;
+    return wire.RunMetric.create({ elapsedNs: at * NS_PER_SAMPLE, recordingBytes: Math.floor(bytes), writeBytesPerSecond: rate });
+  });
+}
+
+/** `seed` is set for a visitor run; the built-in run omits it and replays its published file. */
+function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null, conditions: Facts, after: Facts, seed?: number) {
   const finished = phase === Phase.FINISHED, saving = records(selection);
   const steps = stepsAt(sample, stopAt, finished, saving);
   // Like the server, `sequence` counts workflow events; other samples leave it unchanged.
   const sequence = steps.reduce((events, step) => events + (step.state === StepState.STARTED ? 1 : 2), 0);
   return wire.Status.create({
     phase, runId, sequence, projectDirectory: PROJECT_DIRECTORY, profiles: [], systemApps: appSelection(selection),
-    steps, activityAvailable: true, metrics: saving ? metricsAt(sample) : [],
+    steps, activityAvailable: true, metrics: !saving ? [] : seed === undefined ? builtinMetricsAt(sample) : liveMetricsAt(sample, stopAt, total(startup(saving)), seed),
     recordings: recordings(selection), liveStreams: liveStreams(selection), cpuAvailable: relaysCpu(selection), reportAvailable: finished,
-    stoppingServices: phase === Phase.STOPPING ? [wire.StoppingService.create({ service: WORKER.name, forceStopInSeconds: STOP_SECONDS })] : [],
+    stoppingServices: phase === Phase.STOPPING ? SERVICES.map(({ name }) => wire.StoppingService.create({ service: name, forceStopInSeconds: STOP_SECONDS })) : [],
     machineChanges: finished ? diff(Group.COMPARISON_CONDITION, conditions, after) : [],
     outcome: finished ? wire.Outcome.create({
       execution: COMPLETED, writersStopped: saving, recordingFinalized: saving, boundaryClean: true, eventStreamHealthy: true,
-      serviceExits: [wire.ServiceExit.create({ service: WORKER.name, exitCode: WORKER_EXIT_ON_SIGTERM })],
+      serviceExits: SERVICES.map(({ name }) => wire.ServiceExit.create({ service: name, exitCode: EXIT_ON_SIGTERM })),
     }) : null,
   });
 }
@@ -230,7 +244,7 @@ export function createDemoClient() {
   let frames: Frame[] = [];
   let prepared: { id: string; runId: string; selection: Selection; facts: RunFacts } | null = null;
   let preparing: { timer: ReturnType<typeof setTimeout>; reject: (error: Error) => void } | null = null;
-  let active: { runId: string; requestKey: string; selection: Selection; startedAtMs: number; facts: RunFacts; after: Facts; sample: number; stopAt: number | null; timer: ReturnType<typeof setTimeout> } | null = null;
+  let active: { runId: string; requestKey: string; selection: Selection; startedAtMs: number; facts: RunFacts; after: Facts; sample: number; stopAt: number | null; seed: number; workload: ReturnType<typeof createWorkload>; timer: ReturnType<typeof setTimeout> } | null = null;
   let lastKey: { key: string; runId: string } | null = null;
 
   const publish = (next: Snapshot) => {
@@ -240,17 +254,17 @@ export function createDemoClient() {
   const stageStatus = (phase: number, runId = '') => wire.Status.create({ phase, runId, projectDirectory: PROJECT_DIRECTORY });
   const publishRun = (phase: number) => {
     const run = active!;
-    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt, run.facts.condition, run.after));
+    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt, run.facts.condition, run.after, run.seed));
     const stored = runs.get(run.runId)!;
     stored.status = status;
   };
   const finish = () => {
     const run = active!;
     active = null;
-    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, run.facts.condition, run.after));
+    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, run.facts.condition, run.after, run.seed));
     const seconds = run.sample * SAMPLE_MS / 1000;
     runs.set(run.runId, {
-      status, facts: { ...run.facts, outcome: outcomeFacts(status, seconds) },
+      status, facts: { ...run.facts, outcome: { ...outcomeFacts(status, seconds), ...(status.metrics.length ? { recording_bytes: String(status.metrics.at(-1)!.recordingBytes) } : {}) } },
       entry: finishedEntry(run.runId, run.selection, run.startedAtMs, run.startedAtMs + seconds * 1000, status),
     });
   };
@@ -263,8 +277,9 @@ export function createDemoClient() {
     const run = active!;
     run.sample++;
     if (relaysCpu(run.selection)) {
-      if (run.sample === 1) relay(CPU_DICTIONARY, 1, dictionaryPacket(run.startedAtMs));
-      relay(CPU_SNAPSHOTS, run.sample, cpuPacket(run.sample, run.startedAtMs));
+      if (run.sample === 1) relay(CPU_DICTIONARY, 1, run.workload.dictionary(run.startedAtMs));
+      const running = run.stopAt === null && run.sample >= total(startup(records(run.selection)));
+      relay(CPU_SNAPSHOTS, run.sample, run.workload.packet(run.sample, run.startedAtMs, running));
     }
     if (run.sample === 1 && relaysFaults(run.selection)) relay(FAULTS, 1, faultPacket());
     if (run.stopAt === null && run.sample >= RUN_SAMPLES - STOP_SAMPLES) run.stopAt = run.sample;
@@ -316,9 +331,9 @@ export function createDemoClient() {
       prepared = null;
       lastKey = { key: requestKey, runId };
       frames = [];
-      const startedAtMs = Date.now();
+      const startedAtMs = Date.now(), seed = Math.floor(Math.random() * 2 ** 32);
       runs.set(runId, { status, facts, entry: wire.HistoryEntry.create({ runId, profiles: [], systemApps: appSelection(selection), startedAtMs, state: State.HISTORY_RUNNING }) });
-      active = { runId, requestKey, selection, startedAtMs, facts, after: condition(++runCount), sample: 0, stopAt: null, timer: setTimeout(tick, SAMPLE_MS) };
+      active = { runId, requestKey, selection, startedAtMs, facts, after: condition(++runCount), sample: 0, stopAt: null, seed, workload: createWorkload(seed), timer: setTimeout(tick, SAMPLE_MS) };
       publishRun(Phase.STARTING);
       return wire.StartResponse.create({ runId });
     },
