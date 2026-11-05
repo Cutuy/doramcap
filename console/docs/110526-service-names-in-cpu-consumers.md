@@ -1,59 +1,67 @@
-![Service names reach the browser in Status](110526-service-names-in-cpu-consumers.svg)
+![The system monitor adds service names to its dictionary](110526-service-names-in-cpu-consumers.svg)
 
 # Service names in Top CPU consumers
 
-Created: 2026-11-05. Status: proposed; the name source awaits the owner's decision.
+Created: 2026-11-05. Status: name source decided; Docker access awaits the owner's decision.
 
 Top CPU consumers shows `docker-<id>.scope` in the installed Console and service names
-in the demo. Show the service a container belongs to, in both.
+in the demo. Show each container's Compose service in both, and in recordings.
 
-## Current behavior
+## Accepted design
 
-- The monitor publishes cgroup IDs and paths; it has no knowledge of Compose.
-- The live bridge relays those frames unmodified, and the browser shows the path's last segment.
-- The Compose adapter's `inspect()` already returns each container's ID and service.
-- `ExecutionUpdate` already carries service facts to the server, such as `stopping_services`.
+Agreed with the project owner on 2026-11-05.
 
-## Name source: awaiting decision
+| Area | Decision |
+| --- | --- |
+| Name source | The system monitor resolves names and publishes them in its cgroup dictionary. |
+| Reach | Live panels and MCAP recordings gain names through the existing dictionary topic. |
+
+## Docker access: awaiting decision
+
+The Console's `cpu-monitor` runs read-only with `cap_drop: [ALL]` plus BPF, PERFMON and SYSLOG, and has no Docker access.
 
 | Option | Change | Tradeoff |
 | --- | --- | --- |
-| **Status (proposed)** | Adapter facts flow through `ExecutionUpdate` and `Status`; the browser labels matching groups. | One data path; frames stay unmodified. Recordings keep raw paths. |
-| Server asks Docker | The TypeScript server lists containers by label. | No Rust change, but a second source of truth with no event to say when to ask. |
-| Monitor resolves names | The monitor reads Docker and publishes service names. | Recordings gain names, but a generic BPF monitor gains a Docker dependency. |
+| **Docker socket (proposed)** | Mount the socket into `cpu-monitor`; query only container labels. | Simplest and exact. A read-only mount does not limit the API, so a compromised monitor has root-equivalent control of the host. |
+| Filtering socket proxy | A proxy container allows only container inspection. | Limits the API, at the cost of another image and service on every run. |
+| Docker metadata files | Mount `/var/lib/docker/containers` read-only and read `config.v2.json`. | No API access, but relies on a private format, needs a read capability, and exposes every container's environment secrets. |
 
 ## Behavior
 
-- A group shows its service name when its path contains a known container ID.
-- Other groups keep their path segment, so host processes stay visible and honest.
-- A restarted service keeps its name on each container, listed as separate rows.
-- The list includes system app containers, by their service names.
-- Applies to the live panel. Recording contents are unchanged.
+- A group's name is its `com.docker.compose.service` label, in a new `DictionaryEntry` field; `path` stays unchanged.
+- Groups without that label keep their path segment, so host processes stay visible.
+- Names follow the dictionary's existing 2 s checkpoints, so a new service can briefly show its path.
+- A failed or missing Docker connection leaves paths in place, is counted in health output, and never stops collection.
+- Standalone monitors stay Docker-free: resolution is off unless the configuration enables it.
+- Restarted services appear as separate rows with the same name.
 
-## Milestone 1: carry container identity
-
-**Work items**
-
-- [ ] Trace how inspection results reach the native update; publish on start and on change, without timed polling.
-- [ ] Add a repeated `ServiceContainer { container_id, service }` message to `ExecutionUpdate` and `Status`.
-- [ ] Retain every container seen during a run, including restarted ones.
-- [ ] Cover both Compose projects if [system and user isolation](https://github.com/Cutuy/doramcap/pull/175) lands first.
-
-**Validation**
-
-- [ ] Native and server tests with a real Compose project, using capability rules from `AGENTS.md`.
-- [ ] Status shows each service's container after start and after a restart.
-
-## Milestone 2: label the panel
+## Milestone 1: resolve names in the monitor
 
 **Work items**
 
-- [ ] Match container IDs in cgroup paths for the systemd and cgroupfs drivers.
-- [ ] Label Top CPU consumers from Status, keeping groups distinct by ID.
-- [ ] Make the demo supply the same Status field and real-format `docker-<id>.scope` paths, replacing its made-up paths.
+- [ ] Add a `service` string to `DictionaryEntry`; existing readers ignore it.
+- [ ] Add a `container_names` section to `monitor.proto`, off by default.
+- [ ] Run lookups on a dedicated thread with a bounded channel; the dictionary sends new container IDs and picks up replies at its next checkpoint.
+- [ ] Parse container IDs from systemd and cgroupfs paths, retrying failures at later checkpoints.
+- [ ] Use the workspace's pinned `bollard`, pending owner review of adding it and an async runtime to the monitor.
 
 **Validation**
 
-- [ ] Frontend tests for both drivers, unmatched groups and a restarted service.
-- [ ] A real run on x86_64 and ARM64 shows service names; a host process keeps its path.
+- [ ] Unit tests: both path forms, unlabeled containers, a failed lookup and a full channel.
+- [ ] Native test against real Docker: service names appear; collection stays at 10 Hz while Docker is stopped.
+- [ ] A recording's dictionary topic contains names, and an older reader still decodes it.
+
+## Milestone 2: ship it in Console
+
+**Work items**
+
+- [ ] Enable resolution and the chosen Docker access in the `cpu-monitor` system app.
+- [ ] Document the access in the system app specification.
+- [ ] Prefer `service` over the path segment in Top CPU consumers, keeping groups distinct by ID.
+- [ ] Make the demo publish real-format paths plus `service`, replacing its made-up paths.
+
+**Validation**
+
+- [ ] Frontend tests: named, unnamed and restarted groups.
+- [ ] A real Console run on x86_64 and ARM64 shows service names, live and in the MCAP; a host process keeps its path.
 - [ ] Demo walk in light and dark.
