@@ -4,25 +4,28 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./ui": "./src/entry-ui.ts"
+    "./ui": "./src/entry-ui.ts",
+    "./demo": "./src/entry-demo.ts"
   },
   "scripts": {
     "build": "npm run generate && tsc --noEmit && vite build",
     "test": "npm run generate && tsx --test src/*.test.*",
-    "generate": "node scripts/generate-proto.mjs"
+    "generate": "node scripts/generate-proto.mjs",
+    "generate:demo-recording": "npm run generate && tsx scripts/generate-demo-recording.ts"
   },
   "dependencies": {
+    "protobufjs": "^8.8.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "protobufjs": "^8.8.1"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@mcap/core": "2.4.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "protobufjs-cli": "^2.7.1",
     "tsx": "^4.20.0",
     "typescript": "^7.0.2",
-    "vite": "^7.1.0",
-    "protobufjs-cli": "^2.7.1"
+    "vite": "^7.1.0"
   }
 }
