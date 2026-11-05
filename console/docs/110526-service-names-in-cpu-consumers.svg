@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 270" role="img" font-family="system-ui,sans-serif" font-size="13">
+  <title>Console names each service's cgroup parent, and the name reaches the browser and recordings in the cgroup path</title>
+  <rect width="760" height="270" fill="#fff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1l8 4-8 4" fill="none" stroke="#596b64" stroke-width="1.5"/></marker></defs>
+  <rect x="20" y="30" width="170" height="58" rx="5" fill="#e8f2ee" stroke="#236457"/>
+  <text x="105" y="54" text-anchor="middle" fill="#202a2e" font-weight="600">Compose manifest</text>
+  <text x="105" y="73" text-anchor="middle" fill="#596b64" font-size="12">per-service cgroup_parent</text>
+  <rect x="290" y="30" width="170" height="58" rx="5" fill="#fff" stroke="#dde2df"/>
+  <text x="375" y="54" text-anchor="middle" fill="#202a2e" font-weight="600">Linux cgroups</text>
+  <text x="375" y="73" text-anchor="middle" fill="#596b64" font-size="12">named slice per service</text>
+  <rect x="290" y="150" width="170" height="58" rx="5" fill="#fff" stroke="#dde2df"/>
+  <text x="375" y="174" text-anchor="middle" fill="#202a2e" font-weight="600">System monitor</text>
+  <text x="375" y="193" text-anchor="middle" fill="#596b64" font-size="12">unchanged</text>
+  <rect x="570" y="102" width="170" height="58" rx="5" fill="#e8f2ee" stroke="#236457"/>
+  <text x="655" y="126" text-anchor="middle" fill="#202a2e" font-weight="600">Browser</text>
+  <text x="655" y="145" text-anchor="middle" fill="#596b64" font-size="12">service name from path</text>
+  <rect x="570" y="198" width="170" height="58" rx="5" fill="#fff" stroke="#dde2df"/>
+  <text x="655" y="222" text-anchor="middle" fill="#202a2e" font-weight="600">MCAP recording</text>
+  <text x="655" y="241" text-anchor="middle" fill="#596b64" font-size="12">path in dictionary</text>
+  <path d="M190 59H290" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M375 88V150" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M460 170H515V131H570" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M460 188H515V227H570" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+</svg>
