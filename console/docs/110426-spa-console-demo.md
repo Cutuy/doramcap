@@ -23,7 +23,7 @@ Agreed with the project owner on 2026-11-04.
 | Client | Infer the shared client shape from `ReturnType<typeof createClient>`; use one internal context for the client and base path. |
 | Internals | Keep protobuf constructors, fixtures and simulation helpers inside the package. |
 | Navigation | `App` keeps its hash listener and hash writes and takes one `basePath` prop; link helpers build under it. Standalone passes an empty base. |
-| Shell | The SPA header contains Console; embedded `PageFrame` retains Run, History and workflow navigation. |
+| Shell | Superseded: see [the native demo plan](110526-native-console-demo.md). |
 | Lifetime | One demo client lives as long as the page, so a run continues during SPA navigation. Refresh and Reset restore the built-in run. |
 | Reset | Reset remounts `App` with a new `key`; the client stays fixed for each mount. |
 | Scenario | The release's `cpu-burn` project and system apps, with production step IDs and names, stream IDs and machine fact names. |

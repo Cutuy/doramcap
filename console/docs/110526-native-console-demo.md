@@ -53,12 +53,12 @@ Agreed with the project owner on 2026-11-05.
 
 **Work items**
 
-- [ ] Add a frame prop to `App` with tab data, phase rail and screens; the current layout becomes the default frame.
-- [ ] Remove the embedded branch from `PageFrame`.
-- [ ] Render Run, History and Reset on the page; keep the rail and screens in the window.
+- [x] Add a frame prop to `App` with tab data, phase rail and screen; the current layout becomes the default frame.
+- [x] Remove the embedded branch from `PageFrame`.
+- [x] Render Run, History and Reset on the page; keep the rail and screens in the window.
 
 **Validation**
 
-- [ ] Console frontend tests and build; project explorer build.
-- [ ] Demo: tabs follow the URL, a run continues across tabs and sections, Reset works.
-- [ ] Standalone Console layout is unchanged.
+- [x] Console frontend tests and build; project explorer build.
+- [x] Demo: tabs follow the URL, a run continues across tabs and sections, Reset works.
+- [x] Standalone Console layout is unchanged.

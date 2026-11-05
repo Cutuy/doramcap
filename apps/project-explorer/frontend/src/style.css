@@ -190,8 +190,11 @@ main.shell{padding-top:28px}
 .console-copy-status:not(:empty){margin-top:8px}
 @media(max-width:950px){.console-install{grid-template-columns:1fr;gap:20px}}
 @media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-command-row{align-items:flex-start;gap:10px}.console-command-row button{min-height:44px}}
-.console-demo-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.console-demo-heading button{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
+.console-tabs{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;border-bottom:1px solid var(--line)}
+.console-tabs nav{order:0;width:auto}
+.console-tabs nav a{display:block;padding:12px 0}
+.console-tabs button{flex-shrink:0;white-space:nowrap}
+.console-tabs button{display:inline-flex;align-items:center;gap:6px;min-height:36px;margin-bottom:6px;padding:6px 12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
 .console-demo .console-root{--console-bg:var(--bg);--console-panel:var(--panel);--console-ink:var(--ink);--console-muted:var(--muted);--console-line:var(--line);--console-soft:var(--soft);--console-accent:var(--accent);border:1px solid var(--line);border-radius:6px}
 .console-upcoming{margin-top:50px}
 .console-upcoming h2{font-size:34px;letter-spacing:-1px;line-height:1.2;margin-bottom:14px}
@@ -203,3 +206,4 @@ main.shell{padding-top:28px}
 .upcoming-card p{margin:0}
 .upcoming-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;font-weight:600;color:var(--ink);background:var(--soft);border:1px solid var(--line)}
 @media(max-width:760px){.upcoming-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.console-tabs button{min-height:44px}}

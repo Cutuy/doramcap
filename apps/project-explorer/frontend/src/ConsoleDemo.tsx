@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RotateCcw } from 'lucide-react';
-import { App } from 'doramcap-console-frontend/ui';
+import { App, ConsoleWindow } from 'doramcap-console-frontend/ui';
 import { createDemoClient } from 'doramcap-console-frontend/demo';
 import { CONSOLE_PATH } from './model';
 import ConsoleUpcoming from './ConsoleUpcoming';
@@ -18,11 +18,14 @@ export default function ConsoleDemo() {
     window.location.hash = `#${CONSOLE_PATH}`;
   };
   return <div className="console-demo">
-    <div className="console-demo-heading">
-      <div className="intro"><h1>Try Console.</h1></div>
-      <button type="button" onClick={reset}><RotateCcw size={14} aria-hidden="true" />Reset demo</button>
-    </div>
-    <App key={generation} client={client} basePath={CONSOLE_PATH}/>
+    <div className="intro"><h1>Try Console.</h1></div>
+    <App key={generation} client={client} basePath={CONSOLE_PATH} frame={({ views, rail, screen }) => <>
+      <div className="console-tabs">
+        <nav aria-label="Console views">{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}</nav>
+        <button type="button" onClick={reset}><RotateCcw size={14} aria-hidden="true" />Reset demo</button>
+      </div>
+      <ConsoleWindow rail={rail}>{screen}</ConsoleWindow>
+    </>}/>
     <ConsoleUpcoming />
   </div>;
 }

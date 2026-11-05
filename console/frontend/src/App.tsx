@@ -11,7 +11,7 @@ import { LiveModel, type LiveView } from './streams';
 import { SystemApps } from './SystemApps';
 import { acceptsSnapshot, canStopRun, createRequestKey, historyRoute, phaseAfterFinish, requestKey, runAgainBlocked, runHash, selectedProfiles, toggleProfile as nextProfiles } from './model';
 import { ActionButton } from './ui/ActionButton';
-import { PageFrame, type PagePhase } from './ui/PageFrame';
+import { PageFrame, type Frame, type PagePhase } from './ui/PageFrame';
 import { StatusLabel } from './ui/StatusLabel';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
@@ -21,8 +21,9 @@ const message = (error: unknown) => error instanceof ApiError ? [messages[error.
 /**
  * The Console screens. `client` stays fixed for one mount; remount with a new `key` to replace it.
  * `basePath` is the hash prefix this app owns: empty when standalone, `/name` when embedded.
+ * `frame` lets a host arrange the view links, phase rail and screen; it defaults to the standalone layout.
  */
-export function App({ client = api, basePath = '' }: { client?: Client; basePath?: string }) {
+export function App({ client = api, basePath = '', frame }: { client?: Client; basePath?: string; frame?: Frame }) {
   const context = useMemo(() => ({ client, basePath }), [client, basePath]);
   const [phase, setPhase] = useState<PagePhase>('Project');
   const [route, setRoute] = useState(() => typeof location === 'undefined' ? null : historyRoute(location.hash, basePath));
@@ -160,7 +161,7 @@ export function App({ client = api, basePath = '' }: { client?: Client; basePath
   const historical = [Phase.FINISHED, Phase.BLOCKED].includes(state);
   const navigateRun = (target: PagePhase) => { viewingRun.current = target === 'Run'; selecting.current = false; setPhase(target); };
   const refresh = `${snapshot?.runId}:${snapshot?.phase}`;
-  return <ConsoleContext.Provider value={context}><div className="console-root"><PageFrame phase={phase} history={!!route} onNavigate={historical && (phase === 'Run' || phase === 'Result') ? navigateRun : undefined}>
+  return <ConsoleContext.Provider value={context}><PageFrame frame={frame} phase={phase} history={!!route} onNavigate={historical && (phase === 'Run' || phase === 'Result') ? navigateRun : undefined}>
     {route ? <>{active.has(state) && !!snapshot?.runId && <p className="notice" role="status">A run is in progress. <a href={runHash(basePath)}>View live run</a></p>}{route.runId ? <HistoryRunPage id={route.runId} refresh={refresh} runAgain={runAgain} runActive={runAgainBlocked(snapshot, busy)}/> : <HistoryList refresh={refresh} selected={route.compare}/>}</> : <>
     {error && <div className="notice failure-notice" role="alert">{error}{retry && canStopRun(snapshot, stopPending) && <ActionButton variant="secondary" onClick={() => void start()}>Start run</ActionButton>}</div>}
     {disconnected && <div className="notice"><span role="status">Connection lost; run may still be active.</span> <span aria-live="off">{updated && `Last update ${Math.max(0, Math.floor((clock - updated) / 1000))} s ago.`}</span></div>}
@@ -170,5 +171,5 @@ export function App({ client = api, basePath = '' }: { client?: Client; basePath
     {phase === 'Run' && <><div className="heading"><div><h1>{historical ? 'Run activity' : state === Phase.STOPPING || stopPending ? 'Stopping run' : 'Run in progress'}</h1><p>{snapshot?.projectDirectory && <>{snapshot.projectDirectory} · </>}{(snapshot?.profiles?.length ?? 0) > 0 && <>{snapshot?.profiles?.join(', ')} · </>}Run <span className="mono">{snapshot?.runId || expected.current}</span></p></div>{historical ? <ActionButton onClick={() => navigateRun('Result')}>View result</ActionButton> : <ActionButton variant="stop" disabled={!canStopRun(snapshot, stopPending)} onClick={() => void stop()}>{state === Phase.STOPPING || stopPending ? 'Stopping…' : 'Stop run'}</ActionButton>}</div><div className="columns"><div><RunActivity snapshot={snapshot} stopping={state === Phase.STOPPING || stopPending} disconnected={disconnected} historical={historical}/></div><aside><section className="panel"><h2>Recording</h2><StatusLabel label={!recordingEnabled ? 'Disabled' : historical ? (snapshot?.outcome?.recordingFinalized ? 'Saved' : 'Unavailable') : state === Phase.RUNNING ? 'In progress' : 'Waiting for readiness'} tone={recordingEnabled && state === Phase.RUNNING ? 'active' : 'neutral'}/></section><RunMetrics recordingEnabled={recordingEnabled} samples={snapshot?.metrics} live={liveView} historical={historical} disconnected={disconnected} incomplete={snapshot?.metricsIncomplete}/></aside></div></>}
     {phase === 'Result' && snapshot && <Result snapshot={snapshot} newRun={newRun} viewRun={() => navigateRun('Run')}/>}
     </>}
-  </PageFrame></div></ConsoleContext.Provider>;
+  </PageFrame></ConsoleContext.Provider>;
 }

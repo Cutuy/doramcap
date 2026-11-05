@@ -9,7 +9,7 @@ import { ReviewPreview } from './Comparison';
 import { ConsoleContext } from './context';
 import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, phaseAfterFinish, runHash, toggleCompared } from './model';
 import { Result } from './Result';
-import { PageFrame } from './ui/PageFrame';
+import { ConsoleWindow, PageFrame } from './ui/PageFrame';
 import { RunMetrics } from './RunMetrics';
 
 const { HistoryState: State } = wire;
@@ -236,17 +236,17 @@ test('a client without a file for an artifact shows no download link', () => {
   assert.match(html, /href="data:application\/json,\{\}" download="console-report.json"/);
 });
 
-test('embedded screens leave the page header and main landmark to the host', () => {
+test('a host frame arranges the view links, phase rail and screen without a page header', () => {
   // Arrange
   const client = createClient(async () => new Response());
   // Act
   const html = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}>
-    <PageFrame phase="Project">Body</PageFrame>
+    <PageFrame phase="Project" frame={({ views, rail, screen }) => <>{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}<ConsoleWindow rail={rail}>{screen}</ConsoleWindow></>}>Body</PageFrame>
   </ConsoleContext.Provider>);
   // Assert
   assert.doesNotMatch(html, /<main|<header/);
-  assert.match(html, /href="#\/console"[^>]*>Run/);
-  assert.match(html, /href="#\/console\/history"[^>]*>History/);
+  assert.match(html, /<a href="#\/console" aria-current="page">Run<\/a><a href="#\/console\/history">History<\/a><div class="console-root">/);
+  assert.match(html, /class="console-nav"><nav[^>]*Run phases.*Body/);
 });
 
 test('matching comparison facts collapse behind a control that expands them', () => {
@@ -262,16 +262,12 @@ test('matching comparison facts collapse behind a control that expands them', ()
   assert.doesNotMatch(html, /Source state/);
 });
 
-test('the view tabs and run phases share one navigation row', () => {
-  // Arrange
-  const client = createClient(async () => new Response());
+test('the standalone view tabs and run phases share the page header', () => {
   // Act
-  const embedded = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}><PageFrame phase="Run">Body</PageFrame></ConsoleContext.Provider>);
   const standalone = renderToStaticMarkup(<PageFrame phase="Run">Body</PageFrame>);
   // Assert
-  assert.match(embedded, /class="console-nav"><nav[^>]*Console views.*<nav[^>]*Run phases/);
-  assert.match(standalone, /<header[^>]*>.*Console views.*Run phases.*<\/header><main/);
-  assert.doesNotMatch(embedded + standalone, /<small>/);
+  assert.match(standalone, /class="console-root"><header[^>]*>.*Console views.*Run phases.*<\/header><main/);
+  assert.doesNotMatch(standalone, /<small>/);
 });
 
 test('a finished run stays on screen while watched and opens at its result otherwise', () => {
