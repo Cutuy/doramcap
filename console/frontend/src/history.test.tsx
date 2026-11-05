@@ -236,17 +236,24 @@ test('a client without a file for an artifact shows no download link', () => {
   assert.match(html, /href="data:application\/json,\{\}" download="console-report.json"/);
 });
 
-test('a host frame arranges the view links, phase rail and screen without a page header', () => {
+test('a host frame arranges the view links, run phases and screen without a page header', () => {
   // Arrange
   const client = createClient(async () => new Response());
-  // Act
-  const html = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}>
-    <PageFrame phase="Project" frame={({ views, rail, screen }) => <>{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}<ConsoleWindow rail={rail}>{screen}</ConsoleWindow></>}>Body</PageFrame>
+  let selected = '';
+  const render = (history: boolean) => renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}>
+    <PageFrame phase="Run" history={history} onNavigate={phase => { selected = phase; }} frame={({ views, phases, screen }) => <>{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}{phases.map(({ label, current, onSelect }) => { if (label === 'Result') onSelect?.(); return <i key={label}>{label}{current && '*'}{onSelect && '!'}</i>; })}<ConsoleWindow>{screen}</ConsoleWindow></>}>Body</PageFrame>
   </ConsoleContext.Provider>);
+  // Act
+  const run = render(false);
   // Assert
-  assert.doesNotMatch(html, /<main|<header/);
-  assert.match(html, /<a href="#\/console" aria-current="page">Run<\/a><a href="#\/console\/history">History<\/a><div class="console-root">/);
-  assert.match(html, /class="console-nav"><nav[^>]*Run phases.*Body/);
+  assert.doesNotMatch(run, /<main|<header/);
+  assert.match(run, /<a href="#\/console" aria-current="page">Run<\/a><a href="#\/console\/history">History<\/a>/);
+  assert.match(run, /<i>Project<\/i><i>Review<\/i><i>Run\*!<\/i><i>Result!<\/i><div class="console-root"><div class="page">Body/);
+  assert.equal(selected, 'Result');
+  // Act
+  const history = render(true);
+  // Assert
+  assert.doesNotMatch(history, /<i>/);
 });
 
 test('matching comparison facts collapse behind a control that expands them', () => {

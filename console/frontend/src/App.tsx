@@ -21,7 +21,7 @@ const message = (error: unknown) => error instanceof ApiError ? [messages[error.
 /**
  * The Console screens. `client` stays fixed for one mount; remount with a new `key` to replace it.
  * `basePath` is the hash prefix this app owns: empty when standalone, `/name` when embedded.
- * `frame` lets a host arrange the view links, phase rail and screen; it defaults to the standalone layout.
+ * `frame` lets a host arrange the view links, run phases and screen; it defaults to the standalone layout.
  */
 export function App({ client = api, basePath = '', frame }: { client?: Client; basePath?: string; frame?: Frame }) {
   const context = useMemo(() => ({ client, basePath }), [client, basePath]);

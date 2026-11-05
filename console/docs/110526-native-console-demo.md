@@ -13,7 +13,7 @@ Agreed with the project owner on 2026-11-05.
 
 | Area | Decision |
 | --- | --- |
-| Composition | `App` takes a layout prop and keeps its run state. The site places Run, History and Reset on the page. |
+| Composition | `App` takes a layout prop and keeps its run state. The site places Run, History, the run phases and Reset on the page. |
 | Theming | Named `--console-*` tokens; the site maps its theme to them in one CSS block. |
 | Light and dark | `light-dark()` follows the inherited `color-scheme`, so the site's switch reaches the demo. |
 | Look | The site's colours, font, corners, padding and button sizes become Console's defaults. |
@@ -53,9 +53,9 @@ Agreed with the project owner on 2026-11-05.
 
 **Work items**
 
-- [x] Add a frame prop to `App` with tab data, phase rail and screen; the current layout becomes the default frame.
+- [x] Add a frame prop to `App` with view and phase data and the screen; the current layout becomes the default frame.
 - [x] Remove the embedded branch from `PageFrame`.
-- [x] Render Run, History and Reset on the page; keep the rail and screens in the window.
+- [x] Render Run, History, the run phases and Reset on the page; keep the screens in the window.
 
 **Validation**
 

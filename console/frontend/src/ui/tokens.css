@@ -27,5 +27,5 @@ font-family:var(--console-font);color:var(--console-ink);background:var(--consol
 .machine-changes{margin-top:20px}
 
 /* A host page can style bare elements; these restore what Console relies on. */
-h1,h2,h3{letter-spacing:normal;overflow-wrap:normal;font-weight:var(--console-heading-weight)}p{color:inherit}input[type=checkbox]{padding:revert;border:revert;border-radius:revert;background:revert;color:revert}.console-nav{display:flex;align-items:center;gap:8px 24px;flex-wrap:wrap;margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--console-line)}.comparison-matching{display:block;border:0;padding:4px 0;background:transparent;color:var(--console-muted);font:inherit;font-size:13px;cursor:pointer}.comparison-matching:hover{color:var(--console-accent)}
+h1,h2,h3{letter-spacing:normal;overflow-wrap:normal;font-weight:var(--console-heading-weight)}p{color:inherit}input[type=checkbox]{padding:revert;border:revert;border-radius:revert;background:revert;color:revert}.comparison-matching{display:block;border:0;padding:4px 0;background:transparent;color:var(--console-muted);font:inherit;font-size:13px;cursor:pointer}.comparison-matching:hover{color:var(--console-accent)}
 }
