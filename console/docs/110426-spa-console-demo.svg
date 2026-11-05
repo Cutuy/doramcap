@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 750" font-family="system-ui, sans-serif" font-size="18" role="img" aria-labelledby="title description">
+  <title id="title">Shared Console UI and SPA demo</title>
+  <desc id="description">The existing Console package exports its shared App and a separate demo client as TypeScript. Both hosts import the same App. Standalone uses the existing HTTP client and server; the SPA owns a browser scenario with sample artifacts.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#596b64"/></marker>
+    <style>
+      .box { fill: #f5f7f6; stroke: #9cb0a5; stroke-width: 1.5; }
+      .entry { fill: #e8f2ee; stroke: #177763; stroke-width: 1.5; }
+      .label { fill: #20352f; text-anchor: middle; }
+      .sub { fill: #4d6258; text-anchor: middle; font-size: 16px; }
+      .edge { fill: none; stroke: #596b64; stroke-width: 1.5; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1040" height="750" fill="#ffffff"/>
+  <rect class="entry" x="310" y="25" width="420" height="90" rx="8"/>
+  <text class="label" x="520" y="60">Console package · ./ui</text>
+  <text class="sub" x="520" y="88">App · scoped CSS · TypeScript source</text>
+
+  <path class="edge" d="M400,115 L270,225"/>
+  <path class="edge" d="M640,115 L770,225"/>
+  <text class="sub" x="285" y="166">App + CSS</text>
+  <text class="sub" x="755" y="166">App + CSS</text>
+
+  <rect class="box" x="60" y="230" width="420" height="90" rx="8"/>
+  <text class="label" x="270" y="265">Standalone Console</text>
+  <text class="sub" x="270" y="293">Authentication · empty base path</text>
+  <rect class="box" x="560" y="230" width="420" height="90" rx="8"/>
+  <text class="label" x="770" y="265">SPA Console section</text>
+  <text class="sub" x="770" y="293">Page-lifetime demo · base path</text>
+
+  <path class="edge" d="M270,320 V425"/>
+  <path class="edge" d="M770,320 V425"/>
+  <text class="sub" x="150" y="378">Client calls</text>
+  <text class="sub" x="650" y="378">Client calls</text>
+
+  <rect class="box" x="60" y="430" width="420" height="90" rx="8"/>
+  <text class="label" x="270" y="465">Existing HTTP client</text>
+  <text class="sub" x="270" y="493">createClient()</text>
+  <rect class="entry" x="560" y="430" width="420" height="90" rx="8"/>
+  <text class="label" x="770" y="465">Console package · ./demo</text>
+  <text class="sub" x="770" y="493">createDemoClient()</text>
+
+  <path class="edge" d="M270,520 V625"/>
+  <path class="edge" d="M770,520 V625"/>
+  <text class="sub" x="150" y="578">HTTP · live stream</text>
+  <text class="sub" x="650" y="578">Typed messages</text>
+
+  <rect class="box" x="60" y="630" width="420" height="90" rx="8"/>
+  <text class="label" x="270" y="665">Console server</text>
+  <text class="sub" x="270" y="693">Runs · reports · recordings</text>
+  <rect class="box" x="560" y="630" width="420" height="90" rx="8"/>
+  <text class="label" x="770" y="665">Internal scenario + fixtures</text>
+  <text class="sub" x="770" y="693">Protobuf state · sample files · reports</text>
+</svg>
