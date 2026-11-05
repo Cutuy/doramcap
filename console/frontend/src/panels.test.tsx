@@ -10,7 +10,7 @@ import { RunSteps } from './RunSteps';
 import { RunMetrics } from './RunMetrics';
 import { Result } from './Result';
 import { SystemApps } from './SystemApps';
-import { selectedProfiles } from './model';
+import { historyRoute, selectedProfiles } from './model';
 import { cpuRecordingEnabled } from './api';
 import { doramcap } from './generated/console';
 import { PageFrame } from './ui/PageFrame';
@@ -55,6 +55,19 @@ test('completed result exposes run activity even when admission is blocked', () 
   assert.match(html, /View run activity/);
   assert.match(html, />New run<\/button>/);
   assert.match(rail, /<button[^>]*>Run<\/button>/);
+});
+test('a finished run offers Compare, which opens History with that run selected', () => {
+  // Arrange
+  const runId = 'a'.repeat(32);
+  const snapshot = wire.Status.fromObject({ phase: Phase.FINISHED, runId, outcome: null, cpuAvailable: false, reportAvailable: false });
+  const past = { title: 'Past run', action: 'Run again', disabled: false, artifacts: [], aside: null };
+  // Act
+  const live = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
+  const stored = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}} past={past}/>);
+  // Assert
+  const target = /<a class="button secondary" href="([^"]+)">Compare<\/a>/.exec(live)?.[1];
+  assert.deepEqual(historyRoute(target ?? ''), { runId: '', compare: [runId] });
+  assert.doesNotMatch(stored, />Compare</);
 });
 test('historical run freezes elapsed time and unavailable metrics remain distinct from zero', () => {
   // Arrange
