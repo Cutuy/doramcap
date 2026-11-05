@@ -146,15 +146,12 @@ function boundRows(rows: Row[]) {
   const kept = [...rows.filter(differs), ...rows.filter((row) => !differs(row))].slice(0, MAX_ROWS);
   return { rows: kept, truncated: true };
 }
-/** One run's settings; a setting that changed during the run reads as its start and end values. */
-function runConfiguration({ before, after }: Capture): Facts {
-  const start = configurationFacts(before), end = configurationFacts(after), facts: Facts = new Map(start);
-  if (!start.size || !end.size) return facts;
-  for (const name of new Set([...start.keys(), ...end.keys()])) {
-    const first = start.get(name)?.value, last = end.get(name)?.value;
-    if (first !== last) facts.set(name, { value: `${first ?? 'Not set'} → ${last ?? 'Not set'}` });
-  }
-  return facts;
+/** What changed between a run's Prepare and post-run captures. Empty when either is missing. */
+export function machineChanges(before: Capture['before'], after: Capture['before']) {
+  return [
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(before), configurationFacts(after)),
+    ...diffFacts(Group.COMPARISON_CONDITION, conditionFacts(before), conditionFacts(after)),
+  ].filter((row) => row.result === Result.COMPARISON_CHANGED);
 }
 const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never });
 
@@ -163,7 +160,7 @@ export function compareRuns(a: Side, b: Side, [labelA, labelB]: string[] = ['A',
   const { rows, truncated } = boundRows([
     ...diffFacts(Group.COMPARISON_OUTCOME, outcomeFacts(a), outcomeFacts(b)),
     ...setupRows(setupSide(a), setupSide(b)),
-    ...diffFacts(Group.COMPARISON_CONFIGURATION, runConfiguration(a.capture), runConfiguration(b.capture)),
+    ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(a.capture.before), configurationFacts(b.capture.before)),
     ...diffFacts(Group.COMPARISON_CONDITION, conditionFacts(a.capture.before), conditionFacts(b.capture.before)),
   ]);
   const compared = (label: string, side: Side) => ({ label, runs: [{ entry: side.detail.entry, captured: !!side.capture.before }] });

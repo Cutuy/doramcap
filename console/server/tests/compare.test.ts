@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { compareReview, compareRuns, diffFacts, manifestFacts, readManifest } from '../src/compare.js';
+import { compareReview, compareRuns, diffFacts, machineChanges, manifestFacts, readManifest } from '../src/compare.js';
 import { execution, wire } from '../src/native.js';
 
 const { ComparisonGroup: Group, ComparisonResult: Result } = wire;
@@ -50,20 +50,28 @@ test('zero and false machine values equal an unset one, and differ from a set on
   assert.equal(row(comparison, 'memory_total_bytes'), undefined);
 });
 
-test('two captured runs compare by group, and a setting changed during a run differs in its group', () => {
+test('two captured runs compare their Prepare captures by group', () => {
   // Arrange
-  const a = side('a'.repeat(32), { setup: { sourceCommit: 'abc', images: [{ service: 'worker', imageId: 'sha256:1' }] }, before: machine('powersave'), after: machine('performance') });
-  const b = side('b'.repeat(32), { setup: { sourceCommit: 'abc', images: [{ service: 'worker', imageId: 'sha256:2' }] }, before: machine('powersave') });
+  const a = side('a'.repeat(32), { setup: { sourceCommit: 'abc', images: [{ service: 'worker', imageId: 'sha256:1' }] }, before: machine('powersave') });
+  const b = side('b'.repeat(32), { setup: { sourceCommit: 'abc', images: [{ service: 'worker', imageId: 'sha256:2' }] }, before: machine('performance') });
   // Act
   const comparison = compareRuns(a, b);
   // Assert
   assert.equal(row(comparison, 'source_commit')?.result, Result.COMPARISON_SAME);
   assert.equal(row(comparison, 'image.worker')?.result, Result.COMPARISON_CHANGED);
   assert.equal(row(comparison, 'kernel_release')?.result, Result.COMPARISON_SAME);
-  const governor = row(comparison, 'governor');
-  assert.equal(governor?.group, Group.COMPARISON_CONFIGURATION);
-  assert.equal(governor?.result, Result.COMPARISON_CHANGED);
-  assert.match(cell(governor, 0) ?? '', /powersave.*performance/);
+  assert.equal(row(comparison, 'governor')?.group, Group.COMPARISON_CONFIGURATION);
+  assert.equal(row(comparison, 'governor')?.result, Result.COMPARISON_CHANGED);
+});
+
+test('post-run changes list only what differs, and nothing when a capture is missing', () => {
+  // Arrange
+  const state = (governor: string, load: number) => execution.RunCapture.fromObject({ before: machine(governor, load) }).before;
+  // Act
+  const changes = machineChanges(state('powersave', 1), state('performance', 2));
+  // Assert
+  assert.deepEqual(changes.map(item => [item.group, item.name]).sort(), [[Group.COMPARISON_CONFIGURATION, 'governor'], [Group.COMPARISON_CONDITION, 'load_1m']]);
+  assert.deepEqual(machineChanges(null, state('performance', 2)), []);
 });
 
 test('sensitive values, Compose secrets and frozen files never reach a comparison, while changes still show', () => {
@@ -114,16 +122,16 @@ test('boot flags compare original values between runs and at review while hiding
 test('a sensitive boot flag change during a run remains visible as a masked transition', () => {
   // Arrange
   const state = (password: string) => ({ configuration: { bootFlags: `quiet password=${password}` } });
-  const baseline = side('a'.repeat(32), { before: state('first-secret'), after: state('first-secret') });
-  const changed = side('b'.repeat(32), { before: state('first-secret'), after: state('second-secret') });
+  const before = execution.RunCapture.fromObject({ before: state('first-secret') }).before;
+  const after = execution.RunCapture.fromObject({ before: state('second-secret') }).before;
   // Act
-  const comparison = compareRuns(baseline, changed);
+  const changes = machineChanges(before, after);
   // Assert
-  const flags = row(comparison, 'boot_flags');
+  const flags = changes.find(item => item.name === 'boot_flags');
   assert.equal(flags?.result, Result.COMPARISON_CHANGED);
   assert.equal(cell(flags, 0), 'quiet password=(hidden)');
-  assert.equal(cell(flags, 1), 'quiet password=(hidden) → quiet password=(hidden)');
-  const encoded = Buffer.from(wire.HistoryComparison.encode(comparison).finish()).toString('latin1');
+  assert.equal(cell(flags, 1), 'quiet password=(hidden)');
+  const encoded = Buffer.from(wire.Status.encode({ machineChanges: changes }).finish()).toString('latin1');
   for (const secret of ['first-secret', 'second-secret']) assert.ok(!encoded.includes(secret));
 });
 

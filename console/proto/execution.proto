@@ -71,7 +71,7 @@ message ExperimentSetup {
 message RunCapture {
   ExperimentSetup setup = 1;
   doramcap.system_config.v1.MachineState before = 2;
-  doramcap.system_config.v1.MachineState after = 3;
+  reserved 3; // Formerly the post-run state, which is no longer saved.
 }
 // Completion remains available even when the bounded progress queue overflows.
 message ExecutionUpdate {

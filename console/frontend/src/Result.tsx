@@ -2,6 +2,7 @@ import { artifactPath } from './generated/transport';
 import { Phase } from './api';
 import type { ReactNode } from 'react';
 import type { HistoryArtifact, Snapshot } from './api';
+import { MachineChanges } from './Comparison';
 import { bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
 import { OutcomeSummary } from './ui/OutcomeSummary';
@@ -25,5 +26,6 @@ export function Result({ snapshot, newRun, viewRun, past }: { snapshot: Snapshot
       {outputs.length ? outputs.map(output => ready(output.id) ? <a className="button primary" key={output.id} href={artifactPath(snapshot.runId, output.id)}>Download {output.id} recording{size(output.id)}</a> : <span className="unavailable" key={output.id}>{output.id} recording unavailable{size(output.id) && `${size(output.id)} left on host`}</span>) : <span className="unavailable">Recording disabled</span>}
       {snapshot.reportAvailable ? <a className="button secondary" href={artifactPath(snapshot.runId, 'report')}>Download report</a> : <span className="unavailable">Report unavailable</span>}
     </div></section></div>{past ? <aside>{past.aside}</aside> : blocked && <aside><section className="panel attention-panel"><h2>Reset required</h2><p>The next run will ask the repository controller to reset the experiment before starting. If reset fails, the run stays blocked; inspect the private report on the host.</p></section></aside>}</div>
+    {!past && snapshot.machineChanges.length > 0 && <MachineChanges rows={snapshot.machineChanges}/>}
   </>;
 }

@@ -462,25 +462,24 @@ test('past artifacts download only through safe paths and only when finalized', 
 
 const machine = (governor: string) => ({ capturedUnixMs: 1, configuration: { governor: [{ value: governor, cpus: '0-3' }] } });
 
-test('a run keeps its setup and machine states, including after a failure', async () => {
+test('a run saves its Prepare capture and shows post-run changes without saving them, including after a failure', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
+  const before = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
   // Act
-  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
+  run.engine.update.machineBefore = before;
   await run.backend.status();
-  const history = new History(run.store);
-  const before = history.capture(runId);
   run.engine.update.machineAfter = execution.ExecutionUpdate.fromObject({ machineAfter: machine('powersave') }).machineAfter;
-  await finishRun(run, runId, { error: 'failed' });
-  const after = history.capture(runId);
+  const live = await finishRun(run, runId, { error: 'failed' });
+  const saved = await detail(run, runId);
+  const capture = new History(run.store).capture(runId);
   // Assert
-  assert.deepEqual(before.setup?.images?.map(({ service, imageId }) => [service, imageId]), [['worker', 'sha256:a']]);
-  assert.equal(before.before?.configuration?.governor?.[0].value, 'performance');
-  assert.equal(before.after, null);
-  assert.equal(after.before?.configuration?.governor?.[0].value, 'performance');
-  assert.equal(after.after?.configuration?.governor?.[0].value, 'powersave');
-  assert.equal((await detail(run, runId)).entry?.state, State.HISTORY_FAILED);
+  assert.equal(live.machineChanges.find(row => row.name === 'governor')?.cells?.[1].values?.[0], 'powersave: 0-3');
+  assert.deepEqual(saved.status?.machineChanges, []);
+  assert.equal(saved.entry?.state, State.HISTORY_FAILED);
+  assert.equal(capture.setup?.images?.[0].imageId, 'sha256:a');
+  assert.equal(capture.before?.configuration?.governor?.[0].value, 'performance');
   await run.backend.close();
 });
 
