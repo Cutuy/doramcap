@@ -28,7 +28,7 @@ function Rows({ rows, warn, sides, verdict = true }: { rows: Row[]; warn: boolea
 }
 /** Machine condition is expected to vary, so it reads as plain values with no count or verdict. */
 function ConditionSection({ title, rows, sides }: { title: string; rows: Row[]; sides: string[] }) {
-  return <section className="comparison-group"><h3>{title}</h3><Rows rows={rows} warn={false} sides={sides} verdict={false}/></section>;
+  return <section className="comparison-group"><h3>{title}</h3>{rows.length ? <Rows rows={rows} warn={false} sides={sides} verdict={false}/> : <p className="muted">Nothing recorded.</p>}</section>;
 }
 function GroupSection({ group, title, rows, warn, showMatching, sides }: { group: number; title: string; rows: Row[]; warn: boolean; showMatching: boolean; sides: string[] }) {
   const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME), same = rows.filter(row => row.result === Result.COMPARISON_SAME);

@@ -88,7 +88,7 @@ export const canStopRun = (snapshot: Pick<Snapshot, 'phase' | 'runId'> | null, p
 
 const ACRONYMS = /\b(cpu|gpu|numa|smt|rt|id|cpus)\b/g;
 const UNIT_SUFFIX = /_(bytes|seconds|celsius|us)$/;
-const BYTES_PER_MIB = 1024 ** 2, BYTES_PER_GIB = 1024 ** 3;
+const BYTES_PER_KIB = 1024, BYTES_PER_MIB = 1024 ** 2, BYTES_PER_GIB = 1024 ** 3;
 const SHORT_ID_CHARS = 12;
 const SECONDS_PER_HOUR = 3600, SECONDS_PER_DAY = 86400;
 /** A readable name for a compared fact. Environment, mount, image and config names stay exact. */
@@ -103,9 +103,14 @@ export function factValue(name: string, value: string): string {
   if (name.startsWith('image.')) return value.replace(/^(sha256:.{12}).*/, '$1');
   const number = Number(value);
   if (!value || !Number.isFinite(number)) return value;
-  if (name.endsWith('_bytes')) return number < BYTES_PER_GIB ? `${(number / BYTES_PER_MIB).toFixed(1)} MiB` : `${(number / BYTES_PER_GIB).toFixed(1)} GiB`;
+  if (name.endsWith('_bytes')) {
+    if (number < BYTES_PER_KIB) return `${number} B`;
+    if (number < BYTES_PER_MIB) return `${(number / BYTES_PER_KIB).toFixed(1)} KiB`;
+    return number < BYTES_PER_GIB ? `${(number / BYTES_PER_MIB).toFixed(1)} MiB` : `${(number / BYTES_PER_GIB).toFixed(1)} GiB`;
+  }
   if (name.endsWith('_celsius')) return `${number} °C`;
   if (name === 'uptime_seconds') return number >= SECONDS_PER_DAY ? `${(number / SECONDS_PER_DAY).toFixed(1)} days` : `${(number / SECONDS_PER_HOUR).toFixed(1)} hours`;
   if (name.endsWith('_seconds')) return `${number.toFixed(1)} s`;
+  if (name.endsWith('_us')) return `${number} µs`;
   return value;
 }
