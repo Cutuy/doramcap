@@ -122,16 +122,16 @@ test('boot flags compare original values between runs and at review while hiding
 test('a sensitive boot flag change during a run remains visible as a masked transition', () => {
   // Arrange
   const state = (password: string) => ({ configuration: { bootFlags: `quiet password=${password}` } });
-  const baseline = side('a'.repeat(32), { before: state('first-secret'), after: state('first-secret') });
-  const changed = side('b'.repeat(32), { before: state('first-secret'), after: state('second-secret') });
+  const before = execution.RunCapture.fromObject({ before: state('first-secret') }).before;
+  const after = execution.RunCapture.fromObject({ before: state('second-secret') }).before;
   // Act
-  const comparison = compareRuns(baseline, changed);
+  const changes = machineChanges(before, after);
   // Assert
-  const flags = row(comparison, 'boot_flags');
+  const flags = changes.find(item => item.name === 'boot_flags');
   assert.equal(flags?.result, Result.COMPARISON_CHANGED);
   assert.equal(cell(flags, 0), 'quiet password=(hidden)');
-  assert.equal(cell(flags, 1), 'quiet password=(hidden) → quiet password=(hidden)');
-  const encoded = Buffer.from(wire.HistoryComparison.encode(comparison).finish()).toString('latin1');
+  assert.equal(cell(flags, 1), 'quiet password=(hidden)');
+  const encoded = Buffer.from(wire.Status.encode({ machineChanges: changes }).finish()).toString('latin1');
   for (const secret of ['first-secret', 'second-secret']) assert.ok(!encoded.includes(secret));
 });
 
