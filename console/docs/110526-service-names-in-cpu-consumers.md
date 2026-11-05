@@ -2,7 +2,7 @@
 
 # Service names in Top CPU consumers
 
-Created: 2026-11-05. Status: design accepted; slice cleanup proposed for owner review.
+Created: 2026-11-05. Status: design accepted; implementation not started.
 
 Top CPU consumers shows `docker-<id>.scope` in the installed Console and service names
 in the demo. Show each container's Compose service in both, and in recordings, while the
@@ -18,6 +18,7 @@ Agreed with the project owner on 2026-11-05.
 | Monitor | Unchanged, with no Docker access or new configuration. |
 | Telemetry | Format unchanged; recordings gain names through the paths they already store. |
 | Compose knowledge | Stays in the Compose workflow, which already rewrites each service in its frozen manifest. |
+| Slice cleanup | Stop the run's slices after its project is removed; a failure adds a diagnostic and does not fail the run. |
 
 ## Observed behavior
 
@@ -40,15 +41,6 @@ named parent  /doramcap.slice/doramcap-camera.slice/doramcap-camera-driver.slice
 - The browser shows the service from a `doramcap-` slice, and otherwise the path segment it shows today.
 - Restarted services appear as separate rows with the same name.
 - Containers leave `system.slice` during Console runs; tooling that assumes that location sees the change.
-
-## Slice cleanup: proposed
-
-Stop the run's slices after its project is removed. A failure adds a diagnostic and does not fail the run.
-
-| Option | Tradeoff |
-| --- | --- |
-| **Stop at removal (proposed)** | Leaves the machine as found, matching Console's verified cleanup. Adds a call to systemd. |
-| Leave until reboot | No new code. Empty slices build up, one or more per service name ever run. |
 
 ## Milestone 1: name service cgroups
 
