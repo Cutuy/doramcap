@@ -33,9 +33,9 @@ Jetson qualification and integrated runtime capabilities follow the
 changes. Follow each step with live CPU, keep the recordings, and compare any two
 past runs to see what changed in the setup, the machine and the results.
 
-[![Console walkthrough video, 30 seconds](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.jpg)](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
+https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
 
-[Watch the 30 second walkthrough](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4) · [Install Console](console/docs/install.md)
+[Install Console](console/docs/install.md) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
 
 ## Explore a run
 
