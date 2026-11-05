@@ -27,6 +27,8 @@ export function runAgainBlocked(snapshot: Pick<Snapshot, 'phase' | 'runId'> | nu
 export function selectedProfiles(apps: readonly { id: string; selected: boolean; profiles: readonly unknown[]; profile: string }[]): Record<string, string> {
   return Object.fromEntries(apps.filter(app => app.selected && app.profiles.length).map(app => [app.id, app.profile]));
 }
+/** A finished run stays on screen for someone watching it; opening the app afterwards shows its result. */
+export const phaseAfterFinish = <Phase extends string>(current: Phase | 'Run' | 'Result') => current === 'Run' ? 'Run' as const : 'Result' as const;
 export function createRequestKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join('');
 }

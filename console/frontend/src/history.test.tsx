@@ -7,7 +7,7 @@ import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
 import { ReviewPreview } from './Comparison';
 import { ConsoleContext } from './context';
-import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, runHash, toggleCompared } from './model';
+import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, phaseAfterFinish, runHash, toggleCompared } from './model';
 import { Result } from './Result';
 import { PageFrame } from './ui/PageFrame';
 import { RunMetrics } from './RunMetrics';
@@ -272,4 +272,12 @@ test('the view tabs and run phases share one navigation row', () => {
   assert.match(embedded, /class="console-nav"><nav[^>]*Console views.*<nav[^>]*Run phases/);
   assert.match(standalone, /<header[^>]*>.*Console views.*Run phases.*<\/header><main/);
   assert.doesNotMatch(embedded + standalone, /<small>/);
+});
+
+test('a finished run stays on screen while watched and opens at its result otherwise', () => {
+  // Act / Assert
+  assert.equal(phaseAfterFinish('Run'), 'Run');
+  assert.equal(phaseAfterFinish('Project'), 'Result');
+  assert.equal(phaseAfterFinish('Review'), 'Result');
+  assert.equal(phaseAfterFinish('Result'), 'Result');
 });
