@@ -174,17 +174,22 @@ main.shell{padding-top:28px}
 .console-try{justify-content:center;min-height:44px;padding:8px 13px;border:1px solid var(--accent);border-radius:4px;font-weight:600}
 .console-topology{display:flex;flex-direction:column;align-self:start;gap:0;min-width:0;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px}
 .console-node{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel);border:1px solid var(--line);border-radius:5px}
-.console-node svg,.console-soc-title svg,.console-soc-doramcap svg{flex-shrink:0;color:var(--accent)}
+.console-node svg,.console-soc-title svg{flex-shrink:0;color:var(--accent)}
 .console-topology strong{font-size:13px;font-weight:500}
-.console-node span,.console-soc-doramcap span{font-size:12px;color:var(--muted)}
+.console-node span{font-size:12px;color:var(--muted)}
 .console-soc{display:flex;flex-direction:column;gap:8px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:5px}
 .console-soc-title{display:flex;align-items:center;gap:8px}
-.console-soc-body{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:8px}
-.console-soc-doramcap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px;border:1px solid var(--accent);border-radius:5px;background:var(--bg)}
-.console-soc-apps{display:flex;flex-wrap:wrap;align-content:center;gap:4px;min-width:0}
-.console-soc-apps>span{flex-basis:100%;font:10px ui-monospace,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-.console-soc-apps>div{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border-radius:4px;overflow-wrap:anywhere}
-.console-soc-apps svg{flex-shrink:0;color:var(--muted)}
+.console-soc-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.console-soc-body>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.console-soc-body span{font:10px ui-monospace,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.console-soc-body>div>div{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border:1px solid transparent;border-radius:4px;overflow-wrap:anywhere}
+.console-soc-body svg{flex-shrink:0;color:var(--muted)}
+.console-soc-doramcap>div{border-color:var(--accent)}
+.console-soc-doramcap svg{color:var(--accent)}
+.console-soc-runtime{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px dashed var(--accent);border-radius:4px;font-size:12px}
+.console-soc-runtime svg{flex-shrink:0;color:var(--accent)}
+.console-soc-runtime strong{font-size:12px}
+.console-soc-runtime span{color:var(--muted)}
 .console-tunnel{align-self:center;padding:3px 12px;border-left:2px dashed var(--accent);font:11px ui-monospace,monospace;color:var(--muted)}
 .console-install-steps{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin:0;padding:16px 0 0;border-top:1px solid var(--line);list-style:none;counter-reset:step;min-width:0}
 .console-install-steps li{position:relative;min-width:0;padding-left:26px;counter-increment:step}

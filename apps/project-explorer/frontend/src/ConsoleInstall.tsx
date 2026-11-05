@@ -1,11 +1,15 @@
 import { useRef, useState } from 'react';
-import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Terminal } from 'lucide-react';
+import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, Terminal } from 'lucide-react';
 import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
-const EXAMPLE_CONTAINERS = ['perception', 'planner'];
-const EXAMPLE_UNITS = ['can-bridge', 'gps'];
+/** Side-by-side groups on the SoC: doramcap Console next to example user workloads. */
+const SOC_GROUPS = [
+  { label: 'doramcap', Icon: Activity, items: ['Console'], className: 'console-soc-doramcap' },
+  { label: 'Containers', Icon: Box, items: ['camera', 'planner'], className: '' },
+  { label: 'supervisord', Icon: Cog, items: ['can-bus', 'gps'], className: '' },
+];
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
 function Command({ text, label }: { text: string; label: string }) {
@@ -51,20 +55,18 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel; Console runs beside Docker containers and supervisord units on your SoC or workstation">
+    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel; Console runs beside Docker containers and supervisord units on your SoC or workstation, over an optional doramcap runtime">
       <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
       <div className="console-soc">
         <div className="console-soc-title"><Cpu size={16} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong></div>
         <div className="console-soc-body">
-          <div className="console-soc-doramcap"><Activity size={18} strokeWidth={1.6} aria-hidden="true" /><strong>doramcap</strong><span>Console</span></div>
-          <div className="console-soc-apps">
-            <span>Docker containers</span>
-            {EXAMPLE_CONTAINERS.map((name) => <div key={name}><Box size={13} aria-hidden="true" />{name}</div>)}
-            <span>supervisord units</span>
-            {EXAMPLE_UNITS.map((name) => <div key={name}><Cog size={13} aria-hidden="true" />{name}</div>)}
-          </div>
+          {SOC_GROUPS.map(({ label, Icon, items, className }) => <div key={label} className={className}>
+            <span>{label}</span>
+            {items.map((name) => <div key={name}><Icon size={13} aria-hidden="true" />{name}</div>)}
+          </div>)}
         </div>
+        <div className="console-soc-runtime"><Layers size={13} aria-hidden="true" /><strong>doramcap runtime</strong><span>optional</span></div>
       </div>
     </div>
     <ol className="console-install-steps">
