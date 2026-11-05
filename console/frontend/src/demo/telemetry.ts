@@ -79,6 +79,8 @@ export function digest(text: string): string {
 
 const LOAD_JITTER = 0.15, IDLE_BUSY = 0.01, MAX_TOTAL_BUSY = CORES * 0.97;
 const SPIKE_SAMPLES = 3;
+/** Visitor runs name groups after their services, so Top CPU consumers reads by service. */
+const SERVICE_CGROUP_ROOT = '/system.slice/compose';
 /** The sample project's services, by busy cores; a `spike` multiplies load every `period` samples. */
 type LoadGroup = { name: string; busy: number; spike?: { period: number; factor: number } };
 export const WORKLOAD_SERVICES: LoadGroup[] = [
@@ -95,7 +97,7 @@ const SYSTEM_BUSY: LoadGroup[] = [{ name: 'cpu-monitor', busy: 0.05 }, { name: '
 /** CPU telemetry for one run: services load the machine only while `running`. */
 export function createWorkload(seed: number) {
   const services = WORKLOAD_SERVICES.length;
-  const groups = [...WORKLOAD_SERVICES, ...SYSTEM_BUSY].map((group, index) => ({ ...group, id: String(5000 + index), path: scope(digest(group.name)) }));
+  const groups = [...WORKLOAD_SERVICES, ...SYSTEM_BUSY].map((group, index) => ({ ...group, id: String(5000 + index), path: `${SERVICE_CGROUP_ROOT}/${group.name}` }));
   const runtime = groups.map(() => 0);
   const load = (group: typeof groups[number], index: number, sequence: number, running: boolean) => {
     if (index < services && !running) return IDLE_BUSY;

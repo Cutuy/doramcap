@@ -56,7 +56,7 @@ Made during implementation while the owner was away. Each stays easy to revise.
 | Sample recording | Generated from the same code as live packets, with synthetic container IDs. | Reproducible, and contains no real host data. |
 | `@mcap/core` | Dev dependency of `console/frontend`, pinned to 2.4.0. | Writes and checks the recording; the repository's reader tests already use this version. Outside both bundles. |
 | Machine difference | The built-in run's machine differs from visitor runs in governor, energy preference and swappiness. | Gives the first comparison and Review visible differences. |
-| Cgroup names | Top CPU consumers show real `docker-<id>.scope` names. | This is what production displays; friendlier names would misrepresent it. |
+| Cgroup names | Superseded for visitor runs: Top CPU consumers shows service names in the demo. The built-in run's recording keeps `docker-<id>.scope` names. |
 | Recording hosting | The recording is the `cpu.mcap` asset of a separate, not-latest release, so `releases/latest` still serves the installer. | Owner's request to keep it out of the repository; the demo's download needs network access. |
 | Mockup hosting | Upcoming pictures load from the release, so the SPA stays small but needs network access for them. | 1.3 MB each; the repository's README already links them this way. |
 | App requirements | The demo does not enforce "requires CPU monitoring" style profile requirements. | Keeps the demo small; the labels still state them. |
