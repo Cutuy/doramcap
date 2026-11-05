@@ -5,20 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { McapStreamReader } from '@mcap/core';
 import protobuf from 'protobufjs';
 import 'protobufjs/ext/descriptor/index.js';
-import { ApiError, Phase, wire, type Snapshot } from './api';
+import { ApiError, Phase, StepState, wire, type Snapshot } from './api';
 import { BUILTIN_RECORDING_BYTES, BUILTIN_RUN_ID, BUILTIN_STARTED_AT_MS, createDemoClient } from './demo/client';
-import { RUN_SAMPLES } from './demo/telemetry';
+import { RUN_SAMPLES, SAMPLE_MS } from './demo/telemetry';
 import { PREPARING_RUN } from './generated/transport';
 import { LiveModel } from './streams';
 
 const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } = wire;
-const PREPARE_MS = 500, SAMPLE_MS = 1000, RUN_MS = RUN_SAMPLES * SAMPLE_MS;
+const PREPARE_MS = 500, SECOND_MS = 1000, RUN_MS = RUN_SAMPLES * SAMPLE_MS;
+const NS_PER_MS = 1_000_000n, SAMPLE_NS = BigInt(SAMPLE_MS) * NS_PER_MS;
 const LIVE_ONLY = { 'cpu-monitor': 'live' };
 const SERVER_REPORT_FIELDS = ['execution', 'error', 'writers_stopped', 'recording_finalized', 'service_exits', 'boundary_clean', 'event_stream_healthy', 'system_apps'];
 
 const realFetch = globalThis.fetch;
 beforeEach(() => {
-  mock.timers.enable({ apis: ['setTimeout'] });
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   // The demo must complete with every network request blocked.
   globalThis.fetch = () => { throw new Error('The demo must not use the network'); };
 });
@@ -80,8 +81,8 @@ test('the bundled recording is a valid capture matching the built-in run', () =>
   assert.equal(file.length, BUILTIN_RECORDING_BYTES);
   assert.equal(name, 'doramcap.telemetry.v1.Packet');
   assert.equal(messages.length, RUN_SAMPLES);
-  assert.equal(messages[0].logTime, BigInt(BUILTIN_STARTED_AT_MS) * 1_000_000n + 1_000_000_000n);
-  assert.equal(messages.at(-1)!.logTime - messages[0].logTime, BigInt(RUN_SAMPLES - 1) * 1_000_000_000n);
+  assert.equal(messages[0].logTime, BigInt(BUILTIN_STARTED_AT_MS) * NS_PER_MS + SAMPLE_NS);
+  assert.equal(messages.at(-1)!.logTime - messages[0].logTime, BigInt(RUN_SAMPLES - 1) * SAMPLE_NS);
   assert.deepEqual(first.snapshot.dictionary.map(entry => entry.path), ['/docker/activity-lab']);
 });
 
@@ -91,9 +92,9 @@ test('a run progresses through its phases to Completed and joins History', async
   const prepared = await review(client);
   // Act
   const { runId } = await client.start(prepared.preparedId, 'key');
-  await advance(SAMPLE_MS);
+  await advance(SECOND_MS);
   const starting = screen.last().phase;
-  await advance(5 * SAMPLE_MS);
+  await advance(3 * SECOND_MS);
   const running = screen.last().phase;
   await advance(RUN_MS);
   // Assert
@@ -108,22 +109,45 @@ test('a run progresses through its phases to Completed and joins History', async
   assert.deepEqual((await client.history({})).entries.map(entry => entry.runId), [runId, BUILTIN_RUN_ID]);
 });
 
+test('a run samples at 10 Hz for 15 s and advances its sequence only on workflow events', async () => {
+  // Arrange
+  const client = createDemoClient(), screen = watch(client);
+  const prepared = await review(client);
+  const before = screen.seen.length;
+  // Act
+  await client.start(prepared.preparedId, 'key');
+  await advance(RUN_MS);
+  const run = screen.seen.slice(before);
+  const sequences = run.map(status => Number(status.sequence));
+  // Assert
+  assert.equal(SAMPLE_MS, 100);
+  assert.equal(RUN_MS, 15 * SECOND_MS);
+  assert.equal(run.length, RUN_SAMPLES + 1);
+  assert.equal(run.at(-1)!.phase, Phase.FINISHED);
+  assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
+  assert.ok(new Set(sequences).size < 10, 'most samples leave the sequence unchanged');
+  const capture = (status: Snapshot) => status.steps.find(step => step.step === 'experiment.capture');
+  const running = run.filter(status => capture(status)?.state === StepState.STARTED);
+  assert.equal(running.length, 100);
+  assert.equal(new Set(running.map(status => String(status.sequence))).size, 1);
+});
+
 test('Stop ends a run early as Completed', async () => {
   // Arrange
   const client = createDemoClient(), screen = watch(client);
   const prepared = await review(client);
   const { runId } = await client.start(prepared.preparedId, 'key');
-  await advance(5 * SAMPLE_MS);
+  await advance(5 * SECOND_MS);
   // Act
   await client.stop(runId);
   const stopping = screen.last().phase;
-  await advance(2 * SAMPLE_MS);
+  await advance(2 * SECOND_MS);
   // Assert
   assert.equal(stopping, Phase.STOPPING);
   assert.equal(screen.last().phase, Phase.FINISHED);
   assert.equal(screen.last().outcome!.execution, 'Completed');
   const detail = await client.historyRun(runId);
-  assert.equal(Number(detail.entry!.finishedAtMs) - Number(detail.entry!.startedAtMs), 7 * SAMPLE_MS);
+  assert.equal(Number(detail.entry!.finishedAtMs) - Number(detail.entry!.startedAtMs), 7 * SECOND_MS);
 });
 
 test('preparation can be cancelled and allows another review', async () => {
@@ -229,21 +253,21 @@ test('a run continues without a screen, and a returning screen rebuilds its pane
   const client = createDemoClient(), first = watch(client);
   const prepared = await review(client);
   await client.start(prepared.preparedId, 'key');
-  await advance(4 * SAMPLE_MS);
+  await advance(4 * SECOND_MS);
   // Act: leave the Console section, then come back.
   first.controller.abort();
   await first.ended;
   const delivered = first.seen.length;
-  await advance(4 * SAMPLE_MS);
+  await advance(4 * SECOND_MS);
   const returning = watch(client);
   // Assert
   assert.equal(first.seen.length, delivered);
   assert.equal(returning.last().phase, Phase.RUNNING);
   assert.equal(returning.last().runId, prepared.runId);
-  assert.equal(returning.model.view().cpu!.history.length, 7);
+  assert.equal(returning.model.view().cpu!.history.length, 79);
   assert.equal(returning.model.view().gaps, 0);
   await advance(SAMPLE_MS);
-  assert.equal(returning.model.view().cpu!.history.length, 8);
+  assert.equal(returning.model.view().cpu!.history.length, 80);
   assert.equal(first.seen.length, delivered);
 });
 

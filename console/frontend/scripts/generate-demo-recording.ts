@@ -5,11 +5,11 @@ import { McapWriter } from '@mcap/core';
 import protobuf from 'protobufjs';
 import 'protobufjs/ext/descriptor/index.js';
 import { BUILTIN_STARTED_AT_MS } from '../src/demo/client';
-import { RUN_SAMPLES, SAMPLE_SECONDS, cpuPacket } from '../src/demo/telemetry';
+import { RUN_SAMPLES, SAMPLE_MS, cpuPacket } from '../src/demo/telemetry';
 
 const SCHEMA_NAME = 'doramcap.telemetry.v1.Packet';
 const SAMPLES_TOPIC = 'doramcap/cpuacct';
-const NS_PER_SECOND = 1_000_000_000n;
+const NS_PER_MS = 1_000_000n;
 const output = fileURLToPath(new URL('../src/demo/builtin-cpu.mcap', import.meta.url));
 const proto = fileURLToPath(new URL('../../../libs/telemetry/protocol/proto/telemetry.proto', import.meta.url));
 
@@ -26,7 +26,7 @@ await writer.start({ library: 'doramcap-demo', profile: '' });
 const schemaId = await writer.registerSchema({ name: SCHEMA_NAME, encoding: 'protobuf', data: descriptor.constructor.encode(descriptor).finish() });
 const channelId = await writer.registerChannel({ schemaId, topic: SAMPLES_TOPIC, messageEncoding: 'protobuf', metadata: new Map() });
 for (let sample = 1; sample <= RUN_SAMPLES; sample++) {
-  const logTime = BigInt(BUILTIN_STARTED_AT_MS) * 1_000_000n + BigInt(sample * SAMPLE_SECONDS) * NS_PER_SECOND;
+  const logTime = (BigInt(BUILTIN_STARTED_AT_MS) + BigInt(sample * SAMPLE_MS)) * NS_PER_MS;
   await writer.addMessage({ channelId, sequence: sample, logTime, publishTime: logTime, data: cpuPacket(sample, false, BUILTIN_STARTED_AT_MS) });
 }
 await writer.end();

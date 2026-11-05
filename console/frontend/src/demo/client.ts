@@ -3,7 +3,7 @@ import { LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
 import { createRequestKey } from '../model';
 import type { Frame } from '../streams';
-import { RUN_SAMPLES, SAMPLE_SECONDS, cpuPacket } from './telemetry';
+import { RUN_SAMPLES, SAMPLE_MS, cpuPacket } from './telemetry';
 
 type Client = ReturnType<typeof createClient>;
 type Facts = Record<string, string>;
@@ -15,11 +15,11 @@ type Subscriber = { consume: (status: Snapshot) => void; frame: (frame: Frame) =
 
 const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } = wire;
 const { Kind } = doramcap.console.live.v1;
-const SAMPLE_MS = SAMPLE_SECONDS * 1000;
 const PREPARE_MS = 500;
-const NS_PER_SAMPLE = SAMPLE_SECONDS * 1e9;
-/** A run starts for this many samples and takes this many to stop. */
-const START_SAMPLES = 3, STOP_SAMPLES = 2;
+const NS_PER_SAMPLE = SAMPLE_MS * 1e6;
+const RUN_SECONDS = RUN_SAMPLES * SAMPLE_MS / 1000;
+/** A run checks images, then starts, then takes this many samples to stop. */
+const IMAGE_SAMPLES = 10, START_SAMPLES = 30, STOP_SAMPLES = 20;
 const STOP_SECONDS_REMAINING = 30;
 const PROJECT_DIRECTORY = '/demo/activity-lab';
 const HEAVY_PROFILE = 'load', RECORD_PROFILE = 'record', LIVE_PROFILE = 'live';
@@ -31,7 +31,7 @@ const JSON_DATA_URL = 'data:application/json;charset=utf-8,';
 /** The built-in run; `BUILTIN_RECORDING_BYTES` matches the bundled file. */
 export const BUILTIN_RUN_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 export const BUILTIN_STARTED_AT_MS = Date.UTC(2026, 10, 3, 9, 30);
-export const BUILTIN_RECORDING_BYTES = 8416;
+export const BUILTIN_RECORDING_BYTES = 25347;
 const builtinRecordingUrl = () => new URL('./builtin-cpu.mcap', import.meta.url).href;
 
 const SERVICES = { app: { name: 'activity-lab', imageId: 'sha256:5c1f0a7e92b4d3866f1e2a7c40b9d15e3f8a6c72' }, stress: { name: 'load-generator', imageId: 'sha256:9e4d7b21c08f6a35d1b72e9046ca8f13b5d07e64' } };
@@ -84,8 +84,8 @@ const setupFacts = (selection: Selection): Facts => ({
 function stepsAt(sample: number, stopAt: number | null, finished: boolean) {
   const stopping = stopAt ?? Infinity;
   const stages = [
-    { step: 'compose.images', displayName: 'Check images', from: 0, to: 1 },
-    { step: 'compose.launch', displayName: 'Start project', from: 1, to: START_SAMPLES },
+    { step: 'compose.images', displayName: 'Check images', from: 0, to: IMAGE_SAMPLES },
+    { step: 'compose.launch', displayName: 'Start project', from: IMAGE_SAMPLES, to: START_SAMPLES },
     { step: 'experiment.capture', displayName: 'Capture activity', from: START_SAMPLES, to: Infinity },
   ].filter(stage => stage.from < stopping && stage.from <= sample).map(stage => ({ ...stage, to: Math.min(stage.to, stopping) }));
   if (stopAt !== null) stages.push({ step: 'compose.stop', displayName: 'Stop project', from: stopAt, to: stopAt + STOP_SAMPLES });
@@ -101,14 +101,17 @@ function stepsAt(sample: number, stopAt: number | null, finished: boolean) {
 const metricsAt = (sample: number) => Array.from({ length: sample }, (_, index) => wire.RunMetric.create({
   elapsedNs: (index + 1) * NS_PER_SAMPLE,
   recordingBytes: Math.floor(BUILTIN_RECORDING_BYTES * (index + 1) / RUN_SAMPLES),
-  writeBytesPerSecond: BUILTIN_RECORDING_BYTES / RUN_SAMPLES / SAMPLE_SECONDS,
+  writeBytesPerSecond: BUILTIN_RECORDING_BYTES / RUN_SECONDS,
 }));
 
-function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null, sequence: number) {
+function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null) {
   const finished = phase === Phase.FINISHED, saving = records(selection);
+  const steps = stepsAt(sample, stopAt, finished);
+  // Like the server, `sequence` counts workflow events; other samples leave it unchanged.
+  const sequence = steps.reduce((events, step) => events + (step.state === StepState.STARTED ? 1 : 2), 0);
   return wire.Status.create({
     phase, runId, sequence, projectDirectory: PROJECT_DIRECTORY, profiles: selection.profiles, systemApps: appSelection(selection),
-    steps: stepsAt(sample, stopAt, finished), activityAvailable: true, metrics: saving ? metricsAt(sample) : [],
+    steps, activityAvailable: true, metrics: saving ? metricsAt(sample) : [],
     recordings: recordings(selection), liveStreams: liveStreams(selection), cpuAvailable: streamsLive(selection), reportAvailable: finished,
     stoppingServices: phase === Phase.STOPPING ? services(selection).map(service => wire.StoppingService.create({ service: service.name, forceStopInSeconds: STOP_SECONDS_REMAINING })) : [],
     outcome: finished ? wire.Outcome.create({ execution: COMPLETED, writersStopped: saving, recordingFinalized: saving, boundaryClean: true, eventStreamHealthy: true }) : null,
@@ -130,8 +133,8 @@ const outcomeFacts = (status: Snapshot, seconds: number): Facts => ({
 
 function builtinRun(): StoredRun {
   const selection: Selection = { profiles: [], apps: [BRIDGE_APP, CPU_APP], appProfiles: { [CPU_APP]: RECORD_PROFILE } };
-  const status = runStatus(BUILTIN_RUN_ID, selection, Phase.FINISHED, RUN_SAMPLES, RUN_SAMPLES - STOP_SAMPLES, RUN_SAMPLES);
-  const duration = RUN_SAMPLES * SAMPLE_SECONDS;
+  const status = runStatus(BUILTIN_RUN_ID, selection, Phase.FINISHED, RUN_SAMPLES, RUN_SAMPLES - STOP_SAMPLES);
+  const duration = RUN_SECONDS;
   return {
     entry: finishedEntry(BUILTIN_RUN_ID, selection, BUILTIN_STARTED_AT_MS, BUILTIN_STARTED_AT_MS + duration * 1000, status, BUILTIN_RECORDING_BYTES), status,
     facts: { setup: setupFacts(selection), configuration: CONFIGURATION.builtin, condition: condition(0),
@@ -148,7 +151,7 @@ export function createDemoClient() {
   const runs = new Map<string, StoredRun>([[BUILTIN_RUN_ID, builtinRun()]]);
   const subscribers = new Set<Subscriber>();
   let status = wire.Status.create({ phase: Phase.IDLE, projectDirectory: PROJECT_DIRECTORY });
-  let sequence = 0, runCount = 0;
+  let runCount = 0;
   let frames: Frame[] = [];
   let prepared: { id: string; runId: string; selection: Selection; facts: RunFacts } | null = null;
   let preparing: { timer: ReturnType<typeof setTimeout>; reject: (error: Error) => void } | null = null;
@@ -159,18 +162,18 @@ export function createDemoClient() {
     status = next;
     for (const subscriber of [...subscribers]) subscriber.consume(next);
   };
-  const stageStatus = (phase: number, runId = '') => wire.Status.create({ phase, runId, sequence: ++sequence, projectDirectory: PROJECT_DIRECTORY });
+  const stageStatus = (phase: number, runId = '') => wire.Status.create({ phase, runId, projectDirectory: PROJECT_DIRECTORY });
   const publishRun = (phase: number) => {
     const run = active!;
-    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt, ++sequence));
+    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt));
     const stored = runs.get(run.runId)!;
     stored.status = status;
   };
   const finish = () => {
     const run = active!;
     active = null;
-    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, ++sequence));
-    const seconds = run.sample * SAMPLE_SECONDS;
+    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt));
+    const seconds = run.sample * SAMPLE_MS / 1000;
     runs.set(run.runId, {
       status, facts: { ...run.facts, outcome: outcomeFacts(status, seconds) },
       entry: finishedEntry(run.runId, run.selection, run.startedAtMs, run.startedAtMs + seconds * 1000, status),
@@ -187,7 +190,8 @@ export function createDemoClient() {
     if (run.stopAt === null && run.sample >= RUN_SAMPLES - STOP_SAMPLES) run.stopAt = run.sample;
     if (run.stopAt !== null && run.sample >= run.stopAt + STOP_SAMPLES) return finish();
     publishRun(run.stopAt !== null ? Phase.STOPPING : run.sample >= START_SAMPLES ? Phase.RUNNING : Phase.STARTING);
-    run.timer = setTimeout(tick, SAMPLE_MS);
+    // Pace against the start time so a long run does not drift.
+    run.timer = setTimeout(tick, Math.max(0, run.startedAtMs + (run.sample + 1) * SAMPLE_MS - Date.now()));
   };
 
   /** The run a review compares with: the named one, else the latest completed. */
