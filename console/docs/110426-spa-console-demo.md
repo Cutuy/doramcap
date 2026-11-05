@@ -29,12 +29,14 @@ Agreed with the project owner on 2026-11-04.
 | Scenario | The release's `cpu-burn` project and system apps, with production step IDs and names, stream IDs and machine fact names. |
 | Upcoming | `#/console/upcoming` shows the concept mockups from the first release, each marked Upcoming. |
 | Run header | View tabs and run phases share one navigation row in production and the demo. |
+| Timeline selection | The activity timeline shows the latest finished step, including failed ones, until the first click or change in its panel, in production and the demo. |
+| Run end | A watched run stays on its page when it ends, and Stop becomes a primary View result button, in production and the demo. |
 | Comparison | Each group's "N matching" expands in place, in production and the demo. |
 | History | One built-in successful run; any two runs compare; Run again works from any completed run. |
 | Comparison | A small diff inside the demo turns per-run named facts into real comparison rows. The server is unchanged. |
-| Artifacts | The built-in run offers its matching MCAP file and report. Visitor runs offer a matching JSON report and report no recording file or size. |
+| Artifacts | The built-in run offers its matching report and an MCAP file published as a GitHub release asset, kept out of the repository. Visitor runs offer a matching JSON report and report no recording file or size. |
 | Theme | Console stays light inside the SPA for now. |
-| Limits | Runs last 15 s at 10 Hz unless stopped. Visitor runs have no count limit; refresh clears them. |
+| Limits | Runs last 7 s at 10 Hz unless stopped. Visitor runs have no count limit; refresh clears them. |
 
 The package uses the existing React, TypeScript, Vite and protobuf dependencies.
 Each host compiles the shared source in its own build. The production import graph
@@ -50,15 +52,17 @@ Made during implementation while the owner was away. Each stays easy to revise.
 | Report links | Visitor reports use `data:` URLs. | Nothing to create or revoke, which removes reset and disposal cleanup. |
 | `current()` | Keep it on the client. | The browser contract test and server route use it. |
 | Stack | Three PRs: shared UI, demo client, SPA section. Milestones 1 and 2 are split across them. | Each PR builds and passes on its own; the SPA dependency needs a consumer. |
-| Reports | The built-in run's report is generated like any other; no report file is bundled. | One code path, and the file cannot drift. |
+| Reports | The built-in run's report is generated like any other; no report file is published. | One code path, and the file cannot drift. |
 | Sample recording | Generated from the same code as live packets, with synthetic container IDs. | Reproducible, and contains no real host data. |
 | `@mcap/core` | Dev dependency of `console/frontend`, pinned to 2.4.0. | Writes and checks the recording; the repository's reader tests already use this version. Outside both bundles. |
 | Machine difference | The built-in run's machine differs from visitor runs in governor, energy preference and swappiness. | Gives the first comparison and Review visible differences. |
 | Cgroup names | Top CPU consumers show real `docker-<id>.scope` names. | This is what production displays; friendlier names would misrepresent it. |
+| Recording hosting | The recording is the `cpu.mcap` asset of a separate, not-latest release, so `releases/latest` still serves the installer. | Owner's request to keep it out of the repository; the demo's download needs network access. |
 | Mockup hosting | Upcoming pictures load from the release, so the SPA stays small but needs network access for them. | 1.3 MB each; the repository's README already links them this way. |
 | App requirements | The demo does not enforce "requires CPU monitoring" style profile requirements. | Keeps the demo small; the labels still state them. |
 | Live clock | Elapsed times and the timeline tick every 100 ms in production too, using the existing live interval. | Requested for the demo, and the screens are shared. |
-| Stop timing | Stop always ends as Completed, two simulated seconds later. | Matches a graceful stop; no Cancelled scenario. |
+| Run stages | Startup takes 2 s and shutdown 1 s, shorter than a real run, leaving 4 s of live capture. Step order and names stay real. | Leaves time to watch live panels and try Stop in a 7 s run. |
+| Stop timing | Stop always ends as Completed, one simulated second later. | Matches a graceful stop; no Cancelled scenario. |
 | Filename rule | `artifactFilename` moves to the shared contract, a one-line server change. | Avoids a second copy for `download` attributes. |
 | Explorer install | `npm --prefix console/frontend ci` is a required step before building the explorer. | npm does not install a linked package's dependencies. |
 
@@ -137,7 +141,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] Support prepare, start, stop, current, history, historyRun, historyCompare and live. Model the configured sample project's real options, including live-only versus recording.
 - [x] Seed one successful capture. Build Review and History comparison rows with a demo-local diff over per-run named facts.
 - [x] Deliver workflow statuses and real-format CPU telemetry packets through the existing UI models and reducers; use deterministic sample data.
-- [x] Run for 15 s at 10 Hz through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
+- [x] Run for 7 s at 10 Hz through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
 
 **Validation**
 - [x] Existing Console test infrastructure covers successful completion, early Stop, preparation cancellation, duplicate Start, stale review, recording disabled and Run again.
@@ -148,26 +152,26 @@ Evidence (2026-11-04, local unless noted):
 - [x] The demo completes the walkthrough with all Console-server network requests blocked.
 
 Evidence (2026-11-04, local unless noted):
-- 15 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
+- 16 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
 
 ## Milestone 4: Example files and per-run reports
 
 **Work items**
-- [x] Bundle a small, valid MCAP file and matching report for the built-in run; document its reproducible generation.
+- [x] Publish a small, valid MCAP file as a release asset for the built-in run, generate its report in the browser and document its reproducible generation.
 - [x] Keep the built-in status, schema/channel data, sample timestamps, recording size and artifact metadata aligned with those files.
 - [x] Generate visitor-run JSON reports from terminal outcomes using the production report fields, returned as `data:` URLs through `artifactUrl`.
 - [x] Report no file or size for visitor recordings. Show recording-disabled selections using existing states.
 
 **Validation**
-- [x] Decode the bundled MCAP with existing reader tooling and check schemas, samples, duration and exact file size against fixture metadata; confirm it holds no host-identifying values.
+- [x] Decode the generated MCAP with existing reader tooling and check schemas, samples, duration and exact file size against fixture metadata; confirm it holds no host-identifying values.
 - [x] Compare JSON report fields with production-format expectations for completion, early Stop and disabled recording.
 - [x] Verify download filenames, media types and availability on current results and History; unavailable artifacts create no broken links or "left on host" text.
-- [x] Verify sample URLs under `/` and `/doramcap/`.
+- [x] Verify the published file matches the generated bytes and downloads from `/` and `/doramcap/`.
 
 Evidence (2026-11-04, local unless noted):
-- A test decodes the MCAP with CRCs on and checks schema, 150 samples, the dictionary topic, timestamps, names and the exact 42678-byte size.
-- Browser downloads gave `cpu.mcap` (42678 bytes) and `console-report.json` without leaving the page; report fields match the server's.
-- The recording downloaded correctly at both `/` and `/doramcap/`.
+- A test decodes the MCAP with CRCs on and checks schema, 70 samples, the dictionary topic, timestamps, names and the exact 22329-byte size.
+- Browser downloads gave `cpu.mcap` (22329 bytes) and `console-report.json` without leaving the page; report fields match the server's.
+- The published asset matches the generated file's SHA-256, and the release is not marked latest.
 
 ## Milestone 5: SPA section and integration checks
 
@@ -183,7 +187,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] Walk through prepare, profile changes, start, early Stop, completion, History, comparison, Run again, downloads and Reset in a local browser preview.
 - [x] Navigate to another SPA section during a run and return; verify continued progression, retained history and restored live state. Refresh restores the built-in run and handles a visitor-created deep link clearly.
 - [x] Check direct URLs, browser history, keyboard use, responsive layout, the light Console in a dark SPA and static hosting at both root and repository subpaths. Refresh the local preview after final visual changes.
-- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether the 15 s run at 10 Hz feels right.
+- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether the 7 s run at 10 Hz feels right.
 - [ ] Verify production Console against its real server for session entry, review, live updates and downloads; elevate only capability-requiring test executables under repository rules.
 - [ ] At PR integration, verify x86 and ARM64 Node CI and submit the repository's required ARM64 validation unless waived. Record local, ARM64 and blocked checks separately.
 
@@ -193,7 +197,7 @@ Rust CI is reserved for an integration point or changes that warrant it under
 [AGENTS.md](../../AGENTS.md).
 
 Evidence (2026-11-04, local unless noted):
-- Chromium walkthrough passed at `/` and `/doramcap/`, including leaving during a run, Reset, refresh, a natural 15 s run, dark mode and a 390 px layout. The only browser error is a missing `favicon.ico`.
+- Chromium walkthrough passed at `/` and `/doramcap/`, including leaving during a run, Reset, refresh, a natural 7 s run, dark mode and a 390 px layout. The only browser error is a missing `favicon.ico`.
 - Not done: the production Console check against a real server (Node CI covers the browser contract test), the ARM64 worker submission, and the owner's review of wording and run length.
 
 ## Plan validation
