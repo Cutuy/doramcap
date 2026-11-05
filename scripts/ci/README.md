@@ -31,7 +31,9 @@ both Console lockfiles. Live browser, CUDA and Dora qualification remain separat
 protobuf readback, and runs the locked TypeScript streaming-reader suite against
 the same files using their embedded descriptors. The ARM64 worker invokes this
 runner separately from the app and Console Node suites.
-Project Explorer has no `npm test` script.
+Project Explorer builds in GitHub Node CI after the shared suites. Its content
+generator uses Git metadata, so the WSL2 worker skips this build because its
+source snapshots omit `.git`.
 
 Privileged native validation and Dora end-to-end checks use the worker below.
 

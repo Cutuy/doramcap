@@ -25,11 +25,6 @@ for (const suite of suites) {
   run('npm', ['test'], directory);
   if (suite.startsWith('console/')) run('npm', ['run', 'build'], directory);
 }
-// The explorer has no test script and links Console source, so it builds after Console installs.
-const explorer = join(root, 'apps/project-explorer/frontend');
-console.log('\nProject explorer build');
-run('npm', ['ci', '--no-audit', '--no-fund'], explorer);
-run('npm', ['run', 'build'], explorer);
 if (existsSync(join(root, 'console/contract/browser.test.ts'))) {
   console.log('\nConsole browser/server contract');
   run('npm', ['exec', '--', 'tsx', '--test', '../contract/browser.test.ts'], join(root, 'console/server'));

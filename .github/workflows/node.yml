@@ -64,3 +64,8 @@ jobs:
           restore-keys: node-cargo-${{ runner.os }}-${{ runner.arch }}-
       - name: Test Node suites
         run: node scripts/ci/test-node.mts
+      - name: Build Project Explorer
+        working-directory: apps/project-explorer/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
