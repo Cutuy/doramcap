@@ -19,4 +19,7 @@
 .review-comparison{margin-top:20px}
 .comparison>.panel-heading{margin-bottom:16px}.comparison>.panel-heading .button{min-height:36px;padding:6px 14px}.comparison h3{margin-bottom:6px}
 .machine-changes{margin-top:20px}
+
+/* A host page can style bare elements; these restore what Console relies on. */
+h1,h2,h3{letter-spacing:normal;overflow-wrap:normal;font-weight:700}p{color:inherit}input[type=checkbox]{padding:revert;border:revert;border-radius:revert;background:revert;color:revert}.topnav a[aria-current=page]{box-shadow:none}.page>.topnav{margin-bottom:12px}
 }
