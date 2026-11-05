@@ -200,7 +200,7 @@ main.shell{padding-top:28px}
 .console-copy-status{display:block;font-size:12px;color:var(--accent)}
 .console-copy-status:not(:empty){margin-top:8px}
 @media(max-width:950px){.console-install{grid-template-columns:1fr;gap:20px}}
-@media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-command-row{align-items:flex-start;gap:10px}.console-command-row button{min-height:44px}}
+@media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-install-steps{display:none}}
 .console-tabs{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;border-bottom:1px solid var(--line)}
 .console-tabs nav{order:0;width:auto}
 .console-tabs nav a{display:block;padding:12px 0}
