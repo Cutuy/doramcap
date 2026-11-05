@@ -206,6 +206,11 @@ main.shell{padding-top:28px}
 .upcoming-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
 .upcoming-card{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:6px}
 .upcoming-card img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
+.upcoming-card>button{display:block;width:100%;padding:0;border:0;background:none;cursor:zoom-in}
+.upcoming-expanded{max-width:96vw;max-height:96vh;padding:0;overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:6px;cursor:zoom-out}
+.upcoming-expanded::backdrop{background:rgb(0 0 0/.7)}
+.upcoming-expanded img{display:block;width:min(96vw,144vh);height:auto}
+.upcoming-expanded button{position:absolute;top:8px;right:8px;display:flex;align-items:center;justify-content:center;width:44px;height:44px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
 .upcoming-card>div{padding:16px 18px}
 .upcoming-card h3{margin:10px 0 4px}
 .upcoming-card p{margin:0}

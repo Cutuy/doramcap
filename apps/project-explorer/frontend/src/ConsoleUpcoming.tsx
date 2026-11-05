@@ -1,3 +1,6 @@
+import { useRef, useState } from 'react';
+import { X } from 'lucide-react';
+
 const MOCKUPS_URL = 'https://github.com/Cutuy/doramcap/releases/download/console-mockups-2026-10-29';
 const MOCKUP_WIDTH = 1536, MOCKUP_HEIGHT = 1024;
 const VIEWS = [
@@ -12,11 +15,18 @@ const VIEWS = [
 
 /** Planned Console features, shown as the concept pictures from the mockups release. */
 export default function ConsoleUpcoming() {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [expanded, setExpanded] = useState<typeof VIEWS[number] | null>(null);
+  const expand = (view: typeof VIEWS[number]) => { setExpanded(view); dialog.current?.showModal(); };
   return <section className="console-upcoming" aria-labelledby="console-upcoming-heading">
     <div className="intro"><h2 id="console-upcoming-heading">Upcoming features.</h2><p>Concept designs for planned Console features, with illustrative data.</p></div>
     <div className="upcoming-grid">{VIEWS.map(view => <article className="upcoming-card" key={view.file}>
-      <a href={`${MOCKUPS_URL}/${view.file}`} target="_blank" rel="noreferrer"><img src={`${MOCKUPS_URL}/${view.file}`} alt={`Concept design of ${view.title}`} width={MOCKUP_WIDTH} height={MOCKUP_HEIGHT} loading="lazy"/></a>
+      <button type="button" aria-label={`Expand ${view.title}`} onClick={() => expand(view)}><img src={`${MOCKUPS_URL}/${view.file}`} alt={`Concept design of ${view.title}`} width={MOCKUP_WIDTH} height={MOCKUP_HEIGHT} loading="lazy"/></button>
       <div><span className="upcoming-badge">Upcoming</span><h3>{view.title}</h3><p>{view.summary}</p></div>
     </article>)}</div>
+    <dialog ref={dialog} className="upcoming-expanded" aria-label={expanded?.title} onClick={() => dialog.current?.close()}>
+      <button type="button" aria-label="Close"><X size={18} aria-hidden="true" /></button>
+      {expanded && <img key={expanded.file} src={`${MOCKUPS_URL}/${expanded.file}`} alt={`Concept design of ${expanded.title}`} width={MOCKUP_WIDTH} height={MOCKUP_HEIGHT}/>}
+    </dialog>
   </section>;
 }
