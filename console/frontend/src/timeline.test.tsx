@@ -6,7 +6,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Step } from './api';
 import { ActivityTimeline } from './ActivityTimeline';
-import { flowPath, timelineModel } from './timeline';
+import { flowPath, latestFinished, timelineModel } from './timeline';
 
 const step = (invocation: string, name: string, extra: Record<string, unknown> = {}): Step => (workflow.Event.fromObject({ session: 'run', executor: 'local', invocation, step: name, state: StepState.SUCCEEDED, elapsedNs: '2000000000', durationNs: '1000000000', ...extra }));
 
@@ -76,4 +76,20 @@ test('stable step IDs keep one timeline row across label changes', () => {
   assert.deepEqual(model.rows, ['custom.stage']);
   assert.equal((html.match(/class="timeline-step-row"/g) ?? []).length, 1);
   assert.match(html, /Custom stage/);
+});
+
+test('the timeline shows the latest finished step without pausing the live view', () => {
+  // Arrange
+  const event = (invocation: number, state: number, elapsed: number) => workflow.Event.fromObject({ session: 's', executor: 'local', invocation: String(invocation), step: `module::Step${invocation}`, state, elapsedNs: String(elapsed * 1e9), durationNs: state === StepState.STARTED ? '0' : '1000000000' });
+  const finished = [event(1, StepState.SUCCEEDED, 1), event(2, StepState.FAILED, 2)], running = event(3, StepState.STARTED, 2);
+  // Act
+  const live = renderToStaticMarkup(<ActivityTimeline steps={[...finished, running]} now={3}/>);
+  const starting = renderToStaticMarkup(<ActivityTimeline steps={[running]} now={3}/>);
+  // Assert
+  assert.equal(latestFinished([...finished, running])?.step, 'module::Step2');
+  assert.equal(latestFinished([running]), null);
+  assert.match(live, /Event details/);
+  assert.match(live, /module::Step2/);
+  assert.match(live, /following live/);
+  assert.doesNotMatch(starting, /Event details/);
 });

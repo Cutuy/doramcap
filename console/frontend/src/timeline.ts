@@ -1,8 +1,19 @@
 import type { Step } from './api';
+import { StepState } from './protocol';
 import { stepTimes, stepKey, stepName } from './workflow';
 
 export const invocationKey = (step: Pick<Step, 'session' | 'executor' | 'invocation'>) => JSON.stringify([step.session, step.executor, String(step.invocation)]);
 export interface Flow { source: Step; target: Step; kind: 'parent' | 'dependency'; from: number; to: number }
+
+/** The most recently ended step that is no longer running; a later row wins a tie. */
+export function latestFinished(steps: Step[]): Step | null {
+  let latest: Step | null = null;
+  for (const step of steps) {
+    if (step.state === StepState.STARTED) continue;
+    if (!latest || stepTimes(step).end >= stepTimes(latest).end) latest = step;
+  }
+  return latest;
+}
 
 /** Group by stable step identity; resolve explicit executor-local relationships. */
 export function timelineModel(steps: Step[]) {
