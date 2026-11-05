@@ -2,11 +2,11 @@
 
 # Console demo in the project explorer
 
-Created: 2026-11-04. Status: design agreed; implementation in progress.
+Created: 2026-11-04. Status: implemented in stacked PRs; final owner review and integration checks pending.
 
 Add a Console section to the project explorer SPA using the production React
-screens. A browser-owned demo client supplies an Activity lab capture walkthrough,
-one built-in run and downloadable examples. The SPA remains statically hosted.
+screens. A browser-owned demo client supplies a walkthrough of the release's `cpu-burn`
+project, one built-in run and downloadable examples. The SPA remains statically hosted.
 
 Visitor flow: History starts with one built-in run. The visitor picks settings and
 runs an experiment, compares any two runs and may keep creating runs. A page refresh
@@ -26,12 +26,17 @@ Agreed with the project owner on 2026-11-04.
 | Shell | The SPA header contains Console; embedded `PageFrame` retains Run, History and workflow navigation. |
 | Lifetime | One demo client lives as long as the page, so a run continues during SPA navigation. Refresh and Reset restore the built-in run. |
 | Reset | Reset remounts `App` with a new `key`; the client stays fixed for each mount. |
-| Scenario | Activity lab with CPU monitoring, recording and the existing workflow/metrics panels. |
+| Scenario | The release's `cpu-burn` project and system apps, with production step IDs and names, stream IDs and machine fact names. |
+| Upcoming | `#/console/upcoming` shows the concept mockups from the first release, each marked Upcoming. |
+| Run header | View tabs and run phases share one navigation row in production and the demo. |
+| Timeline selection | The activity timeline shows the latest finished step, including failed ones, until the first click or change in its panel, in production and the demo. |
+| Run end | A watched run stays on its page when it ends, and Stop becomes a primary View result button, in production and the demo. |
+| Comparison | Each group's "N matching" expands in place, in production and the demo. |
 | History | One built-in successful run; any two runs compare; Run again works from any completed run. |
 | Comparison | A small diff inside the demo turns per-run named facts into real comparison rows. The server is unchanged. |
-| Artifacts | The built-in run offers its matching MCAP file and report. Visitor runs offer a matching JSON report and report no recording file or size. |
+| Artifacts | The built-in run offers its matching report and an MCAP file published as a GitHub release asset, kept out of the repository. Visitor runs offer a matching JSON report and report no recording file or size. |
 | Theme | Console stays light inside the SPA for now. |
-| Limits | Runs last 30 s unless stopped. Visitor runs have no count limit; refresh clears them. |
+| Limits | Runs last 7 s at 10 Hz unless stopped. Visitor runs have no count limit; refresh clears them. |
 
 The package uses the existing React, TypeScript, Vite and protobuf dependencies.
 Each host compiles the shared source in its own build. The production import graph
@@ -46,6 +51,20 @@ Made during implementation while the owner was away. Each stays easy to revise.
 | Startup failure | No failure scenario; drop its checks. | Follows from one built-in run; visitors see no failed run. |
 | Report links | Visitor reports use `data:` URLs. | Nothing to create or revoke, which removes reset and disposal cleanup. |
 | `current()` | Keep it on the client. | The browser contract test and server route use it. |
+| Stack | Three PRs: shared UI, demo client, SPA section. Milestones 1 and 2 are split across them. | Each PR builds and passes on its own; the SPA dependency needs a consumer. |
+| Reports | The built-in run's report is generated like any other; no report file is published. | One code path, and the file cannot drift. |
+| Sample recording | Generated from the same code as live packets, with synthetic container IDs. | Reproducible, and contains no real host data. |
+| `@mcap/core` | Dev dependency of `console/frontend`, pinned to 2.4.0. | Writes and checks the recording; the repository's reader tests already use this version. Outside both bundles. |
+| Machine difference | The built-in run's machine differs from visitor runs in governor, energy preference and swappiness. | Gives the first comparison and Review visible differences. |
+| Cgroup names | Top CPU consumers show real `docker-<id>.scope` names. | This is what production displays; friendlier names would misrepresent it. |
+| Recording hosting | The recording is the `cpu.mcap` asset of a separate, not-latest release, so `releases/latest` still serves the installer. | Owner's request to keep it out of the repository; the demo's download needs network access. |
+| Mockup hosting | Upcoming pictures load from the release, so the SPA stays small but needs network access for them. | 1.3 MB each; the repository's README already links them this way. |
+| App requirements | The demo does not enforce "requires CPU monitoring" style profile requirements. | Keeps the demo small; the labels still state them. |
+| Live clock | Elapsed times and the timeline tick every 100 ms in production too, using the existing live interval. | Requested for the demo, and the screens are shared. |
+| Run stages | Startup takes 2 s and shutdown 1 s, shorter than a real run, leaving 4 s of live capture. Step order and names stay real. | Leaves time to watch live panels and try Stop in a 7 s run. |
+| Stop timing | Stop always ends as Completed, one simulated second later. | Matches a graceful stop; no Cancelled scenario. |
+| Filename rule | `artifactFilename` moves to the shared contract, a one-line server change. | Avoids a second copy for `download` attributes. |
+| Explorer install | `npm --prefix console/frontend ci` is a required step before building the explorer. | npm does not install a linked package's dependencies. |
 
 ## Production change boundary
 
@@ -79,86 +98,96 @@ Give every fixed value a descriptive name.
 ## Milestone 1: Source package and reproducible builds
 
 **Work items**
-- [ ] Add `./ui` and `./demo` source exports to the existing private package; the SPA consumes them and standalone keeps its relative entry.
-- [ ] Declare the SPA's local package dependency and update its lockfile. Make installation of Console dependencies and protobuf generation explicit in the clean-checkout workflow.
-- [ ] Generate protocol code before either consumer type-checks or bundles. Preserve independent standalone and SPA build commands through a small explicit preparation step.
-- [ ] Resolve React/ReactDOM to one instance per host bundle; retain CSS side effects and relative static-asset URLs.
+- [x] Add `./ui` and `./demo` source exports to the existing private package; the SPA consumes them and standalone keeps its relative entry.
+- [x] Declare the SPA's local package dependency and update its lockfile. Make installation of Console dependencies and protobuf generation explicit in the clean-checkout workflow.
+- [x] Generate protocol code before either consumer type-checks or bundles. Preserve independent standalone and SPA build commands through a small explicit preparation step.
+- [x] Resolve React/ReactDOM to one instance per host bundle; retain CSS side effects and relative static-asset URLs.
 
 **Validation**
-- [ ] From a checkout without generated modules, install locked dependencies, then build both frontends successfully.
-- [ ] Verify public entry imports work and ordinary package imports of unexported internals fail.
-- [ ] Inspect bundle imports: production excludes demo fixtures/scheduling; the SPA contains no Node/native server modules.
-- [ ] Confirm one React runtime per application and verify the dev server refreshes shared TS/CSS edits.
+- [x] From a checkout without generated modules, install locked dependencies, then build both frontends successfully.
+- [x] Verify public entry imports work and ordinary package imports of unexported internals fail.
+- [x] Inspect bundle imports: production excludes demo fixtures/scheduling; the SPA contains no Node/native server modules.
+- [x] Confirm one React runtime per application and verify the dev server refreshes shared TS/CSS edits.
 
-Evidence: pending implementation.
+Evidence (2026-11-04, local unless noted):
+- Clean install and build of both frontends passed with generated code removed; Node CI builds the explorer after Console.
+- Unexported paths fail with `ERR_PACKAGE_PATH_NOT_EXPORTED`. The production bundle has no demo code; the SPA bundle has no Node or native modules.
+- The dev server ran with no React errors and refreshed a shared CSS edit, from a copy outside `.git`. Worktrees under `.git` cannot use the dev server because Vite denies that path.
 
 ## Milestone 2: Shared UI integration
 
 **Work items**
-- [ ] Inject the client and base path once; replace singleton-client use in App, History and Comparison with the internal context.
-- [ ] Give route and link helpers the base path, covering `PageFrame`, History, Comparison and the Run again hash write.
-- [ ] Add embedded `PageFrame` behavior and scoped styles with a small reset for SPA globals, preserving the standalone shell, focus behavior and semantic landmarks. Pin the Console root to the light color scheme.
-- [ ] Add `artifactUrl` to `createClient`, retaining production endpoint generation. Require both artifact availability and a URL before rendering a download link, and give links a `download` filename.
+- [x] Inject the client and base path once; replace singleton-client use in App, History and Comparison with the internal context.
+- [x] Give route and link helpers the base path, covering `PageFrame`, History, Comparison and the Run again hash write.
+- [x] Add embedded `PageFrame` behavior and scoped styles with a small reset for SPA globals, preserving the standalone shell, focus behavior and semantic landmarks. Pin the Console root to the light color scheme.
+- [x] Add `artifactUrl` to `createClient`, retaining production endpoint generation. Require both artifact availability and a URL before rendering a download link, and give links a `download` filename.
 
 **Validation**
-- [ ] Existing Console tests pass for prepare, run, stop, history, comparison and artifact links; add focused contract checks in that existing suite.
-- [ ] Unmount/remount, a new `key` and React StrictMode do not duplicate active subscriptions.
-- [ ] Standalone session establishment and its original URLs still work. No session request is issued by importing the shared UI.
-- [ ] Host-prefixed links, comparison selection, Run again, leaving Console and browser back/forward preserve the correct view.
-- [ ] Review standalone and embedded rendering at desktop/mobile widths; check SPA heading, paragraph, link and `.detail-grid` styles do not disturb Console, plus focus and absence of nested main landmarks.
+- [x] Existing Console tests pass for prepare, run, stop, history, comparison and artifact links; add focused contract checks in that existing suite.
+- [x] Unmount/remount, a new `key` and React StrictMode do not duplicate active subscriptions.
+- [x] Standalone session establishment and its original URLs still work. No session request is issued by importing the shared UI.
+- [x] Host-prefixed links, comparison selection, Run again, leaving Console and browser back/forward preserve the correct view.
+- [x] Review standalone and embedded rendering at desktop/mobile widths; check SPA heading, paragraph, link and `.detail-grid` styles do not disturb Console, plus focus and absence of nested main landmarks.
 
-Evidence: pending implementation.
+Evidence (2026-11-04, local unless noted):
+- Console suite passes, including new base-path, missing-file and embedded-landmark tests. Node CI passes on x86 and ARM64 at the shared UI PR.
+- Browser walkthrough confirmed links, Run again, back navigation, one `main` landmark and no `/api` calls.
+- Computed styles matched standalone after the reset for Project and History screens. Desktop and mobile screenshots reviewed.
 
 ## Milestone 3: Interactive capture client
 
 **Work items**
-- [ ] Implement `createDemoClient` with the inferred production client shape, generated message constructors and internal scenario state.
-- [ ] Support prepare, start, stop, current, history, historyRun, historyCompare and live. Model the configured sample project's real options, including live-only versus recording.
-- [ ] Seed one successful capture. Build Review and History comparison rows with a demo-local diff over per-run named facts.
-- [ ] Deliver workflow statuses and real-format CPU telemetry packets through the existing UI models and reducers; use deterministic sample data.
-- [ ] Run for 30 s through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
+- [x] Implement `createDemoClient` with the inferred production client shape, generated message constructors and internal scenario state.
+- [x] Support prepare, start, stop, current, history, historyRun, historyCompare and live. Model the configured sample project's real options, including live-only versus recording.
+- [x] Seed one successful capture. Build Review and History comparison rows with a demo-local diff over per-run named facts.
+- [x] Deliver workflow statuses and real-format CPU telemetry packets through the existing UI models and reducers; use deterministic sample data.
+- [x] Run for 7 s at 10 Hz through scheduled events, retain the current run's frames and keep state across screen subscriptions. Provide an inferred disposal helper for the SPA owner.
 
 **Validation**
-- [ ] Existing Console test infrastructure covers successful completion, early Stop, preparation cancellation, duplicate Start, stale review, recording disabled and Run again.
-- [ ] Filters, paging, run lookup and comparisons agree with the same stored run facts; missing IDs return the existing Missing error behavior.
-- [ ] Comparison rows cover Same, Changed and Unavailable, including Review's current-values-only machine condition.
-- [ ] Abort stops delivery to that subscriber; re-entry reconstructs current status and live panels without restarting or duplicating the run.
-- [ ] Disposal cancels pending work and prevents old callbacks from modifying new state.
-- [ ] The demo completes the walkthrough with all Console-server network requests blocked.
+- [x] Existing Console test infrastructure covers successful completion, early Stop, preparation cancellation, duplicate Start, stale review, recording disabled and Run again.
+- [x] Filters, paging, run lookup and comparisons agree with the same stored run facts; missing IDs return the existing Missing error behavior.
+- [x] Comparison rows cover Same, Changed and Unavailable, including Review's current-values-only machine condition.
+- [x] Abort stops delivery to that subscriber; re-entry reconstructs current status and live panels without restarting or duplicating the run.
+- [x] Disposal cancels pending work and prevents old callbacks from modifying new state.
+- [x] The demo completes the walkthrough with all Console-server network requests blocked.
 
-Evidence: pending implementation.
+Evidence (2026-11-04, local unless noted):
+- 16 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
 
 ## Milestone 4: Example files and per-run reports
 
 **Work items**
-- [ ] Bundle a small, valid MCAP file and matching report for the built-in run; document its reproducible generation.
-- [ ] Keep the built-in status, schema/channel data, sample timestamps, recording size and artifact metadata aligned with those files.
-- [ ] Generate visitor-run JSON reports from terminal outcomes using the production report fields, returned as `data:` URLs through `artifactUrl`.
-- [ ] Report no file or size for visitor recordings. Show recording-disabled selections using existing states.
+- [x] Publish a small, valid MCAP file as a release asset for the built-in run, generate its report in the browser and document its reproducible generation.
+- [x] Keep the built-in status, schema/channel data, sample timestamps, recording size and artifact metadata aligned with those files.
+- [x] Generate visitor-run JSON reports from terminal outcomes using the production report fields, returned as `data:` URLs through `artifactUrl`.
+- [x] Report no file or size for visitor recordings. Show recording-disabled selections using existing states.
 
 **Validation**
-- [ ] Decode the bundled MCAP with existing reader tooling and check schemas, samples, duration and exact file size against fixture metadata; confirm it holds no host-identifying values.
-- [ ] Compare JSON report fields with production-format expectations for completion, early Stop and disabled recording.
-- [ ] Verify download filenames, media types and availability on current results and History; unavailable artifacts create no broken links or "left on host" text.
-- [ ] Verify sample URLs under `/` and `/doramcap/`.
+- [x] Decode the generated MCAP with existing reader tooling and check schemas, samples, duration and exact file size against fixture metadata; confirm it holds no host-identifying values.
+- [x] Compare JSON report fields with production-format expectations for completion, early Stop and disabled recording.
+- [x] Verify download filenames, media types and availability on current results and History; unavailable artifacts create no broken links or "left on host" text.
+- [x] Verify the published file matches the generated bytes and downloads from `/` and `/doramcap/`.
 
-Evidence: pending implementation.
+Evidence (2026-11-04, local unless noted):
+- A test decodes the MCAP with CRCs on and checks schema, 70 samples, the dictionary topic, timestamps, names and the exact 22329-byte size.
+- Browser downloads gave `cpu.mcap` (22329 bytes) and `console-report.json` without leaving the page; report fields match the server's.
+- The published asset matches the generated file's SHA-256, and the release is not marked latest.
 
 ## Milestone 5: SPA section and integration checks
 
 **Work items**
-- [ ] Add Console navigation with its own highlight and lazy-load the local package entries on first use. Keep the demo client at page lifetime while Console views may unmount.
-- [ ] Add the interactive-demo label, a link to the install page and a Reset action to the SPA wrapper; Reset also returns navigation to the initial Console view.
-- [ ] Connect the base path, unknown-run handling and embedded layout. Preserve other SPA sections, selection URLs and static hosting.
-- [ ] Update `scripts/ci/test-node.mts` to build the SPA explicitly after shared prerequisites; it currently skips packages without a test script.
-- [ ] Update minimal build/hosting documentation and record the latest validation in this milestone.
+- [x] Add Console navigation with its own highlight and lazy-load the local package entries on first use. Keep the demo client at page lifetime while Console views may unmount.
+- [x] Add the interactive-demo label, a link to the install page and a Reset action to the SPA wrapper; Reset also returns navigation to the initial Console view.
+- [x] Connect the base path, unknown-run handling and embedded layout. Preserve other SPA sections, selection URLs and static hosting.
+- [x] Update `scripts/ci/test-node.mts` to build the SPA explicitly after shared prerequisites; it currently skips packages without a test script.
+- [x] Update minimal build/hosting documentation and record the latest validation in this milestone.
 
 **Validation**
-- [ ] Console frontend tests/build and the SPA production build/schema validation pass on the final revision; run report/server checks if their serialization code changed.
-- [ ] Walk through prepare, profile changes, start, early Stop, completion, History, comparison, Run again, downloads and Reset in a local browser preview.
-- [ ] Navigate to another SPA section during a run and return; verify continued progression, retained history and restored live state. Refresh restores the built-in run and handles a visitor-created deep link clearly.
-- [ ] Check direct URLs, browser history, keyboard use, responsive layout, the light Console in a dark SPA and static hosting at both root and repository subpaths. Refresh the local preview after final visual changes.
-- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether 30 s feels right.
+- [x] Console frontend tests/build and the SPA production build/schema validation pass on the final revision; run report/server checks if their serialization code changed.
+- [x] Walk through prepare, profile changes, start, early Stop, completion, History, comparison, Run again, downloads and Reset in a local browser preview.
+- [x] Navigate to another SPA section during a run and return; verify continued progression, retained history and restored live state. Refresh restores the built-in run and handles a visitor-created deep link clearly.
+- [x] Check direct URLs, browser history, keyboard use, responsive layout, the light Console in a dark SPA and static hosting at both root and repository subpaths. Refresh the local preview after final visual changes.
+- [ ] Review how "Recording: Saved" beside "cpu recording unavailable" reads, and whether the 7 s run at 10 Hz feels right.
 - [ ] Verify production Console against its real server for session entry, review, live updates and downloads; elevate only capability-requiring test executables under repository rules.
 - [ ] At PR integration, verify x86 and ARM64 Node CI and submit the repository's required ARM64 validation unless waived. Record local, ARM64 and blocked checks separately.
 
@@ -167,9 +196,11 @@ uses its production build, schema validation and local visual checks. Full local
 Rust CI is reserved for an integration point or changes that warrant it under
 [AGENTS.md](../../AGENTS.md).
 
-Evidence: pending implementation.
+Evidence (2026-11-04, local unless noted):
+- Chromium walkthrough passed at `/` and `/doramcap/`, including leaving during a run, Reset, refresh, a natural 7 s run, dark mode and a 390 px layout. The only browser error is a missing `favicon.ico`.
+- Not done: the production Console check against a real server (Node CI covers the browser contract test), the ARM64 worker submission, and the owner's review of wording and run length.
 
 ## Plan validation
 
 - Documentation: milestone structure, local links and whitespace checks passed; SVG parsed and labels updated.
-- Application checks and implementation milestones: pending implementation.
+- Application checks: recorded in each milestone.

@@ -193,3 +193,15 @@ main.shell{padding-top:28px}
 .console-copy-status:not(:empty){margin-top:8px}
 @media(max-width:950px){.console-install{grid-template-columns:1fr;gap:20px}.console-preview{width:100%}}
 @media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-preview-apps,.console-preview-results{padding:10px}.console-command-row{align-items:flex-start;gap:10px}.console-command-row button{min-height:44px}.console-preview-body{grid-template-columns:minmax(110px,.8fr) minmax(0,1.4fr)}}
+.console-demo-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0;font-size:13px;color:var(--muted)}
+.console-demo-bar strong{color:var(--ink)}
+.console-demo-bar button{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:6px 12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
+.console-demo .console-root{border:1px solid var(--line);border-radius:6px}
+.upcoming-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.upcoming-card{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.upcoming-card img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
+.upcoming-card>div{padding:16px 18px}
+.upcoming-card h2{margin:10px 0 4px}
+.upcoming-card p{margin:0}
+.upcoming-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;font-weight:600;color:var(--ink);background:var(--soft);border:1px solid var(--line)}
+@media(max-width:760px){.upcoming-grid{grid-template-columns:minmax(0,1fr)}}

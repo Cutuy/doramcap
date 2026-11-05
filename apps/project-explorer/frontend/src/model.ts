@@ -22,10 +22,14 @@ export function componentHref(component: Component): string {
   return `#/${component.id}`;
 }
 export interface Route { path: string; params: URLSearchParams; }
+export const CONSOLE_PATH = '/console';
+export const CONSOLE_UPCOMING_PATH = `${CONSOLE_PATH}/upcoming`;
 export function parseRoute(hash: string): Route {
   const [path, query = ''] = (hash.replace(/^#/, '') || '/overview').split('?');
   return { path, params: new URLSearchParams(query) };
 }
+/** Console's demo owns `/console` and every path beneath it. */
+export const isConsoleRoute = (path: string) => path === CONSOLE_PATH || path.startsWith(`${CONSOLE_PATH}/`);
 export function routeHref(path: string, params: URLSearchParams): string {
   return `#${path}${params.size ? `?${params}` : ''}`;
 }
