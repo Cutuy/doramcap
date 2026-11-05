@@ -3,7 +3,9 @@ import { ArrowUpRight, Copy, Cpu, Laptop, Terminal } from 'lucide-react';
 import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
-const START_COMMAND = 'cd your-compose-project && doramcap-console start --ssh you@your-soc';
+const START_COMMAND = 'cd your-compose-project && doramcap-console start';
+const DEFAULT_PORT = 43187;
+const TUNNEL_COMMAND = `ssh -N -L ${DEFAULT_PORT}:127.0.0.1:${DEFAULT_PORT} you@your-soc`;
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
 function Command({ text, label }: { text: string; label: string }) {
@@ -56,8 +58,8 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     </div>
     <ol className="console-install-steps">
       <li><h3>Install on your SoC or workstation</h3><Command text={installCommand} label="Copy Console installation command" /></li>
-      <li><h3>Start it from your Compose project</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
-      <li><h3>Open it in your browser</h3><p>On your computer, run the SSH command Console prints, then open its access link.</p></li>
+      <li><h3>Start it from your Compose project, on the same machine</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
+      <li><h3>Connect from your computer</h3><Command text={TUNNEL_COMMAND} label="Copy SSH tunnel command" /><p>Keep it running, then open the link Console printed. If the link shows a different port, use that port in this command.</p></li>
     </ol>
   </section>;
 }
