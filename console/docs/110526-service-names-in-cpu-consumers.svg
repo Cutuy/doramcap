@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" role="img" font-family="system-ui,sans-serif" font-size="13">
+  <title>Service names reach the browser in Status and label the monitor's cgroup names</title>
+  <rect width="760" height="300" fill="#fff"/>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1l8 4-8 4" fill="none" stroke="#596b64" stroke-width="1.5"/></marker></defs>
+  <rect x="20" y="30" width="190" height="56" rx="5" fill="#e8f2ee" stroke="#236457"/>
+  <text x="115" y="54" text-anchor="middle" fill="#202a2e" font-weight="600">Compose adapter</text>
+  <text x="115" y="72" text-anchor="middle" fill="#596b64" font-size="12">container ID, service</text>
+  <rect x="285" y="30" width="190" height="56" rx="5" fill="#e8f2ee" stroke="#236457"/>
+  <text x="380" y="54" text-anchor="middle" fill="#202a2e" font-weight="600">Console server</text>
+  <text x="380" y="72" text-anchor="middle" fill="#596b64" font-size="12">Status</text>
+  <rect x="20" y="190" width="190" height="56" rx="5" fill="#fff" stroke="#dde2df"/>
+  <text x="115" y="214" text-anchor="middle" fill="#202a2e" font-weight="600">System monitor</text>
+  <text x="115" y="232" text-anchor="middle" fill="#596b64" font-size="12">cgroup path dictionary</text>
+  <rect x="285" y="190" width="190" height="56" rx="5" fill="#fff" stroke="#dde2df"/>
+  <text x="380" y="214" text-anchor="middle" fill="#202a2e" font-weight="600">Live bridge</text>
+  <text x="380" y="232" text-anchor="middle" fill="#596b64" font-size="12">unmodified frames</text>
+  <rect x="550" y="100" width="190" height="76" rx="5" fill="#e8f2ee" stroke="#236457"/>
+  <text x="645" y="128" text-anchor="middle" fill="#202a2e" font-weight="600">Browser</text>
+  <text x="645" y="147" text-anchor="middle" fill="#596b64" font-size="12">container ID in path</text>
+  <text x="645" y="164" text-anchor="middle" fill="#596b64" font-size="12">→ service name</text>
+  <path d="M210 58H285" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M475 58H560V100" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M210 218H285" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+  <path d="M475 218H560V176" fill="none" stroke="#596b64" marker-end="url(#a)"/>
+</svg>
