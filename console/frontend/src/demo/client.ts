@@ -18,7 +18,7 @@ const { Kind, Frame: LiveFrame } = doramcap.console.live.v1;
 const PREPARE_MS = 500;
 const NS_PER_SAMPLE = SAMPLE_MS * 1e6;
 const RUN_SECONDS = RUN_SAMPLES * SAMPLE_MS / 1000;
-const REPORT = 'report', COMPLETED = 'Completed';
+const REPORT = 'report', COMPLETED = 'Completed', IN_PROGRESS = 'In progress';
 const JSON_DATA_URL = 'data:application/json;charset=utf-8,';
 const WORKER_EXIT_ON_SIGTERM = 143, STOP_SECONDS = 30;
 
@@ -283,7 +283,7 @@ export function createDemoClient() {
   const buildReview = (selection: Selection, baselineId: string): Review => {
     const baseline = baselineFor(baselineId), runId = createRequestKey(), preparedId = createRequestKey();
     const setup = setupFacts(selection), current = condition(++runCount);
-    prepared = { id: preparedId, runId, selection, facts: { outcome: {}, setup, configuration: CONFIGURATION.current, condition: current } };
+    prepared = { id: preparedId, runId, selection, facts: { outcome: { execution: IN_PROGRESS }, setup, configuration: CONFIGURATION.current, condition: current } };
     return wire.Review.create({
       preparedId, runId, availableProfiles: [], selectedProfiles: [], services: services(), systemApps: appList(selection),
       recordings: recordings(selection), liveStreams: liveStreams(selection),
