@@ -10,13 +10,13 @@ const VIEWS = [
   { file: 'workflow-catalog.png', title: 'Workflow catalog', summary: 'Choose a workflow suited to your project.' },
 ];
 
-/** Planned Console views, shown as the concept pictures from the mockups release. */
+/** Planned Console features, shown as the concept pictures from the mockups release. */
 export default function ConsoleUpcoming() {
   return <section className="console-upcoming" aria-labelledby="console-upcoming-heading">
-    <div className="intro"><h1 id="console-upcoming-heading">Upcoming views.</h1><p>Concept designs for planned Console views, with illustrative data.</p></div>
+    <div className="intro"><h2 id="console-upcoming-heading">Upcoming features.</h2><p>Concept designs for planned Console features, with illustrative data.</p></div>
     <div className="upcoming-grid">{VIEWS.map(view => <article className="upcoming-card" key={view.file}>
       <a href={`${MOCKUPS_URL}/${view.file}`} target="_blank" rel="noreferrer"><img src={`${MOCKUPS_URL}/${view.file}`} alt={`Concept design of ${view.title}`} width={MOCKUP_WIDTH} height={MOCKUP_HEIGHT} loading="lazy"/></a>
-      <div><span className="upcoming-badge">Upcoming</span><h2>{view.title}</h2><p>{view.summary}</p></div>
+      <div><span className="upcoming-badge">Upcoming</span><h3>{view.title}</h3><p>{view.summary}</p></div>
     </article>)}</div>
   </section>;
 }

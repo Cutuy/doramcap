@@ -27,8 +27,7 @@ Hash routes support refresh, browser history, copied links and new tabs:
 - `#/overview?capability=recording`
 - `#/overview?integration=mcap`
 - `#/docs?path=docs/repository-layout.md&heading=component-ownership`
-- `#/console`, the Console walkthrough, which runs in the browser with sample data
-- `#/console/upcoming`, concept designs for planned views, loaded from the mockups release
+- `#/console`, the Console walkthrough, which runs in the browser with sample data, followed by concept designs for planned features, loaded from the mockups release
 
 The overview is the default route. Capability and integration links retain the
 selected use case. Dependencies use `focus`; the explorer shows full transitive chains. `build=1` and `dev=1` include
