@@ -22,9 +22,20 @@ The goal: **configured policy, measured reality, actionable evidence.**
 - **Compare intent with execution.** Build on typed resource policies, workload
   supervision, and fault reporting to investigate behavior under competing load.
 
-The project currently provides reusable Rust libraries and runnable Linux demos.
+The project currently provides reusable Rust libraries, runnable Linux demos and
+the Console app.
 Jetson qualification and integrated runtime capabilities follow the
 [platform roadmap](docs/roadmap.md).
+
+## Run your project in Console
+
+[Console](console/) runs your existing Docker Compose project with no application
+changes. Follow each step with live CPU, keep the recordings, and compare any two
+past runs to see what changed in the setup, the machine and the results.
+
+https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
+
+[Install Console](console/docs/install.md) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
 
 ## Explore a run
 
