@@ -182,7 +182,7 @@ main.shell{padding-top:28px}
 .console-install-steps li{position:relative;min-width:0;padding-left:26px;counter-increment:step}
 .console-install-steps li::before{content:counter(step);position:absolute;left:0;top:0;font:12px/20px ui-monospace,monospace;color:var(--accent)}
 .console-install-steps h3{font-size:13px;line-height:20px;margin:0 0 6px}
-.console-install-steps p{font-size:13px;margin:0}
+.console-install-steps p{font-size:13px;margin:6px 0 0}
 .console-command-row{display:flex;align-items:center;gap:16px;padding:10px 12px;background:var(--soft);border-radius:5px}
 .console-command-row code{flex:1;min-width:0;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,monospace;user-select:all}
 .console-command-row button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;padding:7px 10px;color:var(--accent);background:var(--panel);border:1px solid var(--line);border-radius:4px;font-size:12px;min-height:36px}
