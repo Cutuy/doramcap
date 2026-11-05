@@ -15,6 +15,7 @@ const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } 
 const PREPARE_MS = 500, SECOND_MS = 1000, RUN_MS = RUN_SAMPLES * SAMPLE_MS;
 const NS_PER_MS = 1_000_000n, SAMPLE_NS = BigInt(SAMPLE_MS) * NS_PER_MS;
 const LIVE_ONLY = { 'cpu-monitor': 'live' };
+const PRODUCTION_STEPS = ['compose.reset', 'compose.prepare', 'compose.inspect', 'compose.finalize', 'compose.report'];
 const SERVER_REPORT_FIELDS = ['execution', 'error', 'writers_stopped', 'recording_finalized', 'service_exits', 'boundary_clean', 'event_stream_healthy', 'system_apps'];
 
 const realFetch = globalThis.fetch;
@@ -65,25 +66,30 @@ test('the bundled recording is a valid capture matching the built-in run', () =>
   const file = readFileSync(fileURLToPath(new URL('./demo/builtin-cpu.mcap', import.meta.url)));
   const reader = new McapStreamReader({ includeChunks: true, validateCrcs: true });
   let root: protobuf.Root | undefined, name = '';
-  const messages: { logTime: bigint; data: Uint8Array }[] = [];
+  const messages: { channelId: number; logTime: bigint; data: Uint8Array }[] = [];
+  const topics = new Map<number, string>();
   let footer = false;
   // Act
   reader.append(file);
   for (let record; (record = reader.nextRecord());) {
     if (record.type === 'Schema') { root = (protobuf.Root as unknown as { fromDescriptor(data: Uint8Array): protobuf.Root }).fromDescriptor(record.data); name = record.name; }
+    else if (record.type === 'Channel') topics.set(record.id, record.topic);
     else if (record.type === 'Message') messages.push(record);
     else if (record.type === 'Footer') footer = true;
   }
   const Packet = root!.lookupType(name);
-  const first = Packet.toObject(Packet.decode(messages[0].data), { longs: String }) as { snapshot: { dictionary: { path: string }[] } };
+  const samples = messages.filter(message => topics.get(message.channelId) === 'doramcap/cpuacct');
+  const dictionary = messages.filter(message => topics.get(message.channelId) === 'doramcap/cpuacct/dictionary');
+  const names = Packet.toObject(Packet.decode(dictionary[0].data), { longs: String }) as { dictionary: { entries: { path: string }[] } };
   // Assert
   assert.ok(footer);
   assert.equal(file.length, BUILTIN_RECORDING_BYTES);
   assert.equal(name, 'doramcap.telemetry.v1.Packet');
-  assert.equal(messages.length, RUN_SAMPLES);
-  assert.equal(messages[0].logTime, BigInt(BUILTIN_STARTED_AT_MS) * NS_PER_MS + SAMPLE_NS);
-  assert.equal(messages.at(-1)!.logTime - messages[0].logTime, BigInt(RUN_SAMPLES - 1) * SAMPLE_NS);
-  assert.deepEqual(first.snapshot.dictionary.map(entry => entry.path), ['/docker/activity-lab']);
+  assert.equal(samples.length, RUN_SAMPLES);
+  assert.equal(dictionary.length, 1);
+  assert.equal(samples[0].logTime, BigInt(BUILTIN_STARTED_AT_MS) * NS_PER_MS + SAMPLE_NS);
+  assert.equal(samples.at(-1)!.logTime - samples[0].logTime, BigInt(RUN_SAMPLES - 1) * SAMPLE_NS);
+  assert.ok(names.dictionary.entries.every(entry => /^\/system\.slice\/docker-[0-9a-f]{64}\.scope$/.test(entry.path)));
 });
 
 test('a run progresses through its phases to Completed and joins History', async () => {
@@ -105,7 +111,8 @@ test('a run progresses through its phases to Completed and joins History', async
   assert.equal(screen.last().outcome!.execution, 'Completed');
   assert.ok(screen.seen.some(status => status.phase === Phase.STOPPING));
   assert.equal(screen.model.view().cpu!.history.length, RUN_SAMPLES - 1);
-  assert.equal(screen.model.view().cpu!.groups[0].name, 'activity-lab');
+  assert.match(screen.model.view().cpu!.groups[0].name, /^docker-[0-9a-f]{64}\.scope$/);
+  assert.ok(screen.model.view().cpu!.groups[0].percent > 90);
   assert.deepEqual((await client.history({})).entries.map(entry => entry.runId), [runId, BUILTIN_RUN_ID]);
 });
 
@@ -125,11 +132,45 @@ test('a run samples at 10 Hz for 15 s and advances its sequence only on workflow
   assert.equal(run.length, RUN_SAMPLES + 1);
   assert.equal(run.at(-1)!.phase, Phase.FINISHED);
   assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b));
-  assert.ok(new Set(sequences).size < 10, 'most samples leave the sequence unchanged');
-  const capture = (status: Snapshot) => status.steps.find(step => step.step === 'experiment.capture');
-  const running = run.filter(status => capture(status)?.state === StepState.STARTED);
-  assert.equal(running.length, 100);
-  assert.equal(new Set(running.map(status => String(status.sequence))).size, 1);
+  assert.ok(new Set(sequences).size < run.length / 2, 'most samples leave the sequence unchanged');
+});
+
+test('the demo offers the release system apps and emits production workflow steps', async () => {
+  // Arrange
+  const client = createDemoClient();
+  // Act
+  const prepared = await review(client);
+  const runId = await finishedRun(client);
+  const { status } = await client.historyRun(runId);
+  const steps = status!.steps.map(step => step.step);
+  // Assert
+  assert.deepEqual(prepared.systemApps.map(app => [app.id, app.label, app.selected]), [
+    ['live-bridge', 'Live telemetry', true], ['cpu-monitor', 'CPU monitoring', true], ['data-recorder', 'Data recorder', false], ['fault-watchdog', 'Fault Watchdog', false],
+  ]);
+  assert.deepEqual(prepared.systemApps[3].profiles.map(profile => profile.id), ['live', 'mcap', 'otel']);
+  assert.deepEqual(prepared.liveStreams.map(stream => stream.id), ['cpu-monitor_0', 'cpu-monitor_1']);
+  assert.deepEqual(prepared.services.map(service => service.name), ['worker']);
+  for (const step of PRODUCTION_STEPS) assert.ok(steps.includes(step), step);
+  assert.ok(steps.includes('workload_docker::compose::steps::StartCompose'));
+  const child = status!.steps.find(step => step.step.endsWith('CaptureFilesystemBaseline'))!;
+  assert.equal(status!.steps[Number(child.parent) - 1].step, 'compose.prepare');
+  assert.ok(status!.steps.every(step => step.state === StepState.SUCCEEDED));
+  assert.ok(status!.machineChanges.length > 0);
+});
+
+test('selecting the watchdog relays faults and adds its recording', async () => {
+  // Arrange
+  const client = createDemoClient(), screen = watch(client);
+  const apps = ['live-bridge', 'cpu-monitor', 'fault-watchdog'];
+  // Act
+  const prepared = await review(client, [], apps, { 'fault-watchdog': 'mcap' });
+  await client.start(prepared.preparedId, 'key');
+  await advance(SAMPLE_MS);
+  // Assert
+  assert.deepEqual(prepared.recordings.map(output => output.id), ['cpu', 'faults']);
+  assert.ok(prepared.liveStreams.some(stream => stream.id === 'fault-watchdog_0'));
+  assert.equal(screen.model.view().faults!.connected, 1);
+  assert.equal(screen.model.view().faults!.stale, false);
 });
 
 test('Stop ends a run early as Completed', async () => {
@@ -230,18 +271,18 @@ test('history filters, pages and reports missing runs from the same stored facts
 test('comparing runs and reviewing a selection give Same, Changed and Unavailable rows', async () => {
   // Arrange
   const client = createDemoClient();
-  const runId = await finishedRun(client, ['load']);
+  const runId = await finishedRun(client, [], LIVE_ONLY);
   // Act
   const comparison = await client.historyCompare(BUILTIN_RUN_ID, runId);
-  const rerun = await review(client, ['load'], undefined, undefined, BUILTIN_RUN_ID);
+  const rerun = await review(client, [], undefined, LIVE_ONLY, BUILTIN_RUN_ID);
   const row = (rows: typeof comparison.rows, name: string) => rows.find(item => item.name === name)!;
   // Assert
   assert.deepEqual(comparison.sides.map(side => side.runs[0].entry!.runId), [BUILTIN_RUN_ID, runId]);
-  assert.equal(row(comparison.rows, 'profiles').result, Result.COMPARISON_CHANGED);
-  assert.deepEqual(row(comparison.rows, 'profiles').cells.map(cell => cell.values[0]), ['Default', 'load']);
+  assert.equal(row(comparison.rows, 'system_app_profile.cpu-monitor').result, Result.COMPARISON_CHANGED);
+  assert.deepEqual(row(comparison.rows, 'system_app_profile.cpu-monitor').cells.map(cell => cell.values[0]), ['record', 'live']);
   assert.equal(row(comparison.rows, 'execution').result, Result.COMPARISON_SAME);
-  assert.equal(row(comparison.rows, 'governors').group, Group.COMPARISON_CONFIGURATION);
-  assert.equal(row(comparison.rows, 'governors').result, Result.COMPARISON_CHANGED);
+  assert.equal(row(comparison.rows, 'governor').group, Group.COMPARISON_CONFIGURATION);
+  assert.equal(row(comparison.rows, 'governor').result, Result.COMPARISON_CHANGED);
   assert.equal(rerun.comparison!.baseline!.runId, BUILTIN_RUN_ID);
   const condition = rerun.comparison!.rows.filter(item => item.group === Group.COMPARISON_CONDITION);
   assert.ok(condition.length > 0);

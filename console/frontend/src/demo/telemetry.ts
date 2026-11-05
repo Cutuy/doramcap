@@ -1,49 +1,62 @@
 import { doramcap } from '../generated/console';
 
 const telemetry = doramcap.telemetry.v1;
+const fault = doramcap.fault.v1;
 const NS_PER_MS = 1_000_000n;
-const CORES = 4;
+const CORES = 8;
 const ROOT_FLAGS = 17;
 const LEAF_FLAGS = 1;
 const ROOT_CGROUP = '1';
-export const SESSION_ID = 'demo-session';
+const SESSION_ID = 'c4f1e29a7b3d4e60';
 /** Ten samples per second, for a 15 s run. */
 export const SAMPLE_MS = 100;
 export const RUN_SAMPLES = 150;
 const NS_PER_SAMPLE = BigInt(SAMPLE_MS) * NS_PER_MS;
 /** The load changes twice per second, so the charts move without flickering. */
 const SAMPLES_PER_LOAD_STEP = 5;
-
-/** Busy fraction of one core for each group, cycled so the charts move. */
-const LOAD = {
-  app: { id: '11', path: '/docker/activity-lab', busy: [0.42, 0.55, 0.38, 0.61, 0.47] },
-  stress: { id: '12', path: '/docker/load-generator', busy: [0.91, 0.84, 0.96, 0.88, 0.93] },
-};
-const groups = (heavy: boolean) => heavy ? [LOAD.app, LOAD.stress] : [LOAD.app];
+const scope = (container: string) => `/system.slice/docker-${container}.scope`;
+/** Containers of the sample project and system apps, by busy fraction of one core; `worker` is cpu-burn's busy loop. */
+const GROUPS = [
+  { id: '4211', path: scope('8e1c5f02a7d94b36c0f1e8a25b7d3946ce10a8f7d2b6493e5c71f08ad4e92b67'), busy: [0.99, 0.98, 1, 0.99, 0.97, 1] },
+  { id: '4187', path: scope('2b7d90c4e6f1385a9d02c7b4e1f8a63d50c9e27b14f6a83d7e05b2c9f4186da3'), busy: [0.05, 0.04, 0.07, 0.05, 0.06] },
+  { id: '4163', path: scope('f4a26d18b9e0735c1a8f4d6e92b0c75e3d18f6a2049c7be5d3a1806f2c97e4b1'), busy: [0.03, 0.04, 0.03, 0.02, 0.04] },
+  { id: '4142', path: scope('6c93e1a5f7082d4b6e1c9f3a5d70b28e4f16c3d9a7052e8b1f4d6a93c07e25d8'), busy: [0.02, 0.01, 0.03, 0.02] },
+];
 const runtimeNs = (busy: number[], sequence: number) => {
   let total = 0;
   for (let sample = 1; sample <= sequence; sample++) total += busy[Math.floor(sample / SAMPLES_PER_LOAD_STEP) % busy.length];
   return BigInt(Math.round(total * 1000)) * NS_PER_SAMPLE / 1000n;
 };
-export const dictionaryEntries = (heavy: boolean) => groups(heavy).map(group => ({ id: group.id, parentId: ROOT_CGROUP, path: group.path }));
+const captureNs = (startedAtMs: number, sequence: number) => BigInt(startedAtMs) * NS_PER_MS + BigInt(sequence) * NS_PER_SAMPLE;
 
-/** One real-format CPU packet; identical inputs give identical bytes. The first sample carries the names. */
-export function cpuPacket(sequence: number, heavy: boolean, startedAtMs: number): Uint8Array {
-  const leaves = groups(heavy);
-  const leafRuntime = leaves.map(group => runtimeNs(group.busy, sequence));
+/** One real-format CPU snapshot packet; identical inputs give identical bytes. */
+export function cpuPacket(sequence: number, startedAtMs: number): Uint8Array {
+  const leafRuntime = GROUPS.map(group => runtimeNs(group.busy, sequence));
   // Each group's time lands on one core, and the root counters total them.
-  const rootRuntime = Array.from({ length: CORES }, (_, cpu) => leaves.reduce((sum, _group, index) => index % CORES === cpu ? sum + leafRuntime[index] : sum, 0n));
+  const rootRuntime = Array.from({ length: CORES }, (_, cpu) => GROUPS.reduce((sum, _group, index) => index % CORES === cpu ? sum + leafRuntime[index] : sum, 0n));
   return telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: {
-    version: 2, sessionId: SESSION_ID, source: 'demo',
-    dictionary: sequence === 1 ? dictionaryEntries(heavy) : [],
+    version: 2, sessionId: SESSION_ID, source: 'cpu-monitor',
     snapshot: {
       sequence: String(sequence),
-      captureUnixNs: String(BigInt(startedAtMs) * NS_PER_MS + BigInt(sequence) * NS_PER_SAMPLE),
+      captureUnixNs: String(captureNs(startedAtMs, sequence)),
       monotonicEndNs: String(BigInt(sequence) * NS_PER_SAMPLE),
       records: [
         ...rootRuntime.map((runtime, cpu) => ({ cgroupId: ROOT_CGROUP, cpu, flags: ROOT_FLAGS, runtimeNs: String(runtime) })),
-        ...leaves.map((group, index) => ({ cgroupId: group.id, parentId: ROOT_CGROUP, cpu: index % CORES, flags: LEAF_FLAGS, runtimeNs: String(leafRuntime[index]) })),
+        ...GROUPS.map((group, index) => ({ cgroupId: group.id, parentId: ROOT_CGROUP, cpu: index % CORES, flags: LEAF_FLAGS, runtimeNs: String(leafRuntime[index]) })),
       ],
     },
+  } })).finish();
+}
+/** The cgroup names for `cpuPacket`, as the monitor publishes them on its dictionary topic. */
+export function dictionaryPacket(startedAtMs: number): Uint8Array {
+  return telemetry.Packet.encode(telemetry.Packet.fromObject({ dictionary: {
+    version: 1, sessionId: SESSION_ID, revision: '1', captureUnixNs: String(captureNs(startedAtMs, 0)),
+    entries: GROUPS.map(group => ({ id: group.id, parentId: ROOT_CGROUP, path: group.path })),
+  } })).finish();
+}
+/** A Fault Watchdog snapshot: one connected source and no active conditions. */
+export function faultPacket(): Uint8Array {
+  return fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({ version: 1, snapshot: {
+    epoch: new Uint8Array(16).fill(0xa1), revision: '1', sources: [{ source: new Uint8Array(16).fill(0x5c), connected: true }],
   } })).finish();
 }

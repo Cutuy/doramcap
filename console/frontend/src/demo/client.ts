@@ -3,44 +3,61 @@ import { LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
 import { createRequestKey } from '../model';
 import type { Frame } from '../streams';
-import { RUN_SAMPLES, SAMPLE_MS, cpuPacket } from './telemetry';
+import { RUN_SAMPLES, SAMPLE_MS, cpuPacket, dictionaryPacket, faultPacket } from './telemetry';
 
 type Client = ReturnType<typeof createClient>;
 type Facts = Record<string, string>;
 /** Named facts per comparison group; real rows are built from these. */
 type RunFacts = { outcome: Facts; setup: Facts; configuration: Facts; condition: Facts };
-type Selection = { profiles: string[]; apps: string[]; appProfiles: Record<string, string> };
+type Selection = { apps: string[]; appProfiles: Record<string, string> };
 type StoredRun = { entry: HistoryEntry; status: Snapshot; facts: RunFacts };
 type Subscriber = { consume: (status: Snapshot) => void; frame: (frame: Frame) => void; closed: () => void };
 
 const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } = wire;
-const { Kind } = doramcap.console.live.v1;
+const { Kind, Frame: LiveFrame } = doramcap.console.live.v1;
 const PREPARE_MS = 500;
 const NS_PER_SAMPLE = SAMPLE_MS * 1e6;
 const RUN_SECONDS = RUN_SAMPLES * SAMPLE_MS / 1000;
-/** A run checks images, then starts, then takes this many samples to stop. */
-const IMAGE_SAMPLES = 10, START_SAMPLES = 30, STOP_SAMPLES = 20;
-const STOP_SECONDS_REMAINING = 30;
-const PROJECT_DIRECTORY = '/demo/activity-lab';
-const HEAVY_PROFILE = 'load', RECORD_PROFILE = 'record', LIVE_PROFILE = 'live';
-const CPU_APP = 'cpu-monitor', BRIDGE_APP = 'live-bridge';
-const CPU_RECORDING = 'cpu', REPORT = 'report', CPU_STREAM = 'cpu_0';
-const COMPLETED = 'Completed';
+const REPORT = 'report', COMPLETED = 'Completed';
 const JSON_DATA_URL = 'data:application/json;charset=utf-8,';
+const WORKER_EXIT_ON_SIGTERM = 143, STOP_SECONDS = 30;
+
+/** The release's sample project, installed by the Console package. */
+const PROJECT_DIRECTORY = '/opt/doramcap-console/playground/cpu-burn';
+const WORKER = { name: 'worker', imageId: 'sha256:7a3f92c1e04b58d6f2a91c07d3e8b5463fa1c8e92d70b64135ea8f7c29d0416b' };
+const SOURCE_COMMIT = '431ea4c6d0f2b8e17a94c35d60e8f1b27c9d3a56';
+const BRIDGE = 'live-bridge', CPU_MONITOR = 'cpu-monitor', DATA_RECORDER = 'data-recorder', WATCHDOG = 'fault-watchdog';
+const CPU_RECORDING = 'cpu', MESSAGES_RECORDING = 'messages', FAULTS_RECORDING = 'faults';
+/** System apps as `console/release/console.pbtxt` declares them; the first profile is the default. */
+const SYSTEM_APPS = [
+  { id: BRIDGE, label: 'Live telemetry', selected: true, profiles: [] },
+  { id: CPU_MONITOR, label: 'CPU monitoring', selected: true, profiles: [{ id: 'record', label: 'Live panels and recording' }, { id: 'live', label: 'Live panels only' }] },
+  { id: DATA_RECORDER, label: 'Data recorder', selected: false, profiles: [{ id: 'cpu', label: 'CPU topics (requires CPU monitoring)' }, { id: 'faults', label: 'Watchdog publications (requires watchdog)' }] },
+  { id: WATCHDOG, label: 'Fault Watchdog', selected: false, profiles: [{ id: 'live', label: 'Live only' }, { id: 'mcap', label: 'Live and MCAP' }, { id: 'otel', label: 'Live and OTLP' }] },
+];
+const DEFAULT_SELECTION: Selection = { apps: SYSTEM_APPS.filter(app => app.selected).map(app => app.id), appProfiles: {} };
 
 /** The built-in run; `BUILTIN_RECORDING_BYTES` matches the bundled file. */
 export const BUILTIN_RUN_ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
 export const BUILTIN_STARTED_AT_MS = Date.UTC(2026, 10, 3, 9, 30);
-export const BUILTIN_RECORDING_BYTES = 25347;
+export const BUILTIN_RECORDING_BYTES = 42678;
 const builtinRecordingUrl = () => new URL('./builtin-cpu.mcap', import.meta.url).href;
 
-const SERVICES = { app: { name: 'activity-lab', imageId: 'sha256:5c1f0a7e92b4d3866f1e2a7c40b9d15e3f8a6c72' }, stress: { name: 'load-generator', imageId: 'sha256:9e4d7b21c08f6a35d1b72e9046ca8f13b5d07e64' } };
-/** The machine captured with the built-in run, then the one every visitor run sees. */
-const CONFIGURATION: Record<'builtin' | 'current', Facts> = {
-  builtin: { architecture: 'x86_64', cpu_model: 'Demo Xeon 8-core', kernel_release: '6.8.0-demo', governors: 'powersave: 0-3', turbo_enabled: 'true', smt_active: 'true', swappiness: '60' },
-  current: { architecture: 'x86_64', cpu_model: 'Demo Xeon 8-core', kernel_release: '6.8.0-demo', governors: 'performance: 0-3', turbo_enabled: 'true', smt_active: 'true', swappiness: '10' },
+/** Machine settings captured with the built-in run, then the ones every visitor run sees. */
+const SHARED_CONFIGURATION: Facts = {
+  machine_fingerprint: '9d41c7e2ab05', architecture: 'x86_64', cpu_model: 'Intel(R) Xeon(R) Silver 4314 CPU @ 2.40GHz', online_cpus: '0-7', numa_nodes: '1',
+  memory_total_bytes: '68719476736', kernel_release: '6.8.0-52-generic', frequency_driver: 'intel_pstate: 0-7', turbo_enabled: 'true', smt_active: 'true',
+  transparent_hugepages: 'madvise', cgroup_controllers: 'cpuset cpu io memory pids', 'docker.server_version': '27.5.1', 'docker.compose_version': '2.32.4',
+  'docker.cgroup_driver': 'systemd', 'docker.cgroup_version': '2', 'docker.storage_driver': 'overlay2',
 };
-const condition = (run: number): Facts => ({ load_1m: (0.4 + run * 0.1).toFixed(1), max_temperature_celsius: String(47 + run), uptime_seconds: String(86_400 + run * 900) });
+const CONFIGURATION: Record<'builtin' | 'current', Facts> = {
+  builtin: { ...SHARED_CONFIGURATION, governor: 'powersave: 0-7', energy_preference: 'balance_power: 0-7', swappiness: '60' },
+  current: { ...SHARED_CONFIGURATION, governor: 'performance: 0-7', energy_preference: 'performance: 0-7', swappiness: '10' },
+};
+const condition = (run: number): Facts => ({
+  load_1m: (0.4 + run * 0.1).toFixed(1), memory_available_bytes: String(51_539_607_552 - run * 104_857_600), disk_free_bytes: String(412_316_860_416 - run * 26_214_400),
+  max_temperature_celsius: String(47 + run), uptime_seconds: String(486_400 + run * 900),
+});
 
 const report = (status: Snapshot) => JSON.stringify({
   execution: status.outcome?.execution, error: status.outcome?.error || null, writers_stopped: status.outcome?.writersStopped,
@@ -59,42 +76,94 @@ function diff(group: number, a: Facts, b: Facts) {
   }));
 }
 
-const appList = (selection: Selection) => [
-  wire.SystemApp.create({ id: BRIDGE_APP, label: 'Live telemetry', selected: selection.apps.includes(BRIDGE_APP) }),
-  wire.SystemApp.create({
-    id: CPU_APP, label: 'CPU monitoring', selected: selection.apps.includes(CPU_APP), profile: selection.appProfiles[CPU_APP] ?? RECORD_PROFILE,
-    profiles: [wire.ProfileOption.create({ id: RECORD_PROFILE, label: 'Live panels and recording' }), wire.ProfileOption.create({ id: LIVE_PROFILE, label: 'Live panels only' })],
-  }),
+const profileOf = (selection: Selection, id: string) => selection.appProfiles[id] ?? SYSTEM_APPS.find(app => app.id === id)!.profiles[0]?.id ?? '';
+const selected = (selection: Selection, id: string) => selection.apps.includes(id);
+const appList = (selection: Selection) => SYSTEM_APPS.map(app => wire.SystemApp.create({
+  id: app.id, label: app.label, selected: selected(selection, app.id), profile: profileOf(selection, app.id),
+  profiles: app.profiles.map(profile => wire.ProfileOption.create(profile)),
+}));
+const recordings = (selection: Selection) => [
+  ...(selected(selection, CPU_MONITOR) && profileOf(selection, CPU_MONITOR) === 'record' ? [{ id: CPU_RECORDING, path: 'cpu.mcap', stream: 'cpu.pb', cpu: true }] : []),
+  ...(selected(selection, DATA_RECORDER) ? [{ id: MESSAGES_RECORDING, path: 'messages.mcap' }] : []),
+  ...(selected(selection, WATCHDOG) && profileOf(selection, WATCHDOG) === 'mcap' ? [{ id: FAULTS_RECORDING, path: 'faults.mcap' }] : []),
+].map(output => wire.RecordingOutput.create(output));
+const records = (selection: Selection) => recordings(selection).length > 0;
+const CPU_SNAPSHOTS = `${CPU_MONITOR}_0`, CPU_DICTIONARY = `${CPU_MONITOR}_1`, FAULTS = `${WATCHDOG}_0`;
+const relaysCpu = (selection: Selection) => selected(selection, BRIDGE) && selected(selection, CPU_MONITOR);
+const relaysFaults = (selection: Selection) => selected(selection, BRIDGE) && selected(selection, WATCHDOG);
+/** Stream IDs follow the server: the app ID and the output's index. */
+const liveStreams = (selection: Selection) => [
+  ...(relaysCpu(selection) ? [CPU_SNAPSHOTS, CPU_DICTIONARY].map(id => wire.LiveStream.create({ id, appId: CPU_MONITOR, kind: Kind.CPU_ACCOUNTING })) : []),
+  ...(relaysFaults(selection) ? [wire.LiveStream.create({ id: FAULTS, appId: WATCHDOG, kind: Kind.FAULT_PUBLICATION })] : []),
 ];
-const records = (selection: Selection) => selection.apps.includes(CPU_APP) && (selection.appProfiles[CPU_APP] ?? RECORD_PROFILE) === RECORD_PROFILE;
-const recordings = (selection: Selection) => records(selection) ? [wire.RecordingOutput.create({ id: CPU_RECORDING, path: `${CPU_RECORDING}.mcap`, cpu: true })] : [];
-const streamsLive = (selection: Selection) => selection.apps.includes(CPU_APP) && selection.apps.includes(BRIDGE_APP);
-const liveStreams = (selection: Selection) => streamsLive(selection) ? [wire.LiveStream.create({ id: CPU_STREAM, appId: CPU_APP, kind: Kind.CPU_ACCOUNTING })] : [];
-const heavy = (selection: Selection) => selection.profiles.includes(HEAVY_PROFILE);
-const services = (selection: Selection) => (heavy(selection) ? [SERVICES.app, SERVICES.stress] : [SERVICES.app]).map(service => wire.Service.create(service));
-const appSelection = (selection: Selection) => wire.SystemAppSelection.create({ ids: selection.apps, profiles: selection.appProfiles });
+const services = () => [wire.Service.create(WORKER)];
+const appSelection = (selection: Selection) => wire.SystemAppSelection.create({ ids: selection.apps, profiles: Object.fromEntries(selection.apps.filter(id => profileOf(selection, id)).map(id => [id, profileOf(selection, id)])) });
 const setupFacts = (selection: Selection): Facts => ({
-  profiles: selection.profiles.join(', ') || 'Default', system_apps: selection.apps.join(', ') || 'None',
-  ...(selection.apps.includes(CPU_APP) ? { [`system_app_profile.${CPU_APP}`]: selection.appProfiles[CPU_APP] ?? RECORD_PROFILE } : {}),
-  ...Object.fromEntries(services(selection).map(service => [`image.${service.name}`, service.imageId])),
-  source_state: 'Clean',
+  profiles: 'Default', system_apps: selection.apps.join(', ') || 'None',
+  ...Object.fromEntries(selection.apps.filter(id => profileOf(selection, id)).map(id => [`system_app_profile.${id}`, profileOf(selection, id)])),
+  [`image.${WORKER.name}`]: WORKER.imageId, source_commit: SOURCE_COMMIT, source_state: 'Clean',
 });
 
-/** Workflow rows at `sample`; a stop cuts the current step short and begins stopping. */
-function stepsAt(sample: number, stopAt: number | null, finished: boolean) {
+/** Production's step IDs and display names, in workflow order; durations are in samples. */
+const type = (path: string) => `workload_docker::${path}`;
+const lifecycle = (name: string) => `workload_lifecycle::recording::${name}`;
+const STEP = {
+  reset: { step: 'compose.reset', displayName: 'Reset experiment', samples: 3 },
+  prepare: { step: 'compose.prepare', displayName: 'Prepare project', samples: 8 },
+  baseline: { step: type('compose::filesystem::CaptureFilesystemBaseline'), samples: 3 },
+  dora: { step: type('workflows::experiment::StartDoraRuntime'), samples: 5 },
+  graph: { step: type('workflows::experiment::RegisterDoraGraph'), samples: 3 },
+  start: { step: type('compose::steps::StartCompose'), samples: 6 },
+  wait: { step: lifecycle('WaitForRecordings'), samples: 4 },
+  inspect: { step: 'compose.inspect', displayName: 'Inspect project', samples: 1 },
+  apps: { step: type('compose::steps::StartCompose'), samples: 4 },
+  quiesceApps: { step: type('compose::steps::QuiesceCompose'), samples: 4 },
+  stopDora: { step: type('workflows::experiment::StopDoraRuntime'), samples: 3 },
+  quiesceSystem: { step: type('compose::steps::QuiesceCompose'), samples: 3 },
+  finalize: { step: 'compose.finalize', displayName: 'Finalize recording', samples: 4 },
+  finalizeRecordings: { step: lifecycle('FinalizeRecordings'), samples: 2 },
+  remove: { step: type('compose::steps::RemoveCompose'), samples: 3 },
+  report: { step: 'compose.report', displayName: 'Write run report', samples: 3 },
+};
+const INSPECT_EVERY_SAMPLES = 10;
+const startup = (saving: boolean) => [STEP.reset, STEP.prepare, STEP.dora, STEP.graph, STEP.start, ...(saving ? [STEP.wait] : []), STEP.inspect, STEP.apps];
+const SHUTDOWN = [STEP.quiesceApps, STEP.stopDora, STEP.quiesceSystem, STEP.finalize, STEP.remove, STEP.report];
+const total = (stages: { samples: number }[]) => stages.reduce((sum, stage) => sum + stage.samples, 0);
+const STOP_SAMPLES = total(SHUTDOWN);
+
+/** Workflow rows at `sample`, as the orchestrator reports them; a stop cuts the current step short. */
+function stepsAt(sample: number, stopAt: number | null, finished: boolean, saving: boolean) {
   const stopping = stopAt ?? Infinity;
-  const stages = [
-    { step: 'compose.images', displayName: 'Check images', from: 0, to: IMAGE_SAMPLES },
-    { step: 'compose.launch', displayName: 'Start project', from: IMAGE_SAMPLES, to: START_SAMPLES },
-    { step: 'experiment.capture', displayName: 'Capture activity', from: START_SAMPLES, to: Infinity },
-  ].filter(stage => stage.from < stopping && stage.from <= sample).map(stage => ({ ...stage, to: Math.min(stage.to, stopping) }));
-  if (stopAt !== null) stages.push({ step: 'compose.stop', displayName: 'Stop project', from: stopAt, to: stopAt + STOP_SAMPLES });
-  return stages.map((stage, index) => {
-    const done = finished || stage.to <= sample;
+  const rows: { step: string; displayName?: string; from: number; to: number; parent?: number; after?: number }[] = [];
+  const add = (stage: { step: string; displayName?: string }, from: number, to: number, parent?: number, after?: number) => {
+    rows.push({ step: stage.step, displayName: stage.displayName, from, to, parent, after });
+    return rows.length;
+  };
+  let at = 0, previous: number | undefined;
+  for (const stage of startup(saving)) {
+    if (at >= stopping) break;
+    const end = Math.min(at + stage.samples, stopping);
+    previous = add(stage, at, end, undefined, previous);
+    // Preparation captures the filesystem baseline as a child step.
+    if (stage === STEP.prepare && at + 1 < end) add(STEP.baseline, at + 1, Math.min(at + 1 + STEP.baseline.samples, end), previous);
+    at = end;
+  }
+  for (; at < stopping && at <= sample; at += INSPECT_EVERY_SAMPLES) add(STEP.inspect, at, Math.min(at + STEP.inspect.samples, stopping), undefined, previous);
+  if (stopAt !== null) {
+    at = stopAt;
+    for (const stage of SHUTDOWN) {
+      previous = add(stage, at, at + stage.samples, undefined, previous);
+      if (stage === STEP.finalize && saving) add(STEP.finalizeRecordings, at + 1, at + 1 + STEP.finalizeRecordings.samples, previous);
+      at += stage.samples;
+    }
+  }
+  return rows.map((row, index) => ({ row, invocation: index + 1 })).filter(({ row }) => row.from <= sample || finished).map(({ row, invocation }) => {
+    const done = finished || row.to <= sample;
     return workflow.Event.create({
-      version: 1, sequence: index + 1, session: 'demo', executor: 'local', invocation: index + 1, step: stage.step, displayName: stage.displayName,
+      version: 1, sequence: invocation, session: 'console', executor: 'local', invocation, step: row.step, displayName: row.displayName ?? '',
+      parent: row.parent ?? null, dependencies: row.after ? [row.after] : [],
       state: done ? StepState.SUCCEEDED : StepState.STARTED,
-      elapsedNs: (done ? stage.to : stage.from) * NS_PER_SAMPLE, durationNs: done ? (stage.to - stage.from) * NS_PER_SAMPLE : 0,
+      elapsedNs: (done ? row.to : row.from) * NS_PER_SAMPLE, durationNs: done ? (row.to - row.from) * NS_PER_SAMPLE : 0,
     });
   });
 }
@@ -104,22 +173,26 @@ const metricsAt = (sample: number) => Array.from({ length: sample }, (_, index) 
   writeBytesPerSecond: BUILTIN_RECORDING_BYTES / RUN_SECONDS,
 }));
 
-function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null) {
+function runStatus(runId: string, selection: Selection, phase: number, sample: number, stopAt: number | null, conditions: Facts, after: Facts) {
   const finished = phase === Phase.FINISHED, saving = records(selection);
-  const steps = stepsAt(sample, stopAt, finished);
+  const steps = stepsAt(sample, stopAt, finished, saving);
   // Like the server, `sequence` counts workflow events; other samples leave it unchanged.
   const sequence = steps.reduce((events, step) => events + (step.state === StepState.STARTED ? 1 : 2), 0);
   return wire.Status.create({
-    phase, runId, sequence, projectDirectory: PROJECT_DIRECTORY, profiles: selection.profiles, systemApps: appSelection(selection),
+    phase, runId, sequence, projectDirectory: PROJECT_DIRECTORY, profiles: [], systemApps: appSelection(selection),
     steps, activityAvailable: true, metrics: saving ? metricsAt(sample) : [],
-    recordings: recordings(selection), liveStreams: liveStreams(selection), cpuAvailable: streamsLive(selection), reportAvailable: finished,
-    stoppingServices: phase === Phase.STOPPING ? services(selection).map(service => wire.StoppingService.create({ service: service.name, forceStopInSeconds: STOP_SECONDS_REMAINING })) : [],
-    outcome: finished ? wire.Outcome.create({ execution: COMPLETED, writersStopped: saving, recordingFinalized: saving, boundaryClean: true, eventStreamHealthy: true }) : null,
+    recordings: recordings(selection), liveStreams: liveStreams(selection), cpuAvailable: relaysCpu(selection), reportAvailable: finished,
+    stoppingServices: phase === Phase.STOPPING ? [wire.StoppingService.create({ service: WORKER.name, forceStopInSeconds: STOP_SECONDS })] : [],
+    machineChanges: finished ? diff(Group.COMPARISON_CONDITION, conditions, after) : [],
+    outcome: finished ? wire.Outcome.create({
+      execution: COMPLETED, writersStopped: saving, recordingFinalized: saving, boundaryClean: true, eventStreamHealthy: true,
+      serviceExits: [wire.ServiceExit.create({ service: WORKER.name, exitCode: WORKER_EXIT_ON_SIGTERM })],
+    }) : null,
   });
 }
 function finishedEntry(runId: string, selection: Selection, startedAtMs: number, finishedAtMs: number, status: Snapshot, recordingBytes?: number) {
   return wire.HistoryEntry.create({
-    runId, profiles: selection.profiles, systemApps: appSelection(selection), startedAtMs, finishedAtMs, state: State.HISTORY_COMPLETED,
+    runId, profiles: [], systemApps: appSelection(selection), startedAtMs, finishedAtMs, state: State.HISTORY_COMPLETED,
     artifacts: [
       ...(recordingBytes === undefined ? [] : [wire.HistoryArtifact.create({ id: CPU_RECORDING, sizeBytes: recordingBytes, downloadable: true })]),
       wire.HistoryArtifact.create({ id: REPORT, sizeBytes: new TextEncoder().encode(report(status)).length, downloadable: true }),
@@ -132,8 +205,8 @@ const outcomeFacts = (status: Snapshot, seconds: number): Facts => ({
 });
 
 function builtinRun(): StoredRun {
-  const selection: Selection = { profiles: [], apps: [BRIDGE_APP, CPU_APP], appProfiles: { [CPU_APP]: RECORD_PROFILE } };
-  const status = runStatus(BUILTIN_RUN_ID, selection, Phase.FINISHED, RUN_SAMPLES, RUN_SAMPLES - STOP_SAMPLES);
+  const selection = DEFAULT_SELECTION;
+  const status = runStatus(BUILTIN_RUN_ID, selection, Phase.FINISHED, RUN_SAMPLES, RUN_SAMPLES - STOP_SAMPLES, condition(0), condition(1));
   const duration = RUN_SECONDS;
   return {
     entry: finishedEntry(BUILTIN_RUN_ID, selection, BUILTIN_STARTED_AT_MS, BUILTIN_STARTED_AT_MS + duration * 1000, status, BUILTIN_RECORDING_BYTES), status,
@@ -155,7 +228,7 @@ export function createDemoClient() {
   let frames: Frame[] = [];
   let prepared: { id: string; runId: string; selection: Selection; facts: RunFacts } | null = null;
   let preparing: { timer: ReturnType<typeof setTimeout>; reject: (error: Error) => void } | null = null;
-  let active: { runId: string; requestKey: string; selection: Selection; startedAtMs: number; facts: RunFacts; sample: number; stopAt: number | null; timer: ReturnType<typeof setTimeout> } | null = null;
+  let active: { runId: string; requestKey: string; selection: Selection; startedAtMs: number; facts: RunFacts; after: Facts; sample: number; stopAt: number | null; timer: ReturnType<typeof setTimeout> } | null = null;
   let lastKey: { key: string; runId: string } | null = null;
 
   const publish = (next: Snapshot) => {
@@ -165,31 +238,36 @@ export function createDemoClient() {
   const stageStatus = (phase: number, runId = '') => wire.Status.create({ phase, runId, projectDirectory: PROJECT_DIRECTORY });
   const publishRun = (phase: number) => {
     const run = active!;
-    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt));
+    publish(runStatus(run.runId, run.selection, phase, run.sample, run.stopAt, run.facts.condition, run.after));
     const stored = runs.get(run.runId)!;
     stored.status = status;
   };
   const finish = () => {
     const run = active!;
     active = null;
-    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt));
+    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, run.facts.condition, run.after));
     const seconds = run.sample * SAMPLE_MS / 1000;
     runs.set(run.runId, {
       status, facts: { ...run.facts, outcome: outcomeFacts(status, seconds) },
       entry: finishedEntry(run.runId, run.selection, run.startedAtMs, run.startedAtMs + seconds * 1000, status),
     });
   };
+  const relay = (stream: string, sequence: number, payload: Uint8Array) => {
+    const frame = LiveFrame.create({ stream, sequence, payload });
+    frames.push(frame);
+    for (const subscriber of [...subscribers]) subscriber.frame(frame);
+  };
   const tick = () => {
     const run = active!;
     run.sample++;
-    if (streamsLive(run.selection)) {
-      const frame = doramcap.console.live.v1.Frame.create({ stream: CPU_STREAM, sequence: run.sample, payload: cpuPacket(run.sample, heavy(run.selection), run.startedAtMs) });
-      frames.push(frame);
-      for (const subscriber of [...subscribers]) subscriber.frame(frame);
+    if (relaysCpu(run.selection)) {
+      if (run.sample === 1) relay(CPU_DICTIONARY, 1, dictionaryPacket(run.startedAtMs));
+      relay(CPU_SNAPSHOTS, run.sample, cpuPacket(run.sample, run.startedAtMs));
     }
+    if (run.sample === 1 && relaysFaults(run.selection)) relay(FAULTS, 1, faultPacket());
     if (run.stopAt === null && run.sample >= RUN_SAMPLES - STOP_SAMPLES) run.stopAt = run.sample;
     if (run.stopAt !== null && run.sample >= run.stopAt + STOP_SAMPLES) return finish();
-    publishRun(run.stopAt !== null ? Phase.STOPPING : run.sample >= START_SAMPLES ? Phase.RUNNING : Phase.STARTING);
+    publishRun(run.stopAt !== null ? Phase.STOPPING : run.sample >= total(startup(records(run.selection))) ? Phase.RUNNING : Phase.STARTING);
     // Pace against the start time so a long run does not drift.
     run.timer = setTimeout(tick, Math.max(0, run.startedAtMs + (run.sample + 1) * SAMPLE_MS - Date.now()));
   };
@@ -205,7 +283,7 @@ export function createDemoClient() {
     const setup = setupFacts(selection), current = condition(++runCount);
     prepared = { id: preparedId, runId, selection, facts: { outcome: {}, setup, configuration: CONFIGURATION.current, condition: current } };
     return wire.Review.create({
-      preparedId, runId, availableProfiles: [HEAVY_PROFILE], selectedProfiles: selection.profiles, services: services(selection), systemApps: appList(selection),
+      preparedId, runId, availableProfiles: [], selectedProfiles: [], services: services(), systemApps: appList(selection),
       recordings: recordings(selection), liveStreams: liveStreams(selection),
       comparison: wire.ReviewComparison.create({ baseline: baseline.entry, rows: [
         ...diff(Group.COMPARISON_SETUP, baseline.facts.setup, setup),
@@ -216,9 +294,9 @@ export function createDemoClient() {
   };
 
   const client = {
-    prepare: (profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}, baselineRunId = '') => new Promise<Review>((resolve, reject) => {
+    prepare: (_profiles: string[], systemApps?: string[], appProfiles: Record<string, string> = {}, baselineRunId = '') => new Promise<Review>((resolve, reject) => {
       if (preparing || active) { reject(new ApiError('Conflict')); return; }
-      const selection: Selection = { profiles, apps: systemApps ?? [BRIDGE_APP, CPU_APP], appProfiles };
+      const selection: Selection = { apps: systemApps ?? DEFAULT_SELECTION.apps, appProfiles };
       publish(stageStatus(Phase.PREPARING));
       const timer = setTimeout(() => {
         preparing = null;
@@ -237,8 +315,8 @@ export function createDemoClient() {
       lastKey = { key: requestKey, runId };
       frames = [];
       const startedAtMs = Date.now();
-      runs.set(runId, { status, facts, entry: wire.HistoryEntry.create({ runId, profiles: selection.profiles, systemApps: appSelection(selection), startedAtMs, state: State.HISTORY_RUNNING }) });
-      active = { runId, requestKey, selection, startedAtMs, facts, sample: 0, stopAt: null, timer: setTimeout(tick, SAMPLE_MS) };
+      runs.set(runId, { status, facts, entry: wire.HistoryEntry.create({ runId, profiles: [], systemApps: appSelection(selection), startedAtMs, state: State.HISTORY_RUNNING }) });
+      active = { runId, requestKey, selection, startedAtMs, facts, after: condition(++runCount), sample: 0, stopAt: null, timer: setTimeout(tick, SAMPLE_MS) };
       publishRun(Phase.STARTING);
       return wire.StartResponse.create({ runId });
     },
