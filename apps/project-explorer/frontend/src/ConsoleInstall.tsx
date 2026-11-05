@@ -58,8 +58,8 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     </div>
     <ol className="console-install-steps">
       <li><h3>Install on your SoC or workstation</h3><Command text={installCommand} label="Copy Console installation command" /></li>
-      <li><h3>Start it from your Compose project, on the same machine</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
-      <li><h3>Connect from your computer</h3><Command text={TUNNEL_COMMAND} label="Copy SSH tunnel command" /><p>Keep it running, then open the link Console printed. If the link shows a different port, use that port in this command.</p></li>
+      <li><h3>Start it there, from your Compose project</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
+      <li><h3>Connect from your computer</h3><Command text={TUNNEL_COMMAND} label="Copy SSH tunnel command" /><p>Keep it running, then open Console's link. Use the link's port if it differs.</p></li>
     </ol>
   </section>;
 }

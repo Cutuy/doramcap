@@ -28,8 +28,8 @@ host paths and app inputs in [console.pbtxt.example](console.pbtxt.example) and
 [configuration](docs/configuration.md). Open the access link printed at startup; it signs the browser in automatically.
 Console binds to loopback, starting at port 43187 and retrying occupied ports.
 Use `--port PORT` for an exact server port. For a headless host, append
-`--ssh USER@THIS_HOST`, the address the browser computer uses to reach this host;
-the output includes a command to run on that computer. `--browser-port PORT` selects its local tunnel port.
+`--ssh USER@THIS_HOST`, as reached from the browser computer, to print its tunnel
+command. `--browser-port PORT` selects its local port.
 
 [HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Live bridge](bridge/README.md) · [Recovery](docs/recovery.md) ·
 [System app specification](docs/103026-system-apps-plan.md)
