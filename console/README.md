@@ -1,6 +1,6 @@
 # Console
 
-[Install and launch a release](docs/install.md). [Publish a release](docs/publishing.md). Releases ship [CPU monitoring, generic data recording and Fault Watchdog](release/console.pbtxt) as pbtxt-launched system apps.
+[Watch the 30 second walkthrough](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4). [Install and launch a release](docs/install.md). [Publish a release](docs/publishing.md). Releases ship [CPU monitoring, generic data recording and Fault Watchdog](release/console.pbtxt) as pbtxt-launched system apps.
 
 Select a Compose project and optional system apps, inspect the resolved services,
 then run the shared experiment and download its recordings. Dora coordinator and
