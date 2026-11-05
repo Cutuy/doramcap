@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react';
 import { ArrowUpRight, Copy, Cpu, Laptop, Terminal } from 'lucide-react';
-import { CONSOLE_PATH, routeHref } from './model';
+import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
-const INSTALL_GUIDE = 'console/docs/install.md';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start --ssh you@your-soc';
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
@@ -47,7 +46,6 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
       <div className="console-install-actions">
         <a className="launch-link" href={releaseUrl} target="_blank" rel="noreferrer">Download Console <ArrowUpRight size={14} aria-hidden="true" /></a>
         <a className="console-try" href={`#${CONSOLE_PATH}`}>Try Console</a>
-        <a href={routeHref('/docs', new URLSearchParams({ path: INSTALL_GUIDE }))}>Installation guide <ArrowUpRight size={14} aria-hidden="true" /></a>
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>

@@ -35,7 +35,7 @@ past runs to see what changed in the setup, the machine and the results.
 
 https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
 
-[Install Console](console/docs/install.md) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
+[Download Console](https://github.com/Cutuy/doramcap/releases/latest) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
 
 ## Explore a run
 
