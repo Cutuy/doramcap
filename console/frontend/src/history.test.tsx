@@ -5,7 +5,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createClient, routes, wire, workflow, Phase, StepState, type HistoryPage } from './api';
 import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
-import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, toggleCompared } from './model';
+import { ReviewPreview } from './Comparison';
+import { ConsoleContext } from './context';
+import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, phaseAfterFinish, runHash, toggleCompared } from './model';
+import { Result } from './Result';
+import { PageFrame } from './ui/PageFrame';
 import { RunMetrics } from './RunMetrics';
 
 const { HistoryState: State } = wire;
@@ -202,4 +206,78 @@ test('compared facts read by their unit, and exact names stay exact', () => {
   assert.equal(factValue('uptime_seconds', '172800'), '2.0 days');
   assert.equal(factValue('max_temperature_celsius', '49'), '49 °C');
   assert.equal(factValue('kernel_release', '7.0'), '7.0');
+});
+
+test('an embedded host keeps every route and link beneath its base path', () => {
+  // Arrange
+  const base = '/console', a = 'a'.repeat(32), b = 'b'.repeat(32);
+  // Act
+  const hashes = [historyHash('', base), historyHash(a, base), compareHash([a], base), compareHash([a, b], base)];
+  // Assert
+  assert.deepEqual(hashes.map(hash => historyRoute(hash, base)), [
+    { runId: '', compare: [] }, { runId: a, compare: [] }, { runId: '', compare: [a] }, { runId: '', compare: [a, b] },
+  ]);
+  assert.equal(runHash(base), '#/console');
+  assert.equal(historyRoute('#/console', base), null);
+  assert.equal(historyRoute('#/history', base), null);
+  assert.equal(historyRoute('#/consoles/history', base), null);
+});
+
+test('a client without a file for an artifact shows no download link', () => {
+  // Arrange
+  const client = { ...createClient(async () => new Response()), artifactUrl: (_run: string, id: string) => id === 'report' ? 'data:application/json,{}' : undefined };
+  // Act
+  const html = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '' }}>
+    <Result snapshot={status()} newRun={() => {}}/>
+  </ConsoleContext.Provider>);
+  // Assert
+  assert.match(html, /cpu recording unavailable/);
+  assert.doesNotMatch(html, /Download cpu recording/);
+  assert.match(html, /href="data:application\/json,\{\}" download="console-report.json"/);
+});
+
+test('embedded screens leave the page header and main landmark to the host', () => {
+  // Arrange
+  const client = createClient(async () => new Response());
+  // Act
+  const html = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}>
+    <PageFrame phase="Project">Body</PageFrame>
+  </ConsoleContext.Provider>);
+  // Assert
+  assert.doesNotMatch(html, /<main|<header/);
+  assert.match(html, /href="#\/console"[^>]*>Run/);
+  assert.match(html, /href="#\/console\/history"[^>]*>History/);
+});
+
+test('matching comparison facts collapse behind a control that expands them', () => {
+  // Arrange
+  const row = (name: string, result: number) => wire.ComparisonRow.create({ group: wire.ComparisonGroup.COMPARISON_SETUP, name, result, cells: [wire.ComparisonCell.create({ values: ['x'] }), wire.ComparisonCell.create({ values: ['y'] })] });
+  const comparison = wire.ReviewComparison.create({ baseline: entry(), rows: [row('profiles', wire.ComparisonResult.COMPARISON_CHANGED), row('source_state', wire.ComparisonResult.COMPARISON_SAME)] });
+  // Act
+  const html = renderToStaticMarkup(<ReviewPreview comparison={comparison}/>);
+  // Assert
+  assert.match(html, /<button[^>]*class="comparison-matching"[^>]*aria-expanded="false"/);
+  assert.match(html, /1 matching/);
+  assert.match(html, /Profiles/);
+  assert.doesNotMatch(html, /Source state/);
+});
+
+test('the view tabs and run phases share one navigation row', () => {
+  // Arrange
+  const client = createClient(async () => new Response());
+  // Act
+  const embedded = renderToStaticMarkup(<ConsoleContext.Provider value={{ client, basePath: '/console' }}><PageFrame phase="Run">Body</PageFrame></ConsoleContext.Provider>);
+  const standalone = renderToStaticMarkup(<PageFrame phase="Run">Body</PageFrame>);
+  // Assert
+  assert.match(embedded, /class="console-nav"><nav[^>]*Console views.*<nav[^>]*Run phases/);
+  assert.match(standalone, /<header[^>]*>.*Console views.*Run phases.*<\/header><main/);
+  assert.doesNotMatch(embedded + standalone, /<small>/);
+});
+
+test('a finished run stays on screen while watched and opens at its result otherwise', () => {
+  // Act / Assert
+  assert.equal(phaseAfterFinish('Run'), 'Run');
+  assert.equal(phaseAfterFinish('Project'), 'Result');
+  assert.equal(phaseAfterFinish('Review'), 'Result');
+  assert.equal(phaseAfterFinish('Result'), 'Result');
 });

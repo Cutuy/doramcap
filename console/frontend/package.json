@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./ui": "./src/entry-ui.ts"
+  },
   "scripts": {
     "build": "npm run generate && tsc --noEmit && vite build",
     "test": "npm run generate && tsx --test src/*.test.*",

@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { pipeline } from 'node:stream';
+import { artifactFilename } from './generated/transport.js';
 import type { ConsoleBackend } from './native.js';
 
 /** Stream an already-authorized descriptor; pipeline closes it on disconnect. */
@@ -11,7 +12,7 @@ export async function streamArtifact(native: ConsoleBackend, response: ServerRes
   try {
     response.writeHead(200, {
       'content-type': kind === 'report' ? 'application/json' : 'application/octet-stream',
-      'content-disposition': `attachment; filename="${kind === 'report' ? 'console-report.json' : `${kind}.mcap`}"`,
+      'content-disposition': `attachment; filename="${artifactFilename(kind)}"`,
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
     });

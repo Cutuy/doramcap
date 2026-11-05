@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ApiError, api, wire, type HistoryDetail, type HistoryEntry, type HistoryPage } from './api';
-import { compareHash, historyHash, toggleCompared, durationLabel, entryRecordingBytes, latestRequest, stateLabel, stateTone, timeLabel } from './model';
+import { ApiError, wire, type HistoryDetail, type HistoryEntry, type HistoryPage } from './api';
+import { compareHash, historyHash, runHash, toggleCompared, durationLabel, entryRecordingBytes, latestRequest, stateLabel, stateTone, timeLabel } from './model';
 import { ComparisonPanel } from './Comparison';
+import { useConsole } from './context';
 import { Result } from './Result';
 import { RunActivity } from './RunActivity';
 import { RunMetrics, bytesLabel } from './RunMetrics';
@@ -13,11 +14,12 @@ const filters = [State.HISTORY_COMPLETED, State.HISTORY_FAILED, State.HISTORY_CA
 const failure = (error: unknown) => error instanceof ApiError && error.code === 'Missing' ? 'This run is not in the history.' : error instanceof ApiError && error.code === 'Unauthorized' ? 'Session ended. Open the access link printed by the running Console.' : 'History could not be loaded. Try again.';
 
 function Row({ entry, selected }: { entry: HistoryEntry; selected: string[] }) {
+  const { basePath } = useConsole();
   const position = selected.indexOf(entry.runId);
   return <tr className={position >= 0 ? 'history-selected' : undefined}>
-    <td className="history-select"><label><input type="checkbox" aria-label={`Compare run ${entry.runId.slice(0, 8)}`} checked={position >= 0} disabled={position < 0 && selected.length >= 2} onChange={() => { location.hash = compareHash(toggleCompared(selected, entry.runId)); }}/>{position >= 0 && <strong>{position ? 'B' : 'A'}</strong>}</label></td>
+    <td className="history-select"><label><input type="checkbox" aria-label={`Compare run ${entry.runId.slice(0, 8)}`} checked={position >= 0} disabled={position < 0 && selected.length >= 2} onChange={() => { location.hash = compareHash(toggleCompared(selected, entry.runId), basePath); }}/>{position >= 0 && <strong>{position ? 'B' : 'A'}</strong>}</label></td>
     <td><StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/></td>
-    <td><a className="mono break" href={historyHash(entry.runId)}>{entry.runId.slice(0, 8)}</a>{entry.profiles.length > 0 && <div className="muted">{entry.profiles.join(', ')}</div>}{entry.errorSummary && <div className="history-error" title={entry.errorSummary}>{entry.errorSummary}</div>}</td>
+    <td><a className="mono break" href={historyHash(entry.runId, basePath)}>{entry.runId.slice(0, 8)}</a>{entry.profiles.length > 0 && <div className="muted">{entry.profiles.join(', ')}</div>}{entry.errorSummary && <div className="history-error" title={entry.errorSummary}>{entry.errorSummary}</div>}</td>
     <td className="hide-narrow">{timeLabel(entry.startedAtMs)}</td>
     <td>{durationLabel(entry)}</td>
     <td className="hide-narrow">{bytesLabel(entryRecordingBytes(entry))}</td>
@@ -29,13 +31,14 @@ export function HistoryTable({ page, loading, error, state, setState, more, sele
   page: HistoryPage | null; loading: boolean; error: string; state: number;
   setState: (state: number) => void; more: () => void; selected?: string[]; comparison?: ReactNode;
 }) {
+  const { basePath } = useConsole();
   const filtered = state !== 0;
   return <>
     <div className="heading"><div><h1>Experiment history</h1></div></div>
     {error && <p className="notice failure-notice" role="alert">{error}</p>}
     {comparison}
     <section className="panel">
-      {selected.length === 1 && <p className="notice" role="status">Select one more run to compare with <span className="mono">{selected[0].slice(0, 8)}</span>. <a href={historyHash()}>Clear</a></p>}
+      {selected.length === 1 && <p className="notice" role="status">Select one more run to compare with <span className="mono">{selected[0].slice(0, 8)}</span>. <a href={historyHash('', basePath)}>Clear</a></p>}
       {selected.length === 0 && page && page.entries.length > 1 && <p className="muted">Select two runs to compare them.</p>}
       <div className="history-filters">
         <div><label htmlFor="history-state">Status</label><select id="history-state" value={state} onChange={event => setState(Number(event.target.value))}><option value={0}>All</option>{filters.map(item => <option key={item} value={item}>{stateLabel(item)}</option>)}</select></div>
@@ -49,6 +52,7 @@ export function HistoryTable({ page, loading, error, state, setState, more, sele
 }
 
 export function HistoryList({ refresh, selected = [] }: { refresh: string; selected?: string[] }) {
+  const { client, basePath } = useConsole();
   const [state, setState] = useState(0);
   const [page, setPage] = useState<HistoryPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +62,7 @@ export function HistoryList({ refresh, selected = [] }: { refresh: string; selec
     const current = requests.begin();
     setLoading(true);
     try {
-      const next = await api.history({ state, cursor });
+      const next = await client.history({ state, cursor });
       if (!current()) return;
       setError('');
       setPage(previous => cursor && previous ? wire.HistoryPage.create({ ...next, entries: [...previous.entries, ...next.entries] }) : next);
@@ -66,15 +70,16 @@ export function HistoryList({ refresh, selected = [] }: { refresh: string; selec
     finally { if (current()) setLoading(false); }
   };
   useEffect(() => { void load(''); return requests.cancel; }, [state, refresh]);
-  return <HistoryTable page={page} loading={loading} error={error} state={state} setState={setState} more={() => void load(page!.nextCursor)} selected={selected} comparison={selected.length === 2 ? <ComparisonPanel a={selected[0]} b={selected[1]} refresh={refresh} clear={historyHash()}/> : undefined}/>;
+  return <HistoryTable page={page} loading={loading} error={error} state={state} setState={setState} more={() => void load(page!.nextCursor)} selected={selected} comparison={selected.length === 2 ? <ComparisonPanel a={selected[0]} b={selected[1]} refresh={refresh} clear={historyHash('', basePath)}/> : undefined}/>;
 }
 
 /** One stored run: the live Result, timeline and metrics components over its saved status. */
 export function HistoryRun({ detail, runAgain, runActive }: { detail: HistoryDetail; runAgain: () => void; runActive: boolean }) {
+  const { basePath } = useConsole();
   const entry = detail.entry!, status = detail.status!;
   return <>
-    <p><a className="history-back" href={historyHash()}>Back to history</a></p>
-    {entry.state === State.HISTORY_RUNNING && <p className="notice" role="status">This run is in progress. <a href="#/">View live run</a></p>}
+    <p><a className="history-back" href={historyHash('', basePath)}>Back to history</a></p>
+    {entry.state === State.HISTORY_RUNNING && <p className="notice" role="status">This run is in progress. <a href={runHash(basePath)}>View live run</a></p>}
     <Result snapshot={status} newRun={runAgain} past={{
       title: entry.state === State.HISTORY_BLOCKED ? 'Cleanup unverified' : `Run ${stateLabel(entry.state).toLowerCase()}`, action: 'Run again', disabled: runActive, artifacts: entry.artifacts, error: entry.errorSummary,
       aside: <section className="panel"><div className="panel-heading"><h2>Run details</h2><StatusLabel label={stateLabel(entry.state)} tone={stateTone(entry.state)}/></div><dl className="detail-grid"><dt>Profiles</dt><dd>{entry.profiles.join(', ') || 'Default'}</dd><dt>System apps</dt><dd>{entry.systemApps?.ids?.join(', ') || 'None'}</dd><dt>Started</dt><dd>{timeLabel(entry.startedAtMs)}</dd><dt>Finished</dt><dd>{entry.finishedAtMs == null ? 'Unknown' : timeLabel(entry.finishedAtMs)}</dd><dt>Duration</dt><dd>{durationLabel(entry)}</dd></dl></section>,
@@ -85,14 +90,15 @@ export function HistoryRun({ detail, runAgain, runActive }: { detail: HistoryDet
 }
 
 export function HistoryRunPage({ id, refresh, runAgain, runActive }: { id: string; refresh: string; runAgain: (entry: HistoryEntry) => void; runActive: boolean }) {
+  const { client, basePath } = useConsole();
   const [detail, setDetail] = useState<HistoryDetail | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    api.historyRun(id).then(next => { if (live) { setDetail(next); setError(''); } }, failed => { if (live) setError(failure(failed)); });
+    client.historyRun(id).then(next => { if (live) { setDetail(next); setError(''); } }, failed => { if (live) setError(failure(failed)); });
     return () => { live = false; };
   }, [id, refresh]);
-  if (error) return <><p><a className="history-back" href={historyHash()}>Back to history</a></p><p className="notice failure-notice" role="alert">{error}</p></>;
+  if (error) return <><p><a className="history-back" href={historyHash('', basePath)}>Back to history</a></p><p className="notice failure-notice" role="alert">{error}</p></>;
   if (detail?.entry?.runId !== id) return <p className="muted" role="status">Loading run…</p>;
   return <HistoryRun detail={detail} runActive={runActive} runAgain={() => runAgain(detail.entry!)}/>;
 }

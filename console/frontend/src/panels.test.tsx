@@ -54,7 +54,7 @@ test('completed result exposes run activity even when admission is blocked', () 
   // Assert
   assert.match(html, /View run activity/);
   assert.match(html, />New run<\/button>/);
-  assert.match(rail, /<button[^>]*><small>03<\/small>Run<\/button>/);
+  assert.match(rail, /<button[^>]*>Run<\/button>/);
 });
 test('historical run freezes elapsed time and unavailable metrics remain distinct from zero', () => {
   // Arrange

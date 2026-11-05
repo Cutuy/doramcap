@@ -1,3 +1,4 @@
+import { LIMITS } from './generated/transport';
 import { pastRunLabel } from './model';
 import { useEffect, useRef, useState } from 'react';
 import type { Snapshot } from './api';
@@ -9,7 +10,7 @@ import { stepTimes } from './workflow';
 export function RunActivity({ snapshot, stopping, disconnected, historical = false }: { snapshot: Snapshot | null; stopping: boolean; disconnected: boolean; historical?: boolean }) {
   const [clock, setClock] = useState(() => Date.now());
   const anchor = useRef({ runId: '', sequence: '', elapsed: 0, wall: Date.now() });
-  useEffect(() => { if (historical) return; const timer = setInterval(() => setClock(Date.now()), 250); return () => clearInterval(timer); }, [historical]);
+  useEffect(() => { if (historical) return; const timer = setInterval(() => setClock(Date.now()), LIMITS.liveIntervalMs); return () => clearInterval(timer); }, [historical]);
   const steps = snapshot?.steps ?? [];
   const runId = snapshot?.runId ?? '';
   const sequence = String(snapshot?.sequence ?? '');

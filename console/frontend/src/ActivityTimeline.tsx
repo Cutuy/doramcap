@@ -2,7 +2,7 @@ import { StepState } from './api';
 import { useId, useMemo, useState } from 'react';
 import type { Step } from './api';
 import { elapsedDuration, shortStep, stepTimes, stepKey } from './workflow';
-import { flowPath, invocationKey as identity, timelineModel } from './timeline';
+import { flowPath, invocationKey as identity, timelineModel, latestFinished } from './timeline';
 
 const left = 250, width = 720, svgWidth = 990, top = 34, rowHeight = 46;
 const colors: Partial<Record<Step['state'], string>> = { [StepState.STARTED]: '#177763', [StepState.SUCCEEDED]: '#4a8bb7', [StepState.FAILED]: '#b13c3c', [StepState.PANICKED]: '#b13c3c', [StepState.CANCELLED]: '#a26a1a' };
@@ -15,8 +15,12 @@ export function EventDetails({ step, now, inspectRelated }: { step: Step; now: n
 export function ActivityTimeline({ steps, now, live = true }: { steps: Step[]; now: number; live?: boolean }) {
   const [windowSeconds, setWindowSeconds] = useState(15);
   const [paused, setPaused] = useState<{ now: number; steps: Step[] } | null>(null);
-  const [selected, setSelected] = useState<Step | null>(null);
+  const [chosen, setSelected] = useState<Step | null>(null);
+  const [touched, setTouched] = useState(false);
   const shown = paused?.steps ?? steps;
+  // Follow the latest finished step until the first interaction with this panel.
+  const selected = touched ? chosen : latestFinished(shown);
+  const holdSelection = () => { if (!touched) { setTouched(true); setSelected(selected); } };
   const shownNow = paused?.now ?? now;
   const { rows, rowByName, rowLabels, flows } = useMemo(() => timelineModel(shown), [shown]);
   const plotBottom = top + Math.max(1, rows.length) * rowHeight;
@@ -38,7 +42,7 @@ export function ActivityTimeline({ steps, now, live = true }: { steps: Step[]; n
     if (end < start || times.start > right) return [];
     return [{ step, start: Math.max(start, times.start), end: Math.min(right, end) }];
   });
-  return <section className="panel activity-panel" aria-labelledby="activity-title">
+  return <section className="panel activity-panel" aria-labelledby="activity-title" onClickCapture={holdSelection} onChangeCapture={holdSelection}>
     <div className="panel-heading activity-heading"><div><h2 id="activity-title">Activity timeline</h2></div><div className="timeline-controls"><label htmlFor="timeline-window">Window</label><select id="timeline-window" value={windowSeconds} onChange={event => setWindowSeconds(Number(event.target.value))}><option value={5}>5 s</option><option value={15}>15 s</option><option value={30}>30 s</option><option value={60}>60 s</option></select><button className="button secondary timeline-toggle" onClick={() => setPaused(paused ? null : { now, steps: [...steps] })}>{paused ? (live ? 'Follow live' : 'Latest events') : (live ? 'Pause' : 'Browse events')}</button></div></div>
     <div className="activity-scroll"><svg className="activity-timeline" viewBox={`0 0 ${svgWidth} ${svgHeight}`} onClick={event => {
       const box = event.currentTarget.getBoundingClientRect();

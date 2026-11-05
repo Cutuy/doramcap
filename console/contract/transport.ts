@@ -57,6 +57,8 @@ export const runId = /^[a-f0-9]{32}$/;
 export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
+/** The name a downloaded artifact is saved under. */
+export const artifactFilename = (kind: string) => kind === 'report' ? 'console-report.json' : `${kind}.mcap`;
 export const artifactRoute = /^\/api\/artifacts\/([a-f0-9]{32})\/([A-Za-z0-9-]+)$/;
 
 /** Prefix one bounded protobuf payload with its four-byte little-endian length. */
