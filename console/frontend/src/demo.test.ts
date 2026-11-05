@@ -1,11 +1,10 @@
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, mock, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { McapStreamReader } from '@mcap/core';
 import protobuf from 'protobufjs';
 import 'protobufjs/ext/descriptor/index.js';
 import { ApiError, Phase, StepState, wire, type Snapshot } from './api';
+import { generateRecording } from '../scripts/generate-demo-recording';
 import { BUILTIN_RECORDING_BYTES, BUILTIN_RUN_ID, BUILTIN_STARTED_AT_MS, createDemoClient } from './demo/client';
 import { RUN_SAMPLES, SAMPLE_MS } from './demo/telemetry';
 import { PREPARING_RUN } from './generated/transport';
@@ -61,9 +60,9 @@ test('the demo starts idle with one completed built-in run', async () => {
   assert.equal(Number(detail.status!.metrics.at(-1)!.recordingBytes), BUILTIN_RECORDING_BYTES);
 });
 
-test('the bundled recording is a valid capture matching the built-in run', () => {
+test('the generated recording is a valid capture matching the built-in run', async () => {
   // Arrange
-  const file = readFileSync(fileURLToPath(new URL('./demo/builtin-cpu.mcap', import.meta.url)));
+  const file = await generateRecording();
   const reader = new McapStreamReader({ includeChunks: true, validateCrcs: true });
   let root: protobuf.Root | undefined, name = '';
   const messages: { channelId: number; logTime: bigint; data: Uint8Array }[] = [];
@@ -242,7 +241,7 @@ test('only the built-in run offers a recording; every finished run offers a matc
   const report = JSON.parse(decodeURIComponent(reportUrl.split(',').slice(1).join(',')));
   const { entry } = await client.historyRun(runId);
   // Assert
-  assert.match(recordingUrl, /builtin-cpu\.mcap$/);
+  assert.match(recordingUrl, /^https:\/\/github\.com\/Cutuy\/doramcap\/releases\/download\/[^/]+\/cpu\.mcap$/);
   assert.equal(client.artifactUrl(runId, 'cpu'), undefined);
   assert.equal(client.artifactUrl('f'.repeat(32), 'report'), undefined);
   assert.deepEqual(entry!.artifacts.map(artifact => artifact.id), ['report']);
