@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, api, wire, type HistoryComparison, type HistoryEntry, type ReviewComparison } from './api';
-import { durationLabel, historyHash, stateLabel, stateTone, timeLabel } from './model';
+import { durationLabel, factLabel, factValue, historyHash, stateLabel, stateTone, timeLabel } from './model';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
 
@@ -13,19 +13,22 @@ const GROUPS = [
   { group: Group.COMPARISON_CONDITION, title: 'Machine condition' },
 ];
 const failure = (error: unknown) => error instanceof ApiError && error.code === 'Missing' ? 'One of these runs is not in the history.' : error instanceof ApiError && error.code === 'Unauthorized' ? 'Session ended. Open the access link printed by the running Console.' : 'The comparison could not be loaded. Try again.';
-/** One side's value; runs that agree read as one value. */
 const value = (row: Row, side: number) => {
-  const text = [...new Set(row.cells[side]?.values ?? [])].join(', ');
+  const text = [...new Set(row.cells[side]?.values ?? [])].map(item => factValue(row.name, item)).join(', ');
   return row.hidden ? 'Hidden' : text || (row.result === Result.COMPARISON_UNAVAILABLE ? 'Unavailable' : 'Not set');
 };
 const resultLabel = (row: Row) => row.result === Result.COMPARISON_SAME ? 'Same' : row.result === Result.COMPARISON_CHANGED ? 'Changed' : 'Unavailable';
 
-function Rows({ rows, warn, sides }: { rows: Row[]; warn: boolean; sides: string[] }) {
+function Rows({ rows, warn, sides, verdict = true }: { rows: Row[]; warn: boolean; sides: string[]; verdict?: boolean }) {
   return <div className="comparison-rows">{rows.map(row => <div className={`comparison-row${warn && row.result === Result.COMPARISON_CHANGED ? ' comparison-warning' : ''}`} key={row.name}>
-    <code className="break">{row.name}</code>
+    <code className="break">{factLabel(row.name)}</code>
     {sides.map((label, side) => <span className="comparison-value" key={label}><span className="comparison-side">{label}</span>{value(row, side)}</span>)}
-    <span className="comparison-result">{resultLabel(row)}</span>
+    {verdict && <span className="comparison-result">{resultLabel(row)}</span>}
   </div>)}</div>;
+}
+/** Machine condition is expected to vary, so it reads as plain values with no count or verdict. */
+function ConditionSection({ title, rows, sides }: { title: string; rows: Row[]; sides: string[] }) {
+  return <section className="comparison-group"><h3>{title}</h3>{rows.length ? <Rows rows={rows} warn={false} sides={sides} verdict={false}/> : <p className="muted">Nothing recorded.</p>}</section>;
 }
 function GroupSection({ group, title, rows, warn, showMatching, sides }: { group: number; title: string; rows: Row[]; warn: boolean; showMatching: boolean; sides: string[] }) {
   const changed = rows.filter(row => row.result !== Result.COMPARISON_SAME), same = rows.filter(row => row.result === Result.COMPARISON_SAME);
@@ -49,13 +52,13 @@ function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; 
     <div className="panel-heading"><h2>Compare runs</h2><div className="comparison-actions"><ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton><a className="history-back" href={clear}>Clear selection</a></div></div>
     <div className="comparison-runs">{comparison.sides.flatMap(side => side.runs.map(run => <RunHeader key={run.entry!.runId} label={side.label} entry={run.entry!}/>))}</div>
     {missing.length > 0 && <p className="notice">No machine capture for run {missing.join(' or ')}.</p>}
-    {GROUPS.map(({ group, title }) => <GroupSection key={group} group={group} title={title} rows={comparison.rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
+    {GROUPS.map(({ group, title }) => group === Group.COMPARISON_CONDITION ? <ConditionSection key={group} title={title} rows={comparison.rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={comparison.rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
     {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
   </section>;
 }
 /** Values only, for facts with nothing to compare against. */
 function CurrentFacts({ title, rows }: { title: string; rows: Row[] }) {
-  return <section className="comparison-group"><h3>{title}</h3><dl className="detail-grid">{rows.map(row => <div className="comparison-fact" key={row.name}><dt className="break">{row.name}</dt><dd>{value(row, 1)}</dd></div>)}</dl></section>;
+  return <section className="comparison-group"><h3>{title}</h3><dl className="detail-grid">{rows.map(row => <div className="comparison-fact" key={row.name}><dt className="break">{factLabel(row.name)}</dt><dd>{value(row, 1)}</dd></div>)}</dl></section>;
 }
 /** What this review would run on, compared with an earlier run; differences warn and never block. */
 export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) {

@@ -2,8 +2,17 @@ import { wire } from './api';
 import { Phase } from './api';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { acceptsSnapshot, canStopRun, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
+import { acceptsSnapshot, canStopRun, factLabel, factValue, latestRequest, outcomeLabels, pastRunLabel, requestKey, runAgainBlocked, toggleProfile } from './model';
 import type { Snapshot } from './api';
+
+test('comparison values retain small byte sizes and microsecond units', () => {
+  // Arrange / Act / Assert
+  assert.equal(factValue('recording_bytes', '32'), '32 B');
+  assert.equal(factValue('recording_bytes', '32768'), '32.0 KiB');
+  assert.equal(factValue('recording_bytes', '1048576'), '1.0 MiB');
+  assert.equal(factLabel('rt_runtime_us'), 'RT runtime');
+  assert.equal(factValue('rt_runtime_us', '950000'), '950000 µs');
+});
 
 test('profile changes and lost Start responses retain explicit intent', () => {
   // Arrange
