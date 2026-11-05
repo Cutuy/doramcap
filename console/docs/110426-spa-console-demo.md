@@ -35,7 +35,7 @@ Agreed with the project owner on 2026-11-04.
 | History | One built-in successful run; any two runs compare; Run again works from any completed run. |
 | Comparison | A small diff inside the demo turns per-run named facts into real comparison rows. The server is unchanged. |
 | Artifacts | The built-in run offers its matching report and an MCAP file published as a GitHub release asset, kept out of the repository. Visitor runs offer a matching JSON report and report no recording file or size. |
-| Theme | Console stays light inside the SPA for now. |
+| Theme | Superseded: see [the native demo plan](110526-native-console-demo.md). |
 | Limits | Runs last 7 s at 10 Hz unless stopped. Visitor runs have no count limit; refresh clears them. |
 
 The package uses the existing React, TypeScript, Vite and protobuf dependencies.

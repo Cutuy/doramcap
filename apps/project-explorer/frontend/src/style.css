@@ -192,7 +192,7 @@ main.shell{padding-top:28px}
 @media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-command-row{align-items:flex-start;gap:10px}.console-command-row button{min-height:44px}}
 .console-demo-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .console-demo-heading button{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:6px 12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
-.console-demo .console-root{border:1px solid var(--line);border-radius:6px}
+.console-demo .console-root{--console-bg:var(--bg);--console-panel:var(--panel);--console-ink:var(--ink);--console-muted:var(--muted);--console-line:var(--line);--console-soft:var(--soft);--console-accent:var(--accent);border:1px solid var(--line);border-radius:6px}
 .console-upcoming{margin-top:50px}
 .console-upcoming h2{font-size:34px;letter-spacing:-1px;line-height:1.2;margin-bottom:14px}
 .upcoming-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
