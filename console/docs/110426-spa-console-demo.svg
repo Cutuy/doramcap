@@ -23,10 +23,10 @@
 
   <rect class="box" x="60" y="230" width="420" height="90" rx="8"/>
   <text class="label" x="270" y="265">Standalone Console</text>
-  <text class="sub" x="270" y="293">Authentication · host navigation</text>
+  <text class="sub" x="270" y="293">Authentication · empty base path</text>
   <rect class="box" x="560" y="230" width="420" height="90" rx="8"/>
   <text class="label" x="770" y="265">SPA Console section</text>
-  <text class="sub" x="770" y="293">Demo lifetime · host navigation</text>
+  <text class="sub" x="770" y="293">Page-lifetime demo · base path</text>
 
   <path class="edge" d="M270,320 V425"/>
   <path class="edge" d="M770,320 V425"/>
