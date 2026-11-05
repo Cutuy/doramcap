@@ -15,7 +15,7 @@ const side = (id: string, capture: object = {}, manifest: object | null = null, 
 });
 const machine = (governor: string, load = 1) => ({ configuration: { kernelRelease: '7.0', governor: [{ value: governor, cpus: '0-3' }] }, condition: { load_1m: load } });
 const cell = (item: { cells?: { values?: string[] | null }[] | null } | undefined, side: number) => item?.cells?.[side]?.values?.[0];
-const row = (comparison: ReturnType<typeof compareRuns>, name: string) => comparison.rows.find(item => item.name === name);
+const row = (comparison: Pick<ReturnType<typeof compareRuns>, 'rows'>, name: string) => comparison.rows.find(item => item.name === name);
 
 test('a fact set in one run is a change, a side with no facts is unavailable, and a fact neither run set has no row', () => {
   // Arrange
@@ -39,7 +39,7 @@ test('zero and false machine values equal an unset one, and differ from a set on
   const state = (fields: object) => ({ configuration: { kernelRelease: '7.0', ...fields } });
   // Act
   const comparison = compareRuns(
-    side('a'.repeat(32), { before: state({ turboEnabled: false, swappiness: 0 }) }),
+    side('a'.repeat(32), { before: state({ turboEnabled: false, swappiness: 0, memoryTotalBytes: 0 }) }),
     side('b'.repeat(32), { before: state({ turboEnabled: true }) }),
   );
   // Assert
@@ -47,6 +47,7 @@ test('zero and false machine values equal an unset one, and differ from a set on
   assert.equal(cell(row(comparison, 'turbo_enabled'), 0), '');
   assert.equal(cell(row(comparison, 'turbo_enabled'), 1), 'true');
   assert.equal(row(comparison, 'swappiness'), undefined);
+  assert.equal(row(comparison, 'memory_total_bytes'), undefined);
 });
 
 test('two captured runs compare by group, and a setting changed during a run differs in its group', () => {
@@ -88,13 +89,42 @@ test('sensitive values, Compose secrets and frozen files never reach a compariso
   for (const leak of ['token-1', 'pw1', 'cccccccc']) assert.ok(!wireText.includes(leak), leak);
 });
 
-test('boot flags hide sensitive parameters and keep the rest', () => {
+test('boot flags compare original values between runs and at review while hiding sensitive parameters', () => {
   // Arrange
-  const state = (flags: string) => ({ configuration: { bootFlags: flags } });
+  const state = (password: string) => ({ configuration: { bootFlags: `quiet isolcpus=2 password=${password}` } });
+  const baseline = side('a'.repeat(32), { before: state('first-secret') });
+  const changed = side('b'.repeat(32), { before: state('second-secret') });
   // Act
-  const comparison = compareRuns(side('a'.repeat(32), { before: state('quiet isolcpus=2 password=one') }), side('b'.repeat(32), { before: state('quiet isolcpus=2 password=two') }));
+  const comparisons = [
+    compareRuns(baseline, changed),
+    compareReview(baseline, { ...changed, profiles: [] }),
+  ];
+  const same = compareRuns(baseline, baseline);
   // Assert
-  assert.equal(cell(row(comparison, 'boot_flags'), 0), 'quiet isolcpus=2 password=(hidden)');
+  assert.equal(row(same, 'boot_flags')?.result, Result.COMPARISON_SAME);
+  for (const comparison of comparisons) {
+    const flags = row(comparison, 'boot_flags');
+    assert.equal(flags?.result, Result.COMPARISON_CHANGED);
+    for (const index of [0, 1]) assert.equal(cell(flags, index), 'quiet isolcpus=2 password=(hidden)');
+    const encoded = Buffer.from(('sides' in comparison ? wire.HistoryComparison.encode(comparison) : wire.ReviewComparison.encode(comparison)).finish()).toString('latin1');
+    for (const secret of ['first-secret', 'second-secret']) assert.ok(!encoded.includes(secret));
+  }
+});
+
+test('a sensitive boot flag change during a run remains visible as a masked transition', () => {
+  // Arrange
+  const state = (password: string) => ({ configuration: { bootFlags: `quiet password=${password}` } });
+  const baseline = side('a'.repeat(32), { before: state('first-secret'), after: state('first-secret') });
+  const changed = side('b'.repeat(32), { before: state('first-secret'), after: state('second-secret') });
+  // Act
+  const comparison = compareRuns(baseline, changed);
+  // Assert
+  const flags = row(comparison, 'boot_flags');
+  assert.equal(flags?.result, Result.COMPARISON_CHANGED);
+  assert.equal(cell(flags, 0), 'quiet password=(hidden)');
+  assert.equal(cell(flags, 1), 'quiet password=(hidden) → quiet password=(hidden)');
+  const encoded = Buffer.from(wire.HistoryComparison.encode(comparison).finish()).toString('latin1');
+  for (const secret of ['first-secret', 'second-secret']) assert.ok(!encoded.includes(secret));
 });
 
 test('a run in progress does not read as interrupted', () => {
@@ -146,4 +176,33 @@ test('a first review shows the current machine with no baseline', () => {
   assert.equal(comparison.baseline, null);
   assert.ok(comparison.rows.every(row => row.group !== Group.COMPARISON_SETUP));
   assert.equal(comparison.rows.find(row => row.name === 'governor')?.cells?.[1]?.values?.[0], 'powersave: 0-3');
+});
+
+test('CPU zero remains a string fact for online, isolated and nohz CPUs', () => {
+  // Arrange
+  const zero = { before: { configuration: { kernelRelease: '7.0', onlineCpus: '0', isolatedCpus: '0', nohzFullCpus: '0' } } };
+  const empty = { before: { configuration: { kernelRelease: '7.0' } } };
+  // Act
+  const comparison = compareRuns(side('a'.repeat(32), zero), side('b'.repeat(32), empty));
+  // Assert
+  for (const name of ['online_cpus', 'isolated_cpus', 'nohz_full_cpus']) {
+    assert.equal(cell(row(comparison, name), 0), '0');
+    assert.equal(row(comparison, name)?.result, Result.COMPARISON_CHANGED);
+  }
+});
+
+test('unknown source state compares distinctly from verified clean and dirty states', () => {
+  // Arrange
+  const { SourceState } = execution;
+  const captured = (sourceState: number) => side('a'.repeat(32), { setup: { sourceCommit: 'abc', sourceState } });
+  const unknown = captured(SourceState.SOURCE_STATE_UNKNOWN);
+  // Act
+  const clean = compareRuns(unknown, captured(SourceState.SOURCE_STATE_CLEAN));
+  const dirty = compareRuns(unknown, captured(SourceState.SOURCE_STATE_DIRTY));
+  // Assert
+  assert.equal(cell(row(clean, 'source_state'), 0), 'Unknown');
+  assert.equal(cell(row(clean, 'source_state'), 1), 'Clean');
+  assert.equal(cell(row(dirty, 'source_state'), 1), 'Dirty');
+  assert.equal(row(clean, 'source_state')?.result, Result.COMPARISON_CHANGED);
+  assert.equal(row(dirty, 'source_state')?.result, Result.COMPARISON_CHANGED);
 });

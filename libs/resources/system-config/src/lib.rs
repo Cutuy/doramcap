@@ -121,6 +121,7 @@ fn configuration(root: &Path) -> MachineConfiguration {
     let setting = |path: &str| text(root, path).unwrap_or_default();
     MachineConfiguration {
         machine_fingerprint: text(root, "etc/machine-id")
+            .filter(|id| !id.is_empty())
             .map(|id| hex::encode(Sha256::digest(id.as_bytes())))
             .unwrap_or_default(),
         architecture: std::env::consts::ARCH.to_owned(),
@@ -256,6 +257,20 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn missing_and_blank_machine_ids_have_no_fingerprint() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        // Act / Assert
+        assert!(configuration(root.path()).machine_fingerprint.is_empty());
+        for id in ["", " \n\t"] {
+            // Act
+            write(root.path(), "etc/machine-id", id);
+            // Assert
+            assert!(configuration(root.path()).machine_fingerprint.is_empty());
+        }
     }
 
     #[test]

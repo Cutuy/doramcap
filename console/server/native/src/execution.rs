@@ -195,6 +195,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         }
     });
     let (machine_tx, mut machine_rx) = watch::channel(MachineCapture::default());
+    let final_capture = machine_rx.clone();
     let machine = updates.clone();
     tokio::task::spawn_local(async move {
         while machine_rx.changed().await.is_ok() {
@@ -290,7 +291,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         };
         let rejection = result.error.clone().unwrap_or_else(|| "Internal".into());
         // Publish terminal facts before waking a rejected Start caller.
-        updates.lock().unwrap().result = Some(result);
+        publish_result(&updates, &final_capture, result);
         if let Some(reply) = admission.borrow_mut().take() {
             let _ = reply.send(Err(rejection));
         }
@@ -299,9 +300,56 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
     reply
 }
 
+/// Publish terminal state and the latest capture together before polling can finish.
+fn publish_result(
+    updates: &Mutex<ExecutionUpdate>,
+    machine: &watch::Receiver<MachineCapture>,
+    result: ExecutionResult,
+) {
+    let capture = machine.borrow().clone();
+    let mut update = updates.lock().unwrap();
+    update.machine_before = capture.before;
+    update.machine_after = capture.after;
+    update.result = Some(result);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failed_result_keeps_capture_before_the_listener_runs() {
+        // Arrange
+        let (sender, receiver) = watch::channel(MachineCapture::default());
+        let updates = Mutex::new(ExecutionUpdate::default());
+        sender
+            .send(MachineCapture {
+                before: Some(system_config::MachineState {
+                    captured_unix_ms: 1,
+                    ..Default::default()
+                }),
+                after: Some(system_config::MachineState {
+                    captured_unix_ms: 2,
+                    ..Default::default()
+                }),
+            })
+            .unwrap();
+        // Act
+        publish_result(
+            &updates,
+            &receiver,
+            ExecutionResult {
+                error: Some("failed".into()),
+                ..Default::default()
+            },
+        );
+        let update =
+            ExecutionUpdate::decode(updates.lock().unwrap().encode_to_vec().as_slice()).unwrap();
+        // Assert
+        assert_eq!(update.result.unwrap().error.as_deref(), Some("failed"));
+        assert_eq!(update.machine_before.unwrap().captured_unix_ms, 1);
+        assert_eq!(update.machine_after.unwrap().captured_unix_ms, 2);
+    }
 
     #[test]
     fn a_long_error_keeps_its_end_within_the_event_limit() {

@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { sourceState } from '../src/source.js';
+import { doramcap } from '../src/generated/console.js';
+
+const { SourceState } = doramcap.console.execution.v1;
 
 const temporary = () => mkdtemp(join(tmpdir(), 'console-source-'));
 
@@ -24,8 +27,19 @@ test('a project reports its commit and local changes, and a non-Git one reports 
   await writeFile(join(project, '.git/index'), 'corrupt');
   const statusFailed = await sourceState(project);
   // Assert
-  assert.deepEqual(clean, { sourceCommit: git('rev-parse', 'HEAD'), sourceDirty: false });
-  assert.equal(dirty.sourceDirty, true);
-  assert.deepEqual(none, {});
-  assert.deepEqual(statusFailed, { sourceCommit: clean.sourceCommit });
+  assert.deepEqual(clean, { sourceCommit: git('rev-parse', 'HEAD'), sourceState: SourceState.SOURCE_STATE_CLEAN });
+  assert.equal(dirty.sourceState, SourceState.SOURCE_STATE_DIRTY);
+  assert.deepEqual(none, { sourceState: SourceState.SOURCE_STATE_UNKNOWN });
+  assert.deepEqual(statusFailed, { sourceCommit: clean.sourceCommit, sourceState: SourceState.SOURCE_STATE_UNKNOWN });
+});
+
+test('unknown, clean and dirty source states survive capture serialization', () => {
+  // Arrange
+  const { ExperimentSetup } = doramcap.console.execution.v1;
+  for (const sourceState of [SourceState.SOURCE_STATE_UNKNOWN, SourceState.SOURCE_STATE_CLEAN, SourceState.SOURCE_STATE_DIRTY]) {
+    // Act
+    const saved = ExperimentSetup.decode(ExperimentSetup.encode({ sourceState }).finish());
+    // Assert
+    assert.equal(saved.sourceState, sourceState);
+  }
 });

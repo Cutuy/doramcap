@@ -55,10 +55,16 @@ message ServiceImage {
   string service = 1;
   string image_id = 2;
 }
+// Whether the source tree was verified clean or dirty when a run started.
+enum SourceState {
+  SOURCE_STATE_UNKNOWN = 0;
+  SOURCE_STATE_CLEAN = 1;
+  SOURCE_STATE_DIRTY = 2;
+}
 // What one run ran; empty fields were unavailable when it started.
 message ExperimentSetup {
   string source_commit = 1;
-  bool source_dirty = 2;
+  SourceState source_state = 2;
   repeated ServiceImage images = 3;
 }
 // What one run ran and the machine it ran on, saved as each part becomes known.
