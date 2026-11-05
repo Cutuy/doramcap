@@ -1,6 +1,7 @@
 # Build and hosting
 
 ```sh
+npm --prefix console/frontend ci
 npm --prefix apps/project-explorer/frontend ci
 npm --prefix apps/project-explorer/frontend run build
 npm --prefix apps/project-explorer/frontend run preview
@@ -26,6 +27,7 @@ Hash routes support refresh, browser history, copied links and new tabs:
 - `#/overview?capability=recording`
 - `#/overview?integration=mcap`
 - `#/docs?path=docs/repository-layout.md&heading=component-ownership`
+- `#/console`, the Console walkthrough, which runs in the browser with sample data
 
 The overview is the default route. Capability and integration links retain the
 selected use case. Dependencies use `focus`; the explorer shows full transitive chains. `build=1` and `dev=1` include
