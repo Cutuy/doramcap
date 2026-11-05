@@ -26,7 +26,7 @@ Agreed with the project owner on 2026-11-04.
 | Shell | Superseded: see [the native demo plan](110526-native-console-demo.md). |
 | Lifetime | One demo client lives as long as the page, so a run continues during SPA navigation. Refresh and Reset restore the built-in run. |
 | Reset | Reset remounts `App` with a new `key`; the client stays fixed for each mount. |
-| Scenario | The release's `cpu-burn` project and system apps, with production step IDs and names, stream IDs and machine fact names. |
+| Scenario | Superseded for services and load: see [the native demo plan](110526-native-console-demo.md). System apps, step IDs and names, stream IDs and machine fact names stay production's. |
 | Upcoming | A section below the demo shows the concept mockups from the first release, each marked Upcoming. |
 | Run header | View tabs and run phases share one navigation row in production and the demo. |
 | Timeline selection | The activity timeline shows the latest finished step, including failed ones, until the first click or change in its panel, in production and the demo. |

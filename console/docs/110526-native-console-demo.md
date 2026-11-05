@@ -18,6 +18,8 @@ Agreed with the project owner on 2026-11-05.
 | Light and dark | `light-dark()` follows the inherited `color-scheme`, so the site's switch reaches the demo. |
 | Look | The site's colours, font, corners, padding and button sizes become Console's defaults. |
 | Standalone theme | Follows the browser or OS setting, with no switch. |
+| Scenario | A sample robotics project with seven services. Visitor runs write 10 to 13 MiB/s while services run; CPU total changes every 100 ms with spikes. |
+| Built-in run | Keeps its published 21.8 KiB recording and matching low rate, so its download stays truthful. |
 
 ## Milestone 1: site content
 
@@ -62,3 +64,17 @@ Agreed with the project owner on 2026-11-05.
 - [x] Console frontend tests and build; project explorer build.
 - [x] Demo: tabs follow the URL, a run continues across tabs and sections, Reset works.
 - [x] Standalone Console layout is unchanged.
+
+## Milestone 4: richer demo run
+
+**Work items**
+
+- [x] Review lists several services, each with its own image.
+- [x] MCAP write rate of at least 10 MiB/s with 30% variation while services run.
+- [x] CPU total updates at 10 Hz, with spikes from the busiest services.
+- [x] Visitor runs report their recording size in comparisons.
+
+**Validation**
+
+- [x] Console frontend tests and project explorer build.
+- [x] Demo: Review, live values and comparison checked in headless Chromium.

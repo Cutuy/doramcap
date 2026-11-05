@@ -111,7 +111,7 @@ test('a run progresses through its phases to Completed and joins History', async
   assert.ok(screen.seen.some(status => status.phase === Phase.STOPPING));
   assert.equal(screen.model.view().cpu!.history.length, RUN_SAMPLES - 1);
   assert.match(screen.model.view().cpu!.groups[0].name, /^docker-[0-9a-f]{64}\.scope$/);
-  assert.ok(screen.model.view().cpu!.groups[0].percent > 90);
+  assert.ok(screen.model.view().cpu!.groups.length > 1);
   assert.deepEqual((await client.history({})).entries.map(entry => entry.runId), [runId, BUILTIN_RUN_ID]);
 });
 
@@ -134,6 +134,30 @@ test('a run samples at 10 Hz for 7 s and advances its sequence only on workflow 
   assert.ok(new Set(sequences).size < run.length, 'samples between workflow events leave the sequence unchanged');
 });
 
+test('a running service stack writes at least 10 MiB/s with up to 30% variation and CPU spikes at 10 Hz', async () => {
+  // Arrange
+  const MIB = 1024 * 1024;
+  const client = createDemoClient(), screen = watch(client);
+  const prepared = await review(client);
+  // Act
+  await client.start(prepared.preparedId, 'key');
+  await advance(RUN_MS);
+  const finished = screen.last();
+  const running = screen.seen.filter(status => status.phase === Phase.RUNNING).at(-1)!;
+  const rates = running.metrics.map(metric => Number(metric.writeBytesPerSecond)).filter(rate => rate > 0);
+  const history = screen.model.view().cpu!.history.map(sample => sample.percent!);
+  const loaded = history.slice(history.findIndex(percent => percent > 200), history.length - 12);
+  const median = [...loaded].sort((a, b) => a - b)[loaded.length >> 1];
+  // Assert
+  assert.ok(rates.length > 20);
+  assert.ok(rates.every(rate => rate >= 10 * MIB && rate <= 13 * MIB));
+  assert.ok(Math.max(...rates) - Math.min(...rates) > 0.5 * MIB);
+  assert.ok(Number(finished.metrics.at(-1)!.recordingBytes) > 20 * MIB);
+  assert.equal(new Set(loaded).size, loaded.length, 'CPU total changes every sample');
+  assert.ok(Math.max(...loaded) > 1.15 * median, 'CPU total spikes above its usual level');
+  assert.ok(Math.max(...history) <= 800);
+});
+
 test('the demo offers the release system apps and emits production workflow steps', async () => {
   // Arrange
   const client = createDemoClient();
@@ -148,7 +172,8 @@ test('the demo offers the release system apps and emits production workflow step
   ]);
   assert.deepEqual(prepared.systemApps[3].profiles.map(profile => profile.id), ['live', 'mcap', 'otel']);
   assert.deepEqual(prepared.liveStreams.map(stream => stream.id), ['cpu-monitor_0', 'cpu-monitor_1']);
-  assert.deepEqual(prepared.services.map(service => service.name), ['worker']);
+  assert.ok(prepared.services.length > 1);
+  assert.equal(new Set(prepared.services.map(service => service.imageId)).size, prepared.services.length);
   for (const step of PRODUCTION_STEPS) assert.ok(steps.includes(step), step);
   assert.ok(steps.includes('workload_docker::compose::steps::StartCompose'));
   const child = status!.steps.find(step => step.step.endsWith('CaptureFilesystemBaseline'))!;

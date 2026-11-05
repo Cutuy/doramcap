@@ -29,11 +29,10 @@ const runtimeNs = (busy: number[], sequence: number) => {
 };
 const captureNs = (startedAtMs: number, sequence: number) => BigInt(startedAtMs) * NS_PER_MS + BigInt(sequence) * NS_PER_SAMPLE;
 
-/** One real-format CPU snapshot packet; identical inputs give identical bytes. */
-export function cpuPacket(sequence: number, startedAtMs: number): Uint8Array {
-  const leafRuntime = GROUPS.map(group => runtimeNs(group.busy, sequence));
+/** A real-format snapshot packet from each group's cumulative runtime. */
+function snapshotPacket(sequence: number, startedAtMs: number, groups: { id: string }[], leafRuntime: bigint[]): Uint8Array {
   // Each group's time lands on one core, and the root counters total them.
-  const rootRuntime = Array.from({ length: CORES }, (_, cpu) => GROUPS.reduce((sum, _group, index) => index % CORES === cpu ? sum + leafRuntime[index] : sum, 0n));
+  const rootRuntime = Array.from({ length: CORES }, (_, cpu) => groups.reduce((sum, _group, index) => index % CORES === cpu ? sum + leafRuntime[index] : sum, 0n));
   return telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: {
     version: 2, sessionId: SESSION_ID, source: 'cpu-monitor',
     snapshot: {
@@ -42,16 +41,20 @@ export function cpuPacket(sequence: number, startedAtMs: number): Uint8Array {
       monotonicEndNs: String(BigInt(sequence) * NS_PER_SAMPLE),
       records: [
         ...rootRuntime.map((runtime, cpu) => ({ cgroupId: ROOT_CGROUP, cpu, flags: ROOT_FLAGS, runtimeNs: String(runtime) })),
-        ...GROUPS.map((group, index) => ({ cgroupId: group.id, parentId: ROOT_CGROUP, cpu: index % CORES, flags: LEAF_FLAGS, runtimeNs: String(leafRuntime[index]) })),
+        ...groups.map((group, index) => ({ cgroupId: group.id, parentId: ROOT_CGROUP, cpu: index % CORES, flags: LEAF_FLAGS, runtimeNs: String(leafRuntime[index]) })),
       ],
     },
   } })).finish();
 }
-/** The cgroup names for `cpuPacket`, as the monitor publishes them on its dictionary topic. */
-export function dictionaryPacket(startedAtMs: number): Uint8Array {
+/** The built-in run's CPU snapshot packet; identical inputs give identical bytes. */
+export function cpuPacket(sequence: number, startedAtMs: number): Uint8Array {
+  return snapshotPacket(sequence, startedAtMs, GROUPS, GROUPS.map(group => runtimeNs(group.busy, sequence)));
+}
+/** Group names as the monitor publishes them on its dictionary topic. */
+export function dictionaryPacket(startedAtMs: number, groups: { id: string; path: string }[] = GROUPS): Uint8Array {
   return telemetry.Packet.encode(telemetry.Packet.fromObject({ dictionary: {
     version: 1, sessionId: SESSION_ID, revision: '1', captureUnixNs: String(captureNs(startedAtMs, 0)),
-    entries: GROUPS.map(group => ({ id: group.id, parentId: ROOT_CGROUP, path: group.path })),
+    entries: groups.map(group => ({ id: group.id, parentId: ROOT_CGROUP, path: group.path })),
   } })).finish();
 }
 /** A Fault Watchdog snapshot: one connected source and no active conditions. */
@@ -59,4 +62,54 @@ export function faultPacket(): Uint8Array {
   return fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({ version: 1, snapshot: {
     epoch: new Uint8Array(16).fill(0xa1), revision: '1', sources: [{ source: new Uint8Array(16).fill(0x5c), connected: true }],
   } })).finish();
+}
+
+/** A repeatable value in [0, 1) for one seed, position and stream. */
+export function noise(seed: number, position: number, stream = 0): number {
+  let mixed = (seed ^ Math.imul(position + 1, 0x9e3779b1) ^ Math.imul(stream + 1, 0x85ebca6b)) >>> 0;
+  mixed = Math.imul(mixed ^ (mixed >>> 15), mixed | 1);
+  mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), mixed | 61);
+  return ((mixed ^ (mixed >>> 14)) >>> 0) / 2 ** 32;
+}
+/** A repeatable 64-digit hex identifier derived from `text`. */
+export function digest(text: string): string {
+  const seed = [...text].reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0, 0x811c9dc5);
+  return Array.from({ length: 8 }, (_, part) => Math.floor(noise(seed, part) * 2 ** 32).toString(16).padStart(8, '0')).join('');
+}
+
+const LOAD_JITTER = 0.15, IDLE_BUSY = 0.01, MAX_TOTAL_BUSY = CORES * 0.97;
+const SPIKE_SAMPLES = 3;
+/** The sample project's services, by busy cores; a `spike` multiplies load every `period` samples. */
+type LoadGroup = { name: string; busy: number; spike?: { period: number; factor: number } };
+export const WORKLOAD_SERVICES: LoadGroup[] = [
+  { name: 'object-detector', busy: 1.6, spike: { period: 11, factor: 1.9 } },
+  { name: 'sensor-fusion', busy: 0.8 },
+  { name: 'motion-planner', busy: 0.6, spike: { period: 17, factor: 2.4 } },
+  { name: 'object-tracker', busy: 0.5 },
+  { name: 'lidar-driver', busy: 0.4 },
+  { name: 'camera-driver', busy: 0.3 },
+  { name: 'vehicle-controller', busy: 0.2 },
+];
+const SYSTEM_BUSY: LoadGroup[] = [{ name: 'cpu-monitor', busy: 0.05 }, { name: 'live-bridge', busy: 0.03 }];
+
+/** CPU telemetry for one run: services load the machine only while `running`. */
+export function createWorkload(seed: number) {
+  const services = WORKLOAD_SERVICES.length;
+  const groups = [...WORKLOAD_SERVICES, ...SYSTEM_BUSY].map((group, index) => ({ ...group, id: String(5000 + index), path: scope(digest(group.name)) }));
+  const runtime = groups.map(() => 0);
+  const load = (group: typeof groups[number], index: number, sequence: number, running: boolean) => {
+    if (index < services && !running) return IDLE_BUSY;
+    const { spike } = group;
+    const spiking = spike && (sequence + Math.floor(noise(seed, index, 1) * spike.period)) % spike.period < SPIKE_SAMPLES;
+    return group.busy * (spiking ? spike!.factor : 1) * (1 + LOAD_JITTER * (2 * noise(seed, sequence, index) - 1));
+  };
+  return {
+    dictionary: (startedAtMs: number) => dictionaryPacket(startedAtMs, groups),
+    packet(sequence: number, startedAtMs: number, running: boolean): Uint8Array {
+      const busy = groups.map((group, index) => load(group, index, sequence, running));
+      const scale = Math.min(1, MAX_TOTAL_BUSY / busy.reduce((sum, value) => sum + value, 0));
+      busy.forEach((value, index) => { runtime[index] += value * scale * SAMPLE_MS * 1e6; });
+      return snapshotPacket(sequence, startedAtMs, groups, runtime.map(value => BigInt(Math.round(value))));
+    },
+  };
 }
