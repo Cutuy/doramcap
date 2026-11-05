@@ -1,20 +1,19 @@
 import { useRef, useState } from 'react';
-import { ArrowDownToLine, ArrowUpRight, Check, Copy, Terminal } from 'lucide-react';
-import { routeHref } from './model';
+import { ArrowUpRight, Copy, Cpu, Laptop, Terminal } from 'lucide-react';
+import { CONSOLE_PATH, routeHref } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const INSTALL_GUIDE = 'console/docs/install.md';
+const START_COMMAND = 'cd your-compose-project && doramcap-console start --ssh you@your-soc';
 
-export default function ConsoleInstall({ repository }: { repository: string }) {
-  const releaseUrl = `${repository}/releases/latest`;
-  const installerUrl = `${releaseUrl}/download/${INSTALLER_NAME}`;
-  const installCommand = `curl -fLO ${installerUrl} && sh ${INSTALLER_NAME}`;
+/** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
+function Command({ text, label }: { text: string; label: string }) {
   const command = useRef<HTMLElement>(null);
   const [copyStatus, setCopyStatus] = useState('');
 
   async function copyCommand() {
     try {
-      await navigator.clipboard.writeText(installCommand);
+      await navigator.clipboard.writeText(text);
       setCopyStatus('Copied');
     } catch {
       const selection = window.getSelection();
@@ -30,36 +29,37 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     }
   }
 
+  return <>
+    <div className="console-command-row"><code ref={command}>{text}</code><button type="button" onClick={() => void copyCommand()} aria-label={label}><Copy size={13} aria-hidden="true" />Copy</button></div>
+    <span className="console-copy-status" role="status">{copyStatus}</span>
+  </>;
+}
+
+export default function ConsoleInstall({ repository }: { repository: string }) {
+  const releaseUrl = `${repository}/releases/latest`;
+  const installCommand = `curl -fLO ${releaseUrl}/download/${INSTALLER_NAME} && sh ${INSTALLER_NAME}`;
+
   return <section className="console-install" aria-labelledby="console-install-heading">
     <div className="console-install-intro">
       <div className="eyebrow"><Terminal size={14} aria-hidden="true" />Console</div>
       <h2 id="console-install-heading">Bring your Compose apps to life.</h2>
-      <p>Run experiments, watch live metrics, and capture MCAP recordings.</p>
+      <p>Run experiments, watch live metrics, and capture MCAP recordings. Console runs on your SoC or workstation, and you use it from your browser over an SSH tunnel.</p>
       <div className="console-install-actions">
         <a className="launch-link" href={releaseUrl} target="_blank" rel="noreferrer">Download Console <ArrowUpRight size={14} aria-hidden="true" /></a>
+        <a className="console-try" href={`#${CONSOLE_PATH}`}>Try Console</a>
         <a href={routeHref('/docs', new URLSearchParams({ path: INSTALL_GUIDE }))}>Installation guide <ArrowUpRight size={14} aria-hidden="true" /></a>
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <figure className="console-preview">
-      <figcaption>Console preview</figcaption>
-      <div className="console-preview-body">
-        <div className="console-preview-apps">
-          <h3>Compose project</h3><div className="console-preview-project">cpu-burn</div>
-          <h3>System apps</h3>
-          <div><Check size={12} aria-hidden="true" />CPU monitoring</div>
-          <div><Check size={12} aria-hidden="true" />Data recorder</div>
-        </div>
-        <div className="console-preview-results">
-          <h3>Live metrics</h3>
-          <svg viewBox="0 0 268 48" role="img" aria-label="Example CPU activity chart" preserveAspectRatio="none"><path className="console-chart-axis" d="M1 1v46h266" /><path className="console-chart-line" d="M2 38l21 -9 20 5 21 -20 20 10 20 -5 21 15 20 -14 20 4 21 -12 20 11 21 -9 21 6" /></svg>
-          <h3>Recordings</h3><div className="console-preview-recording"><span>experiment.mcap</span><ArrowDownToLine size={14} aria-hidden="true" /></div>
-        </div>
-      </div>
-    </figure>
-    <div className="console-install-command">
-      <div className="console-command-row"><code ref={command}>{installCommand}</code><button type="button" onClick={() => void copyCommand()} aria-label="Copy Console installation command"><Copy size={13} aria-hidden="true" />Copy</button></div>
-      <span className="console-copy-status" role="status">{copyStatus}</span>
+    <div className="console-topology" role="img" aria-label="A browser on your computer reaches Console on your SoC or workstation through an SSH tunnel">
+      <div><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
+      <span className="console-tunnel">SSH tunnel</span>
+      <div><Cpu size={18} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong><span>Console · Compose apps</span></div>
     </div>
+    <ol className="console-install-steps">
+      <li><h3>Install on your SoC or workstation</h3><Command text={installCommand} label="Copy Console installation command" /></li>
+      <li><h3>Start it from your Compose project</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
+      <li><h3>Open it in your browser</h3><p>On your computer, run the SSH command Console prints, then open its access link.</p></li>
+    </ol>
   </section>;
 }
