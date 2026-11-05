@@ -23,6 +23,7 @@ export function componentHref(component: Component): string {
 }
 export interface Route { path: string; params: URLSearchParams; }
 export const CONSOLE_PATH = '/console';
+export const CONSOLE_UPCOMING_PATH = `${CONSOLE_PATH}/upcoming`;
 export function parseRoute(hash: string): Route {
   const [path, query = ''] = (hash.replace(/^#/, '') || '/overview').split('?');
   return { path, params: new URLSearchParams(query) };

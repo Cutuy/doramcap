@@ -197,3 +197,11 @@ main.shell{padding-top:28px}
 .console-demo-bar strong{color:var(--ink)}
 .console-demo-bar button{display:inline-flex;align-items:center;gap:6px;margin-left:auto;padding:6px 12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:5px}
 .console-demo .console-root{border:1px solid var(--line);border-radius:6px}
+.upcoming-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.upcoming-card{overflow:hidden;background:var(--panel);border:1px solid var(--line);border-radius:6px}
+.upcoming-card img{display:block;width:100%;height:auto;border-bottom:1px solid var(--line)}
+.upcoming-card>div{padding:16px 18px}
+.upcoming-card h2{margin:10px 0 4px}
+.upcoming-card p{margin:0}
+.upcoming-badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px;font-weight:600;color:var(--ink);background:var(--soft);border:1px solid var(--line)}
+@media(max-width:760px){.upcoming-grid{grid-template-columns:minmax(0,1fr)}}

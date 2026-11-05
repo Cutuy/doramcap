@@ -5,8 +5,8 @@
 Created: 2026-11-04. Status: implemented in stacked PRs; final owner review and integration checks pending.
 
 Add a Console section to the project explorer SPA using the production React
-screens. A browser-owned demo client supplies an Activity lab capture walkthrough,
-one built-in run and downloadable examples. The SPA remains statically hosted.
+screens. A browser-owned demo client supplies a walkthrough of the release's `cpu-burn`
+project, one built-in run and downloadable examples. The SPA remains statically hosted.
 
 Visitor flow: History starts with one built-in run. The visitor picks settings and
 runs an experiment, compares any two runs and may keep creating runs. A page refresh
@@ -26,7 +26,10 @@ Agreed with the project owner on 2026-11-04.
 | Shell | The SPA header contains Console; embedded `PageFrame` retains Run, History and workflow navigation. |
 | Lifetime | One demo client lives as long as the page, so a run continues during SPA navigation. Refresh and Reset restore the built-in run. |
 | Reset | Reset remounts `App` with a new `key`; the client stays fixed for each mount. |
-| Scenario | Activity lab with CPU monitoring, recording and the existing workflow/metrics panels. |
+| Scenario | The release's `cpu-burn` project and system apps, with production step IDs and names, stream IDs and machine fact names. |
+| Upcoming | `#/console/upcoming` shows the concept mockups from the first release, each marked Upcoming. |
+| Run header | View tabs and run phases share one navigation row in production and the demo. |
+| Comparison | Each group's "N matching" expands in place, in production and the demo. |
 | History | One built-in successful run; any two runs compare; Run again works from any completed run. |
 | Comparison | A small diff inside the demo turns per-run named facts into real comparison rows. The server is unchanged. |
 | Artifacts | The built-in run offers its matching MCAP file and report. Visitor runs offer a matching JSON report and report no recording file or size. |
@@ -48,9 +51,12 @@ Made during implementation while the owner was away. Each stays easy to revise.
 | `current()` | Keep it on the client. | The browser contract test and server route use it. |
 | Stack | Three PRs: shared UI, demo client, SPA section. Milestones 1 and 2 are split across them. | Each PR builds and passes on its own; the SPA dependency needs a consumer. |
 | Reports | The built-in run's report is generated like any other; no report file is bundled. | One code path, and the file cannot drift. |
-| Sample recording | Generated from the same code as live packets, with synthetic `/docker/...` names. | Reproducible, and contains no real host data. |
+| Sample recording | Generated from the same code as live packets, with synthetic container IDs. | Reproducible, and contains no real host data. |
 | `@mcap/core` | Dev dependency of `console/frontend`, pinned to 2.4.0. | Writes and checks the recording; the repository's reader tests already use this version. Outside both bundles. |
-| Scenario content | Optional `load` profile adds a `load-generator` service; the machine differs from the built-in run in governor and swappiness. | Gives the first comparison and Review visible differences. |
+| Machine difference | The built-in run's machine differs from visitor runs in governor, energy preference and swappiness. | Gives the first comparison and Review visible differences. |
+| Cgroup names | Top CPU consumers show real `docker-<id>.scope` names. | This is what production displays; friendlier names would misrepresent it. |
+| Mockup hosting | Upcoming pictures load from the release, so the SPA stays small but needs network access for them. | 1.3 MB each; the repository's README already links them this way. |
+| App requirements | The demo does not enforce "requires CPU monitoring" style profile requirements. | Keeps the demo small; the labels still state them. |
 | Live clock | Elapsed times and the timeline tick every 100 ms in production too, using the existing live interval. | Requested for the demo, and the screens are shared. |
 | Stop timing | Stop always ends as Completed, two simulated seconds later. | Matches a graceful stop; no Cancelled scenario. |
 | Filename rule | `artifactFilename` moves to the shared contract, a one-line server change. | Avoids a second copy for `download` attributes. |
@@ -142,7 +148,7 @@ Evidence (2026-11-04, local unless noted):
 - [x] The demo completes the walkthrough with all Console-server network requests blocked.
 
 Evidence (2026-11-04, local unless noted):
-- 13 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
+- 15 demo tests pass with `fetch` blocked, covering the listed behaviors. Node CI passes on x86 and ARM64 at the demo client PR.
 
 ## Milestone 4: Example files and per-run reports
 
@@ -159,8 +165,8 @@ Evidence (2026-11-04, local unless noted):
 - [x] Verify sample URLs under `/` and `/doramcap/`.
 
 Evidence (2026-11-04, local unless noted):
-- A test decodes the MCAP with CRCs on and checks schema, 150 samples, timestamps, names and the exact 25347-byte size.
-- Browser downloads gave `cpu.mcap` (25347 bytes) and `console-report.json` without leaving the page; report fields match the server's.
+- A test decodes the MCAP with CRCs on and checks schema, 150 samples, the dictionary topic, timestamps, names and the exact 42678-byte size.
+- Browser downloads gave `cpu.mcap` (42678 bytes) and `console-report.json` without leaving the page; report fields match the server's.
 - The recording downloaded correctly at both `/` and `/doramcap/`.
 
 ## Milestone 5: SPA section and integration checks
