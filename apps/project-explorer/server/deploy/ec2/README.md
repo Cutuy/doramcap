@@ -16,14 +16,24 @@ Their default endpoint is <http://127.0.0.1:8096/#/apps>.
 | `/opt/doramcap-gallery/current` | Symlink to the active release: `bin/`, `assets/`, `caddy/` |
 | `/opt/doramcap-gallery/workspace` | Stable app deployment files |
 | `/var/lib/doramcap-gallery` | Private, persistent results owned by `gallery` |
+| `/etc/doramcap-gallery/caddy/` | Public hostname and proxy routes |
+| `/etc/systemd/system/doramcap-gallery*.service.d/` | Operator service overrides |
+| `/var/lib/doramcap-caddy/{data,config}` | Persistent certificate state |
+| `/opt/doramcap-gallery/rollback/` | Operator rollback copies and validation receipts |
 
 After installing the release files and loading its images:
 
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now doramcap-gallery doramcap-gallery-caddy
+sudo systemctl cat doramcap-gallery doramcap-gallery-caddy
+sudo journalctl -u doramcap-gallery -u doramcap-gallery-caddy -n 50
 ```
 
 See [hosting](../../docs/hosting.md) for updates and public HTTPS, and the
 [EC2 qualification record](../../docs/103126-ec2-app-qualification.md) for tested apps.
-Keep credentials and connection details outside Git.
+Keep a private off-host operator record at `~/.local/share/doramcap-gallery/README.md`
+with SSH/key references, the active origin, DNS/TLS settings and exported Caddy/systemd
+configuration. Keep key material in its existing secure stores. Refresh the record
+after configuration changes. `current/SOURCE_REVISION`, `VERSION` and `IMAGES.json`
+identify the installed release.

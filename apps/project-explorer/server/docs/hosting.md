@@ -88,5 +88,10 @@ Point its DNS A record at the VM and allow inbound TCP 80/443. Keep the manager
 on loopback; mount persistent, private Caddy `/data` and `/config` directories so
 certificates survive restarts. The private loopback entry redirects to HTTPS.
 
+For Cloudflare-proxied DNS, use Full (strict) encryption with the valid origin
+certificate. Flexible mode loops when Caddy redirects HTTP to HTTPS. When changing
+the canonical hostname, update Caddy and the manager's `--origin` together; redirect
+retired hostnames to the new HTTPS origin with `redir https://gallery.example.com{uri} 308`.
+
 The public template serves anonymous viewers and preserves the gallery's existing
 app concurrency, viewer leases and operator-managed result retention.
