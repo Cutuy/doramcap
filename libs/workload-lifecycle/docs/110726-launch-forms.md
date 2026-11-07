@@ -215,10 +215,16 @@ Spike results (2026-11-07, systemd 255, x86_64):
 Decisions (2026-11-07): Dora's coordinator and daemon are units, and its CLI commands run as
 oneshot units over D-Bus. Host binaries download on demand from GitHub release assets
 published with each release, separate from the Console bundle. Review keeps Compose's level
-of detail: app names and profiles.
+of detail: app names and profiles. Generated units run in private roots under
+`/run/doramcap/<repository>/roots`, seeing host system directories read-only and their
+config and output paths through per-unit bind mounts, so app configs keep container paths
+and the host tree is never written. A unit is ready once D-Bus reports it running; ready
+files are not used. User projects contribute every `*.service` at the project root. Host
+binaries come from a `binaries` directory in Console's config until downloads exist.
 
 **Work items**
 - [x] Dora under systemd: coordinator and daemon units, daemon readiness, graph registration and `dora down` through oneshot units.
+- [x] Generated units run in private roots with per-unit bind mounts.
 - [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
 - [ ] Manifests gain program launch facts; Dora gets its own manifest.
 - [ ] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices, and runs it through the native addon.
@@ -227,6 +233,7 @@ of detail: app names and profiles.
 
 **Validation**
 - [x] Native test: Dora runs as units, registers a dynamic-node graph and stops cleanly with no units left.
+- [x] Native test: a unit reads its config and writes results at container paths, and no bind target appears on the host.
 - [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.

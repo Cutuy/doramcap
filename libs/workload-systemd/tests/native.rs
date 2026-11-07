@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use workload_systemd::{
-    DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup,
+    Bind, DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup,
 };
 
 /// How long a scenario lets its units run after readiness.
@@ -44,6 +44,17 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
     }
+}
+
+/// Show the fixture directory at its own path inside a unit's private root.
+fn sees(mut program: Program, fixture: &Fixture) -> Program {
+    let root = fixture.root.to_string_lossy().into_owned();
+    program.binds.push(Bind {
+        source: root.clone(),
+        target: root,
+        read_only: false,
+    });
+    program
 }
 
 fn program(id: &str, script: &str) -> Program {
@@ -100,16 +111,22 @@ async fn groups_start_in_order_and_stop_cleanly() {
         "r1",
         vec![
             UnitGroup {
-                programs: vec![program(
-                    "first",
-                    &format!("touch {}; exec sleep 300", marker.display()),
+                programs: vec![sees(
+                    program(
+                        "first",
+                        &format!("touch {}; exec sleep 300", marker.display()),
+                    ),
+                    &fixture,
                 )],
                 ..Default::default()
             },
             UnitGroup {
-                programs: vec![program(
-                    "second",
-                    &format!("test -e {} && exec sleep 300", marker.display()),
+                programs: vec![sees(
+                    program(
+                        "second",
+                        &format!("test -e {} && exec sleep 300", marker.display()),
+                    ),
+                    &fixture,
                 )],
                 unit_files: vec![adopted.to_string_lossy().into()],
                 ..Default::default()
@@ -186,6 +203,7 @@ async fn placement_and_memlock_reach_the_process() {
             facts.display()
         ),
     );
+    limited = sees(limited, &fixture);
     limited.cpus = "0".into();
     limited.memlock_bytes = 1024 * 1024;
     let plan = fixture.plan(
@@ -588,4 +606,47 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     );
     assert!(runtime.join("graph.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn bind_mounts_show_host_paths_at_container_targets() {
+    // Arrange: the unit reads its config and writes its result at container paths.
+    let fixture = Fixture::new("binds");
+    let config = fixture.root.join("monitor.pbtxt");
+    let results = fixture.root.join("results");
+    std::fs::write(&config, "rate: 5\n").unwrap();
+    std::fs::create_dir_all(&results).unwrap();
+    let mut writer = program(
+        "writer",
+        "cp /doramcap-native-binds/config/monitor.pbtxt /doramcap-native-binds/results/seen; touch /doramcap-native-binds/config/monitor.pbtxt 2>/dev/null || echo read-only >> /doramcap-native-binds/results/seen; exec sleep 300",
+    );
+    writer.binds = vec![
+        Bind {
+            source: config.to_string_lossy().into(),
+            target: "/doramcap-native-binds/config/monitor.pbtxt".into(),
+            read_only: true,
+        },
+        Bind {
+            source: results.to_string_lossy().into(),
+            target: "/doramcap-native-binds/results".into(),
+            read_only: false,
+        },
+    ];
+    let plan = fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            programs: vec![writer],
+            ..Default::default()
+        }],
+    );
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert_eq!(
+        std::fs::read_to_string(results.join("seen")).unwrap(),
+        "rate: 5\nread-only\n"
+    );
+    // Bind targets live in the unit's private root, never on the host.
+    assert!(!Path::new("/doramcap-native-binds").exists());
 }

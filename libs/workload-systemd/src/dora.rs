@@ -99,8 +99,21 @@ impl Dora {
             ])
             .map(str::to_owned)
             .collect();
+        // The CLI writes its output into the runtime directory, visible inside its root.
+        let runtime = crate::Bind {
+            source: self.settings.runtime_directory.clone(),
+            target: self.settings.runtime_directory.clone(),
+            read_only: false,
+        };
         manager
-            .run_oneshot(scope, &name, &argv, &self.settings.user, &output)
+            .run_oneshot(
+                scope,
+                &name,
+                &argv,
+                &self.settings.user,
+                &output,
+                &[runtime],
+            )
             .await?;
         tokio::fs::read_to_string(output).await.map_err(error)
     }

@@ -53,6 +53,15 @@ message Program {
   string cpus = 7;
   // Signal number sent first on stop; zero sends SIGTERM.
   int32 kill_signal = 8;
+  // Host paths shown at other paths in the unit's own mount namespace.
+  repeated Bind binds = 9;
+}
+
+// One bind mount; the source must exist when the unit starts.
+message Bind {
+  string source = 1;
+  string target = 2;
+  bool read_only = 3;
 }
 
 message EnvironmentVariable {
