@@ -1,0 +1,73 @@
+# Release template before app manifests; tests compare manifest expansion against it.
+# The release workflow replaces each :local image with its multi-arch digest.
+dora { image: "doramcap/dora:local" }
+runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
+system_apps {
+  id: "live-bridge"
+  label: "Live telemetry"
+  default_selected: true
+  input { directory: "live-bridge" files: "compose.yaml" }
+  config_mount { service: "live-bridge" target: "/config/bridge.pbtxt" }
+  live_relay {}
+}
+system_apps {
+  id: "cpu-monitor"
+  label: "CPU monitoring"
+  default_selected: true
+  input { directory: "cpu-monitor" files: "compose.yaml" }
+  graph: "cpu-monitor/flow.yml"
+  output_mounts { service: "cpu-monitor" target: "/results" }
+  live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
+  live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
+  config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
+  launch_profiles {
+    id: "record"
+    label: "Live panels and recording"
+    config: "cpu-monitor/monitor.pbtxt"
+    recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
+  }
+  launch_profiles {
+    id: "live"
+    label: "Live panels only"
+    config: "cpu-monitor/live.pbtxt"
+  }
+}
+system_apps {
+  id: "data-recorder"
+  label: "Data recorder"
+  input { directory: "data-recorder" files: "compose.yaml" }
+  graph: "data-recorder/flow.yml"
+  output_mounts { service: "data-recorder" target: "/results" }
+  config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
+  launch_profiles {
+    id: "cpu"
+    label: "CPU topics (requires CPU monitoring)"
+    config: "data-recorder/recorder.pbtxt"
+    recordings { id: "messages" path: "messages.mcap" }
+  }
+  launch_profiles {
+    id: "faults"
+    label: "Watchdog publications (requires watchdog)"
+    config: "data-recorder/faults.pbtxt"
+    graph: "data-recorder/faults.yml"
+    recordings { id: "messages" path: "messages.mcap" }
+  }
+}
+system_apps {
+  id: "fault-watchdog"
+  label: "Fault Watchdog"
+  health_inputs: true
+  input { directory: "fault-watchdog" files: "compose.yaml" }
+  graph: "fault-watchdog/flow.yml"
+  output_mounts { service: "fault-watchdog" target: "/results" }
+  live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
+  config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
+  launch_profiles { id: "live" label: "Live only" config: "fault-watchdog/watchdog.pbtxt" }
+  launch_profiles {
+    id: "mcap"
+    label: "Live and MCAP"
+    config: "fault-watchdog/watchdog-mcap.pbtxt"
+    recordings { id: "faults" path: "faults.mcap" }
+  }
+  launch_profiles { id: "otel" label: "Live and OTLP" config: "fault-watchdog/watchdog-otel.pbtxt" }
+}

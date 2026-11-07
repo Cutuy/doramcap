@@ -58,12 +58,21 @@ pub fn format_config(bytes: Buffer) -> Result<String> {
 /// Decode protobuf text with the existing parser; configuration policy belongs to TypeScript.
 #[napi]
 pub fn parse_config(text: String) -> Result<Buffer> {
+    parse_text("doramcap.console.v1.ConsoleConfig", &text)
+}
+
+/// Decode strict protobuf text into AppManifest protobuf bytes.
+#[napi]
+pub fn parse_manifest(text: String) -> Result<Buffer> {
+    parse_text("doramcap.launch.v1.AppManifest", &text)
+}
+
+fn parse_text(message: &str, text: &str) -> Result<Buffer> {
     use prost_reflect::DynamicMessage;
-    let pool = descriptors();
-    let descriptor = pool
-        .get_message_by_name("doramcap.console.v1.ConsoleConfig")
+    let descriptor = descriptors()
+        .get_message_by_name(message)
         .expect("compiled configuration");
-    Ok(DynamicMessage::parse_text_format(descriptor, &text)
+    Ok(DynamicMessage::parse_text_format(descriptor, text)
         .map_err(failure)?
         .encode_to_vec()
         .into())

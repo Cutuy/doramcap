@@ -7,6 +7,25 @@ Optional apps use ordinary Compose inputs. Each app container launches from its 
 pbtxt, bind-mounted read-only by its Compose file. The
 [release template](../release/console.pbtxt) is a complete working example.
 
+## App manifests
+
+An app's launch facts can ship beside it in an `app.pbtxt`
+([`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)): label, graph, Compose
+files and mounts, recordings, and variants (launch profiles). Paths stay beside the manifest.
+The Console entry then names the manifest and keeps only Console settings:
+
+```protobuf
+form: COMPOSE
+system_apps {
+  manifest: "/absolute/system-apps/cpu-monitor/app.pbtxt"
+  default_selected: true
+  live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
+}
+```
+
+`form` selects how every app launches; only `COMPOSE` is supported. Inline definitions,
+as below, remain valid.
+
 ```protobuf
 system_apps {
   id: "cpu-monitor"

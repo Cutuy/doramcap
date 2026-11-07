@@ -2,7 +2,7 @@
 
 # Launch forms: Compose, systemd and Supervisor
 
-Created: 2026-11-07. Status: Milestones 0 and 1 implemented; Milestone 2 next.
+Created: 2026-11-07. Status: Milestones 0–2 implemented; Milestone 3 next.
 
 Run an experiment with the launch method its repo uses: Compose, systemd or
 Supervisor. Dora, system apps and user apps all launch the same way within a run.
@@ -30,10 +30,11 @@ Agreed with the owner on 2026-11-07.
 | Run end | The run ends on a stop request. A failed unit or app is recorded in the `StopRecord`. |
 | Removal | Remove runs only after Finalize issues a `RemovalPermit`. |
 | Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
-| systemd control | D-Bus through `zbus` and `zbus_systemd`, pending owner approval. Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
+| systemd control | D-Bus through `zbus` and `zbus_systemd` (approved 2026-11-07). Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
 | Resolution | Console resolves deployment, manifests and Review choices in TypeScript, including backend details. It sends Rust one `RunRequest`: the shared `RunPlan` plus a `oneof` holding one backend's plan. Rust performs every system side effect. |
 | Principles | Share workflow and step libraries, without interfaces that bridge backend differences. Business, UI and user logic stay in TypeScript; system side effects stay in Rust; they talk over protos. Avoid refactoring existing code unless necessary. |
+| Deployment | Console's per-machine config is the deployment: `form`, plus a manifest path and Console settings per app. |
 | Contracts | Package `doramcap.launch.v1` in `libs/workload-lifecycle/proto`: manifest, deployment, run plan and phase records. The deployment imports `resource_policy.v1.Policy`. |
 | Crates | New `libs/workload-systemd` for the launcher and D-Bus control. Native-process steps (ownership, cgroup, shared memory) are a `workload-lifecycle` module. |
 | MVP | Compose and systemd. Supervisor, the live status feed and other items are listed under Future items. |
@@ -145,23 +146,25 @@ Evidence (2026-11-07, x86_64 local):
 ## Milestone 2: Manifests and deployment
 
 **Work items**
-- [ ] Add `doramcap.launch.v1` with the app manifest message: launch facts, requirements, graph, outputs, live outputs and variants with their recordings.
-- [ ] Extend the deployment with the form, app selection, variants, install root and repo config. Existing `resource-policy` configs keep parsing.
-- [ ] Write manifests for Dora, CPU monitoring, data recording, Fault Watchdog and the live bridge.
-- [ ] Console resolves the `RunPlan` from manifests in TypeScript, with Review variant overrides. Rust Prepare freezes configs and saves `plan.pbtxt`.
-- [ ] Console config lists manifests; launch fields move out of `SystemAppDefinition`.
+- [x] Add `AppManifest` to `doramcap.launch.v1`: label, graph, Compose launch, recordings and variants.
+- [x] Console's config is the per-machine deployment: it gains `form`, and each app may name a `manifest` and keep only Console settings.
+- [x] Console expands manifests in TypeScript when it loads a config or resolves a release; the run plan is built from the result.
+- [x] Release manifests for CPU monitoring, data recording, Fault Watchdog and the live bridge; the release template uses them.
+- [ ] Program launch facts, Dora's manifest and per-app placement. Added with systemd in Milestone 3, their first consumer.
+- [ ] Remove inline app definitions. Kept for now so existing configs keep working; inline and manifest apps expand to the same definitions.
 
 **Validation**
-- [ ] Resolution tests from the release manifests and deployment produce the expected plan.
-- [ ] Compose runs from a plan freeze the same Compose project as before.
-- [ ] Console Review variant selection passes the existing Console suite.
-- [ ] Existing `resource-policy` configs parse unchanged.
+- [x] The release manifests expand to exactly the apps of the previous inline release template.
+- [x] Manifests reject inline launch fields, paths outside the manifest directory and unsupported forms.
+- [x] Console server suite.
+
+Evidence (2026-11-07, x86_64 local): Console server suite 99 passed, 1 skipped, including both tests above. Not run: the release system-app acceptance script, full CI and ARM64. Expansion yields identical app definitions, so Compose launches are unchanged.
 
 ## Milestone 3: systemd launcher
 
 **Work items**
 - [x] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Results below.
-- [ ] Owner approval of `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature), recommended by the spike.
+- [x] Owner approved `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature).
 - [ ] systemd control steps: subscribe, start transient units, await job removal, read unit properties, stop units, reset failed units.
 - [ ] Dora coordinator and daemon units from the Dora manifest; graph registration; binaries from the install root.
 - [ ] System app units from manifests using the property mapping above.

@@ -1,0 +1,21 @@
+id: "data-recorder"
+label: "Data recorder"
+graph: "flow.yml"
+compose {
+  files: "compose.yaml"
+  config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
+  output_mounts { service: "data-recorder" target: "/results" }
+}
+variants {
+  id: "cpu"
+  label: "CPU topics (requires CPU monitoring)"
+  config: "recorder.pbtxt"
+  recordings { id: "messages" path: "messages.mcap" }
+}
+variants {
+  id: "faults"
+  label: "Watchdog publications (requires watchdog)"
+  config: "faults.pbtxt"
+  graph: "faults.yml"
+  recordings { id: "messages" path: "messages.mcap" }
+}
