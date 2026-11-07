@@ -10,7 +10,6 @@ use crate::compose::{
 use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, rc::Weak};
-use workload_lifecycle::recording::{FinalizeRecordings, Recording};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeInput {
@@ -20,23 +19,20 @@ pub struct FinalizeInput {
     pub overlays: Option<OverlaySet>,
     pub shutdown: crate::compose::Shutdown,
     pub project: crate::compose::ResolvedComposeProject,
-    pub recordings: Vec<Recording>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizedRun {
     pub filesystem_changes: Option<FilesystemChanges>,
     pub filesystem_results: Option<OverlayResults>,
-    pub recording_finalized: bool,
     /// Writers stopped, filesystem evidence durable, and overlays finalized.
     pub can_remove: bool,
     /// Retain all volumes if their before/after metadata scans are incomplete.
     pub preserve_volumes: bool,
 }
 
-/// Verify recordings and collect metadata concurrently after writer quiescence.
-/// Checkpoint direct-mount evidence or finalize existing overlays before allowing
-/// resource removal. Failure retains resources and diagnostics in the output;
-/// recording validation failures remain independent of Docker cleanup eligibility.
+/// Collect filesystem metadata after writer quiescence. Checkpoint direct-mount
+/// evidence or finalize existing overlays before allowing resource removal.
+/// Failure retains resources and diagnostics in the output.
 pub struct FinalizeRun {
     pub executor: Weak<LocalExecutor>,
     pub diagnostics: Diagnostics,
@@ -62,31 +58,17 @@ impl Step for FinalizeRun {
                 .collect(),
             projects: vec![input.project],
         };
-        let (recording, changes) = tokio::join!(
-            async {
-                if !input.shutdown.stopped {
-                    return Err(orchestrator::Error::message(
-                        "recording writers not quiescent",
-                    ));
+        let changes = if input.shutdown.stopped {
+            match executor.run::<CollectFilesystemChanges>(collect).await {
+                Ok(changes) => Some(changes),
+                Err(error) => {
+                    self.failure("filesystem changes", error);
+                    None
                 }
-                executor.run::<FinalizeRecordings>(input.recordings).await
-            },
-            async {
-                if !input.shutdown.stopped {
-                    return None;
-                }
-                match executor.run::<CollectFilesystemChanges>(collect).await {
-                    Ok(changes) => Some(changes),
-                    Err(error) => {
-                        self.failure("filesystem changes", error);
-                        None
-                    }
-                }
-            },
-        );
-        if let Err(error) = &recording {
-            self.failure("finalize recording", error);
-        }
+            }
+        } else {
+            None
+        };
         let mut evidence_durable = input.shutdown.stopped && changes.is_some();
         if input.overlays.is_none()
             && let Some(changes) = &changes
@@ -130,7 +112,6 @@ impl Step for FinalizeRun {
             filesystem_changes,
             filesystem_results,
             preserve_volumes,
-            recording_finalized: recording.is_ok(),
         })
     }
 }

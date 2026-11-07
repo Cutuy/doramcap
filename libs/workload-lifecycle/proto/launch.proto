@@ -31,3 +31,24 @@ message RunPlan {
   // Stop grace period in seconds for apps declaring none.
   uint64 stop_seconds = 7;
 }
+
+// Writers and form-owned evidence after every app stopped.
+message StopRecord {
+  // Every app's writers stopped, so recordings may be checked.
+  bool writers_stopped = 1;
+  // Evidence the form must keep before removal is durable.
+  bool evidence_durable = 2;
+}
+
+// What removal may discard, decided after writers stop.
+message RemovalPermit {
+  // Owned resources may be removed.
+  bool remove = 1;
+  bool recording_finalized = 2;
+}
+
+// Removal evidence.
+message CleanupRecord {
+  // Owned resources were verified gone.
+  bool verified = 1;
+}
