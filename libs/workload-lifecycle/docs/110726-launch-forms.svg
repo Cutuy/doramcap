@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="480" viewBox="0 0 1120 480" role="img" aria-labelledby="title desc">
+<title id="title">Launch forms architecture</title>
+<desc id="desc">Static config feeds a shared run sequence. Shared sub-workflows alternate with form-owned start, stop and remove calls on a typed handle. Launchers build on step libraries grouped by substrate.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="1120" height="480" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="560" y="34" font-size="22" font-weight="600">Launch forms: shared run sequence, form-owned launchers</text>
+<g stroke="#a9b4bf" fill="#eef1f4"><rect x="20" y="56" width="340" height="56" rx="6"/><rect x="390" y="56" width="340" height="56" rx="6"/><rect x="760" y="56" width="340" height="56" rx="6"/></g>
+<text x="190" y="80" font-size="16" font-weight="600">App manifests + variant pbtxts</text><text x="190" y="101" font-size="13">ships with each app</text>
+<text x="560" y="80" font-size="16" font-weight="600">deployment.pbtxt</text><text x="560" y="101" font-size="13">form · apps · variants · placement</text>
+<text x="930" y="80" font-size="16" font-weight="600">Repo launch config</text><text x="930" y="101" font-size="13">compose.yaml · .service units</text>
+<g fill="none" stroke="#536779" stroke-width="1.5"><path d="M190 112 V128"/><path d="M560 112 V128"/><path d="M930 112 V128"/><path d="M88 128 H930"/><path d="M88 128 V146" marker-end="url(#arrow)"/></g>
+<g stroke-width="1">
+<rect x="20" y="150" width="136" height="60" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<rect x="178" y="150" width="136" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<rect x="336" y="150" width="136" height="60" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<rect x="494" y="150" width="136" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<rect x="652" y="150" width="136" height="60" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<rect x="810" y="150" width="136" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<rect x="968" y="150" width="136" height="60" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+</g>
+<text x="88" y="175" font-size="16" font-weight="600">Prepare</text><text x="88" y="196" font-size="13">plan · reset</text>
+<text x="246" y="175" font-size="16" font-weight="600">start</text><text x="246" y="196" font-size="13">returns handle</text>
+<text x="404" y="175" font-size="16" font-weight="600">Run monitor</text><text x="404" y="196" font-size="13">until stop request</text>
+<text x="562" y="175" font-size="16" font-weight="600">stop</text><text x="562" y="196" font-size="13">StopRecord</text>
+<text x="720" y="175" font-size="16" font-weight="600">Finalize</text><text x="720" y="196" font-size="13">RemovalPermit</text>
+<text x="878" y="175" font-size="16" font-weight="600">remove</text><text x="878" y="196" font-size="13">CleanupRecord</text>
+<text x="1036" y="175" font-size="16" font-weight="600">Report</text><text x="1036" y="196" font-size="13">admission</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M156 180 H174"/><path d="M314 180 H332"/><path d="M472 180 H490"/><path d="M630 180 H648"/><path d="M788 180 H806"/><path d="M946 180 H964"/></g>
+<rect x="178" y="226" width="768" height="28" rx="6" fill="#fff7f0" stroke="#bc906b" stroke-dasharray="6 4"/>
+<text x="562" y="245" font-size="14">Running handle · typed per form · remove consumes it</text>
+<path d="M641 254 V272" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="20" y="309" font-size="15" font-weight="600" text-anchor="start">Launchers</text>
+<g fill="#fcebdc" stroke="#bc906b"><rect x="178" y="276" width="214" height="56" rx="6"/><rect x="415" y="276" width="214" height="56" rx="6"/><rect x="652" y="276" width="214" height="56" rx="6"/><rect x="889" y="276" width="214" height="56" rx="6" stroke-dasharray="6 4"/></g>
+<text x="285" y="299" font-size="16" font-weight="600">Compose</text><text x="285" y="320" font-size="13">M1 · existing steps</text>
+<text x="522" y="299" font-size="16" font-weight="600">Fake launcher</text><text x="522" y="320" font-size="13">M1 · unit tests</text>
+<text x="759" y="299" font-size="16" font-weight="600">systemd</text><text x="759" y="320" font-size="13">M3 · D-Bus</text>
+<text x="996" y="299" font-size="16" font-weight="600">Supervisor</text><text x="996" y="320" font-size="13">later · XML-RPC</text>
+<path d="M641 332 V352" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="20" y="389" font-size="15" font-weight="600" text-anchor="start">Step libraries</text>
+<g fill="#eef1f4" stroke="#a9b4bf"><rect x="178" y="356" width="214" height="56" rx="6"/><rect x="415" y="356" width="214" height="56" rx="6"/><rect x="652" y="356" width="214" height="56" rx="6"/><rect x="889" y="356" width="214" height="56" rx="6"/></g>
+<text x="285" y="379" font-size="16" font-weight="600">Compose steps</text><text x="285" y="400" font-size="13">compose · overlays · events</text>
+<text x="522" y="379" font-size="16" font-weight="600">Neutral steps</text><text x="522" y="400" font-size="13">recordings · files · report</text>
+<text x="759" y="379" font-size="16" font-weight="600">systemd control</text><text x="759" y="400" font-size="13">units · slice · properties</text>
+<text x="996" y="379" font-size="16" font-weight="600">Native process steps</text><text x="996" y="400" font-size="13">ownership · cgroup · shm</text>
+<g font-size="13" text-anchor="start">
+<rect x="20" y="444" width="22" height="14" rx="3" fill="#dbeaf2" stroke="#8ca6b8"/><text x="50" y="456">Shared sub-workflow</text>
+<rect x="210" y="444" width="22" height="14" rx="3" fill="#fcebdc" stroke="#bc906b"/><text x="240" y="456">Form-owned</text>
+<rect x="360" y="444" width="22" height="14" rx="3" fill="#eef1f4" stroke="#a9b4bf"/><text x="390" y="456">Static input or library</text>
+<rect x="560" y="444" width="22" height="14" rx="3" fill="#fcebdc" stroke="#bc906b" stroke-dasharray="4 3"/><text x="590" y="456">Later milestone</text>
+</g>
+</g></svg>

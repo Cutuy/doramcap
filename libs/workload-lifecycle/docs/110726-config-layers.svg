@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="550" viewBox="0 0 960 550" role="img" aria-labelledby="title desc">
+<title id="title">Config layers</title>
+<desc id="desc">App manifests and variant pbtxts ship with apps, one deployment exists per machine, and the user repo keeps its native config. Prepare resolves them into one plan per run, which each form turns into its backend input.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="960" height="550" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">Config layers: static inputs, per-run plan</text>
+<text x="40" y="64" font-size="14" font-weight="600" fill="#4a5d6e" text-anchor="start">Static</text>
+<rect x="40" y="76" width="280" height="156" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<rect x="340" y="76" width="280" height="156" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<rect x="640" y="76" width="280" height="156" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="180" y="102" font-size="16" font-weight="600">Ships with each app</text>
+<text x="480" y="102" font-size="16" font-weight="600">One per machine</text>
+<text x="780" y="102" font-size="16" font-weight="600">User repo</text>
+<g font-size="13" text-anchor="start">
+<text x="60" y="132">app.pbtxt · launch + variants</text><text x="60" y="158">watchdog.pbtxt · live</text><text x="60" y="184">watchdog-mcap.pbtxt · mcap</text><text x="60" y="210">watchdog-otel.pbtxt · otel</text>
+<text x="360" y="132">lab-x86 · COMPOSE · otel</text><text x="360" y="158">jetson-01 · SYSTEMD · mcap</text><text x="360" y="184">rig-02 · SUPERVISOR · live</text><text x="360" y="210">apps · variants · placement</text>
+<text x="660" y="132">compose.yaml</text><text x="660" y="158">perception.service</text><text x="660" y="184">supervisord.conf</text><text x="660" y="210">native format · one form</text>
+</g>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M180 232 V258"/><path d="M480 232 V258"/><path d="M780 232 V258"/></g>
+<text x="920" y="252" font-size="14" font-weight="600" fill="#4a5d6e" text-anchor="end">Dynamic · per run</text>
+<rect x="40" y="262" width="880" height="56" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="480" y="285" font-size="16" font-weight="600">Prepare</text>
+<text x="480" y="306" font-size="13">deployment + manifests + variants + Console Review overrides → plan + frozen configs</text>
+<path d="M480 318 V340" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="340" y="344" width="280" height="52" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="480" y="366" font-size="16" font-weight="600">run/plan.pbtxt</text><text x="480" y="386" font-size="13">same shape for every form</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M440 396 L184 426"/><path d="M480 396 V426"/><path d="M520 396 L776 426"/></g>
+<rect x="40" y="430" width="280" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<rect x="340" y="430" width="280" height="60" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<rect x="640" y="430" width="280" height="60" rx="6" fill="#fcebdc" stroke="#bc906b" stroke-dasharray="6 4"/>
+<text x="180" y="455" font-size="16" font-weight="600">Compose</text><text x="180" y="476" font-size="13">frozen Compose project</text>
+<text x="480" y="455" font-size="16" font-weight="600">systemd</text><text x="480" y="476" font-size="13">transient units over D-Bus</text>
+<text x="780" y="455" font-size="16" font-weight="600">Supervisor</text><text x="780" y="476" font-size="13">generated supervisord.conf</text>
+<g font-size="13" text-anchor="start">
+<rect x="40" y="514" width="22" height="14" rx="3" fill="#dbeaf2" stroke="#8ca6b8"/><text x="70" y="526">Doramcap-owned static</text>
+<rect x="250" y="514" width="22" height="14" rx="3" fill="#eef1f4" stroke="#a9b4bf"/><text x="280" y="526">User-owned static</text>
+<rect x="440" y="514" width="22" height="14" rx="3" fill="#fcebdc" stroke="#bc906b"/><text x="470" y="526">Generated per run</text>
+<rect x="630" y="514" width="22" height="14" rx="3" fill="#fcebdc" stroke="#bc906b" stroke-dasharray="4 3"/><text x="660" y="526">Later milestone</text>
+</g>
+</g></svg>
