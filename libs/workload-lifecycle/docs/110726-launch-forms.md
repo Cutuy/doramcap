@@ -2,7 +2,7 @@
 
 # Launch forms: Compose, systemd and Supervisor
 
-Created: 2026-11-07. Status: Milestone 0 implemented; Milestone 1 next.
+Created: 2026-11-07. Status: Milestones 0 and 1 implemented; Milestone 2 next.
 
 Run an experiment with the launch method its repo uses: Compose, systemd or
 Supervisor. Dora, system apps and user apps all launch the same way within a run.
@@ -30,7 +30,7 @@ Agreed with the owner on 2026-11-07.
 | Run end | The run ends on a stop request. A failed unit or app is recorded in the `StopRecord`. |
 | Removal | Remove runs only after Finalize issues a `RemovalPermit`. |
 | Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
-| systemd control | D-Bus through `zbus`, pending crate evaluation. |
+| systemd control | D-Bus through `zbus` and `zbus_systemd`, pending owner approval. Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
 | Resolution | Console resolves deployment, manifests and Review choices in TypeScript, including backend details. It sends Rust one `RunRequest`: the shared `RunPlan` plus a `oneof` holding one backend's plan. Rust performs every system side effect. |
 | Principles | Share workflow and step libraries, without interfaces that bridge backend differences. Business, UI and user logic stay in TypeScript; system side effects stay in Rust; they talk over protos. Avoid refactoring existing code unless necessary. |
@@ -116,18 +116,31 @@ Evidence: pending re-validation after the 2026-11-07 restack around the single r
 ## Milestone 1: Shared run sequence with Compose
 
 **Work items**
-- [ ] Copy Prepare into shared code that consumes the `RunPlan`; switch Compose to it once both produce the same preparation.
-- [ ] Define record messages: `Prepared`, `StopRecord`, `RemovalPermit`, `CleanupRecord`, following the protobuf contract style.
-- [ ] Move Prepare, Finalize and Report out of `recorded_compose` into `workload-lifecycle`. Decouple file evidence and machine capture from `DockerAdapter`; Compose adds its Docker facts.
-- [ ] Add the launcher and running-handle interfaces and `experiment::<F>()`. Compose implements them and keeps `RunSignals`.
-- [ ] Add a fake launcher for unit tests.
-- [ ] Record the form in the ownership record; reset handles the same form only.
+- [x] Add `StopRecord`, `RemovalPermit` and `CleanupRecord` to `doramcap.launch.v1`.
+- [x] Add `workload_lifecycle::run`: a form-owned `Running` handle (start, ready, ended, stop, remove) and one shared sequence that checks recordings and issues the removal permit.
+- [x] Compose runs through it. Its filesystem evidence step keeps `compose.finalize`; the recording check runs as its own step after it.
+- [x] Fake-handle unit tests replace the Compose stop-race tests.
+- [ ] Share Prepare and Report. Deferred to Milestone 3; see decisions below.
+- [ ] Record the form in the ownership record. Deferred to Milestone 3, when a second form exists.
 
 **Validation**
-- [ ] Native Compose end-to-end tests pass with unchanged report fields.
-- [ ] Console runs a project end to end; History, compare and recordings are unchanged.
-- [ ] Fake-launcher tests: a failed start still removes; remove waits for a permit; a stop during start skips readiness; admission reopens only after clean removal.
-- [ ] Focused Clippy, formatting and library-boundary checks.
+- [x] Fake-handle tests: a failed start still stops and removes; stop before or during start skips readiness; removal requires stopped writers and durable evidence; recordings are checked only after writers stop.
+- [x] Native Compose end-to-end suite and the real Compose Console test.
+- [x] Focused Clippy, formatting and library-boundary checks; `workload-docker` unit tests.
+
+Evidence (2026-11-07, x86_64 local):
+- Native Compose end-to-end suite: all 12 cases passed.
+- Real Compose Console test: three consecutive passes; one earlier failure left no log and did not recur.
+- Console server suite: 97 passed, 1 skipped. Lifecycle and `workload-docker` unit tests pass.
+- Not run: full CI and ARM64.
+
+### Decisions awaiting owner review
+
+| Topic | Decision | Reason |
+| --- | --- | --- |
+| Handle shape | One `Running` trait; each form builds its handle. No separate launcher trait. | Start must be cancellable while the handle keeps attempted resources. |
+| Prepare and Report | Stay in Compose until systemd needs them in Milestone 3. | Today's neutral parts are a repository lock and a machine probe; Compose's baseline and report depend on Docker. A copy now would have one caller. |
+| Recording check | Its own step after `compose.finalize`, which used to run both concurrently. | The check is shared across forms; Console's timeline shows one more step. |
 
 ## Milestone 2: Manifests and deployment
 
@@ -147,13 +160,24 @@ Evidence: pending re-validation after the 2026-11-07 restack around the single r
 ## Milestone 3: systemd launcher
 
 **Work items**
-- [ ] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Record the result here before building on it.
-- [ ] Present the `zbus` and proxy options to the owner and adopt the chosen crates.
+- [x] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Results below.
+- [ ] Owner approval of `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature), recommended by the spike.
 - [ ] systemd control steps: subscribe, start transient units, await job removal, read unit properties, stop units, reset failed units.
 - [ ] Dora coordinator and daemon units from the Dora manifest; graph registration; binaries from the install root.
 - [ ] System app units from manifests using the property mapping above.
 - [ ] Ownership of the slice, units and `/dev/shm` segments; reset stops the slice and removes owned segments.
-- [ ] `StopRecord` from unit `Result`, main exit status and accounting, read before units are collected.
+- [ ] `StopRecord` from unit `Result`, main exit status and accounting, read while the unit is referenced.
+
+Spike results (2026-11-07, systemd 255, x86_64):
+
+| Topic | Finding |
+| --- | --- |
+| Adoption | Hard-link the repo unit under the run name, `LinkUnitFiles` (runtime), add `/run/systemd/system/<unit>.d/10-slice.conf` with `Slice=`, `Reload`, `StartUnit`. Systemd 255 has no D-Bus call for `Slice=`. |
+| Constraints | Repo units already use absolute paths. References between a repo's own units break under new names: rewrite them or reject them. Escape the run ID in slice names; `-` nests slices. |
+| End of a unit | Exit is `ActiveState` reaching `inactive` or `failed`; `JobRemoved` marks the start job. Subscribe first and ignore the value from before start. |
+| Final accounting | Hold a unit reference (`AddRef` for transient units, `RefUnit` for adopted ones) until the record is written; without one, CPU and peak memory read as unset. |
+| Removal | Unref, `StopUnit`, `ResetFailedUnit`, `DisableUnitFiles` (runtime), delete the drop-in and the link, `Reload`, then stop the run slice; slices stay active after their last unit. |
+| Crates | `zbus_systemd` covers transient units, adoption, references and result properties. `systemd-transient` and `systemd-run` are too new and cannot adopt units. |
 
 **Validation**
 - [ ] Native run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.

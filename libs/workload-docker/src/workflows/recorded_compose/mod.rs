@@ -4,13 +4,14 @@ pub mod finalization;
 pub mod observation;
 pub mod preparation;
 pub mod reset;
+mod running;
 mod plan {
     include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
 }
 pub use plan::ComposePlan;
 
 use self::{
-    finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
+    finalization::{ReportInput, WriteRunReport},
     observation::EventCapture,
     preparation::PrepareRun,
 };
@@ -259,194 +260,65 @@ impl ComposeRunner {
             artifacts.join("docker-events.jsonl"),
             signals.stopping.clone(),
         );
-        // Race startup and observation against stop; teardown runs outside this boundary.
-        let mut signals = signals;
-        let mut last_launch = None;
-        let mut applications_started = false;
-        let execution_error = execution::until_stop(stop, events.failure(), async {
-            execution::launch_apps(
-                &executor,
-                &spec,
-                &prepared,
-                &plan,
-                overlays.as_ref(),
-                &mut last_launch,
-            )
-            .await?;
-            applications_started = true;
-            // Give a concurrent stop request priority over publishing readiness.
-            tokio::task::yield_now().await;
-            signals.notify_ready(plan.clone());
-            execution::monitor(&executor, &plan, &resources, events.changes()).await
-        })
-        .await;
-
-        // Stop adopted apps, then system apps, then the shared Dora runtime.
-        if let Some(quiescing) = signals.quiescing.take() {
-            let _ = quiescing.send(());
+        let machine = signals.machine.clone();
+        let running = running::ComposeRunning {
+            executor: executor.clone(),
+            spec: spec.clone(),
+            prepared: prepared.clone(),
+            plan: plan.clone(),
+            overlays,
+            resources,
+            events,
+            signals,
+            diagnostics: diagnostics.clone(),
+            last_launch: None,
+            applications_started: false,
+            stopped: None,
+            stop_error: None,
+        };
+        // Start, observe until stop, stop in reverse, check recordings, then remove.
+        let (outcome, removed) =
+            workload_lifecycle::run::run(running, &executor, spec.recordings.clone(), stop).await;
+        for failure in &outcome.diagnostics {
+            execution::record_failure(&diagnostics, "completion", failure);
         }
-        let adopted = execution::quiesce_services(
-            &executor,
-            &plan,
-            &prepared.value().user_services,
-            &diagnostics,
-        )
-        .await;
-        // A killed workload loses unsent messages; a killed MCAP writer also loses its footer.
-        let adopted_clean = adopted.stopped
-            && !adopted
-                .exits
-                .iter()
-                .any(|exit| exit.killed && spec.mcap_writers.services.contains(&exit.service));
-        let systems_stopped = resources
-            .lock()
-            .await
-            .shutdown(&prepared.value().system_services)
-            .await;
-        if let Err(error) = &systems_stopped {
-            execution::record_failure(&diagnostics, "system shutdown", error);
-        }
-        let systems = execution::quiesce_services(
-            &executor,
-            &plan,
-            &prepared.value().system_services,
-            &diagnostics,
-        )
-        .await;
-        let systems_clean = systems.stopped && !systems.exits.iter().any(|exit| exit.killed);
-        let mut service_exits = adopted.exits;
-        service_exits.extend(systems.exits);
-        let runtime_shutdown = executor.run::<super::experiment::StopDoraRuntime>(()).await;
-        let runtime_stopped = runtime_shutdown
-            .as_ref()
-            .is_ok_and(|output| output.value().stopped);
-        let runtime_exit_clean = runtime_shutdown
-            .as_ref()
-            .is_ok_and(|output| output.value().diagnostics.is_empty());
-        match runtime_shutdown {
-            Ok(stopped) => {
-                let stopped = stopped.into_value();
-                service_exits.extend(stopped.exits);
-                diagnostics.borrow_mut().extend(stopped.diagnostics);
-            }
-            Err(error) => execution::record_failure(&diagnostics, "Dora shutdown", error),
-        }
-
-        // Finalization and removal require stopped writers and durable filesystem evidence.
-        let completion = async {
-            let mut input = Input::new(StopInput {
-                allow_volume_deletion: false,
-                services: vec![],
-                plan: Some(plan.clone()),
-            })
-            .after(&prepared);
-            if let Some(launched) = &last_launch {
-                input = input.after(launched);
-            }
-            let shutdown = executor
-                .run::<QuiesceCompose>(input)
-                .await
-                .map_err(step_error)?;
-            diagnostics
-                .borrow_mut()
-                .extend(shutdown.value().diagnostics.clone());
-            let mut writer_evidence = shutdown.value().clone();
-            writer_evidence.stopped &= runtime_stopped;
-            let finalized = executor
-                .run::<FinalizeRun>(
-                    Input::new(FinalizeInput {
-                        id: spec.id.clone(),
-                        artifacts: artifacts.clone(),
-                        baseline: prepared.value().baseline.clone(),
-                        overlays: overlays.map(|output| output.into_value()),
-                        shutdown: writer_evidence,
-                        project: plan.clone(),
-                        recordings: spec.recordings.clone(),
-                    })
-                    .after(&prepared)
-                    .after(&shutdown),
-                )
-                .await
-                .map_err(step_error)?;
-            if !finalized.value().recording_finalized {
+        let execution_error = outcome.execution_error;
+        let completion = removed.completion.map(|completed| {
+            if !outcome.permit.recording_finalized {
                 execution::record_failure(
                     &diagnostics,
                     "completion",
                     "recording finalization failed",
                 );
             }
-            let cleanup = if runtime_stopped && finalized.value().can_remove {
-                match executor
-                    .run::<RemoveCompose>(
-                        Input::new(StopInput {
-                            allow_volume_deletion: !finalized.value().preserve_volumes,
-                            services: vec![],
-                            plan: Some(plan.clone()),
-                        })
-                        .after(&shutdown)
-                        .after(&finalized),
-                    )
-                    .await
-                {
-                    Ok(cleanup) => Some(cleanup.into_value()),
-                    Err(error) => {
-                        execution::record_failure(&diagnostics, "completion", error);
-                        None
-                    }
-                }
-            } else {
-                None
-            }
-            .unwrap_or_else(|| Cleanup {
-                project: plan.name.clone(),
-                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
-                ..Default::default()
-            });
-            let finalized = finalized.into_value();
-            let boundary_clean = runtime_stopped
-                && finalized.can_remove
-                && cleanup.verified
-                && cleanup.diagnostics.is_empty()
-                && (!finalized.preserve_volumes || cleanup.retained_volumes.is_empty());
-            Ok::<_, Error>(ComposeRunReport {
+            ComposeRunReport {
                 id: spec.id,
                 execution_error: execution_error.clone(),
                 diagnostics: Vec::new(),
-                cleanup,
-                boundary_clean,
-                writers_stopped: shutdown.value().stopped && runtime_stopped,
-                recording_finalized: finalized.recording_finalized
-                    && runtime_exit_clean
-                    && applications_started
-                    && adopted_clean
-                    && systems_stopped.is_ok()
-                    && systems_clean
+                cleanup: completed.cleanup,
+                boundary_clean: completed.boundary_clean,
+                writers_stopped: completed.writers_stopped,
+                recording_finalized: outcome.permit.recording_finalized
+                    && completed.runtime_exit_clean
+                    && completed.applications_started
+                    && completed.apps_clean
                     && execution_error.is_none(),
-                service_exits,
+                service_exits: completed.service_exits,
                 event_stream_healthy: false,
-                filesystem_changes: finalized.filesystem_changes,
-                filesystem_results: finalized.filesystem_results,
-            })
-        }
-        .await;
-
-        // Finish event capture even when shutdown or finalization could not produce evidence.
-        let event_result = events.finish().await;
-        if let Err(error) = &event_result {
-            execution::record_failure(&diagnostics, "completion", error);
-        }
-        if let Err(error) = &completion {
+                filesystem_changes: completed.finalized.filesystem_changes,
+                filesystem_results: completed.finalized.filesystem_results,
+            }
+        });
+        if let Err(error) = &removed.event_stream {
             execution::record_failure(&diagnostics, "completion", error);
         }
         if executor.observer_failures() != 0 {
             execution::record_failure(&diagnostics, "observer", "workflow observer lost events");
         }
         let after = observation::machine_state(&self.adapter, &artifacts).await;
-        signals
-            .machine
-            .send_modify(|capture| capture.after = Some(after));
+        machine.send_modify(|capture| capture.after = Some(after));
         let mut report = completion?;
-        report.event_stream_healthy = event_result.is_ok();
+        report.event_stream_healthy = removed.event_stream.is_ok();
         let boundary_clean = report.boundary_clean;
         // Publish the final report before reopening admission for another experiment.
         let report = executor

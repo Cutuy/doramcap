@@ -8,20 +8,6 @@ use std::time::Duration;
 const DORA_GRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 const SYSTEM_APPS_STABILITY_INTERVAL: Duration = Duration::from_millis(500);
 
-/// Stop requests win ties; callers always perform teardown after this future returns.
-pub(super) async fn until_stop(
-    stop: impl Future<Output = ()>,
-    event_failure: impl Future<Output = String>,
-    execution: impl Future<Output = orchestrator::Result<()>>,
-) -> Option<String> {
-    tokio::select! {
-        biased;
-        _ = stop => None,
-        result = execution => result.err().map(|error| error.to_string()),
-        error = event_failure => Some(error),
-    }
-}
-
 pub(super) async fn launch_apps(
     executor: &LocalExecutor,
     spec: &ComposeRun,
@@ -206,6 +192,3 @@ pub(super) fn record_failure(
         .borrow_mut()
         .push(invalid(error.to_string()).diagnostic(operation));
 }
-
-#[cfg(test)]
-mod tests;
