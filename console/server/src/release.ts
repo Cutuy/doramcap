@@ -4,6 +4,7 @@ import { cp, lstat, mkdir, readFile, readlink, realpath, rename, rm, statfs, sym
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { capabilities, wire, type Config } from './native.js';
+import { expandManifests } from './manifests.js';
 
 const exec = promisify(execFile);
 const MIN_DOCKER_FREE_BYTES = 10 * 1024 ** 3;
@@ -46,6 +47,11 @@ export function releaseConfig(template: Config, project: string, systemApps: str
     config.dora.graphSha256 = '';
   }
   for (const app of config.systemApps) {
+    // Manifest apps resolve their own paths beside the manifest.
+    if (app.manifest) {
+      app.manifest = input(systemApps, app.manifest);
+      continue;
+    }
     if (!app.input) throw new Error(`Missing Compose input: ${app.id}`);
     app.input.directory = input(systemApps, app.input.directory || '.');
     for (const file of [...(app.input.files ?? []), ...(app.input.envFiles ?? [])]) input(systemApps, file, app.input.directory);
@@ -55,6 +61,7 @@ export function releaseConfig(template: Config, project: string, systemApps: str
       if (profile.graph) profile.graph = input(systemApps, profile.graph);
     }
   }
+  expandManifests(config);
   return config;
 }
 

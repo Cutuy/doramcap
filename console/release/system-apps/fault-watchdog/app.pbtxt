@@ -1,0 +1,17 @@
+# Variant configs are staged here from apps/fault-watchdog/deploy/standalone/config.
+id: "fault-watchdog"
+label: "Fault Watchdog"
+graph: "flow.yml"
+compose {
+  files: "compose.yaml"
+  config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
+  output_mounts { service: "fault-watchdog" target: "/results" }
+}
+variants { id: "live" label: "Live only" config: "watchdog.pbtxt" }
+variants {
+  id: "mcap"
+  label: "Live and MCAP"
+  config: "watchdog-mcap.pbtxt"
+  recordings { id: "faults" path: "faults.mcap" }
+}
+variants { id: "otel" label: "Live and OTLP" config: "watchdog-otel.pbtxt" }

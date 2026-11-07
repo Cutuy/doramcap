@@ -1,0 +1,7 @@
+# Relays selected apps' live outputs; Console generates its node and bridge config.
+id: "live-bridge"
+label: "Live telemetry"
+compose {
+  files: "compose.yaml"
+  config_mount { service: "live-bridge" target: "/config/bridge.pbtxt" }
+}

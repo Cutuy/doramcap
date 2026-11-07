@@ -52,3 +52,52 @@ message CleanupRecord {
   // Owned resources were verified gone.
   bool verified = 1;
 }
+
+// Launch facts of one app, shipped beside it. Paths are relative to this file's
+// directory and must stay beneath it.
+message AppManifest {
+  string id = 1;
+  string label = 2;
+  // Dora dataflow file listing the app's nodes, unless a variant replaces it.
+  string graph = 3;
+  ComposeLaunch compose = 4;
+  // Ways to launch the app; the first is the default.
+  repeated Variant variants = 5;
+  // Recordings every variant writes.
+  repeated RecordingOutput recordings = 6;
+}
+
+// How the Compose form launches an app.
+message ComposeLaunch {
+  // Compose files in merge order.
+  repeated string files = 1;
+  // Where the chosen variant's config is mounted read-only.
+  ServiceMount config_mount = 2;
+  // Where the run's artifact directory is mounted.
+  repeated ServiceMount output_mounts = 3;
+}
+
+// A service and an absolute path inside it.
+message ServiceMount {
+  string service = 1;
+  string target = 2;
+}
+
+// One way to launch an app: its own config pbtxt and the recordings it adds.
+message Variant {
+  string id = 1;
+  string label = 2;
+  string config = 3;
+  // Replaces the app's graph when this variant launches.
+  string graph = 4;
+  repeated RecordingOutput recordings = 5;
+}
+
+// One recording an app writes beneath the run's artifact directory.
+message RecordingOutput {
+  string id = 1;
+  string path = 2;
+  string stream = 3;
+  // The recording holds CPU accounting.
+  bool cpu = 4;
+}

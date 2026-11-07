@@ -4,10 +4,12 @@ import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
 import { capabilities, wire, type Config } from './native.js';
 import { validateApps } from './system-apps.js';
+import { expandManifests } from './manifests.js';
 
 /** Decode pbtxt with the existing parser and validate server-owned deployment policy. */
 export async function loadConfig(path: string): Promise<{ config: Config; secret: string }> {
   const config = capabilities.parseConfig(await readFile(path, 'utf8'));
+  expandManifests(config);
   validateConfig(config);
   const secret = (
     config.accessSecretFile ? await readFile(config.accessSecretFile, 'utf8').catch((error) => {

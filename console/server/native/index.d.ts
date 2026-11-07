@@ -27,6 +27,8 @@ export interface NativeCapabilities {
   /** Parse ConsoleConfig pbtxt; validation belongs to the caller. */
   formatConfig(config: doramcap.console.v1.ConsoleConfig): string;
   parseConfig(text: string): doramcap.console.v1.ConsoleConfig;
+  /** Decode strict protobuf text into an app manifest. */
+  parseManifest(text: string): doramcap.launch.v1.AppManifest;
   /** Expand a caller-approved Dora graph into native graph JSON bytes. */
   expandGraph(path: string): Promise<Buffer>;
   /** Hold an exclusive process lock until close or handle release. */

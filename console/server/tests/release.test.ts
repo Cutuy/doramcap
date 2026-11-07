@@ -39,6 +39,43 @@ test('release configuration resolves native inputs and round-trips canonical pbt
   }
 });
 
+test('release manifests expand to the same apps as the inline release configuration', async () => {
+  // Arrange
+  const read = async (path: string) => capabilities.parseConfig(await readFile(join(repository, path), 'utf8'));
+  const systemApps = join(repository, 'console/release/system-apps');
+  const manifests = await read('console/release/console.pbtxt');
+  const inline = await read('console/server/tests/fixtures/inline-release.pbtxt');
+  const apps = (config: ReturnType<typeof releaseConfig>) =>
+    capabilities.formatConfig(wire.ConsoleConfig.create({ systemApps: config.systemApps }));
+  // Act
+  const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
+  // Assert
+  assert.equal(apps(expanded), apps(releaseConfig(inline, '/playground', systemApps, '/state')));
+  assert.ok(expanded.systemApps.every((app) => !app.manifest));
+});
+
+test('manifests reject inline launch fields, escaping paths and unsupported forms', async () => {
+  // Arrange
+  const directory = await mkdtemp(join(tmpdir(), 'console-manifest-'));
+  const config = (text: string) => capabilities.parseConfig(text);
+  try {
+    await mkdir(join(directory, 'app'));
+    await writeFile(join(directory, 'app/app.pbtxt'), 'id:"app" compose {files:"compose.yaml"}');
+    await writeFile(join(directory, 'app/escape.pbtxt'), 'id:"app" compose {files:"../compose.yaml"}');
+    // Act / Assert: a valid manifest expands relative to its directory.
+    const valid = releaseConfig(config('system_apps {manifest:"app/app.pbtxt"}'), '/playground', directory, '/state');
+    assert.equal(valid.systemApps[0].input!.directory, join(directory, 'app'));
+    // Act / Assert: launch facts live only in the manifest.
+    assert.throws(() => releaseConfig(config('system_apps {manifest:"app/app.pbtxt" graph:"flow.yml"}'), '/playground', directory, '/state'), /belong in the manifest/);
+    // Act / Assert: manifest paths stay beside the manifest.
+    assert.throws(() => releaseConfig(config('system_apps {manifest:"app/escape.pbtxt"}'), '/playground', directory, '/state'), /stay beside/);
+    // Act / Assert: only Compose launches today.
+    assert.throws(() => releaseConfig(config('form: SYSTEMD'), '/playground', directory, '/state'), /only COMPOSE/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('versioned installation preserves old releases and refuses replacement of unrelated launchers', async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-install-'));

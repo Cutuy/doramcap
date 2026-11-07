@@ -2,6 +2,7 @@ syntax = "proto3";
 package doramcap.console.v1;
 import "compose.proto";
 import "dora.proto";
+import "launch.proto";
 import "live.proto";
 
 message ConsoleConfig {
@@ -16,6 +17,8 @@ message ConsoleConfig {
   string public_origin = 7;
   RuntimeConfig runtime = 8;
   reserved 10;
+  // Launch form of every app; only COMPOSE is supported. Unspecified selects COMPOSE.
+  doramcap.launch.v1.Form form = 12;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
@@ -39,7 +42,11 @@ message LaunchProfile {
   // Example: console/examples/user-messages/flow.yml.
   string graph = 6;
 }
+// An app from its manifest, or declared inline. With `manifest`, only `manifest`,
+// `default_selected`, `live_outputs`, `health_inputs` and `live_relay` may be set.
 message SystemAppDefinition {
+  // Absolute path to the app's `app.pbtxt`; supplies everything else.
+  string manifest = 14;
   string id = 1;
   string label = 2;
   bool default_selected = 3;
