@@ -31,6 +31,9 @@ Agreed with the owner on 2026-11-07.
 | Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
 | systemd control | D-Bus through `zbus`, pending crate evaluation. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
+| Resolution | Console resolves deployment, manifests and Review choices in TypeScript into a `RunPlan` protobuf that replaces `RunRequest`. Rust Prepare freezes, resets and takes baselines. |
+| Contracts | Package `doramcap.launch.v1` in `libs/workload-lifecycle/proto`: manifest, deployment, run plan and phase records. The deployment imports `resource_policy.v1.Policy`. |
+| Crates | New `libs/workload-systemd` for the launcher and D-Bus control. Native-process steps (ownership, cgroup, shared memory) are a `workload-lifecycle` module. |
 | MVP | Compose and systemd. Supervisor, the live status feed and other items are listed under Future items. |
 
 ## Config layers
@@ -44,8 +47,8 @@ Agreed with the owner on 2026-11-07.
 | Deployment | `deployment.pbtxt`, one per machine | Operator | Form, apps, default variants, placement, install root, repo config |
 | Repo config | `compose.yaml`, `.service`, `supervisord.conf` | User | User apps, in their native format |
 
-Generated per run: Console Review variant overrides, `plan.pbtxt`, frozen config
-copies and the backend input. The plan has the same shape for every form; only the
+Generated per run: Console Review variant overrides, the `RunPlan` (saved as `plan.pbtxt`),
+frozen config copies and the backend input. The plan has the same shape for every form; only the
 backend input differs.
 
 ## Run sequence
@@ -112,11 +115,10 @@ connected to the Dora daemon. Units share the host `/dev/shm`; units must not se
 ## Milestone 2: Manifests and deployment
 
 **Work items**
-- [ ] Decide with the owner where the deployment and manifest protos live.
-- [ ] Add the app manifest message: launch facts, requirements, graph, outputs, live outputs and variants with their recordings.
+- [ ] Add `doramcap.launch.v1` with the app manifest message: launch facts, requirements, graph, outputs, live outputs and variants with their recordings.
 - [ ] Extend the deployment with the form, app selection, variants, install root and repo config. Existing `resource-policy` configs keep parsing.
 - [ ] Write manifests for Dora, CPU monitoring, data recording, Fault Watchdog and the live bridge.
-- [ ] Prepare resolves `plan.pbtxt` and frozen configs; Console Review supplies variant overrides.
+- [ ] Console resolves the `RunPlan` in TypeScript, with Review variant overrides; it replaces `RunRequest`. Rust Prepare freezes configs and saves `plan.pbtxt`.
 - [ ] Console config lists manifests; launch fields move out of `SystemAppDefinition`.
 
 **Validation**
@@ -155,4 +157,3 @@ connected to the Dora daemon. Units share the host `/dev/shm`; units must not se
 | Native filesystem isolation | Compose keeps OverlayFS; native forms use baseline diffs until then. |
 | Cross-form reset | Reset a previous run of a different form from its ownership record. |
 | Generated Compose files | Build system-app Compose services from manifests. |
-| Crate layout | Decide where launchers and native steps live before Milestone 3. |
