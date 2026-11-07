@@ -1,0 +1,33 @@
+syntax = "proto3";
+package doramcap.launch.v1;
+
+// Process manager that launches every app of one run.
+enum Form {
+  FORM_UNSPECIFIED = 0;
+  COMPOSE = 1;
+  SYSTEMD = 2;
+  SUPERVISOR = 3;
+}
+
+// One recording checked after its writers stop. Paths are absolute.
+message Recording {
+  string stream = 1;
+  string recording = 2;
+}
+
+// Inputs every form shares for one run, resolved before launch. A launch request
+// pairs this plan with exactly one form's own launch inputs.
+message RunPlan {
+  // Caller-selected run identifier, used in resource ownership and output names.
+  string id = 1;
+  // Absolute repository root defining admission and reset scope.
+  string repository_root = 2;
+  // Absolute, new artifact directory; its parent must already exist.
+  string artifacts = 3;
+  reserved 4;
+  repeated Recording recordings = 5;
+  // Positive startup and readiness budget in seconds.
+  uint64 readiness_seconds = 6;
+  // Stop grace period in seconds for apps declaring none.
+  uint64 stop_seconds = 7;
+}

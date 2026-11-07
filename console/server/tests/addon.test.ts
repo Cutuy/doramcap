@@ -1,5 +1,5 @@
 import { doramcap } from '../src/generated/console.js';
-import { capabilities, execution, compose } from '../src/native.js';
+import { capabilities, execution, compose, composePlan, launch } from '../src/native.js';
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import {ConsoleService} from '../src/service.js';
@@ -271,20 +271,23 @@ test('native Start preserves a budget rejection and publishes its terminal facts
   server.listen(socket);
   await once(server, 'listening');
   const owner = await capabilities.open(socket, 1);
-  const run = execution.RunRequest.create({
-    id: 'rejected-budget', repositoryRoot: root, artifacts: join(root, 'artifacts'),
-    readinessSeconds: 0, stopSeconds: 1,
+  const request = execution.RunRequest.create({
+    compose: composePlan.ComposePlan.create(),
+    run: launch.RunPlan.create({
+      id: 'rejected-budget', repositoryRoot: root, artifacts: join(root, 'artifacts'),
+      readinessSeconds: 0, stopSeconds: 1,
+    }),
   });
   try {
     // Act
     let rejection: Error | undefined;
-    await assert.rejects(owner.start(run, compose.ConfigurationSnapshot.create()), (error: Error) => {
+    await assert.rejects(owner.start(request, compose.ConfigurationSnapshot.create()), (error: Error) => {
       rejection = error;
       return /readiness_seconds/.test(error.message);
     });
     const update = owner.poll();
     // Assert
-    assert.equal(update.runId, run.id);
+    assert.equal(update.runId, request.run!.id);
     assert.equal(update.result!.error, rejection!.message);
     assert.equal(update.result!.blocked, false);
     assert.equal(mutations, 0);

@@ -5,16 +5,13 @@ use prost::Message;
 use std::{
     cell::{Cell, RefCell},
     io,
-    path::PathBuf,
     rc::Rc,
     sync::{Arc, Mutex},
 };
 use tokio::sync::{oneshot, watch};
 use workload_docker::{
     compose::DockerAdapter,
-    workflows::recorded_compose::{
-        ComposeRun, ComposeRunner, MachineCapture, McapWriters, Recording, RunSignals,
-    },
+    workflows::recorded_compose::{ComposeRun, ComposeRunner, MachineCapture, RunSignals},
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 512;
@@ -85,33 +82,13 @@ impl State {
         None
     }
 }
+/// Compose launch settings from a run request. Errors: no run inputs, or no Compose backend.
 pub fn run(request: RunRequest) -> Result<ComposeRun, String> {
-    let artifacts = PathBuf::from(request.artifacts);
-    Ok(ComposeRun {
-        id: request.id,
-        repository_root: request.repository_root.into(),
-        // Recordings live beneath the artifact directory, on the same filesystem as its parent.
-        mcap_writers: McapWriters {
-            services: request.mcap_services,
-            directories: artifacts.parent().map(PathBuf::from).into_iter().collect(),
-        },
-        artifacts,
-        // Console executions retain the workflow's normal OverlayFS isolation.
-        filesystem: Some(Default::default()),
-        system_apps: request.system_apps,
-        projects: request.projects,
-        dora: request.dora.unwrap_or_default(),
-        recordings: request
-            .recordings
-            .into_iter()
-            .map(|r| Recording {
-                stream: PathBuf::from(r.stream),
-                recording: PathBuf::from(r.recording),
-            })
-            .collect(),
-        readiness_seconds: request.readiness_seconds,
-        stop_seconds: request.stop_seconds,
-    })
+    let run = request.run.ok_or("run request has no run inputs")?;
+    match request.backend {
+        Some(run_request::Backend::Compose(compose)) => Ok(ComposeRun::from_plan(run, compose)),
+        None => Err("run request has no backend".into()),
+    }
 }
 pub fn start(state: &mut State, request: StartRequest) -> Reply {
     let (accepted, reply) = oneshot::channel();

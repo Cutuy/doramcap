@@ -1,24 +1,19 @@
 syntax = "proto3";
 package doramcap.console.execution.v1;
 import "compose.proto";
+import "compose_plan.proto";
+import "launch.proto";
 import "dora.proto";
 import "workflow.proto";
 import "system_config.proto";
 
-// Explicit inputs to the existing recorded Compose workflow.
+// One run for the native addon: the inputs every form shares, and one form's own.
 message RunRequest {
-  string id = 1;
-  string repository_root = 2;
-  string artifacts = 3;
-  repeated doramcap.compose.v1.ComposeProject system_apps = 4;
-  repeated doramcap.compose.v1.ComposeProject projects = 5;
-  doramcap.dora.v1.DoraRuntime dora = 6;
-  repeated Recording recordings = 7;
-  uint64 readiness_seconds = 8;
-  uint64 stop_seconds = 9; // Stop grace period for services declaring none.
-  repeated string mcap_services = 10; // Services writing recordings through io_uring.
+  doramcap.launch.v1.RunPlan run = 1;
+  oneof backend {
+    doramcap.compose_plan.v1.ComposePlan compose = 2;
+  }
 }
-message Recording { string stream = 1; string recording = 2; }
 message Inspection {
   doramcap.compose.v1.ResolvedComposeProject plan = 1;
   doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;

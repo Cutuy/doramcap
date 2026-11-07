@@ -8,6 +8,8 @@ export type { NativeExecution, NativeCapabilities } from '../native/index.js';
 export const wire = doramcap.console.v1;
 export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
+export const composePlan = doramcap.compose_plan.v1;
+export const launch = doramcap.launch.v1;
 export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
 export const systemConfig = doramcap.system_config.v1;

@@ -11,6 +11,8 @@ import {
   execution,
   browserError,
   compose,
+  composePlan,
+  launch,
   objectOptions,
   type Config,
   type NativeExecution,
@@ -201,12 +203,12 @@ export class ConsoleService implements ConsoleBackend {
       workspace = join(this.config.dataRoot, 'reviews', id);
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
-      const run = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
+      const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
       if (this.config.downloadMissingImages)
-        await ensureImages(this.config, [...run.projects, ...run.systemApps] as Project[], this.preparation.signal);
+        await ensureImages(this.config, [...(runRequest.compose!.projects ?? []), ...(runRequest.compose!.systemApps ?? [])] as Project[], this.preparation.signal);
       let inspected: Inspection;
       try {
-        inspected = await this.engine.inspect(run);
+        inspected = await this.engine.inspect(runRequest);
       } catch (error) {
         if (errorCode(error) === 'EmptySelection' && profiles.length && !request.profiles.length) {
           await rm(workspace, { recursive: true, force: true });
@@ -278,23 +280,23 @@ export class ConsoleService implements ConsoleBackend {
       await writeOnce(path, graph);
       dora.graph = path;
     }
-    const run = execution.RunRequest.create({
-      id,
-      repositoryRoot: project.directory,
-      artifacts,
-      projects: [project],
-      dora,
-      recordings: outputs(apps).map((output) => ({
-        recording: join(artifacts, output.path!),
-        stream: output.stream ? join(artifacts, output.stream) : '',
-      })),
-      readinessSeconds: this.config.runtime!.readinessSeconds!,
-      stopSeconds: this.config.runtime!.stopSeconds!,
-      mcapServices: mcapServices(apps),
+    const request = execution.RunRequest.create({
+      run: launch.RunPlan.create({
+        id,
+        repositoryRoot: project.directory,
+        artifacts,
+        recordings: outputs(apps).map((output) => ({
+          recording: join(artifacts, output.path!),
+          stream: output.stream ? join(artifacts, output.stream) : '',
+        })),
+        readinessSeconds: this.config.runtime!.readinessSeconds!,
+        stopSeconds: this.config.runtime!.stopSeconds!,
+      }),
+      compose: composePlan.ComposePlan.create({ projects: [project], dora, mcapServices: mcapServices(apps) }),
     });
-    await bindOutputs(apps, run, workspace, stage);
-    if (bound) run.systemApps.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
-    return run;
+    await bindOutputs(apps, request, workspace, stage);
+    if (bound) request.compose!.systemApps!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
+    return request;
   }
   start(input: Buffer): Promise<Buffer> {
     const request = wire.StartRequest.decode(input);
@@ -363,9 +365,9 @@ export class ConsoleService implements ConsoleBackend {
       if (JSON.stringify(fresh) !== JSON.stringify(prepared.project)) throw new Error('StaleReview');
       const runs = join(this.config.dataRoot, 'runs');
       await mkdir(runs, { recursive: true, mode: 0o700 });
-      let run: Run;
+      let runRequest: Run;
       try {
-        run = await this.runRequest(
+        runRequest = await this.runRequest(
           this.startId,
           fresh,
           prepared.apps,
@@ -378,7 +380,7 @@ export class ConsoleService implements ConsoleBackend {
       }
       if (this.stopped) throw new Error('Stopped');
       this.executionStarted = true;
-      await this.engine.start(run, prepared.snapshot);
+      await this.engine.start(runRequest, prepared.snapshot);
       this.accepted = true;
       this.marker!.startAccepted = true;
       try {

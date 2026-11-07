@@ -120,8 +120,9 @@ export function outputs(apps: App[]): Output[] {
 export function mcapServices(apps: App[]): string[] {
   return [...new Set(apps.filter((app) => app.recordings?.length).flatMap((app) => (app.outputMounts ?? []).map((mount) => mount.service!)))];
 }
-export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: string, stage: string) {
-  run.systemApps = [];
+export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: string, stage: string) {
+  const plan = request.compose!;
+  plan.systemApps = [];
   for (const app of apps) {
     const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
     input.key = app.id!;
@@ -130,7 +131,7 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
       for (const mount of app.outputMounts ?? []) {
         (services[mount.service!] ??= { volumes: [] }).volumes.push({
           type: 'bind',
-          source: run.artifacts,
+          source: request.run!.artifacts,
           target: mount.target,
           bind: { create_host_path: false },
         });
@@ -147,7 +148,7 @@ export async function bindOutputs(apps: SelectedApp[], run: Run, workspace: stri
       await writeOnce(path, Buffer.from(JSON.stringify({ services })));
       input.files.push(path);
     }
-    run.systemApps.push(input);
+    plan.systemApps.push(input);
   }
 }
 /** Discover the native Compose inputs of one project directory. */
