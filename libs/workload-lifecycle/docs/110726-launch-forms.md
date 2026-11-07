@@ -2,7 +2,7 @@
 
 # Launch forms: Compose, systemd and Supervisor
 
-Created: 2026-11-07. Status: Milestones 0–2 implemented; Milestone 3 next.
+Created: 2026-11-07. Status: Milestones 0–3 implemented; Milestone 4 next.
 
 Run an experiment with the launch method its repo uses: Compose, systemd or
 Supervisor. Dora, system apps and user apps all launch the same way within a run.
@@ -121,8 +121,8 @@ Evidence: pending re-validation after the 2026-11-07 restack around the single r
 - [x] Add `workload_lifecycle::run`: a form-owned `Running` handle (start, ready, ended, stop, remove) and one shared sequence that checks recordings and issues the removal permit.
 - [x] Compose runs through it. Its filesystem evidence step keeps `compose.finalize`; the recording check runs as its own step after it.
 - [x] Fake-handle unit tests replace the Compose stop-race tests.
-- [ ] Share Prepare and Report. Deferred to Milestone 3; see decisions below.
-- [ ] Record the form in the ownership record. Deferred to Milestone 3, when a second form exists.
+- [ ] Share Prepare and Report. Moved to Milestone 4; see decisions below.
+- [ ] Record the form in the ownership record. Moved to cross-form reset in Future items.
 
 **Validation**
 - [x] Fake-handle tests: a failed start still stops and removes; stop before or during start skips readiness; removal requires stopped writers and durable evidence; recordings are checked only after writers stop.
@@ -140,7 +140,7 @@ Evidence (2026-11-07, x86_64 local):
 | Topic | Decision | Reason |
 | --- | --- | --- |
 | Handle shape | One `Running` trait; each form builds its handle. No separate launcher trait. | Start must be cancellable while the handle keeps attempted resources. |
-| Prepare and Report | Stay in Compose until systemd needs them in Milestone 3. | Today's neutral parts are a repository lock and a machine probe; Compose's baseline and report depend on Docker. A copy now would have one caller. |
+| Prepare and Report | Stay in Compose until Console runs systemd in Milestone 4. | Today's neutral parts are a repository lock and a machine probe; Compose's baseline and report depend on Docker. A copy now would have one caller. |
 | Recording check | Its own step after `compose.finalize`, which used to run both concurrently. | The check is shared across forms; Console's timeline shows one more step. |
 
 ## Milestone 2: Manifests and deployment
@@ -150,7 +150,7 @@ Evidence (2026-11-07, x86_64 local):
 - [x] Console's config is the per-machine deployment: it gains `form`, and each app may name a `manifest` and keep only Console settings.
 - [x] Console expands manifests in TypeScript when it loads a config or resolves a release; the run plan is built from the result.
 - [x] Release manifests for CPU monitoring, data recording, Fault Watchdog and the live bridge; the release template uses them.
-- [ ] Program launch facts, Dora's manifest and per-app placement. Added with systemd in Milestone 3, their first consumer.
+- [ ] Program launch facts, Dora's manifest and per-app placement. Moved to Milestone 4, their first consumer.
 - [ ] Remove inline app definitions. Kept for now so existing configs keep working; inline and manifest apps expand to the same definitions.
 
 **Validation**
@@ -162,14 +162,25 @@ Evidence (2026-11-07, x86_64 local): Console server suite 99 passed, 1 skipped, 
 
 ## Milestone 3: systemd launcher
 
+Scope agreed 2026-11-07: the library and native tests; Console support is Milestone 4.
+
 **Work items**
 - [x] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Results below.
 - [x] Owner approved `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature).
-- [ ] systemd control steps: subscribe, start transient units, await job removal, read unit properties, stop units, reset failed units.
-- [ ] Dora coordinator and daemon units from the Dora manifest; graph registration; binaries from the install root.
-- [ ] System app units from manifests using the property mapping above.
-- [ ] Ownership of the slice, units and `/dev/shm` segments; reset stops the slice and removes owned segments.
-- [ ] `StopRecord` from unit `Result`, main exit status and accounting, read while the unit is referenced.
+- [x] New `libs/workload-systemd` with a `SystemdPlan` input: start groups of transient programs and adopted unit files.
+- [x] systemd control steps: subscribe, start transient units, await each start job, adopt units, stop, release references, reset the slice.
+- [x] A systemd running handle on the shared run sequence; a failed unit is recorded, and only a stop request ends the run.
+- [x] Placement and memlock become unit properties; the report records each unit's result, exit status and accounting.
+- [x] Reset by repository: stop the slice, release units, remove adopted links and drop-ins.
+- [ ] Dora coordinator and daemon units, graph registration and shared-memory ownership. Moved to Milestone 4, where Console resolves Dora's plan.
+
+**Validation**
+- [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; the next run resets units left by a dropped run.
+- [x] Plan validation and strict text decoding unit tests.
+- [x] Focused Clippy, formatting and library-boundary checks.
+- [ ] ARM64 worker run.
+
+Evidence (2026-11-07, x86_64 local, systemd 255): native tests passed three consecutive times; no units or runtime unit files remained. Not run: ARM64 and full CI.
 
 Spike results (2026-11-07, systemd 255, x86_64):
 
@@ -188,6 +199,20 @@ Spike results (2026-11-07, systemd 255, x86_64):
 - [ ] A failing user unit appears in the `StopRecord` and the run continues until stop.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 - [ ] ARM64 worker run, or a recorded reason it is blocked.
+
+## Milestone 4: Console runs systemd experiments
+
+**Work items**
+- [ ] Manifests gain program launch facts; Dora gets its own manifest.
+- [ ] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices.
+- [ ] Dora coordinator and daemon as units; graph registration; ownership and reset of Dora's shared-memory segments.
+- [ ] Review and inspection for units in place of Compose services.
+- [ ] Share Prepare and Report between Compose and systemd.
+
+**Validation**
+- [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
+- [ ] Console killed mid-run: the next run's reset removes the slice and shared-memory segments.
+- [ ] Fault Watchdog receives health from a user app under systemd.
 
 ## Future items
 
