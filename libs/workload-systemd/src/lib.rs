@@ -2,6 +2,7 @@
 //!
 //! Requires the system service manager and root privileges. The repository root
 //! scopes admission, unit names, the slice and reset.
+mod dora;
 mod manager;
 mod runner;
 mod running;
@@ -106,6 +107,18 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
     if run.readiness_seconds == 0 || run.stop_seconds == 0 {
         return Err("readiness and stop budgets must be positive".into());
     }
+    if let Some(dora) = &plan.dora {
+        let absolute = |path: &str| Path::new(path).is_absolute();
+        if !absolute(&dora.executable)
+            || !Path::new(&dora.runtime_directory).is_dir()
+            || !absolute(&dora.runtime_directory)
+            || (!dora.graph.is_empty() && !absolute(&dora.graph))
+            || dora.coordinator_port == 0
+            || dora.daemon_port == 0
+        {
+            return Err("Dora needs an absolute executable, an existing absolute runtime directory, an absolute graph and both ports".into());
+        }
+    }
     let mut ids = std::collections::BTreeSet::new();
     for group in &plan.groups {
         for program in &group.programs {
@@ -170,6 +183,7 @@ mod tests {
                 unit_files: vec!["/repo/deploy/perception.service".into()],
                 await_recordings: false,
             }],
+            dora: None,
         }
     }
 

@@ -6,7 +6,9 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use workload_systemd::{Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup};
+use workload_systemd::{
+    DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup,
+};
 
 /// How long a scenario lets its units run after readiness.
 const OBSERVATION: Duration = Duration::from_secs(3);
@@ -35,7 +37,7 @@ impl Fixture {
             stop_seconds: 5,
             ..Default::default()
         };
-        (shared, SystemdPlan { groups })
+        (shared, SystemdPlan { groups, dora: None })
     }
 }
 impl Drop for Fixture {
@@ -535,4 +537,55 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
     let second_report = second_report.unwrap();
     assert!(second_report.successful(), "{second_report:#?}");
     assert!(active("doramcap-*-isolated.service").trim().is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, the system service manager and DORAMCAP_TEST_DORA"]
+async fn dora_runs_as_units_and_registers_the_graph() {
+    // Arrange
+    let executable =
+        std::env::var("DORAMCAP_TEST_DORA").expect("DORAMCAP_TEST_DORA names a dora binary");
+    let fixture = Fixture::new("dora");
+    let runtime = fixture.root.join("dora");
+    std::fs::create_dir_all(&runtime).unwrap();
+    let graph = fixture.root.join("graph.yml");
+    std::fs::write(
+        &graph,
+        "nodes:\n  - id: user\n    path: dynamic\n    outputs: [messages]\n",
+    )
+    .unwrap();
+    let ports: Vec<u32> = (0..2)
+        .map(|_| {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            listener.local_addr().unwrap().port().into()
+        })
+        .collect();
+    let mut plan = fixture.plan("r1", vec![]);
+    plan.1.dora = Some(DoraUnits {
+        executable,
+        coordinator_port: ports[0],
+        daemon_port: ports[1],
+        graph: graph.to_string_lossy().into(),
+        runtime_directory: runtime.to_string_lossy().into(),
+        ..Default::default()
+    });
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    let names: Vec<_> = report.units.iter().map(|unit| unit.unit.as_str()).collect();
+    assert!(
+        names
+            .iter()
+            .any(|name| name.ends_with("-dora-coordinator.service")),
+        "{names:?}"
+    );
+    assert!(
+        names
+            .iter()
+            .any(|name| name.ends_with("-dora-daemon.service")),
+        "{names:?}"
+    );
+    assert!(runtime.join("graph.yml").is_file());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
