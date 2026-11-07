@@ -669,6 +669,35 @@ async fn dora_runs_as_units_and_registers_the_graph() {
         read_only: false,
     });
     plan.1.programs.push(participant);
+    // Native project units preserve their filesystem; app units receive the shared config bind.
+    let native = fixture.root.join("native.service");
+    std::fs::write(&native, format!(r#"[Service]
+Environment=DORA_NODE_ID=native-chosen
+ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > {}; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
+"#, runtime.join("native-environment").display())).unwrap();
+    plan.1
+        .unit_files
+        .push(native.to_string_lossy().into_owned());
+    let adopted = fixture.root.join("participant.service");
+    std::fs::write(&adopted, r#"[Service]
+Environment=DORA_NODE_ID=app-chosen
+ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > /results/app-environment; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
+"#).unwrap();
+    plan.1.binaries = "/bin".into();
+    plan.1.app_units.push(workload_systemd::AppUnit {
+        id: "adopted".into(),
+        file: adopted.to_string_lossy().into_owned(),
+        binds: vec![Bind {
+            source: runtime.to_string_lossy().into_owned(),
+            target: "/results".into(),
+            read_only: false,
+        }],
+    });
+    plan.0.artifacts = fixture
+        .root
+        .join("artifacts space%quote\"slash\\")
+        .to_string_lossy()
+        .into_owned();
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
@@ -691,6 +720,20 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     assert_eq!(values[0], "user");
     assert!(values[1].parse::<u16>().unwrap() > 0);
     assert_eq!(values[2], "/config/zenoh.json5");
+    for (name, node) in [
+        ("native-environment", "native-chosen"),
+        ("app-environment", "app-chosen"),
+    ] {
+        let text = std::fs::read_to_string(runtime.join(name)).unwrap();
+        let participant: Vec<_> = text.lines().collect();
+        assert_eq!(participant[0], node);
+        assert_eq!(participant[1], values[1]);
+        if name == "app-environment" {
+            assert_eq!(participant[2], values[2]);
+        } else {
+            assert!(Path::new(participant[2]).is_absolute());
+        }
+    }
     assert!(runtime.join("dataflow.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
@@ -762,11 +805,26 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
             binds,
         });
     }
+    let mut participant = program(
+        "user",
+        r#"printf '%s\n' "$DORA_DAEMON_LOCAL_LISTEN_PORT" "$DORA_ZENOH_CONFIG_OVERLAY" > /results/environment; test -s "$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300"#,
+    );
+    participant.binds.push(Bind {
+        source: runtime.to_string_lossy().into_owned(),
+        target: "/results".into(),
+        read_only: false,
+    });
+    plan.1.programs.push(participant);
     drop(ports);
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
+    let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();
+    assert_eq!(
+        environment.lines().collect::<Vec<_>>(),
+        [daemon.as_str(), "/config/zenoh.json5"]
+    );
     assert!(runtime.join("dataflow.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }

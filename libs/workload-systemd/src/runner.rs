@@ -10,6 +10,8 @@ use workload_lifecycle::recording::{FinalizeRecordings, Recording, WaitForRecord
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UnitExit {
     pub unit: String,
+    /// Program ID or adopted unit stem: the unit name without its repository prefix.
+    pub id: String,
     /// systemd's `Result`, such as `success`, `exit-code`, `signal` or `timeout`.
     pub result: Option<String>,
     /// `CLD_*` code of the main process; zero when it never ran.
@@ -26,8 +28,16 @@ impl UnitExit {
         let service = &unit.service;
         // systemd reports unavailable accounting as u64::MAX.
         let known = |value: zbus::Result<u64>| value.ok().filter(|value| *value != u64::MAX);
+        // Names are `doramcap-<scope>-<id>.service`.
+        let id = unit
+            .name
+            .strip_suffix(".service")
+            .and_then(|name| name.splitn(3, '-').nth(2))
+            .unwrap_or_default()
+            .to_owned();
         Self {
             unit: unit.name.clone(),
+            id,
             result: service.result().await.ok(),
             exec_main_code: service.exec_main_code().await.ok(),
             exec_main_status: service.exec_main_status().await.ok(),
@@ -151,14 +161,14 @@ impl SystemdRunner {
             })
             .await
             .map_err(error)?;
-        let run = prepared.value().run.clone().expect("prepared run");
+        let mut run = prepared.value().run.clone().expect("prepared run");
         let mut plan = prepared.value().plan.clone().expect("prepared plan");
-        let prepare = || -> Result<()> {
-            crate::dora::prepare(&run, &mut plan)?;
+        let preparation = async {
             if !run.dora_apps.is_empty() {
                 std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
                     .map_err(error)?;
             }
+            crate::dora::prepare(&mut run, &mut plan).await?;
             preflight(
                 prepared
                     .value()
@@ -166,8 +176,9 @@ impl SystemdRunner {
                     .as_ref()
                     .expect("prepared snapshot"),
             )
-        };
-        if let Err(e) = prepare() {
+        }
+        .await;
+        if let Err(e) = preparation {
             return Err(match executor.run::<crate::DiscardRun>(prepared).await {
                 Ok(_) => e,
                 Err(cleanup) => format!("{e}; {cleanup}"),
@@ -250,7 +261,7 @@ mod tests {
         let json = serde_json::json!({
             "id": "run", "execution_error": null, "writers_stopped": true,
             "recording_finalized": true, "cleanup_verified": true, "diagnostics": [],
-            "units": [{"unit": "example.service", "result": "success",
+            "units": [{"unit": "example.service", "id": "example", "result": "success",
                 "exec_main_code": 1, "exec_main_status": 0}]
         });
         let report: SystemdRunReport = serde_json::from_value(json.clone()).unwrap();

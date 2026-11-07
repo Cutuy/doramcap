@@ -37,6 +37,7 @@ struct Active {
 pub struct State {
     pub adapter: Rc<DockerAdapter>,
     runner: Rc<tokio::sync::Mutex<ComposeRunner>>,
+    systemd: Rc<tokio::sync::Mutex<workload_systemd::SystemdRunner>>,
     active: Option<Active>,
     updates: Arc<Mutex<ExecutionUpdate>>,
     pub closing: bool,
@@ -53,6 +54,7 @@ impl State {
         );
         Ok(Self {
             runner: Rc::new(tokio::sync::Mutex::new(ComposeRunner::new(adapter.clone()))),
+            systemd: Rc::default(),
             adapter,
             active: None,
             updates,
@@ -82,14 +84,21 @@ impl State {
         None
     }
 }
-/// Compose launch settings from a run request. Errors: no run inputs, or no Compose backend.
-pub fn run(request: RunRequest) -> Result<ComposeRun, String> {
+/// One run's launch inputs for the backend its request selects.
+pub enum Launch {
+    Compose(ComposeRun),
+    Systemd(workload_systemd::RunPlan, workload_systemd::SystemdPlan),
+}
+/// Split a run request by backend. Errors: no run inputs, or no backend.
+pub fn launch(request: RunRequest) -> Result<Launch, String> {
     let run = request.run.ok_or("run request has no run inputs")?;
     match request.backend {
         Some(run_request::Backend::Compose(compose)) => {
-            ComposeRun::from_plan(run, compose).map_err(|error| error.to_string())
+            ComposeRun::from_plan(run, compose)
+                .map(Launch::Compose)
+                .map_err(|error| error.to_string())
         }
-        Some(run_request::Backend::Systemd(_)) => Err("systemd runs are not supported yet".into()),
+        Some(run_request::Backend::Systemd(systemd)) => Ok(Launch::Systemd(run, systemd)),
         None => Err("run request has no backend".into()),
     }
 }
@@ -103,8 +112,13 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let _ = accepted.send(Err("InvalidInput".into()));
         return reply;
     };
-    let spec = match request.run.ok_or("InvalidInput".to_string()).and_then(run) {
-        Ok(spec) => spec,
+    let spec = match request
+        .run
+        .ok_or("InvalidInput".to_string())
+        .and_then(launch)
+    {
+        Ok(Launch::Compose(spec)) => spec,
+        Ok(Launch::Systemd(run, plan)) => return start_systemd(state, run, plan, accepted, reply),
         Err(error) => {
             let _ = accepted.send(Err(error));
             return reply;
@@ -278,6 +292,137 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let _ = done_tx.send(());
     });
     reply
+}
+
+/// Run a systemd plan: accept at once, then report readiness, step events, the machine
+/// before and after, and the result through the same update as Compose runs.
+fn start_systemd(
+    state: &mut State,
+    run: workload_systemd::RunPlan,
+    plan: workload_systemd::SystemdPlan,
+    accepted: oneshot::Sender<Result<Vec<u8>, String>>,
+    reply: Reply,
+) -> Reply {
+    let (stop_tx, stop_rx) = oneshot::channel();
+    let (done_tx, done_rx) = oneshot::channel();
+    state.active = Some(Active {
+        id: run.id.clone(),
+        stop: Some(stop_tx),
+        stopped: Rc::new(Cell::new(false)),
+        done: Some(done_rx),
+    });
+    *state.updates.lock().unwrap() = ExecutionUpdate {
+        run_id: run.id.clone(),
+        ..Default::default()
+    };
+    let updates = state.updates.clone();
+    let runner = state.systemd.clone();
+    let sink = updates.clone();
+    let observer = TelemetryObserver::new(MAX_EVENT_BYTES, move |bytes| {
+        let mut update = sink
+            .lock()
+            .map_err(|_| io::Error::other("event queue unavailable"))?;
+        if update.events.len() == EVENT_QUEUE_CAPACITY {
+            return Err(io::Error::other("event queue full"));
+        }
+        update
+            .events
+            .push(workflow_protocol::Event::decode(bytes).map_err(io::Error::other)?);
+        Ok(())
+    });
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let readiness = updates.clone();
+    let ready_id = run.id.clone();
+    tokio::task::spawn_local(async move {
+        if ready_rx.await.is_ok() {
+            let mut update = readiness.lock().unwrap();
+            if update.run_id == ready_id {
+                update.ready = true;
+            }
+        }
+    });
+    tokio::task::spawn_local(async move {
+        // Machine facts describe the disk that holds the run's artifacts.
+        let data = std::path::Path::new(&run.artifacts)
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default();
+        updates.lock().unwrap().machine_before = Some(system_config::observe(&data));
+        let _ = accepted.send(Ok(Vec::new()));
+        let mut runner = runner.lock().await;
+        let loss = updates.clone();
+        let result = runner
+            .run(
+                run,
+                plan,
+                async {
+                    let _ = stop_rx.await;
+                },
+                move |event: &orchestrator::Event| {
+                    // Omit bulky input/output payloads from the bounded transport.
+                    observer.observe(&orchestrator::Event {
+                        invocation: event.invocation.clone(),
+                        state: event.state,
+                        elapsed_ns: event.elapsed_ns,
+                        duration_ns: event.duration_ns,
+                        payload: None,
+                        error: event.error.as_deref().map(bounded_error),
+                    });
+                    loss.lock().unwrap().dropped_events = observer.dropped_events();
+                },
+                Some(ready_tx),
+            )
+            .await;
+        let blocked = runner.blocked();
+        let result = match result {
+            Ok(report) => ExecutionResult {
+                blocked,
+                error: report.execution_error,
+                writers_stopped: Some(report.writers_stopped),
+                recording_finalized: Some(report.recording_finalized),
+                service_exits: report.units.into_iter().map(unit_exit).collect(),
+                boundary_clean: Some(report.cleanup_verified),
+                // systemd runs have no Docker event stream to lose.
+                event_stream_healthy: Some(true),
+            },
+            Err(error) => ExecutionResult {
+                blocked,
+                error: Some(error),
+                ..Default::default()
+            },
+        };
+        let after = system_config::observe(&data);
+        {
+            let mut update = updates.lock().unwrap();
+            update.machine_after = Some(after);
+            update.result = Some(result);
+        }
+        let _ = done_tx.send(());
+    });
+    reply
+}
+
+/// How a unit ended, in the shape Console shows for every backend.
+fn unit_exit(unit: workload_systemd::UnitExit) -> workload_docker::compose::ServiceExit {
+    // `CLD_EXITED` from waitid(2); other codes mean a signal ended the main process.
+    const CLD_EXITED: i32 = 1;
+    const SIGNAL_EXIT_BASE: i32 = 128;
+    const SIGKILL: i32 = 9;
+    // Unreadable evidence shows as zero here; the run report already fails with a diagnostic.
+    let code = unit.exec_main_code.unwrap_or_default();
+    let status = unit.exec_main_status.unwrap_or_default();
+    let signalled = code != 0 && code != CLD_EXITED;
+    let oom_killed = unit.result.as_deref() == Some("oom-kill");
+    workload_docker::compose::ServiceExit {
+        service: unit.id,
+        exit_code: if signalled {
+            SIGNAL_EXIT_BASE + status
+        } else {
+            status
+        },
+        oom_killed,
+        killed: oom_killed || (signalled && status == SIGKILL),
+    }
 }
 
 /// Publish terminal state and the latest capture together before polling can finish.

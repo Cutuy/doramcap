@@ -215,10 +215,26 @@ impl Execution {
             let (tx, rx) = tokio::sync::oneshot::channel();
             tokio::task::spawn_local(async move {
                 let result = async {
+                    let spec = match execution::launch(request)? {
+                        execution::Launch::Compose(spec) => spec,
+                        execution::Launch::Systemd(run, plan) => {
+                            workload_systemd::validate(&run, &plan)?;
+                            let data = std::path::Path::new(&run.artifacts)
+                                .parent()
+                                .map(std::path::Path::to_path_buf)
+                                .unwrap_or_default();
+                            // systemd runs have no Compose plan or image snapshot to review.
+                            return Ok(protocol::Inspection {
+                                plan: None,
+                                snapshot: Some(Default::default()),
+                                machine: Some(system_config::observe(&data)),
+                            }
+                            .encode_to_vec());
+                        }
+                    };
                     let resolved =
                         workload_docker::workflows::recorded_compose::preparation::resolve(
-                            &adapter,
-                            execution::run(request)?,
+                            &adapter, spec,
                         )
                         .await
                         .map_err(|e| {

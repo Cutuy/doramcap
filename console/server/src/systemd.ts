@@ -1,7 +1,7 @@
 import { runPlan } from './run-plan.js';
-import { readdir } from 'node:fs/promises';
+import { lstat, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
-import { execution, systemd, type Config } from './native.js';
+import { compose, execution, systemd, type Config, type Project } from './native.js';
 import { type SelectedApp } from './system-apps.js';
 
 const UNIT_SUFFIX = '.service';
@@ -14,6 +14,13 @@ export async function projectUnits(project: string) {
     .filter((entry) => entry.isFile() && entry.name.endsWith(UNIT_SUFFIX))
     .map((entry) => join(project, entry.name))
     .sort();
+}
+
+/** The project directory as a run's project; its units are its `*.service` files. */
+export async function systemdProject(directory: string): Promise<Project> {
+  const actual = await realpath(directory);
+  if (!(await lstat(actual)).isDirectory()) throw new Error('InvalidInput');
+  return compose.ComposeProject.create({ key: 'workload', directory: actual });
 }
 
 /** Inputs Console has already resolved for one run. */

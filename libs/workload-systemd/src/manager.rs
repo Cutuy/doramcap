@@ -225,6 +225,7 @@ impl Manager {
         apps: &[crate::AppUnit],
         binaries: &str,
         stop_seconds: u64,
+        runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
     ) -> Result<Vec<String>> {
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
@@ -240,13 +241,31 @@ impl Manager {
             let name = scope.unit(id);
             let copy = units.join(&name);
             // Earlier defaults yield to any stop grace declared by the source unit.
+            let environment = runtime
+                .map(|runtime| crate::dora::environment(runtime, id, app.is_none()))
+                .transpose()?
+                .unwrap_or_default();
             let mut contents = format!("[Service]\nTimeoutStopSec={stop_seconds}s\n").into_bytes();
+            // The unit's own node identity takes precedence over the default app ID.
+            for variable in environment
+                .iter()
+                .filter(|variable| variable.name == dora_app::environment::NODE_ID)
+            {
+                contents.extend(environment_line(variable)?.as_bytes());
+            }
             contents.extend(tokio::fs::read(file).await.map_err(error)?);
             tokio::fs::write(&copy, contents).await.map_err(error)?;
             let drop_in =
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
             let mut run = format!("[Service]\nSlice={}\n", scope.slice);
+            for variable in environment
+                .iter()
+                .filter(|variable| variable.name != dora_app::environment::NODE_ID)
+            {
+                run.push_str(&environment_line(variable)?);
+            }
+            // Native project units expose the host configuration path through their own filesystem.
             if let Some(app) = app {
                 run.push_str(&app_root(scope, &name, &app.binds, binaries).await?);
             }
@@ -465,6 +484,26 @@ fn stop_budget(micros: u64) -> Result<Duration> {
 
 fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
     value.into().try_into().map_err(error)
+}
+
+/// Quote one approved environment assignment using systemd.syntax C escapes and literal specifiers.
+fn environment_line(variable: &crate::EnvironmentVariable) -> Result<String> {
+    use std::fmt::Write as _;
+    let mut line = String::from("Environment=\"");
+    for character in format!("{}={}", variable.name, variable.value).chars() {
+        match character {
+            '\0' => return Err("Dora environment values cannot contain NUL".into()),
+            '%' => line.push_str("%%"),
+            '\\' => line.push_str("\\\\"),
+            '"' => line.push_str("\\\""),
+            character if character.is_ascii_control() => {
+                write!(&mut line, "\\x{:02x}", character as u32).expect("write to string")
+            }
+            character => line.push(character),
+        }
+    }
+    line.push_str("\"\n");
+    Ok(line)
 }
 
 /// Transient service properties for one program.
