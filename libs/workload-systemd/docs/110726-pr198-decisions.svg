@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="360" viewBox="0 0 800 360" role="img" aria-labelledby="title desc">
+<title id="title">Accepted systemd lifecycle</title>
+<desc id="desc">Admission checks for prior resources. Clean repositories start groups, stop with bounded observation, then finalize and remove. Residual resources block admission until manual cleanup. Crashes leave resources in place.</desc>
+<rect width="800" height="360" fill="#fff"/>
+<g fill="#f1f5f9" stroke="#475569" stroke-width="1.5">
+<rect x="20" y="35" width="180" height="55" rx="5"/>
+<rect x="310" y="35" width="180" height="55" rx="5"/>
+<rect x="600" y="35" width="180" height="55" rx="5"/>
+<rect x="310" y="155" width="180" height="55" rx="5"/>
+
+<rect x="20" y="265" width="180" height="55" rx="5"/>
+<rect x="600" y="265" width="180" height="55" rx="5"/>
+</g>
+<g fill="none" stroke="#475569" stroke-width="1.5">
+<path d="M200 62 H310 M490 62 H600 M400 90 V155 M110 90 V265 M690 90 V265 M690 125 H490 V182 M310 182 H240 V292 H200"/>
+</g>
+<g font-family="sans-serif" font-size="16" fill="#0f172a" text-anchor="middle">
+<text x="110" y="68">Check admission</text>
+<text x="400" y="68">Start groups</text>
+<text x="690" y="58">Stop groups</text><text x="690" y="78">Bounded observation</text>
+<text x="400" y="178">Preserve units</text><text x="400" y="198">and artifacts</text>
+<text x="110" y="288">Block new run</text><text x="110" y="308">Manual cleanup</text>
+<text x="690" y="288">Finalize + remove</text><text x="690" y="308">after confirmed stop</text>
+<text x="255" y="50">clean</text>
+<text x="545" y="50">stop request</text>
+<text x="455" y="115">crash / exit</text>
+<text x="110" y="180">prior resources</text>
+<text x="570" y="115">expired</text>
+<text x="735" y="220">stopped</text>
+</g>
+</svg>
