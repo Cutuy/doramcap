@@ -4,6 +4,7 @@ Run one experiment's apps as owned systemd units in a per-repository slice, cont
 over D-Bus. Rust starts Dora, then system apps and waits for recordings, then user apps; shutdown reverses that order. Repository `.service` files are
 adopted with native references preserved. Declared stop grace takes precedence over the plan fallback. An optional Dora coordinator and daemon start first as units; Dora CLI commands run as oneshot units. A failed unit is recorded and the run continues until stop.
 Generated units use private roots with read-only host system directories and per-unit bind mounts.
+Every unit shares the run's private `/dev/shm`; allowed host entries appear in place.
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
 

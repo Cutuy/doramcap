@@ -241,7 +241,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
 - [x] Console without Docker: `SYSTEMD` configurations omit `docker_socket`; Compose connects lazily on its first operation. The release installer still assumes Compose.
-- [ ] Ownership and reset of Dora's shared-memory segments.
+- [x] Each run owns its `/dev/shm` directory; generated and adopted units share it, and teardown or explicit cleanup removes it. Configured `host_shm` entries remain driver-owned.
 - [ ] Share Prepare and Report between Compose and systemd.
 
 **Validation**
@@ -249,6 +249,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Native test: a unit reads its config and writes results at container paths, and no bind target appears on the host.
 - [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
 - [x] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
+- [ ] Rebased shared-memory qualification: units share a run segment, allowed host entries survive, and rejected admission preserves abandoned segments until explicit cleanup.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 

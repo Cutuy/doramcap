@@ -41,6 +41,8 @@ test('systemd Consoles need no Docker socket and reject one', () => {
   // Act / Assert
   validateConfig(systemd(''));
   assert.throws(() => validateConfig(systemd('docker_socket:"/docker.sock"')), /only to COMPOSE/);
+  validateConfig(systemd('host_shm: "camera"'));
+  assert.throws(() => validateConfig(config('host_shm: "camera"')), /only to SYSTEMD/);
   // Act / Assert: Compose still requires the socket.
   assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), dockerSocket: '' })), /docker_socket must be absolute/);
 });

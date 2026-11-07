@@ -24,6 +24,7 @@ export function validateConfig(config: Config) {
   switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {
     case launch.Form.FORM_UNSPECIFIED:
     case launch.Form.COMPOSE:
+      if (config.hostShm?.length) throw new Error('host_shm applies only to SYSTEMD');
       if (!isAbsolute(config.dockerSocket)) throw new Error('docker_socket must be absolute');
       break;
     case launch.Form.SYSTEMD:

@@ -1274,3 +1274,57 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
     );
     assert!(runtime_units().is_empty());
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn units_share_the_runs_own_shm_and_see_allowed_host_entries() {
+    // Arrange: a driver-owned host segment, and two units that share a run segment.
+    let fixture = Fixture::new("shm");
+    let camera = format!("doramcap-native-camera-{}", std::process::id());
+    let host = Path::new("/dev/shm").join(&camera);
+    std::fs::write(&host, "frame").unwrap();
+    let seen = fixture.root.join("seen");
+    let writer = program(
+        "writer",
+        "echo segment > /dev/shm/run-segment; exec sleep 300",
+    );
+    let reader = sees(
+        program(
+            "reader",
+            &format!(
+                "test -e /dev/shm/run-segment && cp /dev/shm/{camera} {} && exec sleep 300",
+                seen.display()
+            ),
+        ),
+        &fixture,
+    );
+    let mut plan = fixture.plan(
+        "r1",
+        vec![
+            SystemdPlan {
+                programs: vec![writer],
+                ..Default::default()
+            },
+            SystemdPlan {
+                programs: vec![reader],
+                ..Default::default()
+            },
+        ],
+    );
+    plan.1.host_shm = vec![camera.clone()];
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert_eq!(std::fs::read_to_string(&seen).unwrap(), "frame");
+    assert!(!Path::new("/dev/shm/run-segment").exists());
+    let leftovers: Vec<_> = std::fs::read_dir("/dev/shm")
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.path().join("run-segment").exists())
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+    // Host entries are the driver's and stay in place.
+    assert_eq!(std::fs::read_to_string(&host).unwrap(), "frame");
+    std::fs::remove_file(host).unwrap();
+}

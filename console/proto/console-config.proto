@@ -20,6 +20,9 @@ message ConsoleConfig {
   doramcap.launch.v1.Form form = 12;
   // Absolute directory of host binaries (`dora` and each manifest's executable); SYSTEMD only.
   string binaries = 13;
+  // Host /dev/shm entries, such as a driver's `camera` segment, that every unit of a run
+  // sees in place; SYSTEMD only. Each run otherwise has its own /dev/shm.
+  repeated string host_shm = 14;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.

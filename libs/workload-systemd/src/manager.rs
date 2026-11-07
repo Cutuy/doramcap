@@ -221,18 +221,18 @@ impl Manager {
     pub async fn adopt(
         &self,
         scope: &Scope,
-        files: &[String],
-        apps: &[crate::AppUnit],
+        plan: &crate::SystemdPlan,
         binaries: &str,
         stop_seconds: u64,
         runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
+        binds: &[crate::Bind],
     ) -> Result<Vec<String>> {
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut names = Vec::new();
         let mut copies = Vec::new();
-        let user = files.iter().map(|file| (file, None));
-        let apps = apps.iter().map(|app| (&app.file, Some(app)));
+        let user = plan.unit_files.iter().map(|file| (file, None));
+        let apps = plan.app_units.iter().map(|app| (&app.file, Some(app)));
         for (file, app) in user.chain(apps) {
             let id = match app {
                 Some(app) => app.id.as_str(),
@@ -259,6 +259,14 @@ impl Manager {
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
             let mut run = format!("[Service]\nSlice={}\n", scope.slice);
+            for bind in binds {
+                let kind = if bind.read_only {
+                    "BindReadOnlyPaths"
+                } else {
+                    "BindPaths"
+                };
+                run.push_str(&format!("{kind}={}:{}\n", bind.source, bind.target));
+            }
             for variable in environment
                 .iter()
                 .filter(|variable| variable.name != dora_app::environment::NODE_ID)
@@ -416,6 +424,7 @@ impl Manager {
         }
         remove_path(&scope.directory.join("units")).await?;
         remove_path(&scope.directory.join(ROOTS)).await?;
+        remove_path(&scope.shm).await?;
         self.manager.reload().await.map_err(error)
     }
 

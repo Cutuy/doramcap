@@ -27,6 +27,8 @@ const SCOPE_CHARS: usize = 12;
 pub(crate) const ACTIVE_RUN: &str = "active-run";
 /// Runtime root.
 const RUNTIME_ROOT: &str = "/run/doramcap";
+/// Host shared-memory filesystem; each run owns one directory in it.
+const SHM_ROOT: &str = "/dev/shm";
 /// Directory where the service manager reads runtime units and drop-ins.
 const SYSTEMD_RUNTIME_UNITS: &str = "/run/systemd/system";
 
@@ -61,6 +63,8 @@ pub(crate) struct Scope {
     pub prefix: String,
     pub slice: String,
     pub directory: std::path::PathBuf,
+    /// Shared-memory directory every unit sees as /dev/shm.
+    pub shm: std::path::PathBuf,
 }
 impl Scope {
     /// Derive names from the canonical repository root.
@@ -73,6 +77,7 @@ impl Scope {
         Ok(Self {
             slice: format!("{prefix}.slice"),
             directory: std::path::Path::new(RUNTIME_ROOT).join(hash),
+            shm: std::path::Path::new(SHM_ROOT).join(&prefix),
             prefix,
         })
     }
@@ -118,6 +123,13 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
         return Err("readiness and stop budgets must be positive".into());
     }
     workload_lifecycle::plan::validate_apps(run, app_ids(plan)?.iter().map(String::as_str))?;
+    if plan
+        .host_shm
+        .iter()
+        .any(|name| name.is_empty() || name.contains('/') || name == "." || name == "..")
+    {
+        return Err("host_shm entries must be names directly in /dev/shm".into());
+    }
     let mut ids = std::collections::BTreeSet::new();
     let reserved = |id: &str| !run.dora_apps.is_empty() && id.starts_with(dora::CLI_PREFIX);
     for program in &plan.programs {

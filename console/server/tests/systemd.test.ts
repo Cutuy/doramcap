@@ -16,7 +16,7 @@ const DORA_MEMLOCK_BYTES = 64 * 1024 * 1024;
 async function systemdRelease() {
   const text = await readFile(join(repository, 'console/release/console.pbtxt'), 'utf8');
   return releaseConfig(
-    capabilities.parseConfig(text.replace('form: COMPOSE', 'form: SYSTEMD binaries: "/opt/doramcap/bin"')),
+    capabilities.parseConfig(text.replace('form: COMPOSE', 'form: SYSTEMD binaries: "/opt/doramcap/bin" host_shm: "camera"')),
     '/playground', systemApps, '/state',
   );
 }
@@ -39,6 +39,7 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     });
     // Assert
     assert.ok(plan.systemd && !plan.compose);
+    assert.deepEqual(plan.systemd!.hostShm, ["camera"]);
     assert.deepEqual(plan.run!.doraApps, ['dora-coordinator', 'dora-daemon']);
     assert.equal(plan.run!.dataflowFile, join(directory, 'graph.json'));
     assert.deepEqual(plan.run!.systemApps, ['cpu-monitor', 'data-recorder', 'live-bridge']);

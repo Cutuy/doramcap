@@ -11,6 +11,8 @@ use workload_lifecycle::{
     recording::{ReadinessInput, Recording, WaitForRecordings},
 };
 
+/// Sticky and world-writable, like the host shared-memory directory.
+const SHARED_DIRECTORY_MODE: u32 = 0o1777;
 pub(crate) struct SystemdRunning {
     pub manager: Rc<Manager>,
     pub executor: Rc<LocalExecutor>,
@@ -31,16 +33,48 @@ pub(crate) struct Removed {
     pub diagnostics: Vec<String>,
 }
 
+impl SystemdRunning {
+    /// The run directory, with selected driver-owned host entries mounted over it.
+    fn shm_binds(&self) -> Vec<crate::Bind> {
+        let shared = crate::Bind {
+            source: self.scope.shm.to_string_lossy().into_owned(),
+            target: crate::SHM_ROOT.into(),
+            read_only: false,
+        };
+        let host = self.plan.host_shm.iter().map(|name| {
+            let path = format!("{}/{name}", crate::SHM_ROOT);
+            crate::Bind {
+                source: path.clone(),
+                target: path,
+                read_only: false,
+            }
+        });
+        std::iter::once(shared).chain(host).collect()
+    }
+}
+
 impl workload_lifecycle::run::Running for SystemdRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
+        tokio::fs::create_dir_all(&self.scope.shm)
+            .await
+            .map_err(crate::error)?;
+        std::fs::set_permissions(
+            &self.scope.shm,
+            std::os::unix::fs::PermissionsExt::from_mode(SHARED_DIRECTORY_MODE),
+        )
+        .map_err(crate::error)?;
+        let shm = self.shm_binds();
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
             let mut phase = crate::phase(&self.run, &self.plan, role);
             if role != Phase::Dora {
                 crate::dora::attach(&self.run, &mut phase)?;
+            }
+            for program in &mut phase.programs {
+                program.binds.extend(shm.iter().cloned());
             }
             let runtime = if role == Phase::Dora {
                 None
@@ -53,11 +87,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                     .manager
                     .adopt(
                         &self.scope,
-                        &phase.unit_files,
-                        &phase.app_units,
+                        &phase,
                         &self.plan.binaries,
                         self.run.stop_seconds,
                         runtime,
+                        &shm,
                     )
                     .await?;
                 // Keep every attempted unit before submitting any cancellable start.
