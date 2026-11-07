@@ -6,3 +6,4 @@ Shared recording checks and cooperative recorded-run sequencing for Compose and 
 
 See [recording steps](src/recording.rs), [phase hooks](src/recorded_run.rs),
 and the [System Monitor deployment](../../apps/system-monitor/deploy/README.md).
+Plan: [launch forms for Compose, systemd and Supervisor](docs/110726-launch-forms.md).

@@ -13,7 +13,7 @@ evidence. Broad runtime guarantees require the qualification milestones below.
 
 | Area | Implemented scope | Remaining work / evidence |
 |---|---|---|
-| Lifecycle | Shared recorded-run phases; Compose experiment ownership, readiness and cleanup; Supervisor/System Monitor runner | General workload adoption, persistent boot policy and bounded restart policy. [Lifecycle](../libs/workload-lifecycle/), [Compose](../libs/workload-docker/), [Supervisor](../libs/workload-supervisor/) |
+| Lifecycle | Shared recorded-run phases; Compose experiment ownership, readiness and cleanup; Supervisor/System Monitor runner | [Launch forms plan](../libs/workload-lifecycle/docs/110726-launch-forms.md): shared run sequence, systemd over D-Bus. General workload adoption, persistent boot policy and bounded restart policy. [Lifecycle](../libs/workload-lifecycle/), [Compose](../libs/workload-docker/), [Supervisor](../libs/workload-supervisor/) |
 | Sessions | Identity and experiment evidence concept scaffold | Membership, manifest serialization and Rust APIs. [Session design](../libs/session/) |
 | CPU | Affinity/RT policy, cgroup bootstrap, native per-CPU accounting and live viewer | Jetson/Linux 6.8 and sustained-load qualification; kernel-thread accounting remains experimental. [Policy evidence](../libs/resources/resource-policy/docs/validation.md), [BPF evidence](../libs/resources/cgroup-bpf/docs/101826-native-kernel-validation.md) |
 | Faults | Bounded capture, health/freshness aggregation and Dora watchdog with optional MCAP/OTel outputs | Workload recovery authority and end-to-end restart policy. [Watchdog](../apps/fault-watchdog/) |

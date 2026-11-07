@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="510" viewBox="0 0 960 510" role="img" aria-labelledby="title desc">
+<title id="title">Run handle and monitoring</title>
+<desc id="desc">The running handle exists from start until remove. A shared run monitor merges an optional status feed from the handle, fault publications from Fault Watchdog and the stop request, and feeds the live view and evidence log.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="960" height="510" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">Run handle and monitoring</text>
+<rect x="40" y="56" width="480" height="300" rx="10" fill="none" stroke="#8a99a8" stroke-dasharray="6 4"/>
+<text x="60" y="80" font-size="14" fill="#4a5d6e" text-anchor="start">Launched by the deployment's form</text>
+<rect x="60" y="92" width="440" height="56" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="280" y="115" font-size="16" font-weight="600">Running handle</text><text x="280" y="136" font-size="13">typed per form · optional status feed</text>
+<g fill="#eef1f4" stroke="#a9b4bf"><rect x="60" y="184" width="210" height="56" rx="6"/><rect x="290" y="184" width="210" height="56" rx="6"/><rect x="180" y="276" width="200" height="56" rx="6"/></g>
+<text x="165" y="207" font-size="16" font-weight="600">perception</text><text x="165" y="228" font-size="13">user app · health in code</text>
+<text x="395" y="207" font-size="16" font-weight="600">cpu-monitor</text><text x="395" y="228" font-size="13">system app · health in code</text>
+<text x="280" y="299" font-size="16" font-weight="600">fault-watchdog</text><text x="280" y="320" font-size="13">system app</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M165 240 L243 272"/><path d="M395 240 L317 272"/></g>
+<rect x="620" y="92" width="300" height="56" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="770" y="115" font-size="16" font-weight="600">Run monitor</text><text x="770" y="136" font-size="13">shared sub-workflow</text>
+<path d="M500 112 H616" fill="none" stroke="#536779" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+<text x="560" y="104" font-size="13">status feed</text>
+<path d="M380 304 H580 V136 H616" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="450" y="296" font-size="13">fault publications</text>
+<rect x="660" y="196" width="220" height="48" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="770" y="216" font-size="16" font-weight="600">Stop request</text><text x="770" y="235" font-size="13">user or Console</text>
+<path d="M770 196 V152" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="620" y="280" width="300" height="76" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="770" y="310" font-size="15">Console live view</text><text x="770" y="336" font-size="15">Run evidence log</text>
+<path d="M920 120 H940 V318 H924" fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="480" y="392" font-size="14" fill="#4a5d6e">handle alive</text>
+<path d="M40 400 H920" fill="none" stroke="#bc906b" stroke-width="1.5" stroke-dasharray="6 4"/>
+<g stroke-width="1"><rect x="40" y="412" width="164" height="40" rx="6" fill="#fcebdc" stroke="#bc906b"/><rect x="219" y="412" width="164" height="40" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/><rect x="398" y="412" width="164" height="40" rx="6" fill="#fcebdc" stroke="#bc906b"/><rect x="577" y="412" width="164" height="40" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/><rect x="756" y="412" width="164" height="40" rx="6" fill="#fcebdc" stroke="#bc906b"/></g>
+<g font-size="15" font-weight="600"><text x="122" y="437">start</text><text x="301" y="437">monitor</text><text x="480" y="437">stop</text><text x="659" y="437">finalize</text><text x="838" y="437">remove(self)</text></g>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M204 432 H215"/><path d="M383 432 H394"/><path d="M562 432 H573"/><path d="M741 432 H752"/></g>
+<g font-size="13" text-anchor="start">
+<rect x="40" y="476" width="22" height="14" rx="3" fill="#dbeaf2" stroke="#8ca6b8"/><text x="70" y="488">Shared</text>
+<rect x="160" y="476" width="22" height="14" rx="3" fill="#fcebdc" stroke="#bc906b"/><text x="190" y="488">Form-owned</text>
+<path d="M310 483 H340" stroke="#536779" stroke-width="1.5" stroke-dasharray="5 4"/><text x="350" y="488">Later milestone</text>
+</g>
+</g></svg>
