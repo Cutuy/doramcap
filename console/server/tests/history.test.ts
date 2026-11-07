@@ -28,9 +28,9 @@ class Engine implements NativeExecution {
   async inspect() {
     return execution.Inspection.create({ plan: { services: { worker: { imageId: 'sha256:a' } } }, snapshot: { manifestSha256: 'a' } });
   }
-  async start(run: Parameters<NativeExecution['start']>[0]) {
+  async start(request: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
-    this.update = execution.ExecutionUpdate.create({ runId: run.id });
+    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
   }
   async stop() {}
   poll() {

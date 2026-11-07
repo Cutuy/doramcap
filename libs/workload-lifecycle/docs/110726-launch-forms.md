@@ -2,15 +2,16 @@
 
 # Launch forms: Compose, systemd and Supervisor
 
-Created: 2026-11-07. Status: design agreed with the owner; Milestone 1 not started.
+Created: 2026-11-07. Status: Milestone 0 implemented; Milestone 1 next.
 
 Run an experiment with the launch method its repo uses: Compose, systemd or
 Supervisor. Dora, system apps and user apps all launch the same way within a run.
 Shared sub-workflows handle preparation, evidence and reporting; each form owns how
 its processes start, are watched, stop and are removed.
 
-High-level plan: move Compose onto a shared run sequence (M1), resolve launches from
-app manifests and a per-machine deployment (M2), then add systemd over D-Bus (M3).
+High-level plan: carry today's Compose runs in a run plan (M0), move Compose onto a
+shared run sequence (M1), resolve launches from app manifests and a per-machine
+deployment (M2), then add systemd over D-Bus (M3). M0 and M1 change no behavior.
 Supervisor and the remaining features follow on demand.
 
 ## Accepted design
@@ -31,7 +32,8 @@ Agreed with the owner on 2026-11-07.
 | Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
 | systemd control | D-Bus through `zbus`, pending crate evaluation. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
-| Resolution | Console resolves deployment, manifests and Review choices in TypeScript into a `RunPlan` protobuf that replaces `RunRequest`. Rust Prepare freezes, resets and takes baselines. |
+| Resolution | Console resolves deployment, manifests and Review choices in TypeScript, including backend details. It sends Rust one `RunRequest`: the shared `RunPlan` plus a `oneof` holding one backend's plan. Rust performs every system side effect. |
+| Principles | Share workflow and step libraries, without interfaces that bridge backend differences. Business, UI and user logic stay in TypeScript; system side effects stay in Rust; they talk over protos. Avoid refactoring existing code unless necessary. |
 | Contracts | Package `doramcap.launch.v1` in `libs/workload-lifecycle/proto`: manifest, deployment, run plan and phase records. The deployment imports `resource_policy.v1.Policy`. |
 | Crates | New `libs/workload-systemd` for the launcher and D-Bus control. Native-process steps (ownership, cgroup, shared memory) are a `workload-lifecycle` module. |
 | MVP | Compose and systemd. Supervisor, the live status feed and other items are listed under Future items. |
@@ -97,9 +99,24 @@ connected to the Dora daemon. Units share the host `/dev/shm`; units must not se
 | systemd proxies | `zbus_systemd` generated proxies, or hand-written `zbus` proxies for the few manager and unit calls; `systemd-transient` and `systemd-run` are references |
 | Supervisor XML-RPC (later) | Existing `hyper`/`hyperlocal` plus a small codec, or `quick-xml` |
 
+## Milestone 0: Run request for Compose
+
+**Work items**
+- [x] Add `doramcap.launch.v1.RunPlan` with the inputs every backend shares.
+- [x] Add `ComposePlan` with only Compose inputs; `ComposeRun::from_plan` builds today's launch settings from the run and the Compose plan.
+- [x] Console's `RunRequest` now holds the shared `RunPlan` plus a `compose` backend in a `oneof`; the addon accepts it for inspection and start.
+
+**Validation**
+- [ ] Mapping test: a run and Compose plan yield today's launch settings.
+- [ ] Console server suite and the real Compose Console test.
+- [ ] Focused formatting, Clippy and library-boundary checks.
+
+Evidence: pending re-validation after the 2026-11-07 restack around the single run request.
+
 ## Milestone 1: Shared run sequence with Compose
 
 **Work items**
+- [ ] Copy Prepare into shared code that consumes the `RunPlan`; switch Compose to it once both produce the same preparation.
 - [ ] Define record messages: `Prepared`, `StopRecord`, `RemovalPermit`, `CleanupRecord`, following the protobuf contract style.
 - [ ] Move Prepare, Finalize and Report out of `recorded_compose` into `workload-lifecycle`. Decouple file evidence and machine capture from `DockerAdapter`; Compose adds its Docker facts.
 - [ ] Add the launcher and running-handle interfaces and `experiment::<F>()`. Compose implements them and keeps `RunSignals`.
@@ -118,7 +135,7 @@ connected to the Dora daemon. Units share the host `/dev/shm`; units must not se
 - [ ] Add `doramcap.launch.v1` with the app manifest message: launch facts, requirements, graph, outputs, live outputs and variants with their recordings.
 - [ ] Extend the deployment with the form, app selection, variants, install root and repo config. Existing `resource-policy` configs keep parsing.
 - [ ] Write manifests for Dora, CPU monitoring, data recording, Fault Watchdog and the live bridge.
-- [ ] Console resolves the `RunPlan` in TypeScript, with Review variant overrides; it replaces `RunRequest`. Rust Prepare freezes configs and saves `plan.pbtxt`.
+- [ ] Console resolves the `RunPlan` from manifests in TypeScript, with Review variant overrides. Rust Prepare freezes configs and saves `plan.pbtxt`.
 - [ ] Console config lists manifests; launch fields move out of `SystemAppDefinition`.
 
 **Validation**
@@ -149,6 +166,7 @@ connected to the Dora daemon. Units share the host `/dev/shm`; units must not se
 
 | Item | Notes |
 | --- | --- |
+| Compose run end | A lost container is recorded instead of ending the run; the run ends on stop, lost observation or the Dora graph stopping. |
 | Supervisor launcher | Move `workload-supervisor` onto the shared sequence; XML-RPC; event-listener relay; then delete `recorded_run::Phases`. |
 | Live status feed | Layer 1 monitoring for the Console live view. |
 | Readiness protocol | `sd_notify` everywhere, or a ready file; decide with the owner. |

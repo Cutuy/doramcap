@@ -28,12 +28,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .type_attribute(".doramcap.dora.v1", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(default, deny_unknown_fields)]")
         .compile_protos(
-            &["proto/filesystem.proto", "proto/dora.proto", "proto/compose.proto", "proto/compose_runtime.proto"],
+            &[
+                "proto/filesystem.proto",
+                "proto/dora.proto",
+                "proto/compose.proto",
+                "proto/compose_runtime.proto",
+            ],
             &["proto"],
         )?;
+    // The Compose plan joins two packages, so it compiles against their existing Rust modules.
+    prost_build::Config::new()
+        .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
+        .extern_path(".doramcap.dora.v1", "crate::workflows::dora")
+        .extern_path(".doramcap.compose.v1", "crate::compose")
+        .compile_protos(&["proto/compose_plan.proto"], &["proto"])?;
     println!("cargo:rerun-if-changed=proto/compose.proto");
     println!("cargo:rerun-if-changed=proto/compose_runtime.proto");
     println!("cargo:rerun-if-changed=proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/dora.proto");
+    println!("cargo:rerun-if-changed=proto/compose_plan.proto");
     Ok(())
 }

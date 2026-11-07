@@ -4,6 +4,10 @@ pub mod finalization;
 pub mod observation;
 pub mod preparation;
 pub mod reset;
+mod plan {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
+}
+pub use plan::ComposePlan;
 
 use self::{
     finalization::{FinalizeInput, FinalizeRun, ReportInput, WriteRunReport},
@@ -504,6 +508,38 @@ pub struct ComposeRun {
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
+impl ComposeRun {
+    /// Build launch settings from the shared run inputs and the Compose plan, with
+    /// default OverlayFS isolation. MCAP writers write beneath the artifact directory,
+    /// on its parent's filesystem.
+    pub fn from_plan(run: workload_lifecycle::launch::RunPlan, plan: ComposePlan) -> Self {
+        let artifacts = PathBuf::from(run.artifacts);
+        Self {
+            id: run.id,
+            repository_root: run.repository_root.into(),
+            mcap_writers: McapWriters {
+                services: plan.mcap_services,
+                directories: artifacts.parent().map(PathBuf::from).into_iter().collect(),
+            },
+            artifacts,
+            filesystem: Some(Default::default()),
+            system_apps: plan.system_apps,
+            projects: plan.projects,
+            dora: plan.dora.unwrap_or_default(),
+            recordings: run
+                .recordings
+                .into_iter()
+                .map(|r| Recording {
+                    stream: r.stream.into(),
+                    recording: r.recording.into(),
+                })
+                .collect(),
+            readiness_seconds: run.readiness_seconds,
+            stop_seconds: run.stop_seconds,
+        }
+    }
+}
+
 /// Shortest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
 pub const MIN_STOP_SECONDS: u64 = 1;
 /// Longest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
@@ -590,6 +626,68 @@ mod tests {
             diagnostics: vec![],
             remove_volumes: false,
         }
+    }
+
+    fn run_plan() -> workload_lifecycle::launch::RunPlan {
+        use workload_lifecycle::launch;
+        launch::RunPlan {
+            id: "r1".into(),
+            repository_root: "/repo".into(),
+            artifacts: "/data/runs/r1".into(),
+            recordings: vec![launch::Recording {
+                stream: "/data/runs/r1/cpu.pb".into(),
+                recording: "/data/runs/r1/cpu.mcap".into(),
+            }],
+            readiness_seconds: 60,
+            stop_seconds: 15,
+        }
+    }
+
+    fn compose_plan() -> ComposePlan {
+        ComposePlan {
+            system_apps: vec![ComposeProject {
+                key: "cpu-monitor".into(),
+                ..Default::default()
+            }],
+            projects: vec![ComposeProject {
+                key: "project".into(),
+                ..Default::default()
+            }],
+            dora: Some(DoraRuntime {
+                image: "doramcap/dora:local".into(),
+                ..Default::default()
+            }),
+            mcap_services: vec!["cpu-monitor".into()],
+        }
+    }
+
+    #[test]
+    fn compose_plan_maps_to_launch_settings() {
+        // Arrange
+        let (run, plan) = (run_plan(), compose_plan());
+
+        // Act
+        let run = ComposeRun::from_plan(run, plan);
+
+        // Assert
+        assert_eq!(run.id, "r1");
+        assert_eq!(run.repository_root, PathBuf::from("/repo"));
+        assert_eq!(run.artifacts, PathBuf::from("/data/runs/r1"));
+        assert!(run.filesystem.is_some());
+        assert_eq!(run.system_apps[0].key, "cpu-monitor");
+        assert_eq!(run.projects[0].key, "project");
+        assert_eq!(run.dora.image, "doramcap/dora:local");
+        assert_eq!(run.mcap_writers.services, ["cpu-monitor"]);
+        assert_eq!(run.mcap_writers.directories, [PathBuf::from("/data/runs")]);
+        assert_eq!(
+            run.recordings[0].stream,
+            PathBuf::from("/data/runs/r1/cpu.pb")
+        );
+        assert_eq!(
+            run.recordings[0].recording,
+            PathBuf::from("/data/runs/r1/cpu.mcap")
+        );
+        assert_eq!((run.readiness_seconds, run.stop_seconds), (60, 15));
     }
 
     #[test]

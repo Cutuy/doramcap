@@ -25,17 +25,17 @@ class Engine implements NativeExecution {
     return execution.Profiles.create({ names: this.profileNames });
   }
   async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
-    if (this.needsProfiles && !request.projects[0].profiles?.length) throw new Error('EmptySelection');
+    if (this.needsProfiles && !request.compose!.projects![0].profiles?.length) throw new Error('EmptySelection');
     this.inspected = request;
     return execution.Inspection.create({
       plan: { services: { worker: { imageId: 'sha256:approved' } } },
       snapshot: { manifestSha256: 'approved' },
     });
   }
-  start(run: Parameters<NativeExecution['start']>[0]) {
+  start(request: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
     if (this.rejectAdmission) return Promise.reject(new Error(this.rejectAdmission));
-    this.update = execution.ExecutionUpdate.create({ runId: run.id });
+    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
     return new Promise<void>((resolve) => {
       this.release = resolve;
     });
@@ -384,9 +384,9 @@ test('preflight failures return a safe classification and retain private diagnos
   // Arrange
   const { root, config, engine, backend, review } = await fixture();
   const privateReason = 'repository preflight failed at /operator/private/location';
-  engine.start = async (run) => {
+  engine.start = async (request) => {
     engine.update = execution.ExecutionUpdate.create({
-      runId: run.id,
+      runId: request.run!.id,
       result: { blocked: false, error: privateReason },
     });
     throw new Error(privateReason);
@@ -446,10 +446,10 @@ test('the selected live bridge subscribes to declared outputs through a generate
   // Arrange
   const { root, engine, backend, review } = await fixture(false, true);
   try {
-    const run = engine.inspected!;
-    const bridge = run.systemApps.find((project) => project.key === 'live-bridge')!;
+    const request = engine.inspected!;
+    const bridge = request.compose!.systemApps!.find((project) => project.key === 'live-bridge')!;
     const compose = JSON.parse(await readFile(bridge.files!.at(-1)!, 'utf8'));
-    const graph = JSON.parse(await readFile(run.dora!.graph!, 'utf8'));
+    const graph = JSON.parse(await readFile(request.compose!.dora!.graph!, 'utf8'));
     // Assert
     assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.CPU_ACCOUNTING]]);
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
@@ -511,7 +511,7 @@ test('the selected launch profile mounts its config read-only and declares only 
     // Act: review with the default profile.
     const first = await prepare();
     const mounted = async () => {
-      const files = engine.inspected!.systemApps[0].files!;
+      const files = engine.inspected!.compose!.systemApps![0].files!;
       return JSON.parse(await readFile(files[files.length - 1], 'utf8')).services.monitor.volumes;
     };
     // Assert
@@ -560,8 +560,8 @@ test('deselecting the live bridge removes its service, graph node and streams', 
     // Assert
     assert.equal(review.liveStreams.length, 0);
     assert.equal(review.systemApps.find((app) => app.id === 'live-bridge')!.selected, false);
-    assert.ok(!engine.inspected!.systemApps.some((project) => project.key === 'live-bridge'));
-    assert.ok(!engine.inspected!.dora?.graph);
+    assert.ok(!engine.inspected!.compose!.systemApps!.some((project) => project.key === 'live-bridge'));
+    assert.ok(!engine.inspected!.compose!.dora?.graph);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

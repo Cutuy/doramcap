@@ -956,6 +956,7 @@ dependencies = [
  "tokio",
  "workflow-protocol",
  "workload-docker",
+ "workload-lifecycle",
 ]
 
 [[package]]
@@ -6405,6 +6406,9 @@ dependencies = [
  "libc",
  "notify",
  "orchestrator",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
  "serde",
  "tokio",
 ]
