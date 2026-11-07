@@ -65,6 +65,30 @@ message AppManifest {
   repeated Variant variants = 5;
   // Recordings every variant writes.
   repeated RecordingOutput recordings = 6;
+  ProgramLaunch program = 7;
+}
+
+// How the systemd form launches an app. Its unit sees configs and outputs through
+// bind mounts at the same paths its container would.
+message ProgramLaunch {
+  // Executable name inside the deployment's binaries directory.
+  string executable = 1;
+  repeated string args = 2;
+  // Zero keeps the service manager's default limit.
+  uint64 memlock_bytes = 3;
+  // Signal number sent first on stop; zero sends SIGTERM.
+  int32 kill_signal = 4;
+  // Where the chosen variant's config appears, read-only.
+  string config_target = 5;
+  // Where the run's artifact directory appears.
+  repeated string output_targets = 6;
+  // Files beside the manifest that appear read-only at absolute targets.
+  repeated FileMount files = 7;
+}
+
+message FileMount {
+  string source = 1;
+  string target = 2;
 }
 
 // How the Compose form launches an app.

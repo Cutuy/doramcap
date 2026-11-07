@@ -15,3 +15,11 @@ variants {
   recordings { id: "faults" path: "faults.mcap" }
 }
 variants { id: "otel" label: "Live and OTLP" config: "watchdog-otel.pbtxt" }
+program {
+  executable: "fault-watchdog"
+  args: "/etc/fault-watchdog/watchdog.pbtxt"
+  memlock_bytes: 268435456
+  kill_signal: 2
+  config_target: "/etc/fault-watchdog/watchdog.pbtxt"
+  output_targets: "/results"
+}

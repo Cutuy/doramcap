@@ -6,6 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .extern_path(".doramcap.compose.v1", "::workload_docker::compose")
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .extern_path(".doramcap.systemd_plan.v1", "::workload_systemd")
         .extern_path(
             ".doramcap.compose_plan.v1",
             "::workload_docker::workflows::recorded_compose",
@@ -22,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "../../proto",
                 "../../../libs/workload-docker/proto",
                 "../../../libs/workload-lifecycle/proto",
+                "../../../libs/workload-systemd/proto",
                 "../../../libs/telemetry/workflow-protocol/proto",
                 "../../../libs/telemetry/protocol/proto",
                 "../../../libs/resources/system-config/proto",

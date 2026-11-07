@@ -49,7 +49,9 @@ test('release manifests expand to the same apps as the inline release configurat
     capabilities.formatConfig(wire.ConsoleConfig.create({ systemApps: config.systemApps }));
   // Act
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
-  // Assert
+  // Assert: every app gains its systemd launch facts; Compose definitions are unchanged.
+  assert.ok(expanded.systemApps.every((app) => app.program?.executable));
+  for (const app of expanded.systemApps) app.program = null;
   assert.equal(apps(expanded), apps(releaseConfig(inline, '/playground', systemApps, '/state')));
   assert.ok(expanded.systemApps.every((app) => !app.manifest));
 });
@@ -69,8 +71,8 @@ test('manifests reject inline launch fields, escaping paths and unsupported form
     assert.throws(() => releaseConfig(config('system_apps {manifest:"app/app.pbtxt" graph:"flow.yml"}'), '/playground', directory, '/state'), /belong in the manifest/);
     // Act / Assert: manifest paths stay beside the manifest.
     assert.throws(() => releaseConfig(config('system_apps {manifest:"app/escape.pbtxt"}'), '/playground', directory, '/state'), /stay beside/);
-    // Act / Assert: only Compose launches today.
-    assert.throws(() => releaseConfig(config('form: SYSTEMD'), '/playground', directory, '/state'), /only COMPOSE/);
+    // Act / Assert: Supervisor does not launch from Console yet.
+    assert.throws(() => releaseConfig(config('form: SUPERVISOR'), '/playground', directory, '/state'), /only COMPOSE and SYSTEMD/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

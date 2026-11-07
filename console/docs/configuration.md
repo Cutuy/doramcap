@@ -23,8 +23,9 @@ system_apps {
 }
 ```
 
-`form` selects how every app launches; only `COMPOSE` is supported. Inline definitions,
-as below, remain valid.
+`form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
+directory holding `dora` and each manifest's `program` executable. Console cannot run `SYSTEMD`
+yet and refuses it at startup. Inline definitions, as below, remain valid.
 
 ```protobuf
 system_apps {

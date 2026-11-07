@@ -5,3 +5,9 @@ compose {
   files: "compose.yaml"
   config_mount { service: "live-bridge" target: "/config/bridge.pbtxt" }
 }
+program {
+  executable: "live-bridge"
+  args: "--config" args: "/config/bridge.pbtxt"
+  kill_signal: 2
+  config_target: "/config/bridge.pbtxt"
+}

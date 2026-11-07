@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
-import { capabilities, wire, type Config } from './native.js';
+import { capabilities, launch, wire, type Config } from './native.js';
 import { validateApps } from './system-apps.js';
 import { expandManifests } from './manifests.js';
 
@@ -21,6 +21,8 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
   return { config, secret };
 }
 export function validateConfig(config: Config) {
+  // The native addon executes Compose plans only; systemd execution is not wired yet.
+  if (config.form === launch.Form.SYSTEMD) throw new Error('form SYSTEMD: Console cannot execute systemd runs yet');
   for (const [name, value] of [
     ['project_root', config.projectRoot],
     ['data_root', config.dataRoot],

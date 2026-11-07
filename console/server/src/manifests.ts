@@ -12,16 +12,19 @@ function beside(directory: string, file: string) {
 
 /**
  * Replace each app's `manifest` with the launch facts it names, resolved beside the manifest.
- * Errors: a form other than COMPOSE, a relative manifest path, launch fields declared beside a
+ * Errors: a form other than COMPOSE or SYSTEMD, SYSTEMD without absolute binaries, a relative manifest path, launch fields declared beside a
  * manifest, an unreadable or invalid manifest, or a manifest path escaping its directory.
  */
 export function expandManifests(config: Config) {
-  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE].includes(config.form ?? launch.Form.FORM_UNSPECIFIED))
-    throw new Error('form: only COMPOSE is supported');
+  const form = config.form ?? launch.Form.FORM_UNSPECIFIED;
+  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE, launch.Form.SYSTEMD].includes(form))
+    throw new Error('form: only COMPOSE and SYSTEMD are supported');
+  if (form === launch.Form.SYSTEMD && !isAbsolute(config.binaries ?? ''))
+    throw new Error('binaries must be absolute for SYSTEMD');
   for (const app of config.systemApps) {
     if (!app.manifest) continue;
     if (!isAbsolute(app.manifest)) throw new Error('system app manifest must be absolute');
-    if (app.id || app.label || app.input || app.graph || app.configMount ||
+    if (app.id || app.label || app.input || app.graph || app.configMount || app.program ||
         app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length)
       throw new Error(`Launch fields belong in the manifest: ${app.manifest}`);
     const manifest = capabilities.parseManifest(readFileSync(app.manifest, 'utf8'));
@@ -42,6 +45,12 @@ export function expandManifests(config: Config) {
       graph: variant.graph ? beside(directory, variant.graph) : '',
       recordings: variant.recordings,
     }));
+    app.program = manifest.program
+      ? {
+          ...manifest.program,
+          files: (manifest.program.files ?? []).map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target })),
+        }
+      : null;
     app.manifest = '';
   }
 }

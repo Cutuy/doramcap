@@ -19,3 +19,12 @@ variants {
   graph: "faults.yml"
   recordings { id: "messages" path: "messages.mcap" }
 }
+program {
+  executable: "mcap-recorder"
+  args: "--config" args: "/config/recorder.pbtxt"
+  memlock_bytes: 268435456
+  kill_signal: 2
+  config_target: "/config/recorder.pbtxt"
+  output_targets: "/results"
+  files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }
+}
