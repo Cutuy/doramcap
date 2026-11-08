@@ -1,27 +1,20 @@
 # Design guide
 
-Use this checklist before implementation and during design review. Each checked item should have a concrete answer or supporting evidence.
+Use before implementation and during design review. Support each applicable principle
+with a concrete answer or evidence; record justified tradeoffs. Enforceable obligations
+are in the [implementation guide](impl-guide.md). Preferences retain their stated strength.
 
-- [ ] **Define behavior before choosing mechanisms.** Agree on the user workflow, scope, success conditions, failure behavior, and recovery policy. Resolve important choices before encoding them across components.
-
-- [ ] **Choose the smallest design that meets current requirements.** Justify every abstraction, configuration option, dependency, and compatibility layer with a concrete use case. Consider deletion and explicit configuration first.
-
-- [ ] **Give every fact and policy one authoritative owner.** Define shared concepts once. Keep backend-specific details in adapters. Avoid duplicate models, defaults, state stores, and cross-language wrappers that merely forward operations.
-
-- [ ] **Preserve native contracts.** Use existing platform formats and semantics where practical. Identify exactly which settings the application preserves, overrides, or rejects. Avoid reconstructing another system’s configuration model.
-
-- [ ] **Design ownership across the entire lifecycle.** Identify who owns each resource from the first attempted side effect through verified cleanup. Specify behavior for partial startup, cancellation at every await, process failure, and controller crashes.
-
-- [ ] **Keep facts, interpretations, and outcomes distinct.** Represent unknown explicitly. Evaluate execution, recording validity, and cleanup independently. Preserve useful evidence even when another part of the operation fails.
-
-- [ ] **Make persistence an explicit product decision.** Specify what survives navigation, refresh, restart, and upgrade. Identify the authoritative store, atomic updates, retention policy, and behavior when saving fails.
-
-- [ ] **Make reviewed inputs match executed inputs.** Share resolution logic between inspection and execution. Distinguish stable configuration from generated runtime values. Apply transformations once and detect meaningful changes before side effects.
-
-- [ ] **Make progress and shutdown explicit.** Identify the signal for work arrival, capacity, completion, failure, and shutdown. Check subscription races and disconnected producers. Use timers only for defined schedules or deadlines.
-
-- [ ] **Evaluate optimizations across the complete data path.** Measure realistic low-rate, burst, and saturated workloads. Account for allocations, retained memory, copies, ordering, latency, padding, and crash loss. Justify custom implementations with measured benefits.
-
-- [ ] **Treat deployment boundaries as part of the design.** Specify process, filesystem, network, shared-memory, privilege, and dependency boundaries. Check concurrent instances and absent optional services. Verify that cleanup affects only owned resources.
-
-- [ ] **Validate observable contracts in representative environments.** Exercise packaged applications, real platform behavior, and independent consumers. Include failure, cancellation, restart, and cleanup. Synchronize tests on observable events; distinguish implemented behavior from qualified behavior.
+- **D-01 — Behavior first.** Agree on workflow, scope, success, failure, and recovery before choosing mechanisms. Resolve important choices before spreading them across components.
+- **D-02 — Simplicity.** Strongly favor deletion, less code, and explicit behavior. Justify abstractions, configuration options, dependencies, and compatibility layers with current use cases. Shared contracts need demonstrated common semantics; more backends alone do not justify generic bags, empty interfaces, or plugin frameworks.
+- **D-03 — Ownership.** Give each concept, fact, and policy one owner; assess fields and actual callers. Generic execution owns invocation, serialization, and observation. Keep lifecycle policy, backend mechanics, and concrete workflows with their owners. Backend APIs belong with that backend and use scoped names. Keep core contracts independent of UI, CLI, and file-input choices unless behavior requires them. Avoid duplicate models, defaults, stores, and forwarding wrappers.
+- **D-04 — Native contracts.** Preserve platform formats and semantics where practical. Identify settings preserved, overridden, or rejected. Keep arbitrary third-party configuration native at integration boundaries.
+- **D-05 — Languages and configuration.** Strongly prefer Rust and TypeScript for new code; avoid scripting in production environments and workflows unless absolutely necessary. Favor protobuf internal models/configuration, pbtxt files, and generated types directly where practical; avoid handwritten Rust duplicates of proto fields. Favor TypeScript for dynamic configuration processing, connected to Rust execution through protobuf. Strongly discourage environment configuration; approval rules are in I-01.
+- **D-06 — Lifetimes.** Distinguish backend configuration, resolved launch state, live resources, and results when their invariants or lifetimes differ. Assign resource ownership from the first attempted side effect through verified cleanup. Cover partial startup, cancellation at every await, process failure, and controller crashes.
+- **D-07 — Facts and outcomes.** Separate facts, interpretations, and outcomes; represent unknown explicitly. Evaluate execution, recording validity, and cleanup independently. Preserve useful evidence when another operation fails.
+- **D-08 — Persistence.** Decide what survives navigation, refresh, restart, and upgrade. Identify the authoritative store, atomic updates, retention, and save-failure behavior.
+- **D-09 — Reviewed inputs.** Share resolution between inspection and execution. Separate stable configuration from generated runtime values; transform once and detect meaningful changes before side effects.
+- **D-10 — Progress.** Identify signals for work, capacity, completion, failure, and shutdown. Check subscription races and disconnected producers; apply I-05 to waits and timers.
+- **D-11 — Capacity and performance.** Distinguish processing/batching units from workload ceilings; assess supported workloads before treating a limit as defective. Describe retained memory and resource growth, including materialized results/indexes in streaming paths. Choose allocation, backpressure, or incremental processing accordingly. Measure complete paths at low rate, bursts, and saturation; account for allocations, memory, copies, ordering, latency, padding, and crash loss. Justify custom optimizations with measured benefits.
+- **D-12 — Deployment.** Specify process, filesystem, network, shared-memory, privilege, and dependency boundaries. Check concurrent instances, absent optional services, and cleanup of owned resources only.
+- **D-13 — Evidence.** Validate observable contracts through packaged apps, real platforms, and independent consumers. Include failure, cancellation, restart, and cleanup. Synchronize tests on observable events. Distinguish implemented behavior, measured results, assumptions, and pending qualification.
+- **D-14 — Communication.** Use brief prose, short bullets, and compact tables. Keep READMEs to purpose, architecture SVGs, a small example, and links. Prefer one-line comments for key steps in lengthy logic. State behavior directly; avoid contrastive phrasing. Explain complex PRs through their idea and useful diagrams, limiting component inventories. Bug-fix titles/descriptions explain what failed, what now happens, and what stays the same in plain language; add an SVG when needed.

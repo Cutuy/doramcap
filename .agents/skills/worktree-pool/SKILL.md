@@ -1,9 +1,11 @@
 ---
 name: worktree-pool
-description: Acquire a worktree before coding; release after local integration or PR publication.
+description: Use the main checkout when it already has the target branch; otherwise acquire a worktree and release after local integration or PR publication.
 ---
 
-Run from the main checkout:
+Before feature edits, check the main checkout (the first entry in `git worktree list --porcelain`). If it already has the task's target branch checked out, prioritize working there; no pool lease is needed. Preserve existing changes. Otherwise, reuse the task's existing non-expiring lease or acquire one before editing.
+
+To acquire a lease, run from the main checkout:
 
 ```sh
 python3 .agents/skills/worktree-pool/scripts/pool.py acq --owner CLI-session-task --branch feature/unique-name
