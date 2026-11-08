@@ -10,6 +10,8 @@ baseline, inspect the governing repository requirements and instructions, and tr
 the audit checklist through code and validation. Record findings in a separate
 checklist file.
 
+Check applicable principles in the repository’s `docs/design-guide.md`.
+
 ## Read requirements without expanding them
 
 Read the bundled `requirements.md`, the existing governing repository
