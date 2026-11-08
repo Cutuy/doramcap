@@ -1,0 +1,82 @@
+{
+  "stage": "confirmation_only",
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "rule_id": "I-05.polling",
+  "requested_model": "gpt-6.1-sol",
+  "requested_reasoning_effort": "high",
+  "provider_reported_model": null,
+  "candidates": 3,
+  "model_calls": 5,
+  "observed_peak_concurrency": 2,
+  "outcomes": [
+    {
+      "task_id": "i05-002",
+      "rounds": 1,
+      "model_status": "refuted",
+      "controller_disposition": "refuted",
+      "reason": null,
+      "summary": "The timer schedules telemetry, sensor sampling, delayed reports, and operation expiry. Work arrival and shutdown have explicit notification branches; the supplied code does not support the polling hypothesis.",
+      "result_file": "i05-002.r1.json"
+    },
+    {
+      "task_id": "i05-004",
+      "rounds": 2,
+      "model_status": "confirmed_violation",
+      "controller_disposition": "confirmed_violation",
+      "reason": null,
+      "summary": "For the MCAP sink, repeated maintenance timeouts drive nonblocking I/O completion polling independently of flush deadlines.",
+      "result_file": "i05-004.r2.json"
+    },
+    {
+      "task_id": "i05-020",
+      "rounds": 2,
+      "model_status": "needs_context",
+      "controller_disposition": "unresolved",
+      "reason": "Requested exception approval evidence was unavailable after a bounded search; parked without repeating the same request.",
+      "summary": "Sleep-based readiness polling is established, but the claimed exception remains unverified. The additional history search supports neither approval nor nonapproval.",
+      "result_file": "i05-020.r2.json"
+    }
+  ],
+  "counts": {
+    "confirmed_violation": 1,
+    "refuted": 1,
+    "unresolved": 1
+  },
+  "usage": {
+    "input_tokens": 139018,
+    "cached_input_tokens": 0,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 6705,
+    "reasoning_output_tokens": 1907
+  },
+  "batch_wall_seconds": 96.292,
+  "summed_call_seconds": 148.700150199,
+  "median_call_seconds": 26.599296456,
+  "cost": {
+    "kind": "standard_api_equivalent_estimate",
+    "usd": 0.345086,
+    "input_usd_per_million": 2,
+    "cached_input_usd_per_million": 0.1,
+    "output_usd_per_million": 10,
+    "cache_write_tokens": 0,
+    "max_input_tokens_in_one_call": 59864,
+    "source": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+    "verified_date": "2026-11-08",
+    "actual_billed_usd": null
+  },
+  "combined_screen_and_confirmation_estimate_usd": 0.37167474,
+  "validation": {
+    "native_json_schema": "5/5 passed",
+    "exact_source_spans": "5/5 passed",
+    "artifact_provenance": "All source snapshots match the original Git revision; attributed history matches stored snapshots.",
+    "tool_calls": 0,
+    "production_changes": false,
+    "runtime_tests": "Not run; confirmation uses static source and contracts.",
+    "full_ci": "Not run; only development tooling and reports changed.",
+    "arm64": "Not run; no platform code changes.",
+    "multiline_quotes": "The first quote validator was corrected to accept exact contiguous multiline spans; the original model response then validated without another model call."
+  },
+  "precision_note": "One of three screening candidates is confirmed by this source-based model adjudication. One is refuted and one remains unresolved; final precision and population precision are not established.",
+  "context_resolution": "Initial related sources were selected by the controller. Two typed model context requests received additional frozen sources or an explicit unavailability report. No generic autonomous retrieval engine was implemented.",
+  "next_stage": "No fixer launched. The confirmed MCAP finding is recorded for a separately authorized fix stage; unresolved approval context is parked."
+}

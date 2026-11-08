@@ -58,3 +58,8 @@ node cd/code-scan/confirm.ts run RUN_NAME
 Place `context.json` and any attributed history under `confirmations/RUN_NAME`
 first. Use a new run name when reproducing a recorded run. Confirmation never
 edits the reviewed source or proceeds to fixes.
+
+[Confirmation results](confirmations/20261108-i05/results.md): one confirmed MCAP
+completion-polling violation, one refuted timer candidate, and one unresolved
+approval claim. All five Sol/high responses pass schema and source-span checks.
+No production fixes have run.

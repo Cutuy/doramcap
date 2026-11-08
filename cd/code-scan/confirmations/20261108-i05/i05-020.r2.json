@@ -1,0 +1,128 @@
+{
+  "task_id": "i05-020",
+  "round": 2,
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "requested_model": "gpt-6.1-sol",
+  "requested_reasoning_effort": "high",
+  "provider_reported_model": null,
+  "cli_version": "codex-cli 0.164.0",
+  "command": [
+    "codex",
+    "exec",
+    "--ignore-user-config",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--cd",
+    "/tmp/doramcap-code-confirm-ZAdUvI",
+    "--model",
+    "gpt-6.1-sol",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "approval_policy=\"never\"",
+    "-c",
+    "model_reasoning_effort=\"high\"",
+    "-c",
+    "project_doc_max_bytes=0",
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "apps",
+    "--disable",
+    "plugins",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "memories",
+    "--disable",
+    "skill_search",
+    "--disable",
+    "browser_use",
+    "--disable",
+    "computer_use",
+    "--disable",
+    "image_generation",
+    "--disable",
+    "view_image",
+    "--disable",
+    "goals",
+    "--disable",
+    "sleep_tool",
+    "--enable",
+    "skip_host_skill_discovery",
+    "--output-schema",
+    "/home/cutuy/doramcap/.git/agent-pool/worktrees/2/cd/code-scan/confirm.schema.json",
+    "--output-last-message",
+    "/home/cutuy/doramcap/.git/agent-pool/worktrees/2/cd/code-scan/confirmations/20261108-i05/raw/i05-020.r2.answer.json",
+    "--json",
+    "--color",
+    "never",
+    "-"
+  ],
+  "input_hash": "5f38b8b39537419c180091fdf677cbd7a66b6d70f4da40ae015247061508f835",
+  "started_at": "2026-11-08T22:12:19.022Z",
+  "completed_at": "2026-11-08T22:12:45.621Z",
+  "duration_seconds": 26.599296456,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 22258,
+    "cached_input_tokens": 0,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1182,
+    "reasoning_output_tokens": 239
+  },
+  "thread_id": "01a1bd38-321b-7e92-9fbb-b4ff6d2e53ba",
+  "tool_events": [],
+  "status": "needs_context",
+  "result": {
+    "task_id": "i05-020",
+    "status": "needs_context",
+    "summary": "Sleep-based readiness polling is established, but the claimed exception remains unverified. The additional history search supports neither approval nor nonapproval.",
+    "applicability": "The production Dora startup path calls await_daemon. Until the status CLI reports the daemon running, the method repeatedly checks status and sleeps for 100 ms. This matches the rule focus.",
+    "exception_analysis": "The sleep controls repeated readiness checks; it is not itself a sampling schedule, simulated work, or real deadline. Naming the interval and bounding the enclosing operation do not change that purpose. However, the source claims an approved exception. The bounded search found no corroborating approval and explicitly leaves historical user conversations unsearched, so exception validity remains unresolved.",
+    "counterevidence": "The caller applies a configured readiness timeout, limiting the wait. The interval is named. The source claims Dora provides no readiness event, but that claim and the approval claim are not independently established. PR #199's merge and its discussion of CLI shutdown timeouts do not establish readiness-polling approval.",
+    "finding": null,
+    "evidence": [
+      {
+        "artifact_id": "libs/workload-systemd/src/dora.rs",
+        "line": 9,
+        "quote": "// Approved polling exception: Dora reports no daemon readiness event.\nconst STARTUP_CHECK_INTERVAL: Duration = Duration::from_millis(100);"
+      },
+      {
+        "artifact_id": "libs/workload-systemd/src/dora.rs",
+        "line": 202,
+        "quote": "    /// Wait until the daemon reports itself connected to the coordinator.\n    pub async fn await_daemon(&mut self, manager: &Manager, scope: &Scope) -> Result<()> {\n        loop {\n            if let Ok(status) = self\n                .cli(manager, scope, &[\"status\", \"--format\", \"json\"])\n                .await\n                && serde_json::from_str::<serde_json::Value>(&status)\n                    .is_ok_and(|status| status[\"daemon\"][\"status\"] == \"running\")\n            {\n                return Ok(());\n            }\n            tokio::time::sleep(STARTUP_CHECK_INTERVAL).await;\n        }\n    }"
+      },
+      {
+        "artifact_id": "libs/workload-systemd/src/running.rs",
+        "line": 45,
+        "quote": "        let readiness = Duration::from_secs(run.readiness_seconds);"
+      },
+      {
+        "artifact_id": "libs/workload-systemd/src/running.rs",
+        "line": 89,
+        "quote": "            if role == Phase::Dora && !run.dora_apps.is_empty() {\n                self.dora =\n                    Some(crate::dora::Dora::from_units(self.phases.last().unwrap(), &run).await?);\n                let dora = self.dora.as_mut().unwrap();\n                tokio::time::timeout(readiness, async {\n                    dora.await_daemon(&self.manager, &self.scope).await?;\n                    dora.register(&self.manager, &self.scope).await\n                })\n                .await\n                .map_err(|_| \"Dora readiness deadline exceeded\".to_string())??;\n            }"
+      },
+      {
+        "artifact_id": "history/exception-search.json",
+        "line": 34,
+        "quote": "  \"availability\": \"No explicit approval record was located in these sources. This is not evidence that approval never occurred. Historical user conversations were not searched.\",\n  \"remaining_information\": \"User approval record and scope for the exception, if available.\""
+      }
+    ],
+    "context_requests": [
+      {
+        "kind": "approval",
+        "target": "libs/workload-systemd/src/dora.rs:9",
+        "question": "Provide the user approval record and applicable exception authority, including whether approval covers repeated readiness status CLI calls with 100 ms sleeps at commit 65fe14329cc16ce534cc07d1bf55c6a7a2b83272."
+      }
+    ],
+    "validation_gaps": [
+      "The claimed exception's authorization and scope remain unavailable.",
+      "Repeated CLI work and interval-dependent readiness detection follow from the source; no measured operational harm is supplied."
+    ]
+  },
+  "rejected_response": null,
+  "error": null
+}

@@ -75,9 +75,8 @@
   },
   "thread_id": "01a1bd34-3430-7eb1-83f5-d7efd3aa8855",
   "tool_events": [],
-  "status": "unresolved",
-  "result": null,
-  "rejected_response": {
+  "status": "refuted",
+  "result": {
     "task_id": "i05-002",
     "status": "refuted",
     "summary": "The timer schedules telemetry, sensor sampling, delayed reports, and operation expiry. Work arrival and shutdown have explicit notification branches; the supplied code does not support the polling hypothesis.",
@@ -135,5 +134,7 @@
     "context_requests": [],
     "validation_gaps": []
   },
-  "error": "Error: Invalid evidence: apps/dataflow-tracing-demo/server/src/pipeline.rs:309"
+  "rejected_response": null,
+  "error": null,
+  "validation_note": "The initial validator allowed single-line quotes only. All returned quotes match contiguous source spans at the declared starting lines; revalidated without another model call."
 }

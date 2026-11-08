@@ -2,48 +2,129 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "task_id": { "type": "string" },
-    "status": { "type": "string", "enum": ["confirmed_violation", "refuted", "needs_context", "unresolved"] },
-    "summary": { "type": "string" },
-    "applicability": { "type": "string" },
-    "exception_analysis": { "type": "string" },
-    "counterevidence": { "type": "string" },
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "confirmed_violation",
+        "refuted",
+        "needs_context",
+        "unresolved"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "applicability": {
+      "type": "string"
+    },
+    "exception_analysis": {
+      "type": "string"
+    },
+    "counterevidence": {
+      "type": "string"
+    },
     "finding": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
       "properties": {
-        "trigger": { "type": "string" },
-        "expected": { "type": "string" },
-        "observed": { "type": "string" },
-        "impact": { "type": "string" }
+        "trigger": {
+          "type": "string"
+        },
+        "expected": {
+          "type": "string"
+        },
+        "observed": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "string"
+        }
       },
-      "required": ["trigger", "expected", "observed", "impact"]
+      "required": [
+        "trigger",
+        "expected",
+        "observed",
+        "impact"
+      ]
     },
     "evidence": {
       "type": "array",
       "items": {
-        "type": "object", "additionalProperties": false,
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "artifact_id": { "type": "string" },
-          "line": { "type": "integer" },
-          "quote": { "type": "string" }
+          "artifact_id": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "description": "One-based first source line of the quoted span."
+          },
+          "quote": {
+            "type": "string",
+            "description": "Verbatim text from one or more contiguous source lines beginning at line."
+          }
         },
-        "required": ["artifact_id", "line", "quote"]
+        "required": [
+          "artifact_id",
+          "line",
+          "quote"
+        ]
       }
     },
     "context_requests": {
       "type": "array",
       "items": {
-        "type": "object", "additionalProperties": false,
+        "type": "object",
+        "additionalProperties": false,
         "properties": {
-          "kind": { "type": "string", "enum": ["source", "callers", "contract", "history", "approval"] },
-          "target": { "type": "string" },
-          "question": { "type": "string" }
+          "kind": {
+            "type": "string",
+            "enum": [
+              "source",
+              "callers",
+              "contract",
+              "history",
+              "approval"
+            ]
+          },
+          "target": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          }
         },
-        "required": ["kind", "target", "question"]
+        "required": [
+          "kind",
+          "target",
+          "question"
+        ]
       }
     },
-    "validation_gaps": { "type": "array", "items": { "type": "string" } }
+    "validation_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   },
-  "required": ["task_id", "status", "summary", "applicability", "exception_analysis", "counterevidence", "finding", "evidence", "context_requests", "validation_gaps"]
+  "required": [
+    "task_id",
+    "status",
+    "summary",
+    "applicability",
+    "exception_analysis",
+    "counterevidence",
+    "finding",
+    "evidence",
+    "context_requests",
+    "validation_gaps"
+  ]
 }

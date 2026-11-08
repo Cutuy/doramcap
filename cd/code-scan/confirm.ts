@@ -81,7 +81,7 @@ async function invoke(run: string, file: string, cwd: string) {
     if (answer.task_id !== input.task_id) throw new Error('Task identity mismatch');
     for (const e of answer.evidence) {
       const a = input.evidence.find((a: any) => a.artifact_id === e.artifact_id);
-      if (!a || hash(a.content) !== a.sha256 || !Number.isInteger(e.line) || !e.quote || !a.content.split('\n')[e.line - 1]?.includes(e.quote)) {
+      if (!a || hash(a.content) !== a.sha256 || !Number.isInteger(e.line) || !e.quote || e.line < 1 || !a.content.split('\n').slice(e.line - 1, e.line - 1 + e.quote.split('\n').length).join('\n').includes(e.quote)) {
         throw new Error(`Invalid evidence: ${e.artifact_id}:${e.line}`);
       }
     }
