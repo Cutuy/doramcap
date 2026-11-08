@@ -702,12 +702,12 @@ mod tests {
             }],
             ..Default::default()
         };
-        let expected = workload_systemd::inspect(&run, &plan).unwrap();
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         tokio::task::LocalSet::new().block_on(&runtime, async {
+            let expected = workload_systemd::inspect(&run, &plan).await.unwrap();
             let mut state = State::open("/nonexistent/docker.sock".into(), Arc::default())
                 .await
                 .unwrap();

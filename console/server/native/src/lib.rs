@@ -220,8 +220,8 @@ impl Execution {
                     let spec = match execution::launch(request)? {
                         execution::Launch::Compose(spec) => spec,
                         execution::Launch::Systemd(run, plan) => {
+                            let snapshot = workload_systemd::inspect(&run, &plan).await?;
                             return tokio::task::spawn_blocking(move || {
-                                let snapshot = workload_systemd::inspect(&run, &plan)?;
                                 let data = std::path::Path::new(&run.artifacts)
                                     .parent()
                                     .map(std::path::Path::to_path_buf)
