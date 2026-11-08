@@ -4,7 +4,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { digest, prepare, type SnapshotManifest } from './prepare-build.mts';
+import { prepare, PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
+import { digest } from '../../libs/tooling/fs.mts';
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), 'prepare-build-'));
@@ -22,8 +23,9 @@ function fixture(t: TestContext) {
       manifest.files_sha256[relative] = digest(path);
       manifest.files_mode[relative] = 0o644;
     }
-    for (const [relative, key] of [['run-worker-job.sh', 'runner_sha256'], ['prepare-build.mts', 'prepare_sha256']] as const) {
+    for (const [relative, key] of [['run-worker-job.sh', 'runner_sha256'], [PREPARE_PATH, 'prepare_sha256']] as const) {
       const path = join(directory, relative);
+      mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, 'runner helper');
       manifest[key] = digest(path);
     }

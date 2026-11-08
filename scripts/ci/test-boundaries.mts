@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { matchesPattern, violations, type Metadata } from './check-boundaries.mts';
+import { violations, type Metadata } from './check-boundaries.mts';
 
 function graph(kind: string | null = null): Metadata {
   return { workspace_members: ['core', 'adapter'], packages: [
@@ -51,20 +51,6 @@ test('invalid policies fail', () => {
   for (const config of [null, [], {}, { rules: [] }, { rules: [], extra: true }]) {
     assert.throws(() => violations(graph(), config));
   }
-});
-
-test('shell patterns retain case, bracket, wildcard, and literal semantics', () => {
-  // Arrange: expected results follow the existing case-sensitive fnmatch contract.
-  const cases: [string, string, boolean][] = [
-    ['workload-docker', 'workload-*', true], ['adapter', 'adapt?r', true], ['Adapter', 'adapt*', false],
-    ['b', '[a-c]', true], ['b', '[!a-c]', false], ['d', '[!a-c]', true], ['-', '[-a]', true],
-    [']', '[]]', true], ['a', '[!]]', true], ['[', '[', true], ['[!]', '[!]', true],
-    ['b', '[a--!]', true], ['x', '[b-a!x]', false], ['z', '[z-a]', false], ['z', '[!z-a]', true], ['b', '[a--b]', true],
-    ['{a,b}', '{a,b}', true], ['a', '{a,b}', false], ['a', '@(a|b)', false],
-    ['\\name', '\\*', true], ['name', '\\*', false], ['foo\n', 'foo', false],
-  ];
-  // Act / Assert
-  for (const [name, pattern, expected] of cases) assert.equal(matchesPattern(name, pattern), expected, `${name}: ${pattern}`);
 });
 
 test('CLI distinguishes success, violations, and malformed inputs', t => {

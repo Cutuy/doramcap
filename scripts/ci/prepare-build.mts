@@ -1,22 +1,19 @@
 #!/usr/bin/env node
 // Verify a submitted snapshot and synchronize a dedicated, disposable source cache.
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
+import { canonicalPath, digest } from '../../libs/tooling/fs.mts';
+
+export const PREPARE_PATH = 'scripts/ci/prepare-build.mts';
 
 export type SnapshotManifest = {
   head?: string; dirty?: boolean;
   files_sha256: Record<string, string>; files_mode: Record<string, number>;
   runner_sha256: string; prepare_sha256: string;
 };
-
-/** Return the SHA256 of a regular file's bytes. */
-export function digest(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
-}
 
 function files(directory: string, ignored: string[], prefix = ''): Set<string> {
   const result = new Set<string>();
@@ -47,14 +44,6 @@ function verify(directory: string, expected: Record<string, string>, modes: Reco
   }
 }
 
-function canonical(path: string): string {
-  try { return realpathSync(path); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return join(canonical(dirname(path)), basename(path));
-  }
-}
-
 /** Synchronize verified inputs with rsync; preserve identical mtimes and remove stale cache files.
  * Caller holds the worker lock through synchronization and all builds/tests. Invalid inputs fail before mutation.
  */
@@ -65,15 +54,15 @@ export function prepare(snapshot: string, destination: string): void {
       || lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new Error('Snapshot and cache must be real directories');
   }
-  snapshot = canonical(resolve(snapshot));
-  destination = canonical(resolve(destination));
+  snapshot = canonicalPath(resolve(snapshot));
+  destination = canonicalPath(resolve(destination));
   const contains = (parent: string, child: string) => child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
   if (snapshot === destination || contains(destination, snapshot) || contains(snapshot, destination)) {
     throw new Error('Snapshot and cache must be separate, non-overlapping directories');
   }
   const manifest: SnapshotManifest = JSON.parse(readFileSync(join(snapshot, 'SOURCE.json'), 'utf8'));
   const expected = { ...manifest.files_sha256,
-    'run-worker-job.sh': manifest.runner_sha256, 'prepare-build.mts': manifest.prepare_sha256,
+    'run-worker-job.sh': manifest.runner_sha256, [PREPARE_PATH]: manifest.prepare_sha256,
     'SOURCE.json': digest(join(snapshot, 'SOURCE.json')),
   };
   for (const name of Object.keys(expected)) {

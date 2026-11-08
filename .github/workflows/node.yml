@@ -51,6 +51,9 @@ jobs:
           cache-dependency-path: |
             apps/*/frontend/package-lock.json
             console/*/package-lock.json
+            libs/tooling/package-lock.json
+      - name: Install tooling
+        run: npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
       - name: Set up Rust for the Console native bridge
         run: rustup show
       - name: Cache Cargo downloads
@@ -62,6 +65,10 @@ jobs:
             ~/.cargo/git/db
           key: node-cargo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: node-cargo-${{ runner.os }}-${{ runner.arch }}-
+      - name: Check tooling libraries
+        run: |
+          npm --prefix libs/tooling test
+          npm --prefix libs/tooling run typecheck
       - name: Test Node suites
         run: node scripts/ci/test-node.mts
       - name: Build Project Explorer

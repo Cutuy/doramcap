@@ -14,12 +14,15 @@ exec 9>"$worker_cache/worker.lock"
 flock 9
 printf 'Submitted snapshot: %s\n' "$worker_snapshot"
 test "$(node --version)" = "v$(cat "$worker_snapshot/.node-version")"
-node "$worker_snapshot/prepare-build.mts" "$worker_snapshot" "$worker_cache/source"
+node "$worker_snapshot/scripts/ci/prepare-build.mts" "$worker_snapshot" "$worker_cache/source"
 cd "$worker_cache/source"
 uname -a
 rustc --version
 cargo --version
 cat SOURCE.json
+npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
+npm --prefix libs/tooling test
+npm --prefix libs/tooling run typecheck
 rustup component add rustfmt clippy --toolchain 1.99.1
 node scripts/ci/check-boundaries.mts --rules scripts/ci/boundaries.json
 node --test scripts/ci/test-boundaries.mts scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts

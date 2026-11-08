@@ -6,6 +6,7 @@ on:
     paths: &mcap-inputs
       - '.github/workflows/mcap.yml'
       - 'scripts/ci/test-mcap.mts'
+      - 'libs/tooling/**'
       - '.node-version'
       - 'Cargo.toml'
       - 'Cargo.lock'
@@ -52,7 +53,11 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-          cache-dependency-path: libs/storage-persistence/tests/readers/package-lock.json
+          cache-dependency-path: |
+            libs/storage-persistence/tests/readers/package-lock.json
+            libs/tooling/package-lock.json
+      - name: Install tooling
+        run: npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
       - name: Set up Rust
         run: rustup show
       - name: Cache Cargo downloads
