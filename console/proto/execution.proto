@@ -4,7 +4,6 @@ import "compose.proto";
 import "compose_plan.proto";
 import "launch.proto";
 import "systemd_plan.proto";
-import "dora.proto";
 import "workflow.proto";
 import "system_config.proto";
 

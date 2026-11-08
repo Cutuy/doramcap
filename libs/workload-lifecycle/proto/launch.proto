@@ -24,17 +24,16 @@ message RunPlan {
   string repository_root = 2;
   // Absolute, new artifact directory; its parent must already exist.
   string artifacts = 3;
-  reserved 4;
-  repeated Recording recordings = 5;
+  repeated Recording recordings = 4;
   // Positive startup and readiness budget in seconds.
-  uint64 readiness_seconds = 6;
+  uint64 readiness_seconds = 5;
   // Stop grace period in seconds for apps declaring none.
-  uint64 stop_seconds = 7;
+  uint64 stop_seconds = 6;
   // App IDs started before user apps and stopped after them.
-  repeated string system_apps = 8;
+  repeated string system_apps = 7;
   // App IDs whose services write MCAP through io_uring.
-  repeated string mcap_apps = 9;
-  DoraSettings dora = 10;
+  repeated string mcap_apps = 8;
+  DoraSettings dora = 9;
 }
 
 // Communication settings shared by every launcher.

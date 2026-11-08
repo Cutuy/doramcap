@@ -34,7 +34,7 @@ Agreed with the owner on 2026-11-07.
 | systemd evidence | Result and exit code/status are optional; missing required exit evidence makes the report unsuccessful with a diagnostic. Missing accounting is informational. |
 | Adopted references | Preserve native references without rejecting or rewriting them. They retain their host-systemd meaning. |
 | Removal | Remove runs only after Finalize issues a `RemovalPermit`. |
-| Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
+| Ordering | Rust enforces fixed phases: Dora ready, then system apps and recordings ready, then user apps. Shutdown reverses the phases. The request carries app roles. |
 | systemd control | D-Bus through `zbus` and `zbus_systemd` (approved 2026-11-07). Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
 | Resolution | Console resolves deployment, manifests and Review choices in TypeScript, including backend details. It sends Rust one `RunRequest`: the shared `RunPlan` plus a `oneof` holding one backend's plan. Rust performs every system side effect. |
@@ -55,7 +55,7 @@ Agreed with the owner on 2026-11-07.
 | Deployment | `deployment.pbtxt`, one per machine | Operator | Form, apps, default variants, placement, install root, repo config |
 | Repo config | `compose.yaml`, `.service`, `supervisord.conf` | User | User apps, in their native format |
 
-Generated per run: Console Review variant overrides, the `RunPlan` (saved as `plan.pbtxt`),
+Generated per run: Console Review variant overrides, the in-memory `RunPlan`,
 frozen config copies and the backend input. The plan has the same shape for every form; only the
 backend input differs.
 
@@ -63,6 +63,9 @@ backend input differs.
 
 - `AppManifest` may carry both `compose` and `systemd`; the machine's `form` picks one.
 - `RunRequest` carries the shared `RunPlan` and exactly one backend plan.
+- `RunPlan` owns system-app IDs, MCAP-writer IDs and shared Dora settings.
+- Backend plans contain flat launch inputs keyed by app ID. Configurable groups are removed.
+- [Shared run fields](110726-shared-run-fields.md) records the implementation and validation.
 
 ## Run sequence
 
@@ -177,7 +180,7 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 **Work items**
 - [x] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Results below.
 - [x] Owner approved `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature).
-- [x] New `libs/workload-systemd` with a `SystemdPlan` input: start groups of transient programs and adopted unit files.
+- [x] New `libs/workload-systemd` with a `SystemdPlan` input: flat transient programs and adopted unit files; shared app roles determine fixed startup phases.
 - [x] systemd control steps: subscribe, start transient units, await each start job, adopt units, stop, release references, reset the slice.
 - [x] A systemd running handle on the shared run sequence; a failed unit is recorded, and only a stop request ends the run.
 - [x] Placement and memlock become unit properties; the report records each unit's result, exit status and accounting.
@@ -185,7 +188,7 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 - [ ] Dora coordinator and daemon units, graph registration and shared-memory ownership. Moved to Milestone 4, where Console resolves Dora's plan.
 
 **Validation**
-- [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
+- [x] Native tests: system apps start before user apps and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
 - [x] Audit F1–F4: attempted starts remain reportable, peers start before readiness waits, native references are accepted, and cleanup errors propagate.
 - [x] Shutdown regressions: declared grace, plan fallback, infinite timeout preservation and optional exit evidence.
 - [x] Concurrent repositories with identical service names remain isolated during stop and explicit cleanup; a second run of the same repository is refused.
