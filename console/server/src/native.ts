@@ -15,8 +15,8 @@ export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
 export const systemConfig = doramcap.system_config.v1;
 // The addon ABI stays private; application code uses the generated message types.
-type RawExecution = Omit<NativeExecution, 'profiles' | 'inspect' | 'start' | 'poll'> & {
-  profiles(input: Buffer): Promise<Buffer>;
+type RawExecution = Omit<NativeExecution, 'composeProfiles' | 'inspect' | 'start' | 'poll'> & {
+  composeProfiles(input: Buffer): Promise<Buffer>;
   inspect(input: Buffer): Promise<Buffer>;
   start(input: Buffer): Promise<Buffer>;
   poll(): Buffer;
@@ -39,9 +39,9 @@ export const capabilities: NativeCapabilities = {
   async open(socket, version) {
     const owner = await addon.open(socket, version);
     return {
-      profiles: async (request) =>
-        execution.Profiles.decode(
-          await owner.profiles(Buffer.from(execution.ProfilesRequest.encode(request).finish())),
+      composeProfiles: async (request) =>
+        execution.ComposeProfiles.decode(
+          await owner.composeProfiles(Buffer.from(execution.ComposeProfilesRequest.encode(request).finish())),
         ),
       inspect: async (request) =>
         execution.Inspection.decode(
