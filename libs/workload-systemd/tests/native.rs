@@ -6,9 +6,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use workload_systemd::{
-    Bind, DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner,
-};
+use workload_systemd::{Bind, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner};
 
 /// How long a scenario lets its units run after readiness.
 const OBSERVATION: Duration = Duration::from_secs(3);
@@ -607,17 +605,38 @@ async fn dora_runs_as_units_and_registers_the_graph() {
         })
         .collect();
     let mut plan = fixture.plan("r1", vec![]);
-    plan.1.dora = Some(DoraUnits {
-        executable,
-        ..Default::default()
-    });
-    plan.0.dora = Some(workload_lifecycle::launch::DoraSettings {
-        coordinator_port: ports[0],
-        daemon_port: ports[1],
-        graph: graph.to_string_lossy().into(),
-        runtime_directory: runtime.to_string_lossy().into(),
-        ..Default::default()
-    });
+    plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
+    plan.0.dataflow_file = graph.to_string_lossy().into();
+    plan.1.programs = vec![
+        Program {
+            id: "dora-coordinator".into(),
+            argv: vec![
+                executable.clone(),
+                "coordinator".into(),
+                "--port".into(),
+                ports[0].to_string(),
+                "--interface".into(),
+                "127.0.0.1".into(),
+                "--store".into(),
+                "memory".into(),
+            ],
+            working_directory: runtime.to_string_lossy().into(),
+            ..Default::default()
+        },
+        Program {
+            id: "dora-daemon".into(),
+            argv: vec![
+                executable,
+                "daemon".into(),
+                "--coordinator-port".into(),
+                ports[0].to_string(),
+                "--local-listen-port".into(),
+                ports[1].to_string(),
+            ],
+            working_directory: runtime.to_string_lossy().into(),
+            ..Default::default()
+        },
+    ];
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
@@ -635,7 +654,7 @@ async fn dora_runs_as_units_and_registers_the_graph() {
             .any(|name| name.ends_with("-dora-daemon.service")),
         "{names:?}"
     );
-    assert!(runtime.join("graph.yml").is_file());
+    assert!(runtime.join("dataflow.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]

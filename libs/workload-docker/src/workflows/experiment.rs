@@ -1,5 +1,5 @@
 //! Workload-owned graph registration and system application shutdown.
-use super::dora::DoraRuntime;
+use super::dora::DoraApps;
 use crate::compose::{error::invalid, *};
 use orchestrator::Step;
 use std::rc::Rc;
@@ -11,13 +11,13 @@ pub struct ExperimentOwner {
     attempted: bool,
     pub(crate) stop_seconds: u64,
     pub(crate) startup_seconds: u64,
-    pub(crate) settings: DoraRuntime,
+    pub(crate) apps: DoraApps,
     pub(crate) adapter: Rc<DockerAdapter>,
     pub(crate) plan: ResolvedComposeProject,
 }
 impl ExperimentOwner {
     pub(crate) fn new(
-        settings: DoraRuntime,
+        apps: DoraApps,
         adapter: Rc<DockerAdapter>,
         plan: ResolvedComposeProject,
         seconds: u64,
@@ -27,7 +27,7 @@ impl ExperimentOwner {
             identity: None,
             attempted: false,
             stop_seconds,
-            settings,
+            apps,
             adapter,
             plan,
             startup_seconds: seconds,
@@ -44,21 +44,23 @@ impl ExperimentOwner {
             .collect()
     }
     pub async fn register_graph(&mut self) -> Result<()> {
-        if self.settings.graph.is_empty() {
+        if self.apps.dataflow_file.is_empty() {
             return Ok(());
         }
         let bytes = crate::evidence::read_regular(
-            std::path::Path::new(&self.settings.graph),
+            std::path::Path::new(&self.apps.dataflow_file),
             super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
-        if crate::compose::adapter::digest(&bytes) != self.settings.graph_sha256 {
+        if crate::compose::adapter::digest(&bytes) != self.apps.dataflow_sha256 {
             return Err(invalid("frozen Dora graph changed"));
         }
         self.attempted = true;
         self.cli(&[
             "start",
-            super::shared_dora::GRAPH_FILE,
+            &std::path::Path::new(self.apps.directory()?)
+                .join(super::shared_dora::GRAPH_FILE)
+                .to_string_lossy(),
             "--name",
             &self.plan.run,
             "--detach",
@@ -102,11 +104,11 @@ impl ExperimentOwner {
             };
         };
         let bytes = crate::evidence::read_regular(
-            std::path::Path::new(&self.settings.graph),
+            std::path::Path::new(&self.apps.dataflow_file),
             super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
-        let graph = super::shared_dora::graph(&self.settings, &bytes)?;
+        let graph = super::shared_dora::graph(&self.apps.dataflow_file, &bytes)?;
         let state = self.adapter.project(&self.plan).inspect().await?;
         let nodes: Vec<_> = graph
             .nodes

@@ -1,0 +1,5 @@
+id: "dora-coordinator"
+label: "Dora coordinator"
+compose { files: "compose.yaml" service: "dora-coordinator" }
+output_targets: "/runtime"
+systemd { unit: "dora-coordinator.service" }

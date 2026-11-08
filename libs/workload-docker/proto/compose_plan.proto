@@ -5,6 +5,4 @@ import "compose.proto";
 // Flat launch inputs keyed by app ID; RunPlan owns roles and communication settings.
 message ComposePlan {
   repeated doramcap.compose.v1.ComposeProject projects = 1;
-  string dora_image = 2;
-  uint64 dora_shm_bytes = 3;
 }

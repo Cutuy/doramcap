@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="450" viewBox="0 0 960 450" role="img" aria-labelledby="title desc">
 <title id="title">systemd mode</title>
-<desc id="desc">Rust controls fixed startup phases over D-Bus. Each repository owns a slice. Dora runtime units start first, then system app units, then the repo's adopted user units. Stop runs in reverse, then the slice stops.</desc>
+<desc id="desc">Rust controls fixed startup phases over D-Bus. Each repository owns a slice. Dora app units start first, then system app units, then the repo's adopted user units. Stop runs in reverse, then the slice stops.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="450" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
@@ -10,7 +10,7 @@
 <text x="60" y="102" font-size="13" text-anchor="start">Rust workflow starts, inspects and stops units over D-Bus</text>
 <g fill="#dbeaf2" stroke="#8ca6b8"><rect x="60" y="118" width="260" height="240" rx="8"/><rect x="350" y="118" width="260" height="240" rx="8"/></g>
 <rect x="640" y="118" width="260" height="240" rx="8" fill="#fcebdc" stroke="#bc906b"/>
-<text x="190" y="144" font-size="16" font-weight="600">1 · Dora runtime</text><text x="190" y="164" font-size="13">transient Dora programs</text>
+<text x="190" y="144" font-size="16" font-weight="600">1 · Dora apps</text><text x="190" y="164" font-size="13">ordinary programs / unit files</text>
 <text x="480" y="144" font-size="16" font-weight="600">2 · System apps</text><text x="480" y="164" font-size="13">app unit files with binds</text>
 <text x="770" y="144" font-size="16" font-weight="600">3 · User apps</text><text x="770" y="164" font-size="13">repo units, adopted</text>
 <g fill="#f7fafc" stroke="#a9b4bf">

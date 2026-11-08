@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="650" viewBox="0 0 960 650" role="img" aria-labelledby="title desc">
 <title id="title">Launch contracts</title>
-<desc id="desc">Console's config names app manifests. A manifest may carry both Compose and systemd launch files. RunPlan owns app roles, recording writers and shared Dora settings; Rust enforces fixed startup phases. Console resolves the selected form into one RunRequest: a shared RunPlan plus exactly one backend part, which the native addon runs.</desc>
+<desc id="desc">Console's config names app manifests. A manifest may carry both Compose and systemd launch files. RunPlan owns app roles, recording writers and Dora app IDs and a dataflow artifact; Rust enforces fixed startup phases. Console resolves the selected form into one RunRequest: a shared RunPlan plus exactly one backend part, which the native addon runs.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="650" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a">
@@ -9,7 +9,7 @@
 <rect x="30" y="60" width="270" height="170" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
 <text x="46" y="84" font-size="16" font-weight="600">ConsoleConfig</text>
 <text x="46" y="102" font-size="12" fill="#4a5d6e">console-config.proto · one per machine</text>
-<g font-size="13"><text x="46" y="128">form: COMPOSE or SYSTEMD</text><text x="46" y="150">binaries · dora · runtime</text><text x="46" y="172">system_apps[]:</text><text x="58" y="194">manifest · default_selected</text><text x="58" y="214">live_outputs · health_inputs</text></g>
+<g font-size="13"><text x="46" y="128">form: COMPOSE or SYSTEMD</text><text x="46" y="150">binaries · runtime · dataflow_file</text><text x="46" y="172">apps[] · dora_apps IDs:</text><text x="58" y="194">manifest · default_selected</text><text x="58" y="214">live_outputs · health_inputs</text></g>
 
 <rect x="330" y="60" width="330" height="170" rx="8" fill="#dbeaf2" stroke="#8ca6b8"/>
 <text x="346" y="84" font-size="16" font-weight="600">AppManifest</text>
@@ -41,17 +41,17 @@
 <text x="146" y="356" font-size="12" fill="#4a5d6e">execution.proto · one per run, built by TypeScript, run by Rust</text>
 <rect x="50" y="368" width="860" height="64" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
 <text x="66" y="392" font-size="14"><tspan font-weight="600">run: RunPlan</tspan> · id · repository · artifacts · recordings · readiness and stop budgets</text>
-<text x="66" y="416" font-size="13">system app IDs · MCAP writer IDs · Dora graph, ports, runtime directory, memlock and participant</text>
+<text x="66" y="416" font-size="13">Dora app IDs · system app IDs · MCAP writer IDs · dataflow_file</text>
 <text x="480" y="450" font-size="12" fill="#4a5d6e" text-anchor="middle">oneof backend: exactly one</text>
 <rect x="50" y="458" width="410" height="76" rx="6" fill="#fcebdc" stroke="#bc906b"/>
 <text x="66" y="482" font-size="14" font-weight="600">compose: ComposePlan</text>
 <text x="66" y="504" font-size="13">projects: one ComposeProject per app ID</text>
-<text x="66" y="524" font-size="13">Dora image · shared-memory capacity</text>
+<text x="66" y="524" font-size="13">Native commands · images · resources · mounts</text>
 <text x="480" y="500" font-size="14" font-weight="600" text-anchor="middle">or</text>
 <rect x="500" y="458" width="410" height="76" rx="6" fill="#fcebdc" stroke="#bc906b"/>
 <text x="516" y="482" font-size="14" font-weight="600">systemd: SystemdPlan</text>
 <text x="516" y="504" font-size="13">app_units · unit_files · programs</text>
-<text x="516" y="524" font-size="13">Dora executable and user · binaries</text>
+<text x="516" y="524" font-size="13">Native commands · identity · binds · binaries</text>
 
 <rect x="30" y="570" width="900" height="40" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
 <text x="480" y="595" font-size="15" font-weight="600" text-anchor="middle">Rust workflow: Dora ready → system apps + recordings ready → user apps</text>

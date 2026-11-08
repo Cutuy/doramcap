@@ -33,18 +33,10 @@ message RunPlan {
   repeated string system_apps = 7;
   // App IDs whose services write MCAP through io_uring.
   repeated string mcap_apps = 8;
-  DoraSettings dora = 9;
-}
-
-// Communication settings shared by every launcher.
-message DoraSettings {
-  uint32 coordinator_port = 1;
-  uint32 daemon_port = 2;
-  string graph = 3;
-  string runtime_directory = 4;
-  uint64 memlock_bytes = 5;
-  optional uint32 participant_uid = 6;
-  optional uint32 participant_gid = 7;
+  // App IDs launched in the first phase, before system and user apps.
+  repeated string dora_apps = 9;
+  // Absolute path to the merged native Dora dataflow file; empty registers none.
+  string dataflow_file = 10;
 }
 
 // Writers and form-owned evidence after every app stopped.

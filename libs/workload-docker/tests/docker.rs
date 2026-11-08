@@ -4,11 +4,10 @@ mod support;
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
-use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
-use workload_docker::workflows::{
-    dora::DoraRuntime,
-    experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime},
+use workload_docker::workflows::experiment::{
+    RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime,
 };
+use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
 use workload_docker::{compose::*, workflows::recorded_compose::*};
 use workload_lifecycle::recording::Recording;
 
@@ -84,7 +83,8 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
             project(root, "beta"),
         ],
         system_apps: vec![monitor(root, image, &root.join(&id))],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: recordings(&root.join(&id)),
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -147,7 +147,8 @@ async fn native_recorded_workflow() {
         repository_root: root.to_path_buf(),
         projects: vec![project(&root, "demo")],
         system_apps: vec![monitor(&root, &image, &artifacts)],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: recordings(&artifacts),
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -882,7 +883,8 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             id: id.clone(),
             artifacts: artifacts.clone(),
             filesystem: None,
-            dora: Default::default(),
+            dora_apps: dora_apps(),
+            dataflow_file: String::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             repository_root: root.to_path_buf(),
@@ -1031,7 +1033,8 @@ async fn stopping_a_run_respects_each_service_grace_period() {
             id: id.clone(),
             artifacts: root.join(&id),
             filesystem: None,
-            dora: Default::default(),
+            dora_apps: dora_apps(),
+            dataflow_file: String::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             repository_root: root.clone(),
@@ -1147,7 +1150,8 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             artifacts: root.join(&id),
             filesystem: None,
             repository_root: root.to_path_buf(),
-            dora: Default::default(),
+            dora_apps: dora_apps(),
+            dataflow_file: String::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             system_apps: vec![project(&root, "helper")],
@@ -1292,7 +1296,8 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
         filesystem: None,
         projects: vec![project(&root, "session")],
         system_apps: vec![],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1413,7 +1418,8 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
             filesystem: None,
             projects: vec![project],
             system_apps: vec![],
-            dora: Default::default(),
+            dora_apps: dora_apps(),
+            dataflow_file: String::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             readiness_seconds: 15,
@@ -1496,7 +1502,8 @@ async fn selected_profile_starts_its_service() {
             filesystem: None,
             projects: vec![project],
             system_apps: vec![],
-            dora: Default::default(),
+            dora_apps: dora_apps(),
+            dataflow_file: String::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             readiness_seconds: 15,
@@ -1573,7 +1580,8 @@ async fn active_experiments_are_exclusive_per_repository_and_independent_between
         filesystem: None,
         projects: vec![project(repository, "session")],
         system_apps: vec![],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1691,7 +1699,8 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
         filesystem: Some(Default::default()),
         projects: vec![project(root.path(), "app")],
         system_apps: vec![],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1881,7 +1890,8 @@ async fn public_dora_resets_after_launcher_crash() {
                     filesystem: None,
                     projects: vec![project(&root, "adopted")],
                     system_apps: vec![],
-                    dora: Default::default(),
+                    dora_apps: dora_apps(),
+                    dataflow_file: String::new(),
                     recordings: vec![],
                     mcap_writers: Default::default(),
                     readiness_seconds: 15,
@@ -2021,15 +2031,11 @@ async fn compose_public_run(outcome: &str) {
             }
         }}),
     );
-    let dora = DoraRuntime {
-        coordinator_port: coordinator_port.into(),
-        daemon_port: daemon_port.into(),
-        graph: graph.to_str().unwrap().into(),
-        runtime_directory: runtime.to_str().unwrap().into(),
-        participant_uid: Some(owner.uid()),
-        participant_gid: Some(owner.gid()),
-        ..Default::default()
-    };
+    let dora_apps = dora_fixture(
+        &root,
+        [coordinator_port, daemon_port],
+        Some((&runtime, format!("{}:{}", owner.uid(), owner.gid()))),
+    );
     let mut adopted = service(&image);
     adopted["command"] = serde_json::json!([
         "test \"$$DORA_NODE_ID\" = app || exit 43; test -s /runtime/source.ready && test -s /runtime/recorder.ready && test -s /runtime/support.ready || exit 42; touch /runtime/adopted.started; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
@@ -2065,7 +2071,8 @@ async fn compose_public_run(outcome: &str) {
         repository_root: root.clone(),
         projects: vec![project(&root, "adopted")],
         system_apps: vec![project(&root, "session"), project(&root, "support")],
-        dora,
+        dora_apps,
+        dataflow_file: graph.to_string_lossy().into_owned(),
         recordings: vec![],
         mcap_writers: McapWriters {
             apps: Vec::new(),
@@ -2296,11 +2303,15 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
         filesystem: None,
         system_apps: vec![project(root.path(), "worker")],
         projects: vec![],
-        dora: DoraRuntime {
-            coordinator_port: listeners[0].local_addr().unwrap().port().into(),
-            daemon_port: listeners[1].local_addr().unwrap().port().into(),
-            ..Default::default()
-        },
+        dora_apps: dora_fixture(
+            root.path(),
+            [
+                listeners[0].local_addr().unwrap().port(),
+                listeners[1].local_addr().unwrap().port(),
+            ],
+            None,
+        ),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2316,8 +2327,14 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
     let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
 
     // Assert
-    assert_eq!(inspected.dora.coordinator_port, spec.dora.coordinator_port);
-    assert_eq!(inspected.dora.daemon_port, spec.dora.daemon_port);
+    assert_eq!(
+        inspected.dora.coordinator_port().unwrap(),
+        listeners[0].local_addr().unwrap().port()
+    );
+    assert_eq!(
+        inspected.dora.daemon_port().unwrap(),
+        listeners[1].local_addr().unwrap().port()
+    );
 
     // Act
     let mut execution = spec.clone();
@@ -2376,7 +2393,8 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         repository_root: root.path().into(),
         system_apps: vec![app(&root.path().join("inspection"))],
         projects: vec![],
-        dora: Default::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2417,8 +2435,8 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
 
     // Assert
     assert_ne!(
-        inspected.dora.runtime_directory,
-        prepared.dora.runtime_directory
+        inspected.artifacts.join("dora/runtime"),
+        prepared.artifacts.join("dora/runtime")
     );
     assert_eq!(inspected.snapshot, prepared.snapshot);
 
@@ -2497,7 +2515,8 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         repository_root: root.clone(),
         system_apps: vec![first],
         projects: vec![project(&root, "user")],
-        dora: DoraRuntime::default(),
+        dora_apps: dora_apps(),
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2549,11 +2568,11 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
     for name in ["monitor", "adopted"] {
         assert_eq!(
             model["services"][name]["environment"]["DORA_DAEMON_LOCAL_LISTEN_PORT"],
-            prepared.dora.daemon_port.to_string()
+            prepared.dora.daemon_port().unwrap().to_string()
         );
         assert_eq!(
             model["services"][name]["environment"]["DORA_ZENOH_CONFIG_OVERLAY"],
-            prepared.dora.zenoh_overlay
+            prepared.dora.overlay().unwrap()
         );
     }
     assert_eq!(
@@ -2693,7 +2712,8 @@ async fn mixed_volume_policies_and_evidence_preservation() {
                 repository_root: root.clone(),
                 projects,
                 system_apps: vec![],
-                dora: Default::default(),
+                dora_apps: dora_apps(),
+                dataflow_file: String::new(),
                 recordings: vec![],
                 mcap_writers: Default::default(),
                 readiness_seconds: 10,
@@ -2795,7 +2815,8 @@ async fn incomplete_volume_scan_retains_volumes() {
                 repository_root: root.path().into(),
                 projects: vec![project(root.path(), "app")],
                 system_apps: vec![],
-                dora: Default::default(),
+                dora_apps: dora_apps(),
+                dataflow_file: String::new(),
                 recordings: vec![],
                 mcap_writers: Default::default(),
                 readiness_seconds: 10,
@@ -2945,7 +2966,6 @@ async fn shared_plan_resolves_writer_app_services() {
     };
     let input = ComposePlan {
         projects: vec![project(&root, "workload"), project(&root, "capture")],
-        ..Default::default()
     };
     let adapter = DockerAdapter::connect(socket).await.unwrap();
     // Act
@@ -2971,4 +2991,54 @@ async fn shared_plan_resolves_writer_app_services() {
             .is_some_and(|options| options.contains(&serde_json::json!("seccomp=unconfined")))
     );
     std::fs::remove_dir_all(root).unwrap();
+}
+
+/// Ordinary native Dora inputs used by integration scenarios.
+fn dora_apps() -> Vec<ComposeProject> {
+    ["coordinator", "daemon"]
+        .into_iter()
+        .map(|role| ComposeProject {
+            key: format!("dora-{role}"),
+            directory: format!("{}/deploy/dora-{role}", env!("CARGO_MANIFEST_DIR")),
+            files: vec!["compose.yaml".into()],
+            ..Default::default()
+        })
+        .collect()
+}
+
+fn dora_fixture(
+    root: &std::path::Path,
+    ports: [u16; 2],
+    context: Option<(&std::path::Path, String)>,
+) -> Vec<ComposeProject> {
+    dora_apps()
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut input)| {
+            let path = std::path::Path::new(&input.directory).join("compose.yaml");
+            let mut model: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            let service = &mut model["services"][&input.key];
+            if let Some((runtime, user)) = &context {
+                service["user"] = user.clone().into();
+                service["volumes"][0]["source"] = runtime.to_string_lossy().into_owned().into();
+            }
+            if index == 1 {
+                service["volumes"][1]["source"] = format!("{}/zenoh.json5", input.directory).into();
+            }
+            let args = service["command"].as_array_mut().unwrap();
+            for i in 1..args.len() {
+                if args[i - 1] == "--port" || args[i - 1] == "--coordinator-port" {
+                    args[i] = ports[0].to_string().into();
+                }
+                if args[i - 1] == "--local-listen-port" {
+                    args[i] = ports[1].to_string().into();
+                }
+            }
+            let file = root.join(format!("{}.json", input.key));
+            std::fs::write(&file, serde_json::to_vec(&model).unwrap()).unwrap();
+            input.files = vec![file.to_string_lossy().into_owned()];
+            input
+        })
+        .collect()
 }

@@ -116,36 +116,8 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
         return Err("readiness and stop budgets must be positive".into());
     }
     workload_lifecycle::plan::validate_apps(run, app_ids(plan)?.iter().map(String::as_str))?;
-    if run.dora.is_some() != plan.dora.is_some() {
-        return Err("Dora needs both shared settings and launch settings".into());
-    }
-    if let (Some(dora), Some(launch)) = (&run.dora, &plan.dora) {
-        if dora.participant_uid.is_some() || dora.participant_gid.is_some() {
-            return Err(
-                "systemd Dora uses its launch user; numeric participant IDs are unsupported".into(),
-            );
-        }
-        let absolute = |path: &str| Path::new(path).is_absolute();
-        if !absolute(&launch.executable)
-            || !Path::new(&dora.runtime_directory).is_dir()
-            || !absolute(&dora.runtime_directory)
-            || (!dora.graph.is_empty() && !absolute(&dora.graph))
-        {
-            return Err("Dora needs an absolute executable, an existing absolute runtime directory, an absolute graph and both ports".into());
-        }
-        let valid_port = |port| u16::try_from(port).is_ok_and(|port| port != 0);
-        if !valid_port(dora.coordinator_port)
-            || !valid_port(dora.daemon_port)
-            || dora.coordinator_port == dora.daemon_port
-        {
-            return Err("Dora ports must be distinct and in 1..=65535".into());
-        }
-    }
     let mut ids = std::collections::BTreeSet::new();
-    if plan.dora.is_some() {
-        ids.extend([dora::COORDINATOR.to_owned(), dora::DAEMON.to_owned()]);
-    }
-    let reserved = |id: &str| plan.dora.is_some() && id.starts_with(dora::CLI_PREFIX);
+    let reserved = |id: &str| !run.dora_apps.is_empty() && id.starts_with(dora::CLI_PREFIX);
     for program in &plan.programs {
         if !valid_id(&program.id) || reserved(&program.id) || !ids.insert(program.id.clone()) {
             return Err(format!("invalid or duplicate program id {:?}", program.id));
@@ -220,8 +192,8 @@ fn app_ids(plan: &SystemdPlan) -> Result<Vec<String>> {
 }
 
 /// Select the fixed system or user phase after the complete plan has been validated.
-fn phase(run: &RunPlan, plan: &SystemdPlan, system: bool) -> SystemdPlan {
-    let selected = |id: &str| run.system_apps.iter().any(|app| app == id) == system;
+fn phase(run: &RunPlan, plan: &SystemdPlan, role: workload_lifecycle::plan::Phase) -> SystemdPlan {
+    let selected = |id: &str| workload_lifecycle::plan::phase(run, id) == role;
     SystemdPlan {
         programs: plan
             .programs
@@ -269,82 +241,27 @@ mod tests {
                 ..Default::default()
             }],
             unit_files: vec!["/repo/deploy/perception.service".into()],
-            dora: None,
             ..Default::default()
         }
     }
 
-    fn dora_run() -> RunPlan {
-        RunPlan {
-            dora: Some(workload_lifecycle::launch::DoraSettings {
-                runtime_directory: std::env::temp_dir().to_string_lossy().into_owned(),
-                coordinator_port: 6013,
-                daemon_port: 6014,
-                ..Default::default()
-            }),
-            ..run()
-        }
-    }
-
-    fn dora_plan() -> SystemdPlan {
-        SystemdPlan {
-            dora: Some(DoraUnits {
-                executable: "/bin/true".into(),
-                ..Default::default()
-            }),
-            ..plan()
-        }
-    }
-
     #[test]
-    fn dora_ports_require_distinct_valid_tcp_ports() {
-        for (coordinator, daemon, accepted) in [
-            (1, 65535, true),
-            (0, 6014, false),
-            (6013, 0, false),
-            (65536, 6014, false),
-            (6013, 65536, false),
-            (6013, 6013, false),
-        ] {
-            // Arrange
-            let plan = dora_plan();
-            let mut run = dora_run();
-            let dora = run.dora.as_mut().unwrap();
-            dora.coordinator_port = coordinator;
-            dora.daemon_port = daemon;
-            // Act
-            let result = validate(&run, &plan);
-            // Assert
-            assert_eq!(
-                result.is_ok(),
-                accepted,
-                "{coordinator}, {daemon}: {result:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn dora_names_are_reserved_for_programs_and_adopted_units() {
-        for id in ["dora-coordinator", "dora-daemon", "dora-cli-1"] {
-            for adopted in [false, true] {
-                // Arrange
-                let mut plan = dora_plan();
-                if adopted {
-                    plan.unit_files = vec![format!("/repo/{id}.service")];
-                } else {
-                    plan.programs[0].id = id.into();
-                }
-                // Act / Assert
-                assert!(
-                    validate(&dora_run(), &plan).is_err(),
-                    "{id}, adopted={adopted}"
-                );
-                // Act: without Dora these are ordinary user-owned names.
-                plan.dora = None;
-                // Assert
-                assert!(validate(&run(), &plan).is_ok());
-            }
-        }
+    fn dora_apps_are_ordinary_launch_inputs() {
+        // Arrange
+        let mut plan = plan();
+        plan.programs[0].id = "dora-coordinator".into();
+        let mut run = run();
+        run.dora_apps = vec!["dora-coordinator".into()];
+        // Act / Assert
+        assert!(validate(&run, &plan).is_ok());
+        assert_eq!(
+            app_ids(&phase(&run, &plan, workload_lifecycle::plan::Phase::Dora)).unwrap(),
+            ["dora-coordinator"]
+        );
+        // Act / Assert: control units remain owned by the workflow.
+        plan.programs[0].id = "dora-cli-1".into();
+        run.dora_apps = vec!["dora-cli-1".into()];
+        assert!(validate(&run, &plan).is_err());
     }
 
     #[test]
@@ -364,8 +281,8 @@ mod tests {
         };
         // Act
         validate(&run, &plan).unwrap();
-        let systems = phase(&run, &plan, true);
-        let users = phase(&run, &plan, false);
+        let systems = phase(&run, &plan, workload_lifecycle::plan::Phase::System);
+        let users = phase(&run, &plan, workload_lifecycle::plan::Phase::User);
         // Assert
         assert_eq!(app_ids(&systems).unwrap(), ["monitor", "capture"]);
         assert_eq!(app_ids(&users).unwrap(), ["perception"]);

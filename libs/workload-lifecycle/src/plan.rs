@@ -14,6 +14,7 @@ pub fn validate_apps<'a>(
         }
     }
     for (role, apps) in [
+        ("Dora", &run.dora_apps),
         ("system", &run.system_apps),
         ("MCAP writer", &run.mcap_apps),
     ] {
@@ -24,7 +25,38 @@ pub fn validate_apps<'a>(
             }
         }
     }
+    if run
+        .dora_apps
+        .iter()
+        .any(|id| run.system_apps.contains(id) || run.mcap_apps.contains(id))
+    {
+        return Err("Dora apps cannot also be system apps or recording writers".into());
+    }
+    if !run.dataflow_file.is_empty()
+        && (run.dora_apps.is_empty() || !std::path::Path::new(&run.dataflow_file).is_absolute())
+    {
+        return Err("dataflow_file needs Dora apps and an absolute path".into());
+    }
     Ok(())
+}
+
+/// Fixed startup phases; shutdown traverses them in reverse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    Dora,
+    System,
+    User,
+}
+
+/// Classify a validated app by its shared role.
+pub fn phase(run: &RunPlan, id: &str) -> Phase {
+    if run.dora_apps.iter().any(|app| app == id) {
+        Phase::Dora
+    } else if run.system_apps.iter().any(|app| app == id) {
+        Phase::System
+    } else {
+        Phase::User
+    }
 }
 
 #[cfg(test)]

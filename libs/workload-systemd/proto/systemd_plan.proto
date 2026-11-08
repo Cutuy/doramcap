@@ -3,18 +3,10 @@ package doramcap.systemd_plan.v1;
 
 // Flat launch inputs; Rust starts Dora, system apps, then user apps.
 message SystemdPlan {
-  DoraUnits dora = 1;
-  string binaries = 2;
-  repeated Program programs = 3;
-  repeated string unit_files = 4;
-  repeated AppUnit app_units = 5;
-}
-
-// systemd-specific Dora launch settings; communication settings live in RunPlan.
-message DoraUnits {
-  string executable = 1;
-  // Empty runs as the service manager's default user.
-  string user = 2;
+  string binaries = 1;
+  repeated Program programs = 2;
+  repeated string unit_files = 3;
+  repeated AppUnit app_units = 4;
 }
 
 message AppUnit {

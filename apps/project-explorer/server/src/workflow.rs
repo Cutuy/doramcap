@@ -64,16 +64,29 @@ pub async fn run(
             project.environment.insert(app.environment_key("DOCKER_SOCKET"), path.to_str().ok_or("Docker socket path is not UTF-8")?.into());
             project.environment.insert(app.environment_key("DOCKER_GID"), metadata.gid().to_string());
         }
-        let dora = app.resolve_dora(uid, gid)?;
+        let environment = project.environment.clone();
+        let mut dora_apps = Vec::new();
+        let mut system_apps = vec![project];
+        for input in &app.apps {
+            let mut input = input.clone();
+            input.environment.extend(environment.clone());
+            input.directory = fs::canonicalize(app.directory.join(&input.directory)).map_err(|e| e.to_string())?.to_string_lossy().into_owned();
+            if app.dora_apps.contains(&input.key) { dora_apps.push(input); }
+            else { system_apps.push(input); }
+        }
+        if app.dora_apps.iter().any(|id| !dora_apps.iter().any(|input| &input.key == id)) {
+            return Err("dora_apps names an unknown app".into());
+        }
+        let dataflow_file = app.dataflow()?;
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
-            filesystem: None, dora, recordings:vec![], repository_root: app.repository_root.clone(),
+            filesystem: None, dora_apps, dataflow_file, recordings:vec![], repository_root: app.repository_root.clone(),
             mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {
                 services: app.mcap_services.clone(),
                 apps: Vec::new(),
                 directories: vec![results.clone()],
             },
-            projects: vec![], system_apps: vec![project],
+            projects: vec![], system_apps,
             readiness_seconds: app.readiness_seconds, stop_seconds: app.stop_seconds,
         };
         let (started, receiver) = oneshot::channel();

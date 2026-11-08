@@ -30,7 +30,7 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     await writeFile(join(project, 'perception.service'), '[Service]\nExecStart=/bin/true\n');
     await writeFile(join(project, 'compose.yaml'), 'services: {}\n');
     const config = await systemdRelease();
-    const apps = selectApps(config.systemApps, ['cpu-monitor', 'data-recorder', 'live-bridge'], { 'cpu-monitor': 'record', 'data-recorder': 'cpu' });
+    const apps = selectApps(config.apps, ['cpu-monitor', 'data-recorder', 'live-bridge'], { 'cpu-monitor': 'record', 'data-recorder': 'cpu' });
     // Act
     const plan = await systemdPlan(config, {
       id: 'r1', project, artifacts, workspace: directory, stage: 'execution', apps,
@@ -38,8 +38,8 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     });
     // Assert
     assert.ok(plan.systemd && !plan.compose);
-    assert.equal(plan.systemd!.dora!.executable, '/opt/doramcap/bin/dora');
-    assert.notEqual(plan.run!.dora!.coordinatorPort, plan.run!.dora!.daemonPort);
+    assert.deepEqual(plan.run!.doraApps, ['dora-coordinator', 'dora-daemon']);
+    assert.equal(plan.run!.dataflowFile, join(directory, 'graph.json'));
     assert.deepEqual(plan.run!.systemApps, ['cpu-monitor', 'data-recorder', 'live-bridge']);
     assert.deepEqual(plan.run!.mcapApps, ['cpu-monitor', 'data-recorder']);
     assert.deepEqual(plan.systemd!.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
@@ -64,11 +64,11 @@ test('systemd needs absolute binaries and a unit file for every selected app', a
   assert.throws(() => releaseConfig(template('form: SYSTEMD'), '/playground', systemApps, '/state'), /binaries must be absolute/);
   // Act / Assert: an inline app without a unit file cannot launch.
   const config = releaseConfig(
-    template('form: SYSTEMD binaries: "/opt/bin" system_apps {id:"inline" input {directory:"cpu-monitor" files:"compose.yaml"}}'),
+    template('form: SYSTEMD binaries: "/opt/bin" apps {id:"inline" input {directory:"cpu-monitor" files:"compose.yaml"}}'),
     '/playground', systemApps, '/state',
   );
   await assert.rejects(
-    systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.systemApps, graph: '' }),
+    systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
     /needs a unit file/,
   );
 });

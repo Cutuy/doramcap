@@ -1,12 +1,9 @@
 import { runPlan } from './run-plan.js';
-import { mkdir, readdir } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { availablePort } from './launch.js';
 import { execution, systemd, type Config } from './native.js';
 import { type SelectedApp } from './system-apps.js';
 
-/** Dora's executable inside the binaries directory. */
-const DORA_EXECUTABLE = 'dora';
 const UNIT_SUFFIX = '.service';
 
 export type RunRequest = InstanceType<typeof execution.RunRequest>;
@@ -33,36 +30,18 @@ export interface SystemdRun {
   relaySettings?: string;
 }
 
-/** Two distinct free loopback ports for the Dora coordinator and daemon. */
-async function doraPorts() {
-  const coordinator = await availablePort();
-  let daemon = await availablePort();
-  while (daemon === coordinator) daemon = await availablePort();
-  return { coordinator, daemon };
-}
-
 /**
  * Build the run request with a systemd backend: Dora, then the selected system apps'
- * unit files, then the project's units. Creates the private Dora runtime directory.
+ * unit files, then the project's units. Launch details remain in native app files.
  * Errors: an app without a unit file, or a config target with no config to show there.
  */
 export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunRequest> {
   const binaries = config.binaries!;
-  const runtime = join(run.workspace, `${run.stage}-dora`);
-  await mkdir(runtime, { recursive: true, mode: 0o700 });
-  const appUnits = run.apps.map((app) => appUnit(app, run));
+  const appUnits = [...config.apps.filter((app) => config.doraApps.includes(app.id!)), ...run.apps].map((app) => appUnit(app, run));
   const units = await projectUnits(run.project);
-  const ports = await doraPorts();
   return execution.RunRequest.create({
-    run: runPlan(config, run, {
-      ...config.dora,
-      coordinatorPort: ports.coordinator,
-      daemonPort: ports.daemon,
-      graph: run.graph,
-      runtimeDirectory: runtime,
-    }),
+    run: runPlan(config, run, run.graph),
     systemd: systemd.SystemdPlan.create({
-      dora: { executable: join(binaries, DORA_EXECUTABLE) },
       binaries,
       appUnits,
       unitFiles: units,

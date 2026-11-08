@@ -1,0 +1,40 @@
+{
+  "services": {
+    "dora-coordinator": {
+      "image": "doramcap/dora:local",
+      "network_mode": "host",
+      "entrypoint": [
+        "/usr/local/bin/dora"
+      ],
+      "command": [
+        "coordinator",
+        "--port",
+        "0",
+        "--interface",
+        "127.0.0.1",
+        "--store",
+        "memory"
+      ],
+      "working_dir": "/runtime",
+      "user": "0:0",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${DORAMCAP_DORA_RUNTIME_DIR}",
+          "target": "/runtime"
+        }
+      ],
+      "ulimits": {
+        "memlock": {
+          "soft": 67108864,
+          "hard": 67108864
+        }
+      },
+      "stop_signal": "SIGINT",
+      "environment": {
+        "HOME": "/runtime",
+        "DORA_DAEMON_LOCAL_LISTEN_PORT": "0"
+      }
+    }
+  }
+}

@@ -10,7 +10,7 @@ interface RunInputs {
 }
 
 /** Shared run facts; Rust enforces Dora, system apps and recording readiness, then users. */
-export function runPlan(config: Config, run: RunInputs, dora: NonNullable<Config['dora']>) {
+export function runPlan(config: Config, run: RunInputs, dataflowFile: string) {
   return launch.RunPlan.create({
     id: run.id,
     repositoryRoot: run.project,
@@ -23,14 +23,7 @@ export function runPlan(config: Config, run: RunInputs, dora: NonNullable<Config
     stopSeconds: config.runtime!.stopSeconds!,
     systemApps: run.apps.map((app) => app.id!),
     mcapApps: run.apps.filter((app) => app.recordings?.length).map((app) => app.id!),
-    dora: {
-      coordinatorPort: dora.coordinatorPort,
-      daemonPort: dora.daemonPort,
-      graph: dora.graph,
-      runtimeDirectory: dora.runtimeDirectory,
-      memlockBytes: dora.memlockBytes,
-      participantUid: dora.participantUid,
-      participantGid: dora.participantGid,
-    },
+    doraApps: config.doraApps,
+    dataflowFile,
   });
 }

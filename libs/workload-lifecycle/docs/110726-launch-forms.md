@@ -63,7 +63,7 @@ backend input differs.
 
 - `AppManifest` may carry both `compose` and `systemd`; the machine's `form` picks one.
 - `RunRequest` carries the shared `RunPlan` and exactly one backend plan.
-- `RunPlan` owns system-app IDs, MCAP-writer IDs and shared Dora settings.
+- `RunPlan` owns system-app IDs, MCAP-writer IDs and Dora app IDs and a dataflow artifact.
 - Backend plans contain flat launch inputs keyed by app ID. Configurable groups are removed.
 - [Shared run fields](110726-shared-run-fields.md) records the implementation and validation.
 
@@ -238,7 +238,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] System app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
 - [x] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices: Dora, then system apps, then every `*.service` at the project root.
 - [ ] The native addon runs systemd plans; Console stops refusing `form: SYSTEMD` at startup. Review shows apps and profiles.
-- [ ] Dora's own manifest; today Dora is `dora` in the binaries directory.
+- [x] Coordinator and daemon use ordinary app manifests with native Compose and systemd launch files.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 

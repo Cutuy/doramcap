@@ -68,12 +68,12 @@ try {
     execFileSync('git',['-c','user.name=Console test','-c','user.email=test@example.invalid','commit','--quiet','-m','Test workload'],{cwd:project});
     const config = releaseConfig(template,project,apps,state);
     config.downloadMissingImages = false;
-    config.systemApps.find(app => app.liveRelay)!.liveRelay!.port = await availablePort();
+    config.apps.find(app => app.liveRelay)!.liveRelay!.port = await availablePort();
     if (withSource) {
       const graph = join(directory,scenario,'user.yml');
       await writeFile(graph,JSON.stringify({nodes:[{id:'user',path:'dynamic',outputs:['health','messages']}]}));
-      config.dora!.graph = graph;
-      const recorder = config.systemApps.find(app => app.id === 'data-recorder')!;
+      config.dataflowFile = graph;
+      const recorder = config.apps.find(app => app.id === 'data-recorder')!;
       const path = join(directory,scenario,'recorder.pbtxt'), flow = join(directory,scenario,'recorder.yml');
       await writeFile(path,'output_path:"/results/messages.mcap" report_path:"/results/messages.report.pbtxt" input {input:"data" topic:"user/messages" message_encoding:"application/octet-stream"}\n');
       await writeFile(flow,JSON.stringify({nodes:[{id:'data-recorder',path:'dynamic',inputs:{data:{source:'user/messages',queue_size:64,queue_policy:'backpressure'}},outputs:['health']}]}));

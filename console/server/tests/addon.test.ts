@@ -17,7 +17,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
+
+const doraApps = ['coordinator', 'daemon'].map((role) => {
+  const directory = fileURLToPath(new URL(`../../release/system-apps/dora-${role}/`, import.meta.url));
+  return `dora_apps: "dora-${role}" apps {id: "dora-${role}" input {directory: ${JSON.stringify(directory)} files: "compose.yaml"}}`;
+}).join('\n');
 
 interface ConsoleHandle { close(): Promise<void>; status(): Promise<Buffer> }
 const openService=async(path:string)=>(await ConsoleService.open(path)).backend;
@@ -33,7 +39,7 @@ test('opens and closes twice while Node remains responsive during native startup
   server.listen(socket);
   await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\ndora { image: "doramcap/dora:local" }\n`);
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   const heartbeat = createServer((_request, response) => response.end('ok'));
   heartbeat.listen(0, '127.0.0.1');
   await once(heartbeat, 'listening');
@@ -95,7 +101,7 @@ test('artifact descriptors stay beneath the current run and reject symlinks', as
   server.listen(socket);
   await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\ndora { image: "doramcap/dora:local" }\n`);
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   const handle = await openService(config) as ConsoleHandle & { openArtifact(id: string, kind: string): Promise<number> };
   try {
     // Act
@@ -133,7 +139,7 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket); await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${project}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\ndora { image: "doramcap/dora:local" }\n`);
+  await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${project}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   const handle = await openService(config) as ConsoleHandle & { prepare(input: Buffer): Promise<Buffer> };
@@ -232,7 +238,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     // Assert
     assert.ok(review.services.some((service:any)=>service.name==='worker'&&service.imageId==='sha256:approved'));
-    assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,2);
+    assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,0);
     assert.deepEqual(mutations,[]);
     // Act / Assert: changing a command must reject before reservation or launch.
     await writeFile(join(project,'compose.yaml'),'services:\n  worker:\n    image: app:local\n    command: changed\n');

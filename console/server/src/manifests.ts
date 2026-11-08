@@ -21,7 +21,7 @@ export function expandManifests(config: Config) {
     throw new Error('form: only COMPOSE and SYSTEMD are supported');
   if (form === launch.Form.SYSTEMD && !isAbsolute(config.binaries ?? ''))
     throw new Error('binaries must be absolute for SYSTEMD');
-  for (const app of config.systemApps) {
+  for (const app of config.apps) {
     if (!app.manifest) continue;
     if (!isAbsolute(app.manifest)) throw new Error('system app manifest must be absolute');
     if (app.id || app.label || app.input || app.graph || app.configMount || app.systemd ||

@@ -3,10 +3,6 @@ import { lstat, realpath } from 'node:fs/promises';
 import { compose, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './files.js';
 
-const INFRASTRUCTURE = [
-  { id: 'dora-coordinator', label: 'Dora coordinator' },
-  { id: 'dora-daemon', label: 'Dora IPC daemon' },
-];
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
 /** Reject invalid live and recording outputs, adding recording IDs to `seen`. */
@@ -33,8 +29,7 @@ export function validateApps(apps: App[]) {
     if (
       !app.id ||
       !/^[-a-z0-9]{1,40}$/.test(app.id) ||
-      ids.has(app.id) ||
-      INFRASTRUCTURE.some((item) => item.id === app.id)
+      ids.has(app.id)
     )
       throw new Error('empty, duplicate or reserved system app id');
     ids.add(app.id);
@@ -96,17 +91,17 @@ export function selectApps(apps: App[], requested?: string[], profiles: Record<s
 /** App IDs and launch profiles for one selection, as stored with a run. */
 export const appProfiles = (apps: SelectedApp[]) =>
   Object.fromEntries(apps.flatMap((app) => (app.profile ? [[app.id!, app.profile.id!]] : [])));
-export function appOptions(apps: App[], selected: SelectedApp[]) {
+export function appOptions(apps: App[], selected: SelectedApp[], required: string[] = []) {
   return [
-    ...INFRASTRUCTURE.map((app) => ({ ...app, selected: true, required: true })),
+
     ...apps.map((app) => {
       const chosen = selected.find((item) => item.id === app.id),
         options = app.launchProfiles ?? [];
       return {
         id: app.id,
         label: app.label,
-        selected: !!chosen,
-        required: false,
+        selected: !!chosen || required.includes(app.id!),
+        required: required.includes(app.id!),
         profiles: options.map(({ id, label }) => ({ id, label })),
         profile: chosen?.profile?.id ?? options[0]?.id ?? '',
       };

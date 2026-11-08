@@ -10,7 +10,7 @@ type NativeGraph = { nodes: { id: string; [field: string]: unknown }[]; [field: 
 export class Graphs {
   constructor(private native: {expandGraph(path:string):Promise<Buffer>}, private apps: App[], private base: string) {}
   /**
-   * Return merged graph JSON from `dora.graph`, each selected app's file and `extra` paths, such as the live bridge node.
+   * Return merged graph JSON from `dataflow_file`, each selected app's file and `extra` paths, such as the live bridge node.
    * `profiles` maps app ID to launch profile ID; that profile's `graph` replaces the app's.
    */
   async build(requested?: string[], extra: string[] = [], profiles: Record<string, string> = {}): Promise<Buffer> {

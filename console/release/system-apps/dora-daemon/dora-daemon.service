@@ -1,0 +1,9 @@
+[Unit]
+Description=Dora daemon
+[Service]
+Type=exec
+ExecStart=dora daemon --coordinator-port 6013 --local-listen-port 6014 --zenoh-config-overlay /config/zenoh.json5
+WorkingDirectory=/runtime
+Environment=HOME=/runtime DORA_DAEMON_LOCAL_LISTEN_PORT=6014
+KillSignal=SIGINT
+LimitMEMLOCK=67108864

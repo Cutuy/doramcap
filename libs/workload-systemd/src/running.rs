@@ -43,29 +43,9 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     async fn start(&mut self) -> std::result::Result<(), String> {
         let run = self.run().clone();
         let readiness = Duration::from_secs(run.readiness_seconds);
-        if let Some(dora) = &mut self.dora {
-            // Record the attempt first so stop and removal see Dora's units.
-            self.phases.push(Vec::new());
-            let start = async {
-                for program in dora.programs().await? {
-                    let unit = self.manager.watch(&self.scope.unit(&program.id)).await?;
-                    self.phases[0].push(unit);
-                    let job = self
-                        .manager
-                        .start_program(&self.scope, &run.id, &program, run.stop_seconds)
-                        .await?;
-                    self.manager.wait_started(job).await?;
-                }
-                dora.await_daemon(&self.manager, &self.scope).await?;
-                dora.register(&self.manager, &self.scope).await
-            };
-            let started = tokio::time::timeout(readiness, start)
-                .await
-                .map_err(|_| format!("Dora not ready within {readiness:?}"));
-            started??;
-        }
-        for system in [true, false] {
-            let phase = crate::phase(&run, &self.plan, system);
+        use workload_lifecycle::plan::Phase;
+        for role in [Phase::Dora, Phase::System, Phase::User] {
+            let phase = crate::phase(&run, &self.plan, role);
             self.phases.push(Vec::new());
             let start = async {
                 let names = self
@@ -106,7 +86,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             tokio::time::timeout(readiness, start)
                 .await
                 .map_err(|_| format!("apps not active within {readiness:?}"))??;
-            if system && !run.system_apps.is_empty() {
+            if role == Phase::Dora && !run.dora_apps.is_empty() {
+                self.dora =
+                    Some(crate::dora::Dora::from_units(self.phases.last().unwrap(), &run).await?);
+                let dora = self.dora.as_mut().unwrap();
+                tokio::time::timeout(readiness, async {
+                    dora.await_daemon(&self.manager, &self.scope).await?;
+                    dora.register(&self.manager, &self.scope).await
+                })
+                .await
+                .map_err(|_| "Dora readiness deadline exceeded".to_string())??;
+            }
+            if role == Phase::System {
                 self.executor
                     .run::<WaitForRecordings>(ReadinessInput {
                         recordings: self.recordings.clone(),
@@ -132,10 +123,9 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn stop(&mut self) -> StopRecord {
         let mut stopped = true;
-        let dora_units = usize::from(self.dora.is_some());
         for (index, phase) in self.phases.iter_mut().enumerate().rev() {
             // Dataflows stop before the coordinator and daemon they run on.
-            if index + 1 == dora_units
+            if index == 0
                 && let Some(dora) = &mut self.dora
                 && let Err(error) = dora.down(&self.manager, &self.scope).await
             {

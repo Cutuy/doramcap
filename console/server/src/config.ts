@@ -56,5 +56,7 @@ export function validateConfig(config: Config) {
     throw new Error('runtime.stop_seconds must be in 1..300');
   if (runtime.sampleIntervalMs < 1) throw new Error('runtime.sample_interval_ms must be positive');
   config.runtime = runtime;
-  validateApps(config.systemApps);
+  validateApps(config.apps);
+  if (new Set(config.doraApps).size !== config.doraApps.length || config.doraApps.some((id) => !config.apps.some((app) => app.id === id)))
+    throw new Error('dora_apps must name unique configured apps');
 }

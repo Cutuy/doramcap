@@ -15,7 +15,6 @@ use self::{
     observation::EventCapture,
     preparation::PrepareRun,
 };
-use super::dora::DoraRuntime;
 use crate::compose::{
     error::invalid,
     filesystem::FilesystemChanges,
@@ -214,10 +213,12 @@ impl ComposeRunner {
 
         // Reserve the daemon and prepare optional filesystem views before application launch.
         self.blocked = true;
-        self.adapter
-            .project(&prepared.value().plan)
-            .reserve(super::shared_dora::DAEMON, spec.readiness_seconds)
-            .await?;
+        if prepared.value().dora.enabled() {
+            self.adapter
+                .project(&prepared.value().plan)
+                .reserve(prepared.value().dora.daemon()?.0, spec.readiness_seconds)
+                .await?;
+        }
         let overlays = if let Some(policy) = &spec.filesystem {
             Some(
                 executor
@@ -366,9 +367,12 @@ pub struct ComposeRun {
     /// Their services stop after the adopted apps.
     #[serde(default)]
     pub system_apps: Vec<ComposeProject>,
-    /// Communication setup; application containers remain ordinary Compose inputs.
+    /// Ordinary app inputs launched before system and user apps.
     #[serde(default)]
-    pub dora: DoraRuntime,
+    pub dora_apps: Vec<ComposeProject>,
+    /// Absolute merged dataflow file; empty registers none.
+    #[serde(default)]
+    pub dataflow_file: String,
     /// Explicit ordinary app recordings, checked after writers stop.
     #[serde(default)]
     pub recordings: Vec<Recording>,
@@ -393,23 +397,13 @@ impl ComposeRun {
             plan.projects.iter().map(|app| app.key.as_str()),
         )
         .map_err(invalid)?;
-        let (system_apps, projects) = plan
+        let (dora_apps, remaining): (Vec<_>, Vec<_>) = plan
             .projects
             .into_iter()
+            .partition(|app| run.dora_apps.contains(&app.key));
+        let (system_apps, projects) = remaining
+            .into_iter()
             .partition(|app| run.system_apps.contains(&app.key));
-        let shared = run.dora.unwrap_or_default();
-        let dora = DoraRuntime {
-            image: plan.dora_image,
-            shm_bytes: plan.dora_shm_bytes,
-            coordinator_port: shared.coordinator_port,
-            daemon_port: shared.daemon_port,
-            graph: shared.graph,
-            runtime_directory: shared.runtime_directory,
-            memlock_bytes: shared.memlock_bytes,
-            participant_uid: shared.participant_uid,
-            participant_gid: shared.participant_gid,
-            ..Default::default()
-        };
         let artifacts = PathBuf::from(run.artifacts);
         Ok(Self {
             id: run.id,
@@ -423,7 +417,8 @@ impl ComposeRun {
             filesystem: Some(Default::default()),
             system_apps,
             projects,
-            dora,
+            dora_apps,
+            dataflow_file: run.dataflow_file,
             recordings: run
                 .recordings
                 .into_iter()
@@ -527,9 +522,9 @@ mod tests {
     }
 
     #[test]
-    fn compose_plan_maps_shared_roles_and_dora_settings() {
+    fn compose_plan_maps_shared_roles_and_dataflow() {
         // Arrange
-        use workload_lifecycle::launch::{DoraSettings, RunPlan};
+        use workload_lifecycle::launch::RunPlan;
         let run = RunPlan {
             id: "r1".into(),
             repository_root: "/repo".into(),
@@ -538,23 +533,18 @@ mod tests {
             mcap_apps: vec!["monitor".into()],
             readiness_seconds: 60,
             stop_seconds: 15,
-            dora: Some(DoraSettings {
-                graph: "/graph.yml".into(),
-                memlock_bytes: 42,
-                ..Default::default()
-            }),
+            dora_apps: vec!["communication".into()],
+            dataflow_file: "/graph.yml".into(),
             ..Default::default()
         };
         let plan = ComposePlan {
-            projects: ["user", "monitor"]
+            projects: ["user", "monitor", "communication"]
                 .into_iter()
                 .map(|key| ComposeProject {
                     key: key.into(),
                     ..Default::default()
                 })
                 .collect(),
-            dora_image: "dora:test".into(),
-            dora_shm_bytes: 1024,
         };
         // Act
         let mapped = ComposeRun::from_plan(run.clone(), plan.clone()).unwrap();
@@ -563,12 +553,8 @@ mod tests {
         assert_eq!(mapped.projects[0].key, "user");
         assert_eq!(mapped.mcap_writers.apps, ["monitor"]);
         assert_eq!(mapped.mcap_writers.directories, [PathBuf::from("/data")]);
-        assert_eq!(mapped.dora.graph, "/graph.yml");
-        assert_eq!(mapped.dora.image, "dora:test");
-        assert_eq!(
-            (mapped.dora.memlock_bytes, mapped.dora.shm_bytes),
-            (42, 1024)
-        );
+        assert_eq!(mapped.dataflow_file, "/graph.yml");
+        assert_eq!(mapped.dora_apps[0].key, "communication");
         assert_eq!((mapped.readiness_seconds, mapped.stop_seconds), (60, 15));
         // Act / Assert: roles must refer to an actual app.
         let mut unknown = run;

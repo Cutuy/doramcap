@@ -1,0 +1,7 @@
+{
+  "services": {
+    "dora-coordinator": {
+      "user": "${FAULT_DEMO_UID}:${FAULT_DEMO_GID}"
+    }
+  }
+}

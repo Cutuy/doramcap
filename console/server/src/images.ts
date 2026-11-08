@@ -35,8 +35,8 @@ export function requireMultiArch(image: string, raw: string) {
  * Errors: `ImageDownload` after a failed or timed-out pull, `Stopped` after `signal` aborts.
  */
 export async function ensureImages(config: Config, projects: Project[], signal: AbortSignal, timeout = PULL_TIMEOUT_MS): Promise<void> {
-  const images = new Set<string>([config.dora?.image || 'doramcap/dora:local']);
-  for (const project of projects)
+  const images = new Set<string>();
+  for (const project of [...projects, ...config.apps.filter((app) => config.doraApps.includes(app.id!)).map((app) => app.input!)])
     for (const image of await imageReferences(config.dockerSocket, project)) images.add(image);
   for (const image of images) {
     if (signal.aborted) throw new Error('Stopped');

@@ -1,7 +1,7 @@
 syntax = "proto3";
 package doramcap.hosting.v1;
 
-import "dora.proto";
+import "compose.proto";
 
 // Verification for published results. MCAP is the default.
 enum ResultFormat { MCAP = 0; FILE = 1; }
@@ -57,5 +57,7 @@ message AppRegistration {
   string env_prefix = 22;
   bool requires_explicit_enable = 24;
   repeated string mcap_services = 26; // Services writing MCAP through io_uring into results.
-  doramcap.dora.v1.DoraRuntime dora = 25;
+  repeated doramcap.compose.v1.ComposeProject apps = 25;
+  repeated string dora_apps = 27;
+  string dataflow_file = 28;
 }

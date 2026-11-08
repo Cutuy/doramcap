@@ -1,7 +1,6 @@
 syntax = "proto3";
 package doramcap.console.v1;
 import "compose.proto";
-import "dora.proto";
 import "launch.proto";
 import "live.proto";
 
@@ -12,11 +11,11 @@ message ConsoleConfig {
   string data_root = 3;
   string docker_socket = 4;
   string access_secret_file = 5;
-  repeated SystemAppDefinition system_apps = 6;
-  doramcap.dora.v1.DoraRuntime dora = 9;
+  repeated SystemAppDefinition apps = 6;
+  repeated string dora_apps = 9;
+  string dataflow_file = 10;
   string public_origin = 7;
   RuntimeConfig runtime = 8;
-  reserved 10;
   // Launch form of every app: COMPOSE or SYSTEMD. Unspecified selects COMPOSE.
   doramcap.launch.v1.Form form = 12;
   // Absolute directory of host binaries (`dora` and each manifest's executable); SYSTEMD only.

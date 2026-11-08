@@ -9,3 +9,5 @@ pub mod recording;
 pub mod run;
 
 pub mod plan;
+
+pub mod dora;

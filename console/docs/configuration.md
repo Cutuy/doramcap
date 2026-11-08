@@ -21,7 +21,7 @@ The Console entry then names the manifest and keeps only Console settings:
 
 ```protobuf
 form: COMPOSE
-system_apps {
+apps {
   manifest: "/absolute/system-apps/cpu-monitor/app.pbtxt"
   default_selected: true
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
@@ -33,7 +33,7 @@ directory holding `dora` and the executables named by each app's systemd unit fi
 yet and refuses it at startup. Inline definitions, as below, remain valid.
 
 ```protobuf
-system_apps {
+apps {
   id: "cpu-monitor"
   label: "CPU monitoring"
   input { directory: "/absolute/release/system-apps/cpu-monitor" files: "compose.yaml" }
@@ -43,7 +43,7 @@ system_apps {
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
   live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
 }
-system_apps {
+apps {
   id: "fault-watchdog"
   label: "Fault Watchdog"
   input { directory: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone" files: "compose.yaml" }
@@ -60,7 +60,7 @@ system_apps {
   }
   launch_profiles { id: "otel" label: "Live and OTLP" config: "/absolute/doramcap/apps/fault-watchdog/deploy/standalone/config/watchdog-otel.pbtxt" }
 }
-system_apps {
+apps {
   id: "live-bridge"
   label: "Live telemetry"
   default_selected: true
@@ -90,7 +90,7 @@ launch_profiles { id: "live" label: "Live panels only" config: "/absolute/live.p
 ```
 
 A profile's `graph` is a Dora dataflow file that replaces the app's `graph`. Console
-merges it with `dora.graph` and the other selected apps' graphs. Mount schema files
+merges it with `dataflow_file` and the other selected apps' graphs. Mount schema files
 explicitly. Example: [user-messages](../examples/user-messages/console.pbtxt).
 
 Apps publish [ReporterPublication](../../libs/fault/schema/proto/reporter.proto)
@@ -112,7 +112,7 @@ bind the current run's artifact directory; recording paths are relative to it.
 Services of recording apps get `seccomp=unconfined` for io_uring and a memlock limit automatically.
 The runtime requires stream growth before workload launch.
 
-`dora.graph` supplies the workload graph. Selected app graphs add nodes; duplicate
+`dataflow_file` supplies the workload graph. Selected app graphs add nodes; duplicate
 node IDs or conflicting graph settings reject preparation. Source graphs are read
 again on Start. Console never injects demo producers. Reusable deployments must
 supply healthchecks for subscriber/sink readiness before their producers start.
@@ -132,3 +132,14 @@ The launcher binds `127.0.0.1`. `listen_address` selects the first candidate por
 `--port` requires an exact port. `--browser-port` selects the browser-facing port
 and origin for SSH forwarding. Startup prints the effective URL and forwarding
 command when `--ssh user@host` is supplied.
+
+### Dora apps
+
+`apps` includes coordinator and daemon definitions with ordinary Compose and systemd
+launch files. `dora_apps` lists their IDs and makes them required in Review. Native
+files declare commands, ports, mounts, identity and memory limits. The Rust workflow
+starts these apps first and waits for daemon readiness before starting system apps.
+`dataflow_file` supplies the workload graph merged with selected app graphs.
+
+See [the release configuration](../release/console.pbtxt) and
+[the native coordinator definition](../release/system-apps/dora-coordinator/compose.yaml).

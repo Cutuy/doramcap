@@ -1,23 +1,26 @@
 # Release template: system app manifests are relative to system-apps, project paths to the playground.
 # The release workflow replaces each :local image with its multi-arch digest.
 form: COMPOSE
-dora { image: "doramcap/dora:local" }
+dora_apps: "dora-coordinator"
+dora_apps: "dora-daemon"
+apps { manifest: "dora-coordinator/app.pbtxt" }
+apps { manifest: "dora-daemon/app.pbtxt" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
-system_apps {
+apps {
   manifest: "live-bridge/app.pbtxt"
   default_selected: true
   live_relay {}
 }
-system_apps {
+apps {
   manifest: "cpu-monitor/app.pbtxt"
   default_selected: true
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
   live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
 }
-system_apps {
+apps {
   manifest: "data-recorder/app.pbtxt"
 }
-system_apps {
+apps {
   manifest: "fault-watchdog/app.pbtxt"
   health_inputs: true
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }

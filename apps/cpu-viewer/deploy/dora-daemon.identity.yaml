@@ -1,0 +1,15 @@
+{
+  "services": {
+    "dora-daemon": {
+      "user": "${CPU_VIEWER_UID}:${CPU_VIEWER_GID}",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "../../../libs/workload-docker/deploy/dora-daemon/zenoh.json5",
+          "target": "/config/zenoh.json5",
+          "read_only": true
+        }
+      ]
+    }
+  }
+}
