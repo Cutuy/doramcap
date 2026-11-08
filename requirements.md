@@ -53,9 +53,12 @@ repository-specific instructions and explicit user requirements govern conflicts
   constraints, parameters/results, errors, ownership, concurrency and cancellation
   as applicable. Scale detail to the API rather than imposing boilerplate.
 
-- **AG-001 — Worktree ownership.** Acquire before feature edits; work in the leased
-  checkout, reuse its non-expiring lease, release after integration or PR publication.
-  Never wipe main; obtain approval before discarding dirty files.
+- **AG-001 — Worktree ownership.** Acquire an exclusive, non-expiring lease before
+  edits; resume and release with its owner and token. Ask before using a preferable
+  main checkout that already has the task branch. Run minimal local checks, push
+  and create/update the PR, then finish validation. Release after local work ends
+  and current HEAD is published or integrated. Never wipe main; obtain approval
+  before discarding source changes.
   Source: AGENTS.md / Agent workflow and referenced worktree-pool skill.
 - **AG-002 — Linear integration.** Rebase onto current main, then cherry-pick;
   never integrate with git merge. Source: AGENTS.md / Agent workflow.

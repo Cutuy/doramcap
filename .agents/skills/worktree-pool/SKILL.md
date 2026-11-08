@@ -1,41 +1,24 @@
 ---
 name: worktree-pool
-description: Acquire a worktree before coding; release after local integration or PR publication.
+description: Acquire an exclusive worktree lease, resume it, and release after publication or integration.
 ---
 
-Run from the main checkout:
+Follow the development workflow in [AGENTS.md](../../../AGENTS.md). Requires Linux, Node 22.18+, Git, `flock`, and `gh` for PR release. Run from a checkout; use `--repo CHECKOUT` from elsewhere.
 
 ```sh
-python3 .agents/skills/worktree-pool/scripts/pool.py acq --owner CLI-session-task --branch feature/unique-name
+node .agents/skills/worktree-pool/scripts/pool.ts acq --owner CHAT-TASK --branch codex/task
+# Save the returned path, owner and token; work in that path.
+node .agents/skills/worktree-pool/scripts/pool.ts acq --owner CHAT-TASK --branch codex/task --token TOKEN
+node .agents/skills/worktree-pool/scripts/pool.ts release --owner CHAT-TASK --token TOKEN --pr PR_URL
 ```
 
-Use the existing five slots; never create an extra slot to bypass acquisition failures. Acquisition clears known generated build outputs before selecting a slot and after copying the main snapshot. A reusable slot must then have no staged, unstaged, or non-ignored untracked source files. Ignored caches and local configuration are preserved and do not block leasing; a collision with incoming main files fails safely.
+- **Ownership:** reuse the same owner and token for the task. Five slots, no expiry. Commands serialize on the shared lock; a full pool fails explicitly. Wait for a release; never steal a lease or add slots. `status` lists owners without tokens; `init` creates the pool once.
+- **Starting point:** acquisition copies the main checkout's HEAD, tracked edits and non-ignored untracked files. Keep main stable, inspect the inherited diff, and preserve other work. Ignored files and submodule edits stay in main.
+- **Release:** finish local work and validation first. Release checks owner, token, branch, source cleanliness and the PR's exact HEAD. For user-requested local cherry-pick integration, use `--main` instead of `--pr PR_URL`. Branches and checkouts remain.
+- **Cleanup:** known build outputs are removed on acquire/release; source, caches and local data are preserved. Show the reported path and files and obtain user approval before `--discard-dirty`. Failed preparation stays reserved; failed release keeps ownership. Inspect and repair; never edit lease records by hand.
 
-Save the token; work only in the returned path. Continue existing tasks under their existing lease. Acquisition starts at main's HEAD and copies tracked edits (unstaged) and non-ignored untracked files; ignored files and submodule edits are excluded. Keep main stable during acquisition and review the inherited diff.
-
-When the user requests commit, cherry-pick (CP), and release:
-
-1. Commit the intended changes in the leased worktree.
-2. Rebase onto current main, then cherry-pick the feature commits in the main checkout. Preserve existing main edits and resolve conflicts.
-3. Release the clean worktree after verifying integration:
+See `node .agents/skills/worktree-pool/scripts/pool.ts --help` for commands. Validate in disposable repositories:
 
 ```sh
-python3 /absolute/main/.agents/skills/worktree-pool/scripts/pool.py --repo /absolute/main release --token TOKEN --main
+node --test .agents/skills/worktree-pool/scripts/pool.test.ts
 ```
-
-`--main` checks that every feature patch is present on main and records both commit IDs. Release preserves the worktree and branch. Release clears known generated build outputs before checking source cleanliness and again after integration or PR verification. The explicit `BUILD_OUTPUTS` paths in `scripts/pool.py` cover Cargo, frontend and Console outputs, including unignored leftovers. Build-output cleanup needs no approval. Symlinked paths and tracked files block cleanup. Cleanup failure prevents acquisition or retains the releasing lease; fix the reported problem and retry. Source changes, credentials, configuration, runtime data and dependency caches are preserved.
-
-For a PR workflow, commit, push, and publish the PR (draft qualifies), then:
-
-```sh
-python3 /absolute/main/.agents/skills/worktree-pool/scripts/pool.py --repo /absolute/main release --token TOKEN --pr PR_URL
-```
-
-PR release uses authenticated `gh` to verify the branch and HEAD. Both release modes reject staged, unstaged, and non-ignored untracked source files, and recheck cleanliness after build cleanup. Commit all work before release; local release also requires every feature patch to be cherry-picked into main. A failed check retains the lease.
-
-- Five slots, no expiry. Use `status` to inspect; never steal leases. Failed acquisitions stay reserved for manual recovery.
-- Integration: rebase the feature branch onto main’s latest HEAD, then cherry-pick (`git cherry-pick`) only its intended commits onto main. Never use `git merge` to integrate worktrees into main; keep history linear. Preserve local edits and resolve conflicts before proceeding.
-- Never wipe main or delete feature branches during cleanup.
-- Before `--discard-dirty`, show the exact warning/path and obtain user approval; it removes tracked, untracked, and ignored files in that slot.
-
-Validate release behavior in disposable repositories with `python3 .agents/skills/worktree-pool/scripts/test_pool.py`.

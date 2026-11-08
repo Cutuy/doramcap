@@ -1,8 +1,12 @@
 # Agent workflow
 
-Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding source changes.
+1. **Acquire a lease before editing.** Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md), save its owner and token, and work in the returned checkout. Resume the same task with its existing lease. If the main checkout already has the task's branch and is preferable, ask the user before working there.
+2. **Implement and run minimal local checks.** Use the smallest checks needed to catch immediate problems in the changed behavior.
+3. **Push and create or update the PR.** Publish the current changes and focused results before starting the remaining validation; a draft PR is sufficient. Mark pending checks clearly.
+4. **Finish validation.** Run the remaining applicable checks, fix failures, push fixes, and update the PR with the results. Keep the lease while any local work or validation uses its checkout.
+5. **Release the lease.** After local work finishes, release with the same owner and token once the PR contains the current HEAD. For user-requested local integration, rebase onto current main, cherry-pick the intended commits, verify integration, then release.
 
-Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
+Leases are exclusive and never expire. Never take another task's lease, create extra slots to bypass contention, or edit pool state by hand. Never wipe main; obtain approval before discarding source changes. Keep main linear: never integrate with `git merge`.
 
 ## Important decisions
 
@@ -59,7 +63,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 ## Testing and CI
 
 - Use focused checks for incremental changes. Reserve full CI for meaningful integration points, high-risk changes, or explicit requests. Avoid repeating full CI for each interaction. For plan-driven work, record completed and deferred checks in the relevant milestone.
-- When full local CI is needed, prefer pushing the current PR branch after focused checks to trigger cloud CI before starting full local CI.
+- Push and create or update the PR after minimal local checks, before remaining validation. Let cloud CI start while completing the applicable local and ARM64 checks; report pending and completed results in the PR.
 - Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
 - When full local CI is warranted, run these checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
