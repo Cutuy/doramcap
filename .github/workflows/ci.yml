@@ -6,6 +6,7 @@ on:
     paths: &rust-inputs
       - '.github/workflows/ci.yml'
       - '.cargo/**'
+      - '.node-version'
       - 'rust-toolchain*'
       - '*rustfmt.toml'
       - '*clippy.toml'
@@ -56,6 +57,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version-file: .node-version
+
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq
@@ -81,8 +87,8 @@ jobs:
 
       - name: Check library boundaries
         run: |
-          python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
-          python3 scripts/ci/test_boundaries.py
+          node scripts/ci/check-boundaries.mts --rules scripts/ci/boundaries.json
+          node --test scripts/ci/test-boundaries.mts
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -115,4 +121,4 @@ jobs:
           cargo test --profile ci --locked --workspace --all-features
 
       - name: Test CI snapshot synchronization
-        run: python3 -m unittest discover -s scripts/ci -p 'test_prepare_build.py'
+        run: node --test scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts

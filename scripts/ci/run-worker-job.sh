@@ -13,16 +13,16 @@ mkdir -p "$worker_cache"
 exec 9>"$worker_cache/worker.lock"
 flock 9
 printf 'Submitted snapshot: %s\n' "$worker_snapshot"
-python3 "$worker_snapshot/prepare-build.py" "$worker_snapshot" "$worker_cache/source"
+test "$(node --version)" = "v$(cat "$worker_snapshot/.node-version")"
+node "$worker_snapshot/prepare-build.mts" "$worker_snapshot" "$worker_cache/source"
 cd "$worker_cache/source"
 uname -a
 rustc --version
 cargo --version
 cat SOURCE.json
 rustup component add rustfmt clippy --toolchain 1.99.1
-python3 scripts/ci/check_boundaries.py --rules scripts/ci/boundaries.json
-python3 scripts/ci/test_boundaries.py
-test "$(node --version)" = "v$(cat .node-version)"
+node scripts/ci/check-boundaries.mts --rules scripts/ci/boundaries.json
+node --test scripts/ci/test-boundaries.mts scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts
 node scripts/ci/test-node.mts
 node scripts/ci/test-mcap.mts
 cargo fmt --all -- --check

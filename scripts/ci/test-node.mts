@@ -29,3 +29,6 @@ if (existsSync(join(root, 'console/contract/browser.test.ts'))) {
   console.log('\nConsole browser/server contract');
   run('npm', ['exec', '--', 'tsx', '--test', '../contract/browser.test.ts'], join(root, 'console/server'));
 }
+
+// Reuse the locked Console compiler and Node types for standalone CI scripts.
+run('npm', ['exec', '--', 'tsc', '--project', '../../scripts/ci/tsconfig.json'], join(root, 'console/server'));

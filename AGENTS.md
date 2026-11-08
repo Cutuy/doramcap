@@ -48,7 +48,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 - ARM64 covers default/all-feature Rust tests and native cgroup accounting/allocations. Run Dora end-to-end tests separately and CUDA/GPU/IPC qualification on a CUDA-capable host. See [worker documentation](scripts/ci/README.md).
 
 ```sh
-python3 scripts/ci/submit.py --source /absolute/path/to/checkout
+node scripts/ci/submit.mts --source /absolute/path/to/checkout
 ssh doramcap-ci@100.64.0.20 pueue status
 ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ```

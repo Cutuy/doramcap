@@ -1,0 +1,9 @@
+{
+  "extends": "../../console/server/tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "typeRoots": ["../../console/server/node_modules/@types"]
+  },
+  "include": ["*.mts"]
+}
