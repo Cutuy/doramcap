@@ -240,7 +240,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] The native addon runs systemd run requests; Console accepts `form: SYSTEMD`. Review shows app variants.
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
-- [x] Console without Docker: Compose connects lazily; systemd startup, Review and Start pass with the opt-in test's unavailable Docker socket.
+- [x] Console without Docker: `SYSTEMD` configurations omit `docker_socket`; Compose connects lazily on its first operation. The release installer still assumes Compose.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
@@ -252,7 +252,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Latest validation: release tests, Console tests, Clippy, native systemd recording/cleanup without Docker, and real Compose regression pass. Review rejects stale inputs and Stop before admission. ARM64 worker job 607 and hosted Node CI pass on code revision `4ace2885`; hosted Rust CI is still running.
+Latest #204 validation passed release/native tests, real systemd and Compose runs, ARM64 worker job 607 and hosted Node CI. Qualification of the #205/#206 rebased stack is pending; Review retains the captured-input admission check.
 
 ## Future items
 

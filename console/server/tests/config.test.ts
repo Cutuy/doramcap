@@ -32,6 +32,19 @@ test('TypeScript applies protobuf configuration defaults and rejects invalid dep
   );
 });
 
+test('systemd Consoles need no Docker socket and reject one', () => {
+  // Arrange
+  const systemd = (socket: string) =>
+    capabilities.parseConfig(
+      `form: SYSTEMD listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" ${socket}`,
+    );
+  // Act / Assert
+  validateConfig(systemd(''));
+  assert.throws(() => validateConfig(systemd('docker_socket:"/docker.sock"')), /only to COMPOSE/);
+  // Act / Assert: Compose still requires the socket.
+  assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), dockerSocket: '' })), /docker_socket must be absolute/);
+});
+
 test('catalog selection distinguishes defaults from an explicit empty choice', () => {
   // Arrange
   const apps = [

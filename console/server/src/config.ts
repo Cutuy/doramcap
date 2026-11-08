@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
-import { capabilities, wire, type Config } from './native.js';
+import { capabilities, launch, wire, type Config } from './native.js';
 import { validateApps } from './system-apps.js';
 import { expandManifests } from './manifests.js';
 
@@ -21,10 +21,20 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
   return { config, secret };
 }
 export function validateConfig(config: Config) {
+  switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {
+    case launch.Form.FORM_UNSPECIFIED:
+    case launch.Form.COMPOSE:
+      if (!isAbsolute(config.dockerSocket)) throw new Error('docker_socket must be absolute');
+      break;
+    case launch.Form.SYSTEMD:
+      if (config.dockerSocket) throw new Error('docker_socket applies only to COMPOSE');
+      break;
+    default:
+      throw new Error('form: only COMPOSE and SYSTEMD are supported');
+  }
   for (const [name, value] of [
     ['project_root', config.projectRoot],
     ['data_root', config.dataRoot],
-    ['docker_socket', config.dockerSocket],
   ])
     if (!isAbsolute(value)) throw new Error(`${name} must be absolute`);
   if (config.accessSecretFile && !isAbsolute(config.accessSecretFile))

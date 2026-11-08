@@ -13,6 +13,29 @@ test('rejects an incompatible contract before reading configuration', async () =
   await assert.rejects(capabilities.open('/does-not-exist', incompatibleVersion), /version mismatch/);
 });
 
+test('an empty Docker socket opens without Docker and refuses Compose work', async () => {
+  // Arrange / Act: no Docker connection is attempted.
+  const owner = await capabilities.open('', 1);
+  try {
+    // Assert
+    await assert.rejects(
+      owner.composeProfiles(execution.ComposeProfilesRequest.create({ runId: 'r1', repositoryRoot: '/', project: { key: 'workload' } })),
+      /Docker is not configured/,
+    );
+    const run = execution.RunRequest.create({
+      run: { id: 'r1', repositoryRoot: '/', artifacts: '/tmp/console-no-docker', readinessSeconds: 1, stopSeconds: 1 },
+      compose: {},
+    });
+    await assert.rejects(owner.inspect(run), /Docker is not configured/);
+    await assert.rejects(
+      owner.start(execution.StartRequest.create({ run, composeExpected: compose.ConfigurationSnapshot.create() })),
+      /Docker is not configured/,
+    );
+  } finally {
+    await owner.close();
+  }
+});
+
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';

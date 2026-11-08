@@ -46,6 +46,9 @@ pub struct Compose {
 }
 impl Compose {
     pub async fn get(&self) -> Result<&ComposeResources, String> {
+        if self.socket.is_empty() {
+            return Err("Docker is not configured".into());
+        }
         self.resources
             .get_or_try_init(|| async {
                 let adapter = Rc::new(

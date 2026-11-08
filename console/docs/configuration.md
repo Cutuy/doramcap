@@ -42,8 +42,8 @@ apps {
 
 `form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
 directory holding `dora` and the executables named by each app's `process.argv`, built
-with the release features. `SYSTEMD` runs need root and the system service manager.
-Inline definitions, as below, remain valid.
+with the release features. `SYSTEMD` runs need root and the system service manager;
+leave `docker_socket` unset. Inline definitions, as below, remain valid.
 
 ```protobuf
 apps {
