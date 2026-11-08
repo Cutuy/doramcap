@@ -19,6 +19,15 @@ pub struct UnitExit {
     pub memory_peak_bytes: Option<u64>,
 }
 impl UnitExit {
+    /// Program ID or adopted unit stem, derived from the owned unit name.
+    pub fn id(&self) -> &str {
+        self.unit
+            .strip_suffix(".service")
+            .and_then(|name| name.strip_prefix("doramcap-"))
+            .and_then(|name| name.split_once('-'))
+            .map_or(self.unit.as_str(), |(_, id)| id)
+    }
+
     fn complete(&self) -> bool {
         self.result.is_some() && self.exec_main_code.is_some() && self.exec_main_status.is_some()
     }
@@ -151,14 +160,14 @@ impl SystemdRunner {
             })
             .await
             .map_err(error)?;
-        let run = prepared.value().run.clone().expect("prepared run");
+        let mut run = prepared.value().run.clone().expect("prepared run");
         let mut plan = prepared.value().plan.clone().expect("prepared plan");
-        let prepare = || -> Result<()> {
-            crate::dora::prepare(&run, &mut plan)?;
+        let preparation = || {
             if !run.dora_apps.is_empty() {
                 std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
                     .map_err(error)?;
             }
+            crate::dora::prepare(&mut run, &mut plan)?;
             preflight(
                 prepared
                     .value()
@@ -167,7 +176,7 @@ impl SystemdRunner {
                     .expect("prepared snapshot"),
             )
         };
-        if let Err(e) = prepare() {
+        if let Err(e) = preparation() {
             return Err(match executor.run::<crate::DiscardRun>(prepared).await {
                 Ok(_) => e,
                 Err(cleanup) => format!("{e}; {cleanup}"),
@@ -250,7 +259,7 @@ mod tests {
         let json = serde_json::json!({
             "id": "run", "execution_error": null, "writers_stopped": true,
             "recording_finalized": true, "cleanup_verified": true, "diagnostics": [],
-            "units": [{"unit": "example.service", "result": "success",
+            "units": [{"unit": "example.service", "id": "example", "result": "success",
                 "exec_main_code": 1, "exec_main_status": 0}]
         });
         let report: SystemdRunReport = serde_json::from_value(json.clone()).unwrap();

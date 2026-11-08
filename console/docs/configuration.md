@@ -1,7 +1,8 @@
 # Console configuration
 
-Console loads protobuf text from the command-line configuration file. With `download_missing_images: true`, selected missing images download before
-Review. Otherwise images must already exist locally. The Dora coordinator and daemon are always included.
+Console loads protobuf text from the command-line configuration file. Compose uses
+`download_missing_images: true` to download selected missing images before Review;
+otherwise those images must exist locally. Systemd uses the configured host binaries. Configured Dora apps join every run.
 
 Optional apps ship common settings in app-named pbtxt files. The
 [release template](../release/console.pbtxt) lists the shipped apps.
@@ -21,6 +22,11 @@ systemd builder creates `Program` inputs from those same settings; the runner cr
 the units. An external unit uses `systemd.unit` separately and supplies its own process
 settings. Combining it with `process` is rejected.
 
+Project `.service` files keep their native filesystem and environment rules. Dora
+participants must make the injected host Zenoh path readable to their service user
+and leave the runtime daemon-port and overlay variables unoverridden by
+`EnvironmentFile` or `UnsetEnvironment`. An explicit node ID is preserved.
+
 ![Launch contracts](../../libs/workload-lifecycle/docs/110726-launch-contracts.svg)
 
 The Console entry then names the manifest and keeps only Console settings:
@@ -35,8 +41,9 @@ apps {
 ```
 
 `form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
-directory holding `dora` and the executables named by each app's `process.argv`. Console cannot run `SYSTEMD`
-yet and refuses it at startup. Inline definitions, as below, remain valid.
+directory holding `dora` and the executables named by each app's `process.argv`, built
+with the release features. `SYSTEMD` runs need root and the system service manager.
+Inline definitions, as below, remain valid.
 
 ```protobuf
 apps {

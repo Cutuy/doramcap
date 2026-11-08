@@ -28,34 +28,21 @@ const doraApps = ['coordinator', 'daemon'].map((role) => {
 interface ConsoleHandle { close(): Promise<void>; status(): Promise<Buffer> }
 const openService=async(path:string)=>(await ConsoleService.open(path)).backend;
 
-test('opens and closes twice while Node remains responsive during native startup', async () => {
+test('opens and closes twice without contacting Docker', async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-addon-'));
   const socket = join(directory, 'docker.sock');
   const config = join(directory, 'console.pbtxt');
+  let requests = 0;
   const server = createServer((_request, response) => {
-    setTimeout(() => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); }, 300);
+    requests++;
+    response.setHeader('content-type', 'application/json');
+    response.end('{"ApiVersion":"1.45"}');
   });
   server.listen(socket);
   await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
   await writeFile(config, `listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
-  const heartbeat = createServer((_request, response) => response.end('ok'));
-  heartbeat.listen(0, '127.0.0.1');
-  await once(heartbeat, 'listening');
-  const address = heartbeat.address();
-  assert.ok(address && typeof address !== 'string');
-  let polling = true;
-  const latencies: number[] = [];
-  const heartbeatLoop = (async () => {
-    while (polling) {
-      const started = Date.now();
-      const response: Response = await fetch(`http://127.0.0.1:${address.port}`);
-      assert.equal(await response.text(), 'ok');
-      latencies.push(Date.now() - started);
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-  })();
   try {
     // Act
     const first = await openService(config);
@@ -65,15 +52,8 @@ test('opens and closes twice while Node remains responsive during native startup
     const second = await openService(config);
     await second.close();
     // Assert
-    polling = false;
-    await heartbeatLoop;
-    assert.ok(latencies.length >= 4, `received ${latencies.length} heartbeats`);
-    assert.ok(latencies.every(latency => latency < 1000));
+    assert.equal(requests, 0);
   } finally {
-    polling = false;
-    await heartbeatLoop;
-    heartbeat.close();
-    await once(heartbeat, 'close');
     server.close();
     await once(server, 'close');
     await rm(directory, { recursive: true, force: true });
@@ -287,7 +267,7 @@ test('native Start preserves a budget rejection and publishes its terminal facts
   try {
     // Act
     let rejection: Error | undefined;
-    await assert.rejects(owner.start(request, compose.ConfigurationSnapshot.create()), (error: Error) => {
+    await assert.rejects(owner.start(execution.StartRequest.create({ run: request, composeExpected: compose.ConfigurationSnapshot.create() })), (error: Error) => {
       rejection = error;
       return /readiness_seconds/.test(error.message);
     });

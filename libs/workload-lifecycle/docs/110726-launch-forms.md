@@ -235,10 +235,12 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Generated units run in private roots with per-unit bind mounts.
 - [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
 - [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and optional external systemd units. Shipped systemd units are generated from common process settings. Common process and file settings live in pbtxt; native files supply backend-specific settings. Console's config gains `binaries` and accepts `form: SYSTEMD`.
-- [x] System app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
+- [x] External app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
 - [x] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices: Dora, then system apps, then every `*.service` at the project root.
-- [ ] The native addon runs systemd plans; Console stops refusing `form: SYSTEMD` at startup. Review shows apps and profiles.
+- [x] The native addon runs systemd run requests; Console accepts `form: SYSTEMD`. Review shows app variants.
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
+- [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
+- [x] Console without Docker: Compose connects lazily; systemd startup, Review and Start pass with the opt-in test's unavailable Docker socket.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
@@ -246,11 +248,11 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Native test: Dora runs as units, registers a dynamic-node graph and stops cleanly with no units left.
 - [x] Native test: a unit reads its config and writes results at container paths, and no bind target appears on the host.
 - [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
-- [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
+- [x] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Evidence (2026-11-07): port and name validation tests passed. CLI timeout handling and its test scaffolding were reverted; the indefinite-command finding remains open. Focused validation of this revision is pending.
+Latest validation: release tests, Console tests, Clippy, native systemd recording/cleanup without Docker, and real Compose regression pass. Review rejects stale inputs and Stop before admission. ARM64 worker job 607 and hosted Node CI pass on code revision `4ace2885`; hosted Rust CI is still running.
 
 ## Future items
 

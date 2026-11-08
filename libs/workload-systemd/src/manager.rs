@@ -28,7 +28,7 @@ const DEFAULT_SEARCH_PATH: [&str; 6] = [
 ];
 /// Scope subdirectory holding each generated unit's private root.
 const ROOTS: &str = "roots";
-/// Plain runtime source names beside an app root; normal root cleanup removes these links.
+/// Plain runtime source names beside a unit root; normal root cleanup removes these links.
 const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
 /// Drop-in placing an adopted unit in the run slice.
 const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
@@ -225,6 +225,7 @@ impl Manager {
         apps: &[crate::AppUnit],
         binaries: &str,
         stop_seconds: u64,
+        runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
     ) -> Result<Vec<String>> {
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
@@ -240,13 +241,31 @@ impl Manager {
             let name = scope.unit(id);
             let copy = units.join(&name);
             // Earlier defaults yield to any stop grace declared by the source unit.
+            let environment = runtime
+                .map(|runtime| crate::dora::environment(runtime, id, app.is_none()))
+                .transpose()?
+                .unwrap_or_default();
             let mut contents = format!("[Service]\nTimeoutStopSec={stop_seconds}s\n").into_bytes();
+            // The unit's own node identity takes precedence over the default app ID.
+            for variable in environment
+                .iter()
+                .filter(|variable| variable.name == dora_app::environment::NODE_ID)
+            {
+                contents.extend(environment_line(variable)?.as_bytes());
+            }
             contents.extend(tokio::fs::read(file).await.map_err(error)?);
             tokio::fs::write(&copy, contents).await.map_err(error)?;
             let drop_in =
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
             let mut run = format!("[Service]\nSlice={}\n", scope.slice);
+            for variable in environment
+                .iter()
+                .filter(|variable| variable.name != dora_app::environment::NODE_ID)
+            {
+                run.push_str(&environment_line(variable)?);
+            }
+            // Native project units expose the host configuration path through their own filesystem.
             if let Some(app) = app {
                 run.push_str(&app_root(scope, &name, &app.binds, binaries).await?);
             }
@@ -467,6 +486,16 @@ fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
     value.into().try_into().map_err(error)
 }
 
+/// Quote one approved environment assignment using systemd.syntax C escapes and literal specifiers.
+fn environment_line(variable: &crate::EnvironmentVariable) -> Result<String> {
+    let assignment = format!("{}={}", variable.name, variable.value);
+    if assignment.contains('\0') {
+        return Err("Dora environment values cannot contain NUL".into());
+    }
+    // Byte escapes preserve UTF-8 and use systemd's supported C escape forms.
+    Ok(format!("Environment=\"{}\"\n", assignment.as_bytes().escape_ascii()).replace('%', "%%"))
+}
+
 /// Transient service properties for one program.
 fn transient_properties(
     scope: &Scope,
@@ -562,8 +591,10 @@ async fn private_root(
     {
         writable.push(mount(working_directory, working_directory, false));
     }
-    for bind in binds {
-        let entry = mount(&bind.source, &bind.target, false);
+    for (index, bind) in binds.iter().enumerate() {
+        // systemd serializes D-Bus paths again before handing them to its executor.
+        let source = bind_source(scope, name, index, &bind.source).await?;
+        let entry = mount(&source, &bind.target, false);
         if bind.read_only {
             read_only.push(entry);
         } else {
@@ -582,6 +613,18 @@ async fn private_root(
         properties.push(("BindPaths".into(), value(writable)?));
     }
     Ok(properties)
+}
+
+/// Keep host filenames out of unit syntax and systemd's executor serialization.
+async fn bind_source(scope: &Scope, name: &str, index: usize, source: &str) -> Result<String> {
+    let sources = scope
+        .directory
+        .join(ROOTS)
+        .join(format!("{name}{BIND_SOURCES_SUFFIX}"));
+    tokio::fs::create_dir_all(&sources).await.map_err(error)?;
+    let alias = sources.join(index.to_string());
+    tokio::fs::symlink(source, &alias).await.map_err(error)?;
+    Ok(alias.to_string_lossy().into_owned())
 }
 
 /// Drop-in lines running an app unit in its private root: host system directories
@@ -605,13 +648,10 @@ async fn app_root(
     for (index, bind) in binds.iter().enumerate() {
         let (kind, source) = if bind.read_only {
             // Captured paths may contain any host filename character; unit syntax sees plain aliases.
-            let sources = root.with_file_name(format!("{name}{BIND_SOURCES_SUFFIX}"));
-            tokio::fs::create_dir_all(&sources).await.map_err(error)?;
-            let source = sources.join(index.to_string());
-            tokio::fs::symlink(&bind.source, &source)
-                .await
-                .map_err(error)?;
-            ("BindReadOnlyPaths", source.to_string_lossy().into_owned())
+            (
+                "BindReadOnlyPaths",
+                bind_source(scope, name, index, &bind.source).await?,
+            )
         } else {
             ("BindPaths", bind.source.clone())
         };
@@ -644,6 +684,73 @@ mod tests {
         let mask = super::cpu_mask(&ids);
         // Assert
         assert_eq!(mask, [0b0000_0101, 0b0000_0010]);
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires root and the system service manager"]
+    async fn adopted_environment_round_trips_through_systemd() {
+        // Arrange: exercise every non-NUL ASCII byte and multibyte UTF-8.
+        let root = std::env::temp_dir().join(format!("systemd-environment-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let source = root.join("escape.service");
+        std::fs::write(&source, "[Service]\nExecStart=/bin/true\n").unwrap();
+        let scope = Scope::of(&root).unwrap();
+        let manager = Manager::connect().await.unwrap();
+        let overlay = format!(
+            "/{} café/雪/🦀",
+            (1u8..=127).map(char::from).collect::<String>()
+        );
+        let runtime = workload_lifecycle::launch::DoraRuntime {
+            daemon_port: 12345,
+            zenoh: Some(workload_lifecycle::launch::ResolvedFileBinding {
+                source: overlay.clone(),
+                target: "/config/zenoh.json5".into(),
+            }),
+            ..Default::default()
+        };
+
+        // Act: ask the real service manager to parse the adopted unit and drop-in.
+        let observed: Result<Vec<String>> = async {
+            let names = manager
+                .adopt(
+                    &scope,
+                    &[source.display().to_string()],
+                    &[],
+                    "",
+                    5,
+                    Some(&runtime),
+                )
+                .await?;
+            manager
+                .watch(&names[0])
+                .await?
+                .service
+                .environment()
+                .await
+                .map_err(error)
+        }
+        .await;
+        let cleanup = manager.reset(&scope).await;
+
+        // Assert: no byte changed, no assignment was injected, and no unit remains.
+        assert!(cleanup.unwrap().is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir(&scope.directory).unwrap();
+        let mut observed = observed.unwrap();
+        observed.sort();
+        assert_eq!(
+            observed,
+            vec![
+                "DORA_DAEMON_LOCAL_LISTEN_PORT=12345".to_owned(),
+                "DORA_NODE_ID=escape".to_owned(),
+                format!("DORA_ZENOH_CONFIG_OVERLAY={overlay}"),
+            ]
+        );
     }
 }
 

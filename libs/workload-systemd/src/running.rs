@@ -31,21 +31,22 @@ pub(crate) struct Removed {
     pub diagnostics: Vec<String>,
 }
 
-impl SystemdRunning {
-    fn run(&self) -> &workload_lifecycle::launch::RunPlan {
-        &self.run
-    }
-}
-
 impl workload_lifecycle::run::Running for SystemdRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
-        let run = self.run().clone();
-        let readiness = Duration::from_secs(run.readiness_seconds);
+        let readiness = Duration::from_secs(self.run.readiness_seconds);
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
-            let phase = crate::phase(&run, &self.plan, role);
+            let mut phase = crate::phase(&self.run, &self.plan, role);
+            if role != Phase::Dora {
+                crate::dora::attach(&self.run, &mut phase)?;
+            }
+            let runtime = if role == Phase::Dora {
+                None
+            } else {
+                self.run.dora_runtime.as_ref()
+            };
             self.phases.push(Vec::new());
             let start = async {
                 let names = self
@@ -55,7 +56,8 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                         &phase.unit_files,
                         &phase.app_units,
                         &self.plan.binaries,
-                        run.stop_seconds,
+                        self.run.stop_seconds,
+                        runtime,
                     )
                     .await?;
                 // Keep every attempted unit before submitting any cancellable start.
@@ -70,7 +72,12 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 for program in &phase.programs {
                     jobs.push(
                         self.manager
-                            .start_program(&self.scope, &run.id, program, run.stop_seconds)
+                            .start_program(
+                                &self.scope,
+                                &self.run.id,
+                                program,
+                                self.run.stop_seconds,
+                            )
                             .await?,
                     );
                 }
@@ -86,13 +93,21 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             tokio::time::timeout(readiness, start)
                 .await
                 .map_err(|_| format!("apps not active within {readiness:?}"))??;
-            if role == Phase::Dora && !run.dora_apps.is_empty() {
-                self.dora =
-                    Some(crate::dora::Dora::from_units(self.phases.last().unwrap(), &run).await?);
+            if role == Phase::Dora && !self.run.dora_apps.is_empty() {
+                self.dora = Some(
+                    crate::dora::Dora::from_units(
+                        self.phases.last().unwrap(),
+                        &mut self.run,
+                        &self.plan,
+                    )
+                    .await?,
+                );
                 let dora = self.dora.as_mut().unwrap();
                 tokio::time::timeout(readiness, async {
-                    dora.await_daemon(&self.manager, &self.scope).await?;
-                    dora.register(&self.manager, &self.scope).await
+                    dora.await_daemon(&self.manager, &self.scope, &self.run)
+                        .await?;
+                    dora.register(&self.manager, &self.scope, &mut self.run)
+                        .await
                 })
                 .await
                 .map_err(|_| "Dora readiness deadline exceeded".to_string())??;
@@ -101,7 +116,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 self.executor
                     .run::<WaitForRecordings>(ReadinessInput {
                         recordings: self.recordings.clone(),
-                        timeout_seconds: run.readiness_seconds,
+                        timeout_seconds: self.run.readiness_seconds,
                     })
                     .await
                     .map_err(crate::error)?;
@@ -127,7 +142,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             // Dataflows stop before the coordinator and daemon they run on.
             if index == 0
                 && let Some(dora) = &mut self.dora
-                && let Err(error) = dora.down(&self.manager, &self.scope).await
+                && let Err(error) = dora.down(&self.manager, &self.scope, &self.run).await
             {
                 self.diagnostics.push(format!("Dora down: {error}"));
             }

@@ -26,11 +26,11 @@ class Engine implements NativeExecution {
     return execution.ComposeProfiles.create({ names: ['gpu'] });
   }
   async inspect() {
-    return execution.Inspection.create({ plan: { services: { worker: { imageId: 'sha256:a' } } }, snapshot: { manifestSha256: 'a' } });
+    return execution.Inspection.create({ plan: { services: { worker: { imageId: 'sha256:a' } } }, composeSnapshot: { manifestSha256: 'a' } });
   }
   async start(request: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
-    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
+    this.update = execution.ExecutionUpdate.create({ runId: request.run!.run!.id });
   }
   async stop() {}
   poll() {

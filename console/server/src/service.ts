@@ -11,8 +11,8 @@ import {
   wire,
   execution,
   browserError,
-  compose,
   composePlan,
+  launch,
   objectOptions,
   type Config,
   type NativeExecution,
@@ -26,6 +26,7 @@ import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
 import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
+import { systemdPlan, systemdProject } from './systemd.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
 import { History } from './history.js';
@@ -42,7 +43,7 @@ type Prepared = {
   project: Project;
   apps: SelectedApp[];
   workspace: string;
-  snapshot: doramcap.compose.v1.ConfigurationSnapshot;
+  admission: doramcap.console.execution.v1.StartRequest;
 };
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
@@ -182,11 +183,12 @@ export class ConsoleService implements ConsoleBackend {
     let workspace = '';
     try {
       const ids = request.systemApps?.ids ?? undefined;
-      const project = await discover(this.config.projectRoot, request.profiles),
+      const project = await this.project(request.profiles),
         chosen = selectApps(this.config.apps.filter((app) => !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),
         // The relay runs only when a selected app declares a live output.
         apps = chosen.filter((app) => !app.liveRelay || chosen.some((other) => other.liveOutputs?.length));
-      const profiles = (
+      // Compose profiles select services; systemd projects have none.
+      const profiles = this.systemd() ? [] : (
         await this.engine.composeProfiles(
           execution.ComposeProfilesRequest.create({
             runId: id,
@@ -204,8 +206,8 @@ export class ConsoleService implements ConsoleBackend {
       await mkdir(dirname(workspace), { recursive: true, mode: 0o700 });
       await mkdir(workspace, { mode: 0o700 });
       const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
-      if (this.config.downloadMissingImages)
-        await ensureImages(this.config, (runRequest.compose!.projects ?? []) as Project[], this.preparation.signal);
+      if (this.config.downloadMissingImages && runRequest.compose)
+        await ensureImages(this.config, (runRequest.compose.projects ?? []) as Project[], this.preparation.signal);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(runRequest);
@@ -230,7 +232,7 @@ export class ConsoleService implements ConsoleBackend {
         availableProfiles: profiles,
         liveStreams: liveStreams(apps),
         selectedProfiles: request.profiles,
-        services: Object.entries(inspected.plan!.services ?? {}).map(([name, service]) => ({
+        services: Object.entries(inspected.plan?.services ?? {}).map(([name, service]) => ({
           name,
           imageId: service.imageId,
         })),
@@ -244,7 +246,10 @@ export class ConsoleService implements ConsoleBackend {
         project,
         apps,
         workspace,
-        snapshot: compose.ConfigurationSnapshot.fromObject(inspected.snapshot!),
+        admission: execution.StartRequest.create({
+          composeExpected: inspected.composeSnapshot,
+          systemdExpected: inspected.systemdSnapshot,
+        }),
       };
       this.snapshot = wire.Status.create({
         phase: Phase.REVIEWED,
@@ -280,6 +285,11 @@ export class ConsoleService implements ConsoleBackend {
       await writeOnce(path, graph);
       dataflowFile = path;
     }
+    if (this.systemd())
+      return systemdPlan(this.config, {
+        id, project: project.directory!, artifacts, workspace, stage, apps,
+        graph: dataflowFile, relaySettings: bound?.settings,
+      });
     const request = execution.RunRequest.create({
       run: runPlan(this.config, { id, project: project.directory!, artifacts, apps }, dataflowFile),
       compose: composePlan.ComposePlan.create({ projects: [project, ...this.config.apps.filter((app) => this.config.doraApps.includes(app.id!)).map((app) => ({ ...app.input!, key: app.id! }))] }),
@@ -287,6 +297,14 @@ export class ConsoleService implements ConsoleBackend {
     await bindOutputs(apps, request, workspace, stage);
     if (bound) request.compose!.projects!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
     return request;
+  }
+  /** Whether this Console launches runs as systemd units. */
+  private systemd() {
+    return this.config.form === launch.Form.SYSTEMD;
+  }
+  /** The project in the configured project root: Compose files, or a directory of units. */
+  private project(profiles: string[]) {
+    return this.systemd() ? systemdProject(this.config.projectRoot) : discover(this.config.projectRoot, profiles);
   }
   start(input: Buffer): Promise<Buffer> {
     const request = wire.StartRequest.decode(input);
@@ -349,7 +367,7 @@ export class ConsoleService implements ConsoleBackend {
       this.recorded = this.snapshot.phase;
       this.runIndex.record(this.enriched(), this.startedAt);
       this.saveCapture({ setup: await this.setup(prepared) });
-      const fresh = await discover(this.config.projectRoot, prepared.project.profiles ?? []).catch(() => {
+      const fresh = await this.project(prepared.project.profiles ?? []).catch(() => {
         throw new Error('StaleReview');
       });
       if (JSON.stringify(fresh) !== JSON.stringify(prepared.project)) throw new Error('StaleReview');
@@ -370,7 +388,7 @@ export class ConsoleService implements ConsoleBackend {
       }
       if (this.stopped) throw new Error('Stopped');
       this.executionStarted = true;
-      await this.engine.start(runRequest, prepared.snapshot);
+      await this.engine.start(execution.StartRequest.create({ ...prepared.admission, run: runRequest }));
       this.accepted = true;
       this.marker!.startAccepted = true;
       try {
