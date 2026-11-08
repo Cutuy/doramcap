@@ -135,7 +135,7 @@ pub fn open_file(root: String, relative: String) -> Result<i32> {
         .map_err(failure)
 }
 
-/// Dedicated owner of the existing non-Send Compose workflow.
+/// Dedicated owner of non-Send Compose and systemd workflows.
 #[napi]
 pub struct Execution {
     owner: Mutex<Option<runtime::Owner<State>>>,
@@ -172,20 +172,22 @@ impl Execution {
             .map_err(dispatch_failure)
     }
 }
+
 #[napi]
 impl Execution {
     #[napi]
     pub async fn compose_profiles(&self, input: Buffer) -> Result<Buffer> {
         let request = protocol::ComposeProfilesRequest::decode(input.as_ref()).map_err(failure)?;
         let reply = self.dispatch(move |state| {
-            let adapter = state.adapter.clone();
+            let compose = state.compose.clone();
             let (tx, rx) = tokio::sync::oneshot::channel();
             tokio::task::spawn_local(async move {
                 let result = async {
                     let project = request.project.ok_or("project missing".to_string())?;
+                    let resources = compose.get().await?;
                     let names =
                         workload_docker::workflows::recorded_compose::preparation::profiles(
-                            &adapter,
+                            &resources.adapter,
                             &request.run_id,
                             Path::new(&request.repository_root),
                             &project,
@@ -211,7 +213,7 @@ impl Execution {
     pub async fn inspect(&self, input: Buffer) -> Result<Buffer> {
         let request = protocol::RunRequest::decode(input.as_ref()).map_err(failure)?;
         let reply = self.dispatch(move |state| {
-            let adapter = state.adapter.clone();
+            let compose = state.compose.clone();
             let (tx, rx) = tokio::sync::oneshot::channel();
             tokio::task::spawn_local(async move {
                 let result = async {
@@ -232,9 +234,11 @@ impl Execution {
                             .encode_to_vec());
                         }
                     };
+                    let resources = compose.get().await?;
                     let resolved =
                         workload_docker::workflows::recorded_compose::preparation::resolve(
-                            &adapter, spec,
+                            &resources.adapter,
+                            spec,
                         )
                         .await
                         .map_err(|e| {
@@ -246,7 +250,7 @@ impl Execution {
                         })?;
                     let machine =
                         workload_docker::workflows::recorded_compose::observation::machine_state(
-                            &adapter,
+                            &resources.adapter,
                             &resolved.artifacts,
                         )
                         .await;
@@ -335,5 +339,56 @@ impl Execution {
         }
         owner.close().await.map_err(failure)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn systemd_inspection_opens_without_a_docker_daemon() {
+        // Arrange
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let request = protocol::RunRequest {
+                run: Some(workload_lifecycle::launch::RunPlan {
+                    id: "systemd-only".into(),
+                    repository_root: "/tmp".into(),
+                    artifacts: "/tmp/systemd-only/run".into(),
+                    readiness_seconds: 1,
+                    stop_seconds: 1,
+                    ..Default::default()
+                }),
+                backend: Some(protocol::run_request::Backend::Systemd(
+                    workload_systemd::SystemdPlan {
+                        programs: vec![workload_systemd::Program {
+                            id: "workload".into(),
+                            argv: vec!["/bin/true".into()],
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    },
+                )),
+            };
+
+            // Act
+            let execution = open("/nonexistent/console-docker.sock".into(), 1)
+                .await
+                .unwrap();
+            let bytes = execution
+                .inspect(request.encode_to_vec().into())
+                .await
+                .unwrap();
+            let inspection = protocol::Inspection::decode(bytes.as_ref()).unwrap();
+            execution.close().await.unwrap();
+
+            // Assert
+            assert!(inspection.plan.is_none());
+            assert!(inspection.machine.is_some());
+        });
     }
 }

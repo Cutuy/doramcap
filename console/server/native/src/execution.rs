@@ -8,7 +8,7 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{OnceCell, oneshot, watch};
 use workload_docker::{
     compose::DockerAdapter,
     workflows::recorded_compose::{ComposeRun, ComposeRunner, MachineCapture, RunSignals},
@@ -34,9 +34,36 @@ struct Active {
     stopped: Rc<Cell<bool>>,
     done: Option<oneshot::Receiver<()>>,
 }
-pub struct State {
+pub struct ComposeResources {
     pub adapter: Rc<DockerAdapter>,
-    runner: Rc<tokio::sync::Mutex<ComposeRunner>>,
+    runner: tokio::sync::Mutex<ComposeRunner>,
+}
+
+/// Connect once on first Compose use; failed or cancelled attempts can retry.
+pub struct Compose {
+    socket: String,
+    resources: OnceCell<ComposeResources>,
+}
+impl Compose {
+    pub async fn get(&self) -> Result<&ComposeResources, String> {
+        self.resources
+            .get_or_try_init(|| async {
+                let adapter = Rc::new(
+                    DockerAdapter::connect(self.socket.clone())
+                        .await
+                        .map_err(|error| error.to_string())?,
+                );
+                Ok(ComposeResources {
+                    runner: tokio::sync::Mutex::new(ComposeRunner::new(adapter.clone())),
+                    adapter,
+                })
+            })
+            .await
+    }
+}
+
+pub struct State {
+    pub compose: Rc<Compose>,
     systemd: Rc<tokio::sync::Mutex<workload_systemd::SystemdRunner>>,
     active: Option<Active>,
     updates: Arc<Mutex<ExecutionUpdate>>,
@@ -47,15 +74,12 @@ impl State {
         socket: String,
         updates: Arc<Mutex<ExecutionUpdate>>,
     ) -> Result<Self, String> {
-        let adapter = Rc::new(
-            DockerAdapter::connect(socket)
-                .await
-                .map_err(|e| e.to_string())?,
-        );
         Ok(Self {
-            runner: Rc::new(tokio::sync::Mutex::new(ComposeRunner::new(adapter.clone()))),
+            compose: Rc::new(Compose {
+                socket,
+                resources: OnceCell::new(),
+            }),
             systemd: Rc::default(),
-            adapter,
             active: None,
             updates,
             closing: false,
@@ -122,7 +146,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             return reply;
         }
     };
-    let (stop_tx, stop_rx) = oneshot::channel();
+    let (stop_tx, mut stop_rx) = oneshot::channel();
     let (done_tx, done_rx) = oneshot::channel();
     let stopped = Rc::new(Cell::new(false));
     state.active = Some(Active {
@@ -138,7 +162,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
     let recording_paths = spec.recordings.clone();
     let run_id = spec.id.clone();
     let updates = state.updates.clone();
-    let runner = state.runner.clone();
+    let compose = state.compose.clone();
     let sink = updates.clone();
     let observer = TelemetryObserver::new(MAX_EVENT_BYTES, move |bytes| {
         let mut update = sink
@@ -200,9 +224,34 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         }
     });
     tokio::task::spawn_local(async move {
+        let connected = if let Some(resources) = compose.resources.get() {
+            Ok(resources)
+        } else {
+            tokio::select! {
+                biased;
+                _ = &mut stop_rx => Err("Stopped".to_owned()),
+                resources = compose.get() => resources,
+            }
+        };
+        let resources = match connected {
+            Ok(resources) => resources,
+            Err(error) => {
+                publish_result(
+                    &updates,
+                    &final_capture,
+                    ExecutionResult {
+                        error: Some(error.clone()),
+                        ..Default::default()
+                    },
+                );
+                let _ = accepted.send(Err(error));
+                let _ = done_tx.send(());
+                return;
+            }
+        };
         let admission = Rc::new(RefCell::new(Some(accepted)));
         let check = admission.clone();
-        let mut runner = runner.lock().await;
+        let mut runner = resources.runner.lock().await;
         let observe = observer.clone();
         let loss = updates.clone();
         let result = runner
@@ -449,6 +498,119 @@ fn publish_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn socket_directory(label: &str) -> std::path::PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "console-native-{label}-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
+
+    #[test]
+    fn compose_retries_failed_connection_and_shares_successful_initialization() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        // Arrange
+        let directory = socket_directory("retry");
+        let socket = directory.join("docker.sock");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let state = State::open(socket.to_str().unwrap().into(), Arc::default())
+                .await
+                .unwrap();
+
+            // Act / Assert: a missing daemon fails only when Compose is requested.
+            assert!(state.compose.get().await.is_err());
+            let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+            let engine = async {
+                let (mut connection, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 1024];
+                while !request.ends_with(b"\r\n\r\n") {
+                    let count = connection.read(&mut buffer).await.unwrap();
+                    assert_ne!(count, 0);
+                    request.extend_from_slice(&buffer[..count]);
+                }
+                assert!(request.starts_with(b"GET /version HTTP/1.1\r\n"));
+                let body = r#"{"ApiVersion":"1.47"}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                connection.write_all(response.as_bytes()).await.unwrap();
+            };
+
+            // Act: concurrent callers retry against the now-available daemon.
+            let (first, second, ()) =
+                tokio::join!(state.compose.get(), state.compose.get(), engine);
+
+            // Assert: both requests share the same negotiated adapter and runner.
+            assert!(std::ptr::eq(first.unwrap(), second.unwrap()));
+        });
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn stop_cancels_pending_docker_connection() {
+        // Arrange
+        let directory = socket_directory("stop");
+        let socket = directory.join("docker.sock");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&runtime, async {
+            let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+            let updates = Arc::new(Mutex::new(ExecutionUpdate::default()));
+            let mut state = State::open(socket.to_str().unwrap().into(), updates.clone())
+                .await
+                .unwrap();
+            let request = StartRequest {
+                run: Some(RunRequest {
+                    run: Some(workload_lifecycle::launch::RunPlan {
+                        id: "pending".into(),
+                        repository_root: directory.to_str().unwrap().into(),
+                        artifacts: directory.join("run").to_str().unwrap().into(),
+                        readiness_seconds: 1,
+                        stop_seconds: 1,
+                        ..Default::default()
+                    }),
+                    backend: Some(run_request::Backend::Compose(Default::default())),
+                }),
+                expected: Some(Default::default()),
+            };
+
+            // Act: stop after Docker accepts the connection but before it responds.
+            let accepted = start(&mut state, request);
+            let (_connection, _) = listener.accept().await.unwrap();
+            state.stop("pending").unwrap();
+
+            // Assert: admission and completion finish without a Docker response.
+            assert_eq!(accepted.await.unwrap().unwrap_err(), "Stopped");
+            state.shutdown().unwrap().await.unwrap();
+            assert_eq!(
+                updates
+                    .lock()
+                    .unwrap()
+                    .result
+                    .as_ref()
+                    .unwrap()
+                    .error
+                    .as_deref(),
+                Some("Stopped")
+            );
+        });
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn systemd_evidence_failures_remain_visible_without_invented_exit_codes() {

@@ -240,7 +240,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] The native addon runs systemd run requests; Console accepts `form: SYSTEMD`. Review shows app variants.
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
-- [ ] Console without Docker: the addon still connects to the Docker socket at startup, so systemd hosts need Docker installed today.
+- [ ] Console without Docker: Compose connects lazily; qualify systemd startup, Review and Start with the opt-in test's unavailable Docker socket.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 

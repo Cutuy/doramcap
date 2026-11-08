@@ -38,7 +38,7 @@ test('Console runs CPU monitoring, Fault Watchdog and a user unit under systemd'
   await writeFile(
     config,
     `form: SYSTEMD binaries:"${binaries}" listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" ` +
-      `project_root:"${project}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock" access_secret_file:"${root}/secret" ` +
+      `project_root:"${project}" data_root:"${root}/data" docker_socket:"${root}/absent-docker.sock" access_secret_file:"${root}/secret" ` +
       `runtime { readiness_seconds:30 stop_seconds:5 } ` +
       `dora_apps:"dora-coordinator" dora_apps:"dora-daemon" ` +
       `apps { manifest:"${apps}/dora-coordinator/dora-coordinator.pbtxt" } ` +
