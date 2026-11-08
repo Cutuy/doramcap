@@ -5,6 +5,5 @@ Description=Doramcap Fault Watchdog
 
 [Service]
 ExecStart=fault-watchdog /etc/fault-watchdog/watchdog.pbtxt
-LimitMEMLOCK=268435456
 KillSignal=SIGINT
 TimeoutStopSec=15

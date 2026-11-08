@@ -5,6 +5,5 @@ Description=Doramcap Data recorder
 
 [Service]
 ExecStart=mcap-recorder --config /config/recorder.pbtxt
-LimitMEMLOCK=268435456
 KillSignal=SIGINT
 TimeoutStopSec=15

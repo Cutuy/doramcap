@@ -4,8 +4,6 @@ import { availablePort } from './launch.js';
 import { execution, launch, systemd, type Config } from './native.js';
 import { outputs, type SelectedApp } from './system-apps.js';
 
-/** Smallest locked-memory limit granted to the Dora runtime, as for Compose. */
-const MIN_DORA_MEMLOCK_BYTES = 64 * 1024 * 1024;
 /** Dora's executable inside the binaries directory. */
 const DORA_EXECUTABLE = 'dora';
 const UNIT_SUFFIX = '.service';
@@ -74,7 +72,7 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
         daemonPort: ports.daemon,
         graph: run.graph,
         runtimeDirectory: runtime,
-        memlockBytes: Math.max(Number(config.dora?.memlockBytes ?? 0), MIN_DORA_MEMLOCK_BYTES),
+        memlockBytes: config.dora?.memlockBytes ?? 0,
       },
       binaries,
       groups: [
