@@ -36,6 +36,8 @@ message Program {
   int32 kill_signal = 8;
   // Host paths shown at other paths in the unit's own mount namespace.
   repeated Bind binds = 9;
+  // Per-app stop grace; zero uses RunPlan.stop_seconds.
+  uint64 stop_seconds = 10;
 }
 
 // One bind mount; the source must exist when the unit starts.

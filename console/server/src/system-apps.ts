@@ -1,6 +1,6 @@
 import { isAbsolute, join } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
-import { compose, type App, type Project, type Run, type Output } from './native.js';
+import { compose, launch, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './files.js';
 
 const child = (path: string) =>
@@ -21,7 +21,8 @@ function validateOutputs(recordings: Output[], live: NonNullable<App['liveOutput
       throw new Error('recording paths must be relative beneath artifacts');
   }
 }
-export function validateApps(apps: App[]) {
+export function validateApps(apps: App[], form = launch.Form.COMPOSE) {
+  const composeForm = form !== launch.Form.SYSTEMD;
   const ids = new Set<string>(),
     outputs = new Set<string>();
   let relayed = false;
@@ -33,22 +34,22 @@ export function validateApps(apps: App[]) {
     )
       throw new Error('empty, duplicate or reserved system app id');
     ids.add(app.id);
-    if (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length)
+    if (composeForm && (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length))
       throw new Error('system app requires absolute directory and Compose files');
     if (app.graph && !isAbsolute(app.graph)) throw new Error('system app graph must be absolute');
     if (app.liveRelay) {
       if (relayed) throw new Error('only one system app may set live_relay');
       relayed = true;
-      if (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '') || app.graph || app.launchProfiles?.length || app.liveOutputs?.length)
+      if ((composeForm && !app.configMount?.service) || !isAbsolute(app.configMount?.target ?? '') || app.graph || app.launchProfiles?.length || app.liveOutputs?.length)
         throw new Error('live_relay requires a config mount and excludes graph, launch profiles and live outputs');
       if ((app.liveRelay.port ?? 0) > 65535) throw new Error('live_relay port must be in 0..65535');
     }
     for (const mount of app.outputMounts ?? [])
-      if (!mount.service || !isAbsolute(mount.target ?? ''))
+      if ((composeForm && !mount.service) || !isAbsolute(mount.target ?? ''))
         throw new Error('output mount requires a service and absolute target');
     validateOutputs(app.recordings ?? [], app.liveOutputs ?? [], outputs);
     const profiles = app.launchProfiles ?? [];
-    if (profiles.length && (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '')))
+    if (profiles.length && ((composeForm && !app.configMount?.service) || !isAbsolute(app.configMount?.target ?? '')))
       throw new Error('launch profiles require a config mount with a service and absolute target');
     const profileIds = new Set<string>(),
       shared = new Set(outputs);

@@ -50,9 +50,9 @@ test('release manifests expand to the same apps as the inline release configurat
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
   // Assert: every app gains its systemd launch facts; Compose definitions are unchanged.
   assert.ok(expanded.apps.every((app) => app.systemd?.unit));
-  for (const app of expanded.apps) app.systemd = null;
+  for (const app of expanded.apps) { app.systemd = null; app.input!.manifest = ''; }
   const inlineApps = releaseConfig(inline, '/playground', systemApps, '/state');
-  for (const app of inlineApps.apps) app.systemd = null;
+  for (const app of inlineApps.apps) { app.systemd = null; app.input!.manifest = ''; }
   assert.equal(apps(expanded), apps(inlineApps));
   assert.ok(expanded.apps.every((app) => !app.manifest));
 });

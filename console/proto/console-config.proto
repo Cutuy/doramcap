@@ -62,6 +62,8 @@ message SystemAppDefinition {
   LiveRelay live_relay = 13; // Relays the selected apps' live outputs to Console.
   // How the SYSTEMD form launches the app; file sources are absolute.
   doramcap.launch.v1.SystemdLaunch systemd = 15;
+  doramcap.launch.v1.AppProcess process = 16;
+  repeated doramcap.launch.v1.FileMount files = 17;
 }
 
 // Console generates the relay's Dora node and BridgeConfig, mounted at config_mount.

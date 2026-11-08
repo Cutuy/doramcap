@@ -17,6 +17,7 @@ fn input_project(directory: &Path) -> ComposeProject {
         services: vec![],
         completed_services: vec![],
         remove_volumes: false,
+        ..Default::default()
     }
 }
 
@@ -597,5 +598,59 @@ async fn dead_container_with_no_process_is_quiescent() {
         .await;
     // Assert: process absence allows reset to continue, regardless of the failure status.
     assert!(result.is_ok());
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn common_pbtxt_controls_process_files_and_configuration_identity() {
+    // Arrange: real YAML stays native; literal process arguments and files live in pbtxt.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![]);
+    std::fs::write(
+        root.path().join("compose.yaml"),
+        "services:\n  capture:\n    image: example:local\n    network_mode: host\n",
+    )
+    .unwrap();
+    std::fs::write(root.path().join("settings.pbtxt"), "rate: 5").unwrap();
+    let manifest = r#"id: "capture" compose { files: "compose.yaml" service: "capture" }
+process { argv: "capture" argv: "$LITERAL" working_directory: "/results" memlock_bytes: 8388608 cpus: "0" stop_signal: 2 stop_seconds: 17 }
+files { source: "settings.pbtxt" target: "/config/settings.pbtxt" }"#;
+    std::fs::write(root.path().join("capture.pbtxt"), manifest).unwrap();
+    let mut input = input_project(root.path());
+    input.manifest = "capture.pbtxt".into();
+    // Act
+    let first = adapter
+        .configuration()
+        .normalize("run", &input, "experiment")
+        .await
+        .unwrap();
+    // Assert
+    let service = &first.model["services"]["capture"];
+    assert_eq!(service["entrypoint"], json!(["capture"]));
+    // Compose preserves dollar escaping for the frozen file consumed at launch.
+    assert_eq!(service["command"], json!(["$$LITERAL"]));
+    assert_eq!(service["working_dir"], "/results");
+    assert_eq!(service["ulimits"]["memlock"]["hard"], 8388608);
+    assert_eq!(service["stop_signal"], "2");
+    assert_eq!(service["stop_grace_period"], "17s");
+    assert_eq!(service["network_mode"], "host");
+    assert_eq!(service["volumes"][0]["read_only"], true);
+    // Act: editing common config must change both the launch and its input identity.
+    std::fs::write(
+        root.path().join("capture.pbtxt"),
+        manifest.replace("$LITERAL", "changed"),
+    )
+    .unwrap();
+    let second = adapter
+        .configuration()
+        .normalize("run", &input, "experiment")
+        .await
+        .unwrap();
+    // Assert
+    assert_eq!(
+        second.model["services"]["capture"]["command"],
+        json!(["changed"])
+    );
+    assert_ne!(first.input_hashes, second.input_hashes);
     server.await.unwrap();
 }

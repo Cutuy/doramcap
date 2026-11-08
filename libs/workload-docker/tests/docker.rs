@@ -26,6 +26,7 @@ fn project(root: &Path, key: &str) -> ComposeProject {
         services: vec![],
         completed_services: vec![],
         remove_volumes: true,
+        manifest: String::new(),
     }
 }
 fn monitor(root: &Path, image: &str, artifacts: &Path) -> ComposeProject {
@@ -58,6 +59,7 @@ fn monitor(root: &Path, image: &str, artifacts: &Path) -> ComposeProject {
         services: vec![],
         completed_services: vec![],
         remove_volumes: true,
+        manifest: String::new(),
     }
 }
 fn recordings(artifacts: &Path) -> Vec<Recording> {

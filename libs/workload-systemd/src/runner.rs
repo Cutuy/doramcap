@@ -124,6 +124,10 @@ impl SystemdRunner {
             .mode(0o700)
             .create(&run.artifacts)
             .map_err(error)?;
+        if !run.dora_apps.is_empty() {
+            std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
+                .map_err(error)?;
+        }
         std::fs::write(scope.directory.join(crate::ACTIVE_RUN), &run.id).map_err(error)?;
         self.blocked = true;
 

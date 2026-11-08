@@ -473,6 +473,11 @@ fn transient_properties(
     stop_seconds: u64,
 ) -> Result<Vec<(String, OwnedVariant)>> {
     let executable = program.argv[0].clone();
+    let stop_seconds = if program.stop_seconds == 0 {
+        stop_seconds
+    } else {
+        program.stop_seconds
+    };
     let mut properties = vec![
         (
             "Description".into(),
@@ -548,7 +553,11 @@ async fn private_root(
         .collect();
     read_only.push(mount(executable, executable, false));
     let mut writable = Vec::new();
-    if !working_directory.is_empty() {
+    if !working_directory.is_empty()
+        && !binds
+            .iter()
+            .any(|bind| std::path::Path::new(working_directory).starts_with(&bind.target))
+    {
         writable.push(mount(working_directory, working_directory, false));
     }
     for bind in binds {

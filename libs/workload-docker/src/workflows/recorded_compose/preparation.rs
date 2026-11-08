@@ -125,7 +125,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         (&spec.projects, &mut user_services),
     ] {
         for app in apps {
-            let normalized = adapter
+            let mut normalized = adapter
                 .configuration()
                 .normalize(
                     &spec.id,
@@ -133,6 +133,21 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
                     &crate::compose::adapter::project_name("experiment", &spec.repository_root),
                 )
                 .await?;
+            if spec.dora_apps.iter().any(|d| d.key == app.key)
+                && let Some(manifest) = &normalized.app
+            {
+                let name = &manifest.compose.as_ref().unwrap().service;
+                let service = &mut normalized.model["services"][name];
+                let volumes = service
+                    .as_object_mut()
+                    .ok_or_else(|| invalid("Dora app service is absent"))?
+                    .entry("volumes")
+                    .or_insert_with(|| json!([]));
+                for target in &manifest.output_targets {
+                    volumes.as_array_mut().ok_or_else(|| invalid("Dora volumes must be an array"))?
+                        .push(json!({"type":"bind","source":runtime_directory,"target":target,"bind":{"create_host_path":false}}));
+                }
+            }
             let service_start = services.len();
             let warnings =
                 model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
