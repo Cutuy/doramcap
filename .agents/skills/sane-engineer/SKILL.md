@@ -1,14 +1,14 @@
 ---
 name: sane-engineer
-description: Audit a codebase against documented requirements. Use for requirements-driven reviews and implementation gap analysis.
+description: Audit a codebase against documented requirements and applicable design standards. Use for requirements-driven reviews and implementation gap analysis.
 ---
 
 # Sane Engineer
 
 Read the existing [engineering requirements](requirements.md) as the reusable
-baseline, inspect the governing repository requirements and instructions, and trace
-the audit checklist through code and validation. Record findings in a separate
-checklist file.
+baseline, inspect the governing repository requirements, design standards and
+instructions, and trace the audit checklist through code and validation. Record
+findings in a separate checklist file.
 
 ## Read requirements without expanding them
 
@@ -63,6 +63,24 @@ record completed and deferred validation evidence in the relevant milestone when
 maintaining that plan is authorized. Share promising findings as provisional while
 validation continues. An audit does not authorize dependency adoption, configuration
 contract extensions, publication or other separately gated actions.
+
+## Review applicable design standards
+
+Read design guides referenced by the user or repository instructions, such as
+`docs/design-guide.md`. Keep the guide as the source of its principles; review work
+leaves it read-only and does not copy those principles into `requirements.md`.
+
+For large feature reviews, assess each guide principle for applicability. Add
+applicable design checks to the same audit checklist with a source reference,
+concrete invariant, relevant owner, failure scenario and validation evidence.
+Reuse overlapping requirement checks. Record inapplicable principles briefly with
+a reason; a missing referenced guide leaves that coverage **unverified**.
+
+Trace design checks across component boundaries and lifecycle transitions.
+Distinguish demonstrated violations from preferences and proposed design changes.
+Record unresolved choices as **needs clarification** and missing evidence as
+**unverified**. Respect the requested scope and the guide's qualifiers; small
+reviews need only the principles relevant to the change.
 
 ## Establish the concrete checklist
 
@@ -130,7 +148,7 @@ by their demonstrated impact.
 Keep the audit results in the separate checklist file. For Markdown, use a compact
 traceability table; YAML should retain equivalent fields:
 
-| ID / source | Concrete requirement | Status | Evidence / gap |
+| ID / source | Requirement or design check | Status | Evidence / gap |
 | --- | --- | --- | --- |
 
 Lead with consequential mismatches, including the triggering condition, expected

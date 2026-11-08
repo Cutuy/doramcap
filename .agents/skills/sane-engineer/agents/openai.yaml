@@ -1,4 +1,4 @@
 interface:
   display_name: "Sane Engineer"
-  short_description: "Audit code against concrete requirements"
-  default_prompt: "Use $sane-engineer to audit the code against existing requirements and applicable instructions, recording evidence in a separate checklist without editing requirements.md."
+  short_description: "Audit requirements and applicable design standards"
+  default_prompt: "Use $sane-engineer to audit the code against existing requirements, applicable design standards and repository instructions, recording evidence in a separate checklist while leaving source requirements and design guides unchanged."
