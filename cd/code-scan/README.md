@@ -4,6 +4,12 @@ Review one rule clause against one code unit through schema-constrained model ca
 
 ![Workflow](workflow.svg)
 
+The diagram shows the intended handoff: the harness prepares an input directory,
+the agent reads it and returns structured artifacts, and the harness validates
+and advances the task. A required user decision includes repository/PR context,
+the problem and options; the recorded answer becomes part of the next input.
+The current CLI pilot still embeds prepared task JSON in its prompt.
+
 The [execution policy](workflow-execution.json) proposes Luna/low screening,
 Sol/high confirmation, and Astra/xhigh fixes. The [design](workflow-design.json)
 and [contracts](workflow-contracts.schema.json) describe the complete pipeline.
