@@ -59,13 +59,16 @@ function canonical(path: string): string {
  * Caller holds the worker lock through synchronization and all builds/tests. Invalid inputs fail before mutation.
  */
 export function prepare(snapshot: string, destination: string): void {
+  snapshot = resolve(snapshot);
+  destination = resolve(destination);
   if (lstatSync(snapshot, { throwIfNoEntry: false })?.isSymbolicLink()
       || lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new Error('Snapshot and cache must be real directories');
   }
   snapshot = canonical(resolve(snapshot));
   destination = canonical(resolve(destination));
-  if (snapshot === destination || snapshot.startsWith(destination + sep) || destination.startsWith(snapshot + sep)) {
+  const contains = (parent: string, child: string) => child.startsWith(parent.endsWith(sep) ? parent : parent + sep);
+  if (snapshot === destination || contains(destination, snapshot) || contains(snapshot, destination)) {
     throw new Error('Snapshot and cache must be separate, non-overlapping directories');
   }
   const manifest: SnapshotManifest = JSON.parse(readFileSync(join(snapshot, 'SOURCE.json'), 'utf8'));

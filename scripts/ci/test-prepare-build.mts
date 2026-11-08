@@ -142,10 +142,12 @@ test('symlink destinations and overlapping paths are rejected', t => {
   symlinkSync(outside, cache);
   // Act / Assert
   assert.throws(() => prepare(source, cache), /real directories/);
+  assert.throws(() => prepare(source, cache + '/'), /real directories/);
   assert.deepEqual(readdirSync(outside), []);
   assert.throws(() => prepare(source, source), /non-overlapping/);
   assert.throws(() => prepare(source, join(source, 'child')), /non-overlapping/);
   assert.throws(() => prepare(source, root), /non-overlapping/);
+  assert.throws(() => prepare(source, '/'), /non-overlapping/);
   const alias = join(root, 'alias');
   symlinkSync(source, alias);
   assert.throws(() => prepare(source, join(alias, 'child')), /non-overlapping/);

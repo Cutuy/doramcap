@@ -59,7 +59,7 @@ test('shell patterns retain case, bracket, wildcard, and literal semantics', () 
     ['workload-docker', 'workload-*', true], ['adapter', 'adapt?r', true], ['Adapter', 'adapt*', false],
     ['b', '[a-c]', true], ['b', '[!a-c]', false], ['d', '[!a-c]', true], ['-', '[-a]', true],
     [']', '[]]', true], ['a', '[!]]', true], ['[', '[', true], ['[!]', '[!]', true],
-    ['z', '[z-a]', false], ['z', '[!z-a]', true], ['b', '[a--b]', true],
+    ['b', '[a--!]', true], ['x', '[b-a!x]', false], ['z', '[z-a]', false], ['z', '[!z-a]', true], ['b', '[a--b]', true],
     ['{a,b}', '{a,b}', true], ['a', '{a,b}', false], ['a', '@(a|b)', false],
     ['\\name', '\\*', true], ['name', '\\*', false], ['foo\n', 'foo', false],
   ];

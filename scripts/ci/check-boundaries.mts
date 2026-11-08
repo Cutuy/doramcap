@@ -24,7 +24,7 @@ export function matchesPattern(name: string, pattern: string): boolean {
     if (character === '?') { expression += '.'; continue; }
     if (character === '[') {
       let start = i + 1;
-      const negate = characters[start] === '!';
+      let negate = characters[start] === '!';
       if (negate) start++;
       let end = start + (characters[start] === ']' ? 1 : 0);
       while (end < characters.length && characters[end] !== ']') end++;
@@ -37,6 +37,11 @@ export function matchesPattern(name: string, pattern: string): boolean {
             }
             j += 2;
           } else ranges += literal(characters[j]);
+        }
+        // Removing invalid ranges can expose a leading negation marker.
+        if (!negate && ranges.startsWith(literal('!'))) {
+          negate = true;
+          ranges = ranges.slice(literal('!').length);
         }
         expression += ranges ? `[${negate ? '^' : ''}${ranges}]` : negate ? '.' : '(?!)';
         i = end;
