@@ -39,12 +39,11 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     // Assert
     assert.ok(plan.systemd && !plan.compose);
     assert.equal(plan.systemd!.dora!.executable, '/opt/doramcap/bin/dora');
-    assert.notEqual(plan.systemd!.dora!.coordinatorPort, plan.systemd!.dora!.daemonPort);
-    assert.equal(plan.systemd!.groups!.length, 2);
-    const [system, user] = plan.systemd!.groups!;
-    assert.equal(system.awaitRecordings, true);
-    assert.deepEqual(user.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
-    const unit = (id: string) => system.appUnits!.find((app) => app.file === join(systemApps, id, `${id}.service`))!;
+    assert.notEqual(plan.run!.dora!.coordinatorPort, plan.run!.dora!.daemonPort);
+    assert.deepEqual(plan.run!.systemApps, ['cpu-monitor', 'data-recorder', 'live-bridge']);
+    assert.deepEqual(plan.run!.mcapApps, ['cpu-monitor', 'data-recorder']);
+    assert.deepEqual(plan.systemd!.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
+    const unit = (id: string) => plan.systemd!.appUnits!.find((app) => app.file === join(systemApps, id, `${id}.service`))!;
     assert.equal(plan.systemd!.binaries, '/opt/doramcap/bin');
     assert.deepEqual(unit('cpu-monitor').binds!.map(({ source, target, readOnly }) => [source, target, readOnly]), [
       [join(systemApps, 'cpu-monitor/monitor.pbtxt'), '/config/monitor.pbtxt', true],

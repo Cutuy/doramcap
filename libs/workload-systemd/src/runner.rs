@@ -142,10 +142,13 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
-        let plan_dora = plan
-            .dora
-            .clone()
-            .map(|dora| crate::dora::Dora::new(dora, run.id.clone()));
+        let plan_dora = plan.dora.clone().map(|dora| {
+            crate::dora::Dora::new(
+                dora,
+                run.dora.clone().expect("validated Dora settings"),
+                run.id.clone(),
+            )
+        });
         let running = SystemdRunning {
             manager,
             executor: executor.clone(),
@@ -155,7 +158,7 @@ impl SystemdRunner {
             recordings: recordings.clone(),
             ready,
             dora: plan_dora,
-            groups: Vec::new(),
+            phases: Vec::new(),
             diagnostics: Vec::new(),
         };
         let (outcome, removed) =

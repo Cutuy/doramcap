@@ -18,15 +18,21 @@ pub(crate) const CLI_PREFIX: &str = "dora-cli-";
 
 /// One run's Dora runtime: its two units and its registered dataflow.
 pub(crate) struct Dora {
-    settings: DoraUnits,
+    settings: workload_lifecycle::launch::DoraSettings,
+    launch: DoraUnits,
     run: String,
     commands: u32,
     pub registered: Option<String>,
 }
 impl Dora {
-    pub fn new(settings: DoraUnits, run: String) -> Self {
+    pub fn new(
+        launch: DoraUnits,
+        settings: workload_lifecycle::launch::DoraSettings,
+        run: String,
+    ) -> Self {
         Self {
             settings,
+            launch,
             run,
             commands: 0,
             registered: None,
@@ -46,8 +52,8 @@ impl Dora {
         let dora = &self.settings;
         let program = |id: &str, args: Vec<String>| Program {
             id: id.into(),
-            argv: [vec![dora.executable.clone()], args].concat(),
-            user: dora.user.clone(),
+            argv: [vec![self.launch.executable.clone()], args].concat(),
+            user: self.launch.user.clone(),
             working_directory: dora.runtime_directory.clone(),
             environment: vec![crate::EnvironmentVariable {
                 name: "HOME".into(),
@@ -90,7 +96,7 @@ impl Dora {
         self.commands += 1;
         let name = scope.unit(&format!("{CLI_PREFIX}{}", self.commands));
         let output = self.directory().join(format!("cli-{}.out", self.commands));
-        let argv: Vec<String> = [self.settings.executable.as_str()]
+        let argv: Vec<String> = [self.launch.executable.as_str()]
             .into_iter()
             .chain(args.iter().copied())
             .chain([
@@ -106,14 +112,7 @@ impl Dora {
             read_only: false,
         };
         manager
-            .run_oneshot(
-                scope,
-                &name,
-                &argv,
-                &self.settings.user,
-                &output,
-                &[runtime],
-            )
+            .run_oneshot(scope, &name, &argv, &self.launch.user, &output, &[runtime])
             .await?;
         tokio::fs::read_to_string(output).await.map_err(error)
     }

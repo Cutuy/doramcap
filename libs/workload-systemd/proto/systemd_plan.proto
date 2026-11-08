@@ -1,44 +1,22 @@
 syntax = "proto3";
 package doramcap.systemd_plan.v1;
 
-// systemd launch inputs of one run; the shared run inputs travel beside them.
+// Flat launch inputs; Rust starts Dora, system apps, then user apps.
 message SystemdPlan {
-  reserved 1;
-  // Started in order, each once the previous group is active; stopped in reverse.
-  repeated UnitGroup groups = 2;
-  // Optional Dora runtime, started before every group and stopped after them.
+  reserved 1, 2;
   DoraUnits dora = 3;
-  // Absolute directory holding app executables; app units search it for ExecStart.
   string binaries = 5;
+  repeated Program programs = 6;
+  repeated string unit_files = 7;
+  repeated AppUnit app_units = 8;
 }
 
-// Dora coordinator and daemon as units; Dora CLI commands run as oneshot units.
+// systemd-specific Dora launch settings; communication settings live in RunPlan.
 message DoraUnits {
-  // Absolute `dora` executable.
   string executable = 1;
-  // Loopback ports; both are required.
-  uint32 coordinator_port = 2;
-  uint32 daemon_port = 3;
-  // Absolute dynamic-node graph registered as the run's dataflow; empty registers none.
-  string graph = 4;
-  // Absolute, existing private directory writable by `user`, holding Dora state and CLI output.
-  string runtime_directory = 5;
+  reserved 2, 3, 4, 5, 7;
   // Empty runs as the service manager's default user.
   string user = 6;
-  uint64 memlock_bytes = 7;
-}
-
-// Units that start together.
-message UnitGroup {
-  // Transient units built from programs.
-  repeated Program programs = 1;
-  // Absolute paths to repository `.service` files, adopted unchanged.
-  repeated string unit_files = 2;
-  // After this group is active, wait for the run's recordings to become ready.
-  bool await_recordings = 3;
-  // System apps shipped as unit files: adopted unchanged, each in a private root with
-  // its binds and the plan's binaries on its executable search path.
-  repeated AppUnit app_units = 4;
 }
 
 message AppUnit {

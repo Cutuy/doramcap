@@ -30,6 +30,22 @@ message RunPlan {
   uint64 readiness_seconds = 6;
   // Stop grace period in seconds for apps declaring none.
   uint64 stop_seconds = 7;
+  // App IDs started before user apps and stopped after them.
+  repeated string system_apps = 8;
+  // App IDs whose services write MCAP through io_uring.
+  repeated string mcap_apps = 9;
+  DoraSettings dora = 10;
+}
+
+// Communication settings shared by every launcher.
+message DoraSettings {
+  uint32 coordinator_port = 1;
+  uint32 daemon_port = 2;
+  string graph = 3;
+  string runtime_directory = 4;
+  uint64 memlock_bytes = 5;
+  optional uint32 participant_uid = 6;
+  optional uint32 participant_gid = 7;
 }
 
 // Writers and form-owned evidence after every app stopped.

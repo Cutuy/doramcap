@@ -11,7 +11,7 @@ import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
 import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
-import { mcapServices } from '../src/system-apps.js';
+import { runPlan } from '../src/run-plan.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
@@ -230,12 +230,21 @@ test('the repository release template resolves to existing current app inputs', 
   await rm(dirname(systemApps), { recursive: true });
 });
 
-test('only recording apps name MCAP writer services', () => {
+test('shared run facts identify writer apps independently of service names', () => {
   // Arrange
-  const mount = [{ service: 'writer', target: '/results' }];
-  // Act / Assert
-  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [{ id: 'a', path: 'a.mcap' }] }]), ['writer']);
-  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [] }]), []);
+  const config = wire.ConsoleConfig.create({ runtime: { readinessSeconds: 30, stopSeconds: 5 } });
+  const apps = [
+    { id: 'capture', outputMounts: [{ service: 'writer', target: '/results' }], recordings: [{ id: 'a', path: 'a.mcap' }] },
+    { id: 'monitor', recordings: [] },
+  ];
+  // Act
+  const run = runPlan(config, { id: 'r', project: '/repo', artifacts: '/artifacts', apps }, { graph: '/flow.yml', memlockBytes: 123 });
+  // Assert
+  assert.deepEqual(run.systemApps, ['capture', 'monitor']);
+  assert.deepEqual(run.mcapApps, ['capture']);
+  assert.equal(run.recordings[0].recording, '/artifacts/a.mcap');
+  assert.equal(run.dora!.graph, '/flow.yml');
+  assert.equal(run.dora!.memlockBytes, 123);
 });
 
 test('doctor reports every missing requirement with its remediation', async () => {

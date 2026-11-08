@@ -70,6 +70,7 @@ pub async fn run(
             filesystem: None, dora, recordings:vec![], repository_root: app.repository_root.clone(),
             mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {
                 services: app.mcap_services.clone(),
+                apps: Vec::new(),
                 directories: vec![results.clone()],
             },
             projects: vec![], system_apps: vec![project],

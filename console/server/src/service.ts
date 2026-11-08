@@ -1,3 +1,4 @@
+import { runPlan } from './run-plan.js';
 import { ensureImages } from './images.js';
 import { PREPARING_RUN } from './generated/transport.js';
 import Long from 'long';
@@ -12,7 +13,6 @@ import {
   browserError,
   compose,
   composePlan,
-  launch,
   objectOptions,
   type Config,
   type NativeExecution,
@@ -24,7 +24,7 @@ import {
 } from './native.js';
 import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
-import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, mcapServices, type SelectedApp } from './system-apps.js';
+import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
@@ -205,7 +205,7 @@ export class ConsoleService implements ConsoleBackend {
       await mkdir(workspace, { mode: 0o700 });
       const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
       if (this.config.downloadMissingImages)
-        await ensureImages(this.config, [...(runRequest.compose!.projects ?? []), ...(runRequest.compose!.systemApps ?? [])] as Project[], this.preparation.signal);
+        await ensureImages(this.config, (runRequest.compose!.projects ?? []) as Project[], this.preparation.signal);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(runRequest);
@@ -281,21 +281,11 @@ export class ConsoleService implements ConsoleBackend {
       dora.graph = path;
     }
     const request = execution.RunRequest.create({
-      run: launch.RunPlan.create({
-        id,
-        repositoryRoot: project.directory,
-        artifacts,
-        recordings: outputs(apps).map((output) => ({
-          recording: join(artifacts, output.path!),
-          stream: output.stream ? join(artifacts, output.stream) : '',
-        })),
-        readinessSeconds: this.config.runtime!.readinessSeconds!,
-        stopSeconds: this.config.runtime!.stopSeconds!,
-      }),
-      compose: composePlan.ComposePlan.create({ projects: [project], dora, mcapServices: mcapServices(apps) }),
+      run: runPlan(this.config, { id, project: project.directory!, artifacts, apps }, dora),
+      compose: composePlan.ComposePlan.create({ projects: [project], doraImage: dora.image, doraShmBytes: dora.shmBytes }),
     });
     await bindOutputs(apps, request, workspace, stage);
-    if (bound) request.compose!.systemApps!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
+    if (bound) request.compose!.projects!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
     return request;
   }
   start(input: Buffer): Promise<Buffer> {

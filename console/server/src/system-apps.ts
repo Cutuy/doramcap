@@ -116,13 +116,8 @@ export function appOptions(apps: App[], selected: SelectedApp[]) {
 export function outputs(apps: App[]): Output[] {
   return apps.flatMap((app) => app.recordings ?? []);
 }
-/** Services of apps that record; each writes through the io_uring MCAP writer. */
-export function mcapServices(apps: App[]): string[] {
-  return [...new Set(apps.filter((app) => app.recordings?.length).flatMap((app) => (app.outputMounts ?? []).map((mount) => mount.service!)))];
-}
 export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: string, stage: string) {
   const plan = request.compose!;
-  plan.systemApps = [];
   for (const app of apps) {
     const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
     input.key = app.id!;
@@ -148,7 +143,7 @@ export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: 
       await writeOnce(path, Buffer.from(JSON.stringify({ services })));
       input.files.push(path);
     }
-    plan.systemApps.push(input);
+    plan.projects!.push(input);
   }
 }
 /** Discover the native Compose inputs of one project directory. */

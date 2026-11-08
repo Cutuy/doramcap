@@ -160,7 +160,7 @@ impl ComposeRunning {
             && !adopted
                 .exits
                 .iter()
-                .any(|exit| exit.killed && self.spec.mcap_writers.services.contains(&exit.service));
+                .any(|exit| exit.killed && prepared.mcap_services.contains(&exit.service));
         let systems_stopped = self
             .resources
             .lock()

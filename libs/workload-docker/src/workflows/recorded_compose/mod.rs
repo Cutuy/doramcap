@@ -342,6 +342,9 @@ fn step_error(error: impl std::fmt::Display) -> Error {
 #[serde(deny_unknown_fields)]
 pub struct McapWriters {
     pub services: Vec<String>,
+    /// App IDs whose selected services all write MCAP.
+    #[serde(default)]
+    pub apps: Vec<String>,
     pub directories: Vec<PathBuf>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -384,20 +387,43 @@ impl ComposeRun {
     /// Build launch settings from the shared run inputs and the Compose plan, with
     /// default OverlayFS isolation. MCAP writers write beneath the artifact directory,
     /// on its parent's filesystem.
-    pub fn from_plan(run: workload_lifecycle::launch::RunPlan, plan: ComposePlan) -> Self {
+    pub fn from_plan(run: workload_lifecycle::launch::RunPlan, plan: ComposePlan) -> Result<Self> {
+        workload_lifecycle::plan::validate_apps(
+            &run,
+            plan.projects.iter().map(|app| app.key.as_str()),
+        )
+        .map_err(invalid)?;
+        let (system_apps, projects) = plan
+            .projects
+            .into_iter()
+            .partition(|app| run.system_apps.contains(&app.key));
+        let shared = run.dora.unwrap_or_default();
+        let dora = DoraRuntime {
+            image: plan.dora_image,
+            shm_bytes: plan.dora_shm_bytes,
+            coordinator_port: shared.coordinator_port,
+            daemon_port: shared.daemon_port,
+            graph: shared.graph,
+            runtime_directory: shared.runtime_directory,
+            memlock_bytes: shared.memlock_bytes,
+            participant_uid: shared.participant_uid,
+            participant_gid: shared.participant_gid,
+            ..Default::default()
+        };
         let artifacts = PathBuf::from(run.artifacts);
-        Self {
+        Ok(Self {
             id: run.id,
             repository_root: run.repository_root.into(),
             mcap_writers: McapWriters {
-                services: plan.mcap_services,
+                services: Vec::new(),
+                apps: run.mcap_apps,
                 directories: artifacts.parent().map(PathBuf::from).into_iter().collect(),
             },
             artifacts,
             filesystem: Some(Default::default()),
-            system_apps: plan.system_apps,
-            projects: plan.projects,
-            dora: plan.dora.unwrap_or_default(),
+            system_apps,
+            projects,
+            dora,
             recordings: run
                 .recordings
                 .into_iter()
@@ -408,7 +434,7 @@ impl ComposeRun {
                 .collect(),
             readiness_seconds: run.readiness_seconds,
             stop_seconds: run.stop_seconds,
-        }
+        })
     }
 }
 
@@ -500,66 +526,54 @@ mod tests {
         }
     }
 
-    fn run_plan() -> workload_lifecycle::launch::RunPlan {
-        use workload_lifecycle::launch;
-        launch::RunPlan {
+    #[test]
+    fn compose_plan_maps_shared_roles_and_dora_settings() {
+        // Arrange
+        use workload_lifecycle::launch::{DoraSettings, RunPlan};
+        let run = RunPlan {
             id: "r1".into(),
             repository_root: "/repo".into(),
-            artifacts: "/data/runs/r1".into(),
-            recordings: vec![launch::Recording {
-                stream: "/data/runs/r1/cpu.pb".into(),
-                recording: "/data/runs/r1/cpu.mcap".into(),
-            }],
+            artifacts: "/data/r1".into(),
+            system_apps: vec!["monitor".into()],
+            mcap_apps: vec!["monitor".into()],
             readiness_seconds: 60,
             stop_seconds: 15,
-        }
-    }
-
-    fn compose_plan() -> ComposePlan {
-        ComposePlan {
-            system_apps: vec![ComposeProject {
-                key: "cpu-monitor".into(),
-                ..Default::default()
-            }],
-            projects: vec![ComposeProject {
-                key: "project".into(),
-                ..Default::default()
-            }],
-            dora: Some(DoraRuntime {
-                image: "doramcap/dora:local".into(),
+            dora: Some(DoraSettings {
+                graph: "/graph.yml".into(),
+                memlock_bytes: 42,
                 ..Default::default()
             }),
-            mcap_services: vec!["cpu-monitor".into()],
-        }
-    }
-
-    #[test]
-    fn compose_plan_maps_to_launch_settings() {
-        // Arrange
-        let (run, plan) = (run_plan(), compose_plan());
-
+            ..Default::default()
+        };
+        let plan = ComposePlan {
+            projects: ["user", "monitor"]
+                .into_iter()
+                .map(|key| ComposeProject {
+                    key: key.into(),
+                    ..Default::default()
+                })
+                .collect(),
+            dora_image: "dora:test".into(),
+            dora_shm_bytes: 1024,
+        };
         // Act
-        let run = ComposeRun::from_plan(run, plan);
-
+        let mapped = ComposeRun::from_plan(run.clone(), plan.clone()).unwrap();
         // Assert
-        assert_eq!(run.id, "r1");
-        assert_eq!(run.repository_root, PathBuf::from("/repo"));
-        assert_eq!(run.artifacts, PathBuf::from("/data/runs/r1"));
-        assert!(run.filesystem.is_some());
-        assert_eq!(run.system_apps[0].key, "cpu-monitor");
-        assert_eq!(run.projects[0].key, "project");
-        assert_eq!(run.dora.image, "doramcap/dora:local");
-        assert_eq!(run.mcap_writers.services, ["cpu-monitor"]);
-        assert_eq!(run.mcap_writers.directories, [PathBuf::from("/data/runs")]);
+        assert_eq!(mapped.system_apps[0].key, "monitor");
+        assert_eq!(mapped.projects[0].key, "user");
+        assert_eq!(mapped.mcap_writers.apps, ["monitor"]);
+        assert_eq!(mapped.mcap_writers.directories, [PathBuf::from("/data")]);
+        assert_eq!(mapped.dora.graph, "/graph.yml");
+        assert_eq!(mapped.dora.image, "dora:test");
         assert_eq!(
-            run.recordings[0].stream,
-            PathBuf::from("/data/runs/r1/cpu.pb")
+            (mapped.dora.memlock_bytes, mapped.dora.shm_bytes),
+            (42, 1024)
         );
-        assert_eq!(
-            run.recordings[0].recording,
-            PathBuf::from("/data/runs/r1/cpu.mcap")
-        );
-        assert_eq!((run.readiness_seconds, run.stop_seconds), (60, 15));
+        assert_eq!((mapped.readiness_seconds, mapped.stop_seconds), (60, 15));
+        // Act / Assert: roles must refer to an actual app.
+        let mut unknown = run;
+        unknown.system_apps.push("absent".into());
+        assert!(ComposeRun::from_plan(unknown, plan).is_err());
     }
 
     #[test]

@@ -2068,6 +2068,7 @@ async fn compose_public_run(outcome: &str) {
         dora,
         recordings: vec![],
         mcap_writers: McapWriters {
+            apps: Vec::new(),
             services: if outcome == "stalled-writer" {
                 vec!["recorder".into(), "app".into()]
             } else {
@@ -2911,4 +2912,63 @@ async fn owned_volumes(adapter: &DockerAdapter, run: &str) -> Vec<String> {
         .collect();
     names.sort();
     names
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker and the local Dora image"]
+async fn shared_plan_resolves_writer_app_services() {
+    // Arrange
+    use workload_lifecycle::launch::RunPlan;
+    let root = std::env::temp_dir().join(format!("shared-plan-{}", std::process::id()));
+    std::fs::create_dir(&root).unwrap();
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").expect("harness image");
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").expect("harness socket");
+    write(
+        &root.join("capture.json"),
+        serde_json::json!({"services": {
+            "first-writer": service(&image), "second-writer": service(&image)
+        }}),
+    );
+    write(
+        &root.join("workload.json"),
+        serde_json::json!({"services": {"producer": service(&image)}}),
+    );
+    let shared = RunPlan {
+        id: "shared-plan".into(),
+        repository_root: root.to_string_lossy().into(),
+        artifacts: root.join("artifacts").to_string_lossy().into(),
+        system_apps: vec!["capture".into()],
+        mcap_apps: vec!["capture".into()],
+        readiness_seconds: 30,
+        stop_seconds: 5,
+        ..Default::default()
+    };
+    let input = ComposePlan {
+        projects: vec![project(&root, "workload"), project(&root, "capture")],
+        ..Default::default()
+    };
+    let adapter = DockerAdapter::connect(socket).await.unwrap();
+    // Act
+    let spec = ComposeRun::from_plan(shared, input).unwrap();
+    let resolved = preparation::resolve(&adapter, spec).await.unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&resolved.plan.manifest).unwrap()).unwrap();
+    // Assert
+    assert_eq!(resolved.system_services, ["first-writer", "second-writer"]);
+    assert_eq!(resolved.user_services, ["producer"]);
+    assert_eq!(resolved.mcap_services, ["first-writer", "second-writer"]);
+    for name in &resolved.mcap_services {
+        assert!(
+            manifest["services"][name]["security_opt"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("seccomp=unconfined"))
+        );
+    }
+    assert!(
+        !manifest["services"]["producer"]["security_opt"]
+            .as_array()
+            .is_some_and(|options| options.contains(&serde_json::json!("seccomp=unconfined")))
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

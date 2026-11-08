@@ -447,9 +447,9 @@ test('the selected live bridge subscribes to declared outputs through a generate
   const { root, engine, backend, review } = await fixture(false, true);
   try {
     const request = engine.inspected!;
-    const bridge = request.compose!.systemApps!.find((project) => project.key === 'live-bridge')!;
+    const bridge = request.compose!.projects!.find((project) => project.key === 'live-bridge')!;
     const compose = JSON.parse(await readFile(bridge.files!.at(-1)!, 'utf8'));
-    const graph = JSON.parse(await readFile(request.compose!.dora!.graph!, 'utf8'));
+    const graph = JSON.parse(await readFile(request.run!.dora!.graph!, 'utf8'));
     // Assert
     assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.CPU_ACCOUNTING]]);
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
@@ -511,7 +511,7 @@ test('the selected launch profile mounts its config read-only and declares only 
     // Act: review with the default profile.
     const first = await prepare();
     const mounted = async () => {
-      const files = engine.inspected!.compose!.systemApps![0].files!;
+      const files = engine.inspected!.compose!.projects!.find((app) => app.key === 'monitor')!.files!;
       return JSON.parse(await readFile(files[files.length - 1], 'utf8')).services.monitor.volumes;
     };
     // Assert
@@ -560,8 +560,8 @@ test('deselecting the live bridge removes its service, graph node and streams', 
     // Assert
     assert.equal(review.liveStreams.length, 0);
     assert.equal(review.systemApps.find((app) => app.id === 'live-bridge')!.selected, false);
-    assert.ok(!engine.inspected!.compose!.systemApps!.some((project) => project.key === 'live-bridge'));
-    assert.ok(!engine.inspected!.compose!.dora?.graph);
+    assert.ok(!engine.inspected!.compose!.projects!.some((project) => project.key === 'live-bridge'));
+    assert.ok(!engine.inspected!.run!.dora?.graph);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

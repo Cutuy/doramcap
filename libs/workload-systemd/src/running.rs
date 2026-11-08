@@ -19,8 +19,8 @@ pub(crate) struct SystemdRunning {
     pub plan: SystemdPlan,
     pub recordings: Vec<Recording>,
     pub ready: Option<tokio::sync::oneshot::Sender<()>>,
-    /// Units this run started, by start group; Dora's units come first.
-    pub groups: Vec<Vec<Unit>>,
+    /// Attempted units in fixed startup phases: Dora, system apps, user apps.
+    pub phases: Vec<Vec<Unit>>,
     pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
 }
@@ -45,11 +45,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         let readiness = Duration::from_secs(run.readiness_seconds);
         if let Some(dora) = &mut self.dora {
             // Record the attempt first so stop and removal see Dora's units.
-            self.groups.push(Vec::new());
+            self.phases.push(Vec::new());
             let start = async {
                 for program in dora.programs().await? {
                     let unit = self.manager.watch(&self.scope.unit(&program.id)).await?;
-                    self.groups[0].push(unit);
+                    self.phases[0].push(unit);
                     let job = self
                         .manager
                         .start_program(&self.scope, &run.id, &program, run.stop_seconds)
@@ -64,29 +64,30 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 .map_err(|_| format!("Dora not ready within {readiness:?}"));
             started??;
         }
-        for group in self.plan.groups.clone() {
-            self.groups.push(Vec::new());
+        for system in [true, false] {
+            let phase = crate::phase(&run, &self.plan, system);
+            self.phases.push(Vec::new());
             let start = async {
                 let names = self
                     .manager
                     .adopt(
                         &self.scope,
-                        &group.unit_files,
-                        &group.app_units,
+                        &phase.unit_files,
+                        &phase.app_units,
                         &self.plan.binaries,
                         run.stop_seconds,
                     )
                     .await?;
                 // Keep every attempted unit before submitting any cancellable start.
-                let units = self.groups.last_mut().unwrap();
-                for program in &group.programs {
+                let units = self.phases.last_mut().unwrap();
+                for program in &phase.programs {
                     units.push(self.manager.watch(&self.scope.unit(&program.id)).await?);
                 }
                 for name in &names {
                     units.push(self.manager.watch(name).await?);
                 }
                 let mut jobs = Vec::new();
-                for program in &group.programs {
+                for program in &phase.programs {
                     jobs.push(
                         self.manager
                             .start_program(&self.scope, &run.id, program, run.stop_seconds)
@@ -104,8 +105,8 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             };
             tokio::time::timeout(readiness, start)
                 .await
-                .map_err(|_| format!("group not active within {readiness:?}"))??;
-            if group.await_recordings {
+                .map_err(|_| format!("apps not active within {readiness:?}"))??;
+            if system && !run.system_apps.is_empty() {
                 self.executor
                     .run::<WaitForRecordings>(ReadinessInput {
                         recordings: self.recordings.clone(),
@@ -132,7 +133,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     async fn stop(&mut self) -> StopRecord {
         let mut stopped = true;
         let dora_units = usize::from(self.dora.is_some());
-        for (index, group) in self.groups.iter_mut().enumerate().rev() {
+        for (index, phase) in self.phases.iter_mut().enumerate().rev() {
             // Dataflows stop before the coordinator and daemon they run on.
             if index + 1 == dora_units
                 && let Some(dora) = &mut self.dora
@@ -141,7 +142,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 self.diagnostics.push(format!("Dora down: {error}"));
             }
             let results = futures_util::future::join_all(
-                group
+                phase
                     .iter_mut()
                     .map(|unit| self.manager.stop_and_wait(unit)),
             )
@@ -161,7 +162,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn remove(mut self, permit: &RemovalPermit) -> (CleanupRecord, Removed) {
         let mut units = Vec::new();
-        for unit in self.groups.iter().flatten() {
+        for unit in self.phases.iter().flatten() {
             units.push(UnitExit::read(unit).await);
             if permit.remove {
                 self.manager.release(&unit.name).await;

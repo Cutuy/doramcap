@@ -1,8 +1,9 @@
+import { runPlan } from './run-plan.js';
 import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { availablePort } from './launch.js';
-import { execution, launch, systemd, type Config } from './native.js';
-import { outputs, type SelectedApp } from './system-apps.js';
+import { execution, systemd, type Config } from './native.js';
+import { type SelectedApp } from './system-apps.js';
 
 /** Dora's executable inside the binaries directory. */
 const DORA_EXECUTABLE = 'dora';
@@ -51,34 +52,20 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
   await mkdir(runtime, { recursive: true, mode: 0o700 });
   const appUnits = run.apps.map((app) => appUnit(app, run));
   const units = await projectUnits(run.project);
-  const recordings = outputs(run.apps).map((output) => ({
-    recording: join(run.artifacts, output.path!),
-    stream: output.stream ? join(run.artifacts, output.stream) : '',
-  }));
   const ports = await doraPorts();
   return execution.RunRequest.create({
-    run: launch.RunPlan.create({
-      id: run.id,
-      repositoryRoot: run.project,
-      artifacts: run.artifacts,
-      recordings,
-      readinessSeconds: config.runtime!.readinessSeconds!,
-      stopSeconds: config.runtime!.stopSeconds!,
+    run: runPlan(config, run, {
+      ...config.dora,
+      coordinatorPort: ports.coordinator,
+      daemonPort: ports.daemon,
+      graph: run.graph,
+      runtimeDirectory: runtime,
     }),
     systemd: systemd.SystemdPlan.create({
-      dora: {
-        executable: join(binaries, DORA_EXECUTABLE),
-        coordinatorPort: ports.coordinator,
-        daemonPort: ports.daemon,
-        graph: run.graph,
-        runtimeDirectory: runtime,
-        memlockBytes: config.dora?.memlockBytes ?? 0,
-      },
+      dora: { executable: join(binaries, DORA_EXECUTABLE) },
       binaries,
-      groups: [
-        ...(appUnits.length ? [{ appUnits, awaitRecordings: recordings.length > 0 }] : []),
-        ...(units.length ? [{ unitFiles: units }] : []),
-      ],
+      appUnits,
+      unitFiles: units,
     }),
   });
 }

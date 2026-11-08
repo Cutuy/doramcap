@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 use workload_systemd::{
-    Bind, DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup,
+    Bind, DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner,
 };
 
 /// How long a scenario lets its units run after readiness.
@@ -28,8 +28,8 @@ impl Fixture {
         self.root.join("repo")
     }
     /// The shared run inputs and the systemd plan of run `run`.
-    fn plan(&self, run: &str, groups: Vec<UnitGroup>) -> (RunPlan, SystemdPlan) {
-        let shared = RunPlan {
+    fn plan(&self, run: &str, phases: Vec<SystemdPlan>) -> (RunPlan, SystemdPlan) {
+        let mut shared = RunPlan {
             id: run.into(),
             repository_root: self.repo().to_string_lossy().into(),
             artifacts: self.root.join(run).to_string_lossy().into(),
@@ -37,13 +37,32 @@ impl Fixture {
             stop_seconds: 5,
             ..Default::default()
         };
-        (
-            shared,
-            SystemdPlan {
-                groups,
-                ..Default::default()
-            },
-        )
+        let mut plan = SystemdPlan::default();
+        let has_system = phases.len() > 1;
+        for (index, phase) in phases.into_iter().enumerate() {
+            if has_system && index == 0 {
+                shared
+                    .system_apps
+                    .extend(phase.programs.iter().map(|app| app.id.clone()));
+                shared.system_apps.extend(
+                    phase
+                        .unit_files
+                        .iter()
+                        .chain(phase.app_units.iter().map(|app| &app.file))
+                        .map(|file| {
+                            Path::new(file)
+                                .file_stem()
+                                .unwrap()
+                                .to_string_lossy()
+                                .into_owned()
+                        }),
+                );
+            }
+            plan.programs.extend(phase.programs);
+            plan.unit_files.extend(phase.unit_files);
+            plan.app_units.extend(phase.app_units);
+        }
+        (shared, plan)
     }
 }
 impl Drop for Fixture {
@@ -107,26 +126,29 @@ fn active(pattern: &str) -> String {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn groups_start_in_order_and_stop_cleanly() {
+async fn system_apps_start_before_user_apps_and_stop_cleanly() {
     // Arrange
     let fixture = Fixture::new("order");
     let adopted = fixture.repo().join("adopted.service");
     std::fs::write(&adopted, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
     let marker = fixture.root.join("first-started");
+    let support = fixture.repo().join("first.service");
+    std::fs::write(
+        &support,
+        format!(
+            "[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/touch {}\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
     let plan = fixture.plan(
         "r1",
         vec![
-            UnitGroup {
-                programs: vec![sees(
-                    program(
-                        "first",
-                        &format!("touch {}; exec sleep 300", marker.display()),
-                    ),
-                    &fixture,
-                )],
+            SystemdPlan {
+                unit_files: vec![support.to_string_lossy().into()],
                 ..Default::default()
             },
-            UnitGroup {
+            SystemdPlan {
                 programs: vec![sees(
                     program(
                         "second",
@@ -169,7 +191,7 @@ async fn a_failing_unit_is_recorded_and_the_run_continues() {
     let fixture = Fixture::new("failing");
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![
                 program("steady", "exec sleep 300"),
                 program("fails", "sleep 1; exit 3"),
@@ -214,7 +236,7 @@ async fn placement_and_memlock_reach_the_process() {
     limited.memlock_bytes = 1024 * 1024;
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![limited],
             ..Default::default()
         }],
@@ -234,7 +256,7 @@ async fn abandoned_units_block_admission_until_explicit_cleanup() {
     let fixture = Fixture::new("dropped");
     let (run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![program("left", "exec sleep 300")],
             ..Default::default()
         }],
@@ -283,7 +305,7 @@ async fn timed_out_start_stops_and_reports_the_attempted_writer() {
     .unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -310,7 +332,7 @@ async fn timed_out_start_stops_and_reports_the_attempted_writer() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn same_group_starts_peers_before_waiting_for_readiness() {
+async fn user_apps_start_peers_before_waiting_for_readiness() {
     // Arrange
     let fixture = Fixture::new("group-peers");
     let marker = fixture.root.join("peer-started");
@@ -328,7 +350,7 @@ async fn same_group_starts_peers_before_waiting_for_readiness() {
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![first.display().to_string(), second.display().to_string()],
             ..Default::default()
         }],
@@ -353,7 +375,7 @@ async fn adopted_stop_wait_uses_the_service_grace() {
     .unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -379,7 +401,7 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -420,7 +442,7 @@ async fn adopted_native_references_are_accepted_unchanged() {
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -440,7 +462,7 @@ async fn adopted_service_without_grace_uses_the_plan_fallback() {
     std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -483,7 +505,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
         std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
         fixture.plan(
             id,
-            vec![UnitGroup {
+            vec![SystemdPlan {
                 unit_files: vec![file.display().to_string()],
                 ..Default::default()
             }],
@@ -587,6 +609,9 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     let mut plan = fixture.plan("r1", vec![]);
     plan.1.dora = Some(DoraUnits {
         executable,
+        ..Default::default()
+    });
+    plan.0.dora = Some(workload_lifecycle::launch::DoraSettings {
         coordinator_port: ports[0],
         daemon_port: ports[1],
         graph: graph.to_string_lossy().into(),
@@ -640,7 +665,7 @@ async fn bind_mounts_show_host_paths_at_container_targets() {
     ];
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![writer],
             ..Default::default()
         }],
@@ -680,7 +705,7 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
     std::fs::write(&unit, "[Service]\nExecStart=probe-app\n").unwrap();
     let mut plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             app_units: vec![workload_systemd::AppUnit {
                 file: unit.to_string_lossy().into(),
                 binds: vec![
@@ -710,4 +735,63 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
     );
     assert!(!Path::new("/doramcap-native-app").exists());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn missing_system_recording_prevents_user_start() {
+    // Arrange
+    let fixture = Fixture::new("recording-gate");
+    let marker = fixture.root.join("user-started");
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![
+            SystemdPlan {
+                programs: vec![program("writer", "exec sleep 300")],
+                ..Default::default()
+            },
+            SystemdPlan {
+                programs: vec![sees(
+                    program(
+                        "producer",
+                        &format!("touch {}; exec sleep 300", marker.display()),
+                    ),
+                    &fixture,
+                )],
+                ..Default::default()
+            },
+        ],
+    );
+    run.readiness_seconds = 1;
+    run.recordings.push(workload_lifecycle::launch::Recording {
+        recording: fixture.root.join("missing.mcap").to_string_lossy().into(),
+        stream: String::new(),
+    });
+    // Act
+    let report = SystemdRunner::new()
+        .run(
+            run,
+            plan,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+        )
+        .await
+        .unwrap();
+    // Assert
+    assert!(report.execution_error.is_some(), "{report:#?}");
+    assert!(!marker.exists());
+    assert!(
+        report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-writer.service"))
+    );
+    assert!(
+        !report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-producer.service"))
+    );
+    assert!(report.writers_stopped, "{report:#?}");
 }
