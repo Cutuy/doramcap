@@ -43,7 +43,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     async fn start(&mut self) -> std::result::Result<(), String> {
         let run = self.run().clone();
         let readiness = Duration::from_secs(run.readiness_seconds);
-        if let Some(mut dora) = self.dora.take() {
+        if let Some(dora) = &mut self.dora {
             // Record the attempt first so stop and removal see Dora's units.
             self.groups.push(Vec::new());
             let start = async {
@@ -62,7 +62,6 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             let started = tokio::time::timeout(readiness, start)
                 .await
                 .map_err(|_| format!("Dora not ready within {readiness:?}"));
-            self.dora = Some(dora);
             started??;
         }
         for group in self.plan.groups.clone() {

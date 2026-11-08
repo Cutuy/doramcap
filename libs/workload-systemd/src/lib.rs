@@ -113,16 +113,25 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             || !Path::new(&dora.runtime_directory).is_dir()
             || !absolute(&dora.runtime_directory)
             || (!dora.graph.is_empty() && !absolute(&dora.graph))
-            || dora.coordinator_port == 0
-            || dora.daemon_port == 0
         {
             return Err("Dora needs an absolute executable, an existing absolute runtime directory, an absolute graph and both ports".into());
         }
+        let valid_port = |port| u16::try_from(port).is_ok_and(|port| port != 0);
+        if !valid_port(dora.coordinator_port)
+            || !valid_port(dora.daemon_port)
+            || dora.coordinator_port == dora.daemon_port
+        {
+            return Err("Dora ports must be distinct and in 1..=65535".into());
+        }
     }
     let mut ids = std::collections::BTreeSet::new();
+    if plan.dora.is_some() {
+        ids.extend([dora::COORDINATOR.to_owned(), dora::DAEMON.to_owned()]);
+    }
+    let reserved = |id: &str| plan.dora.is_some() && id.starts_with(dora::CLI_PREFIX);
     for group in &plan.groups {
         for program in &group.programs {
-            if !valid_id(&program.id) || !ids.insert(program.id.clone()) {
+            if !valid_id(&program.id) || reserved(&program.id) || !ids.insert(program.id.clone()) {
                 return Err(format!("invalid or duplicate program id {:?}", program.id));
             }
             if !program
@@ -148,7 +157,10 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             }
         }
         for file in &group.unit_files {
-            if !Path::new(file).is_absolute() || !ids.insert(unit_stem(file)?.to_owned()) {
+            if !Path::new(file).is_absolute()
+                || reserved(unit_stem(file)?)
+                || !ids.insert(unit_stem(file)?.to_owned())
+            {
                 return Err(format!("invalid or duplicate unit file {file:?}"));
             }
         }
@@ -184,6 +196,65 @@ mod tests {
                 await_recordings: false,
             }],
             dora: None,
+        }
+    }
+
+    fn dora_plan() -> SystemdPlan {
+        let mut plan = plan();
+        plan.dora = Some(DoraUnits {
+            executable: "/bin/true".into(),
+            runtime_directory: std::env::temp_dir().to_string_lossy().into_owned(),
+            coordinator_port: 6013,
+            daemon_port: 6014,
+            ..Default::default()
+        });
+        plan
+    }
+
+    #[test]
+    fn dora_ports_require_distinct_valid_tcp_ports() {
+        for (coordinator, daemon, accepted) in [
+            (1, 65535, true),
+            (0, 6014, false),
+            (6013, 0, false),
+            (65536, 6014, false),
+            (6013, 65536, false),
+            (6013, 6013, false),
+        ] {
+            // Arrange
+            let mut plan = dora_plan();
+            let dora = plan.dora.as_mut().unwrap();
+            dora.coordinator_port = coordinator;
+            dora.daemon_port = daemon;
+            // Act
+            let result = validate(&run(), &plan);
+            // Assert
+            assert_eq!(
+                result.is_ok(),
+                accepted,
+                "{coordinator}, {daemon}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dora_names_are_reserved_for_programs_and_adopted_units() {
+        for id in ["dora-coordinator", "dora-daemon", "dora-cli-1"] {
+            for adopted in [false, true] {
+                // Arrange
+                let mut plan = dora_plan();
+                if adopted {
+                    plan.groups[0].unit_files = vec![format!("/repo/{id}.service")];
+                } else {
+                    plan.groups[0].programs[0].id = id.into();
+                }
+                // Act / Assert
+                assert!(validate(&run(), &plan).is_err(), "{id}, adopted={adopted}");
+                // Act: without Dora these are ordinary user-owned names.
+                plan.dora = None;
+                // Assert
+                assert!(validate(&run(), &plan).is_ok());
+            }
         }
     }
 

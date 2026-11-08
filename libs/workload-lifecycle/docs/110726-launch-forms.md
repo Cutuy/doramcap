@@ -231,7 +231,7 @@ of detail: app names and profiles.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Evidence (2026-11-07, x86_64 local, systemd 255): all five `workload-systemd` native tests passed twice, using `dora-cli 1.1.0` from the local Dora image.
+Evidence (2026-11-07): focused release checks pass: eight library tests, fourteen native systemd tests (including real Dora 1.1.0, startup cancellation and hung shutdown), Clippy and formatting. Full local CI and ARM64 were not rerun for these fixes; cloud CI follows the PR push.
 
 ## Future items
 
