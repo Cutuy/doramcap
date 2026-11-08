@@ -3,7 +3,7 @@
 <desc id="desc">Console supplies shared run facts and backend launch inputs. Rust starts Dora, system apps with recording readiness, then users.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="400" fill="#f7fafc"/>
-<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<g font-family="DejaVu Sans" fill="#182b3a" text-anchor="middle">
 <text x="480" y="34" font-size="22" font-weight="600">Shared run fields</text>
 <rect x="40" y="55" width="880" height="44" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
 <text x="480" y="83" font-size="16">Console · app pbtxt · native Compose files and systemd units</text>
