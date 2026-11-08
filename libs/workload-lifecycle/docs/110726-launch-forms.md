@@ -29,6 +29,7 @@ Agreed with the owner on 2026-11-07.
 | Monitoring | Layer 1: an optional status feed from the handle. Layer 2: Fault Watchdog consumes health that apps publish in code through the reporting library. Neither ends the run. |
 | Run end | The run ends on a stop request. A failed unit or app is recorded in the `StopRecord`. |
 | systemd leftovers | Admission refuses prior owned resources. Crashes leave units and artifacts intact; `systemd_run --cleanup <repo>` performs explicit cleanup. Compose retains automatic pre-run reset. |
+| Service grace | Preserve declared stop grace; seed the runtime copy with `stop_seconds` as the fallback. Native references retain their original values. |
 | systemd shutdown | Read effective `TimeoutStopUSec` per unit and add a named reporting margin. Infinite or unreadable timeouts report incomplete shutdown; preserve artifacts and skip finalization. No extra kill. |
 | systemd evidence | Result and exit code/status are optional; missing required exit evidence makes the report unsuccessful with a diagnostic. Missing accounting is informational. |
 | Adopted references | Preserve native references without rejecting or rewriting them. They retain their host-systemd meaning. |
@@ -180,11 +181,16 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 
 **Validation**
 - [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
+- [x] Audit F1–F4: attempted starts remain reportable, peers start before readiness waits, native references are accepted, and cleanup errors propagate.
+- [x] Shutdown regressions: declared grace, plan fallback, infinite timeout preservation and optional exit evidence.
+- [x] Concurrent repositories with identical service names remain isolated during stop and explicit cleanup; a second run of the same repository is refused.
 - [x] Plan validation and strict text decoding unit tests.
 - [x] Focused Clippy, formatting and library-boundary checks.
-- [ ] ARM64 worker run.
+- [x] ARM64 workspace checks (Pueue job 592).
 
-Evidence (2026-11-07, local x86_64/systemd 255): library and native tests pass, including startup cancellation, whole-group submission, unchanged native references, filesystem cleanup errors, effective service grace, infinite timeout preservation and explicit cleanup. Focused Clippy, formatting and boundaries pass. Full CI and ARM64 validation pending.
+Evidence (2026-11-07):
+- Local x86_64/systemd 255: six library tests, all ten native scenarios and the added concurrent-repository scenario pass. Full local CI passes, including default/all-feature workspace tests and Clippy, storage without defaults, formatting, boundaries and snapshot synchronization.
+- ARM64: workspace CI passes (Pueue 592). The native systemd executable built, but sudo denied execution; the owner waived that run. GitHub CI compiles these ignored native tests but does not execute them.
 
 Spike results (2026-11-07, systemd 255, x86_64):
 

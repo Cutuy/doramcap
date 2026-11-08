@@ -445,3 +445,94 @@ async fn adopted_service_without_grace_uses_the_plan_fallback() {
     // Assert
     assert!(report.successful(), "{report:#?}");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn concurrent_repositories_keep_units_and_cleanup_separate() {
+    // Arrange: identical service names under different repository roots.
+    let first = Fixture::new("isolation-first");
+    let second = Fixture::new("isolation-second");
+    let make_plan = |fixture: &Fixture, id: &str| {
+        let file = fixture.repo().join("isolated.service");
+        std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
+        fixture.plan(
+            id,
+            vec![UnitGroup {
+                unit_files: vec![file.display().to_string()],
+                ..Default::default()
+            }],
+        )
+    };
+    let (first_run, first_plan) = make_plan(&first, "r1");
+    let (second_run, second_plan) = make_plan(&second, "r1");
+    let (duplicate_run, duplicate_plan) = make_plan(&second, "r2");
+    let (first_ready, first_readiness) = oneshot::channel();
+    let (second_ready, second_readiness) = oneshot::channel();
+    let (first_stop, first_stopping) = oneshot::channel();
+    let (second_stop, second_stopping) = oneshot::channel();
+    let (first_done, first_completion) = oneshot::channel();
+    let mut first_runner = SystemdRunner::new();
+    let mut second_runner = SystemdRunner::new();
+    // Act
+    let first_task = async {
+        let report = first_runner
+            .run(
+                first_run,
+                first_plan,
+                async {
+                    let _ = first_stopping.await;
+                },
+                |_: &orchestrator::Event| {},
+                Some(first_ready),
+            )
+            .await
+            .unwrap();
+        assert!(report.successful(), "{report:#?}");
+        first_done.send(()).unwrap();
+        report
+    };
+    let second_task = second_runner.run(
+        second_run,
+        second_plan,
+        async {
+            let _ = second_stopping.await;
+        },
+        |_: &orchestrator::Event| {},
+        Some(second_ready),
+    );
+    let control = async {
+        first_readiness.await.unwrap();
+        second_readiness.await.unwrap();
+        // Assert: different repositories run together; the same repository stays locked.
+        assert_eq!(active("doramcap-*-isolated.service").lines().count(), 2);
+        let duplicate = SystemdRunner::new()
+            .run(
+                duplicate_run,
+                duplicate_plan,
+                std::future::pending(),
+                |_: &orchestrator::Event| {},
+                None,
+            )
+            .await;
+        assert!(
+            duplicate
+                .unwrap_err()
+                .contains("another run owns this repository")
+        );
+        // Act: stop and explicitly clean only the first repository.
+        first_stop.send(()).unwrap();
+        first_completion.await.unwrap();
+        SystemdRunner::new().cleanup(&first.repo()).await.unwrap();
+        // Assert: the other repository's identically named service keeps running.
+        let remaining = active("doramcap-*-isolated.service");
+        assert_eq!(remaining.lines().count(), 1, "{remaining}");
+        assert!(remaining.contains("running"), "{remaining}");
+        // Act
+        second_stop.send(()).unwrap();
+    };
+    let (_, second_report, ()) = tokio::join!(first_task, second_task, control);
+    // Assert
+    let second_report = second_report.unwrap();
+    assert!(second_report.successful(), "{second_report:#?}");
+    assert!(active("doramcap-*-isolated.service").trim().is_empty());
+}
