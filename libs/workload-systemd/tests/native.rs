@@ -42,19 +42,18 @@ impl Fixture {
                 shared
                     .system_apps
                     .extend(phase.programs.iter().map(|app| app.id.clone()));
-                shared.system_apps.extend(
-                    phase
-                        .unit_files
-                        .iter()
-                        .chain(phase.app_units.iter().map(|app| &app.file))
-                        .map(|file| {
-                            Path::new(file)
-                                .file_stem()
-                                .unwrap()
-                                .to_string_lossy()
-                                .into_owned()
-                        }),
-                );
+                shared
+                    .system_apps
+                    .extend(phase.unit_files.iter().map(|file| {
+                        Path::new(file)
+                            .file_stem()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned()
+                    }));
+                shared
+                    .system_apps
+                    .extend(phase.app_units.iter().map(|app| app.id.clone()));
             }
             plan.programs.extend(phase.programs);
             plan.unit_files.extend(phase.unit_files);
@@ -737,6 +736,7 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
             });
         }
         plan.1.app_units.push(workload_systemd::AppUnit {
+            id: format!("dora-{role}"),
             file: file.to_string_lossy().into(),
             binds,
         });
@@ -819,6 +819,7 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
         "r1",
         vec![SystemdPlan {
             app_units: vec![workload_systemd::AppUnit {
+                id: "capture".into(),
                 file: unit.to_string_lossy().into(),
                 binds: vec![
                     Bind {
@@ -837,10 +838,17 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
         }],
     );
     plan.1.binaries = binaries.to_string_lossy().into();
+    plan.0.system_apps = vec!["capture".into()];
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
+    assert!(
+        report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-capture.service"))
+    );
     assert_eq!(
         std::fs::read_to_string(results.join("seen")).unwrap(),
         "rate: 5\n"

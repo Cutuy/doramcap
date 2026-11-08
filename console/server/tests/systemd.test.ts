@@ -45,6 +45,7 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     assert.deepEqual(plan.systemd!.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
     const unit = (id: string) => plan.systemd!.appUnits!.find((app) => app.file === join(systemApps, id, `${id}.service`))!;
     assert.equal(plan.systemd!.binaries, '/opt/doramcap/bin');
+    assert.equal(unit('cpu-monitor').id, 'cpu-monitor');
     assert.deepEqual(unit('cpu-monitor').binds!.map(({ source, target, readOnly }) => [source, target, readOnly]), [
       [join(systemApps, 'cpu-monitor/monitor.pbtxt'), '/config/monitor.pbtxt', true],
       [artifacts, '/results', false],
@@ -71,4 +72,28 @@ test('systemd needs absolute binaries and a unit file for every selected app', a
     systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.apps, graph: '' }),
     /needs a unit file/,
   );
+});
+
+test('systemd launch inputs preserve manifest IDs independently of native filenames', async () => {
+  // Arrange
+  const directory = await mkdtemp(join(tmpdir(), 'console-systemd-ids-'));
+  const project = join(directory, 'project'), apps = join(directory, 'apps');
+  await mkdir(project);
+  await mkdir(apps);
+  await writeFile(join(apps, 'app.pbtxt'), 'id:"capture" compose { files:"compose.yaml" } systemd { unit:"worker.service" }');
+  await writeFile(join(apps, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
+  try {
+    const config = releaseConfig(capabilities.parseConfig('form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"app.pbtxt"}'), project, apps, '/state');
+    // Act
+    const request = await systemdPlan(config, {
+      id: 'r1', project, artifacts: '/state/r1', workspace: directory,
+      stage: 'test', apps: selectApps(config.apps, ['capture']), graph: '',
+    });
+    // Assert
+    assert.deepEqual(request.run!.systemApps, ['capture']);
+    assert.equal(request.systemd!.appUnits![0].id, 'capture');
+    assert.equal(request.systemd!.appUnits![0].file, join(apps, 'worker.service'));
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

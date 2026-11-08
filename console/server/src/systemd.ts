@@ -56,6 +56,7 @@ function appUnit(app: SelectedApp, run: SystemdRun) {
   const config = app.profile?.config ?? (app.liveRelay ? run.relaySettings : undefined);
   if (target && !config) throw new Error(`${app.id}: nothing to show at ${target}`);
   return {
+    id: app.id!,
     file: app.systemd.unit,
     binds: [
       ...(target ? [{ source: config, target, readOnly: true }] : []),

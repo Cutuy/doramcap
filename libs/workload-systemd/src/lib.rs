@@ -152,13 +152,27 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             resource_policy::CpuSet::parse(&program.cpus).map_err(error)?;
         }
     }
-    let apps = plan.app_units.iter().map(|app| &app.file);
-    for file in plan.unit_files.iter().chain(apps) {
+    for file in &plan.unit_files {
         if !Path::new(file).is_absolute()
             || reserved(unit_stem(file)?)
             || !ids.insert(unit_stem(file)?.to_owned())
         {
             return Err(format!("invalid or duplicate unit file {file:?}"));
+        }
+    }
+    for app in &plan.app_units {
+        if !valid_id(&app.id) || reserved(&app.id) || !ids.insert(app.id.clone()) {
+            return Err(format!("invalid or duplicate app id {:?}", app.id));
+        }
+        if !Path::new(&app.file).is_absolute()
+            || Path::new(&app.file)
+                .extension()
+                .is_none_or(|extension| extension != "service")
+        {
+            return Err(format!(
+                "app unit file must be an absolute .service path: {:?}",
+                app.file
+            ));
         }
     }
     if !plan.app_units.is_empty() && !plain_path(&plan.binaries) {
@@ -181,13 +195,10 @@ fn app_ids(plan: &SystemdPlan) -> Result<Vec<String>> {
         .iter()
         .map(|program| program.id.clone())
         .collect();
-    for file in plan
-        .unit_files
-        .iter()
-        .chain(plan.app_units.iter().map(|app| &app.file))
-    {
+    for file in &plan.unit_files {
         ids.push(unit_stem(file)?.to_owned());
     }
+    ids.extend(plan.app_units.iter().map(|app| app.id.clone()));
     Ok(ids)
 }
 
@@ -210,7 +221,7 @@ fn phase(run: &RunPlan, plan: &SystemdPlan, role: workload_lifecycle::plan::Phas
         app_units: plan
             .app_units
             .iter()
-            .filter(|app| selected(unit_stem(&app.file).expect("validated unit")))
+            .filter(|app| selected(&app.id))
             .cloned()
             .collect(),
         ..Default::default()
@@ -273,7 +284,8 @@ mod tests {
         };
         let plan = SystemdPlan {
             app_units: vec![AppUnit {
-                file: "/apps/capture.service".into(),
+                id: "capture".into(),
+                file: "/apps/worker.service".into(),
                 binds: vec![],
             }],
             binaries: "/bin".into(),
@@ -288,6 +300,47 @@ mod tests {
         assert_eq!(app_ids(&users).unwrap(), ["perception"]);
         // Act / Assert: old configurable phases are rejected by the text parser.
         assert!(parse_plan("groups { await_recordings: true }").is_err());
+    }
+
+    #[test]
+    fn app_ids_are_unique_across_launch_kinds_and_keep_native_filenames_independent() {
+        // Arrange
+        let mut run = run();
+        run.system_apps = vec!["capture".into(), "observer".into()];
+        let mut plan = SystemdPlan {
+            binaries: "/bin".into(),
+            app_units: ["capture", "observer"]
+                .into_iter()
+                .map(|id| AppUnit {
+                    id: id.into(),
+                    file: format!("/apps/{id}/worker.service"),
+                    binds: vec![],
+                })
+                .collect(),
+            ..plan()
+        };
+        // Act / Assert: identical native basenames have independent app identities.
+        assert!(validate(&run, &plan).is_ok());
+        for id in ["", "Uppercase", "monitor", "perception", "observer"] {
+            // Act / Assert: empty, invalid and colliding app IDs fail before launch.
+            plan.app_units[0].id = id.into();
+            assert!(
+                validate(
+                    &RunPlan {
+                        system_apps: vec![],
+                        ..run.clone()
+                    },
+                    &plan
+                )
+                .is_err(),
+                "{id:?}"
+            );
+        }
+        // Act / Assert: workflow-owned control names remain reserved.
+        plan.app_units[0].id = "dora-cli-1".into();
+        run.system_apps.clear();
+        run.dora_apps = vec!["observer".into()];
+        assert!(validate(&run, &plan).is_err());
     }
 
     #[test]

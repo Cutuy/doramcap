@@ -10,7 +10,9 @@ message SystemdPlan {
 }
 
 message AppUnit {
-  // Absolute unit file; its name without `.service` is the app ID.
+  // Manifest app ID, unique within the run: 1..40 of [a-z0-9-].
+  string id = 3;
+  // Absolute unit file, loaded under the app ID.
   string file = 1;
   repeated Bind binds = 2;
 }

@@ -229,9 +229,13 @@ impl Manager {
         let mut names = Vec::new();
         let mut copies = Vec::new();
         let user = files.iter().map(|file| (file, None));
-        let apps = apps.iter().map(|app| (&app.file, Some(&app.binds)));
-        for (file, binds) in user.chain(apps) {
-            let name = scope.unit(crate::unit_stem(file)?);
+        let apps = apps.iter().map(|app| (&app.file, Some(app)));
+        for (file, app) in user.chain(apps) {
+            let id = match app {
+                Some(app) => app.id.as_str(),
+                None => crate::unit_stem(file)?,
+            };
+            let name = scope.unit(id);
             let copy = units.join(&name);
             // Earlier defaults yield to any stop grace declared by the source unit.
             let mut contents = format!("[Service]\nTimeoutStopSec={stop_seconds}s\n").into_bytes();
@@ -241,8 +245,8 @@ impl Manager {
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
             let mut run = format!("[Service]\nSlice={}\n", scope.slice);
-            if let Some(binds) = binds {
-                run.push_str(&app_root(scope, &name, binds, binaries).await?);
+            if let Some(app) = app {
+                run.push_str(&app_root(scope, &name, &app.binds, binaries).await?);
             }
             tokio::fs::write(drop_in.join(SLICE_DROP_IN), run)
                 .await
