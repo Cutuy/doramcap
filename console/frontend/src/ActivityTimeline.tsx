@@ -1,4 +1,5 @@
 import { StepState } from './api';
+import { Select } from './ui/Select';
 import { useId, useMemo, useState } from 'react';
 import type { Step } from './api';
 import { elapsedDuration, shortStep, stepTimes, stepKey } from './workflow';
@@ -43,7 +44,7 @@ export function ActivityTimeline({ steps, now, live = true }: { steps: Step[]; n
     return [{ step, start: Math.max(start, times.start), end: Math.min(right, end) }];
   });
   return <section className="panel activity-panel" aria-labelledby="activity-title" onClickCapture={holdSelection} onChangeCapture={holdSelection}>
-    <div className="panel-heading activity-heading"><div><h2 id="activity-title">Activity timeline</h2></div><div className="timeline-controls"><label htmlFor="timeline-window">Window</label><select id="timeline-window" value={windowSeconds} onChange={event => setWindowSeconds(Number(event.target.value))}><option value={5}>5 s</option><option value={15}>15 s</option><option value={30}>30 s</option><option value={60}>60 s</option></select><button className="button secondary timeline-toggle" onClick={() => setPaused(paused ? null : { now, steps: [...steps] })}>{paused ? (live ? 'Follow live' : 'Latest events') : (live ? 'Pause' : 'Browse events')}</button></div></div>
+    <div className="panel-heading activity-heading"><div><h2 id="activity-title">Activity timeline</h2></div><div className="timeline-controls"><label htmlFor="timeline-window">Window</label><Select id="timeline-window" value={windowSeconds} onChange={seconds => { holdSelection(); setWindowSeconds(seconds); }} options={[5, 15, 30, 60].map(value => ({ value, label: `${value} s` }))}/><button className="button secondary timeline-toggle" onClick={() => setPaused(paused ? null : { now, steps: [...steps] })}>{paused ? (live ? 'Follow live' : 'Latest events') : (live ? 'Pause' : 'Browse events')}</button></div></div>
     <div className="activity-scroll"><svg className="activity-timeline" viewBox={`0 0 ${svgWidth} ${svgHeight}`} onClick={event => {
       const box = event.currentTarget.getBoundingClientRect();
       const plotX = (event.clientX - box.left) * svgWidth / box.width;

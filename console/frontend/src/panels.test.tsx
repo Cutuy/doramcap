@@ -215,9 +215,9 @@ test('system apps offer a profile picker only when an app has several profiles',
   const none = renderToStaticMarkup(<SystemApps apps={single} busy={false} toggle={() => {}} chooseProfile={() => {}}/>);
   // Assert
   assert.match(html, /aria-label="Monitor profile"/);
-  assert.match(html, /<option value="live" selected="">Live only<\/option>/);
-  assert.match(disabled, /<select[^>]*disabled=""/);
-  assert.doesNotMatch(none, /<select/);
+  assert.match(html, /role="combobox"[^>]*aria-expanded="false"[^>]*><span>Live only<\/span>/);
+  assert.match(disabled, /role="combobox"[^>]*disabled=""/);
+  assert.doesNotMatch(none, /role="combobox"/);
   assert.deepEqual(selectedProfiles([...apps, wire.SystemApp.fromObject({ id: 'other', selected: true })]), { monitor: 'live' });
   assert.deepEqual(selectedProfiles(off), {});
 });
