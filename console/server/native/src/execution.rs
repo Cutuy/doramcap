@@ -135,7 +135,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         .ok_or("InvalidInput".to_string())
         .and_then(launch);
     let (spec, expected) = match (launch, request.backend) {
-        (Ok(Launch::Compose(spec)), Some(start_request::Backend::Expected(expected))) => {
+        (Ok(Launch::Compose(spec)), Some(start_request::Backend::ComposeExpected(expected))) => {
             (spec, expected)
         }
         (
@@ -493,11 +493,11 @@ fn unit_exit(unit: workload_systemd::UnitExit) -> Option<workload_docker::compos
     const SIGKILL: i32 = 9;
     let code = unit.exec_main_code?;
     let status = unit.exec_main_status?;
-    let result = unit.result?;
+    let result = unit.result.as_ref()?;
     let signalled = code != 0 && code != CLD_EXITED;
     let oom_killed = result == "oom-kill";
     Some(workload_docker::compose::ServiceExit {
-        service: unit.id,
+        service: unit.id().to_owned(),
         exit_code: if signalled {
             SIGNAL_EXIT_BASE + status
         } else {
@@ -612,7 +612,7 @@ mod tests {
                     }),
                     backend: Some(run_request::Backend::Compose(Default::default())),
                 }),
-                backend: Some(start_request::Backend::Expected(Default::default())),
+                backend: Some(start_request::Backend::ComposeExpected(Default::default())),
             };
 
             // Act: stop after Docker accepts the connection but before it responds.
@@ -656,7 +656,7 @@ mod tests {
                 ),
                 (
                     run_request::Backend::Systemd(Default::default()),
-                    start_request::Backend::Expected(Default::default()),
+                    start_request::Backend::ComposeExpected(Default::default()),
                 ),
             ] {
                 for expected in [None, Some(wrong)] {
@@ -747,7 +747,6 @@ mod tests {
             cleanup_verified: true,
             diagnostics: vec!["worker: required exit evidence unavailable".into()],
             units: vec![workload_systemd::UnitExit {
-                id: "worker".into(),
                 unit: "doramcap-scope-worker.service".into(),
                 result: None,
                 exec_main_code: None,
@@ -773,8 +772,7 @@ mod tests {
     fn systemd_known_exit_status_preserves_the_app_identity() {
         // Arrange
         let unit = workload_systemd::UnitExit {
-            id: "worker".into(),
-            unit: "doramcap-scope-worker.service".into(),
+            unit: "doramcap-scope-worker-recorder.service".into(),
             result: Some("exit-code".into()),
             exec_main_code: Some(1),
             exec_main_status: Some(7),
@@ -784,7 +782,7 @@ mod tests {
         // Act
         let exit = unit_exit(unit).unwrap();
         // Assert
-        assert_eq!(exit.service, "worker");
+        assert_eq!(exit.service, "worker-recorder");
         assert_eq!(exit.exit_code, 7);
         assert!(!exit.oom_killed);
         assert!(!exit.killed);

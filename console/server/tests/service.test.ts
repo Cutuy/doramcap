@@ -32,7 +32,7 @@ class Engine implements NativeExecution {
       return execution.Inspection.create({ systemdSnapshot: { sha256: 'approved-systemd' } });
     return execution.Inspection.create({
       plan: { services: { worker: { imageId: 'sha256:approved' } } },
-      snapshot: { manifestSha256: 'approved' },
+      composeSnapshot: { manifestSha256: 'approved' },
     });
   }
   start(request: Parameters<NativeExecution['start']>[0]) {
@@ -126,7 +126,7 @@ test('systemd Start carries its Review snapshot and rediscovers current unit fil
 
     // Assert: fresh native inputs and the original backend snapshot reach admission together.
     assert.equal(engine.started!.systemdExpected!.sha256, 'approved-systemd');
-    assert.equal(engine.started!.expected, null);
+    assert.equal(engine.started!.composeExpected, null);
     assert.deepEqual(engine.started!.run!.systemd!.unitFiles, [added, first]);
     engine.release!();
     await starting;
@@ -150,6 +150,8 @@ test('duplicate Start requests join one execution and preserve independent compl
     // Assert
     assert.equal(first, retry);
     assert.equal(engine.starts, 1);
+    assert.equal(engine.started!.composeExpected!.manifestSha256, 'approved');
+    assert.equal(engine.started!.systemdExpected, null);
     // Act
     engine.release!();
     await first;

@@ -5,12 +5,12 @@ export function checkNativeTypes(engine: NativeExecution, native: NativeCapabili
   // Arrange
   const profiles = execution.ComposeProfilesRequest.create();
   const run = execution.RunRequest.create({ compose: composePlan.ComposePlan.create() });
-  const expected = compose.ConfigurationSnapshot.create();
+  const composeExpected = compose.ConfigurationSnapshot.create();
 
   // Act / Assert: generated inputs and results remain typed through the native client.
   const names: Promise<InstanceType<typeof execution.ComposeProfiles>> = engine.composeProfiles(profiles);
   const inspected: Promise<InstanceType<typeof execution.Inspection>> = engine.inspect(run);
-  const accepted: Promise<void> = engine.start(execution.StartRequest.create({ run, expected }));
+  const accepted: Promise<void> = engine.start(execution.StartRequest.create({ run, composeExpected }));
   const update: InstanceType<typeof execution.ExecutionUpdate> = engine.poll();
   const config: InstanceType<typeof wire.ConsoleConfig> = native.parseConfig('');
   void [names, inspected, accepted, update, config];

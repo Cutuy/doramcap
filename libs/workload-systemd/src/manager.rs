@@ -488,22 +488,12 @@ fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
 
 /// Quote one approved environment assignment using systemd.syntax C escapes and literal specifiers.
 fn environment_line(variable: &crate::EnvironmentVariable) -> Result<String> {
-    use std::fmt::Write as _;
-    let mut line = String::from("Environment=\"");
-    for character in format!("{}={}", variable.name, variable.value).chars() {
-        match character {
-            '\0' => return Err("Dora environment values cannot contain NUL".into()),
-            '%' => line.push_str("%%"),
-            '\\' => line.push_str("\\\\"),
-            '"' => line.push_str("\\\""),
-            character if character.is_ascii_control() => {
-                write!(&mut line, "\\x{:02x}", character as u32).expect("write to string")
-            }
-            character => line.push(character),
-        }
+    let assignment = format!("{}={}", variable.name, variable.value);
+    if assignment.contains('\0') {
+        return Err("Dora environment values cannot contain NUL".into());
     }
-    line.push_str("\"\n");
-    Ok(line)
+    // Byte escapes preserve UTF-8 and use systemd's supported C escape forms.
+    Ok(format!("Environment=\"{}\"\n", assignment.as_bytes().escape_ascii()).replace('%', "%%"))
 }
 
 /// Transient service properties for one program.
@@ -694,6 +684,73 @@ mod tests {
         let mask = super::cpu_mask(&ids);
         // Assert
         assert_eq!(mask, [0b0000_0101, 0b0000_0010]);
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires root and the system service manager"]
+    async fn adopted_environment_round_trips_through_systemd() {
+        // Arrange: exercise every non-NUL ASCII byte and multibyte UTF-8.
+        let root = std::env::temp_dir().join(format!("systemd-environment-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let source = root.join("escape.service");
+        std::fs::write(&source, "[Service]\nExecStart=/bin/true\n").unwrap();
+        let scope = Scope::of(&root).unwrap();
+        let manager = Manager::connect().await.unwrap();
+        let overlay = format!(
+            "/{} café/雪/🦀",
+            (1u8..=127).map(char::from).collect::<String>()
+        );
+        let runtime = workload_lifecycle::launch::DoraRuntime {
+            daemon_port: 12345,
+            zenoh: Some(workload_lifecycle::launch::ResolvedFileBinding {
+                source: overlay.clone(),
+                target: "/config/zenoh.json5".into(),
+            }),
+            ..Default::default()
+        };
+
+        // Act: ask the real service manager to parse the adopted unit and drop-in.
+        let observed: Result<Vec<String>> = async {
+            let names = manager
+                .adopt(
+                    &scope,
+                    &[source.display().to_string()],
+                    &[],
+                    "",
+                    5,
+                    Some(&runtime),
+                )
+                .await?;
+            manager
+                .watch(&names[0])
+                .await?
+                .service
+                .environment()
+                .await
+                .map_err(error)
+        }
+        .await;
+        let cleanup = manager.reset(&scope).await;
+
+        // Assert: no byte changed, no assignment was injected, and no unit remains.
+        assert!(cleanup.unwrap().is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir(&scope.directory).unwrap();
+        let mut observed = observed.unwrap();
+        observed.sort();
+        assert_eq!(
+            observed,
+            vec![
+                "DORA_DAEMON_LOCAL_LISTEN_PORT=12345".to_owned(),
+                "DORA_NODE_ID=escape".to_owned(),
+                format!("DORA_ZENOH_CONFIG_OVERLAY={overlay}"),
+            ]
+        );
     }
 }
 

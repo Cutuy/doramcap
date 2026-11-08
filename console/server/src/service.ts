@@ -247,7 +247,7 @@ export class ConsoleService implements ConsoleBackend {
         apps,
         workspace,
         admission: execution.StartRequest.create({
-          expected: inspected.snapshot,
+          composeExpected: inspected.composeSnapshot,
           systemdExpected: inspected.systemdSnapshot,
         }),
       };

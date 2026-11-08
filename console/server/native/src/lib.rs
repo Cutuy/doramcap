@@ -261,7 +261,9 @@ impl Execution {
                         .await;
                     Ok(protocol::Inspection {
                         plan: Some(resolved.plan),
-                        backend: Some(protocol::inspection::Backend::Snapshot(resolved.snapshot)),
+                        backend: Some(protocol::inspection::Backend::ComposeSnapshot(
+                            resolved.snapshot,
+                        )),
                         machine: Some(machine),
                     }
                     .encode_to_vec())

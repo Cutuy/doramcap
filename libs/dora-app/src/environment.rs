@@ -1,9 +1,9 @@
-//! Approved environment bridge for Compose-owned Dora apps.
+//! Approved environment bridge for Compose- and systemd-owned Dora apps.
 //! Environment-based configuration is highly discouraged. Every new input or
 //! extension of this contract requires the user's explicit approval.
 use std::{io::Write, os::unix::fs::OpenOptionsExt};
 
-/// Native graph identity; Compose supplies the service name unless overridden.
+/// Native graph identity; the launch backend supplies the app ID unless overridden.
 pub const NODE_ID: &str = "DORA_NODE_ID";
 /// Native Dora daemon port on localhost.
 pub const DAEMON_PORT: &str = "DORA_DAEMON_LOCAL_LISTEN_PORT";

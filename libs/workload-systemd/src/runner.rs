@@ -10,8 +10,6 @@ use workload_lifecycle::recording::{FinalizeRecordings, Recording, WaitForRecord
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UnitExit {
     pub unit: String,
-    /// Program ID or adopted unit stem: the unit name without its repository prefix.
-    pub id: String,
     /// systemd's `Result`, such as `success`, `exit-code`, `signal` or `timeout`.
     pub result: Option<String>,
     /// `CLD_*` code of the main process; zero when it never ran.
@@ -21,6 +19,15 @@ pub struct UnitExit {
     pub memory_peak_bytes: Option<u64>,
 }
 impl UnitExit {
+    /// Program ID or adopted unit stem, derived from the owned unit name.
+    pub fn id(&self) -> &str {
+        self.unit
+            .strip_suffix(".service")
+            .and_then(|name| name.strip_prefix("doramcap-"))
+            .and_then(|name| name.split_once('-'))
+            .map_or(self.unit.as_str(), |(_, id)| id)
+    }
+
     fn complete(&self) -> bool {
         self.result.is_some() && self.exec_main_code.is_some() && self.exec_main_status.is_some()
     }
@@ -28,16 +35,8 @@ impl UnitExit {
         let service = &unit.service;
         // systemd reports unavailable accounting as u64::MAX.
         let known = |value: zbus::Result<u64>| value.ok().filter(|value| *value != u64::MAX);
-        // Names are `doramcap-<scope>-<id>.service`.
-        let id = unit
-            .name
-            .strip_suffix(".service")
-            .and_then(|name| name.splitn(3, '-').nth(2))
-            .unwrap_or_default()
-            .to_owned();
         Self {
             unit: unit.name.clone(),
-            id,
             result: service.result().await.ok(),
             exec_main_code: service.exec_main_code().await.ok(),
             exec_main_status: service.exec_main_status().await.ok(),

@@ -18,7 +18,7 @@ message RunRequest {
 message Inspection {
   doramcap.compose.v1.ResolvedComposeProject plan = 1;
   oneof backend {
-    doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;
+    doramcap.compose.v1.ConfigurationSnapshot compose_snapshot = 2;
     doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_snapshot = 4;
   }
   doramcap.system_config.v1.MachineState machine = 3;
@@ -40,7 +40,7 @@ message StartRequest {
   RunRequest run = 1;
   // Review fingerprint for the run's backend; required before admission.
   oneof backend {
-    doramcap.compose.v1.ConfigurationSnapshot expected = 2;
+    doramcap.compose.v1.ConfigurationSnapshot compose_expected = 2;
     doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_expected = 3;
   }
 }

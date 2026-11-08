@@ -267,7 +267,7 @@ test('native Start preserves a budget rejection and publishes its terminal facts
   try {
     // Act
     let rejection: Error | undefined;
-    await assert.rejects(owner.start(execution.StartRequest.create({ run: request, expected: compose.ConfigurationSnapshot.create() })), (error: Error) => {
+    await assert.rejects(owner.start(execution.StartRequest.create({ run: request, composeExpected: compose.ConfigurationSnapshot.create() })), (error: Error) => {
       rejection = error;
       return /readiness_seconds/.test(error.message);
     });
