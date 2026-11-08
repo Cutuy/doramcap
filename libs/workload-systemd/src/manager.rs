@@ -145,7 +145,12 @@ impl Manager {
 
     /// Link copies of repository unit files into the runtime unit directory and
     /// place each in the scope's slice. Call [`Self::start_adopted`] after this.
-    pub async fn adopt(&self, scope: &Scope, files: &[String]) -> Result<Vec<String>> {
+    pub async fn adopt(
+        &self,
+        scope: &Scope,
+        files: &[String],
+        stop_seconds: u64,
+    ) -> Result<Vec<String>> {
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut names = Vec::new();
@@ -153,7 +158,10 @@ impl Manager {
         for file in files {
             let name = scope.unit(crate::unit_stem(file)?);
             let copy = units.join(&name);
-            tokio::fs::copy(file, &copy).await.map_err(error)?;
+            // Earlier defaults yield to any stop grace declared by the source unit.
+            let mut contents = format!("[Service]\nTimeoutStopSec={stop_seconds}s\n").into_bytes();
+            contents.extend(tokio::fs::read(file).await.map_err(error)?);
+            tokio::fs::write(&copy, contents).await.map_err(error)?;
             let drop_in =
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;

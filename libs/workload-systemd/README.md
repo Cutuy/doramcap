@@ -2,7 +2,7 @@
 
 Run one experiment's apps as owned systemd units in a per-repository slice, controlled
 over D-Bus. Groups start in order and stop in reverse; repository `.service` files are
-adopted unchanged, including native references. A failed unit is recorded and the run continues until stop.
+adopted with native references preserved. Declared stop grace takes precedence over the plan fallback. A failed unit is recorded and the run continues until stop.
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
 

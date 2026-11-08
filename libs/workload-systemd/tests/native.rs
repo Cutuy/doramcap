@@ -404,3 +404,44 @@ async fn adopted_native_references_are_accepted_unchanged() {
     assert!(report.successful(), "{report:#?}");
     assert_eq!(std::fs::read_to_string(file).unwrap(), contents);
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn adopted_service_without_grace_uses_the_plan_fallback() {
+    // Arrange
+    let fixture = Fixture::new("fallback-grace");
+    let file = fixture.repo().join("fallback.service");
+    std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![file.display().to_string()],
+            ..Default::default()
+        }],
+    );
+    run.stop_seconds = 1;
+    let (ready, readiness) = oneshot::channel();
+    let stop = async {
+        readiness.await.unwrap();
+        // Act: read the running service's effective timeout from systemd.
+        let output = Command::new("systemctl")
+            .args([
+                "show",
+                "--value",
+                "--property=TimeoutStopUSec",
+                "doramcap-*-fallback.service",
+            ])
+            .output()
+            .unwrap();
+        // Assert
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), "1s");
+    };
+    // Act
+    let report = SystemdRunner::new()
+        .run(run, plan, stop, |_: &orchestrator::Event| {}, Some(ready))
+        .await
+        .unwrap();
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+}

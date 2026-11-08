@@ -45,7 +45,10 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         for group in self.plan.groups.clone() {
             self.groups.push(Vec::new());
             let start = async {
-                let names = self.manager.adopt(&self.scope, &group.unit_files).await?;
+                let names = self
+                    .manager
+                    .adopt(&self.scope, &group.unit_files, run.stop_seconds)
+                    .await?;
                 // Keep every attempted unit before submitting any cancellable start.
                 let units = self.groups.last_mut().unwrap();
                 for program in &group.programs {
