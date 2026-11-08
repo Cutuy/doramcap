@@ -28,6 +28,8 @@ const DEFAULT_SEARCH_PATH: [&str; 6] = [
 ];
 /// Scope subdirectory holding each generated unit's private root.
 const ROOTS: &str = "roots";
+/// Plain runtime source names beside an app root; normal root cleanup removes these links.
+const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
 /// Drop-in placing an adopted unit in the run slice.
 const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
@@ -600,13 +602,20 @@ async fn app_root(
         system.join(" "),
         DEFAULT_SEARCH_PATH.join(":"),
     );
-    for bind in binds {
-        let kind = if bind.read_only {
-            "BindReadOnlyPaths"
+    for (index, bind) in binds.iter().enumerate() {
+        let (kind, source) = if bind.read_only {
+            // Captured paths may contain any host filename character; unit syntax sees plain aliases.
+            let sources = root.with_file_name(format!("{name}{BIND_SOURCES_SUFFIX}"));
+            tokio::fs::create_dir_all(&sources).await.map_err(error)?;
+            let source = sources.join(index.to_string());
+            tokio::fs::symlink(&bind.source, &source)
+                .await
+                .map_err(error)?;
+            ("BindReadOnlyPaths", source.to_string_lossy().into_owned())
         } else {
-            "BindPaths"
+            ("BindPaths", bind.source.clone())
         };
-        lines.push_str(&format!("{kind}={}:{}\n", bind.source, bind.target));
+        lines.push_str(&format!("{kind}={source}:{}\n", bind.target));
     }
     Ok(lines)
 }

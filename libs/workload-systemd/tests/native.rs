@@ -860,6 +860,16 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
     );
     plan.1.binaries = binaries.to_string_lossy().into();
     plan.0.system_apps = vec!["capture".into()];
+    // Runtime capture preserves artifact roots requiring native unit-file escaping.
+    plan.0.artifacts = fixture
+        .root
+        .join(concat!(
+            r#"artifact space:slash\quote"percent%n"#,
+            "\n\tend"
+        ))
+        .to_string_lossy()
+        .into();
+    let artifacts = PathBuf::from(&plan.0.artifacts);
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
@@ -876,6 +886,18 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
     );
     assert!(!Path::new("/doramcap-native-app").exists());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+    // Cleanup unlinks runtime aliases and keeps their captured artifact targets.
+    fn contains_config(directory: &Path) -> bool {
+        std::fs::read_dir(directory).unwrap().any(|entry| {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                contains_config(&path)
+            } else {
+                std::fs::read(path).unwrap() == b"rate: 5\n"
+            }
+        })
+    }
+    assert!(contains_config(&artifacts));
 }
 
 #[tokio::test(flavor = "current_thread")]
