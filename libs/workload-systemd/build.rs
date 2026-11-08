@@ -6,6 +6,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .file_descriptor_set_path(out.join("systemd_plan.bin"))
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .type_attribute(
+            ".doramcap.systemd_plan.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .compile_protos(
             &[
                 "proto/systemd_plan.proto",

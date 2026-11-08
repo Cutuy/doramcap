@@ -1,5 +1,9 @@
 //! Inspect explicit configuration inputs and launch the captured bytes after preflight.
-use crate::{ConfigurationSnapshot, Result, RunPlan, SystemdPlan, error};
+use crate::{
+    ConfigurationSnapshot, DiscardedRun, PreparationInput, PreparedRun, Result, RunPlan,
+    SystemdPlan, error,
+};
+use orchestrator::{LocalExecutor, Step};
 use prost::Message;
 use sha2::{Digest, Sha256};
 use std::{
@@ -22,11 +26,95 @@ const PRIVATE_FILE_MODE: u32 = 0o600;
 /// One sequential capture's temporary file within the new private input directory.
 const CAPTURE_FILE: &str = ".capture";
 
-/// Synchronously validate structure and fingerprint unit, graph and read-only regular-file inputs.
-/// Performs no writes or systemd calls; live directories, writable binds and binaries stay native.
-/// Callers rediscover project units before inspecting or executing; runtime readiness is checked at launch.
-pub fn inspect(run: &RunPlan, plan: &SystemdPlan) -> Result<ConfigurationSnapshot> {
-    Ok(capture(run.clone(), plan.clone(), None)?.snapshot)
+/// Fingerprint explicit configuration through `InspectRun`, with blocking I/O off the caller's task.
+/// Performs no writes or systemd calls; callers rediscover project units before inspection and Start.
+/// Register `InspectRun` on an existing executor to supply an observer and retain invocation lineage.
+pub async fn inspect(run: &RunPlan, plan: &SystemdPlan) -> Result<ConfigurationSnapshot> {
+    let mut executor = LocalExecutor::default();
+    executor.register::<InspectRun>(|| InspectRun);
+    executor
+        .run::<InspectRun>(PreparationInput {
+            run: Some(run.clone()),
+            plan: Some(plan.clone()),
+        })
+        .await
+        .map(|output| output.into_value())
+        .map_err(error)
+}
+
+/// Validate structure and fingerprint unit, graph and read-only regular-file inputs on this host.
+/// Live directories, writable binds and binaries retain their native behavior.
+pub struct InspectRun;
+impl Step for InspectRun {
+    const ID: Option<&'static str> = Some("systemd.inspect");
+    const DISPLAY_NAME: Option<&'static str> = Some("Inspect systemd inputs");
+    type Input = PreparationInput;
+    type Output = ConfigurationSnapshot;
+
+    async fn run(
+        &mut self,
+        input: PreparationInput,
+    ) -> orchestrator::Result<ConfigurationSnapshot> {
+        tokio::task::spawn_blocking(move || -> Result<ConfigurationSnapshot> {
+            let (run, plan) = inputs(input)?;
+            Ok(capture(run, plan, None)?
+                .snapshot
+                .expect("captured snapshot"))
+        })
+        .await
+        .map_err(|e| orchestrator::Error::message(error(e)))?
+        .map_err(orchestrator::Error::message)
+    }
+}
+
+/// Capture inputs into a new private artifact tree; await this step to retain cleanup ownership.
+/// Partial preparation failures remove their owned tree before returning an error.
+/// Dropping the call does not stop its blocking worker or undo its effects.
+pub struct PrepareRun;
+impl Step for PrepareRun {
+    const ID: Option<&'static str> = Some("systemd.prepare");
+    const DISPLAY_NAME: Option<&'static str> = Some("Prepare systemd inputs");
+    type Input = PreparationInput;
+    type Output = PreparedRun;
+
+    async fn run(&mut self, input: PreparationInput) -> orchestrator::Result<PreparedRun> {
+        tokio::task::spawn_blocking(move || {
+            let (run, plan) = inputs(input)?;
+            prepare(run, plan)
+        })
+        .await
+        .map_err(|e| orchestrator::Error::message(error(e)))?
+        .map_err(orchestrator::Error::message)
+    }
+}
+
+/// Remove artifacts owned by a successful preparation after its preflight is rejected.
+/// Pass a successful `PrepareRun` output while its tree is still owned and no units have launched.
+/// Await completion; failures retain the affected path in their diagnostic.
+pub struct DiscardRun;
+impl Step for DiscardRun {
+    const ID: Option<&'static str> = Some("systemd.discard");
+    const DISPLAY_NAME: Option<&'static str> = Some("Discard systemd preparation");
+    type Input = PreparedRun;
+    type Output = DiscardedRun;
+
+    async fn run(&mut self, prepared: PreparedRun) -> orchestrator::Result<DiscardedRun> {
+        tokio::task::spawn_blocking(move || -> Result<DiscardedRun> {
+            let run = prepared.run.ok_or("prepared run missing")?;
+            remove(Path::new(&run.artifacts))?;
+            Ok(DiscardedRun {})
+        })
+        .await
+        .map_err(|e| orchestrator::Error::message(error(e)))?
+        .map_err(orchestrator::Error::message)
+    }
+}
+
+fn inputs(input: PreparationInput) -> Result<(RunPlan, SystemdPlan)> {
+    Ok((
+        input.run.ok_or("run inputs missing")?,
+        input.plan.ok_or("systemd plan missing")?,
+    ))
 }
 
 struct InputWriter {
@@ -147,49 +235,37 @@ fn acl(file: &File) -> Result<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-/// The protobuf launch inputs now reference private captured files owned by this artifact tree.
-pub(crate) struct Prepared {
-    pub run: RunPlan,
-    pub plan: SystemdPlan,
-    pub snapshot: ConfigurationSnapshot,
-}
-
 /// Stream inputs into one new private tree; failures remove only that newly owned tree.
-pub(crate) fn prepare(run: RunPlan, plan: SystemdPlan) -> Result<Prepared> {
+fn prepare(run: RunPlan, plan: SystemdPlan) -> Result<PreparedRun> {
     crate::validate(&run, &plan)?;
     let artifacts = PathBuf::from(&run.artifacts);
     std::fs::DirBuilder::new()
         .mode(PRIVATE_DIRECTORY_MODE)
         .create(&artifacts)
         .map_err(error)?;
-    let prepare = || -> Result<Prepared> {
+    let prepare = || -> Result<PreparedRun> {
         let directory = artifacts.join(INPUTS);
         std::fs::DirBuilder::new()
             .mode(PRIVATE_DIRECTORY_MODE)
             .create(&directory)
             .map_err(error)?;
         let mut prepared = capture(run, plan, Some(&directory))?;
-        let root = prepared.run.artifacts.clone();
+        let run = prepared.run.as_mut().expect("captured run");
+        let plan = prepared.plan.as_mut().expect("captured plan");
+        let root = run.artifacts.clone();
         // Rewrite only captured file fields; arbitrary program text is never a capture token.
-        replace(&mut prepared.run.dataflow_file, ARTIFACTS, &root);
-        for file in &mut prepared.plan.unit_files {
+        replace(&mut run.dataflow_file, ARTIFACTS, &root);
+        for file in &mut plan.unit_files {
             replace(file, ARTIFACTS, &root);
         }
-        for app in &mut prepared.plan.app_units {
+        for app in &mut plan.app_units {
             replace(&mut app.file, ARTIFACTS, &root);
         }
-        for bind in prepared
-            .plan
+        for bind in plan
             .programs
             .iter_mut()
             .flat_map(|program| &mut program.binds)
-            .chain(
-                prepared
-                    .plan
-                    .app_units
-                    .iter_mut()
-                    .flat_map(|app| &mut app.binds),
-            )
+            .chain(plan.app_units.iter_mut().flat_map(|app| &mut app.binds))
         {
             replace(&mut bind.source, ARTIFACTS, &root);
         }
@@ -202,7 +278,7 @@ fn capture(
     mut run: RunPlan,
     mut plan: SystemdPlan,
     destination: Option<&Path>,
-) -> Result<Prepared> {
+) -> Result<PreparedRun> {
     crate::validate(&run, &plan)?;
     for file in &mut plan.unit_files {
         let name = format!("{}.service", crate::unit_stem(file)?);
@@ -248,22 +324,28 @@ fn capture(
     let snapshot = ConfigurationSnapshot {
         sha256: hex::encode(Sha256::digest(bytes)),
     };
-    Ok(Prepared {
-        run,
-        plan,
-        snapshot,
+    Ok(PreparedRun {
+        run: Some(run),
+        plan: Some(plan),
+        snapshot: Some(snapshot),
     })
 }
 
 /// Remove only the new private artifacts owned by rejected preparation; retain cleanup errors.
-pub(crate) fn discard(artifacts: &Path, cause: String) -> String {
-    match std::fs::remove_dir_all(artifacts) {
+fn discard(artifacts: &Path, cause: String) -> String {
+    match remove(artifacts) {
         Ok(()) => cause,
-        Err(e) => format!(
-            "{cause}; could not remove rejected preparation {}: {e}",
-            artifacts.display()
-        ),
+        Err(e) => format!("{cause}; {e}"),
     }
+}
+
+fn remove(artifacts: &Path) -> Result<()> {
+    std::fs::remove_dir_all(artifacts).map_err(|e| {
+        format!(
+            "could not remove rejected preparation {}: {e}",
+            artifacts.display()
+        )
+    })
 }
 
 fn replace(path: &mut String, root: &str, replacement: &str) {
@@ -379,8 +461,130 @@ mod tests {
         }
     }
 
-    #[test]
-    fn independent_artifacts_and_generated_config_paths_compare_by_contents() {
+    #[tokio::test]
+    async fn preparation_steps_report_capture_and_discard_lineage() {
+        use std::{cell::RefCell, rc::Rc};
+        // Arrange
+        let fixture = Fixture::new();
+        let run = fixture.run("execution");
+        let plan = fixture.plan();
+        let input = PreparationInput {
+            run: Some(run.clone()),
+            plan: Some(plan.clone()),
+        };
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        let mut executor = LocalExecutor::new(move |event: &orchestrator::Event| {
+            observed.borrow_mut().push(event.clone());
+        });
+        executor.register::<InspectRun>(|| InspectRun);
+        executor.register::<PrepareRun>(|| PrepareRun);
+        executor.register::<DiscardRun>(|| DiscardRun);
+        // Act
+        let review = executor.run::<InspectRun>(input.clone()).await.unwrap();
+        let prepared = executor.run::<PrepareRun>(input).await.unwrap();
+        // Assert: both serialized entry points preserve the same identity and captured bytes.
+        assert_eq!(prepared.value().snapshot.as_ref(), Some(review.value()));
+        std::fs::write(&plan.unit_files[0], "changed original").unwrap();
+        let captured = &prepared.value().plan.as_ref().unwrap().unit_files[0];
+        assert_eq!(
+            std::fs::read_to_string(captured).unwrap(),
+            "[Service]\nExecStart=/bin/true\n"
+        );
+        let producer = prepared.invocation().id;
+        // Act
+        executor.run::<DiscardRun>(prepared).await.unwrap();
+        // Assert
+        assert!(!Path::new(&run.artifacts).exists());
+        assert_eq!(
+            std::fs::read_to_string(&plan.unit_files[0]).unwrap(),
+            "changed original"
+        );
+        let events = events.borrow();
+        for (events, id) in events.as_chunks::<2>().0.iter().zip([
+            "systemd.inspect",
+            "systemd.prepare",
+            "systemd.discard",
+        ]) {
+            assert_eq!(events[0].invocation.step, id);
+            assert_eq!(events[0].state, orchestrator::State::Started);
+            assert_eq!(events[1].state, orchestrator::State::Succeeded);
+        }
+        assert_eq!(events.len(), 6);
+        assert_eq!(events.last().unwrap().invocation.dependencies, [producer]);
+    }
+
+    #[tokio::test]
+    async fn failed_preparation_cleans_partial_copies_before_reporting_failure() {
+        use std::{cell::RefCell, rc::Rc};
+        // Arrange
+        let fixture = Fixture::new();
+        let run = fixture.run("execution");
+        let mut plan = fixture.plan();
+        plan.programs[0].binds[0].source = fixture.0.join("missing.pbtxt").to_string_lossy().into();
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        let artifacts = run.artifacts.clone();
+        let mut executor = LocalExecutor::new(move |event: &orchestrator::Event| {
+            if event.state == orchestrator::State::Failed {
+                assert!(!Path::new(&artifacts).exists());
+            }
+            observed.borrow_mut().push(event.clone());
+        });
+        executor.register::<PrepareRun>(|| PrepareRun);
+        // Act
+        let error = executor
+            .run::<PrepareRun>(PreparationInput {
+                run: Some(run.clone()),
+                plan: Some(plan.clone()),
+            })
+            .await
+            .unwrap_err();
+        // Assert
+        assert!(error.to_string().contains("missing.pbtxt"));
+        assert!(!Path::new(&run.artifacts).exists());
+        assert!(Path::new(&plan.unit_files[0]).exists());
+        assert_eq!(executor.observer_failures(), 0);
+        let events = events.borrow();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[1].state, orchestrator::State::Failed);
+        assert!(events[1].error.as_ref().unwrap().contains("missing.pbtxt"));
+    }
+
+    #[tokio::test]
+    async fn discard_failure_reports_its_owned_path_and_keeps_replacement() {
+        // Arrange
+        let fixture = Fixture::new();
+        let run = fixture.run("execution");
+        let mut executor = LocalExecutor::default();
+        executor.register::<PrepareRun>(|| PrepareRun);
+        executor.register::<DiscardRun>(|| DiscardRun);
+        let prepared = executor
+            .run::<PrepareRun>(PreparationInput {
+                run: Some(run.clone()),
+                plan: Some(fixture.plan()),
+            })
+            .await
+            .unwrap();
+        std::fs::remove_dir_all(&run.artifacts).unwrap();
+        std::fs::write(&run.artifacts, "replacement").unwrap();
+        // Act
+        let error = executor.run::<DiscardRun>(prepared).await.unwrap_err();
+        // Assert
+        assert!(
+            error
+                .to_string()
+                .contains("could not remove rejected preparation")
+        );
+        assert!(error.to_string().contains(&run.artifacts));
+        assert_eq!(
+            std::fs::read_to_string(&run.artifacts).unwrap(),
+            "replacement"
+        );
+    }
+
+    #[tokio::test]
+    async fn independent_artifacts_and_generated_config_paths_compare_by_contents() {
         // Arrange
         let fixture = Fixture::new();
         let mut review = fixture.run("review");
@@ -408,54 +612,59 @@ mod tests {
             fixture.file("execution.bridge.pbtxt", "sample_interval_ms: 1000\n");
         fresh.programs[0].binds[1].source = execution.artifacts.clone();
         // Act
-        let expected = inspect(&review, &plan).unwrap();
-        let actual = inspect(&execution, &fresh).unwrap();
+        let expected = inspect(&review, &plan).await.unwrap();
+        let actual = inspect(&execution, &fresh).await.unwrap();
         // Assert
         assert_eq!(expected, actual);
         assert!(!Path::new(&review.artifacts).exists());
         assert!(!Path::new(&execution.artifacts).exists());
         // Act / Assert: generated names do not hide changed graph/config contents.
         std::fs::write(&execution.dataflow_file, "{\"nodes\":[{\"id\":\"new\"}]}").unwrap();
-        assert_ne!(expected, inspect(&execution, &fresh).unwrap());
+        assert_ne!(expected, inspect(&execution, &fresh).await.unwrap());
         std::fs::write(&execution.dataflow_file, "{\"nodes\":[]}").unwrap();
         std::fs::write(
             &fresh.programs[0].binds[0].source,
             "sample_interval_ms: 2000\n",
         )
         .unwrap();
-        assert_ne!(expected, inspect(&execution, &fresh).unwrap());
+        assert_ne!(expected, inspect(&execution, &fresh).await.unwrap());
     }
 
-    #[test]
-    fn launch_settings_selection_and_unit_contents_make_a_review_stale() {
+    #[tokio::test]
+    async fn launch_settings_selection_and_unit_contents_make_a_review_stale() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("review");
         let plan = fixture.plan();
-        let expected = inspect(&run, &plan).unwrap();
+        let expected = inspect(&run, &plan).await.unwrap();
         // Act / Assert
         let mut changed = run.clone();
         changed.stop_seconds += 1;
-        assert_ne!(expected, inspect(&changed, &plan).unwrap());
+        assert_ne!(expected, inspect(&changed, &plan).await.unwrap());
         let mut changed = plan.clone();
         changed.programs[0].argv.push("changed".into());
-        assert_ne!(expected, inspect(&run, &changed).unwrap());
+        assert_ne!(expected, inspect(&run, &changed).await.unwrap());
         changed = plan.clone();
         changed.unit_files.clear();
-        assert_ne!(expected, inspect(&run, &changed).unwrap());
+        assert_ne!(expected, inspect(&run, &changed).await.unwrap());
         changed = plan.clone();
         changed
             .unit_files
             .push(fixture.file("added.service", "[Service]\nExecStart=/bin/true\n"));
-        assert_ne!(expected, inspect(&run, &changed).unwrap());
+        assert_ne!(expected, inspect(&run, &changed).await.unwrap());
         std::fs::write(&plan.unit_files[0], "[Service]\nExecStart=/bin/false\n").unwrap();
-        assert_ne!(expected, inspect(&run, &plan).unwrap());
+        assert_ne!(expected, inspect(&run, &plan).await.unwrap());
         std::fs::remove_file(&plan.unit_files[0]).unwrap();
-        assert!(inspect(&run, &plan).unwrap_err().contains("worker.service"));
+        assert!(
+            inspect(&run, &plan)
+                .await
+                .unwrap_err()
+                .contains("worker.service")
+        );
     }
 
-    #[test]
-    fn captured_files_survive_source_edits_and_symlink_changes_with_mode_preserved() {
+    #[tokio::test]
+    async fn captured_files_survive_source_edits_and_symlink_changes_with_mode_preserved() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("execution");
@@ -472,11 +681,8 @@ mod tests {
         std::fs::remove_file(&link).unwrap();
         let replacement = fixture.file("replacement", "replacement");
         std::os::unix::fs::symlink(replacement, &link).unwrap();
-        let Prepared {
-            plan: frozen,
-            snapshot,
-            ..
-        } = captured;
+        let frozen = captured.plan.unwrap();
+        let snapshot = captured.snapshot.unwrap();
         // Assert
         assert_eq!(
             std::fs::read_to_string(&frozen.programs[0].binds[0].source).unwrap(),
@@ -495,11 +701,11 @@ mod tests {
             0o640
         );
         assert_eq!(crate::unit_stem(&frozen.unit_files[0]).unwrap(), "worker");
-        assert_ne!(snapshot, inspect(&run, &plan).unwrap());
+        assert_ne!(snapshot, inspect(&run, &plan).await.unwrap());
     }
 
-    #[test]
-    fn live_bind_paths_remain_native_and_missing_explicit_readonly_inputs_fail() {
+    #[tokio::test]
+    async fn live_bind_paths_remain_native_and_missing_explicit_readonly_inputs_fail() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("execution");
@@ -525,22 +731,24 @@ mod tests {
         ]);
         // Act
         let captured = prepare(run.clone(), plan.clone()).unwrap();
-        let Prepared {
-            plan: frozen,
-            snapshot: expected,
-            ..
-        } = captured;
+        let frozen = captured.plan.unwrap();
+        let expected = captured.snapshot.unwrap();
         // Assert
         assert_eq!(frozen.programs[0].binds[1..], plan.programs[0].binds[1..]);
         std::fs::write(directory.join("live-data"), "changed runtime data").unwrap();
-        assert_eq!(expected, inspect(&run, &plan).unwrap());
+        assert_eq!(expected, inspect(&run, &plan).await.unwrap());
         // Act / Assert: missing ordinary config files are never guessed to be generated.
         std::fs::remove_file(&plan.programs[0].binds[0].source).unwrap();
-        assert!(inspect(&run, &plan).unwrap_err().contains("monitor.pbtxt"));
+        assert!(
+            inspect(&run, &plan)
+                .await
+                .unwrap_err()
+                .contains("monitor.pbtxt")
+        );
     }
 
-    #[test]
-    fn caller_text_and_unrecognized_missing_runtime_files_are_not_reinterpreted() {
+    #[tokio::test]
+    async fn caller_text_and_unrecognized_missing_runtime_files_are_not_reinterpreted() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("execution");
@@ -554,17 +762,22 @@ mod tests {
             });
         let captured = prepare(run.clone(), plan.clone()).unwrap();
         // Act
-        let frozen = captured.plan;
+        let frozen = captured.plan.unwrap();
         // Assert
         assert_eq!(frozen.programs[0].argv, plan.programs[0].argv);
         assert_eq!(frozen.programs[0].environment, plan.programs[0].environment);
         // Act / Assert: a missing file beneath the artifacts root is still an explicit error.
         plan.programs[0].binds[0].source = format!("{}/missing.pbtxt", run.artifacts);
-        assert!(inspect(&run, &plan).unwrap_err().contains("missing.pbtxt"));
+        assert!(
+            inspect(&run, &plan)
+                .await
+                .unwrap_err()
+                .contains("missing.pbtxt")
+        );
     }
 
-    #[test]
-    fn literal_text_cannot_impersonate_normalized_runtime_paths() {
+    #[tokio::test]
+    async fn literal_text_cannot_impersonate_normalized_runtime_paths() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("review");
@@ -578,20 +791,20 @@ mod tests {
                 name: "TEXT".into(),
                 value: format!("{}/file", run.artifacts),
             });
-        let expected = inspect(&run, &plan).unwrap();
+        let expected = inspect(&run, &plan).await.unwrap();
         // Act / Assert
         for literal in ["@artifacts/file", "relative:file", "literal:relative:file"] {
             let mut changed = plan.clone();
             *changed.programs[0].argv.last_mut().unwrap() = literal.into();
-            assert_ne!(expected, inspect(&run, &changed).unwrap());
+            assert_ne!(expected, inspect(&run, &changed).await.unwrap());
             changed = plan.clone();
             changed.programs[0].environment[0].value = literal.into();
-            assert_ne!(expected, inspect(&run, &changed).unwrap());
+            assert_ne!(expected, inspect(&run, &changed).await.unwrap());
         }
     }
 
-    #[test]
-    fn nonregular_unit_inputs_fail_without_waiting_for_a_writer() {
+    #[tokio::test]
+    async fn nonregular_unit_inputs_fail_without_waiting_for_a_writer() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("review");
@@ -605,14 +818,14 @@ mod tests {
         .unwrap();
         plan.unit_files[0] = fifo.to_string_lossy().into();
         // Act
-        let result = inspect(&run, &plan);
+        let result = inspect(&run, &plan).await;
         // Assert
         assert!(result.unwrap_err().contains("regular file"));
         assert!(!Path::new(&run.artifacts).exists());
     }
 
-    #[test]
-    fn file_access_changes_make_a_review_stale_and_existing_artifacts_are_preserved() {
+    #[tokio::test]
+    async fn file_access_changes_make_a_review_stale_and_existing_artifacts_are_preserved() {
         // Arrange
         let fixture = Fixture::new();
         let run = fixture.run("execution");
@@ -622,14 +835,14 @@ mod tests {
             std::fs::Permissions::from_mode(0o640),
         )
         .unwrap();
-        let expected = inspect(&run, &plan).unwrap();
+        let expected = inspect(&run, &plan).await.unwrap();
         // Act / Assert
         std::fs::set_permissions(
             &plan.programs[0].binds[0].source,
             std::fs::Permissions::from_mode(0o600),
         )
         .unwrap();
-        assert_ne!(expected, inspect(&run, &plan).unwrap());
+        assert_ne!(expected, inspect(&run, &plan).await.unwrap());
         std::fs::create_dir(&run.artifacts).unwrap();
         let retained = Path::new(&run.artifacts).join("existing");
         std::fs::write(&retained, "keep").unwrap();

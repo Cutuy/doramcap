@@ -29,15 +29,17 @@ and skips recording finalization; unavailable required exit evidence fails the r
 
 `inspect` validates plan structure and fingerprints explicit unit files, the merged
 graph and read-only regular-file binds, including their mode, owner and POSIX access
-ACL. It reads synchronously without writes or systemd calls; async transports use a
-blocking worker. Callers rediscover project units before
-Start so additions and removals enter the fresh plan.
+ACL. Its async `InspectRun` step dispatches reads to a blocking worker without writes
+or systemd calls. Callers rediscover project units before Start so additions and
+removals enter the fresh plan.
 
 `run_with_preflight` captures those inputs into private runtime artifacts and calls
 the preflight callback after admission, before starting units. Compare its snapshot
 with Review and check cancellation before acknowledging Start. Rejection removes
 the new private artifacts. Generated artifact roots and automatic Dora ports do not
-change the fingerprint; explicit settings and captured contents do.
+change the fingerprint; explicit settings and captured contents do. Exported
+`InspectRun`, `PrepareRun` and `DiscardRun` steps accept generated protobuf inputs;
+preparation and rejected-run cleanup share the runner's executor and dependency lineage.
 
 Shipped apps keep their pbtxt process configuration and generated units. External
 units keep native references. Directory mounts, writable binds, executable files
