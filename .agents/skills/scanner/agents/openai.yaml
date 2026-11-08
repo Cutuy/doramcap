@@ -1,4 +1,4 @@
 interface:
   display_name: "Scanner"
   short_description: "Scan PRs and branches against doramcap guides"
-  default_prompt: "Use $scanner to reconcile current AGENTS.md additions into the guides and review this PR or branch with concise findings and coverage."
+  default_prompt: "Use $scanner to reconcile implementation/design guidance while preserving AGENTS.md process instructions and review this PR or branch with concise findings and coverage."

@@ -1,6 +1,6 @@
 ---
 name: scanner
-description: Review a doramcap PR or branch against its implementation and design guides, and reconcile current AGENTS.md additions into those guides.
+description: Review a doramcap PR or branch against its implementation and design guides, and reconcile implementation/design guidance from AGENTS.md while preserving its process instructions.
 ---
 
 # Scanner
@@ -17,8 +17,9 @@ Keep findings concise and evidence-backed.
 
 ## Reconcile instructions
 
-- Before scanning, follow [worktree-pool](../worktree-pool/SKILL.md) before guide/report edits. Absorb clear new root `AGENTS.md` obligations into the implementation guide and principles/preferences into the design guide; leave the entry-point links in `AGENTS.md`. Keep nested rules scoped to their directories.
-- Preserve force, exceptions, scope, and existing guide IDs. Consolidate duplicates and remove absorbed root text. Unchanged sources produce no edits. Do not infer requirements from code or findings.
+- Follow [worktree-pool](../worktree-pool/SKILL.md) before guide/report edits. Move clear implementation contracts into the implementation guide and architectural principles/preferences into the design guide. Keep nested rules scoped to their directories.
+- Preserve process instructions in `AGENTS.md`: workflow, approvals, CI execution, credentials, documentation/plan conventions, and PR communication. For mixed statements, retain process clauses there and move only implementation/design clauses. Leave unrelated process wording unchanged.
+- Preserve force, exceptions, scope, and existing guide IDs. Consolidate implementation/design duplicates and link the guides from their former locations where useful. Unchanged sources produce no edits. Do not infer requirements from code or findings.
 - Ask and wait before resolving conflicting policy or changing intent; continue independent review. Report the actual reconciliation diff and source. If reconciliation is explicitly prohibited, report drift without editing.
 
 ## Review and report
