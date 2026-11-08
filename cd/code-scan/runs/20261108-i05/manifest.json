@@ -1,0 +1,1494 @@
+{
+  "base_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "rule_id": "I-05.polling",
+  "rule_hash": "11971414ea8c2e8bfc3c065f5468a82f21ebae454de7c029536f21000572c34b",
+  "guide_hash": "fdebe642424e6afff96d3e107bd7c8efa731a2ed46610974e15ce33311bcbd58",
+  "model": "gpt-6-luna",
+  "reasoning_effort": "low",
+  "selector": "\\b(?:sleep|sleep_until|park_timeout|yield_now|recv_timeout|wait_timeout)\\s*\\(",
+  "tasks": [
+    {
+      "task_id": "i05-001",
+      "path": "apps/activity-demo/server/src/main.rs",
+      "source_hash": "3b70d9b4a0e9ff6e40a316a5620511b8d4f090133616e14ea7037dd2fcdce04e",
+      "lines": 585,
+      "matches": [
+        167,
+        181,
+        202,
+        479,
+        485
+      ]
+    },
+    {
+      "task_id": "i05-002",
+      "path": "apps/dataflow-tracing-demo/server/src/pipeline.rs",
+      "source_hash": "82308ed78165773984f73393e39e5866fc7499eb490da4a371d8cf57b964b56f",
+      "lines": 382,
+      "matches": [
+        269,
+        338
+      ]
+    },
+    {
+      "task_id": "i05-003",
+      "path": "apps/fault-watchdog/src/main.rs",
+      "source_hash": "31b525656457d1637ea0720ef7144158e41235fbbe2e5fbb3b4e41093f82e7d8",
+      "lines": 148,
+      "matches": [
+        117
+      ]
+    },
+    {
+      "task_id": "i05-004",
+      "path": "apps/fault-watchdog/src/sinks/mod.rs",
+      "source_hash": "0fcf6d80aedc3e28c08a52496a66d92acf171c780bcf3a5eb9cbfae73f612133",
+      "lines": 252,
+      "matches": [
+        78,
+        90,
+        197
+      ]
+    },
+    {
+      "task_id": "i05-005",
+      "path": "apps/orchestrator-demo/server/src/bin/worker.rs",
+      "source_hash": "0e17d70acaefe12f5ad9861ba437c86de03902ec4a0bd515c2b5d32562de369b",
+      "lines": 407,
+      "matches": [
+        268
+      ]
+    },
+    {
+      "task_id": "i05-006",
+      "path": "apps/project-explorer/server/src/lifecycle.rs",
+      "source_hash": "662a0c483e990a6b11698da6bb8659c6b5835cd402b041ea0c6baff30540ff09",
+      "lines": 498,
+      "matches": [
+        420
+      ]
+    },
+    {
+      "task_id": "i05-007",
+      "path": "apps/project-explorer/server/src/manager.rs",
+      "source_hash": "b25d6ddf31b16c4b598c03f7cc5cffb50b0dd4d8802480ea5abbecce187a4c31",
+      "lines": 196,
+      "matches": [
+        172
+      ]
+    },
+    {
+      "task_id": "i05-008",
+      "path": "apps/project-explorer/server/src/runtime.rs",
+      "source_hash": "17c2c6b37c034c2b7e506014595a0fed40e711f16e151bde322eab24605f9853",
+      "lines": 603,
+      "matches": [
+        531,
+        559,
+        587
+      ]
+    },
+    {
+      "task_id": "i05-009",
+      "path": "apps/system-monitor/dora/src/lib.rs",
+      "source_hash": "4a69b597f166ca98845bbe79ef861ca0018f859a0ca37e8a4f1eb664b7351682",
+      "lines": 311,
+      "matches": [
+        254,
+        279
+      ]
+    },
+    {
+      "task_id": "i05-010",
+      "path": "apps/system-monitor/src/main.rs",
+      "source_hash": "d02827216196cfaeec1822b65513b6b24912c7830a8d716da7664b509766ff1b",
+      "lines": 664,
+      "matches": [
+        584,
+        593,
+        622,
+        627
+      ]
+    },
+    {
+      "task_id": "i05-011",
+      "path": "libs/fault/reporter/src/notification.rs",
+      "source_hash": "2d5d08205a4397d614d9bdbf747cd836beb92c23ea4bc33346d88d821fd76a36",
+      "lines": 58,
+      "matches": [
+        54
+      ]
+    },
+    {
+      "task_id": "i05-012",
+      "path": "libs/resources/monitor-core/src/lib.rs",
+      "source_hash": "503c211a239984515529d626a6fde26e22903491de3ed5c61437f8d38ff0c285",
+      "lines": 449,
+      "matches": [
+        304,
+        314,
+        423
+      ]
+    },
+    {
+      "task_id": "i05-013",
+      "path": "libs/workload-docker/src/workflows/dora.rs",
+      "source_hash": "2c8ca62e371198ab9d530e295bb40054eaa6909f5914da234918e6ebe4b1b2bd",
+      "lines": 250,
+      "matches": [
+        124
+      ]
+    },
+    {
+      "task_id": "i05-014",
+      "path": "libs/workload-docker/src/workflows/recorded_compose/execution.rs",
+      "source_hash": "020ac366ab902b77489bf1131e4e4d9e70a00cef5b339559a99a8a849366302f",
+      "lines": 195,
+      "matches": [
+        53,
+        135
+      ]
+    },
+    {
+      "task_id": "i05-015",
+      "path": "libs/workload-docker/src/workflows/recorded_compose/observation.rs",
+      "source_hash": "9240555e1da2ff26549c82dc87896d5ee6ff5e940631698c5698f66e89474b12",
+      "lines": 272,
+      "matches": [
+        244,
+        245
+      ]
+    },
+    {
+      "task_id": "i05-016",
+      "path": "libs/workload-lifecycle/src/recorded_run.rs",
+      "source_hash": "03ebf12f03de4b6190dfbca12f8345b162d46c640d903458eb221772042fa5ce",
+      "lines": 214,
+      "matches": [
+        38
+      ]
+    },
+    {
+      "task_id": "i05-017",
+      "path": "libs/workload-lifecycle/src/recording.rs",
+      "source_hash": "4fd36394a01c7bb34a22af26cbc49047784ced491460c7e6d3e99ac81a2cf12d",
+      "lines": 200,
+      "matches": [
+        127,
+        191
+      ]
+    },
+    {
+      "task_id": "i05-018",
+      "path": "libs/workload-lifecycle/src/run.rs",
+      "source_hash": "34a794dfc5d5d189779a9eb50a18953871bb4931f66d9c3838f6947576e822f2",
+      "lines": 235,
+      "matches": [
+        55
+      ]
+    },
+    {
+      "task_id": "i05-019",
+      "path": "libs/workload-supervisor/src/steps.rs",
+      "source_hash": "f3278913a0360d8f261fd9c6d9c729fbb8bcf336f111e839bad03a48f833cb48",
+      "lines": 510,
+      "matches": [
+        300
+      ]
+    },
+    {
+      "task_id": "i05-020",
+      "path": "libs/workload-systemd/src/dora.rs",
+      "source_hash": "c6e05fd69257d894f94508854c5c551b8abacad91c91ffe0467f80d0d956d458",
+      "lines": 267,
+      "matches": [
+        213
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "path": "apps/activity-demo/server/src/main.rs",
+      "source_hash": "3b70d9b4a0e9ff6e40a316a5620511b8d4f090133616e14ea7037dd2fcdce04e",
+      "disposition": "selected",
+      "task_id": "i05-001"
+    },
+    {
+      "path": "apps/cpu-viewer/server/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/cpu-viewer/server/examples/fixture.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/cpu-viewer/server/src/delivery.rs",
+      "source_hash": "d63c58f26f80a1e0bfa833e9204a27ab627953df62e9caf53779df6cfac997ec",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/cpu-viewer/server/src/main.rs",
+      "source_hash": "406ade9c00d2688169a1e82518dfc8a116ba7730b23e03af53bfa7dffa99d53f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/cuda-shm-demo/src/content.rs",
+      "source_hash": "ca78975254b80221e3f7d5048f8faac03694e8def26aceeb9d204ac8a78bada7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/cuda-shm-demo/src/main.rs",
+      "source_hash": "177688528f11c0ca33e4b3c0009d1e7f6064adfd255fb7fc48ee2bd632fbb7e5",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/cuda-shm-demo/src/telemetry.rs",
+      "source_hash": "c432c9fe85c9b5c3aa979342466ff24b24053d621e23c60d6d7e3cdd5bfdb309",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/dataflow-tracing-demo/server/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/dataflow-tracing-demo/server/src/main.rs",
+      "source_hash": "b38a2f0eaa679e29f22313dcc4ed720a04724b9deff2f2da3eaf65eafeb83863",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/dataflow-tracing-demo/server/src/monitor.rs",
+      "source_hash": "6189070831e0983fc85c03d0a8311e6c93b267c84799323ba3e95046fc078769",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/dataflow-tracing-demo/server/src/pipeline.rs",
+      "source_hash": "82308ed78165773984f73393e39e5866fc7499eb490da4a371d8cf57b964b56f",
+      "disposition": "selected",
+      "task_id": "i05-002"
+    },
+    {
+      "path": "apps/fault-demo/src/bin/controls.rs",
+      "source_hash": "56218bc4c531378907d491d3e5885851b19b1c9d13fa679ee3f223fab7448ad7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-demo/src/bin/dashboard.rs",
+      "source_hash": "23c71cda8ddf019835f88df6b6115bed3f567f1c022419921391d0bbfd0b8d8a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-demo/src/bin/source.rs",
+      "source_hash": "710e88fa4fc83b9e0c3fcef0923c6c2b397f968c5f6a35ed81e16ba905e89f50",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-demo/src/lib.rs",
+      "source_hash": "06c87d70bcc82be81234a7ac19661f0d5a574d438cd62302a2f6976b5b6f3922",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-demo/tests/display.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/examples/fault_readback.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/src/config.rs",
+      "source_hash": "863b1863a9e3ec17b5d5740b67b5b260d378c17fc14b5649167ca871f85d69ed",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-watchdog/src/lib.rs",
+      "source_hash": "03fb0be6fbdb00133db46886ba3bbcc8b50176d22a48d10fa88d2843d5c46516",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-watchdog/src/main.rs",
+      "source_hash": "31b525656457d1637ea0720ef7144158e41235fbbe2e5fbb3b4e41093f82e7d8",
+      "disposition": "selected",
+      "task_id": "i05-003"
+    },
+    {
+      "path": "apps/fault-watchdog/src/sinks/mcap.rs",
+      "source_hash": "20657fe2bf7adf62d8303bd782e8bef34cd020aa61e2a0c80cbc3e9dcb7f523d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-watchdog/src/sinks/mod.rs",
+      "source_hash": "0fcf6d80aedc3e28c08a52496a66d92acf171c780bcf3a5eb9cbfae73f612133",
+      "disposition": "selected",
+      "task_id": "i05-004"
+    },
+    {
+      "path": "apps/fault-watchdog/src/sinks/otel.rs",
+      "source_hash": "a42717cae3b76f635d523ff0e344d18fc431cb24cf85081cd944857aa671caed",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/fault-watchdog/tests/host.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/tests/mcap.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/tests/otel.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/fault-watchdog/tests/standalone.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/mcap-recorder/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/mcap-recorder/examples/check_messages.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/mcap-recorder/examples/compare_recordings.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/mcap-recorder/examples/dora_attachment_fixture.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/mcap-recorder/src/config.rs",
+      "source_hash": "9538ad614d9774ca0ac67fb123cfdab7adb67900beaafc6d51efec6270e6141e",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/mcap-recorder/src/main.rs",
+      "source_hash": "6e241942cc9d72e84c1d16d71885fb74cf1069b5fe77843bc8c60403071e72cc",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/mcap-recorder/src/recording.rs",
+      "source_hash": "54948bd50466ed95634837c98c8f6abe3e412596d2358057d6ecbc228419b7d4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/mcap-recorder/src/tests.rs",
+      "source_hash": "3b0b8662bed72633ccfc1f7ccd89afd5f229a30a7556b7efe4a969c1cc6d8285",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/orchestrator-demo/server/src/bin/worker.rs",
+      "source_hash": "0e17d70acaefe12f5ad9861ba437c86de03902ec4a0bd515c2b5d32562de369b",
+      "disposition": "selected",
+      "task_id": "i05-005"
+    },
+    {
+      "path": "apps/orchestrator-demo/server/src/main.rs",
+      "source_hash": "fbca9b86bbb78cd5813afca6e949cbeaa3198522548a00876a7b6641a367cf46",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/orchestrator-demo/server/tests/worker.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/project-explorer/server/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/project-explorer/server/src/api.rs",
+      "source_hash": "2ef9687542ca23da27bcae4baf78dcb6f93f946de6917ae6376db8d55a0d9a3d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/artifact_fs.rs",
+      "source_hash": "e94638c3a411685c099ec93774106b530c6583524fbc70f3aeff775c2986adbc",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/lease.rs",
+      "source_hash": "a5146e261862ee0882aa813be2a47fc3f7792007bde94d986ddb38a65e92eddc",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/lib.rs",
+      "source_hash": "554d382440a5579e9fd4cdce059d59aee08abcf23a0e9c38aa61480572d5e161",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/lifecycle.rs",
+      "source_hash": "662a0c483e990a6b11698da6bb8659c6b5835cd402b041ea0c6baff30540ff09",
+      "disposition": "selected",
+      "task_id": "i05-006"
+    },
+    {
+      "path": "apps/project-explorer/server/src/main.rs",
+      "source_hash": "8704f06d55efdb4e537c15b60f8e375d009bcb68d263ce63d02a0d8e1944b16a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/manager.rs",
+      "source_hash": "b25d6ddf31b16c4b598c03f7cc5cffb50b0dd4d8802480ea5abbecce187a4c31",
+      "disposition": "selected",
+      "task_id": "i05-007"
+    },
+    {
+      "path": "apps/project-explorer/server/src/registry.rs",
+      "source_hash": "7fa57fbc9a0c73bbbaf5f6d7b810855a14327152bb88cf467671429deb2afe8f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/src/runtime.rs",
+      "source_hash": "17c2c6b37c034c2b7e506014595a0fed40e711f16e151bde322eab24605f9853",
+      "disposition": "selected",
+      "task_id": "i05-008"
+    },
+    {
+      "path": "apps/project-explorer/server/src/workflow.rs",
+      "source_hash": "ee3dae080a34e61f38ea259e4bbd84967db0d78d0a62b6bf3ace7a4bb0c811c5",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/project-explorer/server/tests/deployments.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/storage-demo/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/storage-demo/examples/validate_activity.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/storage-demo/examples/validate_capture.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/storage-demo/src/exercises.rs",
+      "source_hash": "fcc32ee56de87d1b14e7dc6740e56d32e878a409dbd96f4fff90ba522c3f931d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/inspect.rs",
+      "source_hash": "dc5872dc677e0f8673c364880250abae8a87d65acccee402c59c9767849c75f2",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/live.rs",
+      "source_hash": "05d2f8794382514b03eb268ae88f75e00f874e78c3221addf4e71ccf437c1a32",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/main.rs",
+      "source_hash": "20f883804c5e6fca319fa590958464133018412b01a6a6bd6f8dd1d6987fb5df",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/metrics.rs",
+      "source_hash": "94d93ddfeae2b779b18a0baa40cd11c662f1240251a04d197983c5fec66ed8f7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/observation.rs",
+      "source_hash": "88d20475b3a023f32706d1bec9792f24b7f3395a2df5c69397cb27ccc3f2d98f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/storage-demo/src/snapshot.rs",
+      "source_hash": "e1a80410c37332a989a25381410d65b1008bb20d0036bf9590b2b1cb5c044505",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/system-monitor/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "apps/system-monitor/dora/src/lib.rs",
+      "source_hash": "4a69b597f166ca98845bbe79ef861ca0018f859a0ca37e8a4f1eb664b7351682",
+      "disposition": "selected",
+      "task_id": "i05-009"
+    },
+    {
+      "path": "apps/system-monitor/src/config.rs",
+      "source_hash": "396b258b88778f8cbe607004ef8362c3a678a10f801054f1cff1c7d2ddfea8c4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/system-monitor/src/main.rs",
+      "source_hash": "d02827216196cfaeec1822b65513b6b24912c7830a8d716da7664b509766ff1b",
+      "disposition": "selected",
+      "task_id": "i05-010"
+    },
+    {
+      "path": "apps/system-monitor/src/recording.rs",
+      "source_hash": "74017b7526018c39955a6daac4a2772469b2cc2d4e957f6ce502a6034c0b05e3",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "apps/system-monitor/tests/embedded_recording.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "console/bridge/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "console/bridge/src/bridge.rs",
+      "source_hash": "cdc1d37190a209ed2166a68b232806d1b5197458c2dd9f9ba25b337f25e4d7c1",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "console/bridge/src/config.rs",
+      "source_hash": "7897762ee0754b12592495397e372c18dfd9a44a5e637bf9e47f5d34a9e2849e",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "console/bridge/src/main.rs",
+      "source_hash": "f5d403e8530e396bfbd7732b7c6b62614b77a281203f212cf8ebec75cd713c8c",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "console/server/native/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "console/server/native/src/execution.rs",
+      "source_hash": "cf2fd3c3d5590d82d4341dd6e5dbbe71c13bf47ed1bdbd0412914a5306b26956",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "console/server/native/src/lib.rs",
+      "source_hash": "cbc9f8ca00794a87936bc4e931269291eafcc99c8222ded8fa3f3bbadbbad154",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "console/server/native/src/runtime.rs",
+      "source_hash": "dedeaf79e7304cbce792181fde419462fd6ac768df4e28c42296b57d20b5200c",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/examples/record.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/examples/throughput.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/src/capture.rs",
+      "source_hash": "1a96069bd87554fd6d4fe952f5a1e8ba3e3a160855805d29c323d04078e42699",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/lib.rs",
+      "source_hash": "47345efe2b17a64bc2cca729169bbd33af17c4f87f7ab89f61b2080753a16bbc",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/pipeline.rs",
+      "source_hash": "eca8193d701db260ee86060523558a324405ae60e23e52ee81fed9d7bcbe02b9",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/sinks/mcap.rs",
+      "source_hash": "d8569ae89ff13e55fb0a4d5d0ee961d34324ecc94d0fd38daa5820317ea525f6",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/sinks/mod.rs",
+      "source_hash": "feab382c478c85cc478e2d023dd581ed782646b9b22e279659ce0348a7e8ce8f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/sinks/otel.rs",
+      "source_hash": "d51a9043e2096d8c73a13363e20681651eb4ac08ae18635bd1af22243ff37151",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/sinks/websocket.rs",
+      "source_hash": "c1ca13b79e77ece9e8d7715ec847588f8d397eb5f43fd1de481de0e047e877f9",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/subscriber.rs",
+      "source_hash": "4cf643634fbb554e87619602b096c04b3cb9620caccc37f61948765dd7664b39",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/src/wire.rs",
+      "source_hash": "7d99b5cf838797ac42d14cb3ef3644194d42d5660279b732089c206f6a1bb1da",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/activity-tracing/tests/allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/tests/capture.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/tests/otel.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/tests/outputs.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/activity-tracing/tests/worker_callsite.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/dora-app/src/environment.rs",
+      "source_hash": "7048ce497878057ddb80bb8b5a7058e269238df0bcd3da065d91a73af2e73104",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/dora-app/src/lib.rs",
+      "source_hash": "75c4134afefebf6731fe84af65f5598fdad4acd069c5f215abe9866f80cc0bcb",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/aggregation/examples/lifecycle.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/aggregation/src/lib.rs",
+      "source_hash": "c4dac13ba1e48ca2f89f611653fe373649afbfd213f0810057a685622190b5f0",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/aggregation/src/observability.rs",
+      "source_hash": "8fc7c198afe139562afb811f029ef34cdbd94cf8ca8d67d5ff09b26a1132a515",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/aggregation/tests/lifecycle.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/dora/examples/health_fixture.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/dora/src/lib.rs",
+      "source_hash": "0479c49b86f358414b607baa440fbe09587d5d3c1478039b183da96190cd0fd9",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/protocol/examples/latency.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/protocol/examples/publications.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/protocol/src/convert.rs",
+      "source_hash": "1753ef8634bbc8a6de59b033748a1685bf66bd9ed112d56de1655325caf6ff2b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/protocol/src/host.rs",
+      "source_hash": "e3758cd928b57d9aceb5ba8f1742a3a63c69d3d2fcf81ec6ba8e40fa8d5fbab0",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/protocol/src/lib.rs",
+      "source_hash": "c44d251907a3d08cfc90728bbb40a0d2d8be4342072ed650f2e2d27367556c6f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/protocol/src/publication.rs",
+      "source_hash": "4ed0116de2b77614f1205a251297b837e125c8f4d132b48a61e535b78bf4277c",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/protocol/tests/wire.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/reconciliation/src/lib.rs",
+      "source_hash": "5b391821eff86ab04fbc97c3c8f79f61ec35e7b6584ffc77bd5f4c62ee19b964",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/reconciliation/tests/engine.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/reporter/examples/fault_reporter_throughput.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/reporter/src/lib.rs",
+      "source_hash": "a2403e37cefd53376b78ef0c7714c03d028679967200bfafcdb3bfd972c5e0f1",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/reporter/src/model.rs",
+      "source_hash": "953cec6ec9d5ada2283deb8500e8a18a7d37961812638448fb406adc33e5ffe8",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/reporter/src/notification.rs",
+      "source_hash": "2d5d08205a4397d614d9bdbf747cd836beb92c23ea4bc33346d88d821fd76a36",
+      "disposition": "selected",
+      "task_id": "i05-011"
+    },
+    {
+      "path": "libs/fault/reporter/tests/allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/reporter/tests/reporting.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/schema/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/fault/schema/src/lib.rs",
+      "source_hash": "c0f6ef5732b24ea65f305ff5fc49ed330ac0877cabbfddb239c9780be4fe03e3",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/fault/schema/tests/compatibility.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/src/event.rs",
+      "source_hash": "6689fc2ac648aa9e1bdba2580b501bfe866dd7e4e19f65157d7af3fa98d2d807",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/src/layout.rs",
+      "source_hash": "7aec9c363f2d26dca844ed92b8ba14285ab30a7759d3b49af5ce089457e2f9ff",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/src/ledger.rs",
+      "source_hash": "3456a419816d2b21acc78b53329567152abf3246cfdad1cecd517f0697c5fc29",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/src/lib.rs",
+      "source_hash": "b86bf3cfbedc67fbd5fcde825a5756eba300e7421d4250b498859168dfe73594",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/src/protocol.rs",
+      "source_hash": "f067f500c1590c0ce3ffe5a5af1897471d343a93f459ccc3ceeac2dfab07915a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-dora-shm/tests/mapping.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/examples/concurrent_read.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/examples/non_default_stream.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/examples/support/mod.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/src/lib.rs",
+      "source_hash": "bd54d77d26602cc0519239d28bba06e1cd5080ce2c2d1209ddaf2848c1642893",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/tests/completion_failure.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/tests/ownership.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/memory/cuda-host-memory/tests/regions.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/examples/experiment.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/src/error.rs",
+      "source_hash": "487c6fbe8913224c28b5cb730be58254bbc4a9e25f97154e1741ca65a55a369a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/src/event.rs",
+      "source_hash": "331523960a4e0c8f722a617caa6d47f41ba2e4c52a9630ebe8ec1260eee880d6",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/src/executor.rs",
+      "source_hash": "ac1740ab7cd97dca0c5f5983bf8c29451fb11738336534814670e25c0f33c0fb",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/src/lib.rs",
+      "source_hash": "91ec7d0337904c204b19f35218b18d87b8016112b0fba0f9313a00e0082f4a09",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/src/process.rs",
+      "source_hash": "1f5f999c954739dc128c634d24dbe2132a21941c07473790366b237630e0709e",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/src/telemetry.rs",
+      "source_hash": "6aee72667772cccde077da6b974c8c168110edc9f96f305789d13c37919dad8b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/orchestrator/tests/boundaries.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/tests/process.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/tests/step_names.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/tests/steps.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/orchestrator/tests/telemetry.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/cgroup-bpf/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/cgroup-bpf/examples/native_allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/cgroup-bpf/examples/snapshot.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/cgroup-bpf/src/lib.rs",
+      "source_hash": "bd524bd3e902317fb916c3309ae2482f199b76beb87a3ad3b4f195530328bc77",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/cgroup-bpf/src/native.rs",
+      "source_hash": "0d90dfa55b82cc6a90afbab45bc12f50e3f972194500b05b6d830b18f6911e68",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/monitor-core/src/dictionary.rs",
+      "source_hash": "abe49ab30c2123913f4d598a67dcbade4bd3830ec83f8ef9f5c1dce447763750",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/monitor-core/src/lib.rs",
+      "source_hash": "503c211a239984515529d626a6fde26e22903491de3ed5c61437f8d38ff0c285",
+      "disposition": "selected",
+      "task_id": "i05-012"
+    },
+    {
+      "path": "libs/resources/monitor-core/tests/allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/resource-policy/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/resource-policy/examples/native_policy.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/resource-policy/examples/policy_overhead.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/resource-policy/examples/resolve.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/resource-policy/src/config.rs",
+      "source_hash": "2ec17a8abe53bd6c6ccc166993d84c86c438c1e7e97493ef8caf5653f202b4d3",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/resource-policy/src/lib.rs",
+      "source_hash": "6d9d19e492012678acae55801f13d3fe5824957416079ffbb016e56b89761fde",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/resource-policy/src/linux.rs",
+      "source_hash": "5b700f666e724e8dc6f4d225d7c499071afda508117c72c1fffd0fa7afcd2db5",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/resource-policy/src/targets.rs",
+      "source_hash": "57bbdff25ca71881fa8bed1b9975fb5fdda695c377eb22622a048b95c55d3a0d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/resource-policy/tests/config.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/system-config/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/system-config/src/lib.rs",
+      "source_hash": "0b838983e8ea566e267472fd45c0f98daebfca7228d76c9704104a11d134b8b6",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/task-accounting/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/resources/task-accounting/src/lib.rs",
+      "source_hash": "14890cd709af89a7a51f8c61789751f7ea3d6d9da0c5871acbe5a098e4084624",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/resources/task-accounting/src/native.rs",
+      "source_hash": "2e98e95b08d2bdb14d35b8c5cd517a73069585bd88e03be63274a5dfbfe0ff4a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/session/src/lib.rs",
+      "source_hash": "9baa8ffff521f1ecffb340d7d0b051f941b0ab4583374987ec1728cc7479a284",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/step-provenance/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/step-provenance/src/engine.rs",
+      "source_hash": "51610a3aa96b877e9796b3e4fcd010685f7bac27b0f194db33ab6722118cdb55",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/step-provenance/src/lib.rs",
+      "source_hash": "f291c55501b27352b7ec0ed494292d95888a24ead26461d788011f761ad457f5",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/step-provenance/src/store.rs",
+      "source_hash": "0ffd7fff8193b38664d5331fe1fed7f8321a6727ce46e207328364da346c36b3",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/step-provenance/tests/engine.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/examples/reader_compatibility.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/examples/storage_benchmark.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/src/file_offsets.rs",
+      "source_hash": "8dfbb72ec3671bc2fac4a98753737b0deb323e79ad2c2166d3ddc7a7b5e4400a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/lib.rs",
+      "source_hash": "5afa85fd4e466a50cffdf3f33e763656a126c2fd327a4989501871fbef42f29b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/managed_buffers.rs",
+      "source_hash": "30e8a40f258fcaf865ef7d77170367fe9c4f7b5ea540b71981e308277424907a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/mapped.rs",
+      "source_hash": "f5d695b273ba59fb61b3bc126ff9ff7d68fad732762df91876e42b584ddfb411",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap.rs",
+      "source_hash": "de1aec9ac20302b8beb80a4d7ebcb00300695cc1943ad15e8fcc4434c09ddb6b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap/core.rs",
+      "source_hash": "55bd3c8c1c949fcc8bbfada12e2442fb81f212b446ee1f5ca8907383bb9504fd",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/observability.rs",
+      "source_hash": "152eea6e14bbcaf816aad0f5612400e0d3c8315f38628c1c2a5afae917d718e6",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/observability/mcap.rs",
+      "source_hash": "ba8c6475d8efd853e77933db11ff4872d6ddb729781b19c51bbfebfe2cb1a65b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/slabs.rs",
+      "source_hash": "65de7aeeb59cbf2395e86df550142ac68ec95a76b8a2561f7a6dc379a1d29d24",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/timeline.rs",
+      "source_hash": "f044cca8b7a70dac357f3ac0544f87e525af232591d9d4815315566aaf32b8f7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/src/writer.rs",
+      "source_hash": "f7865b40e02f8fa838ba1e8c51c99b3507078eaefe218ee2f7798e31718c0643",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/storage-persistence/tests/activity_timeline.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/combining.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/direct_io.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/growable.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/large_rotation.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/managed_resources.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/mapped.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/mcap_roundtrip.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/observability.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/observability_allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/sealed_slabs.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/support/allocations.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/support/mod.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/storage-persistence/tests/writer_io.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/telemetry/protocol/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/telemetry/protocol/examples/inspect.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/telemetry/protocol/examples/schema.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/telemetry/protocol/src/lib.rs",
+      "source_hash": "f30862d361064e51b6afa8c032c69cc36637cc2916f8d7649ccb5a27752c53b2",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/telemetry/workflow-protocol/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/telemetry/workflow-protocol/src/lib.rs",
+      "source_hash": "c4405b37333c5a9ff8e2693d1d0e9e02212c3cd35b617091173ac4ebc57efded",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/examples/compose_experiment.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter.rs",
+      "source_hash": "d4b21a90b12d5e30bc474b1f3601a444118629f8629e14b2661fbcc43094e8e7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter/configuration.rs",
+      "source_hash": "f4dbcf47ce15b6e4206b5dcca6c482c4fb57f5b21096c81ee1dc9bcb547f555d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter/project.rs",
+      "source_hash": "6677d0bcf57f0ef3e4eff6d95840db94f86b0139e0bb8b0b72853975f9791092",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter/project/tests.rs",
+      "source_hash": "09b53990ed404aa91d3d478f7a1cac9ce33aa91f787787df5f58d7d78f85c305",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter/scope.rs",
+      "source_hash": "b92c7f6845c801d348ab855cf30b3ade41ca2e7f3898dcb67244e632ecfec908",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/adapter/tests.rs",
+      "source_hash": "fea4a7c73575b0080d16f987703c3cd320e154d2de48b1c95f1046d2f03c0682",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/command.rs",
+      "source_hash": "1930f51929b9cf588980574b476738e672885c5e673a5d5639f93303ade29c64",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/command/tests.rs",
+      "source_hash": "694341bcfd04ab2212b4311efe6527c8421275ba858b90cd4543e26376a7cf20",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/error.rs",
+      "source_hash": "5113e310033e381e6ba8b13f85cc70ce19668150b7cd18e2858537162906e9db",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/filesystem.rs",
+      "source_hash": "3ecd52300d3a802f24f7adced943ed5b7bf1e89f14eb2bd8063dc95bcb7e437c",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/filesystem/wire.rs",
+      "source_hash": "962cd7119cbdbf623b641f18215a26741c279cc1de5069dce3302b20941e5703",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/mod.rs",
+      "source_hash": "d5e151502cf3646786ac6d47b43ebf1c179467a0032d90cdec70f316b00b3f7a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/model.rs",
+      "source_hash": "75e92970b3a65d649948d4a227ef87cc2187bc25c160a152adf45e6fa13591f4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/overlay.rs",
+      "source_hash": "3713ca25f5d53e439836e6726571e7bfb16bbad87e6c3f0f084c23beb489d688",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/overlay/direct.rs",
+      "source_hash": "a2811cfcde1b8e579db7e42b8c157fcd33878a1cd19649e47ee94e6a58900858",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/state.rs",
+      "source_hash": "e4467cb3a7c1bb6a6b4db112e5f8501af5c6782368039635ddb6ecbe869229d2",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/compose/steps.rs",
+      "source_hash": "b65995cffe4b9ff80a4706500115b765b7101a1ad705218ac38caa5cac984970",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/evidence.rs",
+      "source_hash": "17dbe11804e0fd6848c622aa876b6a6cc1a145c76ab909e209297f8860fa77bd",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/lib.rs",
+      "source_hash": "23736b20be7159f5e4d9dc0b3a397de32933cf85cd980d196fe44c976aa46a9b",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/compose_lifecycle.rs",
+      "source_hash": "a01f39749f72392a57b8179f6e84d4cd688a7a9c3b28fcb3e39533c3f6c2d947",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/dora.rs",
+      "source_hash": "2c8ca62e371198ab9d530e295bb40054eaa6909f5914da234918e6ebe4b1b2bd",
+      "disposition": "selected",
+      "task_id": "i05-013"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/experiment.rs",
+      "source_hash": "38152fc4734f857971da3b0c64e4ffbd18fe8ec2b1d00a878b02962264459430",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/mod.rs",
+      "source_hash": "ca0ec2a8c158a4bcd9dde1268f2c6f376dee032b6db965e401765eaf6e81547d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/execution.rs",
+      "source_hash": "020ac366ab902b77489bf1131e4e4d9e70a00cef5b339559a99a8a849366302f",
+      "disposition": "selected",
+      "task_id": "i05-014"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/finalization.rs",
+      "source_hash": "6f13f8c03be996893ac39c256ee7d9d563287039407073c5b33fa2be08f4d9f4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/mod.rs",
+      "source_hash": "91869edae84423e3eaf6875f283b3062d0523778f838a5c44ffab8dfb7be97e5",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/observation.rs",
+      "source_hash": "9240555e1da2ff26549c82dc87896d5ee6ff5e940631698c5698f66e89474b12",
+      "disposition": "selected",
+      "task_id": "i05-015"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/observation/tests.rs",
+      "source_hash": "d042a8aa20d5850d60facf10255bfc96be9129c78599e80a9fe170fcdb4588b3",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/preparation.rs",
+      "source_hash": "699dc89eabc76506ba448f09d67878c761fba7d7b7429b8c32d9e338a4866620",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/preparation/model.rs",
+      "source_hash": "d30e2a9efad04a1cdb2a339dab072195af0f3c6d87ff991d646c75209d4d6dea",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/preparation/snapshot.rs",
+      "source_hash": "71b9d0a9a5bfd40433d89e1737c9927ac0fd57396373f89da30321d20546ea84",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/preparation/tests.rs",
+      "source_hash": "f33db70d47ea72e6f45c522f52b1756ec9d82c88c0ca8f1fa57a882fde60dfb4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/reset.rs",
+      "source_hash": "8352fb02a88b96f65158fad20f7e0fdb2d95f3dfac3dc544c28ed8a6c4a00372",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/reset/tests.rs",
+      "source_hash": "4d655f17b5d0e6e3489707f2dca697457d2d1f2f02135d02838a77ee4c4faee1",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/recorded_compose/running.rs",
+      "source_hash": "ef98027ed2c3222f53c6a27d09bdb98119ef17f7cb2895f3c5af621679172b62",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/shared_dora.rs",
+      "source_hash": "36ba741116dba8fac23da0d9374a677779c03e41a1619b25cebbf146eada055a",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/src/workflows/steps.rs",
+      "source_hash": "9dd99afbf5bd70e416331a824e8fc61e0a95a53cc91c25d37e3b1286dfc6c5a7",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-docker/tests/compose_contract.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/tests/docker.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/tests/overlay.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/tests/shared_ipc.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-docker/tests/support/mod.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-lifecycle/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/dora.rs",
+      "source_hash": "5b62cba6ebc8513ee870dc0ec752f5f23184f5d3910c9e9a2fb3e021ccbe127f",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/files.rs",
+      "source_hash": "bb10d2788e1946180219bfbad0ee26412191f84ecb77215076f602bd81f96e21",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/lib.rs",
+      "source_hash": "4b49e0ae4d280252e5aa658f72fc480f73567e8bdcc9d49436bc4d308ce92959",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/plan.rs",
+      "source_hash": "8fb3f27144de8504f571cb122dc1ddd505ee0048ac14a1e998cfd2c58318d257",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/recorded_run.rs",
+      "source_hash": "03ebf12f03de4b6190dfbca12f8345b162d46c640d903458eb221772042fa5ce",
+      "disposition": "selected",
+      "task_id": "i05-016"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/recording.rs",
+      "source_hash": "4fd36394a01c7bb34a22af26cbc49047784ced491460c7e6d3e99ac81a2cf12d",
+      "disposition": "selected",
+      "task_id": "i05-017"
+    },
+    {
+      "path": "libs/workload-lifecycle/src/run.rs",
+      "source_hash": "34a794dfc5d5d189779a9eb50a18953871bb4931f66d9c3838f6947576e822f2",
+      "disposition": "selected",
+      "task_id": "i05-018"
+    },
+    {
+      "path": "libs/workload-supervisor/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-supervisor/examples/supervisor_monitor.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-supervisor/src/control.rs",
+      "source_hash": "a97aae8b1cfa97b98adf5f7ad7abb4aeb6d9aeb51015c84099f5422db548379d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-supervisor/src/lib.rs",
+      "source_hash": "8162f59e4d73836d3a338c58359cea9163173ea57be845860cd370f25570d7f9",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-supervisor/src/ownership.rs",
+      "source_hash": "ebfa0ae575eaf53caaa5eca1238d50ff569d63123cd444055e9842bcb01035a6",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-supervisor/src/steps.rs",
+      "source_hash": "f3278913a0360d8f261fd9c6d9c729fbb8bcf336f111e839bad03a48f833cb48",
+      "disposition": "selected",
+      "task_id": "i05-019"
+    },
+    {
+      "path": "libs/workload-supervisor/tests/native.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-systemd/build.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-systemd/examples/systemd_run.rs",
+      "disposition": "outside_pilot_scope"
+    },
+    {
+      "path": "libs/workload-systemd/src/dora.rs",
+      "source_hash": "c6e05fd69257d894f94508854c5c551b8abacad91c91ffe0467f80d0d956d458",
+      "disposition": "selected",
+      "task_id": "i05-020"
+    },
+    {
+      "path": "libs/workload-systemd/src/lib.rs",
+      "source_hash": "d57b7085a32811617eaabc8f4b18a994395ffe493defba1df095b85d6fac2d3d",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-systemd/src/manager.rs",
+      "source_hash": "f8e1089f4f830d1e0a27d13b011ac97a33b2001d61f1281b81bfd52c8206ccf1",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-systemd/src/preparation.rs",
+      "source_hash": "958fd0c672bbb45ec93c9d4615ae3b82532f418c7dee3f61b94a62d6120e1aa0",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-systemd/src/runner.rs",
+      "source_hash": "d5ba39a0dc7e95ef4c9c8afa945d7ef760ea600f891cf131d84be9c363e437ab",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-systemd/src/running.rs",
+      "source_hash": "0385cde9d3e3eb0e68357e892d5808818f2bccd1bf3cb9a2d4ca324e9e787bf4",
+      "disposition": "not_selected_by_lexical_pattern"
+    },
+    {
+      "path": "libs/workload-systemd/tests/native.rs",
+      "disposition": "outside_pilot_scope"
+    }
+  ],
+  "scope": "Tracked Rust modules under src with literal timer/wait calls. Inline tests remain in context. Lexical nonmatches and non-Rust code are unreviewed.",
+  "coverage_claim": "Partial lexical pilot; no codebase-wide compliance or recall claim."
+}
