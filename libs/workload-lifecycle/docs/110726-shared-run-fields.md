@@ -39,7 +39,7 @@ may change while these contracts remain in development.
 - [x] Focused Console contract tests pass.
 - [x] Focused native systemd Dora startup, graph registration and cleanup pass.
 - [ ] Full native Docker/systemd integration on the revised ordinary-app model.
-- [ ] Full local/cloud CI and ARM64 validation: paused at the owner's request.
+- [ ] Full local/cloud CI and ARM64 validation: resumed; final results pending.
 - [ ] Real Console systemd execution: deferred to #204, absent from this base.
 
 ## Schema ownership
