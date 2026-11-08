@@ -55,16 +55,36 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 ## Documentation style
 
+### General writing
+
 - All Markdown: use plain language, brief prose, short bullets and compact tables; no walls of text.
-- Validation records: keep only the latest result and unresolved blockers in a few short bullets. Link to CI or logs for details; replace stale results instead of appending test histories, counts or command transcripts.
-- Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
 - State what things do directly; avoid contrastive “A, not B” phrasing.
+
+### Validation records
+
+- Validation records: keep only the latest result and unresolved blockers in a few short bullets. Link to CI or logs for details; replace stale results instead of appending test histories, counts or command transcripts.
+
+### READMEs
+
+- Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
+
+### SVGs and web apps
+
 - In SVGs and web apps, NEVER add footnotes such as “this is A, not B” or explanatory notes about caveats unless explicitly requested.
 - Architecture: SVGs with short labels showing components and exchanged artifacts.
+
+### Plans
+
 - Plans: keep architectural design and implementation design in separate, linked documents. A trivial local change with no architectural decisions may use one short document.
-- Architectural design: explain the high-level idea, expected behavior, major components, responsibilities and key tradeoffs. Lead with an embedded architecture SVG. Keep code-level details in the implementation design.
-- Implementation design: explain how to build it: code/API changes, chosen mechanisms, milestones and checks. Link to the architectural design for context.
 - Plan files: use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-implementation.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
+
+#### Architectural design
+
+- Architectural design: explain the high-level idea, expected behavior, major components, responsibilities and key tradeoffs. Lead with an embedded architecture SVG. Keep code-level details in the implementation design.
+
+#### Implementation design
+
+- Implementation design: explain how to build it: code/API changes, chosen mechanisms, milestones and checks. Link to the architectural design for context.
 - Implementation milestones: give each its own clearly labeled section containing both **Work items** and **Validation** checklists. Keep acceptance checks beside the work they verify; a separate global validation list does not replace per-milestone validation.
 - Milestones: record evidence in the relevant milestone before checking an item. Mark a milestone complete only when its work items and validations are complete.
 
