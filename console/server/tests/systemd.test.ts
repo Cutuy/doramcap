@@ -11,6 +11,7 @@ import { systemdPlan } from '../src/systemd.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const systemApps = join(repository, 'console/release/system-apps');
+const DORA_MEMLOCK_BYTES = 64 * 1024 * 1024;
 
 async function systemdRelease() {
   const text = await readFile(join(repository, 'console/release/console.pbtxt'), 'utf8');
@@ -49,8 +50,12 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     assert.equal(Number(unit('cpu-monitor').memlockBytes), 268435456);
     assert.equal(unit('cpu-monitor').killSignal, 2);
     assert.equal(Number(unit('cpu-monitor').stopSeconds), 15);
-    assert.equal(unit('dora-coordinator').workingDirectory, '/runtime');
-    assert.equal(unit('dora-coordinator').binds![0].source, join(artifacts, 'dora/runtime'));
+    for (const id of ['dora-coordinator', 'dora-daemon']) {
+      assert.equal(Number(unit(id).memlockBytes), DORA_MEMLOCK_BYTES);
+      assert.equal(unit(id).workingDirectory, '/runtime');
+      assert.ok(unit(id).binds!.some((bind) =>
+        bind.source === join(artifacts, 'dora/runtime') && bind.target === '/runtime' && !bind.readOnly));
+    }
     assert.equal(plan.systemd!.binaries, '/opt/doramcap/bin');
     assert.equal(unit('cpu-monitor').id, 'cpu-monitor');
     assert.deepEqual(unit('cpu-monitor').binds!.map(({ source, target, readOnly }) => [source, target, readOnly]), [
@@ -63,6 +68,32 @@ test('release manifests resolve to a systemd plan with container paths bound', a
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('native Dora units bind the shared runtime directory', async () => {
+  // Arrange
+  const directory = await mkdtemp(join(tmpdir(), 'console-native-dora-'));
+  try {
+    const config = await systemdRelease();
+    for (const id of config.doraApps) {
+      const app = config.apps.find((app) => app.id === id)!;
+      app.process = null;
+      app.systemd = { unit: join(repository, 'libs/workload-systemd/tests/fixtures', `${id}.service`) };
+    }
+    const artifacts = join(directory, 'artifacts');
+    // Act
+    const request = await systemdPlan(config, {
+      id: 'r1', project: directory, artifacts, workspace: directory,
+      stage: 'test', apps: [], graph: '',
+    });
+    // Assert
+    assert.deepEqual(request.systemd!.programs, []);
+    assert.deepEqual(request.systemd!.appUnits!.map((unit) => unit.id), ['dora-coordinator', 'dora-daemon']);
+    for (const unit of request.systemd!.appUnits!) {
+      assert.ok(unit.binds!.some((bind) =>
+        bind.source === join(artifacts, 'dora/runtime') && bind.target === '/runtime' && !bind.readOnly));
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('systemd needs absolute binaries and a unit file for every selected app', async () => {
@@ -87,7 +118,7 @@ test('systemd launch inputs preserve manifest IDs independently of native filena
   const project = join(directory, 'project'), apps = join(directory, 'apps');
   await mkdir(project);
   await mkdir(apps);
-  await writeFile(join(apps, 'app.pbtxt'), 'id:"capture" compose { files:"compose.yaml" } systemd { unit:"worker.service" }');
+  await writeFile(join(apps, 'app.pbtxt'), 'id:"capture" compose { files:"compose.yaml" } output_targets:"/results" systemd { unit:"worker.service" }');
   await writeFile(join(apps, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
   try {
     const config = releaseConfig(capabilities.parseConfig('form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"app.pbtxt"}'), project, apps, '/state');
@@ -100,6 +131,9 @@ test('systemd launch inputs preserve manifest IDs independently of native filena
     assert.deepEqual(request.run!.systemApps, ['capture']);
     assert.equal(request.systemd!.appUnits![0].id, 'capture');
     assert.equal(request.systemd!.appUnits![0].file, join(apps, 'worker.service'));
+    assert.deepEqual(request.systemd!.appUnits![0].binds, [
+      { source: '/state/r1', target: '/results', readOnly: false },
+    ]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
