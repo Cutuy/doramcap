@@ -670,6 +670,87 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, the system service manager and DORAMCAP_TEST_DORA"]
+async fn dora_app_units_resolve_their_native_executable_and_register_the_graph() {
+    // Arrange: use the shipped units with a bare executable and private runtime binds.
+    let fixture = Fixture::new("dora-apps");
+    let binaries = fixture.root.join("bin");
+    let runtime = fixture.root.join("runtime");
+    std::fs::create_dir(&binaries).unwrap();
+    std::fs::create_dir(&runtime).unwrap();
+    std::fs::copy(
+        std::env::var("DORAMCAP_TEST_DORA").unwrap(),
+        binaries.join("dora"),
+    )
+    .unwrap();
+    let graph = fixture.root.join("graph.yml");
+    std::fs::write(
+        &graph,
+        "nodes: [{id: user, path: dynamic, outputs: [messages]}]\n",
+    )
+    .unwrap();
+    let ports: Vec<_> = (0..2)
+        .map(|_| std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap())
+        .collect();
+    let coordinator = ports[0].local_addr().unwrap().port().to_string();
+    let daemon = ports[1].local_addr().unwrap().port().to_string();
+    let mut plan = fixture.plan("r1", vec![]);
+    plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
+    plan.0.dataflow_file = graph.to_string_lossy().into();
+    plan.1.binaries = binaries.to_string_lossy().into();
+    for (role, contents) in [
+        (
+            "coordinator",
+            include_str!(
+                "../../../console/release/system-apps/dora-coordinator/dora-coordinator.service"
+            ),
+        ),
+        (
+            "daemon",
+            include_str!("../../../console/release/system-apps/dora-daemon/dora-daemon.service"),
+        ),
+    ] {
+        let file = fixture.root.join(format!("dora-{role}.service"));
+        std::fs::write(
+            &file,
+            contents
+                .replace("6013", &coordinator)
+                .replace("6014", &daemon),
+        )
+        .unwrap();
+        let mut binds = vec![Bind {
+            source: runtime.to_string_lossy().into(),
+            target: "/runtime".into(),
+            read_only: false,
+        }];
+        if role == "daemon" {
+            let overlay = fixture.root.join("zenoh.json5");
+            std::fs::write(
+                &overlay,
+                include_str!("../../../console/release/system-apps/dora-daemon/zenoh.json5"),
+            )
+            .unwrap();
+            binds.push(Bind {
+                source: overlay.to_string_lossy().into(),
+                target: "/config/zenoh.json5".into(),
+                read_only: true,
+            });
+        }
+        plan.1.app_units.push(workload_systemd::AppUnit {
+            file: file.to_string_lossy().into(),
+            binds,
+        });
+    }
+    drop(ports);
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert!(runtime.join("dataflow.yml").is_file());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+}
+
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn bind_mounts_show_host_paths_at_container_targets() {
     // Arrange: the unit reads its config and writes its result at container paths.

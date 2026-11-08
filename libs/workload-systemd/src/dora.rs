@@ -14,6 +14,7 @@ pub(crate) const CLI_PREFIX: &str = "dora-cli-";
 /// Observed coordinator handle and dataflow identity; launch configuration remains in its unit.
 pub(crate) struct Dora {
     coordinator: zbus_systemd::systemd1::ServiceProxy<'static>,
+    executable: String,
     dataflow_file: String,
     run: String,
     commands: u32,
@@ -47,7 +48,19 @@ impl Dora {
         if target != coordinator_port || daemon_port == coordinator_port {
             return Err("Dora app endpoints disagree".into());
         }
+        // systemd resolves bare ExecStart names in the app's native execution context.
+        let pid = coordinator.main_pid().await.map_err(error)?;
+        if pid == 0 {
+            return Err("Dora coordinator is not running".into());
+        }
+        let executable = tokio::fs::read_link(format!("/proc/{pid}/exe"))
+            .await
+            .map_err(error)?
+            .into_os_string()
+            .into_string()
+            .map_err(|_| "Dora executable path is not UTF-8".to_string())?;
         Ok(Self {
+            executable,
             coordinator,
             dataflow_file: run.dataflow_file.clone(),
             run: run.id.clone(),
@@ -100,7 +113,7 @@ impl Dora {
             return Err("Dora coordinator command changed".into());
         };
         let endpoint = port(&command.1, "--port")?.to_string();
-        let argv: Vec<String> = std::iter::once(command.0.as_str())
+        let argv: Vec<String> = std::iter::once(self.executable.as_str())
             .chain(args.iter().copied())
             .chain(["--coordinator-port", endpoint.as_str()])
             .map(str::to_owned)
