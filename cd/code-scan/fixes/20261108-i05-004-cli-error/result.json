@@ -1,0 +1,20 @@
+{
+  "task_id": "i05-004-fix-r1",
+  "requested_model": "gpt-6-astra",
+  "requested_reasoning_effort": "xhigh",
+  "provider_reported_model": null,
+  "cli_version": "codex-cli 0.164.0",
+  "started_at": "2026-11-08T22:23:40.973Z",
+  "completed_at": "2026-11-08T22:23:40.996Z",
+  "duration_seconds": 0.022509402999999997,
+  "exit_code": 2,
+  "usage": null,
+  "thread_id": null,
+  "completed_tool_items": [],
+  "actual_changed_paths": [],
+  "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "status": "unresolved",
+  "result": null,
+  "error": "Error: CLI exited 2; inspect raw logs",
+  "controller_verification": "pending"
+}

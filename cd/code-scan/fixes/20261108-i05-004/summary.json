@@ -1,0 +1,52 @@
+{
+  "task_id": "i05-004-fix-r1",
+  "status": "needs_decision",
+  "cli_launches": 2,
+  "launched_model_sessions": 1,
+  "max_concurrent_cli_sessions": 1,
+  "model_requested": "gpt-6-astra",
+  "reasoning_effort_requested": "xhigh",
+  "model_served": null,
+  "duration_seconds": 148.380950887,
+  "usage": {
+    "input_tokens": 295736,
+    "cached_input_tokens": 232576,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 5585,
+    "reasoning_output_tokens": 1706
+  },
+  "actual_source_changes": [],
+  "validation": {
+    "native_output_schema": "passed",
+    "exact_source_quotes_verified": 9,
+    "source_scope": "passed: no application changes",
+    "implementation": "pending user decision",
+    "tests": "not run: no application changes"
+  },
+  "lease": {
+    "managed_by": "controller",
+    "owner": "codex-01a1bd14-mcap-fix",
+    "branch": "codex/code-scan-mcap-fix",
+    "status": "retained pending decision"
+  },
+  "recommended_option": "deadline_barriers",
+  "cost": {
+    "currency": "USD",
+    "basis": "API equivalent estimate for measured CLI usage; actual bill and served model unknown. Standard short-context rates assumed; cumulative input usage spans multiple requests. Supervising chat excluded.",
+    "rates_per_million": {
+      "input": 10,
+      "cached_input": 1,
+      "cache_write_input": 12.5,
+      "output": 50
+    },
+    "rates_source": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+    "rates_checked_date": "2026-11-08",
+    "this_stage": 1.143426,
+    "prior_screen_and_confirm": 0.37167474,
+    "pipeline_to_date": 1.51510074
+  },
+  "launch_issue": {
+    "path": "../20261108-i05-004-cli-error/result.json",
+    "reason": "--sandbox conflicts with --approve-for-me; latter already selects workspace-write. Rejected by argument parsing before model session; corrected and retried."
+  }
+}

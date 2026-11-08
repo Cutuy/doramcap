@@ -1,0 +1,61 @@
+{
+  "task_id": "i05-004-fix-r1",
+  "finding_path": "cd/code-scan/confirmations/20261108-i05/i05-004.r2.json",
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "checkout_head": "aa6ada8d07739315c5af97e1103ec367faf9a400",
+  "rule_id": "I-05.polling",
+  "execution": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "xhigh",
+    "max_concurrency": 1,
+    "native_output_schema": "cd/code-scan/fix.schema.json"
+  },
+  "lease": {
+    "managed_by": "controller",
+    "status": "active",
+    "path": "/home/cutuy/doramcap/.git/agent-pool/worktrees/1",
+    "branch": "codex/code-scan-mcap-fix",
+    "owner": "codex-01a1bd14-mcap-fix",
+    "child_action": "Use this lease. Do not acquire, release, reset, switch branches, or change lease records."
+  },
+  "governing_files": [
+    "AGENTS.md",
+    "docs/impl-guide.md",
+    "docs/design-guide.md"
+  ],
+  "inspect_first": [
+    "apps/fault-watchdog/src/sinks/mod.rs",
+    "apps/fault-watchdog/src/sinks/mcap.rs",
+    "apps/fault-watchdog/src/config.rs",
+    "apps/fault-watchdog/proto/watchdog.proto",
+    "libs/storage-persistence/src/mcap.rs",
+    "libs/storage-persistence/src/mcap/core.rs",
+    "libs/storage-persistence/src/writer.rs"
+  ],
+  "allowed_edit_prefixes": [
+    "apps/fault-watchdog/src/sinks/"
+  ],
+  "objective": "Remove the confirmed maintenance-driven completion polling in the fault-watchdog MCAP sink while preserving legitimate batching and flush deadlines, accepted-write ordering, error reporting, and shutdown/finalization behavior.",
+  "constraints": [
+    "Only this confirmed finding is in scope. The Dora readiness candidate remains unresolved and is excluded.",
+    "Inspect actual consumers and storage contracts. Do not just delete writer.poll if this loses aged-batch flushing or changes required failure/completion behavior.",
+    "Important design or behavior choices, added complexity, dependency adoption, new environment contracts, and edits outside allowed paths require a needs_decision result before implementing them. Explain the smallest viable option and alternatives with exact evidence.",
+    "No new configuration input or dependency is approved. Existing APIs may be used within their documented contracts.",
+    "The controller owns skill-based leasing, commits, pushes, PRs, independent verification, and lease release. Do not invoke skills or delegate. Do not edit scan artifacts.",
+    "If a routine in-scope repair is possible, implement it and add only meaningful regression coverage. Use focused unprivileged release/locked checks. No full CI, ARM64 jobs, system administration, or privileged tests in this child; report required capability tests for the controller.",
+    "Report tests actually run separately from gaps. patch_ready means proposed patch for controller verification, never verified or merged.",
+    "This host can fail sandboxed shell startup with bwrap RTM_NEWADDR. If encountered, request narrowly scoped automatic approval for the necessary operation; do not change system or sandbox settings."
+  ],
+  "acceptance": [
+    "Idle completion handling no longer depends on repeated maintenance timeouts.",
+    "Timers correspond to actual operation deadlines.",
+    "Batch age and configured flush semantics are preserved or any change is explicitly presented for approval.",
+    "Packet arrival, queue admission, failure/poisoning, ordering, disconnect, and finalization behavior remain valid."
+  ],
+  "output_contract": {
+    "schema": "cd/code-scan/fix.schema.json",
+    "evidence_lines": "One-based line number of the first line; quote must match consecutive current source lines.",
+    "needs_decision": "Return concrete question, recommended option, alternatives, and tradeoffs; stop before dependent edits.",
+    "blocked": "Return observed failure and what would unblock it."
+  }
+}
