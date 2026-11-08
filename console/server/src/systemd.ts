@@ -55,7 +55,7 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
       binds: appBinds(app, run, config.doraApps.includes(app.id!)),
     });
   });
-  const appUnits = apps.filter((app) => !app.process).map((app) => appUnit(app, run));
+  const appUnits = apps.filter((app) => !app.process).map((app) => appUnit(app, run, config.doraApps.includes(app.id!)));
   const units = await projectUnits(run.project);
   return execution.RunRequest.create({
     run: runPlan(config, run, run.graph),
@@ -69,13 +69,13 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
 }
 
 /** One system app's unit file, with its chosen config and outputs bound at its targets. */
-function appUnit(app: SelectedApp, run: SystemdRun) {
+function appUnit(app: SelectedApp, run: SystemdRun, dora: boolean) {
   if (!app.systemd?.unit) throw new Error(`${app.id}: SYSTEMD needs a unit file`);
-  return { id: app.id!, file: app.systemd.unit, binds: appBinds(app, run) };
+  return { id: app.id!, file: app.systemd.unit, binds: appBinds(app, run, dora) };
 }
 
 /** Bind selected config, outputs and app files at the same targets as Compose. */
-function appBinds(app: SelectedApp, run: SystemdRun, dora = false) {
+function appBinds(app: SelectedApp, run: SystemdRun, dora: boolean) {
   const target = app.configMount?.target;
   const config = app.profile?.config ?? (app.liveRelay ? run.relaySettings : undefined);
   if (target && !config) throw new Error(`${app.id}: nothing to show at ${target}`);
