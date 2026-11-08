@@ -16,6 +16,16 @@ const MICROS_PER_SECOND: u64 = 1_000_000;
 const MS_REC: u64 = 16384;
 /// Host directories every generated unit sees read-only inside its private root.
 const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
+/// systemd sets PATH to ExecSearchPath, so app units keep the usual system directories after
+/// the binaries directory.
+const DEFAULT_SEARCH_PATH: [&str; 6] = [
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+];
 /// Scope subdirectory holding each generated unit's private root.
 const ROOTS: &str = "roots";
 /// Drop-in placing an adopted unit in the run slice.
@@ -210,13 +220,17 @@ impl Manager {
         &self,
         scope: &Scope,
         files: &[String],
+        apps: &[crate::AppUnit],
+        binaries: &str,
         stop_seconds: u64,
     ) -> Result<Vec<String>> {
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut names = Vec::new();
         let mut copies = Vec::new();
-        for file in files {
+        let user = files.iter().map(|file| (file, None));
+        let apps = apps.iter().map(|app| (&app.file, Some(&app.binds)));
+        for (file, binds) in user.chain(apps) {
             let name = scope.unit(crate::unit_stem(file)?);
             let copy = units.join(&name);
             // Earlier defaults yield to any stop grace declared by the source unit.
@@ -226,12 +240,13 @@ impl Manager {
             let drop_in =
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
-            tokio::fs::write(
-                drop_in.join(SLICE_DROP_IN),
-                format!("[Service]\nSlice={}\n", scope.slice),
-            )
-            .await
-            .map_err(error)?;
+            let mut run = format!("[Service]\nSlice={}\n", scope.slice);
+            if let Some(binds) = binds {
+                run.push_str(&app_root(scope, &name, binds, binaries).await?);
+            }
+            tokio::fs::write(drop_in.join(SLICE_DROP_IN), run)
+                .await
+                .map_err(error)?;
             copies.push(copy.to_string_lossy().into_owned());
             names.push(name);
         }
@@ -552,6 +567,35 @@ async fn private_root(
         properties.push(("BindPaths".into(), value(writable)?));
     }
     Ok(properties)
+}
+
+/// Drop-in lines running an app unit in its private root: host system directories
+/// read-only, `binaries` on the executable search path, and the app's `binds`.
+async fn app_root(
+    scope: &Scope,
+    name: &str,
+    binds: &[crate::Bind],
+    binaries: &str,
+) -> Result<String> {
+    let root = scope.directory.join(ROOTS).join(name);
+    tokio::fs::create_dir_all(&root).await.map_err(error)?;
+    // A leading `-` lets a system directory be absent, as on hosts without /lib64.
+    let system: Vec<String> = SYSTEM_PATHS.iter().map(|path| format!("-{path}")).collect();
+    let mut lines = format!(
+        "RootDirectory={}\nMountAPIVFS=yes\nBindReadOnlyPaths={}\nBindReadOnlyPaths={binaries}\nExecSearchPath={binaries}:{}\n",
+        root.display(),
+        system.join(" "),
+        DEFAULT_SEARCH_PATH.join(":"),
+    );
+    for bind in binds {
+        let kind = if bind.read_only {
+            "BindReadOnlyPaths"
+        } else {
+            "BindPaths"
+        };
+        lines.push_str(&format!("{kind}={}:{}\n", bind.source, bind.target));
+    }
+    Ok(lines)
 }
 
 /// Little-endian CPU bitmask, as systemd's `AllowedCPUs` expects.

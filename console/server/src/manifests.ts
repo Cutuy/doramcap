@@ -24,7 +24,7 @@ export function expandManifests(config: Config) {
   for (const app of config.systemApps) {
     if (!app.manifest) continue;
     if (!isAbsolute(app.manifest)) throw new Error('system app manifest must be absolute');
-    if (app.id || app.label || app.input || app.graph || app.configMount || app.program ||
+    if (app.id || app.label || app.input || app.graph || app.configMount || app.systemd ||
         app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length)
       throw new Error(`Launch fields belong in the manifest: ${app.manifest}`);
     const manifest = capabilities.parseManifest(readFileSync(app.manifest, 'utf8'));
@@ -35,8 +35,11 @@ export function expandManifests(config: Config) {
     app.label = manifest.label;
     app.input = compose.ComposeProject.create({ directory, files });
     app.graph = manifest.graph ? beside(directory, manifest.graph) : '';
-    app.outputMounts = manifest.compose?.outputMounts ?? [];
-    app.configMount = manifest.compose?.configMount ?? null;
+    // Every launcher shows the config and outputs at the manifest's targets; Compose mounts
+    // them into its named service.
+    const service = manifest.compose?.service ?? '';
+    app.outputMounts = (manifest.outputTargets ?? []).map((target) => ({ service, target }));
+    app.configMount = manifest.configTarget ? { service, target: manifest.configTarget } : null;
     app.recordings = manifest.recordings;
     app.launchProfiles = manifest.variants.map((variant) => ({
       id: variant.id,
@@ -45,10 +48,10 @@ export function expandManifests(config: Config) {
       graph: variant.graph ? beside(directory, variant.graph) : '',
       recordings: variant.recordings,
     }));
-    app.program = manifest.program
+    app.systemd = manifest.systemd
       ? {
-          ...manifest.program,
-          files: (manifest.program.files ?? []).map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target })),
+          unit: beside(directory, manifest.systemd.unit ?? ''),
+          files: (manifest.systemd.files ?? []).map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target })),
         }
       : null;
     app.manifest = '';

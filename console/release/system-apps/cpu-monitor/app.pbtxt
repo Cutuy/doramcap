@@ -1,10 +1,11 @@
 id: "cpu-monitor"
 label: "CPU monitoring"
 graph: "flow.yml"
-compose {
-  files: "compose.yaml"
-  config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
-  output_mounts { service: "cpu-monitor" target: "/results" }
+config_target: "/config/monitor.pbtxt"
+output_targets: "/results"
+compose { files: "compose.yaml" service: "cpu-monitor" }
+systemd {
+  unit: "cpu-monitor.service"
 }
 variants {
   id: "record"
@@ -13,11 +14,3 @@ variants {
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
 }
 variants { id: "live" label: "Live panels only" config: "live.pbtxt" }
-program {
-  executable: "system-monitor"
-  args: "--config" args: "/config/monitor.pbtxt"
-  memlock_bytes: 268435456
-  kill_signal: 2
-  config_target: "/config/monitor.pbtxt"
-  output_targets: "/results"
-}

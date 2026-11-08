@@ -1,0 +1,10 @@
+# Native systemd launch of Data recorder. Doramcap adopts this file unchanged and adds
+# the run's slice, private root, binds and binaries search path in a runtime drop-in.
+[Unit]
+Description=Doramcap Data recorder
+
+[Service]
+ExecStart=mcap-recorder --config /config/recorder.pbtxt
+LimitMEMLOCK=268435456
+KillSignal=SIGINT
+TimeoutStopSec=15

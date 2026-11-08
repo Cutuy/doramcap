@@ -1,10 +1,12 @@
 id: "data-recorder"
 label: "Data recorder"
 graph: "flow.yml"
-compose {
-  files: "compose.yaml"
-  config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
-  output_mounts { service: "data-recorder" target: "/results" }
+config_target: "/config/recorder.pbtxt"
+output_targets: "/results"
+compose { files: "compose.yaml" service: "data-recorder" }
+systemd {
+  unit: "data-recorder.service"
+  files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }
 }
 variants {
   id: "cpu"
@@ -18,13 +20,4 @@ variants {
   config: "faults.pbtxt"
   graph: "faults.yml"
   recordings { id: "messages" path: "messages.mcap" }
-}
-program {
-  executable: "mcap-recorder"
-  args: "--config" args: "/config/recorder.pbtxt"
-  memlock_bytes: 268435456
-  kill_signal: 2
-  config_target: "/config/recorder.pbtxt"
-  output_targets: "/results"
-  files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }
 }

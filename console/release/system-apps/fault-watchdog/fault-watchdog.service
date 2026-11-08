@@ -1,0 +1,10 @@
+# Native systemd launch of Fault Watchdog. Doramcap adopts this file unchanged and adds
+# the run's slice, private root, binds and binaries search path in a runtime drop-in.
+[Unit]
+Description=Doramcap Fault Watchdog
+
+[Service]
+ExecStart=fault-watchdog /etc/fault-watchdog/watchdog.pbtxt
+LimitMEMLOCK=268435456
+KillSignal=SIGINT
+TimeoutStopSec=15

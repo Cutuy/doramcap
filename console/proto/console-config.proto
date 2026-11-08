@@ -62,7 +62,7 @@ message SystemAppDefinition {
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
   LiveRelay live_relay = 13; // Relays the selected apps' live outputs to Console.
   // How the SYSTEMD form launches the app; file sources are absolute.
-  doramcap.launch.v1.ProgramLaunch program = 15;
+  doramcap.launch.v1.SystemdLaunch systemd = 15;
 }
 
 // Console generates the relay's Dora node and BridgeConfig, mounted at config_mount.

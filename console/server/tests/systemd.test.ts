@@ -44,34 +44,32 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     const [system, user] = plan.systemd!.groups!;
     assert.equal(system.awaitRecordings, true);
     assert.deepEqual(user.unitFiles, [join(project, 'perception.service'), join(project, 'planner.service')]);
-    const monitor = system.programs!.find((program) => program.id === 'cpu-monitor')!;
-    assert.deepEqual(monitor.argv, ['/opt/doramcap/bin/system-monitor', '--config', '/config/monitor.pbtxt']);
-    assert.deepEqual(monitor.binds!.map(({ source, target, readOnly }) => [source, target, readOnly]), [
+    const unit = (id: string) => system.appUnits!.find((app) => app.file === join(systemApps, id, `${id}.service`))!;
+    assert.equal(plan.systemd!.binaries, '/opt/doramcap/bin');
+    assert.deepEqual(unit('cpu-monitor').binds!.map(({ source, target, readOnly }) => [source, target, readOnly]), [
       [join(systemApps, 'cpu-monitor/monitor.pbtxt'), '/config/monitor.pbtxt', true],
       [artifacts, '/results', false],
     ]);
-    const recorder = system.programs!.find((program) => program.id === 'data-recorder')!;
-    assert.ok(recorder.binds!.some((bind) => bind.source === join(systemApps, 'data-recorder/telemetry_descriptor.bin') && bind.target === '/config/telemetry_descriptor.bin'));
-    const bridge = system.programs!.find((program) => program.id === 'live-bridge')!;
-    assert.equal(bridge.binds![0].source, join(directory, 'bridge.pbtxt'));
+    assert.ok(unit('data-recorder').binds!.some((bind) => bind.source === join(systemApps, 'data-recorder/telemetry_descriptor.bin') && bind.target === '/config/telemetry_descriptor.bin'));
+    assert.equal(unit('live-bridge').binds![0].source, join(directory, 'bridge.pbtxt'));
     assert.deepEqual(plan.run!.recordings!.map((r) => r.recording), [join(artifacts, 'cpu.mcap'), join(artifacts, 'messages.mcap')]);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test('systemd needs absolute binaries and a program for every selected app', async () => {
+test('systemd needs absolute binaries and a unit file for every selected app', async () => {
   // Arrange
   const template = (text: string) => capabilities.parseConfig(text);
   // Act / Assert: binaries are required.
   assert.throws(() => releaseConfig(template('form: SYSTEMD'), '/playground', systemApps, '/state'), /binaries must be absolute/);
-  // Act / Assert: an inline app without a program cannot launch.
+  // Act / Assert: an inline app without a unit file cannot launch.
   const config = releaseConfig(
     template('form: SYSTEMD binaries: "/opt/bin" system_apps {id:"inline" input {directory:"cpu-monitor" files:"compose.yaml"}}'),
     '/playground', systemApps, '/state',
   );
   await assert.rejects(
     systemdPlan(config, { id: 'r1', project: tmpdir(), artifacts: '/state/r1', workspace: tmpdir(), stage: 'test', apps: config.systemApps, graph: '' }),
-    /needs a program executable/,
+    /needs a unit file/,
   );
 });

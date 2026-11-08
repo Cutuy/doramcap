@@ -43,16 +43,15 @@ async function doraPorts() {
 }
 
 /**
- * Build the run request with a systemd backend: Dora, then the selected system apps,
- * then the project's units.
- * Creates the private Dora runtime directory. Errors: an app without a program executable name,
- * or a config target with no config to show there.
+ * Build the run request with a systemd backend: Dora, then the selected system apps'
+ * unit files, then the project's units. Creates the private Dora runtime directory.
+ * Errors: an app without a unit file, or a config target with no config to show there.
  */
 export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunRequest> {
   const binaries = config.binaries!;
   const runtime = join(run.workspace, `${run.stage}-dora`);
   await mkdir(runtime, { recursive: true, mode: 0o700 });
-  const programs = run.apps.map((app) => program(binaries, app, run));
+  const appUnits = run.apps.map((app) => appUnit(app, run));
   const units = await projectUnits(run.project);
   const recordings = outputs(run.apps).map((output) => ({
     recording: join(run.artifacts, output.path!),
@@ -77,30 +76,27 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
         runtimeDirectory: runtime,
         memlockBytes: Math.max(Number(config.dora?.memlockBytes ?? 0), MIN_DORA_MEMLOCK_BYTES),
       },
+      binaries,
       groups: [
-        ...(programs.length ? [{ programs, awaitRecordings: recordings.length > 0 }] : []),
+        ...(appUnits.length ? [{ appUnits, awaitRecordings: recordings.length > 0 }] : []),
         ...(units.length ? [{ unitFiles: units }] : []),
       ],
     }),
   });
 }
 
-/** One system app's unit: its executable, its chosen config and outputs at container paths. */
-function program(binaries: string, app: SelectedApp, run: SystemdRun) {
-  const facts = app.program;
-  if (!facts?.executable || facts.executable.includes('/'))
-    throw new Error(`${app.id}: SYSTEMD needs a program executable name`);
+/** One system app's unit file, with its chosen config and outputs bound at its targets. */
+function appUnit(app: SelectedApp, run: SystemdRun) {
+  if (!app.systemd?.unit) throw new Error(`${app.id}: SYSTEMD needs a unit file`);
+  const target = app.configMount?.target;
   const config = app.profile?.config ?? (app.liveRelay ? run.relaySettings : undefined);
-  if (facts.configTarget && !config) throw new Error(`${app.id}: nothing to show at ${facts.configTarget}`);
+  if (target && !config) throw new Error(`${app.id}: nothing to show at ${target}`);
   return {
-    id: app.id,
-    argv: [join(binaries, facts.executable), ...(facts.args ?? [])],
-    memlockBytes: facts.memlockBytes,
-    killSignal: facts.killSignal,
+    file: app.systemd.unit,
     binds: [
-      ...(facts.configTarget ? [{ source: config, target: facts.configTarget, readOnly: true }] : []),
-      ...(facts.outputTargets ?? []).map((target) => ({ source: run.artifacts, target, readOnly: false })),
-      ...(facts.files ?? []).map((file) => ({ source: file.source, target: file.target, readOnly: true })),
+      ...(target ? [{ source: config, target, readOnly: true }] : []),
+      ...(app.outputMounts ?? []).map((mount) => ({ source: run.artifacts, target: mount.target, readOnly: false })),
+      ...(app.systemd.files ?? []).map((file) => ({ source: file.source, target: file.target, readOnly: true })),
     ],
   };
 }
