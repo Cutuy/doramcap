@@ -29,6 +29,8 @@ export function validateConfig(config: Config) {
       break;
     case launch.Form.SYSTEMD:
       if (config.dockerSocket) throw new Error('docker_socket applies only to COMPOSE');
+      if (config.hostShm?.some((name) => !name || /[^A-Za-z0-9_.-]/.test(name) || name === '.' || name === '..'))
+        throw new Error('host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid');
       break;
     default:
       throw new Error('form: only COMPOSE and SYSTEMD are supported');

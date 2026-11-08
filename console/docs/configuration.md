@@ -45,6 +45,8 @@ directory holding `dora` and the executables named by each app's `process.argv`,
 with the release features. `SYSTEMD` runs need root and the system service manager;
 leave `docker_socket` unset. Each run has its own `/dev/shm`; `host_shm: "camera"`
 shows a driver-owned host entry to every unit. Inline definitions, as below, remain valid.
+`host_shm` names use ASCII letters, digits, dot, underscore or hyphen; empty names,
+`.` and `..` are rejected before launch.
 
 ```protobuf
 apps {

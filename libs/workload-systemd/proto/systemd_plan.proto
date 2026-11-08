@@ -10,6 +10,7 @@ message SystemdPlan {
   repeated AppUnit app_units = 4;
   // Host /dev/shm entries every unit sees in place; these remain driver-owned.
   // Every unit otherwise shares the run directory, removed after confirmed shutdown.
+  // Names use ASCII letters/digits, dot, underscore or hyphen; empty, . and .. are invalid.
   repeated string host_shm = 5;
 }
 

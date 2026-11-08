@@ -22,6 +22,7 @@ message ConsoleConfig {
   string binaries = 13;
   // Host /dev/shm entries, such as a driver's `camera` segment, that every unit of a run
   // sees in place; SYSTEMD only. Each run otherwise has its own /dev/shm.
+  // Names use ASCII letters/digits, dot, underscore or hyphen; empty, . and .. are invalid.
   repeated string host_shm = 14;
 }
 

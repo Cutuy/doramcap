@@ -123,12 +123,15 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
         return Err("readiness and stop budgets must be positive".into());
     }
     workload_lifecycle::plan::validate_apps(run, app_ids(plan)?.iter().map(String::as_str))?;
-    if plan
-        .host_shm
-        .iter()
-        .any(|name| name.is_empty() || name.contains('/') || name == "." || name == "..")
-    {
-        return Err("host_shm entries must be names directly in /dev/shm".into());
+    if plan.host_shm.iter().any(|name| {
+        name.is_empty()
+            || name == "."
+            || name == ".."
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    }) {
+        return Err("host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid".into());
     }
     let mut ids = std::collections::BTreeSet::new();
     let reserved = |id: &str| !run.dora_apps.is_empty() && id.starts_with(dora::CLI_PREFIX);
@@ -267,6 +270,37 @@ mod tests {
             }],
             unit_files: vec!["/repo/deploy/perception.service".into()],
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn host_shared_memory_names_are_plain_basenames() {
+        // Arrange
+        let run = run();
+        let mut plan = plan();
+        // Act / Assert
+        for name in ["camera", "Camera_1.v2", "camera-0", ".driver"] {
+            plan.host_shm = vec![name.into()];
+            validate(&run, &plan).unwrap();
+        }
+        for name in [
+            "",
+            ".",
+            "..",
+            "driver/frame",
+            "camera space",
+            "camera:0",
+            "camera\\0",
+            "camera%0",
+            "camera\"0",
+            "camera\n0",
+            "caméra",
+        ] {
+            plan.host_shm = vec![name.into()];
+            assert!(
+                validate(&run, &plan).unwrap_err().contains("host_shm"),
+                "{name:?}"
+            );
         }
     }
 
