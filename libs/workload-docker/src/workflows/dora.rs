@@ -87,8 +87,12 @@ impl DoraApps {
             .filter(|(_, target)| path.starts_with(target))
             .max_by_key(|(_, target)| target.len())
             .ok_or_else(|| invalid(format!("Dora app needs a bind for {target}")))?;
+        let suffix = path.strip_prefix(mount.1).unwrap();
+        if suffix.as_os_str().is_empty() {
+            return Ok(mount.0.to_owned());
+        }
         Ok(std::path::Path::new(mount.0)
-            .join(path.strip_prefix(mount.1).unwrap())
+            .join(suffix)
             .to_string_lossy()
             .into_owned())
     }
@@ -231,5 +235,27 @@ pub(crate) fn fixture(root: &str, ports: [u16; 2]) -> DoraApps {
     DoraApps {
         services,
         ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn native_file_and_directory_binds_resolve_to_readable_host_files() {
+        // Arrange
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("zenoh.json5");
+        std::fs::write(&file, b"{}").unwrap();
+        let service = serde_json::json!({"volumes":[
+            {"type":"bind","source":file,"target":"/config/zenoh.json5"},
+            {"type":"bind","source":directory.path(),"target":"/settings"}
+        ]});
+        for target in ["/config/zenoh.json5", "/settings/zenoh.json5"] {
+            // Act
+            let source = DoraApps::host_path(&service, target).unwrap();
+            // Assert
+            assert_eq!(std::fs::read(source).unwrap(), b"{}");
+        }
     }
 }

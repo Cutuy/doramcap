@@ -40,8 +40,8 @@ may change while these contracts remain in development.
 - [x] Regenerated Console protobufs pass TypeScript checking.
 - [x] Focused Console contract tests pass.
 - [x] Focused native systemd Dora startup, graph registration and cleanup pass.
-- [ ] Full native Docker/systemd integration on the revised ordinary-app model.
-- [ ] Full local/cloud CI and ARM64 validation: resumed; final results pending.
+- [x] Native systemd suite and real Compose Dora recording/shutdown scenarios pass.
+- [ ] Final full CI: local Rust/Node and ARM64 passed the helper restoration; the file-bind correction is rechecking.
 - [ ] Real Console systemd execution: deferred to #204, absent from this base.
 
 ## Schema ownership
