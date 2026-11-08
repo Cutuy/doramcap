@@ -1,0 +1,17 @@
+id: "dora-coordinator"
+label: "Dora coordinator"
+compose { files: "compose.yaml" service: "dora-coordinator" }
+output_targets: "/runtime"
+process {
+  argv: "dora"
+  argv: "coordinator"
+  argv: "--port"
+  argv: "0"
+  argv: "--interface"
+  argv: "127.0.0.1"
+  argv: "--store"
+  argv: "memory"
+  working_directory: "/runtime"
+  memlock_bytes: 67108864
+  stop_signal: 2
+}

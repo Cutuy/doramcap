@@ -3,17 +3,23 @@
 Console loads protobuf text from the command-line configuration file. With `download_missing_images: true`, selected missing images download before
 Review. Otherwise images must already exist locally. The Dora coordinator and daemon are always included.
 
-Optional apps use ordinary Compose inputs. Each app container launches from its own
-pbtxt, bind-mounted read-only by its Compose file. The
-[release template](../release/console.pbtxt) is a complete working example.
+Optional apps ship common settings in app-named pbtxt files. The
+[release template](../release/console.pbtxt) lists the shipped apps.
 
 ## App manifests
 
-An app's launch facts can ship beside it in an `app.pbtxt`
-([`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)): label, graph, recordings,
-variants (launch profiles), where the app expects its config and outputs, and its native launch
-files: Compose files and a systemd unit file. Native files carry every launcher detail; Doramcap
-adds only the run's mounts and placement. Paths stay beside the manifest.
+`<app-name>.pbtxt` uses [`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)
+for the command, working directory, resource limits, shutdown settings, shared files,
+graph, config/output targets and variants. Variant files use the app's own protobuf
+schema, such as `cpu-monitor-record.pbtxt` and `cpu-monitor-live.pbtxt`.
+Paths resolve beside the manifest. Executable basenames resolve through the image's
+PATH or the systemd deployment's `binaries` directory.
+
+Compose YAML supplies image, container identity, network, IPC, security and healthcheck
+settings. Existing Compose preparation applies common settings from pbtxt. Console's
+systemd builder creates `Program` inputs from those same settings; the runner creates
+the units. An external unit uses `systemd.unit` separately and supplies its own process
+settings. Combining it with `process` is rejected.
 
 ![Launch contracts](../../libs/workload-lifecycle/docs/110726-launch-contracts.svg)
 
@@ -22,21 +28,21 @@ The Console entry then names the manifest and keeps only Console settings:
 ```protobuf
 form: COMPOSE
 apps {
-  manifest: "/absolute/system-apps/cpu-monitor/app.pbtxt"
+  manifest: "/absolute/system-apps/cpu-monitor/cpu-monitor.pbtxt"
   default_selected: true
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
 }
 ```
 
 `form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
-directory holding `dora` and the executables named by each app's systemd unit file. Console cannot run `SYSTEMD`
+directory holding `dora` and the executables named by each app's `process.argv`. Console cannot run `SYSTEMD`
 yet and refuses it at startup. Inline definitions, as below, remain valid.
 
 ```protobuf
 apps {
   id: "cpu-monitor"
   label: "CPU monitoring"
-  input { directory: "/absolute/release/system-apps/cpu-monitor" files: "compose.yaml" }
+  input { directory: "/absolute/release/system-apps/cpu-monitor" files: "compose.yaml" manifest: "cpu-monitor.pbtxt" }
   graph: "/absolute/release/system-apps/cpu-monitor/flow.yml"
   output_mounts { service: "cpu-monitor" target: "/results" }
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
@@ -64,7 +70,7 @@ apps {
   id: "live-bridge"
   label: "Live telemetry"
   default_selected: true
-  input { directory: "/absolute/doramcap/console/release/system-apps/live-bridge" files: "compose.yaml" }
+  input { directory: "/absolute/doramcap/console/release/system-apps/live-bridge" files: "compose.yaml" manifest: "live-bridge.pbtxt" }
   config_mount { service: "live-bridge" target: "/config/bridge.pbtxt" }
   live_relay {}
 }
@@ -135,11 +141,13 @@ command when `--ssh user@host` is supplied.
 
 ### Dora apps
 
-`apps` includes coordinator and daemon definitions with ordinary Compose and systemd
-launch files. `dora_apps` lists their IDs and makes them required in Review. Native
-files declare commands, ports, mounts, identity and memory limits. The Rust workflow
-starts these apps first and waits for daemon readiness before starting system apps.
-`dataflow_file` supplies the workload graph merged with selected app graphs.
+`dora_apps` selects the coordinator and daemon app IDs for the first startup phase.
+Their common commands, memory limits, files and output targets live in
+[`dora-coordinator.pbtxt`](../release/system-apps/dora-coordinator/dora-coordinator.pbtxt)
+and [`dora-daemon.pbtxt`](../release/system-apps/dora-daemon/dora-daemon.pbtxt).
+Both backends select per-run ports when the command's port arguments are `0`.
+Explicit coordinator ports must agree in both commands; the daemon's listen port
+must differ. The workflow waits for daemon readiness, then registers the merged graph.
 
-See [the release configuration](../release/console.pbtxt) and
-[the native coordinator definition](../release/system-apps/dora-coordinator/compose.yaml).
+Project Explorer registrations pass these same app manifests to existing Compose
+preparation. Its identity overlays contain Docker user IDs.

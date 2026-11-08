@@ -3,25 +3,25 @@
 form: COMPOSE
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
-apps { manifest: "dora-coordinator/app.pbtxt" }
-apps { manifest: "dora-daemon/app.pbtxt" }
+apps { manifest: "dora-coordinator/dora-coordinator.pbtxt" }
+apps { manifest: "dora-daemon/dora-daemon.pbtxt" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
 apps {
-  manifest: "live-bridge/app.pbtxt"
+  manifest: "live-bridge/live-bridge.pbtxt"
   default_selected: true
   live_relay {}
 }
 apps {
-  manifest: "cpu-monitor/app.pbtxt"
+  manifest: "cpu-monitor/cpu-monitor.pbtxt"
   default_selected: true
   live_outputs { source: "cpu-monitor/snapshots" kind: CPU_ACCOUNTING }
   live_outputs { source: "cpu-monitor/dictionary" kind: CPU_ACCOUNTING }
 }
 apps {
-  manifest: "data-recorder/app.pbtxt"
+  manifest: "data-recorder/data-recorder.pbtxt"
 }
 apps {
-  manifest: "fault-watchdog/app.pbtxt"
+  manifest: "fault-watchdog/fault-watchdog.pbtxt"
   health_inputs: true
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
 }

@@ -4,13 +4,18 @@ graph: "flow.yml"
 config_target: "/config/monitor.pbtxt"
 output_targets: "/results"
 compose { files: "compose.yaml" service: "cpu-monitor" }
-systemd {
-  unit: "cpu-monitor.service"
-}
 variants {
   id: "record"
   label: "Live panels and recording"
-  config: "monitor.pbtxt"
+  config: "cpu-monitor-record.pbtxt"
   recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
 }
-variants { id: "live" label: "Live panels only" config: "live.pbtxt" }
+variants { id: "live" label: "Live panels only" config: "cpu-monitor-live.pbtxt" }
+process {
+  argv: "system-monitor"
+  argv: "--config"
+  argv: "/config/monitor.pbtxt"
+  memlock_bytes: 268435456
+  stop_signal: 2
+  stop_seconds: 15
+}

@@ -5,14 +5,18 @@ graph: "flow.yml"
 config_target: "/etc/fault-watchdog/watchdog.pbtxt"
 output_targets: "/results"
 compose { files: "compose.yaml" service: "fault-watchdog" }
-systemd {
-  unit: "fault-watchdog.service"
-}
-variants { id: "live" label: "Live only" config: "watchdog.pbtxt" }
+variants { id: "live" label: "Live only" config: "fault-watchdog-live.pbtxt" }
 variants {
   id: "mcap"
   label: "Live and MCAP"
-  config: "watchdog-mcap.pbtxt"
+  config: "fault-watchdog-mcap.pbtxt"
   recordings { id: "faults" path: "faults.mcap" }
 }
-variants { id: "otel" label: "Live and OTLP" config: "watchdog-otel.pbtxt" }
+variants { id: "otel" label: "Live and OTLP" config: "fault-watchdog-otel.pbtxt" }
+process {
+  argv: "fault-watchdog"
+  argv: "/etc/fault-watchdog/watchdog.pbtxt"
+  memlock_bytes: 268435456
+  stop_signal: 2
+  stop_seconds: 15
+}

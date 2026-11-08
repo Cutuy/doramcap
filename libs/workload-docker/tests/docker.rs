@@ -3003,6 +3003,7 @@ fn dora_apps() -> Vec<ComposeProject> {
             key: format!("dora-{role}"),
             directory: format!("{}/deploy/dora-{role}", env!("CARGO_MANIFEST_DIR")),
             files: vec!["compose.yaml".into()],
+            manifest: format!("dora-{role}.pbtxt"),
             ..Default::default()
         })
         .collect()
@@ -3017,29 +3018,30 @@ fn dora_fixture(
         .into_iter()
         .enumerate()
         .map(|(index, mut input)| {
-            let path = std::path::Path::new(&input.directory).join("compose.yaml");
-            let mut model: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-            let service = &mut model["services"][&input.key];
-            if let Some((runtime, user)) = &context {
-                service["user"] = user.clone().into();
-                service["volumes"][0]["source"] = runtime.to_string_lossy().into_owned().into();
-            }
-            if index == 1 {
-                service["volumes"][1]["source"] = format!("{}/zenoh.json5", input.directory).into();
-            }
-            let args = service["command"].as_array_mut().unwrap();
+            let source = std::path::Path::new(&input.directory);
+            let directory = root.join(&input.key);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::copy(source.join("compose.yaml"), directory.join("compose.yaml")).unwrap();
+            if index == 1 { std::fs::copy(source.join("zenoh.json5"), directory.join("zenoh.json5")).unwrap(); }
+            let pool = prost_reflect::DescriptorPool::decode(include_bytes!(concat!(env!("OUT_DIR"), "/workflow_config.bin")).as_slice()).unwrap();
+            let descriptor = pool.get_message_by_name("doramcap.launch.v1.AppManifest").unwrap();
+            let mut message = prost_reflect::DynamicMessage::parse_text_format(descriptor.clone(), &std::fs::read_to_string(source.join(&input.manifest)).unwrap()).unwrap();
+            let mut app: workload_lifecycle::launch::AppManifest = message.transcode_to().unwrap();
+            let args = &mut app.process.as_mut().unwrap().argv;
             for i in 1..args.len() {
-                if args[i - 1] == "--port" || args[i - 1] == "--coordinator-port" {
-                    args[i] = ports[0].to_string().into();
-                }
-                if args[i - 1] == "--local-listen-port" {
-                    args[i] = ports[1].to_string().into();
-                }
+                if args[i - 1] == "--port" || args[i - 1] == "--coordinator-port" { args[i] = ports[0].to_string(); }
+                if args[i - 1] == "--local-listen-port" { args[i] = ports[1].to_string(); }
             }
-            let file = root.join(format!("{}.json", input.key));
-            std::fs::write(&file, serde_json::to_vec(&model).unwrap()).unwrap();
-            input.files = vec![file.to_string_lossy().into_owned()];
+            if let Some((runtime, user)) = &context {
+                app.output_targets.clear();
+                let overlay = serde_json::json!({"services":{&input.key:{"user":user,"volumes":[{"type":"bind","source":runtime,"target":"/runtime"}]}}});
+                std::fs::write(directory.join("identity.json"), serde_json::to_vec(&overlay).unwrap()).unwrap();
+                input.files.push("identity.json".into());
+            }
+            message = prost_reflect::DynamicMessage::new(descriptor);
+            message.transcode_from(&app).unwrap();
+            std::fs::write(directory.join(&input.manifest), message.to_text_format()).unwrap();
+            input.directory = directory.to_string_lossy().into_owned();
             input
         })
         .collect()

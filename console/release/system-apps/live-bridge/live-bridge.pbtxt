@@ -3,6 +3,10 @@ id: "live-bridge"
 label: "Live telemetry"
 config_target: "/config/bridge.pbtxt"
 compose { files: "compose.yaml" service: "live-bridge" }
-systemd {
-  unit: "live-bridge.service"
+process {
+  argv: "live-bridge"
+  argv: "--config"
+  argv: "/config/bridge.pbtxt"
+  stop_signal: 2
+  stop_seconds: 15
 }

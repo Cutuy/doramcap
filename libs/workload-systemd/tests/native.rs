@@ -609,45 +609,66 @@ async fn dora_runs_as_units_and_registers_the_graph() {
         "nodes:\n  - id: user\n    path: dynamic\n    outputs: [messages]\n",
     )
     .unwrap();
-    let ports: Vec<u32> = (0..2)
-        .map(|_| {
-            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            listener.local_addr().unwrap().port().into()
-        })
-        .collect();
     let mut plan = fixture.plan("r1", vec![]);
     plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
     plan.0.dataflow_file = graph.to_string_lossy().into();
-    plan.1.programs = vec![
-        Program {
-            id: "dora-coordinator".into(),
-            argv: vec![
-                executable.clone(),
-                "coordinator".into(),
-                "--port".into(),
-                ports[0].to_string(),
-                "--interface".into(),
-                "127.0.0.1".into(),
-                "--store".into(),
-                "memory".into(),
-            ],
-            working_directory: runtime.to_string_lossy().into(),
+    let pool = prost_reflect::DescriptorPool::decode(
+        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
+    )
+    .unwrap();
+    for role in ["coordinator", "daemon"] {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../workload-docker/deploy")
+            .join(format!("dora-{role}"));
+        let text = std::fs::read_to_string(directory.join(format!("dora-{role}.pbtxt"))).unwrap();
+        let app: workload_lifecycle::launch::AppManifest =
+            prost_reflect::DynamicMessage::parse_text_format(
+                pool.get_message_by_name("doramcap.launch.v1.AppManifest")
+                    .unwrap(),
+                &text,
+            )
+            .unwrap()
+            .transcode_to()
+            .unwrap();
+        let process = app.process.unwrap();
+        process.validate().unwrap();
+        let mut argv = process.argv;
+        argv[0] = executable.clone();
+        let mut binds: Vec<_> = app
+            .files
+            .iter()
+            .map(|file| Bind {
+                source: directory.join(&file.source).to_string_lossy().into_owned(),
+                target: file.target.clone(),
+                read_only: true,
+            })
+            .collect();
+        binds.push(Bind {
+            source: runtime.to_string_lossy().into_owned(),
+            target: "/runtime".into(),
+            read_only: false,
+        });
+        plan.1.programs.push(Program {
+            id: app.id,
+            argv,
+            working_directory: process.working_directory,
+            memlock_bytes: process.memlock_bytes,
+            kill_signal: process.stop_signal,
+            stop_seconds: process.stop_seconds,
+            binds,
             ..Default::default()
-        },
-        Program {
-            id: "dora-daemon".into(),
-            argv: vec![
-                executable,
-                "daemon".into(),
-                "--coordinator-port".into(),
-                ports[0].to_string(),
-                "--local-listen-port".into(),
-                ports[1].to_string(),
-            ],
-            working_directory: runtime.to_string_lossy().into(),
-            ..Default::default()
-        },
-    ];
+        });
+    }
+    let mut participant = program(
+        "user",
+        r#"printf '%s\n' "$DORA_NODE_ID" "$DORA_DAEMON_LOCAL_LISTEN_PORT" "$DORA_ZENOH_CONFIG_OVERLAY" > /results/environment; test -s "$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300"#,
+    );
+    participant.binds.push(Bind {
+        source: runtime.to_string_lossy().into_owned(),
+        target: "/results".into(),
+        read_only: false,
+    });
+    plan.1.programs.push(participant);
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
@@ -665,13 +686,18 @@ async fn dora_runs_as_units_and_registers_the_graph() {
             .any(|name| name.ends_with("-dora-daemon.service")),
         "{names:?}"
     );
+    let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();
+    let values: Vec<_> = environment.lines().collect();
+    assert_eq!(values[0], "user");
+    assert!(values[1].parse::<u16>().unwrap() > 0);
+    assert_eq!(values[2], "/config/zenoh.json5");
     assert!(runtime.join("dataflow.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root, the system service manager and DORAMCAP_TEST_DORA"]
 async fn dora_app_units_resolve_their_native_executable_and_register_the_graph() {
-    // Arrange: use the shipped units with a bare executable and private runtime binds.
+    // Arrange: use external units with a bare executable and private runtime binds.
     let fixture = Fixture::new("dora-apps");
     let binaries = fixture.root.join("bin");
     let runtime = fixture.root.join("runtime");
@@ -700,14 +726,9 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
     for (role, contents) in [
         (
             "coordinator",
-            include_str!(
-                "../../../console/release/system-apps/dora-coordinator/dora-coordinator.service"
-            ),
+            include_str!("fixtures/dora-coordinator.service"),
         ),
-        (
-            "daemon",
-            include_str!("../../../console/release/system-apps/dora-daemon/dora-daemon.service"),
-        ),
+        ("daemon", include_str!("fixtures/dora-daemon.service")),
     ] {
         let file = fixture.root.join(format!("dora-{role}.service"));
         std::fs::write(

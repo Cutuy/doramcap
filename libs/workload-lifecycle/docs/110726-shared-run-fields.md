@@ -14,8 +14,9 @@ Shutdown reverses these fixed phases. App IDs select phases; configurable startu
 | Dora, system and MCAP-writer app IDs | systemd programs, unit files and app binds |
 | Absolute merged `dataflow_file` artifact | Ordinary app commands, resources, identity and native config files |
 
-Coordinator and daemon are ordinary apps. Their native launch definitions own ports,
-images/executables, working directories, mounts and memory limits. Rust retains daemon
+Coordinator and daemon are ordinary apps. App-owned pbtxt supplies their shared commands,
+working directories, file bindings, resource limits and shutdown settings. Native files
+supply the remaining Docker or systemd settings. Rust retains daemon
 readiness, graph registration/identity and graceful shutdown. Control steps derive
 the coordinator endpoint and artifact location from the selected apps.
 User-provided unit files are loaded by systemd. Workflow-owned CLI oneshots use
@@ -48,7 +49,25 @@ may change while these contracts remain in development.
 
 `launch.proto` owns shared run facts. `compose_plan.proto` contains ordinary projects;
 `systemd_plan.proto` contains ordinary programs, unit files, binds and the binaries
-path. Native Compose and systemd files carry Dora launch details. `dataflow_file`
+path. `AppManifest` owns common process and file settings; native inputs hold backend-specific settings. `dataflow_file`
 names the merged native Dora artifact registered by the Rust workflow.
 
 #204–#207 remain unchanged.
+
+## Milestone 2: Shared app configuration
+
+**Work items**
+- [x] Preserve current protobufs; add common process and file settings.
+- [x] Extend existing manifest expansion and backend preparation; reuse existing bridge APIs.
+- [x] Share automatic Dora port selection; retain explicit pbtxt ports.
+- [x] Use app-named pbtxt and variants; minimize Docker YAML and update gallery consumers.
+- [x] Generate shipped systemd units; retain external units separately.
+
+**Validation**
+- [x] Common command, limits, files and shutdown settings reach both backend plans; manifest edits change input hashes.
+- [x] Selected variants bind the same app config in both backends; systemd-only manifests require no Compose files.
+- [x] Native Docker and systemd tests cover startup, explicit/automatic ports, graph registration and cleanup.
+- [x] Focused Rust and Console suites, affected-target Clippy, formatting, library boundaries and gallery compilation pass.
+- [ ] Hosted CI and ARM64 worker validation of the published revision.
+
+Latest local evidence: Console has one existing root-setup skip; the Docker library has one opt-in test skip. All 16 native systemd cases pass, with an additional generated-app participant check. Docker recording, automatic startup and independent preparation snapshots pass. Console systemd execution remains deferred to #204.

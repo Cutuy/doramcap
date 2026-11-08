@@ -1,5 +1,0 @@
-id: "dora-daemon"
-label: "Dora daemon"
-compose { files: "compose.yaml" service: "dora-daemon" }
-output_targets: "/runtime"
-systemd { unit: "dora-daemon.service" files { source: "zenoh.json5" target: "/config/zenoh.json5" } }

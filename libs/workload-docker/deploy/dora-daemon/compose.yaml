@@ -1,48 +1,7 @@
-{
-  "services": {
-    "dora-daemon": {
-      "image": "doramcap/dora:local",
-      "network_mode": "host",
-      "entrypoint": [
-        "/usr/local/bin/dora"
-      ],
-      "command": [
-        "daemon",
-        "--coordinator-port",
-        "0",
-        "--local-listen-port",
-        "0",
-        "--zenoh-config-overlay",
-        "/config/zenoh.json5"
-      ],
-      "working_dir": "/runtime",
-      "user": "0:0",
-      "volumes": [
-        {
-          "type": "bind",
-          "source": "${DORAMCAP_DORA_RUNTIME_DIR}",
-          "target": "/runtime"
-        },
-        {
-          "type": "bind",
-          "source": "./zenoh.json5",
-          "target": "/config/zenoh.json5",
-          "read_only": true
-        }
-      ],
-      "ulimits": {
-        "memlock": {
-          "soft": 67108864,
-          "hard": 67108864
-        }
-      },
-      "ipc": "shareable",
-      "shm_size": 134217728,
-      "stop_signal": "SIGINT",
-      "environment": {
-        "HOME": "/runtime",
-        "DORA_DAEMON_LOCAL_LISTEN_PORT": "0"
-      }
-    }
-  }
-}
+services:
+  dora-daemon:
+    image: doramcap/dora:local
+    network_mode: host
+    user: "0:0"
+    ipc: shareable
+    shm_size: 134217728

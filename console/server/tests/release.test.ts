@@ -48,11 +48,11 @@ test('release manifests expand to the same apps as the inline release configurat
     capabilities.formatConfig(wire.ConsoleConfig.create({ apps: config.apps }));
   // Act
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
-  // Assert: every app gains its systemd launch facts; Compose definitions are unchanged.
-  assert.ok(expanded.apps.every((app) => app.systemd?.unit));
-  for (const app of expanded.apps) { app.systemd = null; app.input!.manifest = ''; }
+  // Assert: common launch settings expand for both backends; prior app selection facts survive.
+  assert.ok(expanded.apps.every((app) => app.process?.argv?.length && !app.systemd));
+  for (const app of expanded.apps) { app.process = null; app.files = []; app.input!.manifest = ''; }
   const inlineApps = releaseConfig(inline, '/playground', systemApps, '/state');
-  for (const app of inlineApps.apps) { app.systemd = null; app.input!.manifest = ''; }
+  for (const app of inlineApps.apps) { app.systemd = null; app.process = null; app.files = []; app.input!.manifest = ''; }
   assert.equal(apps(expanded), apps(inlineApps));
   assert.ok(expanded.apps.every((app) => !app.manifest));
 });
@@ -218,10 +218,10 @@ test('the repository release template resolves to existing current app inputs', 
   assert.deepEqual(config.apps.map(app => app.id), ['dora-coordinator', 'dora-daemon', 'live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
   const profiles = config.apps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
-  const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
+  const live = await readFile(join(systemApps, 'cpu-monitor/cpu-monitor-live.pbtxt'), 'utf8');
   assert.match(live, /^dora \{\}/m);
   assert.doesNotMatch(live, /recording/);
-  const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
+  const monitor = await readFile(join(systemApps, 'cpu-monitor/cpu-monitor-record.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
   const watchdog = config.apps.find(app => app.id === 'fault-watchdog')!;

@@ -203,22 +203,22 @@ impl ExperimentOwner {
 #[cfg(test)]
 pub(crate) fn fixture(root: &str, ports: [u16; 2]) -> DoraApps {
     let mut services = BTreeMap::new();
-    for (role, text) in [
-        (
-            "coordinator",
-            include_str!("../../deploy/dora-coordinator/compose.yaml"),
-        ),
-        (
-            "daemon",
-            include_str!("../../deploy/dora-daemon/compose.yaml"),
-        ),
-    ] {
-        let mut model: Value = serde_json::from_str(text).unwrap();
+    for role in ["coordinator", "daemon"] {
         let name = format!("dora-{role}");
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("deploy")
+            .join(&name);
+        let mut model = crate::compose::adapter::fixture_model(ComposeProject {
+            key: name.clone(),
+            directory: directory.to_string_lossy().into_owned(),
+            files: vec!["compose.yaml".into()],
+            manifest: format!("{name}.pbtxt"),
+            ..Default::default()
+        });
         let app = &mut model["services"][&name];
-        app["volumes"][0]["source"] = format!("{root}/dora/runtime").into();
+        app["volumes"] = serde_json::json!([{"type":"bind","source":format!("{root}/dora/runtime"),"target":"/runtime"}]);
         if role == "daemon" {
-            app["volumes"][1]["source"] = format!("{root}/dora/zenoh.json5").into();
+            app["volumes"].as_array_mut().unwrap().push(serde_json::json!({"type":"bind","source":format!("{root}/dora/zenoh.json5"),"target":"/config/zenoh.json5","read_only":true}));
         }
         let args = app["command"].as_array_mut().unwrap();
         for index in 1..args.len() {

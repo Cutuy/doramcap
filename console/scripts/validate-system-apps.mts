@@ -51,7 +51,7 @@ const collector = createServer((request,response) => {
 collector.listen(0,'127.0.0.1');
 await new Promise<void>(done => collector.once('listening',done));
 const address = collector.address() as {port:number};
-await writeFile(join(apps,'fault-watchdog/watchdog-otel.pbtxt'),(await readFile(join(apps,'fault-watchdog/watchdog-otel.pbtxt'),'utf8')).replace('127.0.0.1:4318',`127.0.0.1:${address.port}`));
+await writeFile(join(apps,'fault-watchdog/fault-watchdog-otel.pbtxt'),(await readFile(join(apps,'fault-watchdog/fault-watchdog-otel.pbtxt'),'utf8')).replace('127.0.0.1:4318',`127.0.0.1:${address.port}`));
 
 try {
   for (const scenario of ['alone','live','mcap','otel','cpu','faults'] as const) {

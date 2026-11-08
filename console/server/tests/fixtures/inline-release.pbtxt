@@ -2,8 +2,8 @@
 # The release workflow replaces each :local image with its multi-arch digest.
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
-apps { manifest: "dora-coordinator/app.pbtxt" }
-apps { manifest: "dora-daemon/app.pbtxt" }
+apps { manifest: "dora-coordinator/dora-coordinator.pbtxt" }
+apps { manifest: "dora-daemon/dora-daemon.pbtxt" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
 apps {
   id: "live-bridge"
@@ -26,13 +26,13 @@ apps {
   launch_profiles {
     id: "record"
     label: "Live panels and recording"
-    config: "cpu-monitor/monitor.pbtxt"
+    config: "cpu-monitor/cpu-monitor-record.pbtxt"
     recordings { id: "cpu" path: "cpu.mcap" stream: "cpu.pb" cpu: true }
   }
   launch_profiles {
     id: "live"
     label: "Live panels only"
-    config: "cpu-monitor/live.pbtxt"
+    config: "cpu-monitor/cpu-monitor-live.pbtxt"
   }
 }
 apps {
@@ -45,13 +45,13 @@ apps {
   launch_profiles {
     id: "cpu"
     label: "CPU topics (requires CPU monitoring)"
-    config: "data-recorder/recorder.pbtxt"
+    config: "data-recorder/data-recorder-cpu.pbtxt"
     recordings { id: "messages" path: "messages.mcap" }
   }
   launch_profiles {
     id: "faults"
     label: "Watchdog publications (requires watchdog)"
-    config: "data-recorder/faults.pbtxt"
+    config: "data-recorder/data-recorder-faults.pbtxt"
     graph: "data-recorder/faults.yml"
     recordings { id: "messages" path: "messages.mcap" }
   }
@@ -65,12 +65,12 @@ apps {
   output_mounts { service: "fault-watchdog" target: "/results" }
   live_outputs { source: "fault-watchdog/faults" kind: FAULT_PUBLICATION }
   config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
-  launch_profiles { id: "live" label: "Live only" config: "fault-watchdog/watchdog.pbtxt" }
+  launch_profiles { id: "live" label: "Live only" config: "fault-watchdog/fault-watchdog-live.pbtxt" }
   launch_profiles {
     id: "mcap"
     label: "Live and MCAP"
-    config: "fault-watchdog/watchdog-mcap.pbtxt"
+    config: "fault-watchdog/fault-watchdog-mcap.pbtxt"
     recordings { id: "faults" path: "faults.mcap" }
   }
-  launch_profiles { id: "otel" label: "Live and OTLP" config: "fault-watchdog/watchdog-otel.pbtxt" }
+  launch_profiles { id: "otel" label: "Live and OTLP" config: "fault-watchdog/fault-watchdog-otel.pbtxt" }
 }

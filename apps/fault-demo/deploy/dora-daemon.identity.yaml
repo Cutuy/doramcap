@@ -1,15 +1,3 @@
-{
-  "services": {
-    "dora-daemon": {
-      "user": "${FAULT_DEMO_UID}:${FAULT_DEMO_GID}",
-      "volumes": [
-        {
-          "type": "bind",
-          "source": "../../../libs/workload-docker/deploy/dora-daemon/zenoh.json5",
-          "target": "/config/zenoh.json5",
-          "read_only": true
-        }
-      ]
-    }
-  }
-}
+services:
+  dora-daemon:
+    user: "${FAULT_DEMO_UID}:${FAULT_DEMO_GID}"

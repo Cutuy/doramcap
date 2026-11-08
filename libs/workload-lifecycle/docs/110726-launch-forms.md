@@ -51,7 +51,7 @@ Agreed with the owner on 2026-11-07.
 | Layer | File | Owner | Holds |
 | --- | --- | --- | --- |
 | Variant config | e.g. `watchdog-mcap.pbtxt`, unchanged | App, own schema | What the app does |
-| App manifest | `apps/x/deploy/app.pbtxt` | App | Launch facts, variants and the recordings each adds, graph, outputs |
+| App manifest | `apps/x/deploy/x.pbtxt` | App | Common process settings, files, variants, recordings, graph, outputs |
 | Deployment | `deployment.pbtxt`, one per machine | Operator | Form, apps, default variants, placement, install root, repo config |
 | Repo config | `compose.yaml`, `.service`, `supervisord.conf` | User | User apps, in their native format |
 
@@ -234,11 +234,11 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Dora under systemd: coordinator and daemon units, daemon readiness, graph registration and `dora down` through oneshot units.
 - [x] Generated units run in private roots with per-unit bind mounts.
 - [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
-- [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and a systemd unit file plus extra files. Native files carry every launcher detail. Console's config gains `binaries` and accepts `form: SYSTEMD`.
+- [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and optional external systemd units. Shipped systemd units are generated from common process settings. Common process and file settings live in pbtxt; native files supply backend-specific settings. Console's config gains `binaries` and accepts `form: SYSTEMD`.
 - [x] System app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
 - [x] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices: Dora, then system apps, then every `*.service` at the project root.
 - [ ] The native addon runs systemd plans; Console stops refusing `form: SYSTEMD` at startup. Review shows apps and profiles.
-- [x] Coordinator and daemon use ordinary app manifests with native Compose and systemd launch files.
+- [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
