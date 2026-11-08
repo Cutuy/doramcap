@@ -1,14 +1,10 @@
 #!/usr/bin/env node
+import { writeTarGzip, type ArchiveEntry, Command, cli, isMain, digest, sha256, withTempDirectory, globMatcher, capture, run } from '../../libs/tooling/tooling.mts';
 // Snapshot a source checkout and enqueue ARM64 tests over SSH.
 import { randomUUID } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeTarGzip, type ArchiveEntry } from '../../libs/tooling/archive.mts';
-import { Command, cli, isMain } from '../../libs/tooling/cli.mts';
-import { digest, sha256, withTempDirectory } from '../../libs/tooling/fs.mts';
-import { globMatcher } from '../../libs/tooling/glob.mts';
-import { capture, run } from '../../libs/tooling/process.mts';
 import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
 
 const ciDirectory = dirname(fileURLToPath(import.meta.url));

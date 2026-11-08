@@ -1,6 +1,5 @@
+import { run, withTempDirectory } from '../../libs/tooling/tooling.mts';
 // Verify shared real-writer recordings with the Rust and TypeScript readers.
-import { run } from '../../libs/tooling/process.mts';
-import { withTempDirectory } from '../../libs/tooling/fs.mts';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

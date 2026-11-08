@@ -1,5 +1,5 @@
+import { run } from '../../libs/tooling/tooling.mts';
 // Run the existing standalone Node suites in both CI environments.
-import { run } from '../../libs/tooling/process.mts';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';

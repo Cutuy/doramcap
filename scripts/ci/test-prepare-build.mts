@@ -1,3 +1,4 @@
+import { digest } from '../../libs/tooling/tooling.mts';
 // Exercise source-cache correctness with the real rsync executable.
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { prepare, PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
-import { digest } from '../../libs/tooling/fs.mts';
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(join(tmpdir(), 'prepare-build-'));

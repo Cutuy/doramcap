@@ -1,11 +1,8 @@
+import { writeTarGzip, canonicalPath, digest, sha256, withTempDirectory, globMatcher, capture } from '../tooling.mts';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { writeTarGzip } from '../archive.mts';
-import { canonicalPath, digest, sha256, withTempDirectory } from '../fs.mts';
-import { globMatcher } from '../glob.mts';
-import { capture } from '../process.mts';
 
 test('process capture retains literal argv and output, and reports exit/signal/spawn failures', () => {
   // Arrange

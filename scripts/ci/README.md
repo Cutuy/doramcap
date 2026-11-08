@@ -11,7 +11,7 @@ GitHub Actions runs these suites on ARM64 and x86_64 Ubuntu runners:
 The workflows define path filters and exact commands. Rust uses the `ci` Cargo
 profile; runtimes are pinned in [rust-toolchain.toml](../../rust-toolchain.toml)
 and [.node-version](../../.node-version). CI tools run directly as TypeScript using
-[shared tooling libraries](../../libs/tooling/README.md), Git, SSH/SCP, and rsync.
+[shared tooling](../../libs/tooling/tooling.mts), Git, SSH/SCP, and rsync.
 The worker also uses system tar to extract submitted archives.
 
 ## ARM64 worker

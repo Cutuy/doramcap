@@ -1,11 +1,8 @@
 #!/usr/bin/env node
+import { Command, cli, isMain, canonicalPath, globMatcher, capture } from '../../libs/tooling/tooling.mts';
 // Check forbidden Cargo dependency paths using workspace path dependencies.
 import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { Command, cli, isMain } from '../../libs/tooling/cli.mts';
-import { canonicalPath } from '../../libs/tooling/fs.mts';
-import { globMatcher } from '../../libs/tooling/glob.mts';
-import { capture } from '../../libs/tooling/process.mts';
 
 type Dependency = { name: string; kind?: string | null; path?: string };
 export type Metadata = {

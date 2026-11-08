@@ -1,3 +1,4 @@
+import { digest } from '../../libs/tooling/tooling.mts';
 // Verify actual archives from temporary Git checkouts without submitting remote jobs.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -6,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
-import { digest } from '../../libs/tooling/fs.mts';
 import { createSnapshot } from './submit.mts';
 
 function fixture(t: TestContext) {
@@ -24,7 +24,6 @@ function fixture(t: TestContext) {
   put('Cargo.toml', '[workspace]');
   put('scripts/ci/check-boundaries.mts', '// checker');
   put(PREPARE_PATH, readFileSync(new URL('./prepare-build.mts', import.meta.url), 'utf8'));
-  put('libs/tooling/fs.mts', readFileSync(new URL('../../libs/tooling/fs.mts', import.meta.url), 'utf8'));
   put('libs/tooling/package.json', '{}');
   execFileSync('git', ['init', '-q', source]);
   execFileSync('git', ['-C', source, 'add', '.']);

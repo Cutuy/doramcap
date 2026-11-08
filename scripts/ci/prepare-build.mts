@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Verify a submitted snapshot and synchronize a dedicated, disposable source cache.
+// Preparation runs before npm installation, so its filesystem checks use Node built-ins.
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { lstatSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, posix, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, parseArgs } from 'node:util';
-import { canonicalPath, digest } from '../../libs/tooling/fs.mts';
 
 export const PREPARE_PATH = 'scripts/ci/prepare-build.mts';
 
@@ -14,6 +15,17 @@ export type SnapshotManifest = {
   files_sha256: Record<string, string>; files_mode: Record<string, number>;
   runner_sha256: string; prepare_sha256: string;
 };
+
+const digest = (path: string): string => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+function canonicalPath(path: string): string {
+  path = resolve(path);
+  try { return realpathSync(path); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return join(canonicalPath(dirname(path)), basename(path));
+  }
+}
 
 function files(directory: string, ignored: string[], prefix = ''): Set<string> {
   const result = new Set<string>();
