@@ -1,0 +1,23 @@
+version: v2
+# Match the import roots used by the existing protobuf builds.
+modules:
+  - path: apps/cpu-viewer/server/proto
+  - path: apps/cuda-shm-demo/proto
+  - path: apps/dataflow-tracing-demo/server/proto
+  - path: apps/fault-watchdog/proto
+  - path: apps/mcap-recorder/proto
+  - path: apps/project-explorer/server/proto
+  - path: apps/storage-demo/proto
+  - path: apps/system-monitor/proto
+  - path: console/proto
+  - path: libs/activity-tracing/proto
+  - path: libs/fault/schema/proto
+  - path: libs/resources/resource-policy/proto
+  - path: libs/resources/system-config/proto
+  - path: libs/step-provenance/proto
+  - path: libs/telemetry/protocol/proto
+  - path: libs/telemetry/workflow-protocol/proto
+  - path: libs/workload-docker/proto
+  - path: libs/workload-lifecycle/proto
+  - path: libs/workload-supervisor/proto
+  - path: libs/workload-systemd/proto
