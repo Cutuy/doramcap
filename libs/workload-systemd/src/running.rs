@@ -5,7 +5,12 @@ use crate::{
     runner::UnitExit,
 };
 use orchestrator::LocalExecutor;
-use std::{rc::Rc, time::Duration};
+use std::{
+    os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
+    path::Path,
+    rc::Rc,
+    time::Duration,
+};
 use workload_lifecycle::{
     launch::{CleanupRecord, RemovalPermit, StopRecord},
     recording::{ReadinessInput, Recording, WaitForRecordings},
@@ -13,6 +18,23 @@ use workload_lifecycle::{
 
 /// Sticky and world-writable, like the host shared-memory directory.
 const SHARED_DIRECTORY_MODE: u32 = 0o1777;
+
+/// Create a fresh shared directory and set permissions on its no-follow handle.
+fn create_shm(path: &Path) -> Result<()> {
+    std::fs::DirBuilder::new()
+        .mode(SHARED_DIRECTORY_MODE)
+        .create(path)
+        .map_err(crate::error)?;
+    let directory = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32)
+        .open(path)
+        .map_err(crate::error)?;
+    directory
+        .set_permissions(std::fs::Permissions::from_mode(SHARED_DIRECTORY_MODE))
+        .map_err(crate::error)
+}
+
 pub(crate) struct SystemdRunning {
     pub manager: Rc<Manager>,
     pub executor: Rc<LocalExecutor>,
@@ -58,14 +80,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn start(&mut self) -> std::result::Result<(), String> {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
-        tokio::fs::create_dir_all(&self.scope.shm)
-            .await
-            .map_err(crate::error)?;
-        std::fs::set_permissions(
-            &self.scope.shm,
-            std::os::unix::fs::PermissionsExt::from_mode(SHARED_DIRECTORY_MODE),
-        )
-        .map_err(crate::error)?;
+        create_shm(&self.scope.shm)?;
         let shm = self.shm_binds();
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
@@ -238,5 +253,42 @@ impl SystemdRunning {
         } else {
             Err(format!("units remain after removal: {remaining:?}"))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_memory_creation_preserves_existing_directories_and_symlinks() {
+        // Arrange
+        let root = std::env::temp_dir().join(format!("systemd-shm-create-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let existing = root.join("existing");
+        std::fs::create_dir(&existing).unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o750)).unwrap();
+        std::fs::write(existing.join("retained"), "keep").unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&existing, &link).unwrap();
+        // Act / Assert
+        assert!(create_shm(&existing).is_err());
+        assert!(create_shm(&link).is_err());
+        assert_eq!(
+            std::fs::metadata(&existing).unwrap().permissions().mode() & 0o7777,
+            0o750
+        );
+        assert_eq!(
+            std::fs::read_to_string(existing.join("retained")).unwrap(),
+            "keep"
+        );
+        // Act / Assert: a newly owned directory gets the shared-memory permissions.
+        let fresh = root.join("fresh");
+        create_shm(&fresh).unwrap();
+        assert_eq!(
+            std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o7777,
+            SHARED_DIRECTORY_MODE
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

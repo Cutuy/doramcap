@@ -30,6 +30,8 @@ const DEFAULT_SEARCH_PATH: [&str; 6] = [
 const ROOTS: &str = "roots";
 /// Plain runtime source names beside a unit root; normal root cleanup removes these links.
 const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
+/// The system runner creates shared-memory directories as root.
+const ROOT_UID: u32 = 0;
 /// Drop-in placing an adopted unit in the run slice.
 const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
@@ -373,8 +375,10 @@ impl Manager {
                 .iter()
                 .map(|p| p.display().to_string()),
         );
-        if tokio::fs::try_exists(&scope.shm).await.map_err(error)? {
-            remaining.push(scope.shm.display().to_string());
+        match tokio::fs::symlink_metadata(&scope.shm).await {
+            Ok(_) => remaining.push(scope.shm.display().to_string()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("{}: {e}", scope.shm.display())),
         }
         Ok(remaining)
     }
@@ -428,7 +432,7 @@ impl Manager {
         remove_path(&scope.directory.join("units")).await?;
         // Stopped units have released their private mounts; host entries stay untouched.
         remove_path(&scope.directory.join(ROOTS)).await?;
-        remove_path(&scope.shm).await?;
+        remove_shm(&scope.shm).await?;
         self.manager.reload().await.map_err(error)
     }
 
@@ -484,6 +488,25 @@ async fn remove_path(path: &std::path::Path) -> Result<()> {
         tokio::fs::remove_file(path).await
     };
     result.map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The sticky host directory protects a root-owned child from unprivileged replacement.
+async fn remove_shm(path: &std::path::Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    if !metadata.is_dir() || metadata.uid() != ROOT_UID {
+        return Err(format!(
+            "refusing unowned shared-memory path {}",
+            path.display()
+        ));
+    }
+    tokio::fs::remove_dir_all(path)
+        .await
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn stop_budget(micros: u64) -> Result<Duration> {
@@ -771,6 +794,35 @@ mod environment_tests {
 mod cleanup_tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test]
+    async fn shared_memory_cleanup_preserves_unowned_paths() {
+        // Arrange: unit tests run unprivileged, so this directory belongs to another user.
+        let root = std::env::temp_dir().join(format!("systemd-shm-remove-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let directory = root.join("foreign");
+        std::fs::create_dir(&directory).unwrap();
+        let retained = directory.join("retained");
+        std::fs::write(&retained, "keep").unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&directory, &link).unwrap();
+        // Act / Assert
+        assert!(
+            remove_shm(&directory)
+                .await
+                .unwrap_err()
+                .contains("unowned")
+        );
+        assert!(remove_shm(&link).await.unwrap_err().contains("unowned"));
+        assert_eq!(std::fs::read_to_string(retained).unwrap(), "keep");
+        assert!(
+            std::fs::symlink_metadata(link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[tokio::test]
     async fn cleanup_propagates_discovery_and_deletion_failures() {
