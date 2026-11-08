@@ -8,6 +8,7 @@ import { RunActivity } from './RunActivity';
 import { RunMetrics, bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
 import { StatusLabel } from './ui/StatusLabel';
+import { Select } from './ui/Select';
 
 const { HistoryState: State } = wire;
 const filters = [State.HISTORY_COMPLETED, State.HISTORY_FAILED, State.HISTORY_CANCELLED, State.HISTORY_BLOCKED, State.HISTORY_INTERRUPTED, State.HISTORY_RUNNING];
@@ -41,7 +42,7 @@ export function HistoryTable({ page, loading, error, state, setState, more, sele
       {selected.length === 1 && <p className="notice" role="status">Select one more run to compare with <span className="mono">{selected[0].slice(0, 8)}</span>. <a href={historyHash('', basePath)}>Clear</a></p>}
       {selected.length === 0 && page && page.entries.length > 1 && <p className="muted">Select two runs to compare them.</p>}
       <div className="history-filters">
-        <div><label htmlFor="history-state">Status</label><select id="history-state" value={state} onChange={event => setState(Number(event.target.value))}><option value={0}>All</option>{filters.map(item => <option key={item} value={item}>{stateLabel(item)}</option>)}</select></div>
+        <div><label htmlFor="history-state">Status</label><Select id="history-state" value={state} onChange={setState} options={[{ value: 0, label: 'All' }, ...filters.map(value => ({ value, label: stateLabel(value) }))]}/></div>
       </div>
       {page && page.entries.length > 0 && <table className="history-table"><thead><tr><th className="history-select"><span className="sr-only">Compare</span></th><th className="history-status">Status</th><th>Run</th><th className="hide-narrow">Started</th><th>Duration</th><th className="hide-narrow">Recordings</th></tr></thead><tbody>{page.entries.map(entry => <Row key={entry.runId} entry={entry} selected={selected}/>)}</tbody></table>}
       {loading && <p className="muted" role="status">Loading history…</p>}
