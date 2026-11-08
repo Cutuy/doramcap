@@ -1,8 +1,14 @@
 # Agent workflow
 
-Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): prioritize the main checkout when it already has the target branch; otherwise acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding source changes.
+Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md):
 
-Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
+1. Acquire a lease before editing. Ask before using main when it already holds the target branch.
+2. Implement, run minimal local checks, then push and create/update the PR before remaining validation.
+3. Finish validation, record results, mark the PR ready, then release. Keep the lease while local work uses the checkout.
+
+Reuse an active task's lease; after release, acquire a fresh lease and fork to a new branch. Never wipe main; get approval before discarding source changes.
+
+For local integration, rebase onto current main, cherry-pick, then release. Never integrate with `git merge`.
 
 Read the [implementation guide](docs/impl-guide.md) for code rules and the
 [design guide](docs/design-guide.md) for architectural guidance. Use
@@ -34,7 +40,6 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 ## Testing and CI
 
 - Use focused checks for incremental changes. Reserve full CI for meaningful integration points, high-risk changes, or explicit requests. Avoid repeating full CI for each interaction. For plan-driven work, record completed and deferred checks in the relevant milestone.
-- When full local CI is needed, prefer pushing the current PR branch after focused checks to trigger cloud CI before starting full local CI.
 - Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
 - When full local CI is warranted, run these checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
