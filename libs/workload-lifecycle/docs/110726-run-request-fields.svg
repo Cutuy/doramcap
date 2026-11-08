@@ -1,68 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
-<title id="title">Run request fields: today and end state</title>
-<desc id="desc">Today each backend part repeats app split, start order, recording writers and Dora settings in its own shape. In the end state RunPlan holds them once; the Compose and systemd parts hold only how each app launches.</desc>
-<rect width="960" height="560" fill="#f7fafc"/>
-<g font-family="sans-serif" fill="#182b3a">
-<text x="480" y="34" font-size="22" font-weight="600" text-anchor="middle">Run request fields: today and end state</text>
-
-<text x="240" y="70" font-size="17" font-weight="600" text-anchor="middle">Today</text>
-<text x="720" y="70" font-size="17" font-weight="600" text-anchor="middle">End state</text>
-<path d="M480 56 V530" stroke="#c3ccd5" stroke-width="1.5"/>
-
-<rect x="30" y="86" width="420" height="72" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
-<text x="46" y="110" font-size="15" font-weight="600">RunPlan</text>
-<text x="46" y="134" font-size="13">id · repository · artifacts · recordings · budgets</text>
-
-<rect x="30" y="172" width="420" height="168" rx="6" fill="#fcebdc" stroke="#bc906b"/>
-<text x="46" y="196" font-size="15" font-weight="600">ComposePlan</text>
-<g font-size="13">
-<rect x="42" y="208" width="396" height="96" rx="4" fill="#f6d6d2" stroke="#c4746b"/>
-<text x="54" y="228">system_apps vs projects</text>
-<text x="54" y="248">start order fixed in Rust</text>
-<text x="54" y="268">mcap_services</text>
-<text x="54" y="288">DoraRuntime: graph · ports · runtime dir · memlock</text>
-<text x="46" y="326">ComposeProject contents · Dora image · shm</text>
-</g>
-
-<rect x="30" y="354" width="420" height="168" rx="6" fill="#fcebdc" stroke="#bc906b"/>
-<text x="46" y="378" font-size="15" font-weight="600">SystemdPlan</text>
-<g font-size="13">
-<rect x="42" y="390" width="396" height="96" rx="4" fill="#f6d6d2" stroke="#c4746b"/>
-<text x="54" y="410">app_units vs unit_files</text>
-<text x="54" y="430">groups, in order</text>
-<text x="54" y="450">await_recordings</text>
-<text x="54" y="470">DoraUnits: graph · ports · runtime dir · memlock</text>
-<text x="46" y="508">binds · binaries · programs · Dora executable</text>
-</g>
-
-<rect x="510" y="86" width="420" height="160" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
-<text x="526" y="110" font-size="15" font-weight="600">RunPlan</text>
-<g font-size="13">
-<text x="526" y="134">id · repository · artifacts · recordings · budgets</text>
-<text x="526" y="158">groups of app IDs, each with its gate</text>
-<text x="526" y="182">MCAP writer app IDs</text>
-<text x="526" y="206">Dora: graph · ports · runtime dir · memlock</text>
-<text x="526" y="230">participant</text>
-</g>
-
-<rect x="510" y="260" width="420" height="96" rx="6" fill="#fcebdc" stroke="#bc906b"/>
-<text x="526" y="284" font-size="15" font-weight="600">ComposePlan</text>
-<g font-size="13">
-<text x="526" y="308">projects: one per app, keyed by app ID</text>
-<text x="526" y="330">Dora image · shm</text>
-</g>
-
-<rect x="510" y="370" width="420" height="116" rx="6" fill="#fcebdc" stroke="#bc906b"/>
-<text x="526" y="394" font-size="15" font-weight="600">SystemdPlan</text>
-<g font-size="13">
-<text x="526" y="418">app units with binds · repository unit files</text>
-<text x="526" y="440">programs · binaries</text>
-<text x="526" y="462">Dora executable · host_shm</text>
-</g>
-
-<g font-size="12">
-<rect x="30" y="538" width="18" height="12" rx="3" fill="#dbeaf2" stroke="#8ca6b8"/><text x="56" y="548">Shared</text>
-<rect x="140" y="538" width="18" height="12" rx="3" fill="#fcebdc" stroke="#bc906b"/><text x="166" y="548">One launcher</text>
-<rect x="290" y="538" width="18" height="12" rx="3" fill="#f6d6d2" stroke="#c4746b"/><text x="316" y="548">Same fact repeated per launcher</text>
-</g>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="400" viewBox="0 0 960 400" role="img" aria-labelledby="title desc">
+<title id="title">Shared run fields and native launch inputs</title>
+<desc id="desc">Console supplies shared run facts and backend launch inputs. Rust starts Dora, system apps with recording readiness, then users.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="960" height="400" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">Shared run fields</text>
+<rect x="40" y="55" width="880" height="44" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="480" y="83" font-size="16">Console · app pbtxt · native Compose files and systemd units</text>
+<path d="M480 99 V120" stroke="#536779" marker-end="url(#arrow)"/>
+<rect x="40" y="125" width="880" height="90" rx="6" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="480" y="150" font-size="16" font-weight="600">RunPlan</text>
+<text x="480" y="176" font-size="14">Identity · paths · recordings · budgets · Dora / system / writer app IDs · dataflow file</text>
+<text x="480" y="199" font-size="14">Preparation → resolved Dora runtime</text>
+<rect x="40" y="230" width="430" height="65" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="255" y="254" font-size="16" font-weight="600">ComposePlan</text>
+<text x="255" y="279" font-size="14">Native projects keyed by app ID</text>
+<rect x="490" y="230" width="430" height="65" rx="6" fill="#fcebdc" stroke="#bc906b"/>
+<text x="705" y="254" font-size="16" font-weight="600">SystemdPlan</text>
+<text x="705" y="279" font-size="14">Programs · unit files · app binds · binaries</text>
+<path d="M255 295 V317 H480 V330 M705 295 V317 H480" fill="none" stroke="#536779" marker-end="url(#arrow)"/>
+<rect x="40" y="335" width="880" height="44" rx="6" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="480" y="363" font-size="16">Rust: Dora → system apps + recording readiness → users</text>
 </g></svg>
