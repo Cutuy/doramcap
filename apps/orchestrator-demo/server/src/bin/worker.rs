@@ -254,6 +254,7 @@ async fn recorded_demo(
                 system_apps: vec![collector],
                 dora_apps: vec![],
                 dataflow_file: String::new(),
+                host_shm: Vec::new(),
                 mcap_writers: Default::default(),
                 recordings: vec![Recording {
                     stream: artifacts.join("cpu.pb"),

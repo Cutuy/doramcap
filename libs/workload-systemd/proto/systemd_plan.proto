@@ -8,10 +8,8 @@ message SystemdPlan {
   repeated Program programs = 2;
   repeated string unit_files = 3;
   repeated AppUnit app_units = 4;
-  // Host /dev/shm entries every unit sees in place; these remain driver-owned.
-  // Every unit otherwise shares the run directory, removed after confirmed shutdown.
-  // Names use ASCII letters/digits, dot, underscore or hyphen; empty, . and .. are invalid.
-  repeated string host_shm = 5;
+  reserved 5;
+  reserved "host_shm"; // Shared host entries belong to RunPlan.
 }
 
 message AppUnit {

@@ -18,7 +18,8 @@ sudo target/release/examples/systemd_run run.pbtxt plan.pbtxt
 sudo target/release/examples/systemd_run --cleanup /absolute/repository
 ```
 
-Inputs: [`SystemdPlan`](proto/systemd_plan.proto). Needs root and the system service
+Inputs: shared [`RunPlan`](../workload-lifecycle/proto/launch.proto), including `host_shm`,
+and [`SystemdPlan`](proto/systemd_plan.proto). Needs root and the system service
 manager. Native tests: [tests/native.rs](tests/native.rs); the Dora test reads a `dora`
 binary path from `DORAMCAP_TEST_DORA`.
 [Plan](../workload-lifecycle/docs/110726-launch-forms.md) · API: `cargo doc -p workload-systemd --no-deps`.

@@ -87,6 +87,7 @@ fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
         system_apps: vec![monitor(root, image, &root.join(&id))],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: recordings(&root.join(&id)),
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -151,6 +152,7 @@ async fn native_recorded_workflow() {
         system_apps: vec![monitor(&root, &image, &artifacts)],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: recordings(&artifacts),
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -887,6 +889,7 @@ async fn direct_session_lifecycle_and_prerun_reset() {
             filesystem: None,
             dora_apps: dora_apps(),
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             repository_root: root.to_path_buf(),
@@ -1037,6 +1040,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
             filesystem: None,
             dora_apps: dora_apps(),
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             repository_root: root.clone(),
@@ -1154,6 +1158,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
             repository_root: root.to_path_buf(),
             dora_apps: dora_apps(),
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             system_apps: vec![project(&root, "helper")],
@@ -1300,6 +1305,7 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
         system_apps: vec![],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1422,6 +1428,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
             system_apps: vec![],
             dora_apps: dora_apps(),
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             readiness_seconds: 15,
@@ -1506,6 +1513,7 @@ async fn selected_profile_starts_its_service() {
             system_apps: vec![],
             dora_apps: dora_apps(),
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             readiness_seconds: 15,
@@ -1584,6 +1592,7 @@ async fn active_experiments_are_exclusive_per_repository_and_independent_between
         system_apps: vec![],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1703,6 +1712,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
         system_apps: vec![],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 15,
@@ -1894,6 +1904,7 @@ async fn public_dora_resets_after_launcher_crash() {
                     system_apps: vec![],
                     dora_apps: dora_apps(),
                     dataflow_file: String::new(),
+                    host_shm: Vec::new(),
                     recordings: vec![],
                     mcap_writers: Default::default(),
                     readiness_seconds: 15,
@@ -2075,6 +2086,7 @@ async fn compose_public_run(outcome: &str) {
         system_apps: vec![project(&root, "session"), project(&root, "support")],
         dora_apps,
         dataflow_file: graph.to_string_lossy().into_owned(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: McapWriters {
             apps: Vec::new(),
@@ -2314,6 +2326,7 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
             None,
         ),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2402,6 +2415,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         projects: vec![],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2532,6 +2546,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         projects: vec![project(&root, "user")],
         dora_apps: dora_apps(),
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 10,
@@ -2762,6 +2777,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
                 system_apps: vec![],
                 dora_apps: dora_apps(),
                 dataflow_file: String::new(),
+                host_shm: Vec::new(),
                 recordings: vec![],
                 mcap_writers: Default::default(),
                 readiness_seconds: 10,
@@ -2865,6 +2881,7 @@ async fn incomplete_volume_scan_retains_volumes() {
                 system_apps: vec![],
                 dora_apps: dora_apps(),
                 dataflow_file: String::new(),
+                host_shm: Vec::new(),
                 recordings: vec![],
                 mcap_writers: Default::default(),
                 readiness_seconds: 10,
@@ -2981,6 +2998,129 @@ async fn owned_volumes(adapter: &DockerAdapter, run: &str) -> Vec<String> {
         .collect();
     names.sort();
     names
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker Engine, a local test image and CAP_SYS_ADMIN"]
+async fn host_shm_stays_live_through_shared_ipc_and_filesystem_isolation() {
+    // Arrange: two containers share private IPC, selected host entries and an isolated output tree.
+    use workload_lifecycle::launch::RunPlan;
+    let root = tempfile::tempdir().unwrap();
+    let host_file = tempfile::Builder::new()
+        .prefix("doramcap-host-file-")
+        .tempfile_in("/dev/shm")
+        .unwrap();
+    let host_directory = tempfile::Builder::new()
+        .prefix("doramcap-host-dir-")
+        .tempdir_in("/dev/shm")
+        .unwrap();
+    let hidden = tempfile::Builder::new()
+        .prefix("doramcap-hidden-")
+        .tempfile_in("/dev/shm")
+        .unwrap();
+    let basename = |path: &Path| path.file_name().unwrap().to_str().unwrap().to_owned();
+    let file_name = basename(host_file.path());
+    let directory_name = basename(host_directory.path());
+    let hidden_name = basename(hidden.path());
+    let private = format!("doramcap-run-only-{}", std::process::id());
+    assert!(!Path::new("/dev/shm").join(&private).exists());
+    std::fs::write(host_file.path(), "from-host").unwrap();
+    let outputs = root.path().join("outputs");
+    std::fs::create_dir(&outputs).unwrap();
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").expect("local test image");
+    let socket = std::env::var("DORAMCAP_TEST_SOCKET").expect("local test socket");
+    let volumes = serde_json::json!([{"type":"bind","source":outputs,"target":"/out"}]);
+    write(
+        &root.path().join("apps.json"),
+        serde_json::json!({"services": {
+            "writer": {
+                "image":image, "ipc":"shareable", "volumes":volumes,
+                "entrypoint":["/bin/sh","-c"],
+                "command":[format!("printf from-container > /dev/shm/{file_name}; printf directory > /dev/shm/{directory_name}/written; printf shared > /dev/shm/{private}; printf ordinary > /out/writer; exec sleep 300")],
+                "healthcheck":{"test":["CMD-SHELL",format!("test -f /dev/shm/{private}")],"interval":"100ms","timeout":"1s","retries":50}
+            },
+            "reader": {
+                "image":image, "ipc":"service:writer", "volumes":volumes,
+                "depends_on":{"writer":{"condition":"service_healthy"}},
+                "entrypoint":["/bin/sh","-c"],
+                "command":[format!("test ! -e /dev/shm/{hidden_name} && cat /dev/shm/{file_name} > /out/reader && exec sleep 300")],
+                "healthcheck":{"test":["CMD-SHELL",format!("test -f /out/reader && test -f /dev/shm/{private}")],"interval":"100ms","timeout":"1s","retries":50}
+            }
+        }}),
+    );
+    let run_id = format!("host-shm-{}", std::process::id());
+    let input = ComposeRun::from_plan(
+        RunPlan {
+            id: run_id.clone(),
+            repository_root: root.path().to_string_lossy().into_owned(),
+            artifacts: root.path().join("artifacts").to_string_lossy().into_owned(),
+            host_shm: vec![file_name, directory_name],
+            readiness_seconds: 20,
+            stop_seconds: 3,
+            ..Default::default()
+        },
+        ComposePlan {
+            projects: vec![project(root.path(), "apps")],
+        },
+    )
+    .unwrap();
+    let adapter = Rc::new(DockerAdapter::connect(socket).await.unwrap());
+    let mut runner = ComposeRunner::new(adapter.clone());
+    let (ready, started) = tokio::sync::oneshot::channel();
+    let mut during_run = None;
+
+    // Act: observe host entries before cleanup can apply any ordinary filesystem changes.
+    let report = runner
+        .run_with_ready(
+            input,
+            async {
+                started.await.unwrap();
+                during_run = Some((
+                    std::fs::read_to_string(host_file.path()).ok(),
+                    std::fs::read_to_string(host_directory.path().join("written")).ok(),
+                    outputs.join("writer").exists(),
+                    Path::new("/dev/shm").join(&private).exists(),
+                ));
+            },
+            |_: &orchestrator::Event| {},
+            Some(ready),
+        )
+        .await
+        .unwrap();
+
+    // Assert: selected entries stay live; other host shm and ordinary outputs stay isolated.
+    assert_eq!(
+        during_run,
+        Some((
+            Some("from-container".into()),
+            Some("directory".into()),
+            false,
+            false
+        ))
+    );
+    assert!(
+        report.writers_stopped && report.boundary_clean,
+        "{report:#?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(host_file.path()).unwrap(),
+        "from-container"
+    );
+    assert_eq!(
+        std::fs::read_to_string(host_directory.path().join("written")).unwrap(),
+        "directory"
+    );
+    assert_eq!(
+        std::fs::read_to_string(outputs.join("reader")).unwrap(),
+        "from-container"
+    );
+    assert_eq!(
+        std::fs::read_to_string(outputs.join("writer")).unwrap(),
+        "ordinary"
+    );
+    assert!(hidden.path().exists());
+    assert!(!Path::new("/dev/shm").join(&private).exists());
+    support::assert_no_run_resources(&adapter, &run_id).await;
 }
 
 #[tokio::test(flavor = "current_thread")]

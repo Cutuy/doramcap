@@ -61,6 +61,7 @@ async fn serial_overlay_isolation_and_harvest() {
         let original_bytes = std::fs::read(&original.manifest).unwrap();
         // Act: prepare shared views; writes through the same source have one upper tree.
         let set = prepare(PrepareInput {
+            host_shm: Vec::new(),
             workspace: artifacts.join("views"),
             artifacts,
             projects: vec![original.clone()],
@@ -199,6 +200,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
         std::fs::create_dir(&artifacts).unwrap();
         let cleanup = MountCleanup(artifacts.clone());
         let set = prepare(PrepareInput {
+            host_shm: Vec::new(),
             workspace: artifacts.join("views"),
             projects: vec![plan(&artifacts, &source)],
             artifacts,
@@ -253,6 +255,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
     let _cleanup = MountCleanup(root.clone());
     // Act
     let error = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![first, second],
         artifacts: artifacts.clone(),
@@ -289,6 +292,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     project.sha256 = hex::encode(Sha256::digest(&bytes));
     // Act
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         artifacts,
         projects: vec![project],
@@ -315,6 +319,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     std::fs::create_dir(&artifacts).unwrap();
     // Act
     let error = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts: artifacts.clone(),
@@ -351,6 +356,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     std::fs::create_dir(&artifacts).unwrap();
     // Act
     let error = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts: artifacts.clone(),
@@ -388,6 +394,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -518,6 +525,7 @@ async fn hardlinks_fail_before_any_source_is_modified() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -552,6 +560,7 @@ async fn newly_created_hardlink_is_rejected() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -592,6 +601,7 @@ async fn unsupported_upper_entries_reject_before_any_writeback() {
         let mut second = plan(&other, &root.join("b"));
         second.key = "second".into();
         let set = prepare(PrepareInput {
+            host_shm: Vec::new(),
             workspace: artifacts.join("views"),
             projects: vec![first, second],
             artifacts,
@@ -659,6 +669,7 @@ async fn xattr_whiteout_deletes_and_opaque_x_preserves_other_children() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -745,6 +756,7 @@ async fn two_serial_writebacks_inherit_prior_results() {
         let artifacts = root.join(format!("run-{index}"));
         std::fs::create_dir(&artifacts).unwrap();
         let set = prepare(PrepareInput {
+            host_shm: Vec::new(),
             workspace: artifacts.join("views"),
             projects: vec![plan(&artifacts, &source)],
             artifacts,
@@ -801,6 +813,7 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -850,6 +863,7 @@ async fn opaque_upper_root_hides_lower_children_without_copying_internal_xattrs(
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -911,6 +925,7 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         projects: vec![plan(&artifacts, &source)],
         artifacts,
@@ -968,6 +983,7 @@ async fn interrupted_copyback_child() {
         projects.push(project);
     }
     let set = prepare(PrepareInput {
+        host_shm: Vec::new(),
         workspace: artifacts.join("views"),
         artifacts,
         projects,

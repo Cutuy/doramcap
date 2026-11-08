@@ -191,6 +191,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         run.dora_runtime.as_ref(),
         super::super::shared_dora::owner(&spec.repository_root),
     )?);
+    model::configure_host_shm(&mut model, &run.host_shm)?;
     model::configure_stop_grace(&mut model, spec.stop_seconds)?;
     if let Some(dataflow) = run
         .dora_runtime

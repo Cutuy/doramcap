@@ -43,10 +43,15 @@ apps {
 `form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
 directory holding `dora` and the executables named by each app's `process.argv`, built
 with the release features. `SYSTEMD` runs need root and the system service manager;
-leave `docker_socket` unset. Each run has its own `/dev/shm`; `host_shm: "camera"`
-shows a driver-owned host entry to every unit. Inline definitions, as below, remain valid.
-`host_shm` names use ASCII letters, digits, dot, underscore or hyphen; empty names,
-`.` and `..` are rejected before launch.
+leave `docker_socket` unset. Inline definitions, as below, remain valid.
+
+For either launch form, `host_shm: "camera"` exposes the existing host entry
+`/dev/shm/camera` at the same path in every app. These entries stay live and host-owned
+through cleanup. Compose preserves its IPC namespace settings; Dora participants
+continue sharing the daemon's IPC namespace. Systemd units share the run-owned
+`/dev/shm` directory. Selected host entries bypass Compose's filesystem overlays.
+Names use ASCII letters, digits, dot, underscore or hyphen; empty names, `.` and `..`
+are rejected before launch. Host entries must exist when the apps start.
 
 ```protobuf
 apps {

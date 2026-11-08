@@ -1,12 +1,31 @@
-//! Validation of app identities shared by all launch forms.
+//! Validation of run settings and app identities shared by all launch forms.
 use crate::launch::RunPlan;
 use std::collections::BTreeSet;
+
+/// Host filesystem containing explicitly shared live entries.
+pub const HOST_SHM_ROOT: &str = "/dev/shm";
+
+/// Reject host shared-memory names that are not portable single path components.
+pub fn validate_host_shm(names: &[String]) -> Result<(), String> {
+    if names.iter().any(|name| {
+        name.is_empty()
+            || name == "."
+            || name == ".."
+            || !name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    }) {
+        return Err("host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid".into());
+    }
+    Ok(())
+}
 
 /// Validate caller inputs and reject empty, duplicate or unknown app IDs and roles.
 pub fn validate_apps<'a>(
     run: &RunPlan,
     apps: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), String> {
+    validate_host_shm(&run.host_shm)?;
     if run.dora_runtime.is_some() {
         return Err("Dora runtime is filled by preparation; caller inputs must omit it".into());
     }
@@ -65,6 +84,35 @@ pub fn phase(run: &RunPlan, id: &str) -> Phase {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_shared_memory_names_are_plain_basenames() {
+        // Arrange
+        // Act / Assert
+        for name in ["camera", "Camera_1.v2", "camera-0", ".driver"] {
+            validate_host_shm(&[name.into()]).unwrap();
+        }
+        for name in [
+            "",
+            ".",
+            "..",
+            "driver/frame",
+            "camera space",
+            "camera:0",
+            "camera\\0",
+            "camera%0",
+            "camera\"0",
+            "camera\n0",
+            "caméra",
+        ] {
+            assert!(
+                validate_host_shm(&[name.into()])
+                    .unwrap_err()
+                    .contains("host_shm"),
+                "{name:?}"
+            );
+        }
+    }
 
     #[test]
     fn app_roles_must_reference_unique_launch_inputs() {

@@ -24,17 +24,16 @@ export function validateConfig(config: Config) {
   switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {
     case launch.Form.FORM_UNSPECIFIED:
     case launch.Form.COMPOSE:
-      if (config.hostShm?.length) throw new Error('host_shm applies only to SYSTEMD');
       if (!isAbsolute(config.dockerSocket)) throw new Error('docker_socket must be absolute');
       break;
     case launch.Form.SYSTEMD:
       if (config.dockerSocket) throw new Error('docker_socket applies only to COMPOSE');
-      if (config.hostShm?.some((name) => !name || /[^A-Za-z0-9_.-]/.test(name) || name === '.' || name === '..'))
-        throw new Error('host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid');
       break;
     default:
       throw new Error('form: only COMPOSE and SYSTEMD are supported');
   }
+  if (config.hostShm?.some((name) => !name || /[^A-Za-z0-9_.-]/.test(name) || name === '.' || name === '..'))
+    throw new Error('host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid');
   for (const [name, value] of [
     ['project_root', config.projectRoot],
     ['data_root', config.dataRoot],

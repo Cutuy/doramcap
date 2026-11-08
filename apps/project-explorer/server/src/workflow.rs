@@ -80,7 +80,7 @@ pub async fn run(
         let dataflow_file = app.dataflow()?;
         let spec = ComposeRun {
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
-            filesystem: None, dora_apps, dataflow_file, recordings:vec![], repository_root: app.repository_root.clone(),
+            filesystem: None, dora_apps, dataflow_file, host_shm: vec![], recordings:vec![], repository_root: app.repository_root.clone(),
             mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {
                 services: app.mcap_services.clone(),
                 apps: Vec::new(),

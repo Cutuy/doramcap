@@ -143,6 +143,37 @@ pub(super) fn configure_dora(
     Ok(diagnostics)
 }
 
+/// Bind selected live host entries into every service without changing its IPC namespace.
+/// Errors: an existing mount at a selected target uses another source or access mode.
+pub(super) fn configure_host_shm(model: &mut Value, names: &[String]) -> Result<()> {
+    use workload_lifecycle::plan::HOST_SHM_ROOT;
+    for (service, app) in model["services"].as_object_mut().unwrap() {
+        for name in names {
+            let path = format!("{HOST_SHM_ROOT}/{name}");
+            let mounts = app
+                .as_object_mut()
+                .unwrap()
+                .entry("volumes")
+                .or_insert_with(|| json!([]))
+                .as_array_mut()
+                .ok_or_else(|| invalid("invalid Compose volumes"))?;
+            if let Some(mount) = mounts.iter_mut().find(|mount| mount["target"] == path) {
+                if mount["type"] != "bind" || mount["source"] != path || mount["read_only"] == true
+                {
+                    return Err(invalid(format!(
+                        "{service}: mount conflicts with host_shm entry {name}"
+                    )));
+                }
+                mount["bind"]["create_host_path"] = false.into();
+            } else {
+                mounts.push(json!({"type":"bind", "source":path, "target":path,
+                    "read_only":false, "bind":{"create_host_path":false}}));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Give services without a `stop_grace_period` the run's `stop_seconds`.
 /// Errors: a declared period outside `MIN_STOP_SECONDS..=MAX_STOP_SECONDS`, or one that cannot be read.
 /// Docker stores whole seconds, so a shorter period would SIGKILL the service on stop.
@@ -242,6 +273,7 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
 /// Validate run identity, paths, app keys and budgets before creating artifacts.
 pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
     validate_name(&spec.id)?;
+    workload_lifecycle::plan::validate_host_shm(&spec.host_shm).map_err(invalid)?;
     if !spec.repository_root.is_absolute() {
         return Err(invalid("repository root must be absolute"));
     }

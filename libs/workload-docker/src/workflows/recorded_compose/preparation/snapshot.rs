@@ -289,6 +289,7 @@ mod tests {
             system_apps: vec![],
             dora_apps: vec![],
             dataflow_file: String::new(),
+            host_shm: Vec::new(),
             recordings: vec![],
             mcap_writers: Default::default(),
             readiness_seconds: 60,

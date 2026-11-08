@@ -39,6 +39,9 @@ message RunPlan {
   string dataflow_file = 10;
   // Filled by preparation from app inputs; callers must leave this absent.
   DoraRuntime dora_runtime = 11;
+  // Host /dev/shm entries every app sees in place; these remain host-owned through cleanup.
+  // Names use ASCII letters/digits, dot, underscore or hyphen; empty, . and .. are invalid.
+  repeated string host_shm = 12;
 }
 
 // Per-preparation Dora facts consumed by launch adapters and runtime control.

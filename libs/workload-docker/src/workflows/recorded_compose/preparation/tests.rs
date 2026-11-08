@@ -107,6 +107,7 @@ fn request() -> ComposeRun {
         projects: vec![app("adopted")],
         dora_apps: vec![],
         dataflow_file: String::new(),
+        host_shm: Vec::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 60,
@@ -230,6 +231,64 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
                 "54002"
             );
         }
+    }
+}
+
+#[test]
+fn host_shm_preserves_ipc_and_other_mounts_and_rejects_target_conflicts() {
+    // Arrange
+    let original = json!({"services": {
+        "owner": {"ipc":"shareable", "shm_size":134217728},
+        "app": {"ipc":"service:owner", "volumes":[
+            {"type":"bind", "source":"/data", "target":"/data", "read_only":true}
+        ]}
+    }});
+    let mut model = original.clone();
+    // Act
+    configure_host_shm(&mut model, &["camera".into(), "camera".into()]).unwrap();
+    // Assert: all services see the live entry without changing their IPC contract.
+    for name in ["owner", "app"] {
+        assert_eq!(
+            model["services"][name]["ipc"],
+            original["services"][name]["ipc"]
+        );
+        let mounts = model["services"][name]["volumes"].as_array().unwrap();
+        assert_eq!(
+            mounts
+                .iter()
+                .filter(|mount| mount["target"] == "/dev/shm/camera")
+                .count(),
+            1
+        );
+        let mount = mounts
+            .iter()
+            .find(|mount| mount["target"] == "/dev/shm/camera")
+            .unwrap();
+        assert_eq!(mount["source"], "/dev/shm/camera");
+        assert_eq!(mount["read_only"], false);
+        assert_eq!(mount["bind"]["create_host_path"], false);
+    }
+    assert_eq!(
+        model["services"]["owner"]["shm_size"],
+        original["services"]["owner"]["shm_size"]
+    );
+    assert_eq!(
+        model["services"]["app"]["volumes"][0],
+        original["services"]["app"]["volumes"][0]
+    );
+    // Act / Assert: an existing conflicting mount fails instead of being replaced.
+    for mount in [
+        json!({"type":"bind","source":"/other","target":"/dev/shm/camera"}),
+        json!({"type":"bind","source":"/dev/shm/camera","target":"/dev/shm/camera","read_only":true}),
+        json!({"type":"volume","source":"camera","target":"/dev/shm/camera"}),
+    ] {
+        let mut model = json!({"services":{"app":{"volumes":[mount]}}});
+        assert!(
+            configure_host_shm(&mut model, &["camera".into()])
+                .unwrap_err()
+                .to_string()
+                .contains("conflicts")
+        );
     }
 }
 

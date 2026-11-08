@@ -92,8 +92,9 @@ selects the launcher.
 ![systemd mode](110726-systemd-slice.svg)
 
 Each run owns one slice. The graph accepts only dynamic nodes, so each app is one unit
-connected to the Dora daemon. Units share the host `/dev/shm`; units must not set
-`PrivateIPC`. Ownership records the run's shared-memory segments for reset.
+connected to the Dora daemon. Units share a run-owned `/dev/shm`; selected `RunPlan.host_shm` entries bind through
+from the host. Cleanup removes the run directory and preserves the host entries.
+Docker applies the same host-entry selection while preserving its Compose IPC settings.
 
 | Manifest fact | Unit property |
 | --- | --- |
@@ -243,6 +244,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Console without Docker: `SYSTEMD` configurations omit `docker_socket`; Compose connects lazily on its first operation. The release installer still assumes Compose.
 - [x] Each run owns its `/dev/shm` directory; generated and adopted units share it, and teardown or explicit cleanup removes it. Admission preserves leftovers; configured `host_shm` entries remain driver-owned.
 - [x] `host_shm` accepts ASCII letters, digits, dot, underscore and hyphen; empty names, `.` and `..` fail before launch.
+- [x] `RunPlan` owns `host_shm` for both launch forms; Docker mounts the selected live entries in every service and preserves them through overlay preparation and cleanup.
 - [ ] Share Prepare and Report between Compose and systemd.
 
 **Validation**
@@ -251,10 +253,11 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
 - [x] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
 - [x] Rebased native shared-memory tests: generated, project and app units share a segment, allowed host entries survive, and rejected admission preserves abandoned segments until explicit cleanup.
+- [ ] Docker qualification: selected host files and directories stay live across shared IPC containers, ordinary writable binds remain isolated, and teardown preserves host entries.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Rebased #205/#206 passes release systemd unit tests, focused native shared-memory and abandoned-run tests, all-target Clippy, TypeScript checking, formatting and library boundaries. Combined-stack Console and ARM64 qualification is pending; current results will be recorded on the PRs. Review retains the captured-input admission check.
+Current shared `host_shm` change passes release lifecycle, systemd and Docker library tests, TypeScript checking and library boundaries. Native Docker/systemd qualification and final hosted CI are pending; current results are recorded on [PR #206](https://github.com/Cutuy/doramcap/pull/206). Review retains the captured-input admission check.
 
 ## Future items
 

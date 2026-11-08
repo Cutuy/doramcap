@@ -25,5 +25,6 @@ export function runPlan(config: Config, run: RunInputs, dataflowFile: string) {
     mcapApps: run.apps.filter((app) => app.recordings?.length).map((app) => app.id!),
     doraApps: config.doraApps,
     dataflowFile,
+    hostShm: config.hostShm ?? [],
   });
 }

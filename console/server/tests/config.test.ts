@@ -42,11 +42,13 @@ test('systemd Consoles need no Docker socket and reject one', () => {
   validateConfig(systemd(''));
   assert.throws(() => validateConfig(systemd('docker_socket:"/docker.sock"')), /only to COMPOSE/);
   validateConfig(systemd('host_shm: "camera"'));
-  assert.throws(() => validateConfig(config('host_shm: "camera"')), /only to SYSTEMD/);
-  for (const name of ['Camera_1.v2', 'camera-0', '.driver'])
-    validateConfig(wire.ConsoleConfig.create({ ...systemd(''), hostShm: [name] }));
-  for (const name of ['', '.', '..', 'driver/frame', 'camera space', 'camera:0', 'camera\\0', 'camera%0', 'camera"0', 'camera\n0', 'camera\n', 'caméra'])
-    assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...systemd(''), hostShm: [name] })), /host_shm/);
+  validateConfig(config('host_shm: "camera"'));
+  for (const base of [config(), systemd('')]) {
+    for (const name of ['Camera_1.v2', 'camera-0', '.driver'])
+      validateConfig(wire.ConsoleConfig.create({ ...base, hostShm: [name] }));
+    for (const name of ['', '.', '..', 'driver/frame', 'camera space', 'camera:0', 'camera\\0', 'camera%0', 'camera"0', 'camera\n0', 'camera\n', 'caméra'])
+      assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...base, hostShm: [name] })), /host_shm/);
+  }
   // Act / Assert: Compose still requires the socket.
   assert.throws(() => validateConfig(wire.ConsoleConfig.create({ ...config(), dockerSocket: '' })), /docker_socket must be absolute/);
 });

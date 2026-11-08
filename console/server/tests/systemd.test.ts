@@ -39,7 +39,7 @@ test('release manifests resolve to a systemd plan with container paths bound', a
     });
     // Assert
     assert.ok(plan.systemd && !plan.compose);
-    assert.deepEqual(plan.systemd!.hostShm, ["camera"]);
+    assert.deepEqual(plan.run!.hostShm, ["camera"]);
     assert.deepEqual(plan.run!.doraApps, ['dora-coordinator', 'dora-daemon']);
     assert.equal(plan.run!.dataflowFile, join(directory, 'graph.json'));
     assert.deepEqual(plan.run!.systemApps, ['cpu-monitor', 'data-recorder', 'live-bridge']);

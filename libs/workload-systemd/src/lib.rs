@@ -27,8 +27,7 @@ const SCOPE_CHARS: usize = 12;
 pub(crate) const ACTIVE_RUN: &str = "active-run";
 /// Runtime root.
 const RUNTIME_ROOT: &str = "/run/doramcap";
-/// Host shared-memory filesystem; each run owns one directory in it.
-const SHM_ROOT: &str = "/dev/shm";
+use workload_lifecycle::plan::HOST_SHM_ROOT as SHM_ROOT;
 /// Directory where the service manager reads runtime units and drop-ins.
 const SYSTEMD_RUNTIME_UNITS: &str = "/run/systemd/system";
 
@@ -123,16 +122,6 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
         return Err("readiness and stop budgets must be positive".into());
     }
     workload_lifecycle::plan::validate_apps(run, app_ids(plan)?.iter().map(String::as_str))?;
-    if plan.host_shm.iter().any(|name| {
-        name.is_empty()
-            || name == "."
-            || name == ".."
-            || !name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-    }) {
-        return Err("host_shm entries must use ASCII letters, digits, dot, underscore or hyphen; empty, . and .. are invalid".into());
-    }
     let mut ids = std::collections::BTreeSet::new();
     let reserved = |id: &str| !run.dora_apps.is_empty() && id.starts_with(dora::CLI_PREFIX);
     for program in &plan.programs {
@@ -270,37 +259,6 @@ mod tests {
             }],
             unit_files: vec!["/repo/deploy/perception.service".into()],
             ..Default::default()
-        }
-    }
-
-    #[test]
-    fn host_shared_memory_names_are_plain_basenames() {
-        // Arrange
-        let run = run();
-        let mut plan = plan();
-        // Act / Assert
-        for name in ["camera", "Camera_1.v2", "camera-0", ".driver"] {
-            plan.host_shm = vec![name.into()];
-            validate(&run, &plan).unwrap();
-        }
-        for name in [
-            "",
-            ".",
-            "..",
-            "driver/frame",
-            "camera space",
-            "camera:0",
-            "camera\\0",
-            "camera%0",
-            "camera\"0",
-            "camera\n0",
-            "caméra",
-        ] {
-            plan.host_shm = vec![name.into()];
-            assert!(
-                validate(&run, &plan).unwrap_err().contains("host_shm"),
-                "{name:?}"
-            );
         }
     }
 

@@ -224,6 +224,7 @@ impl ComposeRunner {
                 executor
                     .run::<PrepareOverlays>(
                         Input::new(PrepareInput {
+                            host_shm: spec.host_shm.clone(),
                             artifacts: artifacts.clone(),
                             workspace: controller.workspace(),
                             projects: vec![prepared.value().plan.clone()],
@@ -374,6 +375,9 @@ pub struct ComposeRun {
     /// Absolute merged dataflow file; empty registers none.
     #[serde(default)]
     pub dataflow_file: String,
+    /// Live host shared-memory entries selected by RunPlan for every app.
+    #[serde(default)]
+    pub host_shm: Vec<String>,
     /// Explicit ordinary app recordings, checked after writers stop.
     #[serde(default)]
     pub recordings: Vec<Recording>,
@@ -408,6 +412,7 @@ impl ComposeRun {
             mcap_apps: self.mcap_writers.apps.clone(),
             dora_apps: self.dora_apps.iter().map(|app| app.key.clone()).collect(),
             dataflow_file: self.dataflow_file.clone(),
+            host_shm: self.host_shm.clone(),
             dora_runtime: None,
         }
     }
@@ -443,6 +448,7 @@ impl ComposeRun {
             projects,
             dora_apps,
             dataflow_file: run.dataflow_file,
+            host_shm: run.host_shm,
             recordings: run
                 .recordings
                 .into_iter()

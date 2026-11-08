@@ -63,7 +63,7 @@ impl SystemdRunning {
             target: crate::SHM_ROOT.into(),
             read_only: false,
         };
-        let host = self.plan.host_shm.iter().map(|name| {
+        let host = self.run.host_shm.iter().map(|name| {
             let path = format!("{}/{name}", crate::SHM_ROOT);
             crate::Bind {
                 source: path.clone(),

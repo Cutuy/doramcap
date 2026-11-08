@@ -64,7 +64,6 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
       appUnits,
       programs,
       unitFiles: units,
-      hostShm: config.hostShm ?? [],
     }),
   });
 }

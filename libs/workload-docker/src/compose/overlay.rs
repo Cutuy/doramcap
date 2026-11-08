@@ -139,6 +139,9 @@ pub struct PrepareInput {
     pub projects: Vec<ResolvedComposeProject>,
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
+    /// RunPlan host entries that remain live at their matching /dev/shm targets.
+    #[serde(default)]
+    pub host_shm: Vec<String>,
 }
 /// Final result locations; discard returns no source paths.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -292,6 +295,12 @@ fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf
 /// binds outside shared writable trees and dedicated run artifacts stay unchanged.
 /// Writable files, special nodes and nested mounts fail closed with their paths.
 pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
+    workload_lifecycle::plan::validate_host_shm(&input.host_shm).map_err(invalid)?;
+    let host_shm: BTreeSet<_> = input
+        .host_shm
+        .iter()
+        .map(|name| format!("{}/{name}", workload_lifecycle::plan::HOST_SHM_ROOT))
+        .collect();
     let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
     let directory = artifacts.join("overlays");
     let workspace = input.workspace;
@@ -330,7 +339,8 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             }
             let meta = tokio::fs::symlink_metadata(&source).await?;
             let owned = source.starts_with(&artifacts);
-            if !bind.read_only && !owned {
+            let shared = bind.source == bind.target && host_shm.contains(&bind.source);
+            if !bind.read_only && !owned && !shared {
                 if !meta.is_dir()
                     || ["/proc", "/sys", "/dev"]
                         .iter()
@@ -363,7 +373,9 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                 original: source.clone(),
                 effective: source,
                 read_only: bind.read_only,
-                reason: if owned {
+                reason: if shared {
+                    "live host shared memory"
+                } else if owned {
                     "fresh run artifact"
                 } else if bind.read_only {
                     "read-only input"
@@ -489,6 +501,10 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             }
         }
         for mapping in &mut set.mappings {
+            // Explicit host entries stay live even when their source aliases an isolated tree.
+            if mapping.reason == "live host shared memory" {
+                continue;
+            }
             if let Some(tree) = set
                 .trees
                 .iter()

@@ -1358,7 +1358,7 @@ async fn units_share_the_runs_own_shm_and_see_allowed_host_entries() {
         ],
     );
     plan.1.binaries = "/bin".into();
-    plan.1.host_shm = vec![camera.clone()];
+    plan.0.host_shm = vec![camera.clone()];
     // Act
     let report = run_for_a_while(plan).await;
     let host_contents = std::fs::read_to_string(&host).unwrap();
