@@ -10,6 +10,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const SLOT_COUNT = 5;
+const MAIN_BRANCH = 'main';
 const LOCK_FD = 3;
 const MAX_COMMAND_OUTPUT = 64 * 1024 * 1024;
 const PRIVATE_FILE_MODE = 0o600;
@@ -111,6 +112,8 @@ function main() {
 
 Five non-expiring leases. Save the acquisition token. Resume with the same owner,
 branch and token. Commands block on the shared flock; a full pool fails explicitly.
+Release detaches the checkout and deletes its local feature branch; main is protected.
+Remote branches are preserved.
 --discard-dirty requires prior user approval for the displayed path and files.`);
     return;
   }
@@ -125,6 +128,7 @@ branch and token. Commands block on the shared flock; a full pool fails explicit
   }
   if (['acq', 'release'].includes(command) && !values.owner?.trim()) throw new Error('--owner is required');
   if (command === 'acq' && !values.branch?.trim()) throw new Error('--branch is required');
+  if (command === 'acq' && values.branch === MAIN_BRANCH) throw new Error('Cannot lease main; use a feature branch');
   if (command === 'release' && (!values.token || Boolean(values.main) === Boolean(values.pr))) {
     throw new Error('Release requires --token and exactly one of --pr or --main');
   }
@@ -242,11 +246,12 @@ branch and token. Commands block on the shared flock; a full pool fails explicit
       const slot = owned();
       const path = slot.path;
       const lease = slot.lease!;
+      if (lease.branch === MAIN_BRANCH) throw new Error('Cannot release or delete main');
       const featureHead = head(path);
       cleanBuildOutputs(path);
       if (dirt(path)) throw new Error(`Worktree has uncommitted changes; commit and integrate them before release:\n${dirt(path)}`);
       if (values.main) {
-        const mainHead = git(mainRoot, 'rev-parse', 'refs/heads/main').toString().trim();
+        const mainHead = git(mainRoot, 'rev-parse', `refs/heads/${MAIN_BRANCH}`).toString().trim();
         if (git(path, 'cherry', mainHead, featureHead).toString().split('\n').some(line => line.startsWith('+'))) throw new Error('Feature patches remain unintegrated into main');
         slot.last_local_integration = { branch: lease.branch, feature_head: featureHead, main_head: mainHead,
           authorization: 'User-requested local cherry-pick integration and release' };
@@ -257,6 +262,14 @@ branch and token. Commands block on the shared flock; a full pool fails explicit
       }
       cleanBuildOutputs(path);
       if (dirt(path) || head(path) !== featureHead || branch(path) !== lease.branch) throw new Error('Worktree changed during release; lease remains active');
+      git(path, 'checkout', '--no-overwrite-ignore', '--detach', featureHead);
+      try {
+        // Publication or patch-equivalence was verified above; delete only the local ref.
+        git(path, 'branch', '-D', '--', lease.branch);
+      } catch (error) {
+        git(path, 'checkout', '--no-overwrite-ignore', lease.branch);
+        throw error;
+      }
       slot.lease = null;
       save();
     }
