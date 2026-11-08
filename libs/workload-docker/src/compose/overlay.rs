@@ -291,9 +291,9 @@ fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf
         .collect()
 }
 
-/// Plan and mount views. Sources must exist and be ordinary directories. Read-only
-/// binds outside shared writable trees and dedicated run artifacts stay unchanged.
-/// Writable files, special nodes and nested mounts fail closed with their paths.
+/// Plan and mount isolated writable-directory views; sources must exist.
+/// Read-only inputs, run artifacts and selected host_shm entries stay live.
+/// Other writable files, special nodes and nested mounts fail closed with their paths.
 pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
     workload_lifecycle::plan::validate_host_shm(&input.host_shm).map_err(invalid)?;
     let host_shm: BTreeSet<_> = input

@@ -253,11 +253,14 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
 - [x] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
 - [x] Rebased native shared-memory tests: generated, project and app units share a segment, allowed host entries survive, and rejected admission preserves abandoned segments until explicit cleanup.
-- [ ] Docker qualification: selected host files and directories stay live across shared IPC containers, ordinary writable binds remain isolated, and teardown preserves host entries.
+- [x] Docker qualification: selected host files and directories stay live across shared IPC containers, ordinary writable binds remain isolated, and teardown preserves host entries.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Current shared `host_shm` change passes release lifecycle, systemd and Docker library tests, TypeScript checking and library boundaries. Native Docker/systemd qualification and final hosted CI are pending; current results are recorded on [PR #206](https://github.com/Cutuy/doramcap/pull/206). Review retains the captured-input admission check.
+Current validation (2026-11-08):
+- Local release library tests, affected-package Clippy, TypeScript, Console configuration/plan tests, formatting and boundaries pass.
+- Real Docker verifies live host files/directories across shared IPC containers, ordinary overlay isolation and cleanup. Native systemd shared-memory, abandoned-run cleanup and adopted-unit environment regressions pass.
+- Hosted x86_64/ARM64 Rust and Node checks and ARM64 worker job 610: current results are recorded on [PR #206](https://github.com/Cutuy/doramcap/pull/206). Review retains the captured-input admission check.
 
 ## Future items
 
