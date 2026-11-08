@@ -145,7 +145,7 @@ impl SystemdRunner {
         let plan_dora = plan
             .dora
             .clone()
-            .map(|dora| crate::dora::Dora::new(dora, &run));
+            .map(|dora| crate::dora::Dora::new(dora, run.id.clone()));
         let running = SystemdRunning {
             manager,
             executor: executor.clone(),

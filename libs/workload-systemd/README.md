@@ -21,9 +21,3 @@ Admission refuses prior owned resources. A crash leaves units running and artifa
 intact until explicit cleanup. Normal shutdown waits for each unit's effective
 stop timeout plus the reporting margin. Unconfirmed shutdown preserves resources
 and skips recording finalization; unavailable required exit evidence fails the report.
-
-Dora commands use the run readiness budget during startup and the stop budget for
-shutdown. Each command has a systemd execution timeout and termination grace;
-completion waits also include the existing reporting margin. Cancellation retains
-Dora ownership so shutdown still requests dataflow teardown. Plans reserve Dora
-unit names and require distinct TCP ports in `1..=65535`.

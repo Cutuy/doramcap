@@ -21,17 +21,13 @@ pub(crate) struct Dora {
     settings: DoraUnits,
     run: String,
     commands: u32,
-    readiness_seconds: u64,
-    stop_seconds: u64,
     pub registered: Option<String>,
 }
 impl Dora {
-    pub fn new(settings: DoraUnits, run: &crate::RunPlan) -> Self {
+    pub fn new(settings: DoraUnits, run: String) -> Self {
         Self {
             settings,
-            run: run.id.clone(),
-            readiness_seconds: run.readiness_seconds,
-            stop_seconds: run.stop_seconds,
+            run,
             commands: 0,
             registered: None,
         }
@@ -90,13 +86,7 @@ impl Dora {
     }
 
     /// Run one Dora CLI command as a oneshot unit and return its standard output.
-    async fn cli(
-        &mut self,
-        manager: &Manager,
-        scope: &Scope,
-        args: &[&str],
-        seconds: u64,
-    ) -> Result<String> {
+    async fn cli(&mut self, manager: &Manager, scope: &Scope, args: &[&str]) -> Result<String> {
         self.commands += 1;
         let name = scope.unit(&format!("{CLI_PREFIX}{}", self.commands));
         let output = self.directory().join(format!("cli-{}.out", self.commands));
@@ -110,7 +100,7 @@ impl Dora {
             .map(str::to_owned)
             .collect();
         manager
-            .run_oneshot(scope, &name, &argv, &self.settings.user, &output, seconds)
+            .run_oneshot(scope, &name, &argv, &self.settings.user, &output)
             .await?;
         tokio::fs::read_to_string(output).await.map_err(error)
     }
@@ -119,12 +109,7 @@ impl Dora {
     pub async fn await_daemon(&mut self, manager: &Manager, scope: &Scope) -> Result<()> {
         loop {
             if let Ok(status) = self
-                .cli(
-                    manager,
-                    scope,
-                    &["status", "--format", "json"],
-                    self.readiness_seconds,
-                )
+                .cli(manager, scope, &["status", "--format", "json"])
                 .await
                 && serde_json::from_str::<serde_json::Value>(&status)
                     .is_ok_and(|status| status["daemon"]["status"] == "running")
@@ -150,7 +135,6 @@ impl Dora {
             manager,
             scope,
             &["start", &graph, "--name", &run, "--detach"],
-            self.readiness_seconds,
         )
         .await?;
         let listed = self
@@ -158,7 +142,6 @@ impl Dora {
                 manager,
                 scope,
                 &["list", "--format", "json", "--name", &run],
-                self.readiness_seconds,
             )
             .await?;
         let entries: Vec<serde_json::Value> = listed
@@ -181,7 +164,7 @@ impl Dora {
 
     /// Ask the coordinator to stop every dataflow before its units stop.
     pub async fn down(&mut self, manager: &Manager, scope: &Scope) -> Result<()> {
-        self.cli(manager, scope, &["down", "--force"], self.stop_seconds)
+        self.cli(manager, scope, &["down", "--force"])
             .await
             .map(|_| ())
     }

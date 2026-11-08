@@ -144,8 +144,7 @@ impl Manager {
     }
 
     /// Run `argv` to completion as a oneshot unit in the scope's slice, writing its
-    /// standard output to `output`. `seconds` bounds execution and subsequent termination.
-    /// Errors include timeout, unconfirmed completion and unsuccessful start or exit.
+    /// standard output to `output`. Errors: a start or exit other than success.
     pub async fn run_oneshot(
         &self,
         scope: &Scope,
@@ -153,54 +152,38 @@ impl Manager {
         argv: &[String],
         user: &str,
         output: &std::path::Path,
-        seconds: u64,
     ) -> Result<()> {
-        let micros = seconds
-            .checked_mul(MICROS_PER_SECOND)
-            .ok_or("Dora command timeout exceeds systemd range")?;
-        let budget = Duration::from_secs(seconds);
-        let deadline = budget
-            .checked_add(budget)
-            .and_then(|budget| budget.checked_add(STOP_REPORT_MARGIN))
-            .ok_or("Dora command timeout exceeds deadline range")?;
-        let command = async {
-            let mut properties = vec![
-                ("TimeoutStartUSec".into(), value(micros)?),
-                ("TimeoutStopUSec".into(), value(micros)?),
-                (
-                    "Description".into(),
-                    value(format!("Doramcap command {name}"))?,
-                ),
-                ("Slice".into(), value(scope.slice.clone())?),
-                ("Type".into(), value("oneshot")?),
-                (
-                    "ExecStart".into(),
-                    value(vec![(argv[0].clone(), argv.to_vec(), false)])?,
-                ),
-                (
-                    "StandardOutputFileToTruncate".into(),
-                    value(output.to_string_lossy().into_owned())?,
-                ),
-            ];
-            if !user.is_empty() {
-                properties.push(("User".into(), value(user.to_owned())?));
-            }
-            let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
-            let job = self
-                .manager
-                .start_transient_unit(name.into(), "fail".into(), properties, vec![])
-                .await
-                .map_err(error)?;
-            // A oneshot start job ends when its process exits.
-            let result = self.started(name, &mut jobs, job).await;
-            if result.is_err() {
-                self.release(name).await;
-            }
-            result
-        };
-        tokio::time::timeout(deadline, command)
+        let mut properties = vec![
+            (
+                "Description".into(),
+                value(format!("Doramcap command {name}"))?,
+            ),
+            ("Slice".into(), value(scope.slice.clone())?),
+            ("Type".into(), value("oneshot")?),
+            (
+                "ExecStart".into(),
+                value(vec![(argv[0].clone(), argv.to_vec(), false)])?,
+            ),
+            (
+                "StandardOutputFileToTruncate".into(),
+                value(output.to_string_lossy().into_owned())?,
+            ),
+        ];
+        if !user.is_empty() {
+            properties.push(("User".into(), value(user.to_owned())?));
+        }
+        let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
+        let job = self
+            .manager
+            .start_transient_unit(name.into(), "fail".into(), properties, vec![])
             .await
-            .map_err(|_| format!("{name}: command completion not confirmed within {deadline:?}"))?
+            .map_err(error)?;
+        // A oneshot start job ends when its process exits.
+        let result = self.started(name, &mut jobs, job).await;
+        if result.is_err() {
+            self.release(name).await;
+        }
+        result
     }
 
     /// Link copies of repository unit files into the runtime unit directory and
