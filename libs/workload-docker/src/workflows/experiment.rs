@@ -36,7 +36,7 @@ impl ExperimentOwner {
             startup_seconds: seconds,
         }
     }
-    pub(crate) fn runtime(&self) -> Result<&workload_lifecycle::launch::DoraRuntime> {
+    pub(crate) fn dora_runtime(&self) -> Result<&workload_lifecycle::launch::DoraRuntime> {
         self.run
             .dora_runtime
             .as_ref()
@@ -66,7 +66,7 @@ impl ExperimentOwner {
             super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
-        if crate::compose::adapter::digest(&bytes) != self.runtime()?.dataflow_sha256 {
+        if crate::compose::adapter::digest(&bytes) != self.dora_runtime()?.dataflow_sha256 {
             return Err(invalid("frozen Dora graph changed"));
         }
         let target = dataflow.target.clone();
@@ -111,7 +111,7 @@ impl ExperimentOwner {
             };
         };
         let dataflow = self
-            .runtime()?
+            .dora_runtime()?
             .dataflow
             .as_ref()
             .ok_or_else(|| invalid("registered Dora graph missing"))?;

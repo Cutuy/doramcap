@@ -86,7 +86,7 @@ impl ExperimentOwner {
             .collect();
         command.extend([
             "--coordinator-port".into(),
-            self.runtime()?.coordinator_port.to_string(),
+            self.dora_runtime()?.coordinator_port.to_string(),
         ]);
         self.adapter
             .project(&self.plan)
@@ -131,9 +131,12 @@ impl ExperimentOwner {
         for (name, port) in [
             (
                 self.apps.coordinator()?.0,
-                self.runtime()?.coordinator_port as u16,
+                self.dora_runtime()?.coordinator_port as u16,
             ),
-            (self.apps.daemon()?.0, self.runtime()?.daemon_port as u16),
+            (
+                self.apps.daemon()?.0,
+                self.dora_runtime()?.daemon_port as u16,
+            ),
         ] {
             self.adapter
                 .project(&self.plan)
@@ -156,7 +159,7 @@ impl ExperimentOwner {
             .endpoint(
                 self.apps.coordinator()?.0,
                 "host",
-                self.runtime()?.coordinator_port as u16,
+                self.dora_runtime()?.coordinator_port as u16,
             )
             .await
             .is_ok()
