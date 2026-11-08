@@ -37,6 +37,8 @@ const instruction = 'Screen only the supplied rule focus against the supplied co
 
 async function prepare(runName: string) {
   const run = join(here, 'runs', runName);
+  await mkdir(join(here, 'runs'), { recursive: true });
+  await mkdir(run); // Refuse to overwrite frozen inputs and prior results.
   await mkdir(join(run, 'inputs'), { recursive: true });
   await mkdir(join(run, 'raw'), { recursive: true });
   const base = git('rev-parse', 'HEAD');
@@ -118,9 +120,11 @@ async function runTask(run: string, task: any, cwd: string) {
     tool_events: events.filter(e => e.item && /command_execution|tool_call|web_search|file_change|mcp/.test(e.item.type)),
     status: 'unresolved', result: null, error: null,
   };
+  let modelResponse: unknown = null;
   try {
     if (exit !== 0) throw new Error(events.filter(e => e.type === 'error' || e.type === 'turn.failed').map(e => JSON.stringify(e)).join('\n') || stderr.slice(-4000));
     const answer = await readJson(output);
+    modelResponse = answer;
     if (answer.task_id !== task.task_id) throw new Error('Response task ID mismatch');
     if (result.tool_events.length) throw new Error('Screening used tools unexpectedly');
     const source = await readFile(join(repo, task.path), 'utf8');
@@ -133,7 +137,7 @@ async function runTask(run: string, task: any, cwd: string) {
     if (answer.status === 'candidate' && (!answer.hypothesis || !answer.evidence.length)) throw new Error('Candidate lacks hypothesis or evidence');
     result.status = answer.status;
     result.result = answer;
-  } catch (error) { result.error = String(error); }
+  } catch (error) { result.error = String(error); result.rejected_response = modelResponse; }
   await json(join(run, `${task.task_id}.json`), result);
   console.log(JSON.stringify({ task_id: task.task_id, path: task.path, status: result.status, seconds: Number(seconds.toFixed(1)), error: result.error }));
   return result;
