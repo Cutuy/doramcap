@@ -130,19 +130,26 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let _ = accepted.send(Err("Conflict".into()));
         return reply;
     }
-    let Some(expected) = request.expected else {
-        let _ = accepted.send(Err("InvalidInput".into()));
-        return reply;
-    };
-    let spec = match request
+    let launch = request
         .run
         .ok_or("InvalidInput".to_string())
-        .and_then(launch)
-    {
-        Ok(Launch::Compose(spec)) => spec,
-        Ok(Launch::Systemd(run, plan)) => return start_systemd(state, run, plan, accepted, reply),
-        Err(error) => {
+        .and_then(launch);
+    let (spec, expected) = match (launch, request.backend) {
+        (Ok(Launch::Compose(spec)), Some(start_request::Backend::Expected(expected))) => {
+            (spec, expected)
+        }
+        (
+            Ok(Launch::Systemd(run, plan)),
+            Some(start_request::Backend::SystemdExpected(expected)),
+        ) => {
+            return start_systemd(state, run, plan, expected, accepted, reply);
+        }
+        (Err(error), _) => {
             let _ = accepted.send(Err(error));
+            return reply;
+        }
+        _ => {
+            let _ = accepted.send(Err("InvalidInput".into()));
             return reply;
         }
     };
@@ -341,21 +348,23 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
     reply
 }
 
-/// Run a systemd plan: accept at once, then report readiness, step events, the machine
-/// before and after, and the result through the same update as Compose runs.
+/// Accept a systemd plan after captured inputs match Review and admission succeeds.
+/// Readiness, machine capture, step events and completion use the shared update stream.
 fn start_systemd(
     state: &mut State,
     run: workload_systemd::RunPlan,
     plan: workload_systemd::SystemdPlan,
+    expected: workload_systemd::ConfigurationSnapshot,
     accepted: oneshot::Sender<Result<Vec<u8>, String>>,
     reply: Reply,
 ) -> Reply {
     let (stop_tx, stop_rx) = oneshot::channel();
     let (done_tx, done_rx) = oneshot::channel();
+    let stopped = Rc::new(Cell::new(false));
     state.active = Some(Active {
         id: run.id.clone(),
         stop: Some(stop_tx),
-        stopped: Rc::new(Cell::new(false)),
+        stopped: stopped.clone(),
         done: Some(done_rx),
     });
     *state.updates.lock().unwrap() = ExecutionUpdate {
@@ -395,11 +404,12 @@ fn start_systemd(
             .map(std::path::Path::to_path_buf)
             .unwrap_or_default();
         updates.lock().unwrap().machine_before = Some(system_config::observe(&data));
-        let _ = accepted.send(Ok(Vec::new()));
+        let admission = Rc::new(RefCell::new(Some(accepted)));
+        let check = admission.clone();
         let mut runner = runner.lock().await;
         let loss = updates.clone();
         let result = runner
-            .run(
+            .run_with_preflight(
                 run,
                 plan,
                 async {
@@ -418,6 +428,18 @@ fn start_systemd(
                     loss.lock().unwrap().dropped_events = observer.dropped_events();
                 },
                 Some(ready_tx),
+                move |snapshot| {
+                    if stopped.get() {
+                        return Err("Stopped".into());
+                    }
+                    if *snapshot != expected {
+                        return Err("ConfigurationChanged".into());
+                    }
+                    if let Some(reply) = check.borrow_mut().take() {
+                        let _ = reply.send(Ok(Vec::new()));
+                    }
+                    Ok(())
+                },
             )
             .await;
         let blocked = runner.blocked();
@@ -429,11 +451,15 @@ fn start_systemd(
                 ..Default::default()
             },
         };
+        let rejection = result.error.clone().unwrap_or_else(|| "Internal".into());
         let after = system_config::observe(&data);
         {
             let mut update = updates.lock().unwrap();
             update.machine_after = Some(after);
             update.result = Some(result);
+        }
+        if let Some(reply) = admission.borrow_mut().take() {
+            let _ = reply.send(Err(rejection));
         }
         let _ = done_tx.send(());
     });
@@ -586,7 +612,7 @@ mod tests {
                     }),
                     backend: Some(run_request::Backend::Compose(Default::default())),
                 }),
-                expected: Some(Default::default()),
+                backend: Some(start_request::Backend::Expected(Default::default())),
             };
 
             // Act: stop after Docker accepts the connection but before it responds.
@@ -608,6 +634,104 @@ mod tests {
                     .as_deref(),
                 Some("Stopped")
             );
+        });
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn start_rejects_missing_or_wrong_backend_snapshots_before_admission() {
+        // Arrange
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            let mut state = State::open("/nonexistent/docker.sock".into(), Arc::default())
+                .await
+                .unwrap();
+            for (backend, wrong) in [
+                (
+                    run_request::Backend::Compose(Default::default()),
+                    start_request::Backend::SystemdExpected(Default::default()),
+                ),
+                (
+                    run_request::Backend::Systemd(Default::default()),
+                    start_request::Backend::Expected(Default::default()),
+                ),
+            ] {
+                for expected in [None, Some(wrong)] {
+                    let request = StartRequest {
+                        run: Some(RunRequest {
+                            run: Some(Default::default()),
+                            backend: Some(backend.clone()),
+                        }),
+                        backend: expected,
+                    };
+
+                    // Act / Assert
+                    assert_eq!(
+                        start(&mut state, request).await.unwrap().unwrap_err(),
+                        "InvalidInput"
+                    );
+                    assert!(state.active.is_none());
+                    assert!(state.updates.lock().unwrap().run_id.is_empty());
+                }
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "requires root and a running systemd manager"]
+    fn systemd_stop_latched_before_preflight_rejects_admission() {
+        // Arrange
+        let directory = socket_directory("systemd-stop");
+        let artifacts = directory.join("run");
+        let run = workload_lifecycle::launch::RunPlan {
+            id: "stopped-before-preflight".into(),
+            repository_root: directory.to_str().unwrap().into(),
+            artifacts: artifacts.to_str().unwrap().into(),
+            readiness_seconds: 5,
+            stop_seconds: 1,
+            ..Default::default()
+        };
+        let plan = workload_systemd::SystemdPlan {
+            programs: vec![workload_systemd::Program {
+                id: "workload".into(),
+                argv: vec!["/bin/sleep".into(), "300".into()],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let expected = workload_systemd::inspect(&run, &plan).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        tokio::task::LocalSet::new().block_on(&runtime, async {
+            let mut state = State::open("/nonexistent/docker.sock".into(), Arc::default())
+                .await
+                .unwrap();
+            let request = StartRequest {
+                run: Some(RunRequest {
+                    run: Some(run),
+                    backend: Some(run_request::Backend::Systemd(plan)),
+                }),
+                backend: Some(start_request::Backend::SystemdExpected(expected)),
+            };
+
+            // Act: latch Stop on the owner before yielding to the preparation task.
+            let admission = start(&mut state, request);
+            state.stop("stopped-before-preflight").unwrap();
+            let result = admission.await.unwrap();
+            let published = state.updates.lock().unwrap().result.clone();
+            state.shutdown().unwrap().await.unwrap();
+
+            // Assert: rejection publishes terminal facts and removes captured inputs.
+            assert_eq!(result.unwrap_err(), "Stopped");
+            let published = published.expect("terminal result precedes rejected admission");
+            assert_eq!(published.error.as_deref(), Some("Stopped"));
+            assert!(!published.blocked);
+            assert!(!artifacts.exists());
         });
         std::fs::remove_dir_all(directory).unwrap();
     }

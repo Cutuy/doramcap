@@ -7,7 +7,7 @@ import { ConsoleService } from '../src/service.js';
 import { Store } from '../src/store.js';
 import { validateConfig } from '../src/config.js';
 import { readFile } from 'node:fs/promises';
-import { compose, live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
+import { compose, launch, live, wire, execution, workflow, type NativeExecution } from '../src/native.js';
 import Long from 'long';
 import { LIMITS, PREPARING_RUN } from '../src/generated/transport.js';
 
@@ -21,12 +21,15 @@ class Engine implements NativeExecution {
   profileNames: string[] = [];
   needsProfiles = false;
   inspected?: Parameters<NativeExecution['inspect']>[0];
+  started?: Parameters<NativeExecution['start']>[0];
   async composeProfiles() {
     return execution.ComposeProfiles.create({ names: this.profileNames });
   }
   async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
     if (this.needsProfiles && !request.compose!.projects![0].profiles?.length) throw new Error('EmptySelection');
     this.inspected = request;
+    if (request.systemd)
+      return execution.Inspection.create({ systemdSnapshot: { sha256: 'approved-systemd' } });
     return execution.Inspection.create({
       plan: { services: { worker: { imageId: 'sha256:approved' } } },
       snapshot: { manifestSha256: 'approved' },
@@ -34,8 +37,9 @@ class Engine implements NativeExecution {
   }
   start(request: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
+    this.started = request;
     if (this.rejectAdmission) return Promise.reject(new Error(this.rejectAdmission));
-    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
+    this.update = execution.ExecutionUpdate.create({ runId: request.run!.run!.id });
     return new Promise<void>((resolve) => {
       this.release = resolve;
     });
@@ -100,6 +104,37 @@ const waitFor = async (predicate: () => boolean) => {
   for (let i = 0; i < 200 && !predicate(); i++) await new Promise((resolve) => setTimeout(resolve, 5));
   assert.ok(predicate());
 };
+
+test('systemd Start carries its Review snapshot and rediscovers current unit files', async () => {
+  // Arrange
+  const { root, config, engine, backend } = await fixture();
+  config.form = launch.Form.SYSTEMD;
+  config.binaries = '/opt/doramcap/bin';
+  const first = join(config.projectRoot, 'worker.service');
+  const added = join(config.projectRoot, 'added.service');
+  await writeFile(first, '[Service]\nExecStart=/bin/true\n');
+  try {
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    assert.deepEqual(engine.inspected!.systemd!.unitFiles, [first]);
+
+    // Act
+    await writeFile(added, '[Service]\nExecStart=/bin/true\n');
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({
+      preparedId: review.preparedId, requestKey: 'systemd-inputs',
+    }).finish()));
+    await waitFor(() => engine.starts === 1);
+
+    // Assert: fresh native inputs and the original backend snapshot reach admission together.
+    assert.equal(engine.started!.systemdExpected!.sha256, 'approved-systemd');
+    assert.equal(engine.started!.expected, null);
+    assert.deepEqual(engine.started!.run!.systemd!.unitFiles, [added, first]);
+    engine.release!();
+    await starting;
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('duplicate Start requests join one execution and preserve independent completion facts', async () => {
   // Arrange
@@ -386,7 +421,7 @@ test('preflight failures return a safe classification and retain private diagnos
   const privateReason = 'repository preflight failed at /operator/private/location';
   engine.start = async (request) => {
     engine.update = execution.ExecutionUpdate.create({
-      runId: request.run!.id,
+      runId: request.run!.run!.id,
       result: { blocked: false, error: privateReason },
     });
     throw new Error(privateReason);

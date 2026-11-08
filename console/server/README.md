@@ -13,7 +13,8 @@ sudo node console/server/dist/main.js /absolute/console.pbtxt /absolute/frontend
 
 Build unprivileged; run with root privileges on the workload host. Compose uses
 mount-namespace inspection and OverlayFS isolation (`CAP_SYS_ADMIN`); systemd uses
-the system service manager. See [Console setup](../README.md).
+the system service manager. Docker connects on the first Compose operation; systemd
+startup and inspection work without a Docker daemon. See [Console setup](../README.md).
 
 The [execution contract](../proto/execution.proto) carries a shared run plan, one
 backend plan, configuration snapshots and execution facts. The workflow owns repository admission,

@@ -11,7 +11,6 @@ import {
   wire,
   execution,
   browserError,
-  compose,
   composePlan,
   launch,
   objectOptions,
@@ -44,7 +43,7 @@ type Prepared = {
   project: Project;
   apps: SelectedApp[];
   workspace: string;
-  snapshot: doramcap.compose.v1.ConfigurationSnapshot;
+  admission: doramcap.console.execution.v1.StartRequest;
 };
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
@@ -247,7 +246,10 @@ export class ConsoleService implements ConsoleBackend {
         project,
         apps,
         workspace,
-        snapshot: compose.ConfigurationSnapshot.fromObject(inspected.snapshot!),
+        admission: execution.StartRequest.create({
+          expected: inspected.snapshot,
+          systemdExpected: inspected.systemdSnapshot,
+        }),
       };
       this.snapshot = wire.Status.create({
         phase: Phase.REVIEWED,
@@ -386,7 +388,7 @@ export class ConsoleService implements ConsoleBackend {
       }
       if (this.stopped) throw new Error('Stopped');
       this.executionStarted = true;
-      await this.engine.start(runRequest, prepared.snapshot);
+      await this.engine.start(execution.StartRequest.create({ ...prepared.admission, run: runRequest }));
       this.accepted = true;
       this.marker!.startAccepted = true;
       try {

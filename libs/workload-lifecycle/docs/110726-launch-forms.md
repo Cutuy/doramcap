@@ -240,7 +240,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] The native addon runs systemd run requests; Console accepts `form: SYSTEMD`. Review shows app variants.
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
-- [ ] Console without Docker: Compose connects lazily; qualify systemd startup, Review and Start with the opt-in test's unavailable Docker socket.
+- [x] Console without Docker: Compose connects lazily; systemd startup, Review and Start pass with the opt-in test's unavailable Docker socket.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
@@ -248,11 +248,11 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Native test: Dora runs as units, registers a dynamic-node graph and stops cleanly with no units left.
 - [x] Native test: a unit reads its config and writes results at container paths, and no bind target appears on the host.
 - [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
-- [ ] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
+- [x] Rebased native Console run of CPU monitoring and Fault Watchdog (MCAP) beside one user unit: both recordings finalize, removal is clean and no units remain.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Latest integration validation is pending the #204 rebase onto the shared configuration and prepared runtime contracts. Systemd Review snapshot validation is a separate prerequisite in #215.
+Latest validation: rebased #204 passes release unit tests, Console tests, Clippy and native systemd recording/cleanup without Docker. Review uses #215 capture snapshots; stale inputs and Stop reject before admission. Final hosted CI and ARM64 qualification are pending.
 
 ## Future items
 

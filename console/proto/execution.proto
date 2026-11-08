@@ -17,7 +17,10 @@ message RunRequest {
 }
 message Inspection {
   doramcap.compose.v1.ResolvedComposeProject plan = 1;
-  doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;
+  oneof backend {
+    doramcap.compose.v1.ConfigurationSnapshot snapshot = 2;
+    doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_snapshot = 4;
+  }
   doramcap.system_config.v1.MachineState machine = 3;
 }
 // List profiles declared by the project's Docker Compose files.
@@ -35,7 +38,11 @@ enum Limit {
 }
 message StartRequest {
   RunRequest run = 1;
-  doramcap.compose.v1.ConfigurationSnapshot expected = 2;
+  // Review fingerprint for the run's backend; required before admission.
+  oneof backend {
+    doramcap.compose.v1.ConfigurationSnapshot expected = 2;
+    doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_expected = 3;
+  }
 }
 // Execution facts are separate from the Console's phases and display outcomes.
 message ExecutionResult {

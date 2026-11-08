@@ -6,7 +6,7 @@ import { join, resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { ConsoleService } from '../src/service.js';
-import { wire } from '../src/native.js';
+import { capabilities, execution, launch, systemd, wire } from '../src/native.js';
 import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
 
 /** How long the run records after it reports running. */
@@ -17,6 +17,74 @@ const RUN_DEADLINE_MS = 90000;
 const POLL_MS = 100;
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+test('systemd Start rejects changed inputs and handles immediate Stop', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-systemd-admission-'));
+  const project = join(root, 'project'), runs = join(root, 'runs');
+  await mkdir(project);
+  await mkdir(runs);
+  const unit = join(project, 'workload.service');
+  const original = '[Service]\nExecStart=/bin/sleep 300\n';
+  await writeFile(unit, original);
+  const owner = await capabilities.open(join(root, 'absent-docker.sock'), 1);
+  const run = (id: string) => execution.RunRequest.create({
+    run: launch.RunPlan.create({
+      id, repositoryRoot: project, artifacts: join(runs, id),
+      readinessSeconds: 5, stopSeconds: 1,
+    }),
+    systemd: systemd.SystemdPlan.create({ unitFiles: [unit] }),
+  });
+  const reviewed = await owner.inspect(run('review'));
+  try {
+    // Act / Assert: changed bytes reject before launch and publish terminal facts first.
+    await writeFile(unit, '[Service]\nExecStart=/bin/sleep 301\n');
+    await assert.rejects(owner.start(execution.StartRequest.create({
+      run: run('changed'), systemdExpected: reviewed.systemdSnapshot,
+    })), /ConfigurationChanged/);
+    assert.equal(owner.poll().result!.error, 'ConfigurationChanged');
+    assert.equal(owner.poll().result!.blocked, false);
+    await assert.rejects(stat(join(runs, 'changed')), { code: 'ENOENT' });
+
+    // Act / Assert: immediate Stop either rejects pending admission or cleans up an admitted run.
+    await writeFile(unit, original);
+    const started = owner.start(execution.StartRequest.create({
+      run: run('stopped'), systemdExpected: reviewed.systemdSnapshot,
+    }));
+    const admission = started.then(() => true, (error: Error) => {
+      assert.match(error.message, /Stopped/);
+      return false;
+    });
+    await owner.stop('stopped');
+    const accepted = await admission;
+    const deadline = Date.now() + RUN_DEADLINE_MS;
+    let stopped = owner.poll();
+    while (!stopped.result && Date.now() < deadline) {
+      await new Promise((done) => setTimeout(done, POLL_MS));
+      stopped = owner.poll();
+    }
+    assert.ok(stopped.result, 'Stop must publish completion');
+    assert.equal(stopped.result.blocked, false);
+    if (accepted) assert.equal(stopped.result.boundaryClean, true);
+    else {
+      assert.equal(stopped.result.error, 'Stopped');
+      await assert.rejects(stat(join(runs, 'stopped')), { code: 'ENOENT' });
+    }
+
+    // Act / Assert: unchanged inputs admit under a fresh run ID and artifact directory.
+    await owner.start(execution.StartRequest.create({
+      run: run('unchanged'), systemdExpected: reviewed.systemdSnapshot,
+    }));
+    await owner.close();
+    const finished = owner.poll();
+    assert.equal(finished.runId, 'unchanged');
+    assert.equal(finished.result!.boundaryClean, true);
+    assert.equal(finished.result!.error, null);
+  } finally {
+    await owner.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 /**
  * Opt-in systemd test: build binaries unprivileged, put `dora`, `system-monitor` and

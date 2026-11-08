@@ -220,18 +220,23 @@ impl Execution {
                     let spec = match execution::launch(request)? {
                         execution::Launch::Compose(spec) => spec,
                         execution::Launch::Systemd(run, plan) => {
-                            workload_systemd::validate(&run, &plan)?;
-                            let data = std::path::Path::new(&run.artifacts)
-                                .parent()
-                                .map(std::path::Path::to_path_buf)
-                                .unwrap_or_default();
-                            // systemd runs have no Compose plan or image snapshot to review.
-                            return Ok(protocol::Inspection {
-                                plan: None,
-                                snapshot: Some(Default::default()),
-                                machine: Some(system_config::observe(&data)),
-                            }
-                            .encode_to_vec());
+                            return tokio::task::spawn_blocking(move || {
+                                let snapshot = workload_systemd::inspect(&run, &plan)?;
+                                let data = std::path::Path::new(&run.artifacts)
+                                    .parent()
+                                    .map(std::path::Path::to_path_buf)
+                                    .unwrap_or_default();
+                                Ok(protocol::Inspection {
+                                    plan: None,
+                                    backend: Some(protocol::inspection::Backend::SystemdSnapshot(
+                                        snapshot,
+                                    )),
+                                    machine: Some(system_config::observe(&data)),
+                                }
+                                .encode_to_vec())
+                            })
+                            .await
+                            .map_err(|error| error.to_string())?;
                         }
                     };
                     let resources = compose.get().await?;
@@ -256,7 +261,7 @@ impl Execution {
                         .await;
                     Ok(protocol::Inspection {
                         plan: Some(resolved.plan),
-                        snapshot: Some(resolved.snapshot),
+                        backend: Some(protocol::inspection::Backend::Snapshot(resolved.snapshot)),
                         machine: Some(machine),
                     }
                     .encode_to_vec())
@@ -389,6 +394,10 @@ mod tests {
             // Assert
             assert!(inspection.plan.is_none());
             assert!(inspection.machine.is_some());
+            assert!(matches!(
+                inspection.backend,
+                Some(protocol::inspection::Backend::SystemdSnapshot(snapshot)) if !snapshot.sha256.is_empty()
+            ));
         });
     }
 }

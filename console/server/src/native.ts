@@ -47,9 +47,9 @@ export const capabilities: NativeCapabilities = {
         execution.Inspection.decode(
           await owner.inspect(Buffer.from(execution.RunRequest.encode(request).finish())),
         ),
-      start: (run, expected) =>
+      start: (request) =>
         owner
-          .start(Buffer.from(execution.StartRequest.encode({ run, expected }).finish()))
+          .start(Buffer.from(execution.StartRequest.encode(request).finish()))
           .then(() => undefined),
       stop: (runId) => owner.stop(runId),
       poll: () => execution.ExecutionUpdate.decode(owner.poll()),

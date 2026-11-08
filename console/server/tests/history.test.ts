@@ -30,7 +30,7 @@ class Engine implements NativeExecution {
   }
   async start(request: Parameters<NativeExecution['start']>[0]) {
     this.starts++;
-    this.update = execution.ExecutionUpdate.create({ runId: request.run!.id });
+    this.update = execution.ExecutionUpdate.create({ runId: request.run!.run!.id });
   }
   async stop() {}
   poll() {

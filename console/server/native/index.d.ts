@@ -12,8 +12,7 @@ export interface NativeExecution {
   ): Promise<doramcap.console.execution.v1.Inspection>;
   /** Resolve after preflight accepts, before workflow completion. */
   start(
-    run: doramcap.console.execution.v1.RunRequest,
-    expected: doramcap.compose.v1.ConfigurationSnapshot,
+    request: doramcap.console.execution.v1.StartRequest,
   ): Promise<void>;
   /** Signal the active run's observation loop; completion is reported by poll(). */
   stop(runId: string): Promise<void>;
