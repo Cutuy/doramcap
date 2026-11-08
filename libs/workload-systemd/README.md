@@ -7,6 +7,8 @@ Generated units use private roots with read-only host system directories and per
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
 
+![Console systemd directory views](../workload-lifecycle/docs/110726-systemd-bind-mounts.svg)
+
 ```sh
 cargo build --release --locked -p workload-systemd --example systemd_run
 sudo target/release/examples/systemd_run run.pbtxt plan.pbtxt
