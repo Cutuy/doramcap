@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="570" viewBox="0 0 1120 570" role="img" aria-labelledby="title desc">
+  <title id="title">Console deployment on Jetson Thor</title>
+  <desc id="desc">Console launches Compose workloads on Thor and collects CPU, fault and recording evidence. GPU and power telemetry, GPU buffer recording and unattended recovery remain deployment gaps.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#475569"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #172554; }
+      .heading { font-size: 23px; font-weight: 600; }
+      .label { font-size: 18px; font-weight: 600; }
+      .small { font-size: 15px; fill: #475569; }
+      .box { fill: #eff6ff; stroke: #93c5fd; stroke-width: 1.5; }
+      .gap { fill: #fffbeb; stroke: #d97706; stroke-width: 1.5; stroke-dasharray: 6 4; }
+      .line { fill: none; stroke: #475569; stroke-width: 1.6; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1120" height="570" rx="16" fill="#fff"/>
+  <text x="36" y="42" class="heading">Console on Jetson Thor</text>
+  <rect x="28" y="66" width="1064" height="472" rx="18" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="52" y="100" class="label">Device-local execution and evidence</text>
+  <rect x="52" y="130" width="270" height="82" rx="12" class="box"/>
+  <text x="76" y="163" class="label">Console</text>
+  <text x="76" y="190" class="small">Prepare · run · compare</text>
+  <rect x="426" y="130" width="270" height="82" rx="12" class="box"/>
+  <text x="450" y="163" class="label">Compose workloads</text>
+  <text x="450" y="190" class="small">Sensors · inference · commands</text>
+  <rect x="800" y="130" width="266" height="82" rx="12" class="gap"/>
+  <text x="824" y="163" class="label">Recovery policy</text>
+  <text x="824" y="190" class="small">Gap: boot and bounded restart</text>
+  <path d="M322 171H426" class="line"/>
+  <text x="341" y="153" class="small">Launch</text>
+  <path d="M800 171H696" class="line"/>
+  <text x="714" y="153" class="small">Lifecycle</text>
+  <rect x="52" y="282" width="270" height="82" rx="12" class="box"/>
+  <text x="76" y="315" class="label">CPU and faults</text>
+  <text x="76" y="342" class="small">Live frames · MCAP</text>
+  <path d="M187 282V212" class="line"/>
+  <text x="201" y="254" class="small">Evidence</text>
+  <rect x="426" y="282" width="270" height="82" rx="12" class="gap"/>
+  <text x="450" y="315" class="label">GPU and power telemetry</text>
+  <text x="450" y="342" class="small">Gap: clocks · bandwidth · heat</text>
+  <path d="M561 282V248H375V200H322" class="line"/>
+  <rect x="800" y="282" width="266" height="82" rx="12" class="gap"/>
+  <text x="824" y="315" class="label">GPU buffer recording</text>
+  <text x="824" y="342" class="small">Gap: payload leases through I/O</text>
+  <path d="M696 195H750V323H800" class="line"/>
+  <text x="762" y="271" class="small">Frames</text>
+  <rect x="52" y="428" width="644" height="78" rx="12" class="box"/>
+  <text x="76" y="460" class="label">Thor: CPU · GPU / MIG · sensor engines</text>
+  <text x="76" y="487" class="small">Shared LPDDR5X · power and cooling profile</text>
+  <path d="M187 428V364" class="line"/>
+  <path d="M561 428V364" class="line"/>
+  <rect x="800" y="428" width="266" height="78" rx="12" class="box"/>
+  <text x="824" y="460" class="label">NVMe recordings</text>
+  <text x="824" y="487" class="small">MCAP · run history</text>
+  <path d="M933 364V428" class="line"/>
+</svg>
