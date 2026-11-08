@@ -14,6 +14,9 @@ An app's launch facts can ship beside it in an `app.pbtxt`
 variants (launch profiles), where the app expects its config and outputs, and its native launch
 files: Compose files and a systemd unit file. Native files carry every launcher detail; Doramcap
 adds only the run's mounts and placement. Paths stay beside the manifest.
+
+![Launch contracts](../../libs/workload-lifecycle/docs/110726-launch-contracts.svg)
+
 The Console entry then names the manifest and keeps only Console settings:
 
 ```protobuf

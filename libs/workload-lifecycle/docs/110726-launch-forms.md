@@ -59,6 +59,11 @@ Generated per run: Console Review variant overrides, the `RunPlan` (saved as `pl
 frozen config copies and the backend input. The plan has the same shape for every form; only the
 backend input differs.
 
+![Launch contracts](110726-launch-contracts.svg)
+
+- `AppManifest` may carry both `compose` and `systemd`; the machine's `form` picks one.
+- `RunRequest` carries the shared `RunPlan` and exactly one backend plan.
+
 ## Run sequence
 
 ![Run handle and monitoring](110726-run-handle.svg)
