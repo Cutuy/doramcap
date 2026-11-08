@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Config, Project } from './native.js';
 const exec = promisify(execFile);
+const DORA_RUNTIME_DIRECTORY = 'DORAMCAP_DORA_RUNTIME_DIR';
 const PULL_TIMEOUT_MS = 30 * 60_000; // Per image; generous for slow links, bounded for hung registries.
 
 /** Resolve the selected Compose services without downloading images or starting containers. */
@@ -12,7 +13,8 @@ export async function imageReferences(socket: string, project: Project): Promise
   for (const file of project.files ?? []) args.push('-f', file);
   for (const profile of project.profiles ?? []) args.push('--profile', profile);
   const { stdout, stderr } = await exec('docker', [...args, 'config', '--format', 'json', ...(project.services ?? [])], {
-    cwd: project.directory!, env: { ...process.env, ...project.environment }, timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
+    // Rendering images only needs a valid interpolation path; execution supplies its run directory.
+    cwd: project.directory!, env: { ...process.env, [DORA_RUNTIME_DIRECTORY]: project.directory!, ...project.environment }, timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
   });
   if (stderr.includes('variable is not set')) throw new Error('Unresolved Compose environment');
   const model = JSON.parse(stdout) as { services?: Record<string, { image?: unknown }> };
