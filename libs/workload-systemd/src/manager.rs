@@ -755,11 +755,14 @@ mod environment_tests {
             let names = manager
                 .adopt(
                     &scope,
-                    &[source.display().to_string()],
-                    &[],
+                    &crate::SystemdPlan {
+                        unit_files: vec![source.display().to_string()],
+                        ..Default::default()
+                    },
                     "",
                     5,
                     Some(&runtime),
+                    &[],
                 )
                 .await?;
             manager
