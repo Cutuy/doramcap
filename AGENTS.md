@@ -1,54 +1,29 @@
 # Agent workflow
 
-Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding source changes.
+Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md): prioritize the main checkout when it already has the target branch; otherwise acquire before feature edits, work in the leased checkout, reuse its non-expiring lease, and release after local integration or PR publication. Never wipe main; get approval before discarding source changes.
 
 Keep main linear: rebase onto current main, then cherry-pick. Never integrate with `git merge`.
 
+Read the [implementation guide](docs/impl-guide.md) for code rules and the
+[design guide](docs/design-guide.md) for architectural guidance. Use
+[Scanner](.agents/skills/scanner/SKILL.md) to review a PR or branch and reconcile
+implementation/design guidance. Keep agent process instructions in this file.
+
 ## Important decisions
 
-For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives. Using the [architect-design skill](.agents/skills/architect-design/SKILL.md) for these discussions is strongly recommended.
+For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives.
 
 Check large feature work against the [design guide](docs/design-guide.md) before implementation and during design review.
 
-## Simplicity
+Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
-Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
+## Configuration approval
 
-## Constants
-
-Avoid hardcoded constants in code. Define required fixed values with clear names that express their purpose, and reuse those names at call sites.
-
-## Concurrency
-
-- Outside tests, use explicit signaling for work arrival, available capacity, state changes, completion, failure and shutdown. Block on channels, `select!`, condition variables or kernel notifications.
-- Avoid hardcoded sleep timeouts and repeated timed waits, parks or yields used to poll state. Subscribe before checking state, recheck after notifications, and ensure shutdown and disconnect wake blocked workers.
-- Use timers for sampling schedules, pacing, simulated work and real deadlines. Give fixed durations descriptive names; derive each deadline from the operation it bounds.
-
-## Implementation languages
-
-Strongly prefer Rust and TypeScript for new code. Python is allowed for tests, benchmarks, and development tooling. Do not use Python in the application serving stack. Avoid Python, Bash, and other scripting languages in production environments and workflows unless absolutely necessary.
-
-## Configuration
-
-Favor strongly typed protobuf messages over untyped JSON for internal models and application configuration; use protobuf text format (pbtxt) for configuration files. Use generated protobuf types directly where practical; avoid parallel handwritten Rust configuration structs for fields already defined in a proto.
-
-Favor TypeScript for dynamic configuration processing. Use protobuf contracts to decouple TypeScript configuration processing from Rust execution. Preserve arbitrary third-party configuration in its native format at integration boundaries.
-
-Environment-based application configuration is highly discouraged. Every new environment configuration input or extension of an existing environment contract requires the user's explicit approval. Encapsulate approved exceptions behind a named interface with an explicit list of supported variables; the Dora bridge is `dora_app::environment`.
+Every new environment configuration input or extension of an existing environment contract requires the user's explicit approval.
 
 ## Third-party crates
 
 Always present suitable, well-maintained, highly reputable third-party crates to the user for evaluation before adopting a dependency or implementing a custom solution.
-
-## Test structure
-
-Test cases should generally use explicit `// Arrange`, `// Act`, and `// Assert`
-sections to separate setup, the operation under test, and verification. For
-stateful scenarios, repeat Act/Assert sections for distinct transitions.
-
-Unit tests must assert documented behavior and observable outcomes. Do not hardcode
-assumptions about implementation details or reproduce the logic being tested; use
-real integration inputs where those contracts already exist.
 
 ## Capability-required tests
 
@@ -78,8 +53,6 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - All Markdown: brief prose, short bullets, compact tables; no walls of text.
 - Validation records: keep only the latest result and unresolved blockers in a few short bullets. Link to CI or logs for details; replace stale results instead of appending test histories, counts or command transcripts.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
-- In functions with lengthy business logic, prefer concise, one-line inline comments explaining the key steps.
-- Document APIs primarily in docstrings/Rust doc comments. Keep docstrings to at most three lines; use named sections or bullet points when more detail is necessary. Follow Linux API manpage precision for behavior, parameters, return values, errors, ownership and concurrency as applicable. Keep API details beside the code; link to them from READMEs.
 - State what things do directly; avoid contrastive “A, not B” phrasing.
 - In SVGs and web apps, NEVER add footnotes such as “this is A, not B” or explanatory notes about caveats unless explicitly requested.
 - Architecture: SVGs with short labels showing components and exchanged artifacts.
