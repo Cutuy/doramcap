@@ -6483,6 +6483,7 @@ dependencies = [
  "prost-reflect",
  "protoc-bin-vendored",
  "resource-policy",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

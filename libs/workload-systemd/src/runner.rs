@@ -103,13 +103,28 @@ impl SystemdRunner {
     pub async fn run(
         &mut self,
         run: workload_lifecycle::launch::RunPlan,
-        mut plan: SystemdPlan,
+        plan: SystemdPlan,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> Result<SystemdRunReport> {
+        self.run_with_preflight(run, plan, stop, observer, ready, |_| Ok(()))
+            .await
+    }
+
+    /// Capture and freeze the same inputs as `inspect`, then call `preflight` after admission.
+    /// A rejected callback removes its new private artifacts before any units start.
+    /// Native directories, executable files and references inside external units remain live.
+    pub async fn run_with_preflight(
+        &mut self,
+        run: workload_lifecycle::launch::RunPlan,
+        plan: SystemdPlan,
+        stop: impl Future<Output = ()>,
+        observer: impl Observer + 'static,
+        ready: Option<tokio::sync::oneshot::Sender<()>>,
+        preflight: impl FnOnce(&crate::ConfigurationSnapshot) -> Result<()>,
+    ) -> Result<SystemdRunReport> {
         crate::validate(&run, &plan)?;
-        crate::dora::prepare(&run, &mut plan)?;
         let scope = Scope::of(Path::new(&run.repository_root))?;
         let _lock = lock_scope(&scope)?;
         let manager = Rc::new(Manager::connect().await?);
@@ -121,13 +136,23 @@ impl SystemdRunner {
                 run.repository_root
             ));
         }
-        std::fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&run.artifacts)
-            .map_err(error)?;
-        if !run.dora_apps.is_empty() {
-            std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
-                .map_err(error)?;
+        let crate::preparation::Prepared {
+            run,
+            mut plan,
+            snapshot,
+        } = tokio::task::spawn_blocking(move || crate::preparation::prepare(run, plan))
+            .await
+            .map_err(error)??;
+        let prepare = || -> Result<()> {
+            crate::dora::prepare(&run, &mut plan)?;
+            if !run.dora_apps.is_empty() {
+                std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
+                    .map_err(error)?;
+            }
+            preflight(&snapshot)
+        };
+        if let Err(e) = prepare() {
+            return Err(crate::preparation::discard(Path::new(&run.artifacts), e));
         }
         std::fs::write(scope.directory.join(crate::ACTIVE_RUN), &run.id).map_err(error)?;
         self.blocked = true;
