@@ -21,6 +21,8 @@ const MAX_ID_CHARS: usize = 40;
 /// Hex characters of the repository hash naming its slice and units.
 const SCOPE_CHARS: usize = 12;
 /// Runtime directory holding adopted unit copies and the admission lock.
+pub(crate) const ACTIVE_RUN: &str = "active-run";
+/// Runtime root.
 const RUNTIME_ROOT: &str = "/run/doramcap";
 /// Directory where the service manager reads runtime units and drop-ins.
 const SYSTEMD_RUNTIME_UNITS: &str = "/run/systemd/system";

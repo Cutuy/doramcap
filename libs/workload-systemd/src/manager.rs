@@ -13,6 +13,10 @@ const ENDED_STATES: [&str; 2] = ["inactive", "failed"];
 /// Microseconds per second, for systemd's `*USec` properties.
 const MICROS_PER_SECOND: u64 = 1_000_000;
 /// Drop-in placing an adopted unit in the run slice.
+const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
+/// Bits in each byte of a CPU mask.
+const BITS_PER_BYTE: usize = 8;
+/// Drop-in filename.
 const SLICE_DROP_IN: &str = "10-doramcap-slice.conf";
 
 /// One unit this run started, with its state subscription.
@@ -41,6 +45,13 @@ impl Unit {
     }
 }
 
+/// A submitted start job and its subscription, retained until the group waits.
+pub(crate) struct StartJob {
+    name: String,
+    job: zbus::OwnedObjectPath,
+    events: zbus_systemd::systemd1::JobRemovedStream,
+}
+
 /// The system service manager, subscribed to unit signals.
 pub(crate) struct Manager {
     connection: zbus::Connection,
@@ -59,7 +70,7 @@ impl Manager {
     }
 
     /// Load `name` and subscribe to its state before it starts.
-    async fn watch(&self, name: &str) -> Result<Unit> {
+    pub(crate) async fn watch(&self, name: &str) -> Result<Unit> {
         let path = self.manager.load_unit(name.into()).await.map_err(error)?;
         let unit = UnitProxy::builder(&self.connection)
             .path(path.clone())
@@ -109,25 +120,27 @@ impl Manager {
     }
 
     /// Start `program` as a referenced transient service in the scope's slice and
-    /// wait until its executable runs.
+    /// return its submitted start job.
     pub async fn start_program(
         &self,
         scope: &Scope,
         run: &str,
         program: &Program,
         stop_seconds: u64,
-    ) -> Result<Unit> {
+    ) -> Result<StartJob> {
         let name = scope.unit(&program.id);
-        let unit = self.watch(&name).await?;
         let properties = transient_properties(scope, run, program, stop_seconds)?;
-        let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
+        let jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
             .start_transient_unit(name.clone(), "fail".into(), properties, vec![])
             .await
             .map_err(error)?;
-        self.started(&name, &mut jobs, job).await?;
-        Ok(unit)
+        Ok(StartJob {
+            name,
+            job,
+            events: jobs,
+        })
     }
 
     /// Link copies of repository unit files into the runtime unit directory and
@@ -163,18 +176,25 @@ impl Manager {
         Ok(names)
     }
 
-    /// Reference and start one adopted unit; wait for its start job.
-    pub async fn start_adopted(&self, name: &str) -> Result<Unit> {
-        let unit = self.watch(name).await?;
+    /// Reference and submit an adopted unit start; the caller waits after submission.
+    pub async fn start_adopted(&self, name: &str) -> Result<StartJob> {
         self.manager.ref_unit(name.into()).await.map_err(error)?;
-        let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
+        let jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
             .start_unit(name.into(), "replace".into())
             .await
             .map_err(error)?;
-        self.started(name, &mut jobs, job).await?;
-        Ok(unit)
+        Ok(StartJob {
+            name: name.into(),
+            job,
+            events: jobs,
+        })
+    }
+
+    /// Await one already-submitted job after the whole group has been submitted.
+    pub async fn wait_started(&self, mut job: StartJob) -> Result<()> {
+        self.started(&job.name, &mut job.events, job.job).await
     }
 
     pub async fn stop(&self, name: &str) -> Result<()> {
@@ -192,49 +212,99 @@ impl Manager {
         let _ = self.manager.reset_failed_unit(name.into()).await;
     }
 
-    /// Stop everything the scope owns and remove its runtime files.
-    /// Returns the units still loaded afterwards; empty means clean.
-    pub async fn reset(&self, scope: &Scope, deadline: Duration) -> Result<Vec<String>> {
-        let pattern = format!("{}*", scope.prefix);
-        let mut slice = self.watch(&scope.slice).await?;
-        // Stopping the slice stops every unit placed in it.
-        let _ = self.stop(&scope.slice).await;
-        tokio::time::timeout(deadline, slice.ended())
-            .await
-            .map_err(|_| format!("{} did not stop within {deadline:?}", scope.slice))??;
-        for (name, ..) in self.units(&pattern).await? {
-            self.release(&name).await;
+    /// Stop one service and observe termination using its effective systemd timeout.
+    pub async fn stop_and_wait(&self, unit: &mut Unit) -> Result<()> {
+        let state = unit.unit.active_state().await.map_err(error)?;
+        if ENDED_STATES.contains(&state.as_str()) {
+            return Ok(());
         }
-        self.unlink(scope).await?;
-        let _ = self.manager.reset_failed_unit(scope.slice.clone()).await;
-        let remaining = self
-            .units(&pattern)
+        let budget = unit
+            .service
+            .timeout_stop_u_sec()
+            .await
+            .map_err(error)
+            .and_then(stop_budget);
+        let started = tokio::time::Instant::now();
+        self.stop(&unit.name).await?;
+        let budget = budget.map_err(|e| format!("{}: {e}", unit.name))?;
+        let deadline = started
+            .checked_add(budget)
+            .ok_or_else(|| format!("{}: stop deadline overflow", unit.name))?;
+        tokio::time::timeout_at(deadline, unit.ended())
+            .await
+            .map_err(|_| format!("{}: shutdown incomplete after {budget:?}", unit.name))?
+    }
+
+    /// Inspect owned units and runtime files without stopping or deleting anything.
+    pub async fn remaining(&self, scope: &Scope) -> Result<Vec<String>> {
+        let mut remaining: Vec<_> = self
+            .units(&format!("{}*", scope.prefix))
             .await?
             .into_iter()
             .filter(|(_, load, active)| load != "not-found" || active != "inactive")
             .map(|(name, ..)| name)
             .collect();
+        for path in entries(&scope.directory).await? {
+            if path.file_name().is_some_and(|name| name != "lock") {
+                remaining.push(path.display().to_string());
+            }
+        }
+        remaining.extend(
+            runtime_files(scope)
+                .await?
+                .iter()
+                .map(|p| p.display().to_string()),
+        );
         Ok(remaining)
     }
 
-    /// Remove adopted unit links, copies and slice drop-ins, then reload.
-    async fn unlink(&self, scope: &Scope) -> Result<()> {
-        let units = scope.directory.join("units");
-        let mut names = Vec::new();
-        if let Ok(mut entries) = tokio::fs::read_dir(&units).await {
-            while let Some(entry) = entries.next_entry().await.map_err(error)? {
-                names.push(entry.file_name().to_string_lossy().into_owned());
+    /// Explicit cleanup: stop owned services, then remove their runtime files.
+    pub async fn reset(&self, scope: &Scope) -> Result<Vec<String>> {
+        let loaded = self.units(&format!("{}*", scope.prefix)).await?;
+        let mut units = Vec::new();
+        for (name, load, _) in &loaded {
+            if name.ends_with(".service") && load != "not-found" {
+                units.push(self.watch(name).await?);
             }
         }
-        if !names.is_empty() {
-            let _ = self.manager.disable_unit_files(names.clone(), true).await;
+        let results =
+            futures_util::future::join_all(units.iter_mut().map(|unit| self.stop_and_wait(unit)))
+                .await;
+        for result in results {
+            result?;
         }
-        for name in &names {
-            let drop_in =
-                std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
-            let _ = tokio::fs::remove_dir_all(drop_in).await;
+        // Slice teardown has no service work remaining; wait for its stop job.
+        if loaded
+            .iter()
+            .any(|(name, load, _)| name == &scope.slice && load != "not-found")
+        {
+            let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
+            let job = self
+                .manager
+                .stop_unit(scope.slice.clone(), "replace".into())
+                .await
+                .map_err(error)?;
+            tokio::time::timeout(
+                STOP_REPORT_MARGIN,
+                self.started(&scope.slice, &mut jobs, job),
+            )
+            .await
+            .map_err(|_| format!("{}: slice stop not confirmed", scope.slice))??;
         }
-        let _ = tokio::fs::remove_dir_all(&units).await;
+        for (name, ..) in loaded {
+            self.release(&name).await;
+        }
+        self.unlink(scope).await?;
+        remove_path(&scope.directory.join(crate::ACTIVE_RUN)).await?;
+        self.remaining(scope).await
+    }
+
+    /// Remove owned runtime links, drop-ins and copies; propagate filesystem errors.
+    async fn unlink(&self, scope: &Scope) -> Result<()> {
+        for path in runtime_files(scope).await? {
+            remove_path(&path).await?;
+        }
+        remove_path(&scope.directory.join("units")).await?;
         self.manager.reload().await.map_err(error)
     }
 
@@ -249,6 +319,56 @@ impl Manager {
             .map(|unit| (unit.0, unit.2, unit.3))
             .collect())
     }
+}
+
+/// Absence is clean; all other traversal failures are errors.
+async fn entries(directory: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut reader = match tokio::fs::read_dir(directory).await {
+        Ok(reader) => reader,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(format!("{}: {e}", directory.display())),
+    };
+    let mut paths = Vec::new();
+    while let Some(entry) = reader.next_entry().await.map_err(error)? {
+        paths.push(entry.path());
+    }
+    Ok(paths)
+}
+
+async fn runtime_files(scope: &Scope) -> Result<Vec<std::path::PathBuf>> {
+    let prefix = format!("{}-", scope.prefix);
+    Ok(entries(std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS))
+        .await?
+        .into_iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&prefix))
+        })
+        .collect())
+}
+
+async fn remove_path(path: &std::path::Path) -> Result<()> {
+    let metadata = match tokio::fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let result = if metadata.is_dir() {
+        tokio::fs::remove_dir_all(path).await
+    } else {
+        tokio::fs::remove_file(path).await
+    };
+    result.map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn stop_budget(micros: u64) -> Result<Duration> {
+    if micros == u64::MAX {
+        return Err("infinite stop timeout; shutdown observation incomplete".into());
+    }
+    Duration::from_micros(micros)
+        .checked_add(STOP_REPORT_MARGIN)
+        .ok_or_else(|| "stop observation budget overflow".into())
 }
 
 fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
@@ -278,7 +398,11 @@ fn transient_properties(
         ),
         (
             "TimeoutStopUSec".into(),
-            value(stop_seconds * MICROS_PER_SECOND)?,
+            value(
+                stop_seconds
+                    .checked_mul(MICROS_PER_SECOND)
+                    .ok_or("stop timeout overflow")?,
+            )?,
         ),
     ];
     if !program.user.is_empty() {
@@ -314,9 +438,14 @@ fn transient_properties(
 
 /// Little-endian CPU bitmask, as systemd's `AllowedCPUs` expects.
 fn cpu_mask(ids: &[u32]) -> Vec<u8> {
-    let mut mask = vec![0u8; ids.iter().max().map_or(0, |max| *max as usize / 8 + 1)];
+    let mut mask = vec![
+        0u8;
+        ids.iter()
+            .max()
+            .map_or(0, |max| *max as usize / BITS_PER_BYTE + 1)
+    ];
     for id in ids {
-        mask[*id as usize / 8] |= 1 << (id % 8);
+        mask[*id as usize / BITS_PER_BYTE] |= 1 << (*id as usize % BITS_PER_BYTE);
     }
     mask
 }
@@ -331,5 +460,33 @@ mod tests {
         let mask = super::cpu_mask(&ids);
         // Assert
         assert_eq!(mask, [0b0000_0101, 0b0000_0010]);
+    }
+}
+
+#[cfg(test)]
+mod cleanup_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test]
+    async fn cleanup_propagates_discovery_and_deletion_failures() {
+        // Arrange
+        let root =
+            std::env::temp_dir().join(format!("systemd-cleanup-errors-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let file = root.join("owned");
+        std::fs::write(&file, "owned").unwrap();
+        // Act / Assert: a non-directory cannot establish an empty traversal.
+        assert!(entries(&file).await.is_err());
+        // Arrange: the unprivileged test cannot delete within this directory.
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o500)).unwrap();
+        // Act
+        let result = remove_path(&file).await;
+        let preserved = file.exists();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        // Assert
+        assert!(result.is_err());
+        assert!(preserved);
     }
 }

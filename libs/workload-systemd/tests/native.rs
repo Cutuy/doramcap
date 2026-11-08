@@ -120,7 +120,10 @@ async fn groups_start_in_order_and_stop_cleanly() {
     assert!(report.successful(), "{report:#?}");
     assert_eq!(report.units.len(), 3);
     assert!(
-        report.units.iter().all(|unit| unit.result == "success"),
+        report
+            .units
+            .iter()
+            .all(|unit| unit.result.as_deref() == Some("success")),
         "{report:#?}"
     );
     assert!(
@@ -163,8 +166,8 @@ async fn a_failing_unit_is_recorded_and_the_run_continues() {
         .find(|unit| unit.unit.ends_with("-fails.service"))
         .unwrap();
     assert_eq!(
-        (fails.result.as_str(), fails.exec_main_status),
-        ("exit-code", 3)
+        (fails.result.as_deref(), fails.exec_main_status),
+        (Some("exit-code"), Some(3))
     );
 }
 
@@ -200,7 +203,7 @@ async fn placement_and_memlock_reach_the_process() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn the_next_run_resets_units_left_by_a_dropped_run() {
+async fn abandoned_units_block_admission_until_explicit_cleanup() {
     // Arrange: a run dropped after readiness leaves its unit running.
     let fixture = Fixture::new("dropped");
     let (run, plan) = fixture.plan(
@@ -219,9 +222,185 @@ async fn the_next_run_resets_units_left_by_a_dropped_run() {
         _ = readiness => {}
     }
     assert!(active("doramcap-*-left.service").contains("active running"));
+    // Act: admission observes prior resources without changing them.
+    let (run, plan) = fixture.plan("r2", vec![]);
+    let error = runner
+        .run(run, plan, async {}, |_: &orchestrator::Event| {}, None)
+        .await
+        .unwrap_err();
+    // Assert
+    assert!(error.contains("--cleanup"), "{error}");
+    assert!(active("doramcap-*-left.service").contains("active running"));
+    assert!(!fixture.root.join("r2").exists());
     // Act
+    runner.cleanup(&fixture.repo()).await.unwrap();
     let report = run_for_a_while(fixture.plan("r2", vec![])).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
     assert!(!active("doramcap-*-left.service").contains("running"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn timed_out_start_stops_and_reports_the_attempted_writer() {
+    // Arrange
+    let fixture = Fixture::new("startup-timeout");
+    let file = fixture.repo().join("slow.service");
+    let pid = fixture.root.join("writer.pid");
+    std::fs::write(
+        &file,
+        format!(
+            "[Service]\nType=oneshot\nExecStart=/bin/sh -c 'echo $$$$ > {}; exec sleep 300'\n",
+            pid.display()
+        ),
+    )
+    .unwrap();
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![file.display().to_string()],
+            ..Default::default()
+        }],
+    );
+    run.readiness_seconds = 1;
+    // Act
+    let report = run_for_a_while((run, plan)).await;
+    // Assert
+    assert!(
+        report
+            .execution_error
+            .as_deref()
+            .unwrap()
+            .contains("not active")
+    );
+    assert_eq!(report.units.len(), 1, "{report:#?}");
+    assert!(
+        report.writers_stopped && report.recording_finalized && report.cleanup_verified,
+        "{report:#?}"
+    );
+    let pid = std::fs::read_to_string(pid).unwrap();
+    assert!(!Path::new(&format!("/proc/{}", pid.trim())).exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn same_group_starts_peers_before_waiting_for_readiness() {
+    // Arrange
+    let fixture = Fixture::new("group-peers");
+    let marker = fixture.root.join("peer-started");
+    let first = fixture.repo().join("first.service");
+    let second = fixture.repo().join("second.service");
+    std::fs::write(&first, format!("[Unit]\nWants=basic.target\n[Service]\nType=oneshot\nExecStart=/bin/sh -c 'while ! test -f {}; do sleep 0.01; done'\n", marker.display())).unwrap();
+    std::fs::write(
+        &second,
+        format!(
+            "[Service]\nType=oneshot\nExecStart=/bin/touch {}\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    // Act
+    let report = run_for_a_while(fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![first.display().to_string(), second.display().to_string()],
+            ..Default::default()
+        }],
+    ))
+    .await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert!(marker.exists());
+    assert_eq!(report.units.len(), 2);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn adopted_stop_wait_uses_the_service_grace() {
+    // Arrange: the declared grace exceeds the run fallback and old reporting margin.
+    let fixture = Fixture::new("service-grace");
+    let file = fixture.repo().join("slow-stop.service");
+    std::fs::write(
+        &file,
+        "[Service]\nExecStart=/bin/sleep 300\nExecStop=/bin/sleep 7\nTimeoutStopSec=10\n",
+    )
+    .unwrap();
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![file.display().to_string()],
+            ..Default::default()
+        }],
+    );
+    run.stop_seconds = 1;
+    // Act
+    let report = run_for_a_while((run, plan)).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
+    // Arrange
+    let fixture = Fixture::new("infinite-grace");
+    let file = fixture.repo().join("infinite.service");
+    std::fs::write(
+        &file,
+        "[Service]\nExecStart=/bin/sleep 300\nTimeoutStopSec=infinity\n",
+    )
+    .unwrap();
+    // Act
+    let report = run_for_a_while(fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![file.display().to_string()],
+            ..Default::default()
+        }],
+    ))
+    .await;
+    // Assert
+    assert!(
+        !report.writers_stopped && !report.recording_finalized && !report.cleanup_verified,
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("infinite stop timeout"))
+    );
+    assert!(fixture.root.join("r1/report.json").exists());
+    // Act: wait for the already requested stop, then clean up explicitly.
+    let status = Command::new("systemctl")
+        .args(["stop", &report.units[0].unit])
+        .status()
+        .unwrap();
+    assert!(status.success());
+    SystemdRunner::new().cleanup(&fixture.repo()).await.unwrap();
+    // Assert
+    assert!(fixture.root.join("r1/report.json").exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn adopted_native_references_are_accepted_unchanged() {
+    // Arrange: a native reference to an existing host target.
+    let fixture = Fixture::new("native-references");
+    let file = fixture.repo().join("references.service");
+    let contents =
+        "[Unit]\nRequires=basic.target\nAfter=basic.target\n[Service]\nExecStart=/bin/sleep 300\n";
+    std::fs::write(&file, contents).unwrap();
+    // Act
+    let report = run_for_a_while(fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            unit_files: vec![file.display().to_string()],
+            ..Default::default()
+        }],
+    ))
+    .await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), contents);
 }

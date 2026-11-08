@@ -28,6 +28,10 @@ Agreed with the owner on 2026-11-07.
 | Lifecycle authority | Each form's manager: unit state over D-Bus, supervisord events, Docker events. A pidfd is used only by the process's parent. |
 | Monitoring | Layer 1: an optional status feed from the handle. Layer 2: Fault Watchdog consumes health that apps publish in code through the reporting library. Neither ends the run. |
 | Run end | The run ends on a stop request. A failed unit or app is recorded in the `StopRecord`. |
+| systemd leftovers | Admission refuses prior owned resources. Crashes leave units and artifacts intact; `systemd_run --cleanup <repo>` performs explicit cleanup. Compose retains automatic pre-run reset. |
+| systemd shutdown | Read effective `TimeoutStopUSec` per unit and add a named reporting margin. Infinite or unreadable timeouts report incomplete shutdown; preserve artifacts and skip finalization. No extra kill. |
+| systemd evidence | Result and exit code/status are optional; missing required exit evidence makes the report unsuccessful with a diagnostic. Missing accounting is informational. |
+| Adopted references | Preserve native references without rejecting or rewriting them. They retain their host-systemd meaning. |
 | Removal | Remove runs only after Finalize issues a `RemovalPermit`. |
 | Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
 | systemd control | D-Bus through `zbus` and `zbus_systemd` (approved 2026-11-07). Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
@@ -171,23 +175,23 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 - [x] systemd control steps: subscribe, start transient units, await each start job, adopt units, stop, release references, reset the slice.
 - [x] A systemd running handle on the shared run sequence; a failed unit is recorded, and only a stop request ends the run.
 - [x] Placement and memlock become unit properties; the report records each unit's result, exit status and accounting.
-- [x] Reset by repository: stop the slice, release units, remove adopted links and drop-ins.
+- [x] Explicit cleanup by repository: stop owned services using their effective timeouts, stop the slice, release units and remove runtime files. Admission never resets automatically.
 - [ ] Dora coordinator and daemon units, graph registration and shared-memory ownership. Moved to Milestone 4, where Console resolves Dora's plan.
 
 **Validation**
-- [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; the next run resets units left by a dropped run.
+- [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
 - [x] Plan validation and strict text decoding unit tests.
 - [x] Focused Clippy, formatting and library-boundary checks.
 - [ ] ARM64 worker run.
 
-Evidence (2026-11-07, x86_64 local, systemd 255): native tests passed three consecutive times; no units or runtime unit files remained. Not run: ARM64 and full CI.
+Evidence (2026-11-07, local x86_64/systemd 255): library and native tests pass, including startup cancellation, whole-group submission, unchanged native references, filesystem cleanup errors, effective service grace, infinite timeout preservation and explicit cleanup. Focused Clippy, formatting and boundaries pass. Full CI and ARM64 validation pending.
 
 Spike results (2026-11-07, systemd 255, x86_64):
 
 | Topic | Finding |
 | --- | --- |
 | Adoption | Hard-link the repo unit under the run name, `LinkUnitFiles` (runtime), add `/run/systemd/system/<unit>.d/10-slice.conf` with `Slice=`, `Reload`, `StartUnit`. Systemd 255 has no D-Bus call for `Slice=`. |
-| Constraints | Repo units already use absolute paths. References between a repo's own units break under new names: rewrite them or reject them. Escape the run ID in slice names; `-` nests slices. |
+| Constraints | Repo units already use absolute paths. References retain their original names and host-systemd meaning; they are accepted unchanged. Escape the run ID in slice names; `-` nests slices. |
 | End of a unit | Exit is `ActiveState` reaching `inactive` or `failed`; `JobRemoved` marks the start job. Subscribe first and ignore the value from before start. |
 | Final accounting | Hold a unit reference (`AddRef` for transient units, `RefUnit` for adopted ones) until the record is written; without one, CPU and peak memory read as unset. |
 | Removal | Unref, `StopUnit`, `ResetFailedUnit`, `DisableUnitFiles` (runtime), delete the drop-in and the link, `Reload`, then stop the run slice; slices stay active after their last unit. |
@@ -195,7 +199,7 @@ Spike results (2026-11-07, systemd 255, x86_64):
 
 **Validation**
 - [ ] Native run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
-- [ ] Doramcap killed mid-run: the next run's reset removes the slice and shared-memory segments.
+- [ ] Doramcap killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] A failing user unit appears in the `StopRecord` and the run continues until stop.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 - [ ] ARM64 worker run, or a recorded reason it is blocked.
@@ -211,7 +215,7 @@ Spike results (2026-11-07, systemd 255, x86_64):
 
 **Validation**
 - [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
-- [ ] Console killed mid-run: the next run's reset removes the slice and shared-memory segments.
+- [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
 ## Future items

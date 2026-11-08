@@ -2,6 +2,14 @@
 //! Usage (as root): `systemd_run RUN.pbtxt PLAN.pbtxt`
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {
+    if std::env::args().nth(1).as_deref() == Some("--cleanup") {
+        let repository = std::env::args()
+            .nth(2)
+            .ok_or("usage: systemd_run --cleanup REPOSITORY")?;
+        return workload_systemd::SystemdRunner::new()
+            .cleanup(std::path::Path::new(&repository))
+            .await;
+    }
     let read = |index: usize| -> Result<String, String> {
         let path = std::env::args()
             .nth(index)

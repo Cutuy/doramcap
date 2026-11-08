@@ -11,9 +11,6 @@ use workload_lifecycle::{
     recording::{ReadinessInput, Recording, WaitForRecordings},
 };
 
-/// Time beyond a unit's own stop timeout allowed for systemd to report it ended.
-const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
-
 pub(crate) struct SystemdRunning {
     pub manager: Rc<Manager>,
     pub executor: Rc<LocalExecutor>,
@@ -46,20 +43,32 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         let run = self.run().clone();
         let readiness = Duration::from_secs(run.readiness_seconds);
         for group in self.plan.groups.clone() {
-            // Units are recorded before they start, so stop and removal see every attempt.
             self.groups.push(Vec::new());
             let start = async {
+                let names = self.manager.adopt(&self.scope, &group.unit_files).await?;
+                // Keep every attempted unit before submitting any cancellable start.
+                let units = self.groups.last_mut().unwrap();
                 for program in &group.programs {
-                    let unit = self
-                        .manager
-                        .start_program(&self.scope, &run.id, program, run.stop_seconds)
-                        .await?;
-                    self.groups.last_mut().unwrap().push(unit);
+                    units.push(self.manager.watch(&self.scope.unit(&program.id)).await?);
                 }
-                for name in self.manager.adopt(&self.scope, &group.unit_files).await? {
-                    let unit = self.manager.start_adopted(&name).await?;
-                    self.groups.last_mut().unwrap().push(unit);
+                for name in &names {
+                    units.push(self.manager.watch(name).await?);
                 }
+                let mut jobs = Vec::new();
+                for program in &group.programs {
+                    jobs.push(
+                        self.manager
+                            .start_program(&self.scope, &run.id, program, run.stop_seconds)
+                            .await?,
+                    );
+                }
+                for name in &names {
+                    jobs.push(self.manager.start_adopted(name).await?);
+                }
+                futures_util::future::try_join_all(
+                    jobs.into_iter().map(|job| self.manager.wait_started(job)),
+                )
+                .await?;
                 Ok::<_, String>(())
             };
             tokio::time::timeout(readiness, start)
@@ -90,27 +99,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     }
 
     async fn stop(&mut self) -> StopRecord {
-        let deadline = Duration::from_secs(self.run().stop_seconds) + STOP_REPORT_MARGIN;
         let mut stopped = true;
         for group in self.groups.iter_mut().rev() {
-            for unit in group.iter() {
-                if let Err(error) = self.manager.stop(&unit.name).await {
-                    self.diagnostics
-                        .push(format!("stop {}: {error}", unit.name));
-                }
-            }
-            for unit in group.iter_mut() {
-                match tokio::time::timeout(deadline, unit.ended()).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(error)) => {
-                        stopped = false;
-                        self.diagnostics.push(error);
-                    }
-                    Err(_) => {
-                        stopped = false;
-                        self.diagnostics
-                            .push(format!("{} still running after {deadline:?}", unit.name));
-                    }
+            let results = futures_util::future::join_all(
+                group
+                    .iter_mut()
+                    .map(|unit| self.manager.stop_and_wait(unit)),
+            )
+            .await;
+            for result in results {
+                if let Err(error) = result {
+                    stopped = false;
+                    self.diagnostics.push(error);
                 }
             }
         }
@@ -124,7 +124,9 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         let mut units = Vec::new();
         for unit in self.groups.iter().flatten() {
             units.push(UnitExit::read(unit).await);
-            self.manager.release(&unit.name).await;
+            if permit.remove {
+                self.manager.release(&unit.name).await;
+            }
         }
         let verified = if permit.remove {
             match self.reset().await {
@@ -151,8 +153,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
 impl SystemdRunning {
     async fn reset(&self) -> Result<()> {
-        let deadline = Duration::from_secs(self.run().stop_seconds) + STOP_REPORT_MARGIN;
-        let remaining = self.manager.reset(&self.scope, deadline).await?;
+        let remaining = self.manager.reset(&self.scope).await?;
         if remaining.is_empty() {
             Ok(())
         } else {
