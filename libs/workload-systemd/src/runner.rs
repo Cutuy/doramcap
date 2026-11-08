@@ -103,12 +103,13 @@ impl SystemdRunner {
     pub async fn run(
         &mut self,
         run: workload_lifecycle::launch::RunPlan,
-        plan: SystemdPlan,
+        mut plan: SystemdPlan,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> Result<SystemdRunReport> {
         crate::validate(&run, &plan)?;
+        crate::dora::prepare(&run, &mut plan)?;
         let scope = Scope::of(Path::new(&run.repository_root))?;
         let _lock = lock_scope(&scope)?;
         let manager = Rc::new(Manager::connect().await?);

@@ -11,6 +11,75 @@ const STARTUP_CHECK_INTERVAL: Duration = Duration::from_millis(100);
 const GRAPH_FILE: &str = "dataflow.yml";
 pub(crate) const CLI_PREFIX: &str = "dora-cli-";
 
+/// Prepare generated Dora programs before any unit starts; native units retain their own settings.
+pub(crate) fn prepare(run: &crate::RunPlan, plan: &mut crate::SystemdPlan) -> Result<()> {
+    let indices: Vec<_> = plan
+        .programs
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| run.dora_apps.contains(&p.id))
+        .map(|(i, _)| i)
+        .collect();
+    if indices.is_empty() {
+        return Ok(());
+    }
+    if indices.len() != 2 || run.dora_apps.len() != 2 {
+        return Err("generated Dora apps require one coordinator and one daemon".into());
+    }
+    let find = |role| {
+        indices
+            .iter()
+            .copied()
+            .find(|i| plan.programs[*i].argv.get(1).is_some_and(|arg| arg == role))
+    };
+    let coordinator = find("coordinator").ok_or("Dora coordinator app missing")?;
+    let daemon = find("daemon").ok_or("Dora daemon app missing")?;
+    let mut coordinator_args = plan.programs[coordinator].argv.clone();
+    let mut daemon_args = plan.programs[daemon].argv.clone();
+    workload_lifecycle::dora::resolve_ports(&mut coordinator_args, &mut daemon_args)?;
+    let port = port(&daemon_args, "--local-listen-port")?;
+    plan.programs[coordinator].argv = coordinator_args;
+    plan.programs[daemon].argv = daemon_args;
+    // Program-only callers without participants need no Zenoh file binding.
+    if !plan.programs.iter().any(|p| !run.dora_apps.contains(&p.id)) {
+        return Ok(());
+    }
+    let overlay =
+        workload_lifecycle::dora::option(&plan.programs[daemon].argv, "--zenoh-config-overlay")?
+            .to_owned();
+    let binding = plan.programs[daemon]
+        .binds
+        .iter()
+        .find(|b| b.target == overlay)
+        .ok_or("Dora daemon needs its Zenoh config bound")?
+        .clone();
+    for program in &mut plan.programs {
+        if run.dora_apps.contains(&program.id) {
+            continue;
+        }
+        for (name, value) in dora_app::environment::settings(&program.id, port.into(), &overlay) {
+            if name == dora_app::environment::NODE_ID
+                && program.environment.iter().any(|e| e.name == name)
+            {
+                continue;
+            }
+            program.environment.retain(|e| e.name != name);
+            program.environment.push(crate::EnvironmentVariable {
+                name: name.into(),
+                value,
+            });
+        }
+        if program.binds.iter().any(|b| b.target == overlay) {
+            return Err(format!(
+                "{}: app mount overrides shared Dora config",
+                program.id
+            ));
+        }
+        program.binds.push(binding.clone());
+    }
+    Ok(())
+}
+
 /// Observed coordinator handle and dataflow identity; launch configuration remains in its unit.
 pub(crate) struct Dora {
     coordinator: zbus_systemd::systemd1::ServiceProxy<'static>,

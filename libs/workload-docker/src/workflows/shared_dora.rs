@@ -31,58 +31,19 @@ pub fn resolve(apps: &mut DoraApps) -> Result<()> {
     }
     let coordinator = apps.coordinator()?.0.to_owned();
     let daemon = apps.daemon()?.0.to_owned();
-    let read = |name: &str, flag| -> Result<u16> {
-        workload_lifecycle::dora::option(&DoraApps::argv(&apps.services[name])?, flag)
-            .map_err(invalid)?
-            .parse()
-            .map_err(|_| invalid("invalid Dora port"))
-    };
-    let mut ports = [
-        read(&coordinator, "--port")?,
-        read(&daemon, "--local-listen-port")?,
-    ];
-    if read(&daemon, "--coordinator-port")? != ports[0] {
-        return Err(invalid("Dora app coordinator endpoints disagree"));
+    let mut coordinator_args = DoraApps::argv(&apps.services[&coordinator])?;
+    let mut daemon_args = DoraApps::argv(&apps.services[&daemon])?;
+    apps.automatic_ports =
+        workload_lifecycle::dora::resolve_ports(&mut coordinator_args, &mut daemon_args)
+            .map_err(invalid)?;
+    for (name, args) in [(&coordinator, coordinator_args), (&daemon, daemon_args)] {
+        let app = apps.services.get_mut(name).unwrap();
+        app["entrypoint"] = json!([args[0]]);
+        app["command"] = json!(args[1..]);
     }
-    let mut listeners = Vec::new();
-    for (index, port) in ports.iter_mut().enumerate() {
-        apps.automatic_ports[index] = *port == 0;
-        if *port == 0 {
-            let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
-            *port = listener.local_addr()?.port();
-            listeners.push(listener);
-        }
-    }
-    if ports[0] == ports[1] {
-        return Err(invalid("Dora ports must differ"));
-    }
-    for (name, flag, port) in [
-        (&coordinator, "--port", ports[0]),
-        (&daemon, "--coordinator-port", ports[0]),
-        (&daemon, "--local-listen-port", ports[1]),
-    ] {
-        for field in ["entrypoint", "command"] {
-            if let Some(args) = apps.services.get_mut(name).unwrap()[field].as_array_mut() {
-                for index in 0..args.len() {
-                    if args[index] == flag && index + 1 < args.len() {
-                        args[index + 1] = port.to_string().into();
-                    } else if args[index]
-                        .as_str()
-                        .is_some_and(|arg| arg.starts_with(&format!("{flag}=")))
-                    {
-                        args[index] = format!("{flag}={port}").into();
-                    }
-                }
-            }
-        }
-    }
+    let port = apps.daemon_port()?.to_string();
     for app in apps.services.values_mut() {
-        if app["environment"]
-            .get(dora_app::environment::DAEMON_PORT)
-            .is_some()
-        {
-            app["environment"][dora_app::environment::DAEMON_PORT] = ports[1].to_string().into();
-        }
+        app["environment"][dora_app::environment::DAEMON_PORT] = port.clone().into();
     }
     Ok(())
 }
