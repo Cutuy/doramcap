@@ -1,3 +1,4 @@
+import { runPlan } from './run-plan.js';
 import { ensureImages } from './images.js';
 import { PREPARING_RUN } from './generated/transport.js';
 import Long from 'long';
@@ -12,7 +13,6 @@ import {
   browserError,
   compose,
   composePlan,
-  launch,
   objectOptions,
   type Config,
   type NativeExecution,
@@ -24,7 +24,7 @@ import {
 } from './native.js';
 import type { doramcap } from './generated/console.js';
 import { loadConfig } from './config.js';
-import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, mcapServices, type SelectedApp } from './system-apps.js';
+import { discover, selectApps, appOptions, appProfiles, outputs, bindOutputs, type SelectedApp } from './system-apps.js';
 import { Graphs } from './graphs.js';
 import { writeOnce } from './files.js';
 import { Store } from './store.js';
@@ -91,8 +91,8 @@ export class ConsoleService implements ConsoleBackend {
     private store: Store,
   ) {
     this.runIndex = new History(store);
-    this.graphs = new Graphs(capabilities, config.systemApps, config.dora?.graph ?? '');
-    const relay = relayApp(config.systemApps);
+    this.graphs = new Graphs(capabilities, config.apps, config.dataflowFile ?? '');
+    const relay = relayApp(config.apps);
     if (relay) this.relay = new LiveRelay(`ws://127.0.0.1:${relay.liveRelay!.port}/stream`);
     this.timer = setInterval(
       () =>
@@ -109,7 +109,7 @@ export class ConsoleService implements ConsoleBackend {
     config.dataRoot = store.root;
     try {
       // One port for this service's life keeps Review and Start on the same bridge inputs.
-      const relay = relayApp(config.systemApps);
+      const relay = relayApp(config.apps);
       if (relay && !relay.liveRelay!.port) relay.liveRelay!.port = await availablePort();
       const engine = await capabilities.open(config.dockerSocket, 1);
       new History(store).closeInterrupted();
@@ -183,7 +183,7 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const ids = request.systemApps?.ids ?? undefined;
       const project = await discover(this.config.projectRoot, request.profiles),
-        chosen = selectApps(this.config.systemApps, ids, request.systemApps?.profiles ?? {}),
+        chosen = selectApps(this.config.apps.filter((app) => !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),
         // The relay runs only when a selected app declares a live output.
         apps = chosen.filter((app) => !app.liveRelay || chosen.some((other) => other.liveOutputs?.length));
       const profiles = (
@@ -205,7 +205,7 @@ export class ConsoleService implements ConsoleBackend {
       await mkdir(workspace, { mode: 0o700 });
       const runRequest = await this.runRequest(id, project, apps, workspace, join(workspace, 'resolved'), 'review');
       if (this.config.downloadMissingImages)
-        await ensureImages(this.config, [...(runRequest.compose!.projects ?? []), ...(runRequest.compose!.systemApps ?? [])] as Project[], this.preparation.signal);
+        await ensureImages(this.config, (runRequest.compose!.projects ?? []) as Project[], this.preparation.signal);
       let inspected: Inspection;
       try {
         inspected = await this.engine.inspect(runRequest);
@@ -216,7 +216,7 @@ export class ConsoleService implements ConsoleBackend {
           return Buffer.from(
             wire.Review.encode({
               availableProfiles: profiles,
-              systemApps: appOptions(this.config.systemApps, chosen),
+              systemApps: appOptions(this.config.apps, chosen, this.config.doraApps),
               warnings: ['Select a profile to enable at least one service.'],
             }).finish(),
           );
@@ -234,7 +234,7 @@ export class ConsoleService implements ConsoleBackend {
           name,
           imageId: service.imageId,
         })),
-        systemApps: appOptions(this.config.systemApps, chosen),
+        systemApps: appOptions(this.config.apps, chosen, this.config.doraApps),
         recordings: outputs(apps),
         warnings: [],
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
@@ -272,30 +272,20 @@ export class ConsoleService implements ConsoleBackend {
     stage: string,
   ): Promise<Run> {
     const relay = relayApp(apps);
-    const bound = relay && (await bindRelay(relay, apps, this.config.dora, workspace, stage));
+    const bound = relay && (await bindRelay(relay, apps, workspace, stage));
     const graph = await this.graphs.build(apps.map((app) => app.id!), bound ? [bound.graph] : [], appProfiles(apps));
-    const dora = { ...this.config.dora };
+    let dataflowFile = '';
     if (graph.length) {
       const path = join(workspace, `${stage}.graph.json`);
       await writeOnce(path, graph);
-      dora.graph = path;
+      dataflowFile = path;
     }
     const request = execution.RunRequest.create({
-      run: launch.RunPlan.create({
-        id,
-        repositoryRoot: project.directory,
-        artifacts,
-        recordings: outputs(apps).map((output) => ({
-          recording: join(artifacts, output.path!),
-          stream: output.stream ? join(artifacts, output.stream) : '',
-        })),
-        readinessSeconds: this.config.runtime!.readinessSeconds!,
-        stopSeconds: this.config.runtime!.stopSeconds!,
-      }),
-      compose: composePlan.ComposePlan.create({ projects: [project], dora, mcapServices: mcapServices(apps) }),
+      run: runPlan(this.config, { id, project: project.directory!, artifacts, apps }, dataflowFile),
+      compose: composePlan.ComposePlan.create({ projects: [project, ...this.config.apps.filter((app) => this.config.doraApps.includes(app.id!)).map((app) => ({ ...app.input!, key: app.id! }))] }),
     });
     await bindOutputs(apps, request, workspace, stage);
-    if (bound) request.compose!.systemApps!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
+    if (bound) request.compose!.projects!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
     return request;
   }
   start(input: Buffer): Promise<Buffer> {

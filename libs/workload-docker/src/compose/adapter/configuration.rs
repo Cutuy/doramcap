@@ -17,6 +17,7 @@ pub(crate) struct NormalizedCompose {
     pub(crate) compose_version: String,
     pub(crate) input_hashes: BTreeMap<String, String>,
     pub(crate) stderr: String,
+    pub(crate) app: Option<workload_lifecycle::launch::AppManifest>,
 }
 
 /// Compiles Compose inputs using the adapter's Engine and CLI connection.
@@ -35,7 +36,15 @@ impl ComposeConfiguration<'_> {
     ) -> Result<NormalizedCompose> {
         validate_name(run)?;
         validate_name(&project.key)?;
-        let (directory, mut args, sources) = config_arguments(project, name).await?;
+        let (directory, mut args, mut sources) = config_arguments(project, name).await?;
+        let app = app_overlay(project).await?;
+        if let Some(app) = &app {
+            args.extend([
+                "-f".into(),
+                app.overlay.path().to_string_lossy().into_owned(),
+            ]);
+            sources.insert(app.path.clone(), app.digest.clone());
+        }
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
@@ -59,6 +68,7 @@ impl ComposeConfiguration<'_> {
         )
         .await?;
         Ok(NormalizedCompose {
+            app: app.map(|app| app.manifest),
             model,
             compose_version: version,
             input_hashes: sources,
@@ -404,7 +414,120 @@ impl ComposeConfiguration<'_> {
         Ok(plan)
     }
 }
-// Shared Compose arguments preserve the explicit environment and input order.
+struct AppOverlay {
+    overlay: tempfile::NamedTempFile,
+    path: String,
+    digest: String,
+    manifest: workload_lifecycle::launch::AppManifest,
+}
+
+/// Read common app settings using the existing protobuf descriptor pool.
+async fn app_overlay(project: &ComposeProject) -> Result<Option<AppOverlay>> {
+    use prost_reflect::{DescriptorPool, DynamicMessage};
+    use std::io::Write;
+    use workload_lifecycle::launch::AppManifest;
+    if project.manifest.is_empty() {
+        return Ok(None);
+    }
+    let path =
+        tokio::fs::canonicalize(Path::new(&project.directory).join(&project.manifest)).await?;
+    let bytes = tokio::fs::read(&path).await?;
+    static POOL: std::sync::OnceLock<DescriptorPool> = std::sync::OnceLock::new();
+    let pool = POOL.get_or_init(|| {
+        DescriptorPool::decode(
+            include_bytes!(concat!(env!("OUT_DIR"), "/workflow_config.bin")).as_slice(),
+        )
+        .expect("compiled app descriptors")
+    });
+    let app: AppManifest = DynamicMessage::parse_text_format(
+        pool.get_message_by_name("doramcap.launch.v1.AppManifest")
+            .expect("compiled app manifest"),
+        std::str::from_utf8(&bytes).map_err(|e| invalid(e.to_string()))?,
+    )
+    .map_err(|e| invalid(e.to_string()))?
+    .transcode_to()
+    .map_err(|e| invalid(e.to_string()))?;
+    let service = app
+        .compose
+        .as_ref()
+        .map(|launch| launch.service.as_str())
+        .unwrap_or_default();
+    if service.is_empty() {
+        return Err(invalid("app manifest needs a Compose service"));
+    }
+    if app.process.is_some() && app.systemd.as_ref().is_some_and(|s| !s.unit.is_empty()) {
+        return Err(invalid(
+            "common process settings cannot be combined with a native unit",
+        ));
+    }
+    let mut fields = json!({});
+    if let Some(process) = &app.process {
+        process.validate().map_err(|e| invalid(e.to_string()))?;
+        fields["entrypoint"] = json!([process.argv[0]]);
+        fields["command"] = json!(process.argv[1..]);
+        if !process.working_directory.is_empty() {
+            fields["working_dir"] = process.working_directory.clone().into();
+        }
+        if process.memlock_bytes != 0 {
+            fields["ulimits"]["memlock"] =
+                json!({"soft":process.memlock_bytes,"hard":process.memlock_bytes});
+        }
+        if !process.cpus.is_empty() {
+            fields["cpuset"] = process.cpus.clone().into();
+        }
+        let signal = if process.stop_signal == 0 {
+            libc::SIGTERM
+        } else {
+            process.stop_signal
+        };
+        fields["stop_signal"] = signal.to_string().into();
+        if process.stop_seconds != 0 {
+            fields["stop_grace_period"] = format!("{}s", process.stop_seconds).into();
+        }
+    }
+    let directory = path.parent().expect("absolute manifest has parent");
+    let mut mounts = Vec::new();
+    for file in &app.files {
+        if file.source.is_empty()
+            || Path::new(&file.source).is_absolute()
+            || Path::new(&file.source)
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+            || !Path::new(&file.target).is_absolute()
+        {
+            return Err(invalid(
+                "app file sources must stay beside the manifest and targets must be absolute",
+            ));
+        }
+        let source = tokio::fs::canonicalize(directory.join(&file.source)).await?;
+        if !source.starts_with(directory) {
+            return Err(invalid("app file escapes manifest directory"));
+        }
+        mounts.push(json!({"type":"bind","source":source,"target":file.target,"read_only":true,"bind":{"create_host_path":false}}));
+    }
+    if !mounts.is_empty() {
+        fields["volumes"] = mounts.into();
+    }
+    // Common pbtxt values are literal strings; Compose must not interpolate them.
+    fn literal(value: &mut Value) {
+        match value {
+            Value::String(text) => *text = text.replace('$', "$$"),
+            Value::Array(items) => items.iter_mut().for_each(literal),
+            Value::Object(fields) => fields.values_mut().for_each(literal),
+            _ => {}
+        }
+    }
+    literal(&mut fields);
+    let mut overlay = tempfile::NamedTempFile::new()?;
+    overlay.write_all(&serde_json::to_vec(&json!({"services":{service:fields}}))?)?;
+    Ok(Some(AppOverlay {
+        overlay,
+        path: path.to_string_lossy().into_owned(),
+        digest: digest(&bytes),
+        manifest: app,
+    }))
+}
+
 pub(super) async fn config_arguments(
     project: &ComposeProject,
     name: &str,

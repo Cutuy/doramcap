@@ -127,3 +127,34 @@ pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+/// Normalize real app fixtures with Compose's own YAML parser; no Engine is contacted.
+#[cfg(test)]
+pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value {
+    std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let directory = tempfile::tempdir().unwrap();
+                let socket_path = directory.path().join("engine.sock");
+                let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+                let socket = socket_path.to_str().unwrap();
+                let adapter = DockerAdapter {
+                    docker: Docker::connect_with_unix(socket, 120, bollard::API_DEFAULT_VERSION)
+                        .unwrap(),
+                    socket: socket.into(),
+                    starting: Default::default(),
+                };
+                adapter
+                    .configuration()
+                    .normalize("fixture", &project, "fixture")
+                    .await
+                    .unwrap()
+                    .model
+            })
+    })
+    .join()
+    .unwrap()
+}

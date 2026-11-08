@@ -1,16 +1,8 @@
 syntax = "proto3";
 package doramcap.compose_plan.v1;
 import "compose.proto";
-import "dora.proto";
 
-// Compose launch inputs of one run; the shared run inputs travel beside them.
+// Flat launch inputs keyed by app ID; RunPlan owns roles and communication settings.
 message ComposePlan {
-  reserved 1;
-  // Supporting apps, started and stabilized before projects; stopped after them.
-  repeated doramcap.compose.v1.ComposeProject system_apps = 2;
-  // Adopted apps whose services join the experiment project.
-  repeated doramcap.compose.v1.ComposeProject projects = 3;
-  doramcap.dora.v1.DoraRuntime dora = 4;
-  // Services writing MCAP through io_uring.
-  repeated string mcap_services = 5;
+  repeated doramcap.compose.v1.ComposeProject projects = 1;
 }

@@ -64,7 +64,14 @@ pub fn parse_config(text: String) -> Result<Buffer> {
 /// Decode strict protobuf text into AppManifest protobuf bytes.
 #[napi]
 pub fn parse_manifest(text: String) -> Result<Buffer> {
-    parse_text("doramcap.launch.v1.AppManifest", &text)
+    use prost::Message;
+    let bytes = parse_text("doramcap.launch.v1.AppManifest", &text)?;
+    let manifest =
+        workload_lifecycle::launch::AppManifest::decode(bytes.as_ref()).map_err(failure)?;
+    if let Some(process) = &manifest.process {
+        process.validate().map_err(failure)?;
+    }
+    Ok(bytes)
 }
 
 fn parse_text(message: &str, text: &str) -> Result<Buffer> {

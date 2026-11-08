@@ -53,7 +53,7 @@ async function service(root: string) {
     accessSecretFile: join(root, 'secret'),
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
-    systemApps: [{ id: 'recorder', defaultSelected: true, input: { directory: project, files: ['compose.yaml'] }, recordings: [{ id: 'messages', path: 'nested/messages.mcap' }] }],
+    apps: [{ id: 'recorder', defaultSelected: true, input: { directory: project, files: ['compose.yaml'] }, recordings: [{ id: 'messages', path: 'nested/messages.mcap' }] }],
   });
   validateConfig(config);
   const store = await Store.open(config.dataRoot),

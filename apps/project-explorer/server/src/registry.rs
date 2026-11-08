@@ -106,23 +106,16 @@ impl std::ops::DerefMut for Registration {
     }
 }
 impl Registration {
-    /// Resolve app-owned graph paths and the container identity for one generation.
-    pub(crate) fn resolve_dora(
-        &self,
-        uid: u32,
-        gid: u32,
-    ) -> Result<workload_docker::workflows::dora::DoraRuntime, String> {
-        let mut runtime = self.dora.clone().unwrap_or_default();
-        if !runtime.graph.is_empty() {
-            runtime.graph = fs::canonicalize(self.directory.join(&runtime.graph))
-                .map_err(|e| e.to_string())?
-                .to_str()
-                .ok_or("graph path is not UTF-8")?
-                .into();
+    /// Resolve the app-owned dataflow artifact relative to its registration.
+    pub(crate) fn dataflow(&self) -> Result<String, String> {
+        if self.dataflow_file.is_empty() {
+            return Ok(String::new());
         }
-        runtime.participant_uid = Some(uid);
-        runtime.participant_gid = Some(gid);
-        Ok(runtime)
+        fs::canonicalize(self.directory.join(&self.dataflow_file))
+            .map_err(|e| e.to_string())?
+            .into_os_string()
+            .into_string()
+            .map_err(|_| "dataflow path is not UTF-8".into())
     }
 
     /// Parse one protobuf text registration. Unknown fields and malformed text fail.
@@ -630,14 +623,14 @@ mod tests {
                 PathBuf::new(),
             )
             .unwrap();
-            if app.dora.as_ref().is_none_or(|dora| dora.graph.is_empty()) {
+            if app.dataflow_file.is_empty() {
                 continue;
             }
             // Act
-            let runtime = app.resolve_dora(1000, 1000).unwrap();
+            let dataflow = app.dataflow().unwrap();
             let graph = workload_docker::workflows::shared_dora::graph(
-                &runtime,
-                &fs::read(&runtime.graph).unwrap(),
+                &dataflow,
+                &fs::read(&dataflow).unwrap(),
             );
             // Assert
             assert!(graph.is_ok(), "{}: {graph:?}", path.display());

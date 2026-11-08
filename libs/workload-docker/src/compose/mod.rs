@@ -15,7 +15,7 @@ mod steps;
 pub(crate) const FORCED_STOP_OPERATION: &str = "forced stop";
 pub use adapter::{ComposeExecution, DockerAdapter};
 pub use error::{Error, Result};
-pub(crate) use model::{BindMount, ResolvedBind, ResourceLimit, RuntimeService};
+pub(crate) use model::ResolvedBind;
 pub use model::{
     Cleanup, ComposeProject, ComposeProjectState, ComposeService, ConfigurationSnapshot, Container,
     Diagnostic, ResolveInput, ResolvedComposeProject, ServiceExit, Shutdown, StartInput, StopInput,

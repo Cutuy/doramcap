@@ -11,31 +11,30 @@ import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
 import { stageSystemAppInputs } from '../../scripts/system-app-inputs.mjs';
-import { mcapServices } from '../src/system-apps.js';
+import { runPlan } from '../src/run-plan.js';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 test('release configuration resolves native inputs and round-trips canonical pbtxt', () => {
   // Arrange
-  const template = capabilities.parseConfig(`project_root:"projects" dora {image:"registry/dora@sha256:abc" graph:"graphs/flow.yml" shm_bytes:134217728}
-    system_apps {id:"capture" input {directory:"capture" files:"compose.yaml" files:"../override.yaml"} graph:"capture/flow.yml" launch_profiles {id:"capture" label:"Capture" config:"capture/run.pbtxt" graph:"capture/profile.yml"}}`);
+  const template = capabilities.parseConfig(`project_root:"projects" dataflow_file:"graphs/flow.yml"
+    apps {id:"capture" input {directory:"capture" files:"compose.yaml" files:"../override.yaml"} graph:"capture/flow.yml" launch_profiles {id:"capture" label:"Capture" config:"capture/run.pbtxt" graph:"capture/profile.yml"}}`);
   // Act
   const config = releaseConfig(template, '/state/playground', '/release/system-apps', '/state');
   const decoded = capabilities.parseConfig(capabilities.formatConfig(config));
   // Assert
   assert.equal(decoded.projectRoot, '/state/playground');
   assert.equal(decoded.dataRoot, '/state');
-  assert.equal(decoded.dora!.graph, '/state/playground/graphs/flow.yml');
-  assert.equal(decoded.systemApps[0].input!.directory, '/release/system-apps/capture');
-  assert.equal(decoded.systemApps[0].graph, '/release/system-apps/capture/flow.yml');
-  assert.equal(decoded.systemApps[0].launchProfiles![0].graph, '/release/system-apps/capture/profile.yml');
+  assert.equal(decoded.dataflowFile, '/state/playground/graphs/flow.yml');
+  assert.equal(decoded.apps[0].input!.directory, '/release/system-apps/capture');
+  assert.equal(decoded.apps[0].graph, '/release/system-apps/capture/flow.yml');
+  assert.equal(decoded.apps[0].launchProfiles![0].graph, '/release/system-apps/capture/profile.yml');
   assert.equal(decoded.downloadMissingImages, true);
   assert.equal(decoded.accessSecretFile, '');
-  assert.equal(String(decoded.dora!.shmBytes), '134217728');
   assert.equal(template.projectRoot, 'projects');
   for (const path of ['/host', '../outside']) {
-    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ dora: { graph: path } }), '/playground', '/apps', '/state'));
-    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ systemApps: [{ id: 'app', input: { directory: path, files: ['compose.yaml'] } }] }), '/playground', '/apps', '/state'));
+    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ dataflowFile: path }), '/playground', '/apps', '/state'));
+    assert.throws(() => releaseConfig(wire.ConsoleConfig.create({ apps: [{ id: 'app', input: { directory: path, files: ['compose.yaml'] } }] }), '/playground', '/apps', '/state'));
   }
 });
 
@@ -46,14 +45,16 @@ test('release manifests expand to the same apps as the inline release configurat
   const manifests = await read('console/release/console.pbtxt');
   const inline = await read('console/server/tests/fixtures/inline-release.pbtxt');
   const apps = (config: ReturnType<typeof releaseConfig>) =>
-    capabilities.formatConfig(wire.ConsoleConfig.create({ systemApps: config.systemApps }));
+    capabilities.formatConfig(wire.ConsoleConfig.create({ apps: config.apps }));
   // Act
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
-  // Assert: every app gains its systemd launch facts; Compose definitions are unchanged.
-  assert.ok(expanded.systemApps.every((app) => app.systemd?.unit));
-  for (const app of expanded.systemApps) app.systemd = null;
-  assert.equal(apps(expanded), apps(releaseConfig(inline, '/playground', systemApps, '/state')));
-  assert.ok(expanded.systemApps.every((app) => !app.manifest));
+  // Assert: common launch settings expand for both backends; prior app selection facts survive.
+  assert.ok(expanded.apps.every((app) => app.process?.argv?.length && !app.systemd));
+  for (const app of expanded.apps) { app.process = null; app.files = []; app.input!.manifest = ''; }
+  const inlineApps = releaseConfig(inline, '/playground', systemApps, '/state');
+  for (const app of inlineApps.apps) { app.systemd = null; app.process = null; app.files = []; app.input!.manifest = ''; }
+  assert.equal(apps(expanded), apps(inlineApps));
+  assert.ok(expanded.apps.every((app) => !app.manifest));
 });
 
 test('manifests reject inline launch fields, escaping paths and unsupported forms', async () => {
@@ -65,12 +66,12 @@ test('manifests reject inline launch fields, escaping paths and unsupported form
     await writeFile(join(directory, 'app/app.pbtxt'), 'id:"app" compose {files:"compose.yaml"}');
     await writeFile(join(directory, 'app/escape.pbtxt'), 'id:"app" compose {files:"../compose.yaml"}');
     // Act / Assert: a valid manifest expands relative to its directory.
-    const valid = releaseConfig(config('system_apps {manifest:"app/app.pbtxt"}'), '/playground', directory, '/state');
-    assert.equal(valid.systemApps[0].input!.directory, join(directory, 'app'));
+    const valid = releaseConfig(config('apps {manifest:"app/app.pbtxt"}'), '/playground', directory, '/state');
+    assert.equal(valid.apps[0].input!.directory, join(directory, 'app'));
     // Act / Assert: launch facts live only in the manifest.
-    assert.throws(() => releaseConfig(config('system_apps {manifest:"app/app.pbtxt" graph:"flow.yml"}'), '/playground', directory, '/state'), /belong in the manifest/);
+    assert.throws(() => releaseConfig(config('apps {manifest:"app/app.pbtxt" graph:"flow.yml"}'), '/playground', directory, '/state'), /belong in the manifest/);
     // Act / Assert: manifest paths stay beside the manifest.
-    assert.throws(() => releaseConfig(config('system_apps {manifest:"app/escape.pbtxt"}'), '/playground', directory, '/state'), /stay beside/);
+    assert.throws(() => releaseConfig(config('apps {manifest:"app/escape.pbtxt"}'), '/playground', directory, '/state'), /stay beside/);
     // Act / Assert: Supervisor does not launch from Console yet.
     assert.throws(() => releaseConfig(config('form: SUPERVISOR'), '/playground', directory, '/state'), /only COMPOSE and SYSTEMD/);
   } finally {
@@ -167,7 +168,7 @@ test('root setup pins one project config and preserves later edits',
   await mkdir(project);
   await writeFile(join(source, 'release.pb'), wire.ReleaseManifest.encode({
     version: '0.1.0', platform: `linux-${process.arch}`,
-    config: { projectRoot: '.', systemApps: [{ id: 'capture', input: { directory: 'capture', files: ['compose.yaml'] } }] },
+    config: { projectRoot: '.', apps: [{ id: 'capture', input: { directory: 'capture', files: ['compose.yaml'] } }] },
   }).finish());
   try {
     // Act
@@ -176,7 +177,7 @@ test('root setup pins one project config and preserves later edits',
     const config = capabilities.parseConfig(await readFile(path, 'utf8'));
     assert.equal(config.projectRoot, project);
     assert.equal(config.dataRoot, state);
-    assert.equal(config.systemApps[0].input!.directory, join(source, 'system-apps/capture'));
+    assert.equal(config.apps[0].input!.directory, join(source, 'system-apps/capture'));
     assert.equal((await lstat(path)).mode & 0o777, 0o600);
     assert.equal(await readFile(join(state, 'project.txt'), 'utf8'), `${project}\n`);
     // Act
@@ -198,14 +199,14 @@ test('the repository release template resolves to existing current app inputs', 
   const config = releaseConfig(template, playground, systemApps, '/state');
   validateConfig(config);
   // Assert
-  assert.deepEqual(config.systemApps.filter(app => app.defaultSelected).map(app => app.id), ['live-bridge', 'cpu-monitor']);
-  assert.equal(config.systemApps.filter(app => app.liveRelay).map(app => app.id).join(), 'live-bridge');
-  assert.ok(capabilities.parseConfig(capabilities.formatConfig(config)).systemApps.find(app => app.id === 'live-bridge')!.liveRelay);
+  assert.deepEqual(config.apps.filter(app => app.defaultSelected).map(app => app.id), ['live-bridge', 'cpu-monitor']);
+  assert.equal(config.apps.filter(app => app.liveRelay).map(app => app.id).join(), 'live-bridge');
+  assert.ok(capabilities.parseConfig(capabilities.formatConfig(config)).apps.find(app => app.id === 'live-bridge')!.liveRelay);
   await access(config.projectRoot);
-  for (const app of config.systemApps) {
+  for (const app of config.apps) {
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
-    if (app.liveRelay) continue;
-    await access(app.graph!);
+    if (app.liveRelay || config.doraApps.includes(app.id!)) continue;
+    if (app.graph) await access(app.graph);
     const profiles = app.launchProfiles ?? [];
     for (const profile of profiles) {
       await access(profile.config!);
@@ -214,28 +215,37 @@ test('the repository release template resolves to existing current app inputs', 
     // An app's default launch produces something the user can see or download.
     assert.ok(app.recordings!.length + app.liveOutputs!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
-  assert.deepEqual(config.systemApps.map(app => app.id), ['live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
-  const profiles = config.systemApps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
+  assert.deepEqual(config.apps.map(app => app.id), ['dora-coordinator', 'dora-daemon', 'live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
+  const profiles = config.apps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
-  const live = await readFile(join(systemApps, 'cpu-monitor/live.pbtxt'), 'utf8');
+  const live = await readFile(join(systemApps, 'cpu-monitor/cpu-monitor-live.pbtxt'), 'utf8');
   assert.match(live, /^dora \{\}/m);
   assert.doesNotMatch(live, /recording/);
-  const monitor = await readFile(join(systemApps, 'cpu-monitor/monitor.pbtxt'), 'utf8');
+  const monitor = await readFile(join(systemApps, 'cpu-monitor/cpu-monitor-record.pbtxt'), 'utf8');
   assert.match(monitor, /^dora \{\}/m);
   assert.match(monitor, /path: "\/results\/cpu.mcap"/);
-  const watchdog = config.systemApps.find(app => app.id === 'fault-watchdog')!;
+  const watchdog = config.apps.find(app => app.id === 'fault-watchdog')!;
   assert.equal(watchdog.defaultSelected, false);
   assert.equal(watchdog.healthInputs, true);
   assert.deepEqual(watchdog.launchProfiles!.map(profile => [profile.id, profile.recordings!.length]), [['live', 0], ['mcap', 1], ['otel', 0]]);
   await rm(dirname(systemApps), { recursive: true });
 });
 
-test('only recording apps name MCAP writer services', () => {
+test('shared run facts identify writer apps independently of service names', () => {
   // Arrange
-  const mount = [{ service: 'writer', target: '/results' }];
-  // Act / Assert
-  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [{ id: 'a', path: 'a.mcap' }] }]), ['writer']);
-  assert.deepEqual(mcapServices([{ outputMounts: mount, recordings: [] }]), []);
+  const config = wire.ConsoleConfig.create({ runtime: { readinessSeconds: 30, stopSeconds: 5 } });
+  const apps = [
+    { id: 'capture', outputMounts: [{ service: 'writer', target: '/results' }], recordings: [{ id: 'a', path: 'a.mcap' }] },
+    { id: 'monitor', recordings: [] },
+  ];
+  // Act
+  const run = runPlan(config, { id: 'r', project: '/repo', artifacts: '/artifacts', apps }, '/flow.yml');
+  // Assert
+  assert.deepEqual(run.systemApps, ['capture', 'monitor']);
+  assert.deepEqual(run.mcapApps, ['capture']);
+  assert.equal(run.recordings[0].recording, '/artifacts/a.mcap');
+  assert.equal(run.dataflowFile, '/flow.yml');
+  assert.deepEqual(run.doraApps, []);
 });
 
 test('doctor reports every missing requirement with its remediation', async () => {

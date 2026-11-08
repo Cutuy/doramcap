@@ -1,0 +1,3 @@
+services:
+  dora-daemon:
+    user: "${CPU_VIEWER_UID}:${CPU_VIEWER_GID}"

@@ -1,12 +1,8 @@
 import { isAbsolute, join } from 'node:path';
 import { lstat, realpath } from 'node:fs/promises';
-import { compose, type App, type Project, type Run, type Output } from './native.js';
+import { compose, launch, type App, type Project, type Run, type Output } from './native.js';
 import { writeOnce } from './files.js';
 
-const INFRASTRUCTURE = [
-  { id: 'dora-coordinator', label: 'Dora coordinator' },
-  { id: 'dora-daemon', label: 'Dora IPC daemon' },
-];
 const child = (path: string) =>
   !!path && !isAbsolute(path) && path.split(/[\\/]/).every((part) => part && part !== '.' && part !== '..');
 /** Reject invalid live and recording outputs, adding recording IDs to `seen`. */
@@ -25,7 +21,8 @@ function validateOutputs(recordings: Output[], live: NonNullable<App['liveOutput
       throw new Error('recording paths must be relative beneath artifacts');
   }
 }
-export function validateApps(apps: App[]) {
+export function validateApps(apps: App[], form = launch.Form.COMPOSE) {
+  const composeForm = form !== launch.Form.SYSTEMD;
   const ids = new Set<string>(),
     outputs = new Set<string>();
   let relayed = false;
@@ -33,27 +30,26 @@ export function validateApps(apps: App[]) {
     if (
       !app.id ||
       !/^[-a-z0-9]{1,40}$/.test(app.id) ||
-      ids.has(app.id) ||
-      INFRASTRUCTURE.some((item) => item.id === app.id)
+      ids.has(app.id)
     )
       throw new Error('empty, duplicate or reserved system app id');
     ids.add(app.id);
-    if (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length)
+    if (composeForm && (!app.input || !isAbsolute(app.input.directory ?? '') || !app.input.files?.length))
       throw new Error('system app requires absolute directory and Compose files');
     if (app.graph && !isAbsolute(app.graph)) throw new Error('system app graph must be absolute');
     if (app.liveRelay) {
       if (relayed) throw new Error('only one system app may set live_relay');
       relayed = true;
-      if (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '') || app.graph || app.launchProfiles?.length || app.liveOutputs?.length)
+      if ((composeForm && !app.configMount?.service) || !isAbsolute(app.configMount?.target ?? '') || app.graph || app.launchProfiles?.length || app.liveOutputs?.length)
         throw new Error('live_relay requires a config mount and excludes graph, launch profiles and live outputs');
       if ((app.liveRelay.port ?? 0) > 65535) throw new Error('live_relay port must be in 0..65535');
     }
     for (const mount of app.outputMounts ?? [])
-      if (!mount.service || !isAbsolute(mount.target ?? ''))
+      if ((composeForm && !mount.service) || !isAbsolute(mount.target ?? ''))
         throw new Error('output mount requires a service and absolute target');
     validateOutputs(app.recordings ?? [], app.liveOutputs ?? [], outputs);
     const profiles = app.launchProfiles ?? [];
-    if (profiles.length && (!app.configMount?.service || !isAbsolute(app.configMount.target ?? '')))
+    if (profiles.length && ((composeForm && !app.configMount?.service) || !isAbsolute(app.configMount?.target ?? '')))
       throw new Error('launch profiles require a config mount with a service and absolute target');
     const profileIds = new Set<string>(),
       shared = new Set(outputs);
@@ -96,17 +92,17 @@ export function selectApps(apps: App[], requested?: string[], profiles: Record<s
 /** App IDs and launch profiles for one selection, as stored with a run. */
 export const appProfiles = (apps: SelectedApp[]) =>
   Object.fromEntries(apps.flatMap((app) => (app.profile ? [[app.id!, app.profile.id!]] : [])));
-export function appOptions(apps: App[], selected: SelectedApp[]) {
+export function appOptions(apps: App[], selected: SelectedApp[], required: string[] = []) {
   return [
-    ...INFRASTRUCTURE.map((app) => ({ ...app, selected: true, required: true })),
+
     ...apps.map((app) => {
       const chosen = selected.find((item) => item.id === app.id),
         options = app.launchProfiles ?? [];
       return {
         id: app.id,
         label: app.label,
-        selected: !!chosen,
-        required: false,
+        selected: !!chosen || required.includes(app.id!),
+        required: required.includes(app.id!),
         profiles: options.map(({ id, label }) => ({ id, label })),
         profile: chosen?.profile?.id ?? options[0]?.id ?? '',
       };
@@ -116,13 +112,8 @@ export function appOptions(apps: App[], selected: SelectedApp[]) {
 export function outputs(apps: App[]): Output[] {
   return apps.flatMap((app) => app.recordings ?? []);
 }
-/** Services of apps that record; each writes through the io_uring MCAP writer. */
-export function mcapServices(apps: App[]): string[] {
-  return [...new Set(apps.filter((app) => app.recordings?.length).flatMap((app) => (app.outputMounts ?? []).map((mount) => mount.service!)))];
-}
 export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: string, stage: string) {
   const plan = request.compose!;
-  plan.systemApps = [];
   for (const app of apps) {
     const input = compose.ComposeProject.decode(compose.ComposeProject.encode(app.input!).finish());
     input.key = app.id!;
@@ -148,7 +139,7 @@ export async function bindOutputs(apps: SelectedApp[], request: Run, workspace: 
       await writeOnce(path, Buffer.from(JSON.stringify({ services })));
       input.files.push(path);
     }
-    plan.systemApps.push(input);
+    plan.projects!.push(input);
   }
 }
 /** Discover the native Compose inputs of one project directory. */

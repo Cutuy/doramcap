@@ -103,12 +103,13 @@ impl SystemdRunner {
     pub async fn run(
         &mut self,
         run: workload_lifecycle::launch::RunPlan,
-        plan: SystemdPlan,
+        mut plan: SystemdPlan,
         stop: impl Future<Output = ()>,
         observer: impl Observer + 'static,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> Result<SystemdRunReport> {
         crate::validate(&run, &plan)?;
+        crate::dora::prepare(&run, &mut plan)?;
         let scope = Scope::of(Path::new(&run.repository_root))?;
         let _lock = lock_scope(&scope)?;
         let manager = Rc::new(Manager::connect().await?);
@@ -124,6 +125,10 @@ impl SystemdRunner {
             .mode(0o700)
             .create(&run.artifacts)
             .map_err(error)?;
+        if !run.dora_apps.is_empty() {
+            std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
+                .map_err(error)?;
+        }
         std::fs::write(scope.directory.join(crate::ACTIVE_RUN), &run.id).map_err(error)?;
         self.blocked = true;
 
@@ -142,10 +147,6 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
-        let plan_dora = plan
-            .dora
-            .clone()
-            .map(|dora| crate::dora::Dora::new(dora, run.id.clone()));
         let running = SystemdRunning {
             manager,
             executor: executor.clone(),
@@ -154,8 +155,8 @@ impl SystemdRunner {
             plan,
             recordings: recordings.clone(),
             ready,
-            dora: plan_dora,
-            groups: Vec::new(),
+            dora: None,
+            phases: Vec::new(),
             diagnostics: Vec::new(),
         };
         let (outcome, removed) =

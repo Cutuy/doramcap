@@ -3,7 +3,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     prost_build::Config::new()
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .file_descriptor_set_path(out.join("registration.bin"))
-        .extern_path(".doramcap.dora.v1", "::workload_docker::workflows::dora")
+        .extern_path(".doramcap.compose.v1", "::workload_docker::compose")
         // Serde supports private artifact indexes.
         .type_attribute(".doramcap.hosting.v1.ArtifactCollection", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]")
         .type_attribute(".doramcap.hosting.v1.ResultFormat", "#[derive(serde::Serialize, serde::Deserialize)]\n#[serde(rename_all = \"snake_case\")]")
@@ -13,6 +13,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &["proto", "../../../libs/workload-docker/proto"],
         )?;
     println!("cargo:rerun-if-changed=proto/registration.proto");
-    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/dora.proto");
+    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/compose.proto");
     Ok(())
 }

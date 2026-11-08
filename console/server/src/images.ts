@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Config, Project } from './native.js';
 const exec = promisify(execFile);
+const DORA_RUNTIME_DIRECTORY = 'DORAMCAP_DORA_RUNTIME_DIR';
 const PULL_TIMEOUT_MS = 30 * 60_000; // Per image; generous for slow links, bounded for hung registries.
 
 /** Resolve the selected Compose services without downloading images or starting containers. */
@@ -12,7 +13,8 @@ export async function imageReferences(socket: string, project: Project): Promise
   for (const file of project.files ?? []) args.push('-f', file);
   for (const profile of project.profiles ?? []) args.push('--profile', profile);
   const { stdout, stderr } = await exec('docker', [...args, 'config', '--format', 'json', ...(project.services ?? [])], {
-    cwd: project.directory!, env: { ...process.env, ...project.environment }, timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
+    // Rendering images only needs a valid interpolation path; execution supplies its run directory.
+    cwd: project.directory!, env: { ...process.env, [DORA_RUNTIME_DIRECTORY]: project.directory!, ...project.environment }, timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
   });
   if (stderr.includes('variable is not set')) throw new Error('Unresolved Compose environment');
   const model = JSON.parse(stdout) as { services?: Record<string, { image?: unknown }> };
@@ -35,8 +37,8 @@ export function requireMultiArch(image: string, raw: string) {
  * Errors: `ImageDownload` after a failed or timed-out pull, `Stopped` after `signal` aborts.
  */
 export async function ensureImages(config: Config, projects: Project[], signal: AbortSignal, timeout = PULL_TIMEOUT_MS): Promise<void> {
-  const images = new Set<string>([config.dora?.image || 'doramcap/dora:local']);
-  for (const project of projects)
+  const images = new Set<string>();
+  for (const project of [...projects, ...config.apps.filter((app) => config.doraApps.includes(app.id!)).map((app) => app.input!)])
     for (const image of await imageReferences(config.dockerSocket, project)) images.add(image);
   for (const image of images) {
     if (signal.aborted) throw new Error('Stopped');

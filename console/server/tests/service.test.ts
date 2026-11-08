@@ -68,7 +68,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
     publicOrigin: 'http://127.0.0.1:8080',
   });
   if (recording || liveOutput)
-    config.systemApps = [
+    config.apps = [
       ...(liveOutput
         ? [{
             id: 'live-bridge',
@@ -447,9 +447,9 @@ test('the selected live bridge subscribes to declared outputs through a generate
   const { root, engine, backend, review } = await fixture(false, true);
   try {
     const request = engine.inspected!;
-    const bridge = request.compose!.systemApps!.find((project) => project.key === 'live-bridge')!;
+    const bridge = request.compose!.projects!.find((project) => project.key === 'live-bridge')!;
     const compose = JSON.parse(await readFile(bridge.files!.at(-1)!, 'utf8'));
-    const graph = JSON.parse(await readFile(request.compose!.dora!.graph!, 'utf8'));
+    const graph = JSON.parse(await readFile(request.run!.dataflowFile!, 'utf8'));
     // Assert
     assert.deepEqual(review.liveStreams.map((stream) => [stream.id, stream.appId, stream.kind]), [['recorder_0', 'recorder', live.Kind.CPU_ACCOUNTING]]);
     const option = review.systemApps.find((app) => app.id === 'live-bridge')!;
@@ -488,7 +488,7 @@ test('the selected launch profile mounts its config read-only and declares only 
     accessSecretFile: join(root, 'secret'),
     listenAddress: '127.0.0.1:8080',
     publicOrigin: 'http://127.0.0.1:8080',
-    systemApps: [
+    apps: [
       {
         id: 'monitor',
         defaultSelected: true,
@@ -511,7 +511,7 @@ test('the selected launch profile mounts its config read-only and declares only 
     // Act: review with the default profile.
     const first = await prepare();
     const mounted = async () => {
-      const files = engine.inspected!.compose!.systemApps![0].files!;
+      const files = engine.inspected!.compose!.projects!.find((app) => app.key === 'monitor')!.files!;
       return JSON.parse(await readFile(files[files.length - 1], 'utf8')).services.monitor.volumes;
     };
     // Assert
@@ -560,8 +560,8 @@ test('deselecting the live bridge removes its service, graph node and streams', 
     // Assert
     assert.equal(review.liveStreams.length, 0);
     assert.equal(review.systemApps.find((app) => app.id === 'live-bridge')!.selected, false);
-    assert.ok(!engine.inspected!.compose!.systemApps!.some((project) => project.key === 'live-bridge'));
-    assert.ok(!engine.inspected!.compose!.dora?.graph);
+    assert.ok(!engine.inspected!.compose!.projects!.some((project) => project.key === 'live-bridge'));
+    assert.ok(!engine.inspected!.run!.dataflowFile);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });
@@ -574,8 +574,8 @@ test('a hung image download can be cancelled, and failed downloads keep their ow
   const commands = join(root, 'commands');
   await mkdir(commands);
   await writeFile(join(commands, 'docker'), `#!${process.execPath} --
-const args = process.argv.slice(2);
-if (args.includes('compose')) console.log(JSON.stringify({ services: {} }));
+const args = process.argv.slice(2), image = require('node:fs').readFileSync(${JSON.stringify(join(commands, 'image'))}, 'utf8');
+if (args.includes('compose')) console.log(JSON.stringify({ services: { app: {image: image} } }));
 else if (args.includes('inspect')) process.exit(1);
 else if (args.at(-1).includes('broken')) process.exit(1);
 else setTimeout(() => {}, 60000);
@@ -586,7 +586,9 @@ else setTimeout(() => {}, 60000);
   const stop = Buffer.from(wire.StopRequest.encode({ runId: PREPARING_RUN }).finish());
   try {
     // Act / Assert: cancellation returns the Console to idle.
-    config.dora = { image: 'registry/hung@sha256:hung' };
+    config.doraApps = ['communication'];
+    config.apps = [{id:'communication',input:{directory:root,files:['hung']}}];
+    await writeFile(join(commands, 'image'), 'registry/hung@sha256:hung');
     const hung = backend.prepare(request);
     await new Promise((resolve) => setTimeout(resolve, 200));
     await assert.rejects(backend.prepare(request), /Conflict/);
@@ -594,10 +596,13 @@ else setTimeout(() => {}, 60000);
     await assert.rejects(hung, /^Error: Stopped$/);
     assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
     // Act / Assert: a registry failure is distinct from invalid project input.
-    config.dora = { image: 'registry/broken@sha256:broken' };
+    config.apps[0].input!.files = ['broken'];
+    await writeFile(join(commands, 'image'), 'registry/broken@sha256:broken');
     await assert.rejects(backend.prepare(request), /^Error: ImageDownload$/);
     // Act / Assert: closing never waits for a hung download.
-    config.dora = { image: 'registry/hung@sha256:hung' };
+    config.doraApps = ['communication'];
+    config.apps = [{id:'communication',input:{directory:root,files:['hung']}}];
+    await writeFile(join(commands, 'image'), 'registry/hung@sha256:hung');
     const closing = backend.prepare(request);
     await new Promise((resolve) => setTimeout(resolve, 200));
     await Promise.all([backend.close(), assert.rejects(closing)]);

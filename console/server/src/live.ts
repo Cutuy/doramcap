@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { live, wire, type App, type Config } from './native.js';
+import { live, wire, type App } from './native.js';
 import { writeOnce } from './files.js';
 import { LIMITS } from './generated/transport.js';
 
@@ -17,7 +17,7 @@ export function liveStreams(apps: App[]): Stream[] {
 }
 
 /** Write the relay's graph fragment and its Compose overlay with the generated BridgeConfig. */
-export async function bindRelay(relay: App, apps: App[], dora: Config['dora'], workspace: string, stage: string) {
+export async function bindRelay(relay: App, apps: App[], workspace: string, stage: string) {
   const { service, target } = relay.configMount!;
   const inputs = Object.fromEntries(
     apps.flatMap((app) =>
@@ -35,7 +35,6 @@ export async function bindRelay(relay: App, apps: App[], dora: Config['dora'], w
   const overlay = join(workspace, `${stage}-${relay.id}-relay.json`);
   await writeOnce(overlay, Buffer.from(JSON.stringify({ services: { [service!]: {
     volumes: [{ type: 'bind', source: settings, target, read_only: true, bind: { create_host_path: false } }],
-    ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
   } } })));
   return { graph, overlay, settings };
 }

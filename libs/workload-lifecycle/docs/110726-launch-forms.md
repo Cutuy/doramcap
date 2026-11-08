@@ -34,7 +34,7 @@ Agreed with the owner on 2026-11-07.
 | systemd evidence | Result and exit code/status are optional; missing required exit evidence makes the report unsuccessful with a diagnostic. Missing accounting is informational. |
 | Adopted references | Preserve native references without rejecting or rewriting them. They retain their host-systemd meaning. |
 | Removal | Remove runs only after Finalize issues a `RemovalPermit`. |
-| Ordering | The plan declares start groups: Dora, then system apps, then user apps. Doramcap enforces the gates; stop runs in reverse. |
+| Ordering | Rust enforces fixed phases: Dora ready, then system apps and recordings ready, then user apps. Shutdown reverses the phases. The request carries app roles. |
 | systemd control | D-Bus through `zbus` and `zbus_systemd` (approved 2026-11-07). Adoption also writes one runtime drop-in per unit under `/run/systemd/system`. |
 | Supervisor control | XML-RPC over the owned daemon's socket, plus an event-listener relay. |
 | Resolution | Console resolves deployment, manifests and Review choices in TypeScript, including backend details. It sends Rust one `RunRequest`: the shared `RunPlan` plus a `oneof` holding one backend's plan. Rust performs every system side effect. |
@@ -51,11 +51,11 @@ Agreed with the owner on 2026-11-07.
 | Layer | File | Owner | Holds |
 | --- | --- | --- | --- |
 | Variant config | e.g. `watchdog-mcap.pbtxt`, unchanged | App, own schema | What the app does |
-| App manifest | `apps/x/deploy/app.pbtxt` | App | Launch facts, variants and the recordings each adds, graph, outputs |
+| App manifest | `apps/x/deploy/x.pbtxt` | App | Common process settings, files, variants, recordings, graph, outputs |
 | Deployment | `deployment.pbtxt`, one per machine | Operator | Form, apps, default variants, placement, install root, repo config |
 | Repo config | `compose.yaml`, `.service`, `supervisord.conf` | User | User apps, in their native format |
 
-Generated per run: Console Review variant overrides, the `RunPlan` (saved as `plan.pbtxt`),
+Generated per run: Console Review variant overrides, the in-memory `RunPlan`,
 frozen config copies and the backend input. The plan has the same shape for every form; only the
 backend input differs.
 
@@ -63,6 +63,9 @@ backend input differs.
 
 - `AppManifest` may carry both `compose` and `systemd`; the machine's `form` picks one.
 - `RunRequest` carries the shared `RunPlan` and exactly one backend plan.
+- `RunPlan` owns system-app IDs, MCAP-writer IDs and Dora app IDs and a dataflow artifact.
+- Backend plans contain flat launch inputs keyed by app ID. Configurable groups are removed.
+- [Shared run fields](110726-shared-run-fields.md) records the implementation and validation.
 
 ## Run sequence
 
@@ -177,7 +180,7 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 **Work items**
 - [x] Spike: adopt repo `.service` units unchanged through runtime linking and place them in the run slice. Results below.
 - [x] Owner approved `zbus` 6 (`tokio` feature) and `zbus_systemd` (`systemd1` feature).
-- [x] New `libs/workload-systemd` with a `SystemdPlan` input: start groups of transient programs and adopted unit files.
+- [x] New `libs/workload-systemd` with a `SystemdPlan` input: flat transient programs and adopted unit files; shared app roles determine fixed startup phases.
 - [x] systemd control steps: subscribe, start transient units, await each start job, adopt units, stop, release references, reset the slice.
 - [x] A systemd running handle on the shared run sequence; a failed unit is recorded, and only a stop request ends the run.
 - [x] Placement and memlock become unit properties; the report records each unit's result, exit status and accounting.
@@ -185,7 +188,7 @@ Scope agreed 2026-11-07: the library and native tests; Console support is Milest
 - [ ] Dora coordinator and daemon units, graph registration and shared-memory ownership. Moved to Milestone 4, where Console resolves Dora's plan.
 
 **Validation**
-- [x] Native tests: groups start in order and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
+- [x] Native tests: system apps start before user apps and stop cleanly with an adopted unit; a failing unit is recorded while the run continues; placement and memlock reach the process; abandoned units block admission until explicit cleanup.
 - [x] Audit F1–F4: attempted starts remain reportable, peers start before readiness waits, native references are accepted, and cleanup errors propagate.
 - [x] Shutdown regressions: declared grace, plan fallback, infinite timeout preservation and optional exit evidence.
 - [x] Concurrent repositories with identical service names remain isolated during stop and explicit cleanup; a second run of the same repository is refused.
@@ -231,11 +234,11 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Dora under systemd: coordinator and daemon units, daemon readiness, graph registration and `dora down` through oneshot units.
 - [x] Generated units run in private roots with per-unit bind mounts.
 - [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
-- [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and a systemd unit file plus extra files. Native files carry every launcher detail. Console's config gains `binaries` and accepts `form: SYSTEMD`.
+- [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and optional external systemd units. Shipped systemd units are generated from common process settings. Common process and file settings live in pbtxt; native files supply backend-specific settings. Console's config gains `binaries` and accepts `form: SYSTEMD`.
 - [x] System app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
 - [x] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices: Dora, then system apps, then every `*.service` at the project root.
 - [ ] The native addon runs systemd plans; Console stops refusing `form: SYSTEMD` at startup. Review shows apps and profiles.
-- [ ] Dora's own manifest; today Dora is `dora` in the binaries directory.
+- [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 

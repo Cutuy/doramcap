@@ -4,20 +4,25 @@ graph: "flow.yml"
 config_target: "/config/recorder.pbtxt"
 output_targets: "/results"
 compose { files: "compose.yaml" service: "data-recorder" }
-systemd {
-  unit: "data-recorder.service"
-  files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }
-}
 variants {
   id: "cpu"
   label: "CPU topics (requires CPU monitoring)"
-  config: "recorder.pbtxt"
+  config: "data-recorder-cpu.pbtxt"
   recordings { id: "messages" path: "messages.mcap" }
 }
 variants {
   id: "faults"
   label: "Watchdog publications (requires watchdog)"
-  config: "faults.pbtxt"
+  config: "data-recorder-faults.pbtxt"
   graph: "faults.yml"
   recordings { id: "messages" path: "messages.mcap" }
 }
+process {
+  argv: "mcap-recorder"
+  argv: "--config"
+  argv: "/config/recorder.pbtxt"
+  memlock_bytes: 268435456
+  stop_signal: 2
+  stop_seconds: 15
+}
+files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }

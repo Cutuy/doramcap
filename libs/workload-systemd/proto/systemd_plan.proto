@@ -1,48 +1,18 @@
 syntax = "proto3";
 package doramcap.systemd_plan.v1;
 
-// systemd launch inputs of one run; the shared run inputs travel beside them.
+// Flat launch inputs; Rust starts Dora, system apps, then user apps.
 message SystemdPlan {
-  reserved 1;
-  // Started in order, each once the previous group is active; stopped in reverse.
-  repeated UnitGroup groups = 2;
-  // Optional Dora runtime, started before every group and stopped after them.
-  DoraUnits dora = 3;
-  // Absolute directory holding app executables; app units search it for ExecStart.
-  string binaries = 5;
-}
-
-// Dora coordinator and daemon as units; Dora CLI commands run as oneshot units.
-message DoraUnits {
-  // Absolute `dora` executable.
-  string executable = 1;
-  // Loopback ports; both are required.
-  uint32 coordinator_port = 2;
-  uint32 daemon_port = 3;
-  // Absolute dynamic-node graph registered as the run's dataflow; empty registers none.
-  string graph = 4;
-  // Absolute, existing private directory writable by `user`, holding Dora state and CLI output.
-  string runtime_directory = 5;
-  // Empty runs as the service manager's default user.
-  string user = 6;
-  uint64 memlock_bytes = 7;
-}
-
-// Units that start together.
-message UnitGroup {
-  // Transient units built from programs.
-  repeated Program programs = 1;
-  // Absolute paths to repository `.service` files, adopted unchanged.
-  repeated string unit_files = 2;
-  // After this group is active, wait for the run's recordings to become ready.
-  bool await_recordings = 3;
-  // System apps shipped as unit files: adopted unchanged, each in a private root with
-  // its binds and the plan's binaries on its executable search path.
+  string binaries = 1;
+  repeated Program programs = 2;
+  repeated string unit_files = 3;
   repeated AppUnit app_units = 4;
 }
 
 message AppUnit {
-  // Absolute unit file; its name without `.service` is the app ID.
+  // Manifest app ID, unique within the run: 1..40 of [a-z0-9-].
+  string id = 3;
+  // Absolute unit file, loaded under the app ID.
   string file = 1;
   repeated Bind binds = 2;
 }
@@ -66,6 +36,8 @@ message Program {
   int32 kill_signal = 8;
   // Host paths shown at other paths in the unit's own mount namespace.
   repeated Bind binds = 9;
+  // Per-app stop grace; zero uses RunPlan.stop_seconds.
+  uint64 stop_seconds = 10;
 }
 
 // One bind mount; the source must exist when the unit starts.

@@ -1,0 +1,91 @@
+//! Validation of app identities shared by all launch forms.
+use crate::launch::RunPlan;
+use std::collections::BTreeSet;
+
+/// Reject empty, duplicate or unknown app IDs and roles before launching resources.
+pub fn validate_apps<'a>(
+    run: &RunPlan,
+    apps: impl IntoIterator<Item = &'a str>,
+) -> Result<(), String> {
+    let mut known = BTreeSet::new();
+    for app in apps {
+        if app.is_empty() || !known.insert(app) {
+            return Err(format!("empty or duplicate app ID: {app:?}"));
+        }
+    }
+    for (role, apps) in [
+        ("Dora", &run.dora_apps),
+        ("system", &run.system_apps),
+        ("MCAP writer", &run.mcap_apps),
+    ] {
+        let mut seen = BTreeSet::new();
+        for app in apps {
+            if !known.contains(app.as_str()) || !seen.insert(app) {
+                return Err(format!("unknown or duplicate {role} app: {app:?}"));
+            }
+        }
+    }
+    if run
+        .dora_apps
+        .iter()
+        .any(|id| run.system_apps.contains(id) || run.mcap_apps.contains(id))
+    {
+        return Err("Dora apps cannot also be system apps or recording writers".into());
+    }
+    if !run.dataflow_file.is_empty()
+        && (run.dora_apps.is_empty() || !std::path::Path::new(&run.dataflow_file).is_absolute())
+    {
+        return Err("dataflow_file needs Dora apps and an absolute path".into());
+    }
+    Ok(())
+}
+
+/// Fixed startup phases; shutdown traverses them in reverse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    Dora,
+    System,
+    User,
+}
+
+/// Classify a validated app by its shared role.
+pub fn phase(run: &RunPlan, id: &str) -> Phase {
+    if run.dora_apps.iter().any(|app| app == id) {
+        Phase::Dora
+    } else if run.system_apps.iter().any(|app| app == id) {
+        Phase::System
+    } else {
+        Phase::User
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_roles_must_reference_unique_launch_inputs() {
+        // Arrange
+        let run = RunPlan {
+            system_apps: vec!["monitor".into()],
+            mcap_apps: vec!["monitor".into()],
+            ..Default::default()
+        };
+        // Act / Assert
+        assert!(validate_apps(&run, ["monitor", "user"]).is_ok());
+        assert!(validate_apps(&run, ["user"]).is_err());
+        assert!(validate_apps(&run, ["monitor", "monitor"]).is_err());
+        assert!(validate_apps(&run, ["monitor", ""]).is_err());
+        for writer in [false, true] {
+            // Arrange
+            let mut duplicate = run.clone();
+            if writer {
+                duplicate.mcap_apps.push("monitor".into());
+            } else {
+                duplicate.system_apps.push("monitor".into());
+            }
+            // Act / Assert
+            assert!(validate_apps(&duplicate, ["monitor", "user"]).is_err());
+        }
+    }
+}

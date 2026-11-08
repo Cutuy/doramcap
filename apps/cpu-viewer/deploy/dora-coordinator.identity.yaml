@@ -1,0 +1,3 @@
+services:
+  dora-coordinator:
+    user: "${CPU_VIEWER_UID}:${CPU_VIEWER_GID}"

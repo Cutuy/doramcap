@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="450" viewBox="0 0 960 450" role="img" aria-labelledby="title desc">
 <title id="title">systemd mode</title>
-<desc id="desc">Each run owns one slice. Dora runtime units start first, then system app units, then the repo's adopted user units. Stop runs in reverse, then the slice stops.</desc>
+<desc id="desc">Rust controls fixed startup phases over D-Bus. Each repository owns a slice. Dora app units start first, then system app units, then the repo's adopted user units. Stop runs in reverse, then the slice stops.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="450" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
 <text x="480" y="34" font-size="22" font-weight="600">systemd mode: one owned slice per run</text>
 <rect x="40" y="56" width="880" height="320" rx="12" fill="#eef4f8" stroke="#8ca6b8"/>
-<text x="60" y="82" font-size="16" font-weight="600" text-anchor="start">doramcap-RUN.slice</text>
-<text x="60" y="102" font-size="13" text-anchor="start">started, inspected and stopped over D-Bus</text>
+<text x="60" y="82" font-size="16" font-weight="600" text-anchor="start">doramcap-REPOSITORY.slice</text>
+<text x="60" y="102" font-size="13" text-anchor="start">Rust workflow starts, inspects and stops units over D-Bus</text>
 <g fill="#dbeaf2" stroke="#8ca6b8"><rect x="60" y="118" width="260" height="240" rx="8"/><rect x="350" y="118" width="260" height="240" rx="8"/></g>
 <rect x="640" y="118" width="260" height="240" rx="8" fill="#fcebdc" stroke="#bc906b"/>
-<text x="190" y="144" font-size="16" font-weight="600">1 · Dora runtime</text><text x="190" y="164" font-size="13">transient units from manifest</text>
-<text x="480" y="144" font-size="16" font-weight="600">2 · System apps</text><text x="480" y="164" font-size="13">transient units from manifests</text>
+<text x="190" y="144" font-size="16" font-weight="600">1 · Dora apps</text><text x="190" y="164" font-size="13">ordinary programs / unit files</text>
+<text x="480" y="144" font-size="16" font-weight="600">2 · System apps</text><text x="480" y="164" font-size="13">app unit files with binds</text>
 <text x="770" y="144" font-size="16" font-weight="600">3 · User apps</text><text x="770" y="164" font-size="13">repo units, adopted</text>
 <g fill="#f7fafc" stroke="#a9b4bf">
 <rect x="80" y="182" width="220" height="38" rx="6"/><rect x="80" y="230" width="220" height="38" rx="6"/>
@@ -22,8 +22,8 @@
 <text x="480" y="206">cpu-monitor</text><text x="480" y="254">fault-watchdog</text><text x="480" y="302">live-bridge</text>
 <text x="770" y="206">perception</text><text x="770" y="254">planner</text></g>
 <text x="190" y="304" font-size="13">then register graph</text>
-<text x="480" y="342" font-size="13">gate: ready + recordings stable</text>
+<text x="480" y="342" font-size="13">gate: units active + recordings ready</text>
 <g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)"><path d="M320 238 H346"/><path d="M610 238 H636"/></g>
 <text x="480" y="408" font-size="15">Start 1 → 3 · stop 3 → 1 · stop the slice last</text>
-<text x="480" y="432" font-size="13" fill="#4a5d6e">Ownership record: slice, units, /dev/shm segments</text>
+<text x="480" y="432" font-size="13" fill="#4a5d6e">Ownership record: slice · units · runtime files</text>
 </g></svg>

@@ -24,12 +24,19 @@ message RunPlan {
   string repository_root = 2;
   // Absolute, new artifact directory; its parent must already exist.
   string artifacts = 3;
-  reserved 4;
-  repeated Recording recordings = 5;
+  repeated Recording recordings = 4;
   // Positive startup and readiness budget in seconds.
-  uint64 readiness_seconds = 6;
+  uint64 readiness_seconds = 5;
   // Stop grace period in seconds for apps declaring none.
-  uint64 stop_seconds = 7;
+  uint64 stop_seconds = 6;
+  // App IDs started before user apps and stopped after them.
+  repeated string system_apps = 7;
+  // App IDs whose services write MCAP through io_uring.
+  repeated string mcap_apps = 8;
+  // App IDs launched in the first phase, before system and user apps.
+  repeated string dora_apps = 9;
+  // Absolute path to the merged native Dora dataflow file; empty registers none.
+  string dataflow_file = 10;
 }
 
 // Writers and form-owned evidence after every app stopped.
@@ -53,8 +60,8 @@ message CleanupRecord {
   bool verified = 1;
 }
 
-// Launch facts of one app, shipped beside it. Paths are relative to this file's
-// directory and must stay beneath it.
+// Launch facts of one app, shipped beside it. File sources resolve relative to
+// this file's directory and must stay beneath it.
 message AppManifest {
   string id = 1;
   string label = 2;
@@ -70,9 +77,27 @@ message AppManifest {
   // Where the run's artifact directory appears in the app's own view.
   repeated string output_targets = 8;
   SystemdLaunch systemd = 9;
+  // Common process settings applied by every backend.
+  AppProcess process = 10;
+  // App-owned files, read-only at the same targets in every backend.
+  repeated FileMount files = 11;
 }
 
-// How Compose launches the app. The Compose files carry every Compose detail.
+// Backend-independent process configuration. Zero limits/grace use deployment defaults.
+message AppProcess {
+  // Executable basename followed by arguments; the backend resolves its installed path.
+  repeated string argv = 1;
+  // Absolute path in the app's view; empty keeps the backend default.
+  string working_directory = 2;
+  uint64 memlock_bytes = 3;
+  // Decimal Linux cpulist; empty keeps deployment placement.
+  string cpus = 4;
+  // Signal number; zero selects SIGTERM.
+  int32 stop_signal = 5;
+  uint64 stop_seconds = 6;
+}
+
+// Compose-specific settings; common process settings come from AppManifest.
 message ComposeLaunch {
   // Compose files in merge order.
   repeated string files = 1;
@@ -80,8 +105,7 @@ message ComposeLaunch {
   string service = 2;
 }
 
-// How systemd launches the app. The unit file carries every systemd detail; its
-// ExecStart names an executable in the deployment's binaries directory.
+// Optional native systemd launch for apps without common process settings.
 message SystemdLaunch {
   // Unit file, adopted unchanged.
   string unit = 1;
@@ -90,7 +114,9 @@ message SystemdLaunch {
 }
 
 message FileMount {
+  // Relative file source beneath the manifest directory.
   string source = 1;
+  // Absolute path in the app process view.
   string target = 2;
 }
 

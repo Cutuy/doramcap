@@ -52,44 +52,36 @@ fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
     );
 }
 
-fn runtime() -> crate::workflows::dora::DoraRuntime {
-    crate::workflows::dora::DoraRuntime {
-        image: "dora:test".into(),
-        coordinator_port: 54001,
-        daemon_port: 54002,
-        runtime_directory: "/run/experiment".into(),
-        zenoh_overlay: "/run/experiment/zenoh.json5".into(),
-        shm_bytes: 134217728,
-        memlock_bytes: 67108864,
-        participant_uid: Some(1000),
-        participant_gid: Some(1000),
-        ..Default::default()
-    }
+fn runtime() -> crate::workflows::dora::DoraApps {
+    crate::workflows::dora::fixture("/run/experiment", [54001, 54002])
 }
 
-#[test]
-fn coordinator_mounts_the_frozen_graph_beside_writable_session_output() {
+#[tokio::test]
+async fn coordinator_mounts_the_frozen_graph_beside_writable_session_output() {
     // Arrange
-    let mut settings = runtime();
-    settings.graph = "/private/evidence/graph.yml".into();
-
+    let directory = tempfile::tempdir().unwrap();
+    let source = directory.path().join("source.yml");
+    tokio::fs::write(&source, "nodes: [{id: worker, path: dynamic}]")
+        .await
+        .unwrap();
+    let mut apps = runtime();
+    let original = apps.coordinator().unwrap().1.clone();
     // Act
-    let services = crate::workflows::dora::services(&settings);
-    let coordinator = &services["dora-coordinator"];
-
+    crate::workflows::shared_dora::prepare(&mut apps, source.to_str().unwrap(), directory.path())
+        .await
+        .unwrap();
     // Assert
-    assert_eq!(coordinator.user, "1000:1000");
-    assert_eq!(coordinator.working_dir, "/run/experiment");
-    assert!(coordinator.volumes.iter().any(|mount| {
-        mount.source == "/run/experiment"
-            && mount.target == "/run/experiment"
-            && mount.read_only != Some(true)
-    }));
-    assert!(coordinator.volumes.iter().any(|mount| {
-        mount.source == "/private/evidence/graph.yml"
-            && mount.target == "/run/experiment/graph.yml"
-            && mount.read_only == Some(true)
-    }));
+    let coordinator = apps.coordinator().unwrap().1;
+    assert_eq!(coordinator["user"], original["user"]);
+    assert_eq!(coordinator["working_dir"], original["working_dir"]);
+    assert_eq!(coordinator["volumes"][0], original["volumes"][0]);
+    assert!(
+        coordinator["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mount| mount["target"] == "/runtime/dataflow.yml" && mount["read_only"] == true)
+    );
 }
 
 fn app(key: &str) -> ComposeProject {
@@ -105,7 +97,8 @@ fn request() -> ComposeRun {
         repository_root: "/tmp".into(),
         system_apps: vec![app("system")],
         projects: vec![app("adopted")],
-        dora: runtime(),
+        dora_apps: vec![],
+        dataflow_file: String::new(),
         recordings: vec![],
         mcap_writers: Default::default(),
         readiness_seconds: 60,
@@ -125,7 +118,7 @@ fn app_input_preserves_source_settings_and_rejects_a_conflicting_runtime() {
     let original = serde_json::to_value(&source).unwrap();
 
     // Act
-    let input = app_input(&source, &runtime()).unwrap();
+    let input = app_input(&source, "/run/experiment").unwrap();
 
     // Assert
     assert_eq!(input.key, "experiment");
@@ -144,12 +137,12 @@ fn app_input_preserves_source_settings_and_rejects_a_conflicting_runtime() {
     source
         .environment
         .insert("DORAMCAP_DORA_RUNTIME_DIR".into(), "/run/experiment".into());
-    assert!(app_input(&source, &runtime()).is_ok());
+    assert!(app_input(&source, "/run/experiment").is_ok());
     source
         .environment
         .insert("DORAMCAP_DORA_RUNTIME_DIR".into(), "/other".into());
     assert!(
-        app_input(&source, &runtime())
+        app_input(&source, "/run/experiment")
             .unwrap_err()
             .to_string()
             .contains("conflicting Dora interpolation")
@@ -211,14 +204,25 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
     // Arrange
     let mut model: Value =
         serde_json::from_str(include_str!("fixtures/dora-wiring.input.json")).unwrap();
-    let expected: Value =
-        serde_json::from_str(include_str!("fixtures/dora-wiring.expected.json")).unwrap();
-
+    let dora = runtime();
+    for (name, service) in &dora.services {
+        model["services"][name] = service.clone();
+    }
+    let original = model.clone();
     // Act
-    let warnings = configure_dora(&mut model, &runtime(), "experiment-owner".into()).unwrap();
-
+    configure_dora(&mut model, &dora, "experiment-owner".into()).unwrap();
     // Assert
-    assert_eq!(json!({"model":model,"warnings":warnings}), expected);
+    for (name, app) in original["services"].as_object().unwrap() {
+        assert_eq!(model["services"][name]["network_mode"], app["network_mode"]);
+        assert_eq!(model["services"][name]["ulimits"], app["ulimits"]);
+        if !dora.services.contains_key(name) {
+            assert_eq!(model["services"][name]["ipc"], "service:dora-daemon");
+            assert_eq!(
+                model["services"][name]["environment"][dora_app::environment::DAEMON_PORT],
+                "54002"
+            );
+        }
+    }
 }
 
 #[test]
@@ -259,7 +263,7 @@ fn stop_grace_refuses_periods_out_of_range_or_unreadable() {
 
 #[test]
 fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
-    for target in ["/", "/dev", "/dev/shm", "/run/experiment/zenoh.json5"] {
+    for target in ["/", "/dev", "/dev/shm", "/config/zenoh.json5"] {
         // Arrange
         let mut model = json!({"services":{"app":{"volumes":[{"type":"bind","source":"/data","target":target}]}}});
 
@@ -274,11 +278,8 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
                 .contains("app mount overrides")
         );
     }
-    for part in [
-        json!({"app":{"labels":{"io.doramcap.experiment-owner":"true"}}}),
-        json!({"dora-daemon":{}}),
-        json!({"dora-coordinator":{}}),
-    ] {
+    {
+        let part = json!({"app":{"labels":{"io.doramcap.experiment-owner":"true"}}});
         // Arrange
         let mut model = json!({"services":part});
 
@@ -294,10 +295,7 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
 fn graph_bindings_require_matching_services_and_host_networking() {
     // Arrange
     let graph = crate::workflows::shared_dora::graph(
-        &crate::workflows::dora::DoraRuntime {
-            graph: "/flow.yml".into(),
-            ..runtime()
-        },
+        "/flow.yml",
         b"nodes:\n  - id: monitor\n    path: dynamic\n",
     )
     .unwrap();

@@ -1,0 +1,5 @@
+services:
+  dora-coordinator:
+    image: doramcap/dora:local
+    network_mode: host
+    user: "0:0"

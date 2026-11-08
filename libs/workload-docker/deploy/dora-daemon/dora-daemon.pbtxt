@@ -1,0 +1,18 @@
+id: "dora-daemon"
+label: "Dora daemon"
+compose { files: "compose.yaml" service: "dora-daemon" }
+output_targets: "/runtime"
+process {
+  argv: "dora"
+  argv: "daemon"
+  argv: "--coordinator-port"
+  argv: "0"
+  argv: "--local-listen-port"
+  argv: "0"
+  argv: "--zenoh-config-overlay"
+  argv: "/config/zenoh.json5"
+  working_directory: "/runtime"
+  memlock_bytes: 67108864
+  stop_signal: 2
+}
+files { source: "zenoh.json5" target: "/config/zenoh.json5" }

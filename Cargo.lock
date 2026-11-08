@@ -6474,6 +6474,7 @@ dependencies = [
 name = "workload-systemd"
 version = "0.1.0"
 dependencies = [
+ "dora-app",
  "futures-util",
  "hex",
  "orchestrator",

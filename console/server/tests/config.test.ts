@@ -49,7 +49,13 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
   assert.equal(selectApps(apps, []).length, 0);
   assert.throws(() => selectApps(apps, ['missing']));
   assert.throws(() => selectApps(apps, ['recorder', 'recorder']));
-  assert.equal(appOptions(apps, []).filter((app) => app.required && app.selected).length, 2);
+  assert.equal(appOptions(apps, []).filter((app) => app.required && app.selected).length, 0);
+  const communication = [{ id: 'coordinator' }, { id: 'daemon' }];
+  assert.deepEqual(
+    appOptions([...communication, ...apps], [], communication.map((app) => app.id))
+      .filter((app) => app.required && app.selected).map((app) => app.id),
+    ['coordinator', 'daemon'],
+  );
   assert.throws(() => validateApps([{ ...apps[0], recordings: [{ id: 'messages', path: '../outside' }] }]));
   const relay = { ...apps[0], recordings: [], configMount: { service: 'recorder', target: '/config/bridge.pbtxt' }, liveRelay: {} };
   validateApps([relay]);

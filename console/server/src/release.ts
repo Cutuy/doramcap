@@ -40,13 +40,8 @@ export function releaseConfig(template: Config, project: string, systemApps: str
   config.publicOrigin = 'http://127.0.0.1:43187';
   config.accessSecretFile = '';
   config.downloadMissingImages = true;
-  if (config.dora?.graph) config.dora.graph = input(project, config.dora.graph);
-  if (config.dora) {
-    config.dora.runtimeDirectory = '';
-    config.dora.zenohOverlay = '';
-    config.dora.graphSha256 = '';
-  }
-  for (const app of config.systemApps) {
+  if (config.dataflowFile) config.dataflowFile = input(project, config.dataflowFile);
+  for (const app of config.apps) {
     // Manifest apps resolve their own paths beside the manifest.
     if (app.manifest) {
       app.manifest = input(systemApps, app.manifest);

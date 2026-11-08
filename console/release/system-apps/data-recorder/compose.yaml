@@ -1,16 +1,12 @@
 services:
   data-recorder:
     image: doramcap/mcap-recorder:local
-    entrypoint: [/usr/local/bin/mcap-recorder]
-    command: [--config, /config/recorder.pbtxt]
     network_mode: host
     init: true
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     tmpfs: [/tmp]
-    stop_signal: SIGINT
-    stop_grace_period: 15s
     environment:
       DORAMCAP_READY_FILE: /tmp/data-recorder.ready
     healthcheck:
@@ -18,7 +14,3 @@ services:
       interval: 200ms
       timeout: 1s
       retries: 150
-    volumes:
-      - {type: bind, source: ./recorder.pbtxt, target: /config/recorder.pbtxt, read_only: true}
-      # console/scripts/release-images.mts copies this file in from libs/telemetry/protocol/proto.
-      - {type: bind, source: ./telemetry_descriptor.bin, target: /config/telemetry_descriptor.bin, read_only: true}

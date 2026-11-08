@@ -11,7 +11,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.compose_plan.v1",
             "::workload_docker::workflows::recorded_compose",
         )
-        .extern_path(".doramcap.dora.v1", "::workload_docker::workflows::dora")
         .extern_path(".doramcap.workflow.v1", "::workflow_protocol")
         .extern_path(".doramcap.system_config.v1", "::system_config")
         .compile_protos(

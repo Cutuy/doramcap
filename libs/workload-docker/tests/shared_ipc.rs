@@ -189,6 +189,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             services: vec![],
             completed_services: vec![],
             remove_volumes: true,
+            manifest: String::new(),
         }),
     })
     .await
@@ -436,6 +437,7 @@ async fn one_project_qualifies_zenoh_shm_and_adopted_ipc() {
             services: vec![],
             completed_services: vec![],
             remove_volumes: true,
+            manifest: String::new(),
         }),
     })
     .await

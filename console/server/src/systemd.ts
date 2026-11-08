@@ -1,11 +1,9 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { runPlan } from './run-plan.js';
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { availablePort } from './launch.js';
-import { execution, launch, systemd, type Config } from './native.js';
-import { outputs, type SelectedApp } from './system-apps.js';
+import { execution, systemd, type Config } from './native.js';
+import { type SelectedApp } from './system-apps.js';
 
-/** Dora's executable inside the binaries directory. */
-const DORA_EXECUTABLE = 'dora';
 const UNIT_SUFFIX = '.service';
 
 export type RunRequest = InstanceType<typeof execution.RunRequest>;
@@ -32,53 +30,33 @@ export interface SystemdRun {
   relaySettings?: string;
 }
 
-/** Two distinct free loopback ports for the Dora coordinator and daemon. */
-async function doraPorts() {
-  const coordinator = await availablePort();
-  let daemon = await availablePort();
-  while (daemon === coordinator) daemon = await availablePort();
-  return { coordinator, daemon };
-}
-
-/**
- * Build the run request with a systemd backend: Dora, then the selected system apps'
- * unit files, then the project's units. Creates the private Dora runtime directory.
- * Errors: an app without a unit file, or a config target with no config to show there.
+/** Build programs from common app settings and adopt separately supplied native units.
+ * Errors: missing launch inputs or a config target without a selected config.
  */
 export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunRequest> {
   const binaries = config.binaries!;
-  const runtime = join(run.workspace, `${run.stage}-dora`);
-  await mkdir(runtime, { recursive: true, mode: 0o700 });
-  const appUnits = run.apps.map((app) => appUnit(app, run));
+  const apps = [...config.apps.filter((app) => config.doraApps.includes(app.id!)), ...run.apps];
+  const programs = apps.filter((app) => app.process).map((app) => {
+    if (app.systemd?.unit) throw new Error(`${app.id}: common process settings cannot be combined with a native unit`);
+    const process = app.process!;
+    if (!process.argv?.length || !/^[^/\\]+$/.test(process.argv[0]) || ['.', '..'].includes(process.argv[0]))
+      throw new Error(`${app.id}: process needs an executable basename`);
+    return systemd.Program.create({
+      id: app.id!, argv: [join(binaries, process.argv[0]), ...process.argv.slice(1)],
+      workingDirectory: process.workingDirectory, memlockBytes: process.memlockBytes,
+      cpus: process.cpus, killSignal: process.stopSignal, stopSeconds: process.stopSeconds,
+      binds: appBinds(app, run, config.doraApps.includes(app.id!)),
+    });
+  });
+  const appUnits = apps.filter((app) => !app.process).map((app) => appUnit(app, run));
   const units = await projectUnits(run.project);
-  const recordings = outputs(run.apps).map((output) => ({
-    recording: join(run.artifacts, output.path!),
-    stream: output.stream ? join(run.artifacts, output.stream) : '',
-  }));
-  const ports = await doraPorts();
   return execution.RunRequest.create({
-    run: launch.RunPlan.create({
-      id: run.id,
-      repositoryRoot: run.project,
-      artifacts: run.artifacts,
-      recordings,
-      readinessSeconds: config.runtime!.readinessSeconds!,
-      stopSeconds: config.runtime!.stopSeconds!,
-    }),
+    run: runPlan(config, run, run.graph),
     systemd: systemd.SystemdPlan.create({
-      dora: {
-        executable: join(binaries, DORA_EXECUTABLE),
-        coordinatorPort: ports.coordinator,
-        daemonPort: ports.daemon,
-        graph: run.graph,
-        runtimeDirectory: runtime,
-        memlockBytes: config.dora?.memlockBytes ?? 0,
-      },
       binaries,
-      groups: [
-        ...(appUnits.length ? [{ appUnits, awaitRecordings: recordings.length > 0 }] : []),
-        ...(units.length ? [{ unitFiles: units }] : []),
-      ],
+      appUnits,
+      programs,
+      unitFiles: units,
     }),
   });
 }
@@ -86,15 +64,17 @@ export async function systemdPlan(config: Config, run: SystemdRun): Promise<RunR
 /** One system app's unit file, with its chosen config and outputs bound at its targets. */
 function appUnit(app: SelectedApp, run: SystemdRun) {
   if (!app.systemd?.unit) throw new Error(`${app.id}: SYSTEMD needs a unit file`);
+  return { id: app.id!, file: app.systemd.unit, binds: appBinds(app, run) };
+}
+
+/** Bind selected config, outputs and app files at the same targets as Compose. */
+function appBinds(app: SelectedApp, run: SystemdRun, dora = false) {
   const target = app.configMount?.target;
   const config = app.profile?.config ?? (app.liveRelay ? run.relaySettings : undefined);
   if (target && !config) throw new Error(`${app.id}: nothing to show at ${target}`);
-  return {
-    file: app.systemd.unit,
-    binds: [
-      ...(target ? [{ source: config, target, readOnly: true }] : []),
-      ...(app.outputMounts ?? []).map((mount) => ({ source: run.artifacts, target: mount.target, readOnly: false })),
-      ...(app.systemd.files ?? []).map((file) => ({ source: file.source, target: file.target, readOnly: true })),
-    ],
-  };
+  return [
+    ...(target ? [{ source: config, target, readOnly: true }] : []),
+    ...(app.outputMounts ?? []).map((mount) => ({ source: dora ? join(run.artifacts, 'dora/runtime') : run.artifacts, target: mount.target, readOnly: false })),
+    ...[...(app.files ?? []), ...(app.systemd?.files ?? [])].map((file) => ({ source: file.source, target: file.target, readOnly: true })),
+  ];
 }

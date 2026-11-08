@@ -26,6 +26,8 @@ message ComposeProject {
   // Delete experiment-owned named volumes at teardown. Default retains them
   // as isolated artifacts; external volumes are always retained.
   bool remove_volumes = 9;
+  // AppManifest pbtxt supplying common process and file settings; relative to directory.
+  string manifest = 10;
 }
 
 // Frozen execution identity; verify the private manifest digest before launching.

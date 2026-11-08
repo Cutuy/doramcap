@@ -9,7 +9,7 @@ subscribes to the outputs that selected apps declare and serves them to Console.
 Console relays opaque frames to authorized browsers; the browser decodes each
 stream with the producer's generated protobuf types.
 
-- **Selection:** the bridge is a `system_apps` entry marked `live_relay`, selected by default.
+- **Selection:** the bridge is an `apps` entry marked `live_relay`, selected by default.
   Deselecting it removes every live subscriber for the run.
 - **Producers:** apps declare `live_outputs` (Dora `node/output` plus a payload kind).
   Console generates the bridge's graph node and `BridgeConfig` from the selection.

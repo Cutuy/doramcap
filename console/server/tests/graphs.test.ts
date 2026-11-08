@@ -70,8 +70,8 @@ test('user-messages example merges its producer with the profile recorder', asyn
   const example = join(consoleRoot, 'examples/user-messages');
   const template = capabilities.parseConfig(await readFile(join(example, 'console.pbtxt'), 'utf8'));
   const config = releaseConfig(template, example, consoleRoot, '/state');
-  validateApps(config.systemApps);
-  const graphs = new Graphs(capabilities, config.systemApps, config.dora!.graph!);
+  validateApps(config.apps);
+  const graphs = new Graphs(capabilities, config.apps, config.dataflowFile!);
   // Act
   const graph = JSON.parse((await graphs.build(['data-recorder'], [], {'data-recorder':'user-messages'})).toString());
   // Assert

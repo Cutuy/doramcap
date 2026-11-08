@@ -1,10 +1,14 @@
 # Records a user node's messages: Console merges dora.yml with the chosen profile's flow.yml.
-# dora.graph is relative to this directory; system app paths are relative to console/.
-dora { image: "doramcap/dora:local" graph: "dora.yml" }
-system_apps {
+# dataflow_file is relative to this directory; app paths are relative to console/.
+dataflow_file: "dora.yml"
+dora_apps: "dora-coordinator"
+dora_apps: "dora-daemon"
+apps { id: "dora-coordinator" input { directory: "release/system-apps/dora-coordinator" files: "compose.yaml" manifest: "dora-coordinator.pbtxt" } }
+apps { id: "dora-daemon" input { directory: "release/system-apps/dora-daemon" files: "compose.yaml" manifest: "dora-daemon.pbtxt" } }
+apps {
   id: "data-recorder"
   label: "Data recorder"
-  input { directory: "release/system-apps/data-recorder" files: "compose.yaml" }
+  input { directory: "release/system-apps/data-recorder" files: "compose.yaml" manifest: "data-recorder.pbtxt" }
   output_mounts { service: "data-recorder" target: "/results" }
   config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
   launch_profiles {

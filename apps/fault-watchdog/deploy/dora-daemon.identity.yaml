@@ -1,0 +1,3 @@
+services:
+  dora-daemon:
+    user: "${FAULT_WATCHDOG_UID}:${FAULT_WATCHDOG_GID}"

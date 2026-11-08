@@ -1,0 +1,9 @@
+[Unit]
+Description=Dora coordinator
+[Service]
+Type=exec
+ExecStart=dora coordinator --port 6013 --interface 127.0.0.1 --store memory
+WorkingDirectory=/runtime
+Environment=HOME=/runtime DORA_DAEMON_LOCAL_LISTEN_PORT=6014
+KillSignal=SIGINT
+LimitMEMLOCK=67108864

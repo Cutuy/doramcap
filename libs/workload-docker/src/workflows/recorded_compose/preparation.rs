@@ -28,8 +28,9 @@ pub struct PreparedRun {
     pub plan: ResolvedComposeProject,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
+    pub mcap_services: Vec<String>,
     pub baseline: FilesystemBaseline,
-    pub dora: super::super::dora::DoraRuntime,
+    pub dora: super::super::dora::DoraApps,
     pub snapshot: ConfigurationSnapshot,
 }
 impl PreparedRun {
@@ -91,7 +92,8 @@ pub struct ResolvedRun {
     pub plan: ResolvedComposeProject,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
-    pub dora: super::super::dora::DoraRuntime,
+    pub mcap_services: Vec<String>,
+    pub dora: super::super::dora::DoraApps,
     pub snapshot: ConfigurationSnapshot,
 }
 
@@ -99,36 +101,59 @@ pub struct ResolvedRun {
 /// `spec.artifacts` must name a new private directory beneath an existing parent.
 /// Callers compare the snapshot with fresh preparation in the runner's preflight callback.
 pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
-    // Resolve runtime settings and validate the request.
-    let mut runtime = spec.dora.clone();
-    super::super::shared_dora::resolve(&mut runtime, &spec.artifacts)?;
+    // Validate the request before creating run artifacts.
     model::validate(&spec)?;
     crate::evidence::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
-    if !spec.mcap_writers.services.is_empty() {
+    if !spec.mcap_writers.services.is_empty() || !spec.mcap_writers.apps.is_empty() {
         validate_recording_host(&spec.mcap_writers.directories, &spec.id).await?;
     }
     // Freeze Dora inputs and merge apps while recording their startup stages.
-    let dora = super::super::shared_dora::prepare(&runtime, &artifacts).await?;
+    let runtime_directory = artifacts.join("dora/runtime");
+    tokio::fs::create_dir_all(&runtime_directory).await?;
+    let runtime_directory = runtime_directory.to_string_lossy().into_owned();
+    let mut dora = super::super::dora::DoraApps::default();
     let mut model = json!({"services":{}});
+    let mut dora_services = Vec::new();
     let mut system_services = Vec::new();
     let mut user_services = Vec::new();
     let mut diagnostics = Vec::new();
+    let mut mcap_services = spec.mcap_writers.services.clone();
     for (apps, services) in [
+        (&spec.dora_apps, &mut dora_services),
         (&spec.system_apps, &mut system_services),
         (&spec.projects, &mut user_services),
     ] {
         for app in apps {
-            let normalized = adapter
+            let mut normalized = adapter
                 .configuration()
                 .normalize(
                     &spec.id,
-                    &model::app_input(app, &dora)?,
+                    &model::app_input(app, &runtime_directory)?,
                     &crate::compose::adapter::project_name("experiment", &spec.repository_root),
                 )
                 .await?;
+            if spec.dora_apps.iter().any(|d| d.key == app.key)
+                && let Some(manifest) = &normalized.app
+            {
+                let name = &manifest.compose.as_ref().unwrap().service;
+                let service = &mut normalized.model["services"][name];
+                let volumes = service
+                    .as_object_mut()
+                    .ok_or_else(|| invalid("Dora app service is absent"))?
+                    .entry("volumes")
+                    .or_insert_with(|| json!([]));
+                for target in &manifest.output_targets {
+                    volumes.as_array_mut().ok_or_else(|| invalid("Dora volumes must be an array"))?
+                        .push(json!({"type":"bind","source":runtime_directory,"target":target,"bind":{"create_host_path":false}}));
+                }
+            }
+            let service_start = services.len();
             let warnings =
                 model::merge_app(&mut model, normalized.model, app.remove_volumes, services)?;
+            if spec.mcap_writers.apps.contains(&app.key) {
+                mcap_services.extend_from_slice(&services[service_start..]);
+            }
             private_write(
                     &artifacts.join(format!("{}.inputs.json", app.key)),
                     &serde_json::to_vec(
@@ -139,6 +164,15 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
             diagnostics.extend(warnings);
         }
     }
+    dora.services = dora_services
+        .iter()
+        .map(|name| (name.clone(), model["services"][name].clone()))
+        .collect();
+    super::super::shared_dora::resolve(&mut dora)?;
+    super::super::shared_dora::prepare(&mut dora, &spec.dataflow_file, &artifacts).await?;
+    for (name, service) in &dora.services {
+        model["services"][name] = service.clone();
+    }
     // Configure shared IPC, then validate graph bindings and startup dependencies.
     diagnostics.extend(model::configure_dora(
         &mut model,
@@ -146,21 +180,30 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         super::super::shared_dora::owner(&spec.repository_root),
     )?);
     model::configure_stop_grace(&mut model, spec.stop_seconds)?;
-    if !dora.graph.is_empty() {
+    if !dora.dataflow_file.is_empty() {
         let graph = super::super::shared_dora::graph(
-            &dora,
-            &crate::evidence::read_regular(Path::new(&dora.graph), MAX_GRAPH_BYTES).await?,
+            &dora.dataflow_file,
+            &crate::evidence::read_regular(Path::new(&dora.dataflow_file), MAX_GRAPH_BYTES).await?,
         )?;
         model::validate_graph(&model, &graph)?;
     }
+    model::validate_dependencies(
+        &model,
+        &dora_services,
+        &[system_services.clone(), user_services.clone()].concat(),
+    )?;
     model::validate_dependencies(&model, &system_services, &user_services)?;
     // Docker's default seccomp filter blocks the io_uring calls MCAP writers need.
-    model::configure_mcap_writers(&mut model, &spec.mcap_writers.services)?;
+    model::configure_mcap_writers(&mut model, &mcap_services)?;
     // Snapshot file inputs and resolve one project with pinned images.
     freeze_files(&mut model, &artifacts).await?;
     let manifest = artifacts.join("experiment.input.json");
     private_write(&manifest, &serde_json::to_vec(&model)?).await?;
-    let apps = spec.system_apps.iter().chain(&spec.projects);
+    let apps = spec
+        .dora_apps
+        .iter()
+        .chain(&spec.system_apps)
+        .chain(&spec.projects);
     let mut plan = adapter
         .configuration()
         .resolve(ResolveInput {
@@ -215,6 +258,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         plan,
         system_services,
         user_services,
+        mcap_services,
         dora,
         snapshot,
     })
@@ -299,6 +343,7 @@ impl PrepareRun {
             plan: resolved.plan,
             system_services: resolved.system_services,
             user_services: resolved.user_services,
+            mcap_services: resolved.mcap_services,
             dora: resolved.dora,
             snapshot: resolved.snapshot,
             baseline,

@@ -1,26 +1,17 @@
-//! Native Dora graph validation and immutable communication inputs.
-use super::dora::DoraRuntime;
+//! Dora preparation from ordinary native app inputs and a dataflow artifact.
+use super::dora::DoraApps;
 use crate::compose::{
     Result,
     adapter::{digest, private_write},
     error::invalid,
 };
 use dora_core::descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static};
+use serde_json::json;
 use std::path::Path;
 
-/// Largest Dora graph descriptor accepted from a source or frozen file.
 pub(crate) const MAX_GRAPH_BYTES: u64 = 2 * 1024 * 1024;
-/// Smallest shared-memory size granted to a Dora experiment.
-const MIN_SHM_BYTES: u64 = 128 * 1024 * 1024;
-/// Smallest locked-memory limit granted to a Dora experiment.
-const MIN_MEMLOCK_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const GRAPH_FILE: &str = "dataflow.yml";
 
-pub(crate) const COORDINATOR: &str = "dora-coordinator";
-pub(crate) const DAEMON: &str = "dora-daemon";
-pub(crate) const GRAPH_FILE: &str = "graph.yml";
-const OVERLAY: &[u8] = b"{transport:{shared_memory:{enabled:true}}}\n";
-
-/// Stable Docker reservation for one canonical repository.
 pub(crate) fn owner(repository: &Path) -> String {
     format!(
         "{}-dora",
@@ -28,65 +19,43 @@ pub(crate) fn owner(repository: &Path) -> String {
     )
 }
 
-/// Resolve local ports and private paths. No runtime resources are created.
-pub fn resolve(runtime: &mut DoraRuntime, artifacts: &Path) -> Result<()> {
-    if runtime.image.is_empty() {
-        runtime.image = "doramcap/dora:local".into();
+/// Resolve native zero-valued ports consistently across the two declared apps.
+pub fn resolve(apps: &mut DoraApps) -> Result<()> {
+    if !apps.enabled() {
+        return Ok(());
     }
-    let mut listeners = Vec::new();
-    for port in [&mut runtime.coordinator_port, &mut runtime.daemon_port] {
-        if *port == 0 {
-            let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
-            *port = listener.local_addr()?.port().into();
-            listeners.push(listener);
-        }
+    if apps.services.len() != 2 {
+        return Err(invalid(
+            "Dora needs exactly one coordinator and one daemon service",
+        ));
     }
-    if runtime.runtime_directory.is_empty() {
-        runtime.runtime_directory = artifacts
-            .join("dora/runtime")
-            .to_string_lossy()
-            .into_owned();
+    let coordinator = apps.coordinator()?.0.to_owned();
+    let daemon = apps.daemon()?.0.to_owned();
+    let mut coordinator_args = DoraApps::argv(&apps.services[&coordinator])?;
+    let mut daemon_args = DoraApps::argv(&apps.services[&daemon])?;
+    apps.automatic_ports =
+        workload_lifecycle::dora::resolve_ports(&mut coordinator_args, &mut daemon_args)
+            .map_err(invalid)?;
+    for (name, args) in [(&coordinator, coordinator_args), (&daemon, daemon_args)] {
+        let app = apps.services.get_mut(name).unwrap();
+        app["entrypoint"] = json!([args[0]]);
+        app["command"] = json!(args[1..]);
     }
-    runtime.zenoh_overlay = artifacts
-        .join("dora/zenoh.json5")
-        .to_string_lossy()
-        .into_owned();
-    runtime.shm_bytes = runtime.shm_bytes.max(MIN_SHM_BYTES);
-    runtime.memlock_bytes = runtime.memlock_bytes.max(MIN_MEMLOCK_BYTES);
-    // SAFETY: effective identity access has no side effects.
-    runtime
-        .participant_uid
-        .get_or_insert_with(|| unsafe { libc::geteuid() });
-    runtime
-        .participant_gid
-        .get_or_insert_with(|| unsafe { libc::getegid() });
-    validate_config(runtime)
-}
-
-pub fn validate_config(runtime: &DoraRuntime) -> Result<()> {
-    if runtime.coordinator_port == 0
-        || runtime.daemon_port == 0
-        || runtime.coordinator_port > 65535
-        || runtime.daemon_port > 65535
-        || runtime.coordinator_port == runtime.daemon_port
-    {
-        return Err(invalid("Dora ports must be distinct and in 1..65535"));
-    }
-    if !Path::new(&runtime.runtime_directory).is_absolute()
-        || (!runtime.graph.is_empty() && !Path::new(&runtime.graph).is_absolute())
-    {
-        return Err(invalid("Dora paths must be absolute"));
+    let port = apps.daemon_port()?.to_string();
+    for app in apps.services.values_mut() {
+        app["environment"][dora_app::environment::DAEMON_PORT] = port.clone().into();
     }
     Ok(())
 }
 
-/// Reject occupied endpoints before starting any experiment container.
-pub fn validate_endpoints(runtime: &DoraRuntime) -> Result<()> {
-    validate_config(runtime)?;
-    let mut held = Vec::new();
-    for port in [runtime.coordinator_port, runtime.daemon_port] {
-        held.push(
-            std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port as u16))
+pub fn validate_endpoints(apps: &DoraApps) -> Result<()> {
+    if !apps.enabled() {
+        return Ok(());
+    }
+    let mut listeners = Vec::new();
+    for port in [apps.coordinator_port()?, apps.daemon_port()?] {
+        listeners.push(
+            std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
                 .map_err(|e| invalid(format!("Dora endpoint {port} unavailable: {e}")))?,
         );
     }
@@ -94,11 +63,11 @@ pub fn validate_endpoints(runtime: &DoraRuntime) -> Result<()> {
 }
 
 /// Expand native modules and require externally launched nodes in the graph.
-pub fn graph(runtime: &DoraRuntime, bytes: &[u8]) -> Result<Descriptor> {
+pub fn graph(dataflow_file: &str, bytes: &[u8]) -> Result<Descriptor> {
     let graph = Descriptor::parse(bytes.to_vec())
         .map_err(|e| invalid(format!("invalid Dora graph: {e:#}")))?
         .expand(
-            Path::new(&runtime.graph)
+            Path::new(dataflow_file)
                 .parent()
                 .ok_or_else(|| invalid("graph parent missing"))?,
         )
@@ -120,22 +89,28 @@ pub fn graph(runtime: &DoraRuntime, bytes: &[u8]) -> Result<Descriptor> {
     Ok(graph)
 }
 
-/// Freeze the expanded graph and SHM settings into the private run directory.
-pub(crate) async fn prepare(runtime: &DoraRuntime, artifacts: &Path) -> Result<DoraRuntime> {
-    let directory = artifacts.join("dora");
-    crate::evidence::create_private_dir(&directory).await?;
-    if !Path::new(&runtime.runtime_directory).exists() {
-        crate::evidence::create_private_dir(Path::new(&runtime.runtime_directory)).await?;
+/// Freeze the dataflow and mount it into the coordinator's existing working directory.
+pub(crate) async fn prepare(
+    apps: &mut DoraApps,
+    dataflow_file: &str,
+    artifacts: &Path,
+) -> Result<()> {
+    if !apps.enabled() || dataflow_file.is_empty() {
+        return Ok(());
     }
-    let mut frozen = runtime.clone();
-    if !runtime.graph.is_empty() {
-        let bytes =
-            crate::evidence::read_regular(Path::new(&runtime.graph), MAX_GRAPH_BYTES).await?;
-        let bytes = serde_json::to_vec(&graph(runtime, &bytes)?)?;
-        frozen.graph = directory.join(GRAPH_FILE).to_string_lossy().into_owned();
-        frozen.graph_sha256 = digest(&bytes);
-        private_write(Path::new(&frozen.graph), &bytes).await?;
-    }
-    private_write(Path::new(&frozen.zenoh_overlay), OVERLAY).await?;
-    Ok(frozen)
+    let bytes = crate::evidence::read_regular(Path::new(dataflow_file), MAX_GRAPH_BYTES).await?;
+    let bytes = serde_json::to_vec(&graph(dataflow_file, &bytes)?)?;
+    apps.dataflow_file = artifacts.join(GRAPH_FILE).to_string_lossy().into_owned();
+    apps.dataflow_sha256 = digest(&bytes);
+    private_write(Path::new(&apps.dataflow_file), &bytes).await?;
+    let name = apps.coordinator()?.0.to_owned();
+    let target = Path::new(apps.directory()?)
+        .join(GRAPH_FILE)
+        .to_string_lossy()
+        .into_owned();
+    apps.services.get_mut(&name).unwrap()["volumes"]
+        .as_array_mut()
+        .ok_or_else(|| invalid("Dora coordinator needs native volumes"))?
+        .push(json!({"type":"bind","source":apps.dataflow_file,"target":target,"read_only":true}));
+    Ok(())
 }

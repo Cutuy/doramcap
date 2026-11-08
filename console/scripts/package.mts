@@ -52,9 +52,9 @@ const deployed = releaseConfig(config, playground, systemApps, '/state');
 const { discover } = await import(pathToFileURL(join(root, 'console/server/dist/system-apps.js')).href);
 const { imageReferences, requireMultiArch } = await import(pathToFileURL(join(root, 'console/server/dist/images.js')).href);
 const projects = await Promise.all([...projectDirectories].map(path => discover(path, ['*'])));
-projects.push(...deployed.systemApps.map((app: { input: unknown }) => app.input));
+projects.push(...deployed.apps.map((app: { input: unknown }) => app.input));
 if (!projects.length) throw new Error('Playground must contain a Compose project');
-const images = new Set<string>([config.dora?.image ?? '']);
+const images = new Set<string>();
 for (const project of projects) for (const image of await imageReferences(deployed.dockerSocket, project)) images.add(image);
 for (const image of images) {
   if (!/@sha256:[0-9a-f]{64}$/.test(image)) throw new Error(`Pin release image by digest: ${image || 'Dora'}`);

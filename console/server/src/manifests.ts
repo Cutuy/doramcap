@@ -21,19 +21,23 @@ export function expandManifests(config: Config) {
     throw new Error('form: only COMPOSE and SYSTEMD are supported');
   if (form === launch.Form.SYSTEMD && !isAbsolute(config.binaries ?? ''))
     throw new Error('binaries must be absolute for SYSTEMD');
-  for (const app of config.systemApps) {
+  for (const app of config.apps) {
     if (!app.manifest) continue;
     if (!isAbsolute(app.manifest)) throw new Error('system app manifest must be absolute');
     if (app.id || app.label || app.input || app.graph || app.configMount || app.systemd ||
-        app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length)
+        app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length || app.process || app.files?.length)
       throw new Error(`Launch fields belong in the manifest: ${app.manifest}`);
     const manifest = capabilities.parseManifest(readFileSync(app.manifest, 'utf8'));
+    if (manifest.process && manifest.systemd?.unit)
+      throw new Error(`${manifest.id}: common process settings cannot be combined with a native unit`);
     const directory = dirname(app.manifest);
     const files = manifest.compose?.files ?? [];
     files.forEach((file) => beside(directory, file));
     app.id = manifest.id;
     app.label = manifest.label;
-    app.input = compose.ComposeProject.create({ directory, files });
+    app.input = compose.ComposeProject.create({ directory, files, manifest: app.manifest });
+    app.process = manifest.process;
+    app.files = manifest.files.map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target }));
     app.graph = manifest.graph ? beside(directory, manifest.graph) : '';
     // Every launcher shows the config and outputs at the manifest's targets; Compose mounts
     // them into its named service.

@@ -6,9 +6,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::oneshot;
-use workload_systemd::{
-    Bind, DoraUnits, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner, UnitGroup,
-};
+use workload_systemd::{Bind, Program, RunPlan, SystemdPlan, SystemdRunReport, SystemdRunner};
 
 /// How long a scenario lets its units run after readiness.
 const OBSERVATION: Duration = Duration::from_secs(3);
@@ -28,8 +26,8 @@ impl Fixture {
         self.root.join("repo")
     }
     /// The shared run inputs and the systemd plan of run `run`.
-    fn plan(&self, run: &str, groups: Vec<UnitGroup>) -> (RunPlan, SystemdPlan) {
-        let shared = RunPlan {
+    fn plan(&self, run: &str, phases: Vec<SystemdPlan>) -> (RunPlan, SystemdPlan) {
+        let mut shared = RunPlan {
             id: run.into(),
             repository_root: self.repo().to_string_lossy().into(),
             artifacts: self.root.join(run).to_string_lossy().into(),
@@ -37,13 +35,31 @@ impl Fixture {
             stop_seconds: 5,
             ..Default::default()
         };
-        (
-            shared,
-            SystemdPlan {
-                groups,
-                ..Default::default()
-            },
-        )
+        let mut plan = SystemdPlan::default();
+        let has_system = phases.len() > 1;
+        for (index, phase) in phases.into_iter().enumerate() {
+            if has_system && index == 0 {
+                shared
+                    .system_apps
+                    .extend(phase.programs.iter().map(|app| app.id.clone()));
+                shared
+                    .system_apps
+                    .extend(phase.unit_files.iter().map(|file| {
+                        Path::new(file)
+                            .file_stem()
+                            .unwrap()
+                            .to_string_lossy()
+                            .into_owned()
+                    }));
+                shared
+                    .system_apps
+                    .extend(phase.app_units.iter().map(|app| app.id.clone()));
+            }
+            plan.programs.extend(phase.programs);
+            plan.unit_files.extend(phase.unit_files);
+            plan.app_units.extend(phase.app_units);
+        }
+        (shared, plan)
     }
 }
 impl Drop for Fixture {
@@ -107,26 +123,29 @@ fn active(pattern: &str) -> String {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn groups_start_in_order_and_stop_cleanly() {
+async fn system_apps_start_before_user_apps_and_stop_cleanly() {
     // Arrange
     let fixture = Fixture::new("order");
     let adopted = fixture.repo().join("adopted.service");
     std::fs::write(&adopted, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
     let marker = fixture.root.join("first-started");
+    let support = fixture.repo().join("first.service");
+    std::fs::write(
+        &support,
+        format!(
+            "[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/touch {}\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
     let plan = fixture.plan(
         "r1",
         vec![
-            UnitGroup {
-                programs: vec![sees(
-                    program(
-                        "first",
-                        &format!("touch {}; exec sleep 300", marker.display()),
-                    ),
-                    &fixture,
-                )],
+            SystemdPlan {
+                unit_files: vec![support.to_string_lossy().into()],
                 ..Default::default()
             },
-            UnitGroup {
+            SystemdPlan {
                 programs: vec![sees(
                     program(
                         "second",
@@ -169,7 +188,7 @@ async fn a_failing_unit_is_recorded_and_the_run_continues() {
     let fixture = Fixture::new("failing");
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![
                 program("steady", "exec sleep 300"),
                 program("fails", "sleep 1; exit 3"),
@@ -214,7 +233,7 @@ async fn placement_and_memlock_reach_the_process() {
     limited.memlock_bytes = 1024 * 1024;
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![limited],
             ..Default::default()
         }],
@@ -234,7 +253,7 @@ async fn abandoned_units_block_admission_until_explicit_cleanup() {
     let fixture = Fixture::new("dropped");
     let (run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![program("left", "exec sleep 300")],
             ..Default::default()
         }],
@@ -283,7 +302,7 @@ async fn timed_out_start_stops_and_reports_the_attempted_writer() {
     .unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -310,7 +329,7 @@ async fn timed_out_start_stops_and_reports_the_attempted_writer() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn same_group_starts_peers_before_waiting_for_readiness() {
+async fn user_apps_start_peers_before_waiting_for_readiness() {
     // Arrange
     let fixture = Fixture::new("group-peers");
     let marker = fixture.root.join("peer-started");
@@ -328,7 +347,7 @@ async fn same_group_starts_peers_before_waiting_for_readiness() {
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![first.display().to_string(), second.display().to_string()],
             ..Default::default()
         }],
@@ -353,7 +372,7 @@ async fn adopted_stop_wait_uses_the_service_grace() {
     .unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -379,7 +398,7 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -411,16 +430,23 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn adopted_native_references_are_accepted_unchanged() {
-    // Arrange: a native reference to an existing host target.
+    // Arrange: systemd owns references, environment files, pre-start commands and permissions.
+    use std::os::unix::fs::PermissionsExt;
     let fixture = Fixture::new("native-references");
     let file = fixture.repo().join("references.service");
-    let contents =
-        "[Unit]\nRequires=basic.target\nAfter=basic.target\n[Service]\nExecStart=/bin/sleep 300\n";
-    std::fs::write(&file, contents).unwrap();
+    let environment = fixture.root.join("native.env");
+    let marker = fixture.root.join("native-marker");
+    std::fs::write(&environment, "NATIVE_VALUE=unit-file-value\n").unwrap();
+    let contents = format!(
+        "[Unit]\nRequires=basic.target\nAfter=basic.target\n[Service]\nEnvironmentFile={}\nUMask=0077\nExecStartPre=/bin/sh -c 'printf %%s \"$$NATIVE_VALUE\" > {}'\nExecStart=/bin/sleep 300\n",
+        environment.display(),
+        marker.display(),
+    );
+    std::fs::write(&file, &contents).unwrap();
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -429,6 +455,11 @@ async fn adopted_native_references_are_accepted_unchanged() {
     // Assert
     assert!(report.successful(), "{report:#?}");
     assert_eq!(std::fs::read_to_string(file).unwrap(), contents);
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unit-file-value");
+    assert_eq!(
+        std::fs::metadata(marker).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -440,7 +471,7 @@ async fn adopted_service_without_grace_uses_the_plan_fallback() {
     std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
     let (mut run, plan) = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             unit_files: vec![file.display().to_string()],
             ..Default::default()
         }],
@@ -483,7 +514,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
         std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
         fixture.plan(
             id,
-            vec![UnitGroup {
+            vec![SystemdPlan {
                 unit_files: vec![file.display().to_string()],
                 ..Default::default()
             }],
@@ -578,21 +609,66 @@ async fn dora_runs_as_units_and_registers_the_graph() {
         "nodes:\n  - id: user\n    path: dynamic\n    outputs: [messages]\n",
     )
     .unwrap();
-    let ports: Vec<u32> = (0..2)
-        .map(|_| {
-            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-            listener.local_addr().unwrap().port().into()
-        })
-        .collect();
     let mut plan = fixture.plan("r1", vec![]);
-    plan.1.dora = Some(DoraUnits {
-        executable,
-        coordinator_port: ports[0],
-        daemon_port: ports[1],
-        graph: graph.to_string_lossy().into(),
-        runtime_directory: runtime.to_string_lossy().into(),
-        ..Default::default()
+    plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
+    plan.0.dataflow_file = graph.to_string_lossy().into();
+    let pool = prost_reflect::DescriptorPool::decode(
+        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
+    )
+    .unwrap();
+    for role in ["coordinator", "daemon"] {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../workload-docker/deploy")
+            .join(format!("dora-{role}"));
+        let text = std::fs::read_to_string(directory.join(format!("dora-{role}.pbtxt"))).unwrap();
+        let app: workload_lifecycle::launch::AppManifest =
+            prost_reflect::DynamicMessage::parse_text_format(
+                pool.get_message_by_name("doramcap.launch.v1.AppManifest")
+                    .unwrap(),
+                &text,
+            )
+            .unwrap()
+            .transcode_to()
+            .unwrap();
+        let process = app.process.unwrap();
+        process.validate().unwrap();
+        let mut argv = process.argv;
+        argv[0] = executable.clone();
+        let mut binds: Vec<_> = app
+            .files
+            .iter()
+            .map(|file| Bind {
+                source: directory.join(&file.source).to_string_lossy().into_owned(),
+                target: file.target.clone(),
+                read_only: true,
+            })
+            .collect();
+        binds.push(Bind {
+            source: runtime.to_string_lossy().into_owned(),
+            target: "/runtime".into(),
+            read_only: false,
+        });
+        plan.1.programs.push(Program {
+            id: app.id,
+            argv,
+            working_directory: process.working_directory,
+            memlock_bytes: process.memlock_bytes,
+            kill_signal: process.stop_signal,
+            stop_seconds: process.stop_seconds,
+            binds,
+            ..Default::default()
+        });
+    }
+    let mut participant = program(
+        "user",
+        r#"printf '%s\n' "$DORA_NODE_ID" "$DORA_DAEMON_LOCAL_LISTEN_PORT" "$DORA_ZENOH_CONFIG_OVERLAY" > /results/environment; test -s "$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300"#,
+    );
+    participant.binds.push(Bind {
+        source: runtime.to_string_lossy().into_owned(),
+        target: "/results".into(),
+        read_only: false,
     });
+    plan.1.programs.push(participant);
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
@@ -610,9 +686,91 @@ async fn dora_runs_as_units_and_registers_the_graph() {
             .any(|name| name.ends_with("-dora-daemon.service")),
         "{names:?}"
     );
-    assert!(runtime.join("graph.yml").is_file());
+    let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();
+    let values: Vec<_> = environment.lines().collect();
+    assert_eq!(values[0], "user");
+    assert!(values[1].parse::<u16>().unwrap() > 0);
+    assert_eq!(values[2], "/config/zenoh.json5");
+    assert!(runtime.join("dataflow.yml").is_file());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, the system service manager and DORAMCAP_TEST_DORA"]
+async fn dora_app_units_resolve_their_native_executable_and_register_the_graph() {
+    // Arrange: use external units with a bare executable and private runtime binds.
+    let fixture = Fixture::new("dora-apps");
+    let binaries = fixture.root.join("bin");
+    let runtime = fixture.root.join("runtime");
+    std::fs::create_dir(&binaries).unwrap();
+    std::fs::create_dir(&runtime).unwrap();
+    std::fs::copy(
+        std::env::var("DORAMCAP_TEST_DORA").unwrap(),
+        binaries.join("dora"),
+    )
+    .unwrap();
+    let graph = fixture.root.join("graph.yml");
+    std::fs::write(
+        &graph,
+        "nodes: [{id: user, path: dynamic, outputs: [messages]}]\n",
+    )
+    .unwrap();
+    let ports: Vec<_> = (0..2)
+        .map(|_| std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap())
+        .collect();
+    let coordinator = ports[0].local_addr().unwrap().port().to_string();
+    let daemon = ports[1].local_addr().unwrap().port().to_string();
+    let mut plan = fixture.plan("r1", vec![]);
+    plan.0.dora_apps = vec!["dora-coordinator".into(), "dora-daemon".into()];
+    plan.0.dataflow_file = graph.to_string_lossy().into();
+    plan.1.binaries = binaries.to_string_lossy().into();
+    for (role, contents) in [
+        (
+            "coordinator",
+            include_str!("fixtures/dora-coordinator.service"),
+        ),
+        ("daemon", include_str!("fixtures/dora-daemon.service")),
+    ] {
+        let file = fixture.root.join(format!("dora-{role}.service"));
+        std::fs::write(
+            &file,
+            contents
+                .replace("6013", &coordinator)
+                .replace("6014", &daemon),
+        )
+        .unwrap();
+        let mut binds = vec![Bind {
+            source: runtime.to_string_lossy().into(),
+            target: "/runtime".into(),
+            read_only: false,
+        }];
+        if role == "daemon" {
+            let overlay = fixture.root.join("zenoh.json5");
+            std::fs::write(
+                &overlay,
+                include_str!("../../../console/release/system-apps/dora-daemon/zenoh.json5"),
+            )
+            .unwrap();
+            binds.push(Bind {
+                source: overlay.to_string_lossy().into(),
+                target: "/config/zenoh.json5".into(),
+                read_only: true,
+            });
+        }
+        plan.1.app_units.push(workload_systemd::AppUnit {
+            id: format!("dora-{role}"),
+            file: file.to_string_lossy().into(),
+            binds,
+        });
+    }
+    drop(ports);
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert!(runtime.join("dataflow.yml").is_file());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+}
+
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn bind_mounts_show_host_paths_at_container_targets() {
@@ -640,7 +798,7 @@ async fn bind_mounts_show_host_paths_at_container_targets() {
     ];
     let plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             programs: vec![writer],
             ..Default::default()
         }],
@@ -680,8 +838,9 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
     std::fs::write(&unit, "[Service]\nExecStart=probe-app\n").unwrap();
     let mut plan = fixture.plan(
         "r1",
-        vec![UnitGroup {
+        vec![SystemdPlan {
             app_units: vec![workload_systemd::AppUnit {
+                id: "capture".into(),
                 file: unit.to_string_lossy().into(),
                 binds: vec![
                     Bind {
@@ -700,14 +859,80 @@ async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
         }],
     );
     plan.1.binaries = binaries.to_string_lossy().into();
+    plan.0.system_apps = vec!["capture".into()];
     // Act
     let report = run_for_a_while(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
+    assert!(
+        report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-capture.service"))
+    );
     assert_eq!(
         std::fs::read_to_string(results.join("seen")).unwrap(),
         "rate: 5\n"
     );
     assert!(!Path::new("/doramcap-native-app").exists());
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn missing_system_recording_prevents_user_start() {
+    // Arrange
+    let fixture = Fixture::new("recording-gate");
+    let marker = fixture.root.join("user-started");
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![
+            SystemdPlan {
+                programs: vec![program("writer", "exec sleep 300")],
+                ..Default::default()
+            },
+            SystemdPlan {
+                programs: vec![sees(
+                    program(
+                        "producer",
+                        &format!("touch {}; exec sleep 300", marker.display()),
+                    ),
+                    &fixture,
+                )],
+                ..Default::default()
+            },
+        ],
+    );
+    run.readiness_seconds = 1;
+    run.recordings.push(workload_lifecycle::launch::Recording {
+        recording: fixture.root.join("missing.mcap").to_string_lossy().into(),
+        stream: String::new(),
+    });
+    // Act
+    let report = SystemdRunner::new()
+        .run(
+            run,
+            plan,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+        )
+        .await
+        .unwrap();
+    // Assert
+    assert!(report.execution_error.is_some(), "{report:#?}");
+    assert!(!marker.exists());
+    assert!(
+        report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-writer.service"))
+    );
+    assert!(
+        !report
+            .units
+            .iter()
+            .any(|unit| unit.unit.ends_with("-producer.service"))
+    );
+    assert!(report.writers_stopped, "{report:#?}");
 }
