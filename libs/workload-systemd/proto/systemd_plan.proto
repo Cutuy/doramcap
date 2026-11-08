@@ -1,0 +1,43 @@
+syntax = "proto3";
+package doramcap.systemd_plan.v1;
+
+// systemd launch inputs of one run; the shared run inputs travel beside them.
+message SystemdPlan {
+  reserved 1;
+  // Started in order, each once the previous group is active; stopped in reverse.
+  repeated UnitGroup groups = 2;
+}
+
+// Units that start together.
+message UnitGroup {
+  // Transient units built from programs.
+  repeated Program programs = 1;
+  // Absolute paths to repository `.service` files, adopted unchanged.
+  repeated string unit_files = 2;
+  // After this group is active, wait for the run's recordings to become ready.
+  bool await_recordings = 3;
+}
+
+// One transient service unit.
+message Program {
+  // Unique within the run: 1..40 of [a-z0-9-].
+  string id = 1;
+  // Absolute executable followed by its arguments.
+  repeated string argv = 2;
+  // Empty runs as the service manager's default user.
+  string user = 3;
+  // Absolute; empty keeps the service manager's default.
+  string working_directory = 4;
+  repeated EnvironmentVariable environment = 5;
+  // Zero keeps the service manager's default limit.
+  uint64 memlock_bytes = 6;
+  // Decimal Linux cpulist; empty allows every CPU.
+  string cpus = 7;
+  // Signal number sent first on stop; zero sends SIGTERM.
+  int32 kill_signal = 8;
+}
+
+message EnvironmentVariable {
+  string name = 1;
+  string value = 2;
+}

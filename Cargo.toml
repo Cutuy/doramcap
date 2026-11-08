@@ -14,6 +14,7 @@ members = [
     "libs/workload-lifecycle",
     "libs/dora-app",
     "libs/workload-supervisor",
+    "libs/workload-systemd",
     "libs/workload-docker",
     "libs/orchestrator",
     "libs/storage-persistence",

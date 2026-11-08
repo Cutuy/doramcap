@@ -31,6 +31,7 @@ explicit, including nested crates: add new paths to the root `Cargo.toml`.
 | `libs/workload-lifecycle` | Shared recorded-run sequencing and recording checks |
 | `libs/workload-docker` | Compose, Dora wiring, filesystem isolation and cleanup |
 | `libs/workload-supervisor` | Owned Supervisor/System Monitor runs |
+| `libs/workload-systemd` | Owned systemd units per run over D-Bus |
 | `libs/dora-app` | Shared Dora attachment, environment bridge and readiness |
 | `apps/system-monitor/dora` | CPU publication and direct-buffer Protobuf encoding |
 | `apps/cpu-viewer/server` | HTTP/WebSocket delivery and viewer schema |
