@@ -169,60 +169,44 @@ impl Manager {
         })
     }
 
-    /// Execute a command with the launched service's filesystem, identity and environment.
+    /// Run `argv` to completion as a oneshot unit in the scope's slice, writing its
+    /// standard output to `output`. Errors: a start or exit other than success.
     pub async fn run_oneshot(
         &self,
         scope: &Scope,
         name: &str,
-        context: &ServiceProxy<'_>,
-        argv: Vec<String>,
+        argv: &[String],
+        user: &str,
         output: &std::path::Path,
+        binds: &[crate::Bind],
     ) -> Result<()> {
-        let executable = argv.first().ok_or("empty control command")?.clone();
-        let properties = vec![
+        let mut properties = vec![
+            (
+                "Description".into(),
+                value(format!("Doramcap command {name}"))?,
+            ),
             ("Slice".into(), value(scope.slice.clone())?),
             ("Type".into(), value("oneshot")?),
-            ("ExecStart".into(), value(vec![(executable, argv, false)])?),
-            ("User".into(), value(context.user().await.map_err(error)?)?),
             (
-                "Group".into(),
-                value(context.group().await.map_err(error)?)?,
-            ),
-            (
-                "WorkingDirectory".into(),
-                value(context.working_directory().await.map_err(error)?)?,
-            ),
-            (
-                "RootDirectory".into(),
-                value(context.root_directory().await.map_err(error)?)?,
-            ),
-            (
-                "MountAPIVFS".into(),
-                value(context.mount_apivfs().await.map_err(error)?)?,
-            ),
-            (
-                "BindPaths".into(),
-                value(context.bind_paths().await.map_err(error)?)?,
-            ),
-            (
-                "BindReadOnlyPaths".into(),
-                value(context.bind_read_only_paths().await.map_err(error)?)?,
-            ),
-            (
-                "Environment".into(),
-                value(context.environment().await.map_err(error)?)?,
+                "ExecStart".into(),
+                value(vec![(argv[0].clone(), argv.to_vec(), false)])?,
             ),
             (
                 "StandardOutputFileToTruncate".into(),
                 value(output.to_string_lossy().into_owned())?,
             ),
         ];
+        if !user.is_empty() {
+            properties.push(("User".into(), value(user.to_owned())?));
+        }
+        properties.extend(private_root(scope, name, &argv[0], "", binds).await?);
         let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
             .start_transient_unit(name.into(), "fail".into(), properties, vec![])
             .await
             .map_err(error)?;
+        // A oneshot start job ends when its process exits.
         let result = self.started(name, &mut jobs, job).await;
         if result.is_err() {
             self.release(name).await;

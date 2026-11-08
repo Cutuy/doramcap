@@ -89,24 +89,30 @@ impl Dora {
         Ok((directory, host))
     }
 
-    /// Run Dora CLI in the coordinator's observed execution context.
+    /// Run a workflow-owned CLI command with its explicit user and artifact bind.
     async fn cli(&mut self, manager: &Manager, scope: &Scope, args: &[&str]) -> Result<String> {
         self.commands += 1;
         let name = scope.unit(&format!("{CLI_PREFIX}{}", self.commands));
-        let (_, directory) = self.directory().await?;
+        let (target, directory) = self.directory().await?;
         let output = directory.join(format!("cli-{}.out", self.commands));
         let commands = self.coordinator.exec_start().await.map_err(error)?;
         let [command] = commands.as_slice() else {
             return Err("Dora coordinator command changed".into());
         };
         let endpoint = port(&command.1, "--port")?.to_string();
-        let argv = std::iter::once(command.0.as_str())
+        let argv: Vec<String> = std::iter::once(command.0.as_str())
             .chain(args.iter().copied())
             .chain(["--coordinator-port", endpoint.as_str()])
             .map(str::to_owned)
             .collect();
+        let user = self.coordinator.user().await.map_err(error)?;
+        let runtime = crate::Bind {
+            source: directory.to_string_lossy().into_owned(),
+            target: target.to_string_lossy().into_owned(),
+            read_only: false,
+        };
         manager
-            .run_oneshot(scope, &name, &self.coordinator, argv, &output)
+            .run_oneshot(scope, &name, &argv, &user, &output, &[runtime])
             .await?;
         tokio::fs::read_to_string(output).await.map_err(error)
     }

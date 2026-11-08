@@ -17,7 +17,9 @@ Shutdown reverses these fixed phases. App IDs select phases; configurable startu
 Coordinator and daemon are ordinary apps. Their native launch definitions own ports,
 images/executables, working directories, mounts and memory limits. Rust retains daemon
 readiness, graph registration/identity and graceful shutdown. Control steps derive
-commands and execution context from the selected apps.
+the coordinator endpoint and artifact location from the selected apps.
+User-provided unit files are loaded by systemd. Workflow-owned CLI oneshots use
+explicit arguments, user and artifact binds; native service properties stay in the app unit.
 
 Console declares `apps` and selects the first phase through `dora_apps` IDs.
 Compose resolves writer app IDs to every selected service. Protobuf field numbers

@@ -431,12 +431,19 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn adopted_native_references_are_accepted_unchanged() {
-    // Arrange: a native reference to an existing host target.
+    // Arrange: systemd owns references, environment files, pre-start commands and permissions.
+    use std::os::unix::fs::PermissionsExt;
     let fixture = Fixture::new("native-references");
     let file = fixture.repo().join("references.service");
-    let contents =
-        "[Unit]\nRequires=basic.target\nAfter=basic.target\n[Service]\nExecStart=/bin/sleep 300\n";
-    std::fs::write(&file, contents).unwrap();
+    let environment = fixture.root.join("native.env");
+    let marker = fixture.root.join("native-marker");
+    std::fs::write(&environment, "NATIVE_VALUE=unit-file-value\n").unwrap();
+    let contents = format!(
+        "[Unit]\nRequires=basic.target\nAfter=basic.target\n[Service]\nEnvironmentFile={}\nUMask=0077\nExecStartPre=/bin/sh -c 'printf %%s \"$$NATIVE_VALUE\" > {}'\nExecStart=/bin/sleep 300\n",
+        environment.display(),
+        marker.display(),
+    );
+    std::fs::write(&file, &contents).unwrap();
     // Act
     let report = run_for_a_while(fixture.plan(
         "r1",
@@ -449,6 +456,11 @@ async fn adopted_native_references_are_accepted_unchanged() {
     // Assert
     assert!(report.successful(), "{report:#?}");
     assert_eq!(std::fs::read_to_string(file).unwrap(), contents);
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "unit-file-value");
+    assert_eq!(
+        std::fs::metadata(marker).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
