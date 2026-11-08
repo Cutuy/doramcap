@@ -1,0 +1,18 @@
+{
+  "screen_run": "20261108-i05",
+  "context_selection": "Controller-selected direct sources; further retrieval is requested through typed JSON and supplied in a subsequent round.",
+  "tasks": {
+    "i05-002": {
+      "sources": ["apps/dataflow-tracing-demo/server/src/pipeline.rs"],
+      "history": []
+    },
+    "i05-004": {
+      "sources": ["apps/fault-watchdog/src/sinks/mod.rs", "apps/fault-watchdog/src/sinks/mcap.rs", "apps/fault-watchdog/src/sinks/otel.rs", "apps/fault-watchdog/src/config.rs", "apps/fault-watchdog/proto/watchdog.proto"],
+      "history": []
+    },
+    "i05-020": {
+      "sources": ["libs/workload-systemd/src/dora.rs", "libs/workload-systemd/src/running.rs"],
+      "history": ["history/pr199.json"]
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "rule_id": "I-05.polling",
+  "rule_hash": "11971414ea8c2e8bfc3c065f5468a82f21ebae454de7c029536f21000572c34b",
+  "requested_model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "max_concurrency": 2,
+  "tasks": [
+    {
+      "task_id": "i05-002",
+      "round": 1,
+      "path": "apps/dataflow-tracing-demo/server/src/pipeline.rs",
+      "source_hash": "82308ed78165773984f73393e39e5866fc7499eb490da4a371d8cf57b964b56f",
+      "artifacts": [
+        {
+          "artifact_id": "apps/dataflow-tracing-demo/server/src/pipeline.rs",
+          "sha256": "82308ed78165773984f73393e39e5866fc7499eb490da4a371d8cf57b964b56f",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/dataflow-tracing-demo/server/src/pipeline.rs"
+        }
+      ]
+    },
+    {
+      "task_id": "i05-004",
+      "round": 1,
+      "path": "apps/fault-watchdog/src/sinks/mod.rs",
+      "source_hash": "0fcf6d80aedc3e28c08a52496a66d92acf171c780bcf3a5eb9cbfae73f612133",
+      "artifacts": [
+        {
+          "artifact_id": "apps/fault-watchdog/src/sinks/mod.rs",
+          "sha256": "0fcf6d80aedc3e28c08a52496a66d92acf171c780bcf3a5eb9cbfae73f612133",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/mod.rs"
+        },
+        {
+          "artifact_id": "apps/fault-watchdog/src/sinks/mcap.rs",
+          "sha256": "20657fe2bf7adf62d8303bd782e8bef34cd020aa61e2a0c80cbc3e9dcb7f523d",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/mcap.rs"
+        },
+        {
+          "artifact_id": "apps/fault-watchdog/src/sinks/otel.rs",
+          "sha256": "a42717cae3b76f635d523ff0e344d18fc431cb24cf85081cd944857aa671caed",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/otel.rs"
+        },
+        {
+          "artifact_id": "apps/fault-watchdog/src/config.rs",
+          "sha256": "863b1863a9e3ec17b5d5740b67b5b260d378c17fc14b5649167ca871f85d69ed",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/config.rs"
+        },
+        {
+          "artifact_id": "apps/fault-watchdog/proto/watchdog.proto",
+          "sha256": "cc2d5da61fb0b59476f6bc2010950822f4b258240a1a3fb2bbfc6384f19b66dc",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/proto/watchdog.proto"
+        }
+      ]
+    },
+    {
+      "task_id": "i05-020",
+      "round": 1,
+      "path": "libs/workload-systemd/src/dora.rs",
+      "source_hash": "c6e05fd69257d894f94508854c5c551b8abacad91c91ffe0467f80d0d956d458",
+      "artifacts": [
+        {
+          "artifact_id": "libs/workload-systemd/src/dora.rs",
+          "sha256": "c6e05fd69257d894f94508854c5c551b8abacad91c91ffe0467f80d0d956d458",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/workload-systemd/src/dora.rs"
+        },
+        {
+          "artifact_id": "libs/workload-systemd/src/running.rs",
+          "sha256": "0385cde9d3e3eb0e68357e892d5808818f2bccd1bf3cb9a2d4ca324e9e787bf4",
+          "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/workload-systemd/src/running.rs"
+        },
+        {
+          "artifact_id": "history/pr199.json",
+          "sha256": "4ae2dbdaf163a4f967658a3c658ba0fe2dd28b23d0c9eac7cb3846bf46f048b8",
+          "origin": "history/pr199.json"
+        }
+      ]
+    }
+  ]
+}

@@ -42,3 +42,19 @@ new source revision. Completed task files are retained when a run resumes.
 Validation: syntax and schemas passed; all 20 CLI responses match the native
 output schema. Exact citations were accepted for 19 responses; one was rejected.
 No production code changed. Full CI and ARM64 runs were not required for this pilot.
+
+## Confirmation
+
+`confirm.ts` sends each candidate and frozen related sources to Sol/high, with
+at most two calls in flight. Its [native schema](confirm.schema.json) returns
+confirmed, refuted, context-needed or unresolved decisions with exact citations.
+The controller selects initial context and supplies any requested follow-up round.
+
+```sh
+node cd/code-scan/confirm.ts prepare RUN_NAME
+node cd/code-scan/confirm.ts run RUN_NAME
+```
+
+Place `context.json` and any attributed history under `confirmations/RUN_NAME`
+first. Use a new run name when reproducing a recorded run. Confirmation never
+edits the reviewed source or proceeds to fixes.
