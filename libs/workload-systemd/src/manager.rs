@@ -215,7 +215,8 @@ impl Manager {
     /// Stop one service and observe termination using its effective systemd timeout.
     pub async fn stop_and_wait(&self, unit: &mut Unit) -> Result<()> {
         let state = unit.unit.active_state().await.map_err(error)?;
-        if ENDED_STATES.contains(&state.as_str()) {
+        // An inactive unit can still have a queued start that must be cancelled.
+        if ENDED_STATES.contains(&state.as_str()) && unit.unit.job().await.map_err(error)?.0 == 0 {
             return Ok(());
         }
         let budget = unit
