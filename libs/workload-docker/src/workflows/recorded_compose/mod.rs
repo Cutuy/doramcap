@@ -243,6 +243,7 @@ impl ComposeRunner {
         let resources = Rc::new(tokio::sync::Mutex::new(
             super::experiment::ExperimentOwner::new(
                 prepared.value().dora.clone(),
+                prepared.value().run.clone(),
                 self.adapter.clone(),
                 plan.clone(),
                 spec.readiness_seconds,
@@ -388,6 +389,29 @@ pub struct ComposeRun {
     pub stop_seconds: u64,
 }
 impl ComposeRun {
+    pub(super) fn run_plan(&self) -> workload_lifecycle::launch::RunPlan {
+        workload_lifecycle::launch::RunPlan {
+            id: self.id.clone(),
+            repository_root: self.repository_root.to_string_lossy().into_owned(),
+            artifacts: self.artifacts.to_string_lossy().into_owned(),
+            recordings: self
+                .recordings
+                .iter()
+                .map(|recording| workload_lifecycle::launch::Recording {
+                    stream: recording.stream.to_string_lossy().into_owned(),
+                    recording: recording.recording.to_string_lossy().into_owned(),
+                })
+                .collect(),
+            readiness_seconds: self.readiness_seconds,
+            stop_seconds: self.stop_seconds,
+            system_apps: self.system_apps.iter().map(|app| app.key.clone()).collect(),
+            mcap_apps: self.mcap_writers.apps.clone(),
+            dora_apps: self.dora_apps.iter().map(|app| app.key.clone()).collect(),
+            dataflow_file: self.dataflow_file.clone(),
+            dora_runtime: None,
+        }
+    }
+
     /// Build launch settings from the shared run inputs and the Compose plan, with
     /// default OverlayFS isolation. MCAP writers write beneath the artifact directory,
     /// on its parent's filesystem.

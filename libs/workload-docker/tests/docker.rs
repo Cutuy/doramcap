@@ -2330,11 +2330,16 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
 
     // Assert
     assert_eq!(
-        inspected.dora.coordinator_port().unwrap(),
+        inspected
+            .run
+            .dora_runtime
+            .as_ref()
+            .unwrap()
+            .coordinator_port as u16,
         listeners[0].local_addr().unwrap().port()
     );
     assert_eq!(
-        inspected.dora.daemon_port().unwrap(),
+        inspected.run.dora_runtime.as_ref().unwrap().daemon_port as u16,
         listeners[1].local_addr().unwrap().port()
     );
 
@@ -2441,6 +2446,14 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         prepared.artifacts.join("dora/runtime")
     );
     assert_eq!(inspected.snapshot, prepared.snapshot);
+    for runtime in [&inspected.run, &prepared.run] {
+        let runtime = runtime.dora_runtime.as_ref().unwrap();
+        assert!(runtime.automatic_coordinator_port);
+        assert!(runtime.automatic_daemon_port);
+        assert_ne!(runtime.coordinator_port, 0);
+        assert_ne!(runtime.daemon_port, 0);
+        assert_ne!(runtime.coordinator_port, runtime.daemon_port);
+    }
 
     // Act: a changed runtime budget must invalidate the inspected configuration.
     let mut changed = spec.clone();
@@ -2567,14 +2580,39 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         model["services"]["adopted"]["environment"]["DORA_NODE_ID"],
         "app-chosen"
     );
+    let runtime = prepared.run.dora_runtime.as_ref().unwrap();
+    let zenoh = runtime.zenoh.as_ref().unwrap();
+    assert!(Path::new(&zenoh.source).starts_with(prepared.artifacts.join("inputs")));
     for name in ["monitor", "adopted"] {
+        let binding = model["services"][name]["volumes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|binding| binding["target"] == zenoh.target)
+            .unwrap();
+        assert_eq!(binding["source"], zenoh.source);
+        assert_eq!(binding["read_only"], true);
         assert_eq!(
             model["services"][name]["environment"]["DORA_DAEMON_LOCAL_LISTEN_PORT"],
-            prepared.dora.daemon_port().unwrap().to_string()
+            prepared
+                .run
+                .dora_runtime
+                .as_ref()
+                .unwrap()
+                .daemon_port
+                .to_string()
         );
         assert_eq!(
             model["services"][name]["environment"]["DORA_ZENOH_CONFIG_OVERLAY"],
-            prepared.dora.overlay().unwrap()
+            prepared
+                .run
+                .dora_runtime
+                .as_ref()
+                .unwrap()
+                .zenoh
+                .as_ref()
+                .unwrap()
+                .target
         );
     }
     assert_eq!(
@@ -2609,17 +2647,25 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         std::fs::read(config["source"].as_str().unwrap()).unwrap(),
         b"mode: original\n"
     );
-    for name in ["monitor", "adopted", "dora-coordinator"] {
+    for name in ["monitor", "adopted"] {
         assert_eq!(model["services"][name]["ipc"], "service:dora-daemon");
-        assert!(prepared.plan.services[name].image_id.starts_with("sha256:"));
     }
+    assert!(
+        prepared
+            .plan
+            .services
+            .values()
+            .all(|service| service.image_id.starts_with("sha256:"))
+    );
+    // Runtime apps retain their shipped native IPC settings.
+    assert!(model["services"]["dora-coordinator"].get("ipc").is_none());
     assert_eq!(model["services"]["dora-daemon"]["ipc"], "shareable");
     assert!(
         prepared
             .plan
             .diagnostics
             .iter()
-            .any(|d| d.contains("IPC silos"))
+            .any(|d| d.contains("adopted: Dora participants need host networking"))
     );
     support::assert_no_run_resources(&adapter, &spec.id).await;
 
@@ -2971,11 +3017,22 @@ async fn shared_plan_resolves_writer_app_services() {
     };
     let adapter = DockerAdapter::connect(socket).await.unwrap();
     // Act
-    let spec = ComposeRun::from_plan(shared, input).unwrap();
-    let resolved = preparation::resolve(&adapter, spec).await.unwrap();
+    let spec = ComposeRun::from_plan(shared.clone(), input).unwrap();
+    let resolved = preparation::resolve(&adapter, spec.clone()).await.unwrap();
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&resolved.plan.manifest).unwrap()).unwrap();
     // Assert
+    assert_eq!(resolved.run, shared);
+    assert!(resolved.run.dora_runtime.is_none());
+    assert!(
+        manifest["services"]
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|service| service["environment"]
+                .get("DORA_DAEMON_LOCAL_LISTEN_PORT")
+                .is_none())
+    );
     assert_eq!(resolved.system_services, ["first-writer", "second-writer"]);
     assert_eq!(resolved.user_services, ["producer"]);
     assert_eq!(resolved.mcap_services, ["first-writer", "second-writer"]);
@@ -2992,6 +3049,13 @@ async fn shared_plan_resolves_writer_app_services() {
             .as_array()
             .is_some_and(|options| options.contains(&serde_json::json!("seccomp=unconfined")))
     );
+    // Act / Assert: independent plain-Compose preparations retain Review identity.
+    let mut execution = spec;
+    execution.id = "shared-plan-execution".into();
+    execution.artifacts = root.join("execution");
+    let prepared = preparation::resolve(&adapter, execution).await.unwrap();
+    assert_eq!(resolved.snapshot, prepared.snapshot);
+    assert!(prepared.run.dora_runtime.is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
 

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="390" viewBox="0 0 900 390" role="img" aria-labelledby="title desc">
+<title id="title">Shared prepared Dora runtime</title>
+<desc id="desc">Existing Compose preparation resolves app configuration into one shared RunPlan runtime and native Compose launch inputs. Runtime control, participant wiring and Review consume the prepared facts.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#526679"/></marker></defs>
+<rect width="900" height="390" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="450" y="28" font-size="20" font-weight="600">Compose preparation and shared runtime facts</text>
+<rect x="80" y="48" width="310" height="58" rx="8" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="235" y="72" font-size="15" font-weight="600">App pbtxt</text>
+<text x="235" y="93" font-size="13">process · files · graph</text>
+<rect x="510" y="48" width="310" height="58" rx="8" fill="#fcebdc" stroke="#bc906b"/>
+<text x="665" y="72" font-size="15" font-weight="600">Compose YAML</text>
+<text x="665" y="93" font-size="13">image · network · IPC</text>
+<rect x="250" y="140" width="400" height="50" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="450" y="170" font-size="15" font-weight="600">Existing Compose preparation</text>
+<rect x="45" y="224" width="390" height="74" rx="8" fill="#dbeaf2" stroke="#8ca6b8"/>
+<text x="240" y="248" font-size="15" font-weight="600">RunPlan.dora_runtime</text>
+<text x="240" y="269" font-size="13">ports · participant binding · graph binding</text>
+<text x="240" y="288" font-size="13">automatic origin · generated directory · graph hash</text>
+<rect x="465" y="224" width="390" height="74" rx="8" fill="#fcebdc" stroke="#bc906b"/>
+<text x="660" y="250" font-size="15" font-weight="600">Native Compose project</text>
+<text x="660" y="275" font-size="13">services · commands · mounted files</text>
+<rect x="190" y="332" width="520" height="40" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
+<text x="450" y="357" font-size="15" font-weight="600">Participant wiring · runtime control · Review</text>
+</g>
+<g fill="none" stroke="#526679" stroke-width="1.5" marker-end="url(#arrow)">
+<path d="M235 106V120H370V137"/><path d="M665 106V120H530V137"/>
+<path d="M370 190V207H240V221"/><path d="M530 190V207H660V221"/>
+<path d="M240 298V315H370V329"/><path d="M660 298V315H530V329"/>
+</g>
+</svg>

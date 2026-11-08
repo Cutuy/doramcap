@@ -8,6 +8,10 @@ use crate::compose::{
 use dora_core::descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static};
 use serde_json::json;
 use std::path::Path;
+use workload_lifecycle::{
+    dora::{option, port},
+    launch::{DoraRuntime, ResolvedFileBinding},
+};
 
 pub(crate) const MAX_GRAPH_BYTES: u64 = 2 * 1024 * 1024;
 pub(crate) const GRAPH_FILE: &str = "dataflow.yml";
@@ -20,9 +24,9 @@ pub(crate) fn owner(repository: &Path) -> String {
 }
 
 /// Resolve native zero-valued ports consistently across the two declared apps.
-pub fn resolve(apps: &mut DoraApps) -> Result<()> {
+pub fn resolve(apps: &mut DoraApps, runtime_directory: String) -> Result<Option<DoraRuntime>> {
     if !apps.enabled() {
-        return Ok(());
+        return Ok(None);
     }
     if apps.services.len() != 2 {
         return Err(invalid(
@@ -33,27 +37,42 @@ pub fn resolve(apps: &mut DoraApps) -> Result<()> {
     let daemon = apps.daemon()?.0.to_owned();
     let mut coordinator_args = DoraApps::argv(&apps.services[&coordinator])?;
     let mut daemon_args = DoraApps::argv(&apps.services[&daemon])?;
-    apps.automatic_ports =
+    let automatic =
         workload_lifecycle::dora::resolve_ports(&mut coordinator_args, &mut daemon_args)
             .map_err(invalid)?;
+    let overlay = option(&daemon_args, "--zenoh-config-overlay").map_err(invalid)?;
+    let runtime = DoraRuntime {
+        coordinator_port: port(&coordinator_args, "--port").map_err(invalid)?.into(),
+        daemon_port: port(&daemon_args, "--local-listen-port")
+            .map_err(invalid)?
+            .into(),
+        automatic_coordinator_port: automatic[0],
+        automatic_daemon_port: automatic[1],
+        runtime_directory,
+        zenoh: Some(ResolvedFileBinding {
+            source: DoraApps::host_path(&apps.services[&daemon], overlay)?,
+            target: overlay.to_owned(),
+        }),
+        ..Default::default()
+    };
     for (name, args) in [(&coordinator, coordinator_args), (&daemon, daemon_args)] {
         let app = apps.services.get_mut(name).unwrap();
         app["entrypoint"] = json!([args[0]]);
         app["command"] = json!(args[1..]);
     }
-    let port = apps.daemon_port()?.to_string();
     for app in apps.services.values_mut() {
-        app["environment"][dora_app::environment::DAEMON_PORT] = port.clone().into();
+        app["environment"][dora_app::environment::DAEMON_PORT] =
+            runtime.daemon_port.to_string().into();
     }
-    Ok(())
+    Ok(Some(runtime))
 }
 
-pub fn validate_endpoints(apps: &DoraApps) -> Result<()> {
-    if !apps.enabled() {
+pub fn validate_endpoints(runtime: Option<&DoraRuntime>) -> Result<()> {
+    let Some(runtime) = runtime else {
         return Ok(());
-    }
+    };
     let mut listeners = Vec::new();
-    for port in [apps.coordinator_port()?, apps.daemon_port()?] {
+    for port in [runtime.coordinator_port as u16, runtime.daemon_port as u16] {
         listeners.push(
             std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
                 .map_err(|e| invalid(format!("Dora endpoint {port} unavailable: {e}")))?,
@@ -92,25 +111,30 @@ pub fn graph(dataflow_file: &str, bytes: &[u8]) -> Result<Descriptor> {
 /// Freeze the dataflow and mount it into the coordinator's existing working directory.
 pub(crate) async fn prepare(
     apps: &mut DoraApps,
+    runtime: Option<&mut DoraRuntime>,
     dataflow_file: &str,
     artifacts: &Path,
 ) -> Result<()> {
-    if !apps.enabled() || dataflow_file.is_empty() {
+    let Some(runtime) = runtime.filter(|_| !dataflow_file.is_empty()) else {
         return Ok(());
-    }
+    };
     let bytes = crate::evidence::read_regular(Path::new(dataflow_file), MAX_GRAPH_BYTES).await?;
     let bytes = serde_json::to_vec(&graph(dataflow_file, &bytes)?)?;
-    apps.dataflow_file = artifacts.join(GRAPH_FILE).to_string_lossy().into_owned();
-    apps.dataflow_sha256 = digest(&bytes);
-    private_write(Path::new(&apps.dataflow_file), &bytes).await?;
+    let source = artifacts.join(GRAPH_FILE).to_string_lossy().into_owned();
+    runtime.dataflow_sha256 = digest(&bytes);
+    private_write(Path::new(&source), &bytes).await?;
     let name = apps.coordinator()?.0.to_owned();
-    let target = Path::new(apps.directory()?)
+    let directory = apps.coordinator()?.1["working_dir"]
+        .as_str()
+        .ok_or_else(|| invalid("Dora coordinator needs a working_dir"))?;
+    let target = Path::new(directory)
         .join(GRAPH_FILE)
         .to_string_lossy()
         .into_owned();
     apps.services.get_mut(&name).unwrap()["volumes"]
         .as_array_mut()
         .ok_or_else(|| invalid("Dora coordinator needs native volumes"))?
-        .push(json!({"type":"bind","source":apps.dataflow_file,"target":target,"read_only":true}));
+        .push(json!({"type":"bind","source":source,"target":target,"read_only":true}));
+    runtime.dataflow = Some(ResolvedFileBinding { source, target });
     Ok(())
 }

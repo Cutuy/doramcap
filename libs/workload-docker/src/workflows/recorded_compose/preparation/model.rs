@@ -82,14 +82,19 @@ pub(super) fn configure_mcap_writers(model: &mut Value, services: &[String]) -> 
 pub(super) fn configure_dora(
     model: &mut Value,
     d: &dora::DoraApps,
+    runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
     owner: String,
 ) -> Result<Vec<String>> {
-    if !d.enabled() {
+    let Some(runtime) = runtime else {
         return Ok(Vec::new());
-    }
+    };
     let daemon = d.daemon()?.0;
-    let overlay = d.overlay()?;
-    let source = dora::DoraApps::host_path(d.daemon()?.1, &overlay)?;
+    let zenoh = runtime
+        .zenoh
+        .as_ref()
+        .ok_or_else(|| invalid("Dora participant binding missing"))?;
+    let overlay = &zenoh.target;
+    let source = &zenoh.source;
     let mut diagnostics = Vec::new();
     for (name, service) in model["services"].as_object_mut().unwrap() {
         if d.services.contains_key(name) {
@@ -109,8 +114,7 @@ pub(super) fn configure_dora(
             .or_insert_with(|| json!({}))
             .as_object_mut()
             .ok_or_else(|| invalid("invalid Compose environment"))?;
-        for (key, value) in dora_app::environment::settings(name, d.daemon_port()?.into(), &overlay)
-        {
+        for (key, value) in dora_app::environment::settings(name, runtime.daemon_port, overlay) {
             if key != dora_app::environment::NODE_ID || !env.contains_key(key) {
                 env.insert(key.into(), value.into());
             }
@@ -122,7 +126,7 @@ pub(super) fn configure_dora(
             .ok_or_else(|| invalid("invalid Compose volumes"))?;
         if mounts.iter().any(|mount| {
             mount["target"].as_str().is_some_and(|target| {
-                ["/", "/dev", "/dev/shm"].contains(&target) || target == overlay
+                ["/", "/dev", "/dev/shm"].contains(&target) || target == overlay.as_str()
             })
         }) {
             return Err(invalid("app mount overrides shared IPC or Dora config"));
