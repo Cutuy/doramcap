@@ -59,7 +59,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 - Use plain language, brief prose, short bullets and compact tables. State what things do directly; avoid contrastive “A, not B” phrasing.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
-- Keep validation records to the latest result and unresolved blockers, with links to CI or logs. Replace stale results instead of appending test histories, counts or command transcripts.
+- Keep validation records brief, following the [pull request description standard](#pull-request-descriptions).
 
 ### Visuals
 
