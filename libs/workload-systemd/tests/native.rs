@@ -962,6 +962,7 @@ async fn missing_system_recording_prevents_user_start() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn review_preflight_rejects_changes_and_cancellation_before_start_acceptance() {
+    use std::{cell::RefCell, rc::Rc};
     // Arrange
     let fixture = Fixture::new("review-reject");
     let marker = fixture.root.join("started");
@@ -981,17 +982,19 @@ async fn review_preflight_rejects_changes_and_cancellation_before_start_acceptan
             ..Default::default()
         }],
     );
-    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    let expected = workload_systemd::inspect(&run, &plan).await.unwrap();
     std::fs::write(&file, "[Service]\nExecStart=/bin/false\n").unwrap();
     let accepted = std::cell::Cell::new(false);
     let mut runner = SystemdRunner::new();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
     // Act
     let result = runner
         .run_with_preflight(
             run.clone(),
             plan.clone(),
             std::future::pending(),
-            |_: &orchestrator::Event| {},
+            move |event: &orchestrator::Event| observed.borrow_mut().push(event.clone()),
             None,
             |actual| {
                 if actual != &expected {
@@ -1009,12 +1012,21 @@ async fn review_preflight_rejects_changes_and_cancellation_before_start_acceptan
     assert!(!Path::new(&run.artifacts).exists());
     assert!(!marker.exists());
     assert!(runtime_units().is_empty());
+    {
+        let events = events.borrow();
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].invocation.step, "systemd.prepare");
+        assert_eq!(events[1].state, orchestrator::State::Succeeded);
+        assert_eq!(events[2].invocation.step, "systemd.discard");
+        assert_eq!(events[3].state, orchestrator::State::Succeeded);
+        assert_eq!(events[2].invocation.dependencies, [events[0].invocation.id]);
+    }
     // Act / Assert: cancellation at the same admission boundary also starts nothing.
-    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    let expected = workload_systemd::inspect(&run, &plan).await.unwrap();
     let result = runner
         .run_with_preflight(
             run.clone(),
-            plan,
+            plan.clone(),
             std::future::pending(),
             |_: &orchestrator::Event| {},
             None,
@@ -1026,6 +1038,30 @@ async fn review_preflight_rejects_changes_and_cancellation_before_start_acceptan
         .await;
     assert_eq!(result.unwrap_err(), "Stopped");
     assert!(!Path::new(&run.artifacts).exists());
+    assert!(!marker.exists());
+    assert!(runtime_units().is_empty());
+    // Act: a replacement at the owned artifact path prevents cleanup after rejection.
+    let result = runner
+        .run_with_preflight(
+            run.clone(),
+            plan,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |_| {
+                std::fs::remove_dir_all(&run.artifacts).unwrap();
+                std::fs::write(&run.artifacts, "replacement").unwrap();
+                Err("Rejected review".into())
+            },
+        )
+        .await;
+    // Assert: both causes survive, and the replacement is not removed.
+    let error = result.unwrap_err();
+    assert!(error.starts_with("Rejected review; could not remove rejected preparation"));
+    assert_eq!(
+        std::fs::read_to_string(&run.artifacts).unwrap(),
+        "replacement"
+    );
     assert!(!marker.exists());
     assert!(runtime_units().is_empty());
 }
@@ -1142,7 +1178,7 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
             ..Default::default()
         }],
     );
-    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    let expected = workload_systemd::inspect(&run, &plan).await.unwrap();
     let (ready, readiness) = oneshot::channel();
     let stop = async {
         if readiness.await.is_ok() {
@@ -1174,6 +1210,9 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
         "owned input\nACL input\n"
     );
     assert_eq!(std::fs::read_to_string(native_seen).unwrap(), "original");
-    assert_ne!(expected, workload_systemd::inspect(&run, &plan).unwrap());
+    assert_ne!(
+        expected,
+        workload_systemd::inspect(&run, &plan).await.unwrap()
+    );
     assert!(runtime_units().is_empty());
 }

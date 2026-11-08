@@ -8,7 +8,7 @@ mod preparation;
 mod runner;
 mod running;
 
-pub use preparation::inspect;
+pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
 pub use workload_lifecycle::launch::RunPlan;
 

@@ -1,5 +1,6 @@
 syntax = "proto3";
 package doramcap.systemd_plan.v1;
+import "launch.proto";
 
 // Flat launch inputs; Rust starts Dora, system apps, then user apps.
 message SystemdPlan {
@@ -57,3 +58,19 @@ message EnvironmentVariable {
 message ConfigurationSnapshot {
   string sha256 = 1;
 }
+
+// Explicit inputs for inspection and preparation on the execution host.
+message PreparationInput {
+  doramcap.launch.v1.RunPlan run = 1;
+  SystemdPlan plan = 2;
+}
+
+// Captured inputs owned by this run's new artifact directory.
+message PreparedRun {
+  doramcap.launch.v1.RunPlan run = 1;
+  SystemdPlan plan = 2;
+  ConfigurationSnapshot snapshot = 3;
+}
+
+// Successful removal of a rejected preparation's owned artifacts.
+message DiscardedRun {}

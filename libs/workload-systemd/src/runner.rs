@@ -136,33 +136,46 @@ impl SystemdRunner {
                 run.repository_root
             ));
         }
-        let crate::preparation::Prepared {
-            run,
-            mut plan,
-            snapshot,
-        } = tokio::task::spawn_blocking(move || crate::preparation::prepare(run, plan))
+        let mut executor = LocalExecutor::new(observer)
+            .with_label(&run.id)
+            .capture_payloads(true);
+        executor.register::<crate::PrepareRun>(|| crate::PrepareRun);
+        executor.register::<crate::DiscardRun>(|| crate::DiscardRun);
+        executor.register::<WaitForRecordings>(|| WaitForRecordings);
+        executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
+        let executor = Rc::new(executor);
+        let prepared = executor
+            .run::<crate::PrepareRun>(crate::PreparationInput {
+                run: Some(run),
+                plan: Some(plan),
+            })
             .await
-            .map_err(error)??;
+            .map_err(error)?;
+        let run = prepared.value().run.clone().expect("prepared run");
+        let mut plan = prepared.value().plan.clone().expect("prepared plan");
         let prepare = || -> Result<()> {
             crate::dora::prepare(&run, &mut plan)?;
             if !run.dora_apps.is_empty() {
                 std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
                     .map_err(error)?;
             }
-            preflight(&snapshot)
+            preflight(
+                prepared
+                    .value()
+                    .snapshot
+                    .as_ref()
+                    .expect("prepared snapshot"),
+            )
         };
         if let Err(e) = prepare() {
-            return Err(crate::preparation::discard(Path::new(&run.artifacts), e));
+            return Err(match executor.run::<crate::DiscardRun>(prepared).await {
+                Ok(_) => e,
+                Err(cleanup) => format!("{e}; {cleanup}"),
+            });
         }
         std::fs::write(scope.directory.join(crate::ACTIVE_RUN), &run.id).map_err(error)?;
         self.blocked = true;
 
-        let mut executor = LocalExecutor::new(observer)
-            .with_label(&run.id)
-            .capture_payloads(true);
-        executor.register::<WaitForRecordings>(|| WaitForRecordings);
-        executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
-        let executor = Rc::new(executor);
         let recordings: Vec<Recording> = run
             .recordings
             .iter()
