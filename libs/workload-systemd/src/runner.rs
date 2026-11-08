@@ -163,12 +163,12 @@ impl SystemdRunner {
             .map_err(error)?;
         let mut run = prepared.value().run.clone().expect("prepared run");
         let mut plan = prepared.value().plan.clone().expect("prepared plan");
-        let preparation = async {
+        let preparation = || {
             if !run.dora_apps.is_empty() {
                 std::fs::create_dir_all(Path::new(&run.artifacts).join("dora/runtime"))
                     .map_err(error)?;
             }
-            crate::dora::prepare(&mut run, &mut plan).await?;
+            crate::dora::prepare(&mut run, &mut plan)?;
             preflight(
                 prepared
                     .value()
@@ -176,9 +176,8 @@ impl SystemdRunner {
                     .as_ref()
                     .expect("prepared snapshot"),
             )
-        }
-        .await;
-        if let Err(e) = preparation {
+        };
+        if let Err(e) = preparation() {
             return Err(match executor.run::<crate::DiscardRun>(prepared).await {
                 Ok(_) => e,
                 Err(cleanup) => format!("{e}; {cleanup}"),

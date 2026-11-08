@@ -42,8 +42,9 @@ fn bound_path(binds: &[Bind], path: &str) -> Option<String> {
         })
 }
 
-/// Fill generated Dora runtime facts once before startup; native units retain their own settings.
-fn prepare_programs(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
+/// Fill generated Dora runtime facts from captured inputs before startup.
+/// Native units retain their own settings.
+pub(crate) fn prepare(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
     let indices: Vec<_> = plan
         .programs
         .iter()
@@ -97,31 +98,6 @@ fn prepare_programs(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
     });
     plan.programs[coordinator].argv = coordinator_args;
     plan.programs[daemon].argv = daemon_args;
-    Ok(())
-}
-
-/// Prepare generated endpoints and freeze a graph before any units start.
-/// Sources already captured beneath this run's private artifacts retain their access metadata.
-pub(crate) async fn prepare(run: &mut RunPlan, plan: &mut SystemdPlan) -> Result<()> {
-    prepare_programs(run, plan)?;
-    if !run.dataflow_file.is_empty() {
-        let artifacts = tokio::fs::canonicalize(&run.artifacts)
-            .await
-            .map_err(error)?;
-        let source = tokio::fs::canonicalize(&run.dataflow_file)
-            .await
-            .map_err(error)?;
-        if !tokio::fs::metadata(&source).await.map_err(error)?.is_file() {
-            return Err("Dora dataflow input must be a regular file".into());
-        }
-        if !source.starts_with(&artifacts) {
-            let frozen = artifacts.join(GRAPH_FILE);
-            tokio::fs::copy(&source, &frozen).await.map_err(error)?;
-            run.dataflow_file = frozen.to_string_lossy().into_owned();
-        } else {
-            run.dataflow_file = source.to_string_lossy().into_owned();
-        }
-    }
     Ok(())
 }
 
