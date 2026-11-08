@@ -19,8 +19,9 @@ pub(crate) struct SystemdRunning {
     pub plan: SystemdPlan,
     pub recordings: Vec<Recording>,
     pub ready: Option<tokio::sync::oneshot::Sender<()>>,
-    /// Units this run started, by start group.
+    /// Units this run started, by start group; Dora's units come first.
     pub groups: Vec<Vec<Unit>>,
+    pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
 }
 
@@ -42,6 +43,27 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     async fn start(&mut self) -> std::result::Result<(), String> {
         let run = self.run().clone();
         let readiness = Duration::from_secs(run.readiness_seconds);
+        if let Some(dora) = &mut self.dora {
+            // Record the attempt first so stop and removal see Dora's units.
+            self.groups.push(Vec::new());
+            let start = async {
+                for program in dora.programs().await? {
+                    let unit = self.manager.watch(&self.scope.unit(&program.id)).await?;
+                    self.groups[0].push(unit);
+                    let job = self
+                        .manager
+                        .start_program(&self.scope, &run.id, &program, run.stop_seconds)
+                        .await?;
+                    self.manager.wait_started(job).await?;
+                }
+                dora.await_daemon(&self.manager, &self.scope).await?;
+                dora.register(&self.manager, &self.scope).await
+            };
+            let started = tokio::time::timeout(readiness, start)
+                .await
+                .map_err(|_| format!("Dora not ready within {readiness:?}"));
+            started??;
+        }
         for group in self.plan.groups.clone() {
             self.groups.push(Vec::new());
             let start = async {
@@ -103,7 +125,15 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn stop(&mut self) -> StopRecord {
         let mut stopped = true;
-        for group in self.groups.iter_mut().rev() {
+        let dora_units = usize::from(self.dora.is_some());
+        for (index, group) in self.groups.iter_mut().enumerate().rev() {
+            // Dataflows stop before the coordinator and daemon they run on.
+            if index + 1 == dora_units
+                && let Some(dora) = &mut self.dora
+                && let Err(error) = dora.down(&self.manager, &self.scope).await
+            {
+                self.diagnostics.push(format!("Dora down: {error}"));
+            }
             let results = futures_util::future::join_all(
                 group
                     .iter_mut()

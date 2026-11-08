@@ -2,7 +2,7 @@
 
 # Launch forms: Compose, systemd and Supervisor
 
-Created: 2026-11-07. Status: Milestones 0–3 implemented; Milestone 4 next.
+Created: 2026-11-07. Status: Milestones 0–3 implemented; Milestone 4 in progress.
 
 Run an experiment with the launch method its repo uses: Compose, systemd or
 Supervisor. Dora, system apps and user apps all launch the same way within a run.
@@ -212,17 +212,26 @@ Spike results (2026-11-07, systemd 255, x86_64):
 
 ## Milestone 4: Console runs systemd experiments
 
+Decisions (2026-11-07): Dora's coordinator and daemon are units, and its CLI commands run as
+oneshot units over D-Bus. Host binaries download on demand from GitHub release assets
+published with each release, separate from the Console bundle. Review keeps Compose's level
+of detail: app names and profiles.
+
 **Work items**
+- [x] Dora under systemd: coordinator and daemon units, daemon readiness, graph registration and `dora down` through oneshot units.
+- [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
 - [ ] Manifests gain program launch facts; Dora gets its own manifest.
-- [ ] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices.
-- [ ] Dora coordinator and daemon as units; graph registration; ownership and reset of Dora's shared-memory segments.
-- [ ] Review and inspection for units in place of Compose services.
+- [ ] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices, and runs it through the native addon.
+- [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
 **Validation**
+- [x] Native test: Dora runs as units, registers a dynamic-node graph and stops cleanly with no units left.
 - [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
+
+Evidence (2026-11-07): port and name validation tests passed. CLI timeout handling and its test scaffolding were reverted; the indefinite-command finding remains open. Focused validation of this revision is pending.
 
 ## Future items
 

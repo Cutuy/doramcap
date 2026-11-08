@@ -6,6 +6,24 @@ message SystemdPlan {
   reserved 1;
   // Started in order, each once the previous group is active; stopped in reverse.
   repeated UnitGroup groups = 2;
+  // Optional Dora runtime, started before every group and stopped after them.
+  DoraUnits dora = 3;
+}
+
+// Dora coordinator and daemon as units; Dora CLI commands run as oneshot units.
+message DoraUnits {
+  // Absolute `dora` executable.
+  string executable = 1;
+  // Loopback ports; both are required.
+  uint32 coordinator_port = 2;
+  uint32 daemon_port = 3;
+  // Absolute dynamic-node graph registered as the run's dataflow; empty registers none.
+  string graph = 4;
+  // Absolute, existing private directory writable by `user`, holding Dora state and CLI output.
+  string runtime_directory = 5;
+  // Empty runs as the service manager's default user.
+  string user = 6;
+  uint64 memlock_bytes = 7;
 }
 
 // Units that start together.
