@@ -4,9 +4,11 @@
 //! scopes admission, unit names, the slice and reset.
 mod dora;
 mod manager;
+mod preparation;
 mod runner;
 mod running;
 
+pub use preparation::inspect;
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
 pub use workload_lifecycle::launch::RunPlan;
 

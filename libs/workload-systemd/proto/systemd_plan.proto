@@ -51,3 +51,9 @@ message EnvironmentVariable {
   string name = 1;
   string value = 2;
 }
+
+// Stable fingerprint of the typed launch configuration and captured explicit input files.
+// Runtime identity and artifact paths are normalized; live directories and binaries remain native.
+message ConfigurationSnapshot {
+  string sha256 = 1;
+}

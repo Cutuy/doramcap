@@ -936,3 +936,222 @@ async fn missing_system_recording_prevents_user_start() {
     );
     assert!(report.writers_stopped, "{report:#?}");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn review_preflight_rejects_changes_and_cancellation_before_start_acceptance() {
+    // Arrange
+    let fixture = Fixture::new("review-reject");
+    let marker = fixture.root.join("started");
+    let file = fixture.repo().join("worker.service");
+    std::fs::write(
+        &file,
+        format!(
+            "[Service]\nExecStart=/bin/sh -c 'touch {}; exec sleep 300'\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let (run, plan) = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            unit_files: vec![file.to_string_lossy().into()],
+            ..Default::default()
+        }],
+    );
+    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    std::fs::write(&file, "[Service]\nExecStart=/bin/false\n").unwrap();
+    let accepted = std::cell::Cell::new(false);
+    let mut runner = SystemdRunner::new();
+    // Act
+    let result = runner
+        .run_with_preflight(
+            run.clone(),
+            plan.clone(),
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |actual| {
+                if actual != &expected {
+                    return Err("ConfigurationChanged".into());
+                }
+                accepted.set(true);
+                Ok(())
+            },
+        )
+        .await;
+    // Assert
+    assert_eq!(result.unwrap_err(), "ConfigurationChanged");
+    assert!(!accepted.get());
+    assert!(!runner.blocked());
+    assert!(!Path::new(&run.artifacts).exists());
+    assert!(!marker.exists());
+    assert!(runtime_units().is_empty());
+    // Act / Assert: cancellation at the same admission boundary also starts nothing.
+    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    let result = runner
+        .run_with_preflight(
+            run.clone(),
+            plan,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+            |actual| {
+                assert_eq!(actual, &expected);
+                Err("Stopped".into())
+            },
+        )
+        .await;
+    assert_eq!(result.unwrap_err(), "Stopped");
+    assert!(!Path::new(&run.artifacts).exists());
+    assert!(!marker.exists());
+    assert!(runtime_units().is_empty());
+}
+
+/// Native Linux POSIX ACL input granting one named user read access.
+fn read_acl(uid: u32) -> Vec<u8> {
+    // linux/posix_acl{,_xattr}.h defines the little-endian kernel ABI.
+    const VERSION: u32 = 2;
+    const USER_OBJ: u16 = 0x01;
+    const USER: u16 = 0x02;
+    const GROUP_OBJ: u16 = 0x04;
+    const MASK: u16 = 0x10;
+    const OTHER: u16 = 0x20;
+    const READ: u16 = 0x04;
+    const WRITE: u16 = 0x02;
+    let mut bytes = VERSION.to_le_bytes().to_vec();
+    for (tag, permissions, id) in [
+        (USER_OBJ, READ | WRITE, u32::MAX),
+        (USER, READ, uid),
+        (GROUP_OBJ, 0, u32::MAX),
+        (MASK, READ, u32::MAX),
+        (OTHER, 0, u32::MAX),
+    ] {
+        bytes.extend(tag.to_le_bytes());
+        bytes.extend(permissions.to_le_bytes());
+        bytes.extend(id.to_le_bytes());
+    }
+    bytes
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, the system service manager and the nobody user"]
+async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
+    // Arrange
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new("review-freeze");
+    let uid: u32 = String::from_utf8(
+        Command::new("id")
+            .args(["-u", "nobody"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .parse()
+    .unwrap();
+    let gid: u32 = String::from_utf8(
+        Command::new("id")
+            .args(["-g", "nobody"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap()
+    .trim()
+    .parse()
+    .unwrap();
+    let owner = fixture.root.join("owner.pbtxt");
+    let acl = fixture.root.join("acl.pbtxt");
+    std::fs::write(&owner, "owned input\n").unwrap();
+    std::fs::write(&acl, "ACL input\n").unwrap();
+    std::os::unix::fs::chown(&owner, Some(uid), Some(gid)).unwrap();
+    for path in [&owner, &acl] {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    rustix::fs::setxattr(
+        &acl,
+        "system.posix_acl_access",
+        &read_acl(uid),
+        rustix::fs::XattrFlags::empty(),
+    )
+    .unwrap();
+    let output = fixture.root.join("output");
+    std::fs::create_dir(&output).unwrap();
+    std::fs::set_permissions(&output, std::fs::Permissions::from_mode(0o777)).unwrap();
+    let mut reader = program(
+        "reader",
+        "cat /config/owner.pbtxt /config/acl.pbtxt > /results/seen; exec sleep 300",
+    );
+    reader.user = "nobody".into();
+    reader.binds = vec![
+        Bind {
+            source: owner.to_string_lossy().into(),
+            target: "/config/owner.pbtxt".into(),
+            read_only: true,
+        },
+        Bind {
+            source: acl.to_string_lossy().into(),
+            target: "/config/acl.pbtxt".into(),
+            read_only: true,
+        },
+        Bind {
+            source: output.to_string_lossy().into(),
+            target: "/results".into(),
+            read_only: false,
+        },
+    ];
+    let file = fixture.repo().join("external.service");
+    let native_seen = fixture.root.join("native-seen");
+    std::fs::write(
+        &file,
+        format!(
+            "[Service]\nExecStart=/bin/sh -c 'printf original > {}; exec sleep 300'\n",
+            native_seen.display()
+        ),
+    )
+    .unwrap();
+    let (run, plan) = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            programs: vec![reader],
+            unit_files: vec![file.to_string_lossy().into()],
+            ..Default::default()
+        }],
+    );
+    let expected = workload_systemd::inspect(&run, &plan).unwrap();
+    let (ready, readiness) = oneshot::channel();
+    let stop = async {
+        if readiness.await.is_ok() {
+            tokio::time::sleep(OBSERVATION).await;
+        }
+    };
+    // Act: mutation after capture must not change the bytes any launched unit sees.
+    let report = SystemdRunner::new()
+        .run_with_preflight(
+            run.clone(),
+            plan.clone(),
+            stop,
+            |_: &orchestrator::Event| {},
+            Some(ready),
+            |actual| {
+                assert_eq!(actual, &expected);
+                std::fs::write(&owner, "changed owner input").unwrap();
+                std::fs::write(&acl, "changed ACL input").unwrap();
+                std::fs::write(&file, "[Service]\nExecStart=/bin/false\n").unwrap();
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert_eq!(
+        std::fs::read_to_string(output.join("seen")).unwrap(),
+        "owned input\nACL input\n"
+    );
+    assert_eq!(std::fs::read_to_string(native_seen).unwrap(), "original");
+    assert_ne!(expected, workload_systemd::inspect(&run, &plan).unwrap());
+    assert!(runtime_units().is_empty());
+}
