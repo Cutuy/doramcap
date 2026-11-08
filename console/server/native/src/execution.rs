@@ -93,11 +93,9 @@ pub enum Launch {
 pub fn launch(request: RunRequest) -> Result<Launch, String> {
     let run = request.run.ok_or("run request has no run inputs")?;
     match request.backend {
-        Some(run_request::Backend::Compose(compose)) => {
-            ComposeRun::from_plan(run, compose)
-                .map(Launch::Compose)
-                .map_err(|error| error.to_string())
-        }
+        Some(run_request::Backend::Compose(compose)) => ComposeRun::from_plan(run, compose)
+            .map(Launch::Compose)
+            .map_err(|error| error.to_string()),
         Some(run_request::Backend::Systemd(systemd)) => Ok(Launch::Systemd(run, systemd)),
         None => Err("run request has no backend".into()),
     }
@@ -375,16 +373,7 @@ fn start_systemd(
             .await;
         let blocked = runner.blocked();
         let result = match result {
-            Ok(report) => ExecutionResult {
-                blocked,
-                error: report.execution_error,
-                writers_stopped: Some(report.writers_stopped),
-                recording_finalized: Some(report.recording_finalized),
-                service_exits: report.units.into_iter().map(unit_exit).collect(),
-                boundary_clean: Some(report.cleanup_verified),
-                // systemd runs have no Docker event stream to lose.
-                event_stream_healthy: Some(true),
-            },
+            Ok(report) => systemd_result(report, blocked),
             Err(error) => ExecutionResult {
                 blocked,
                 error: Some(error),
@@ -402,18 +391,37 @@ fn start_systemd(
     reply
 }
 
+/// Preserve execution and evidence failures while exposing only known unit exits.
+fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> ExecutionResult {
+    let errors: Vec<_> = report
+        .execution_error
+        .into_iter()
+        .chain(report.diagnostics)
+        .collect();
+    ExecutionResult {
+        blocked,
+        error: (!errors.is_empty()).then(|| errors.join("\n")),
+        writers_stopped: Some(report.writers_stopped),
+        recording_finalized: Some(report.recording_finalized),
+        service_exits: report.units.into_iter().filter_map(unit_exit).collect(),
+        boundary_clean: Some(report.cleanup_verified),
+        // systemd runs have no Docker event stream to lose.
+        event_stream_healthy: Some(true),
+    }
+}
+
 /// How a unit ended, in the shape Console shows for every backend.
-fn unit_exit(unit: workload_systemd::UnitExit) -> workload_docker::compose::ServiceExit {
+fn unit_exit(unit: workload_systemd::UnitExit) -> Option<workload_docker::compose::ServiceExit> {
     // `CLD_EXITED` from waitid(2); other codes mean a signal ended the main process.
     const CLD_EXITED: i32 = 1;
     const SIGNAL_EXIT_BASE: i32 = 128;
     const SIGKILL: i32 = 9;
-    // Unreadable evidence shows as zero here; the run report already fails with a diagnostic.
-    let code = unit.exec_main_code.unwrap_or_default();
-    let status = unit.exec_main_status.unwrap_or_default();
+    let code = unit.exec_main_code?;
+    let status = unit.exec_main_status?;
+    let result = unit.result?;
     let signalled = code != 0 && code != CLD_EXITED;
-    let oom_killed = unit.result.as_deref() == Some("oom-kill");
-    workload_docker::compose::ServiceExit {
+    let oom_killed = result == "oom-kill";
+    Some(workload_docker::compose::ServiceExit {
         service: unit.id,
         exit_code: if signalled {
             SIGNAL_EXIT_BASE + status
@@ -422,7 +430,7 @@ fn unit_exit(unit: workload_systemd::UnitExit) -> workload_docker::compose::Serv
         },
         oom_killed,
         killed: oom_killed || (signalled && status == SIGKILL),
-    }
+    })
 }
 
 /// Publish terminal state and the latest capture together before polling can finish.
@@ -441,6 +449,60 @@ fn publish_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn systemd_evidence_failures_remain_visible_without_invented_exit_codes() {
+        // Arrange
+        let report = workload_systemd::SystemdRunReport {
+            id: "run".into(),
+            execution_error: Some("start failed".into()),
+            writers_stopped: true,
+            recording_finalized: false,
+            cleanup_verified: true,
+            diagnostics: vec!["worker: required exit evidence unavailable".into()],
+            units: vec![workload_systemd::UnitExit {
+                id: "worker".into(),
+                unit: "doramcap-scope-worker.service".into(),
+                result: None,
+                exec_main_code: None,
+                exec_main_status: None,
+                cpu_usage_nsec: None,
+                memory_peak_bytes: None,
+            }],
+        };
+        // Act
+        let result = systemd_result(report, false);
+        // Assert
+        assert_eq!(
+            result.error.as_deref(),
+            Some("start failed\nworker: required exit evidence unavailable")
+        );
+        assert!(result.service_exits.is_empty());
+        assert_eq!(result.writers_stopped, Some(true));
+        assert_eq!(result.recording_finalized, Some(false));
+        assert_eq!(result.boundary_clean, Some(true));
+    }
+
+    #[test]
+    fn systemd_known_exit_status_preserves_the_app_identity() {
+        // Arrange
+        let unit = workload_systemd::UnitExit {
+            id: "worker".into(),
+            unit: "doramcap-scope-worker.service".into(),
+            result: Some("exit-code".into()),
+            exec_main_code: Some(1),
+            exec_main_status: Some(7),
+            cpu_usage_nsec: Some(0),
+            memory_peak_bytes: Some(0),
+        };
+        // Act
+        let exit = unit_exit(unit).unwrap();
+        // Assert
+        assert_eq!(exit.service, "worker");
+        assert_eq!(exit.exit_code, 7);
+        assert!(!exit.oom_killed);
+        assert!(!exit.killed);
+    }
 
     #[test]
     fn a_failed_result_keeps_capture_before_the_listener_runs() {
