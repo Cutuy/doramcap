@@ -2,11 +2,14 @@
 use crate::launch::RunPlan;
 use std::collections::BTreeSet;
 
-/// Reject empty, duplicate or unknown app IDs and roles before launching resources.
+/// Validate caller inputs and reject empty, duplicate or unknown app IDs and roles.
 pub fn validate_apps<'a>(
     run: &RunPlan,
     apps: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), String> {
+    if run.dora_runtime.is_some() {
+        return Err("Dora runtime is filled by preparation; caller inputs must omit it".into());
+    }
     let mut known = BTreeSet::new();
     for app in apps {
         if app.is_empty() || !known.insert(app) {
@@ -76,6 +79,14 @@ mod tests {
         assert!(validate_apps(&run, ["user"]).is_err());
         assert!(validate_apps(&run, ["monitor", "monitor"]).is_err());
         assert!(validate_apps(&run, ["monitor", ""]).is_err());
+        // Act / Assert: every backend prepares fresh runtime values from caller inputs.
+        let mut prepared = run.clone();
+        prepared.dora_runtime = Some(Default::default());
+        assert!(
+            validate_apps(&prepared, ["monitor", "user"])
+                .unwrap_err()
+                .contains("caller inputs must omit")
+        );
         for writer in [false, true] {
             // Arrange
             let mut duplicate = run.clone();

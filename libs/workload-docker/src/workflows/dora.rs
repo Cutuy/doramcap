@@ -4,18 +4,14 @@ use crate::compose::{error::invalid, *};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, time::Duration};
-use workload_lifecycle::dora::{option, port};
 
 // Approved polling exception until Dora reports daemon readiness.
 const DORA_STARTUP_CHECK_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Resolved native Compose inputs and immutable dataflow evidence used by control steps.
+/// Native Compose Dora service definitions used by the Docker adapter.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DoraApps {
     pub services: BTreeMap<String, Value>,
-    pub dataflow_file: String,
-    pub dataflow_sha256: String,
-    pub automatic_ports: [bool; 2],
 }
 impl DoraApps {
     pub fn enabled(&self) -> bool {
@@ -57,24 +53,6 @@ impl DoraApps {
     pub fn daemon(&self) -> Result<(&str, &Value)> {
         self.app("daemon")
     }
-    pub fn coordinator_port(&self) -> Result<u16> {
-        port(&Self::argv(self.coordinator()?.1)?, "--port").map_err(invalid)
-    }
-    pub fn daemon_port(&self) -> Result<u16> {
-        port(&Self::argv(self.daemon()?.1)?, "--local-listen-port").map_err(invalid)
-    }
-    pub fn directory(&self) -> Result<&str> {
-        self.coordinator()?.1["working_dir"]
-            .as_str()
-            .ok_or_else(|| invalid("Dora coordinator needs a working_dir"))
-    }
-    pub fn overlay(&self) -> Result<String> {
-        Ok(
-            option(&Self::argv(self.daemon()?.1)?, "--zenoh-config-overlay")
-                .map_err(invalid)?
-                .to_owned(),
-        )
-    }
     /// Resolve a file in an app's view through its ordinary bind mounts.
     pub fn host_path(service: &Value, target: &str) -> Result<String> {
         let path = std::path::Path::new(target);
@@ -108,7 +86,7 @@ impl ExperimentOwner {
             .collect();
         command.extend([
             "--coordinator-port".into(),
-            self.apps.coordinator_port()?.to_string(),
+            self.runtime()?.coordinator_port.to_string(),
         ]);
         self.adapter
             .project(&self.plan)
@@ -151,8 +129,11 @@ impl ExperimentOwner {
             return Ok(());
         }
         for (name, port) in [
-            (self.apps.coordinator()?.0, self.apps.coordinator_port()?),
-            (self.apps.daemon()?.0, self.apps.daemon_port()?),
+            (
+                self.apps.coordinator()?.0,
+                self.runtime()?.coordinator_port as u16,
+            ),
+            (self.apps.daemon()?.0, self.runtime()?.daemon_port as u16),
         ] {
             self.adapter
                 .project(&self.plan)
@@ -175,7 +156,7 @@ impl ExperimentOwner {
             .endpoint(
                 self.apps.coordinator()?.0,
                 "host",
-                self.apps.coordinator_port()?,
+                self.runtime()?.coordinator_port as u16,
             )
             .await
             .is_ok()
@@ -201,7 +182,10 @@ impl ExperimentOwner {
 }
 
 #[cfg(test)]
-pub(crate) fn fixture(root: &str, ports: [u16; 2]) -> DoraApps {
+pub(crate) fn fixture(
+    root: &str,
+    ports: [u16; 2],
+) -> (DoraApps, workload_lifecycle::launch::DoraRuntime) {
     let mut services = BTreeMap::new();
     for role in ["coordinator", "daemon"] {
         let name = format!("dora-{role}");
@@ -232,10 +216,11 @@ pub(crate) fn fixture(root: &str, ports: [u16; 2]) -> DoraApps {
         app["environment"][dora_app::environment::DAEMON_PORT] = ports[1].to_string().into();
         services.insert(name, app.clone());
     }
-    DoraApps {
-        services,
-        ..Default::default()
-    }
+    let mut apps = DoraApps { services };
+    let runtime = super::shared_dora::resolve(&mut apps, format!("{root}/dora/runtime"))
+        .unwrap()
+        .unwrap();
+    (apps, runtime)
 }
 
 #[cfg(test)]

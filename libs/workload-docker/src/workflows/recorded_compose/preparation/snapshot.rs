@@ -1,6 +1,7 @@
 //! Compare the effective Compose configuration across independently prepared runs.
 use super::*;
 use crate::compose::adapter::{ARTIFACTS_LABEL, RUN_LABEL};
+use workload_lifecycle::launch::DoraRuntime;
 
 fn relative(path: &str, artifacts: &Path) -> String {
     Path::new(path).strip_prefix(artifacts).map_or_else(
@@ -44,8 +45,14 @@ fn manifest(
     artifacts: &Path,
     systems: &[String],
     dora: &crate::workflows::dora::DoraApps,
-    automatic_ports: [bool; 2],
+    runtime: Option<&DoraRuntime>,
 ) -> Value {
+    let automatic_ports = runtime.map_or([false; 2], |runtime| {
+        [
+            runtime.automatic_coordinator_port,
+            runtime.automatic_daemon_port,
+        ]
+    });
     // Ownership labels and generated volume names identify a run rather than its configuration.
     for kind in ["services", "networks", "volumes"] {
         if let Some(items) = model.get_mut(kind).and_then(Value::as_object_mut) {
@@ -66,8 +73,13 @@ fn manifest(
         .join("dora/runtime")
         .to_string_lossy()
         .into_owned();
-    runtime_paths(&mut model, &runtime_directory, "@artifacts/dora/runtime");
-    let overlay = dora.overlay().unwrap_or_default();
+    let runtime_directory = runtime.map_or(runtime_directory.as_str(), |runtime| {
+        runtime.runtime_directory.as_str()
+    });
+    runtime_paths(&mut model, runtime_directory, "@artifacts/dora/runtime");
+    let overlay = runtime
+        .and_then(|runtime| runtime.zenoh.as_ref())
+        .map_or("", |zenoh| zenoh.target.as_str());
     if let Some(services) = model.get_mut("services").and_then(Value::as_object_mut) {
         for (name, service) in services {
             let runtime = dora.services.contains_key(name);
@@ -93,7 +105,7 @@ fn manifest(
                     if key == dora_app::environment::DAEMON_PORT && automatic_ports[1] {
                         *value = "@dora/daemon-port".into();
                     }
-                    if value == &overlay {
+                    if value == overlay {
                         path_value(value, artifacts);
                     }
                 }
@@ -155,6 +167,7 @@ pub(super) async fn capture(
     system_services: &[String],
     user_services: &[String],
     dora: &crate::workflows::dora::DoraApps,
+    runtime: Option<&DoraRuntime>,
 ) -> Result<ConfigurationSnapshot> {
     let bytes =
         crate::evidence::read_regular(Path::new(&plan.manifest), MAX_MANIFEST_BYTES).await?;
@@ -166,7 +179,7 @@ pub(super) async fn capture(
         artifacts,
         system_services,
         dora,
-        dora.automatic_ports,
+        runtime,
     );
     let recordings: Vec<_> = spec
         .recordings
@@ -190,7 +203,7 @@ pub(super) async fn capture(
         system_services: system_services.to_vec(),
         user_services: user_services.to_vec(),
         settings_sha256: digest(&settings),
-        graph_sha256: dora.dataflow_sha256.clone(),
+        graph_sha256: runtime.map_or_else(String::new, |runtime| runtime.dataflow_sha256.clone()),
         services: plan.services.clone(),
         remove_volumes: plan.remove_volumes,
     })
@@ -215,7 +228,7 @@ mod tests {
             Path::new("/review"),
             &["collector".into()],
             &dora,
-            [false; 2],
+            None,
         );
         // Act / Assert
         assert_eq!(
@@ -225,7 +238,7 @@ mod tests {
                 Path::new("/execution"),
                 &["collector".into()],
                 &dora,
-                [false; 2]
+                None,
             )
         );
         for (field, value) in [
@@ -242,7 +255,7 @@ mod tests {
                     Path::new("/execution"),
                     &["collector".into()],
                     &dora,
-                    [false; 2]
+                    None,
                 )
             );
         }
@@ -256,7 +269,7 @@ mod tests {
                 Path::new("/execution"),
                 &["collector".into()],
                 &dora,
-                [false; 2]
+                None,
             )
         );
     }
@@ -281,7 +294,8 @@ mod tests {
             readiness_seconds: 60,
             stop_seconds: 15,
         };
-        let mut dora = crate::workflows::dora::DoraApps::default();
+        let dora = crate::workflows::dora::DoraApps::default();
+        let mut runtime = DoraRuntime::default();
         let mut plan = ResolvedComposeProject {
             manifest: path.to_string_lossy().into(),
             sha256: digest(&bytes),
@@ -294,6 +308,7 @@ mod tests {
             &["collector".into()],
             &["workload".into()],
             &dora,
+            Some(&runtime),
         )
         .await
         .unwrap();
@@ -307,7 +322,8 @@ mod tests {
                 &plan,
                 &["collector".into()],
                 &["workload".into()],
-                &dora
+                &dora,
+                Some(&runtime),
             )
             .await
             .unwrap()
@@ -321,12 +337,13 @@ mod tests {
                 &plan,
                 &["workload".into()],
                 &["collector".into()],
-                &dora
+                &dora,
+                Some(&runtime),
             )
             .await
             .unwrap()
         );
-        dora.dataflow_sha256 = "changed".into();
+        runtime.dataflow_sha256 = "changed".into();
         assert_ne!(
             original,
             capture(
@@ -335,12 +352,13 @@ mod tests {
                 &plan,
                 &["collector".into()],
                 &["workload".into()],
-                &dora
+                &dora,
+                Some(&runtime),
             )
             .await
             .unwrap()
         );
-        dora.dataflow_sha256.clear();
+        runtime.dataflow_sha256.clear();
         plan.services.insert(
             "workload".into(),
             ComposeService {
@@ -357,7 +375,8 @@ mod tests {
                 &plan,
                 &["collector".into()],
                 &["workload".into()],
-                &dora
+                &dora,
+                Some(&runtime),
             )
             .await
             .unwrap()
@@ -365,13 +384,17 @@ mod tests {
         // Act / Assert: changed frozen bytes must not produce a trusted snapshot.
         tokio::fs::write(path, b"{}").await.unwrap();
         assert!(
-            capture(&spec, root.path(), &plan, &[], &[], &dora)
+            capture(&spec, root.path(), &plan, &[], &[], &dora, Some(&runtime))
                 .await
                 .is_err()
         );
     }
-    fn resolved_model(root: &str, ports: [u32; 2]) -> (Value, crate::workflows::dora::DoraApps) {
-        let dora = crate::workflows::dora::fixture(root, [ports[0] as u16, ports[1] as u16]);
+    fn resolved_model(
+        root: &str,
+        ports: [u32; 2],
+    ) -> (Value, crate::workflows::dora::DoraApps, DoraRuntime) {
+        let (dora, runtime) =
+            crate::workflows::dora::fixture(root, [ports[0] as u16, ports[1] as u16]);
         let directory = format!("{root}/dora/runtime");
         let ready = format!("{directory}/worker.ready");
         let mut model = json!({"services":{"worker":{
@@ -389,24 +412,42 @@ mod tests {
         crate::workflows::recorded_compose::preparation::model::configure_dora(
             &mut model,
             &dora,
+            Some(&runtime),
             "owner".into(),
         )
         .unwrap();
-        (model, dora)
+        (model, dora, runtime)
     }
 
     #[test]
     fn generated_runtime_paths_and_automatic_ports_survive_independent_resolution() {
         // Arrange
-        let (review, review_dora) = resolved_model("/review", [6000, 6001]);
-        let (execution, execution_dora) = resolved_model("/execution", [7000, 7001]);
+        let (review, review_dora, review_runtime) = resolved_model("/review", [6000, 6001]);
+        let (execution, execution_dora, execution_runtime) =
+            resolved_model("/execution", [7000, 7001]);
 
         // Act
-        let normalize = |model, root: &str, dora: &crate::workflows::dora::DoraApps| {
-            manifest(model, Path::new(root), &["worker".into()], dora, [true; 2])
-        };
-        let inspected = normalize(review, "/review", &review_dora);
-        let prepared = normalize(execution.clone(), "/execution", &execution_dora);
+        let normalize =
+            |model, root: &str, dora: &crate::workflows::dora::DoraApps, runtime: &DoraRuntime| {
+                manifest(
+                    model,
+                    Path::new(root),
+                    &["worker".into()],
+                    dora,
+                    Some(&DoraRuntime {
+                        automatic_coordinator_port: true,
+                        automatic_daemon_port: true,
+                        ..runtime.clone()
+                    }),
+                )
+            };
+        let inspected = normalize(review, "/review", &review_dora, &review_runtime);
+        let prepared = normalize(
+            execution.clone(),
+            "/execution",
+            &execution_dora,
+            &execution_runtime,
+        );
 
         // Assert
         assert_eq!(inspected, prepared);
@@ -424,24 +465,53 @@ mod tests {
         ] {
             let mut changed = execution.clone();
             changed["services"]["worker"][field] = value;
-            assert_ne!(inspected, normalize(changed, "/execution", &execution_dora));
+            assert_ne!(
+                inspected,
+                normalize(changed, "/execution", &execution_dora, &execution_runtime)
+            );
         }
     }
 
     #[test]
     fn explicitly_configured_dora_ports_remain_part_of_configuration_identity() {
         // Arrange
-        let (initial, initial_dora) = resolved_model("/review", [6000, 6001]);
-        let normalize = |model, root: &str, dora: &crate::workflows::dora::DoraApps, automatic| {
-            manifest(model, Path::new(root), &["worker".into()], dora, automatic)
+        let (initial, initial_dora, initial_runtime) = resolved_model("/review", [6000, 6001]);
+        let normalize = |model,
+                         root: &str,
+                         dora: &crate::workflows::dora::DoraApps,
+                         runtime: &DoraRuntime,
+                         automatic: [bool; 2]| {
+            manifest(
+                model,
+                Path::new(root),
+                &["worker".into()],
+                dora,
+                Some(&DoraRuntime {
+                    automatic_coordinator_port: automatic[0],
+                    automatic_daemon_port: automatic[1],
+                    ..runtime.clone()
+                }),
+            )
         };
 
         // Act / Assert: each explicitly configured port remains exact independently.
         for automatic in [[false, true], [true, false], [false, false]] {
-            let inspected = normalize(initial.clone(), "/review", &initial_dora, automatic);
+            let inspected = normalize(
+                initial.clone(),
+                "/review",
+                &initial_dora,
+                &initial_runtime,
+                automatic,
+            );
             for ports in [[7000, 6001], [6000, 7001]] {
-                let (changed, changed_dora) = resolved_model("/execution", ports);
-                let prepared = normalize(changed, "/execution", &changed_dora, automatic);
+                let (changed, changed_dora, changed_runtime) = resolved_model("/execution", ports);
+                let prepared = normalize(
+                    changed,
+                    "/execution",
+                    &changed_dora,
+                    &changed_runtime,
+                    automatic,
+                );
                 assert_eq!(
                     inspected == prepared,
                     if ports[0] != 6000 {

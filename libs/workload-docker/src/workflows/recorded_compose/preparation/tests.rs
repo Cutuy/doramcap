@@ -52,7 +52,10 @@ fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
     );
 }
 
-fn runtime() -> crate::workflows::dora::DoraApps {
+fn runtime() -> (
+    crate::workflows::dora::DoraApps,
+    workload_lifecycle::launch::DoraRuntime,
+) {
     crate::workflows::dora::fixture("/run/experiment", [54001, 54002])
 }
 
@@ -64,12 +67,17 @@ async fn coordinator_mounts_the_frozen_graph_beside_writable_session_output() {
     tokio::fs::write(&source, "nodes: [{id: worker, path: dynamic}]")
         .await
         .unwrap();
-    let mut apps = runtime();
+    let (mut apps, mut shared) = runtime();
     let original = apps.coordinator().unwrap().1.clone();
     // Act
-    crate::workflows::shared_dora::prepare(&mut apps, source.to_str().unwrap(), directory.path())
-        .await
-        .unwrap();
+    crate::workflows::shared_dora::prepare(
+        &mut apps,
+        Some(&mut shared),
+        source.to_str().unwrap(),
+        directory.path(),
+    )
+    .await
+    .unwrap();
     // Assert
     let coordinator = apps.coordinator().unwrap().1;
     assert_eq!(coordinator["user"], original["user"]);
@@ -204,13 +212,13 @@ fn dora_wiring_shares_ipc_preserves_networks_and_limits_environment_overrides() 
     // Arrange
     let mut model: Value =
         serde_json::from_str(include_str!("fixtures/dora-wiring.input.json")).unwrap();
-    let dora = runtime();
+    let (dora, shared) = runtime();
     for (name, service) in &dora.services {
         model["services"][name] = service.clone();
     }
     let original = model.clone();
     // Act
-    configure_dora(&mut model, &dora, "experiment-owner".into()).unwrap();
+    configure_dora(&mut model, &dora, Some(&shared), "experiment-owner".into()).unwrap();
     // Assert
     for (name, app) in original["services"].as_object().unwrap() {
         assert_eq!(model["services"][name]["network_mode"], app["network_mode"]);
@@ -268,7 +276,8 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
         let mut model = json!({"services":{"app":{"volumes":[{"type":"bind","source":"/data","target":target}]}}});
 
         // Act
-        let result = configure_dora(&mut model, &runtime(), "owner".into());
+        let (dora, shared) = runtime();
+        let result = configure_dora(&mut model, &dora, Some(&shared), "owner".into());
 
         // Assert
         assert!(
@@ -284,7 +293,8 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
         let mut model = json!({"services":part});
 
         // Act
-        let result = configure_dora(&mut model, &runtime(), "owner".into());
+        let (dora, shared) = runtime();
+        let result = configure_dora(&mut model, &dora, Some(&shared), "owner".into());
 
         // Assert
         assert!(result.is_err());
@@ -544,7 +554,8 @@ fn malformed_app_environment_and_mounts_return_errors() {
         let mut model = json!({"services":{"app":settings}});
 
         // Act
-        let result = configure_dora(&mut model, &runtime(), "owner".into());
+        let (dora, shared) = runtime();
+        let result = configure_dora(&mut model, &dora, Some(&shared), "owner".into());
 
         // Assert
         assert!(result.unwrap_err().to_string().contains("invalid Compose"));
@@ -556,7 +567,8 @@ fn dora_wiring_preserves_an_absent_network_section() {
     // Arrange
     let mut model = json!({"services":{"app":{"network_mode":"host"}}});
     // Act
-    configure_dora(&mut model, &runtime(), "owner".into()).unwrap();
+    let (dora, shared) = runtime();
+    configure_dora(&mut model, &dora, Some(&shared), "owner".into()).unwrap();
     // Assert: Compose requires an absent optional section to stay absent.
     assert!(model.get("networks").is_none());
 }

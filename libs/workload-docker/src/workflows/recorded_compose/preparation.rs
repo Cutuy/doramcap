@@ -24,6 +24,8 @@ const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PreparedRun {
+    /// Shared inputs with Dora runtime facts filled by this preparation.
+    pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
     pub system_services: Vec<String>,
@@ -88,6 +90,8 @@ pub async fn profiles(
 /// Frozen experiment inputs; resolution creates private files without starting resources.
 #[derive(Clone, Debug)]
 pub struct ResolvedRun {
+    /// Shared inputs with Dora runtime facts filled by this preparation.
+    pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
     pub system_services: Vec<String>,
@@ -112,6 +116,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     let runtime_directory = artifacts.join("dora/runtime");
     tokio::fs::create_dir_all(&runtime_directory).await?;
     let runtime_directory = runtime_directory.to_string_lossy().into_owned();
+    let mut run = spec.run_plan();
     let mut dora = super::super::dora::DoraApps::default();
     let mut model = json!({"services":{}});
     let mut dora_services = Vec::new();
@@ -168,8 +173,14 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         .iter()
         .map(|name| (name.clone(), model["services"][name].clone()))
         .collect();
-    super::super::shared_dora::resolve(&mut dora)?;
-    super::super::shared_dora::prepare(&mut dora, &spec.dataflow_file, &artifacts).await?;
+    run.dora_runtime = super::super::shared_dora::resolve(&mut dora, runtime_directory)?;
+    super::super::shared_dora::prepare(
+        &mut dora,
+        run.dora_runtime.as_mut(),
+        &spec.dataflow_file,
+        &artifacts,
+    )
+    .await?;
     for (name, service) in &dora.services {
         model["services"][name] = service.clone();
     }
@@ -177,13 +188,18 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     diagnostics.extend(model::configure_dora(
         &mut model,
         &dora,
+        run.dora_runtime.as_ref(),
         super::super::shared_dora::owner(&spec.repository_root),
     )?);
     model::configure_stop_grace(&mut model, spec.stop_seconds)?;
-    if !dora.dataflow_file.is_empty() {
+    if let Some(dataflow) = run
+        .dora_runtime
+        .as_ref()
+        .and_then(|runtime| runtime.dataflow.as_ref())
+    {
         let graph = super::super::shared_dora::graph(
-            &dora.dataflow_file,
-            &crate::evidence::read_regular(Path::new(&dora.dataflow_file), MAX_GRAPH_BYTES).await?,
+            &dataflow.source,
+            &crate::evidence::read_regular(Path::new(&dataflow.source), MAX_GRAPH_BYTES).await?,
         )?;
         model::validate_graph(&model, &graph)?;
     }
@@ -197,6 +213,37 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     model::configure_mcap_writers(&mut model, &mcap_services)?;
     // Snapshot file inputs and resolve one project with pinned images.
     freeze_files(&mut model, &artifacts).await?;
+    // Keep shared bindings aligned with the frozen files each process will see.
+    if let Some(runtime) = run.dora_runtime.as_mut() {
+        if let Some(zenoh) = runtime.zenoh.as_mut() {
+            let service = system_services
+                .first()
+                .or(user_services.first())
+                .map(String::as_str)
+                .unwrap_or(dora.daemon()?.0);
+            zenoh.source = super::super::dora::DoraApps::host_path(
+                &model["services"][service],
+                &zenoh.target,
+            )?;
+            for participant in system_services.iter().chain(&user_services) {
+                if super::super::dora::DoraApps::host_path(
+                    &model["services"][participant],
+                    &zenoh.target,
+                )? != zenoh.source
+                {
+                    return Err(invalid(
+                        "Dora participant configuration changed during preparation",
+                    ));
+                }
+            }
+        }
+        if let Some(dataflow) = runtime.dataflow.as_mut() {
+            dataflow.source = super::super::dora::DoraApps::host_path(
+                &model["services"][dora.coordinator()?.0],
+                &dataflow.target,
+            )?;
+        }
+    }
     let manifest = artifacts.join("experiment.input.json");
     private_write(&manifest, &serde_json::to_vec(&model)?).await?;
     let apps = spec
@@ -251,9 +298,11 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         &system_services,
         &user_services,
         &dora,
+        run.dora_runtime.as_ref(),
     )
     .await?;
     Ok(ResolvedRun {
+        run,
         artifacts,
         plan,
         system_services,
@@ -324,7 +373,7 @@ impl PrepareRun {
         let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
-        super::super::shared_dora::validate_endpoints(&resolved.dora)?;
+        super::super::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
         // Capture the filesystem baseline only for execution.
         let executor = self
             .executor
@@ -339,6 +388,7 @@ impl PrepareRun {
             .map_err(|e| invalid(e.to_string()))?
             .into_value();
         Ok(PreparedRun {
+            run: resolved.run,
             artifacts: resolved.artifacts,
             plan: resolved.plan,
             system_services: resolved.system_services,

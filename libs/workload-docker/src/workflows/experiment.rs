@@ -12,12 +12,14 @@ pub struct ExperimentOwner {
     pub(crate) stop_seconds: u64,
     pub(crate) startup_seconds: u64,
     pub(crate) apps: DoraApps,
+    pub(crate) run: workload_lifecycle::launch::RunPlan,
     pub(crate) adapter: Rc<DockerAdapter>,
     pub(crate) plan: ResolvedComposeProject,
 }
 impl ExperimentOwner {
     pub(crate) fn new(
         apps: DoraApps,
+        run: workload_lifecycle::launch::RunPlan,
         adapter: Rc<DockerAdapter>,
         plan: ResolvedComposeProject,
         seconds: u64,
@@ -28,10 +30,17 @@ impl ExperimentOwner {
             attempted: false,
             stop_seconds,
             apps,
+            run,
             adapter,
             plan,
             startup_seconds: seconds,
         }
+    }
+    pub(crate) fn runtime(&self) -> Result<&workload_lifecycle::launch::DoraRuntime> {
+        self.run
+            .dora_runtime
+            .as_ref()
+            .ok_or_else(|| invalid("prepared Dora runtime missing"))
     }
     async fn entries(&self) -> Result<Vec<serde_json::Value>> {
         let output = self
@@ -44,28 +53,26 @@ impl ExperimentOwner {
             .collect()
     }
     pub async fn register_graph(&mut self) -> Result<()> {
-        if self.apps.dataflow_file.is_empty() {
+        let Some(dataflow) = self
+            .run
+            .dora_runtime
+            .as_ref()
+            .and_then(|runtime| runtime.dataflow.as_ref())
+        else {
             return Ok(());
-        }
+        };
         let bytes = crate::evidence::read_regular(
-            std::path::Path::new(&self.apps.dataflow_file),
+            std::path::Path::new(&dataflow.source),
             super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
-        if crate::compose::adapter::digest(&bytes) != self.apps.dataflow_sha256 {
+        if crate::compose::adapter::digest(&bytes) != self.runtime()?.dataflow_sha256 {
             return Err(invalid("frozen Dora graph changed"));
         }
+        let target = dataflow.target.clone();
         self.attempted = true;
-        self.cli(&[
-            "start",
-            &std::path::Path::new(self.apps.directory()?)
-                .join(super::shared_dora::GRAPH_FILE)
-                .to_string_lossy(),
-            "--name",
-            &self.plan.run,
-            "--detach",
-        ])
-        .await?;
+        self.cli(&["start", &target, "--name", &self.plan.run, "--detach"])
+            .await?;
         let entries = self.entries().await?;
         if entries.len() != 1
             || entries[0]["name"] != self.plan.run
@@ -103,12 +110,17 @@ impl ExperimentOwner {
                 Ok(())
             };
         };
+        let dataflow = self
+            .runtime()?
+            .dataflow
+            .as_ref()
+            .ok_or_else(|| invalid("registered Dora graph missing"))?;
         let bytes = crate::evidence::read_regular(
-            std::path::Path::new(&self.apps.dataflow_file),
+            std::path::Path::new(&dataflow.source),
             super::shared_dora::MAX_GRAPH_BYTES,
         )
         .await?;
-        let graph = super::shared_dora::graph(&self.apps.dataflow_file, &bytes)?;
+        let graph = super::shared_dora::graph(&dataflow.source, &bytes)?;
         let state = self.adapter.project(&self.plan).inspect().await?;
         let nodes: Vec<_> = graph
             .nodes
