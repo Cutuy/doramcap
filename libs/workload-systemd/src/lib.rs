@@ -80,6 +80,14 @@ impl Scope {
     }
 }
 
+/// An absolute path that unit-file syntax carries without quoting.
+fn plain_path(path: &str) -> bool {
+    std::path::Path::new(path).is_absolute()
+        && !path
+            .chars()
+            .any(|c| c.is_whitespace() || c == ':' || c == '\\')
+}
+
 fn valid_id(id: &str) -> bool {
     (1..=MAX_ID_CHARS).contains(&id.len())
         && id
@@ -164,12 +172,23 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
                 resource_policy::CpuSet::parse(&program.cpus).map_err(error)?;
             }
         }
-        for file in &group.unit_files {
+        let apps = group.app_units.iter().map(|app| &app.file);
+        for file in group.unit_files.iter().chain(apps) {
             if !Path::new(file).is_absolute()
                 || reserved(unit_stem(file)?)
                 || !ids.insert(unit_stem(file)?.to_owned())
             {
                 return Err(format!("invalid or duplicate unit file {file:?}"));
+            }
+        }
+        if !group.app_units.is_empty() && !plain_path(&plan.binaries) {
+            return Err("app units need an absolute binaries directory without spaces".into());
+        }
+        for bind in group.app_units.iter().flat_map(|app| &app.binds) {
+            if !plain_path(&bind.source) || !plain_path(&bind.target) {
+                return Err(format!(
+                    "app unit binds need absolute paths without spaces: {bind:?}"
+                ));
             }
         }
     }
@@ -201,9 +220,10 @@ mod tests {
                     ..Default::default()
                 }],
                 unit_files: vec!["/repo/deploy/perception.service".into()],
-                await_recordings: false,
+                ..Default::default()
             }],
             dora: None,
+            ..Default::default()
         }
     }
 

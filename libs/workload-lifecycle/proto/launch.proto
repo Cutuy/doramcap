@@ -65,21 +65,32 @@ message AppManifest {
   repeated Variant variants = 5;
   // Recordings every variant writes.
   repeated RecordingOutput recordings = 6;
+  // Where the chosen variant's config appears in the app's own view, read-only.
+  string config_target = 7;
+  // Where the run's artifact directory appears in the app's own view.
+  repeated string output_targets = 8;
+  SystemdLaunch systemd = 9;
 }
 
-// How the Compose form launches an app.
+// How Compose launches the app. The Compose files carry every Compose detail.
 message ComposeLaunch {
   // Compose files in merge order.
   repeated string files = 1;
-  // Where the chosen variant's config is mounted read-only.
-  ServiceMount config_mount = 2;
-  // Where the run's artifact directory is mounted.
-  repeated ServiceMount output_mounts = 3;
+  // Service that receives the config and output mounts.
+  string service = 2;
 }
 
-// A service and an absolute path inside it.
-message ServiceMount {
-  string service = 1;
+// How systemd launches the app. The unit file carries every systemd detail; its
+// ExecStart names an executable in the deployment's binaries directory.
+message SystemdLaunch {
+  // Unit file, adopted unchanged.
+  string unit = 1;
+  // Files beside the manifest that appear read-only at absolute targets.
+  repeated FileMount files = 2;
+}
+
+message FileMount {
+  string source = 1;
   string target = 2;
 }
 

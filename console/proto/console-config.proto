@@ -17,8 +17,10 @@ message ConsoleConfig {
   string public_origin = 7;
   RuntimeConfig runtime = 8;
   reserved 10;
-  // Launch form of every app; only COMPOSE is supported. Unspecified selects COMPOSE.
+  // Launch form of every app: COMPOSE or SYSTEMD. Unspecified selects COMPOSE.
   doramcap.launch.v1.Form form = 12;
+  // Absolute directory of host binaries (`dora` and each manifest's executable); SYSTEMD only.
+  string binaries = 13;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
@@ -59,6 +61,8 @@ message SystemAppDefinition {
   bool health_inputs = 12; // Consume other selected nodes' health outputs.
   repeated LaunchProfile launch_profiles = 11; // The first is the default.
   LiveRelay live_relay = 13; // Relays the selected apps' live outputs to Console.
+  // How the SYSTEMD form launches the app; file sources are absolute.
+  doramcap.launch.v1.SystemdLaunch systemd = 15;
 }
 
 // Console generates the relay's Dora node and BridgeConfig, mounted at config_mount.

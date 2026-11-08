@@ -87,6 +87,7 @@ pub fn run(request: RunRequest) -> Result<ComposeRun, String> {
     let run = request.run.ok_or("run request has no run inputs")?;
     match request.backend {
         Some(run_request::Backend::Compose(compose)) => Ok(ComposeRun::from_plan(run, compose)),
+        Some(run_request::Backend::Systemd(_)) => Err("systemd runs are not supported yet".into()),
         None => Err("run request has no backend".into()),
     }
 }

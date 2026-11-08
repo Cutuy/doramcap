@@ -1,10 +1,12 @@
 id: "data-recorder"
 label: "Data recorder"
 graph: "flow.yml"
-compose {
-  files: "compose.yaml"
-  config_mount { service: "data-recorder" target: "/config/recorder.pbtxt" }
-  output_mounts { service: "data-recorder" target: "/results" }
+config_target: "/config/recorder.pbtxt"
+output_targets: "/results"
+compose { files: "compose.yaml" service: "data-recorder" }
+systemd {
+  unit: "data-recorder.service"
+  files { source: "telemetry_descriptor.bin" target: "/config/telemetry_descriptor.bin" }
 }
 variants {
   id: "cpu"

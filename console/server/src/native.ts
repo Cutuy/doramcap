@@ -10,6 +10,7 @@ export const execution = doramcap.console.execution.v1;
 export const compose = doramcap.compose.v1;
 export const composePlan = doramcap.compose_plan.v1;
 export const launch = doramcap.launch.v1;
+export const systemd = doramcap.systemd_plan.v1;
 export const workflow = doramcap.workflow.v1;
 export const live = doramcap.console.live.v1;
 export const systemConfig = doramcap.system_config.v1;

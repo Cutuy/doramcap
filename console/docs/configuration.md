@@ -10,8 +10,13 @@ pbtxt, bind-mounted read-only by its Compose file. The
 ## App manifests
 
 An app's launch facts can ship beside it in an `app.pbtxt`
-([`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)): label, graph, Compose
-files and mounts, recordings, and variants (launch profiles). Paths stay beside the manifest.
+([`AppManifest`](../../libs/workload-lifecycle/proto/launch.proto)): label, graph, recordings,
+variants (launch profiles), where the app expects its config and outputs, and its native launch
+files: Compose files and a systemd unit file. Native files carry every launcher detail; Doramcap
+adds only the run's mounts and placement. Paths stay beside the manifest.
+
+![Launch contracts](../../libs/workload-lifecycle/docs/110726-launch-contracts.svg)
+
 The Console entry then names the manifest and keeps only Console settings:
 
 ```protobuf
@@ -23,8 +28,9 @@ system_apps {
 }
 ```
 
-`form` selects how every app launches; only `COMPOSE` is supported. Inline definitions,
-as below, remain valid.
+`form` selects how every app launches: `COMPOSE`, or `SYSTEMD` with an absolute `binaries`
+directory holding `dora` and the executables named by each app's systemd unit file. Console cannot run `SYSTEMD`
+yet and refuses it at startup. Inline definitions, as below, remain valid.
 
 ```protobuf
 system_apps {

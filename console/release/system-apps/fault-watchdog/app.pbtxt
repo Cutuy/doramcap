@@ -2,10 +2,11 @@
 id: "fault-watchdog"
 label: "Fault Watchdog"
 graph: "flow.yml"
-compose {
-  files: "compose.yaml"
-  config_mount { service: "fault-watchdog" target: "/etc/fault-watchdog/watchdog.pbtxt" }
-  output_mounts { service: "fault-watchdog" target: "/results" }
+config_target: "/etc/fault-watchdog/watchdog.pbtxt"
+output_targets: "/results"
+compose { files: "compose.yaml" service: "fault-watchdog" }
+systemd {
+  unit: "fault-watchdog.service"
 }
 variants { id: "live" label: "Live only" config: "watchdog.pbtxt" }
 variants {

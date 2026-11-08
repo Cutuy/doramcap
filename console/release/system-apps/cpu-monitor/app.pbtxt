@@ -1,10 +1,11 @@
 id: "cpu-monitor"
 label: "CPU monitoring"
 graph: "flow.yml"
-compose {
-  files: "compose.yaml"
-  config_mount { service: "cpu-monitor" target: "/config/monitor.pbtxt" }
-  output_mounts { service: "cpu-monitor" target: "/results" }
+config_target: "/config/monitor.pbtxt"
+output_targets: "/results"
+compose { files: "compose.yaml" service: "cpu-monitor" }
+systemd {
+  unit: "cpu-monitor.service"
 }
 variants {
   id: "record"

@@ -14,6 +14,7 @@ prost-reflect = { version = "0.16", features = ["text-format"] }
 system-config = { path = "../../../libs/resources/system-config" }
 workload-docker = { path = "../../../libs/workload-docker" }
 workload-lifecycle = { path = "../../../libs/workload-lifecycle" }
+workload-systemd = { path = "../../../libs/workload-systemd" }
 workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }
 napi = { version = "=3.16.1", features = ["tokio_rt", "napi8"] }
 napi-derive = "=3.7.0"

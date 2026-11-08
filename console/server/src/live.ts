@@ -37,7 +37,7 @@ export async function bindRelay(relay: App, apps: App[], dora: Config['dora'], w
     volumes: [{ type: 'bind', source: settings, target, read_only: true, bind: { create_host_path: false } }],
     ...(dora?.participantUid != null ? { user: `${dora.participantUid}:${dora.participantGid ?? dora.participantUid}` } : {}),
   } } })));
-  return { graph, overlay };
+  return { graph, overlay, settings };
 }
 
 /**

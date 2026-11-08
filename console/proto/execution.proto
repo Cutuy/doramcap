@@ -3,6 +3,7 @@ package doramcap.console.execution.v1;
 import "compose.proto";
 import "compose_plan.proto";
 import "launch.proto";
+import "systemd_plan.proto";
 import "dora.proto";
 import "workflow.proto";
 import "system_config.proto";
@@ -12,6 +13,7 @@ message RunRequest {
   doramcap.launch.v1.RunPlan run = 1;
   oneof backend {
     doramcap.compose_plan.v1.ComposePlan compose = 2;
+    doramcap.systemd_plan.v1.SystemdPlan systemd = 3;
   }
 }
 message Inspection {

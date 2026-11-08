@@ -1,0 +1,9 @@
+# Native systemd launch of Live telemetry relay. Doramcap adopts this file unchanged and adds
+# the run's slice, private root, binds and binaries search path in a runtime drop-in.
+[Unit]
+Description=Doramcap Live telemetry relay
+
+[Service]
+ExecStart=live-bridge --config /config/bridge.pbtxt
+KillSignal=SIGINT
+TimeoutStopSec=15

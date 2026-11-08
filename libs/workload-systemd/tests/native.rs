@@ -37,7 +37,13 @@ impl Fixture {
             stop_seconds: 5,
             ..Default::default()
         };
-        (shared, SystemdPlan { groups, dora: None })
+        (
+            shared,
+            SystemdPlan {
+                groups,
+                ..Default::default()
+            },
+        )
     }
 }
 impl Drop for Fixture {
@@ -649,4 +655,59 @@ async fn bind_mounts_show_host_paths_at_container_targets() {
     );
     // Bind targets live in the unit's private root, never on the host.
     assert!(!Path::new("/doramcap-native-binds").exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn app_unit_files_find_binaries_and_see_binds_in_a_private_root() {
+    // Arrange: an app unit names its executable only; config and results are bound.
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = Fixture::new("app-unit");
+    let binaries = fixture.root.join("bin");
+    std::fs::create_dir_all(&binaries).unwrap();
+    let probe = binaries.join("probe-app");
+    std::fs::write(
+        &probe,
+        "#!/bin/sh\ncp /doramcap-native-app/config /doramcap-native-app/results/seen\nexec sleep 300\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&probe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let config = fixture.root.join("config.pbtxt");
+    let results = fixture.root.join("results");
+    std::fs::write(&config, "rate: 5\n").unwrap();
+    std::fs::create_dir_all(&results).unwrap();
+    let unit = fixture.root.join("probe.service");
+    std::fs::write(&unit, "[Service]\nExecStart=probe-app\n").unwrap();
+    let mut plan = fixture.plan(
+        "r1",
+        vec![UnitGroup {
+            app_units: vec![workload_systemd::AppUnit {
+                file: unit.to_string_lossy().into(),
+                binds: vec![
+                    Bind {
+                        source: config.to_string_lossy().into(),
+                        target: "/doramcap-native-app/config".into(),
+                        read_only: true,
+                    },
+                    Bind {
+                        source: results.to_string_lossy().into(),
+                        target: "/doramcap-native-app/results".into(),
+                        read_only: false,
+                    },
+                ],
+            }],
+            ..Default::default()
+        }],
+    );
+    plan.1.binaries = binaries.to_string_lossy().into();
+    // Act
+    let report = run_for_a_while(plan).await;
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert_eq!(
+        std::fs::read_to_string(results.join("seen")).unwrap(),
+        "rate: 5\n"
+    );
+    assert!(!Path::new("/doramcap-native-app").exists());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }

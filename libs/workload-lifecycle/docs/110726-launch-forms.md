@@ -59,6 +59,11 @@ Generated per run: Console Review variant overrides, the `RunPlan` (saved as `pl
 frozen config copies and the backend input. The plan has the same shape for every form; only the
 backend input differs.
 
+![Launch contracts](110726-launch-contracts.svg)
+
+- `AppManifest` may carry both `compose` and `systemd`; the machine's `form` picks one.
+- `RunRequest` carries the shared `RunPlan` and exactly one backend plan.
+
 ## Run sequence
 
 ![Run handle and monitoring](110726-run-handle.svg)
@@ -226,14 +231,18 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Dora under systemd: coordinator and daemon units, daemon readiness, graph registration and `dora down` through oneshot units.
 - [x] Generated units run in private roots with per-unit bind mounts.
 - [ ] Release workflow publishes per-arch app binaries as release assets; manifests name them with checksums; Console downloads missing ones before Review.
-- [ ] Manifests gain program launch facts; Dora gets its own manifest.
-- [ ] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices, and runs it through the native addon.
+- [x] Manifests state where an app expects its config and outputs, and name its native launch files: Compose files plus the receiving service, and a systemd unit file plus extra files. Native files carry every launcher detail. Console's config gains `binaries` and accepts `form: SYSTEMD`.
+- [x] System app unit files are adopted unchanged; a runtime drop-in adds the run's slice, a private root, its binds and `ExecSearchPath` for the binaries directory.
+- [x] Console resolves a `SystemdPlan` in TypeScript from the deployment, manifests and Review choices: Dora, then system apps, then every `*.service` at the project root.
+- [ ] The native addon runs systemd plans; Console stops refusing `form: SYSTEMD` at startup. Review shows apps and profiles.
+- [ ] Dora's own manifest; today Dora is `dora` in the binaries directory.
 - [ ] Ownership and reset of Dora's shared-memory segments.
 - [ ] Share Prepare and Report between Compose and systemd.
 
 **Validation**
 - [x] Native test: Dora runs as units, registers a dynamic-node graph and stops cleanly with no units left.
 - [x] Native test: a unit reads its config and writes results at container paths, and no bind target appears on the host.
+- [x] Console unit tests: the release manifests resolve to the expected systemd plan; missing binaries or programs are rejected.
 - [ ] Native Console run of CPU monitoring, Fault Watchdog and one user unit: recordings finalize and the slice is gone after removal.
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.

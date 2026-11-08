@@ -8,6 +8,8 @@ message SystemdPlan {
   repeated UnitGroup groups = 2;
   // Optional Dora runtime, started before every group and stopped after them.
   DoraUnits dora = 3;
+  // Absolute directory holding app executables; app units search it for ExecStart.
+  string binaries = 5;
 }
 
 // Dora coordinator and daemon as units; Dora CLI commands run as oneshot units.
@@ -34,6 +36,15 @@ message UnitGroup {
   repeated string unit_files = 2;
   // After this group is active, wait for the run's recordings to become ready.
   bool await_recordings = 3;
+  // System apps shipped as unit files: adopted unchanged, each in a private root with
+  // its binds and the plan's binaries on its executable search path.
+  repeated AppUnit app_units = 4;
+}
+
+message AppUnit {
+  // Absolute unit file; its name without `.service` is the app ID.
+  string file = 1;
+  repeated Bind binds = 2;
 }
 
 // One transient service unit.

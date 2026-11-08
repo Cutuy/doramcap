@@ -12,16 +12,19 @@ function beside(directory: string, file: string) {
 
 /**
  * Replace each app's `manifest` with the launch facts it names, resolved beside the manifest.
- * Errors: a form other than COMPOSE, a relative manifest path, launch fields declared beside a
+ * Errors: a form other than COMPOSE or SYSTEMD, SYSTEMD without absolute binaries, a relative manifest path, launch fields declared beside a
  * manifest, an unreadable or invalid manifest, or a manifest path escaping its directory.
  */
 export function expandManifests(config: Config) {
-  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE].includes(config.form ?? launch.Form.FORM_UNSPECIFIED))
-    throw new Error('form: only COMPOSE is supported');
+  const form = config.form ?? launch.Form.FORM_UNSPECIFIED;
+  if (![launch.Form.FORM_UNSPECIFIED, launch.Form.COMPOSE, launch.Form.SYSTEMD].includes(form))
+    throw new Error('form: only COMPOSE and SYSTEMD are supported');
+  if (form === launch.Form.SYSTEMD && !isAbsolute(config.binaries ?? ''))
+    throw new Error('binaries must be absolute for SYSTEMD');
   for (const app of config.systemApps) {
     if (!app.manifest) continue;
     if (!isAbsolute(app.manifest)) throw new Error('system app manifest must be absolute');
-    if (app.id || app.label || app.input || app.graph || app.configMount ||
+    if (app.id || app.label || app.input || app.graph || app.configMount || app.systemd ||
         app.recordings?.length || app.outputMounts?.length || app.launchProfiles?.length)
       throw new Error(`Launch fields belong in the manifest: ${app.manifest}`);
     const manifest = capabilities.parseManifest(readFileSync(app.manifest, 'utf8'));
@@ -32,8 +35,11 @@ export function expandManifests(config: Config) {
     app.label = manifest.label;
     app.input = compose.ComposeProject.create({ directory, files });
     app.graph = manifest.graph ? beside(directory, manifest.graph) : '';
-    app.outputMounts = manifest.compose?.outputMounts ?? [];
-    app.configMount = manifest.compose?.configMount ?? null;
+    // Every launcher shows the config and outputs at the manifest's targets; Compose mounts
+    // them into its named service.
+    const service = manifest.compose?.service ?? '';
+    app.outputMounts = (manifest.outputTargets ?? []).map((target) => ({ service, target }));
+    app.configMount = manifest.configTarget ? { service, target: manifest.configTarget } : null;
     app.recordings = manifest.recordings;
     app.launchProfiles = manifest.variants.map((variant) => ({
       id: variant.id,
@@ -42,6 +48,12 @@ export function expandManifests(config: Config) {
       graph: variant.graph ? beside(directory, variant.graph) : '',
       recordings: variant.recordings,
     }));
+    app.systemd = manifest.systemd
+      ? {
+          unit: beside(directory, manifest.systemd.unit ?? ''),
+          files: (manifest.systemd.files ?? []).map((file) => ({ source: beside(directory, file.source ?? ''), target: file.target })),
+        }
+      : null;
     app.manifest = '';
   }
 }
