@@ -252,7 +252,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [ ] Console killed mid-run: admission preserves leftovers; explicit cleanup removes owned resources.
 - [ ] Fault Watchdog receives health from a user app under systemd.
 
-Latest validation: rebased #204 passes release unit tests, Console tests, Clippy and native systemd recording/cleanup without Docker. Review uses #215 capture snapshots; stale inputs and Stop reject before admission. Final hosted CI and ARM64 qualification are pending.
+Latest validation: release tests, Console tests, Clippy, native systemd recording/cleanup without Docker, and real Compose regression pass. Review rejects stale inputs and Stop before admission. ARM64 worker job 607 and hosted Node CI pass on code revision `4ace2885`; hosted Rust CI is still running.
 
 ## Future items
 
