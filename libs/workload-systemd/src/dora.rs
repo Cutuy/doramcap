@@ -35,10 +35,15 @@ fn bound_path(binds: &[Bind], path: &str) -> Option<String> {
         .filter(|bind| path.starts_with(&bind.target))
         .max_by_key(|bind| bind.target.len())
         .map(|bind| {
-            Path::new(&bind.source)
-                .join(path.strip_prefix(&bind.target).expect("matched bind"))
-                .to_string_lossy()
-                .into_owned()
+            let relative = path.strip_prefix(&bind.target).expect("matched bind");
+            if relative.as_os_str().is_empty() {
+                bind.source.clone()
+            } else {
+                Path::new(&bind.source)
+                    .join(relative)
+                    .to_string_lossy()
+                    .into_owned()
+            }
         })
 }
 

@@ -835,7 +835,7 @@ async fn bind_mounts_show_host_paths_at_container_targets() {
     // Arrange: the unit reads its config and writes its result at container paths.
     let fixture = Fixture::new("binds");
     let config = fixture.root.join("monitor.pbtxt");
-    let results = fixture.root.join("results");
+    let results = fixture.root.join("results space:quote\"slash\\%n\n\t");
     std::fs::write(&config, "rate: 5\n").unwrap();
     std::fs::create_dir_all(&results).unwrap();
     let mut writer = program(

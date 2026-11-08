@@ -28,7 +28,7 @@ const DEFAULT_SEARCH_PATH: [&str; 6] = [
 ];
 /// Scope subdirectory holding each generated unit's private root.
 const ROOTS: &str = "roots";
-/// Plain runtime source names beside an app root; normal root cleanup removes these links.
+/// Plain runtime source names beside a unit root; normal root cleanup removes these links.
 const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
 /// Drop-in placing an adopted unit in the run slice.
 const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
@@ -601,8 +601,10 @@ async fn private_root(
     {
         writable.push(mount(working_directory, working_directory, false));
     }
-    for bind in binds {
-        let entry = mount(&bind.source, &bind.target, false);
+    for (index, bind) in binds.iter().enumerate() {
+        // systemd serializes D-Bus paths again before handing them to its executor.
+        let source = bind_source(scope, name, index, &bind.source).await?;
+        let entry = mount(&source, &bind.target, false);
         if bind.read_only {
             read_only.push(entry);
         } else {
@@ -621,6 +623,18 @@ async fn private_root(
         properties.push(("BindPaths".into(), value(writable)?));
     }
     Ok(properties)
+}
+
+/// Keep host filenames out of unit syntax and systemd's executor serialization.
+async fn bind_source(scope: &Scope, name: &str, index: usize, source: &str) -> Result<String> {
+    let sources = scope
+        .directory
+        .join(ROOTS)
+        .join(format!("{name}{BIND_SOURCES_SUFFIX}"));
+    tokio::fs::create_dir_all(&sources).await.map_err(error)?;
+    let alias = sources.join(index.to_string());
+    tokio::fs::symlink(source, &alias).await.map_err(error)?;
+    Ok(alias.to_string_lossy().into_owned())
 }
 
 /// Drop-in lines running an app unit in its private root: host system directories
@@ -644,13 +658,10 @@ async fn app_root(
     for (index, bind) in binds.iter().enumerate() {
         let (kind, source) = if bind.read_only {
             // Captured paths may contain any host filename character; unit syntax sees plain aliases.
-            let sources = root.with_file_name(format!("{name}{BIND_SOURCES_SUFFIX}"));
-            tokio::fs::create_dir_all(&sources).await.map_err(error)?;
-            let source = sources.join(index.to_string());
-            tokio::fs::symlink(&bind.source, &source)
-                .await
-                .map_err(error)?;
-            ("BindReadOnlyPaths", source.to_string_lossy().into_owned())
+            (
+                "BindReadOnlyPaths",
+                bind_source(scope, name, index, &bind.source).await?,
+            )
         } else {
             ("BindPaths", bind.source.clone())
         };
