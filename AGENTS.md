@@ -8,6 +8,8 @@ Keep main linear: rebase onto current main, then cherry-pick. Never integrate wi
 
 For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives. Using the [architect-design skill](.agents/skills/architect-design/SKILL.md) for these discussions is strongly recommended.
 
+Check large feature work against the [design guide](docs/design-guide.md) before implementation and during design review.
+
 ## Simplicity
 
 Strongly favor deletion, less code, and explicit behavior. Keep changes as simple as practical. Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
