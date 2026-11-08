@@ -373,6 +373,9 @@ impl Manager {
                 .iter()
                 .map(|p| p.display().to_string()),
         );
+        if tokio::fs::try_exists(&scope.shm).await.map_err(error)? {
+            remaining.push(scope.shm.display().to_string());
+        }
         Ok(remaining)
     }
 
@@ -423,6 +426,7 @@ impl Manager {
             remove_path(&path).await?;
         }
         remove_path(&scope.directory.join("units")).await?;
+        // Stopped units have released their private mounts; host entries stay untouched.
         remove_path(&scope.directory.join(ROOTS)).await?;
         remove_path(&scope.shm).await?;
         self.manager.reload().await.map_err(error)

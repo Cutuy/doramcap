@@ -251,10 +251,14 @@ async fn placement_and_memlock_reach_the_process() {
 async fn abandoned_units_block_admission_until_explicit_cleanup() {
     // Arrange: a run dropped after readiness leaves its unit running.
     let fixture = Fixture::new("dropped");
+    let marker = format!("abandoned-shm-{}", std::process::id());
     let (run, plan) = fixture.plan(
         "r1",
         vec![SystemdPlan {
-            programs: vec![program("left", "exec sleep 300")],
+            programs: vec![program(
+                "left",
+                &format!("echo owned > /dev/shm/{marker}; exec sleep 300"),
+            )],
             ..Default::default()
         }],
     );
@@ -267,6 +271,22 @@ async fn abandoned_units_block_admission_until_explicit_cleanup() {
         _ = readiness => {}
     }
     assert!(active("doramcap-*-left.service").contains("active running"));
+    // Arrange: wait for the writer's observable shared-memory output.
+    let owned = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(path) = std::fs::read_dir("/dev/shm")
+                .unwrap()
+                .flatten()
+                .map(|entry| entry.path().join(&marker))
+                .find(|path| path.is_file())
+            {
+                break path;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
     // Act: admission observes prior resources without changing them.
     let (run, plan) = fixture.plan("r2", vec![]);
     let error = runner
@@ -277,8 +297,10 @@ async fn abandoned_units_block_admission_until_explicit_cleanup() {
     assert!(error.contains("--cleanup"), "{error}");
     assert!(active("doramcap-*-left.service").contains("active running"));
     assert!(!fixture.root.join("r2").exists());
+    assert_eq!(std::fs::read_to_string(&owned).unwrap(), "owned\n");
     // Act
     runner.cleanup(&fixture.repo()).await.unwrap();
+    assert!(!owned.parent().unwrap().exists());
     let report = run_for_a_while(fixture.plan("r2", vec![])).await;
     // Assert
     assert!(report.successful(), "{report:#?}");

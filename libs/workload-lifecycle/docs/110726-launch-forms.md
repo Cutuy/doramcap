@@ -241,7 +241,7 @@ binaries come from a `binaries` directory in Console's config until downloads ex
 - [x] Coordinator and daemon use app-named pbtxt with common process settings, minimal Compose YAML and generated systemd units.
 - [x] Generated and adopted units receive the existing Dora node environment and participant config binding.
 - [x] Console without Docker: `SYSTEMD` configurations omit `docker_socket`; Compose connects lazily on its first operation. The release installer still assumes Compose.
-- [x] Each run owns its `/dev/shm` directory; generated and adopted units share it, and teardown or explicit cleanup removes it. Configured `host_shm` entries remain driver-owned.
+- [x] Each run owns its `/dev/shm` directory; generated and adopted units share it, and teardown or explicit cleanup removes it. Admission preserves leftovers; configured `host_shm` entries remain driver-owned.
 - [ ] Share Prepare and Report between Compose and systemd.
 
 **Validation**
