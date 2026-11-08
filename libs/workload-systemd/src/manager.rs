@@ -12,6 +12,12 @@ use zbus_systemd::systemd1::{ManagerProxy, ServiceProxy, UnitProxy};
 const ENDED_STATES: [&str; 2] = ["inactive", "failed"];
 /// Microseconds per second, for systemd's `*USec` properties.
 const MICROS_PER_SECOND: u64 = 1_000_000;
+/// `MS_REC`: bind mounts include submounts, as systemd's own `BindPaths=` does.
+const MS_REC: u64 = 16384;
+/// Host directories every generated unit sees read-only inside its private root.
+const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
+/// Scope subdirectory holding each generated unit's private root.
+const ROOTS: &str = "roots";
 /// Drop-in placing an adopted unit in the run slice.
 const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
@@ -129,7 +135,17 @@ impl Manager {
         stop_seconds: u64,
     ) -> Result<StartJob> {
         let name = scope.unit(&program.id);
-        let properties = transient_properties(scope, run, program, stop_seconds)?;
+        let mut properties = transient_properties(scope, run, program, stop_seconds)?;
+        properties.extend(
+            private_root(
+                scope,
+                &name,
+                &program.argv[0],
+                &program.working_directory,
+                &program.binds,
+            )
+            .await?,
+        );
         let jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
@@ -152,6 +168,7 @@ impl Manager {
         argv: &[String],
         user: &str,
         output: &std::path::Path,
+        binds: &[crate::Bind],
     ) -> Result<()> {
         let mut properties = vec![
             (
@@ -172,6 +189,7 @@ impl Manager {
         if !user.is_empty() {
             properties.push(("User".into(), value(user.to_owned())?));
         }
+        properties.extend(private_root(scope, name, &argv[0], "", binds).await?);
         let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
@@ -357,6 +375,7 @@ impl Manager {
             remove_path(&path).await?;
         }
         remove_path(&scope.directory.join("units")).await?;
+        remove_path(&scope.directory.join(ROOTS)).await?;
         self.manager.reload().await.map_err(error)
     }
 
@@ -484,6 +503,53 @@ fn transient_properties(
     }
     if program.kill_signal != 0 {
         properties.push(("KillSignal".into(), value(program.kill_signal)?));
+    }
+    Ok(properties)
+}
+
+/// Run a generated unit in a private root under the scope's runtime directory, so
+/// bind targets never touch the host tree. The unit sees host system directories,
+/// `/proc`, `/sys` and `/dev` (including the shared `/dev/shm`), its executable and
+/// working directory at their own paths, and `binds`.
+async fn private_root(
+    scope: &Scope,
+    name: &str,
+    executable: &str,
+    working_directory: &str,
+    binds: &[crate::Bind],
+) -> Result<Vec<(String, OwnedVariant)>> {
+    let root = scope.directory.join(ROOTS).join(name);
+    tokio::fs::create_dir_all(&root).await.map_err(error)?;
+    let mount = |source: &str, target: &str, optional: bool| {
+        (source.to_owned(), target.to_owned(), optional, MS_REC)
+    };
+    let mut read_only: Vec<_> = SYSTEM_PATHS
+        .iter()
+        .map(|path| mount(path, path, true))
+        .collect();
+    read_only.push(mount(executable, executable, false));
+    let mut writable = Vec::new();
+    if !working_directory.is_empty() {
+        writable.push(mount(working_directory, working_directory, false));
+    }
+    for bind in binds {
+        let entry = mount(&bind.source, &bind.target, false);
+        if bind.read_only {
+            read_only.push(entry);
+        } else {
+            writable.push(entry);
+        }
+    }
+    let mut properties = vec![
+        (
+            "RootDirectory".into(),
+            value(root.to_string_lossy().into_owned())?,
+        ),
+        ("MountAPIVFS".into(), value(true)?),
+        ("BindReadOnlyPaths".into(), value(read_only)?),
+    ];
+    if !writable.is_empty() {
+        properties.push(("BindPaths".into(), value(writable)?));
     }
     Ok(properties)
 }

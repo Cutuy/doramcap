@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="850" viewBox="0 0 1120 850" role="img" aria-labelledby="title desc">
+<title id="title">Console Compose directory views</title>
+<desc id="desc">Docker supplies an image-based container root. Doramcap freezes read-only file inputs, maps output paths directly to run artifacts, and isolates managed writable directory binds through OverlayFS. Containers see configured target paths. Overlay changes are finalized after writers stop and mounts are removed.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8Z" fill="#475569"/></marker></defs>
+<rect width="1120" height="850" rx="18" fill="#f8fafc"/>
+<style>text{font-family:Arial,sans-serif;fill:#172554}.title{font-size:27px;font-weight:700}.heading{font-size:20px;font-weight:700}.body{font-size:16px}.small{font-size:14px;fill:#475569}.path{font-family:monospace;font-size:15px}</style>
+<text x="40" y="46" class="title" text-anchor="start">Console Compose directory views</text>
+<rect x="40" y="74" width="270" height="70" rx="10" fill="#e0e7ff" stroke="none"/>
+<text x="175" y="104" class="heading" text-anchor="middle">Console</text>
+<text x="175" y="127" class="small" text-anchor="middle">Compose files + app manifests</text>
+<path d="M310 109H690" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="500" y="96" class="small" text-anchor="middle">Resolved execution manifest</text>
+<rect x="704" y="74" width="376" height="70" rx="10" fill="#e0e7ff" stroke="none"/>
+<text x="892" y="104" class="heading" text-anchor="middle">Docker Compose</text>
+<text x="892" y="127" class="small" text-anchor="middle">Images + container mounts</text>
+<rect x="40" y="178" width="280" height="520" rx="10" fill="#fff" stroke="#cbd5e1"/>
+<text x="60" y="212" class="heading" text-anchor="start">Host data</text>
+<rect x="370" y="178" width="320" height="520" rx="10" fill="#fff" stroke="#cbd5e1"/>
+<text x="390" y="212" class="heading" text-anchor="start">Doramcap preparation</text>
+<rect x="740" y="178" width="340" height="520" rx="10" fill="#fff" stroke="#93c5fd"/>
+<text x="760" y="212" class="heading" text-anchor="start">Container root  /</text>
+<rect x="758" y="230" width="304" height="84" rx="10" fill="#e0e7ff" stroke="none"/>
+<text x="910" y="258" class="heading" text-anchor="middle">Image filesystem</text>
+<text x="910" y="283" class="small" text-anchor="middle">Executables + libraries</text>
+<text x="910" y="304" class="small" text-anchor="middle">Container writable layer</text>
+<path d="M892 144V171" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="56" y="343" width="248" height="68" rx="10" fill="#eff6ff" stroke="none"/>
+<text x="72" y="369" class="small" text-anchor="start">Read-only input file</text>
+<text x="72" y="393" class="path" text-anchor="start">/srv/project/app.pbtxt</text>
+<rect x="386" y="343" width="288" height="68" rx="10" fill="#eff6ff" stroke="none"/>
+<text x="530" y="369" class="body" text-anchor="middle">Frozen config copy</text>
+<text x="530" y="393" class="small" text-anchor="middle">Run artifacts / inputs</text>
+<rect x="756" y="343" width="308" height="68" rx="10" fill="#eff6ff" stroke="none"/>
+<text x="772" y="369" class="small" text-anchor="start">Read-only bind target</text>
+<text x="772" y="393" class="path" text-anchor="start">/config/app.pbtxt</text>
+<path d="M304 380H380" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="342" y="365" class="small" text-anchor="middle">Copy</text>
+<path d="M674 380H750" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="56" y="447" width="248" height="68" rx="10" fill="#fff7ed" stroke="none"/>
+<text x="72" y="473" class="small" text-anchor="start">Run output directory</text>
+<text x="72" y="497" class="path" text-anchor="start">/srv/runs/r1/</text>
+<rect x="756" y="447" width="308" height="68" rx="10" fill="#fff7ed" stroke="none"/>
+<text x="772" y="473" class="small" text-anchor="start">Writable bind target</text>
+<text x="772" y="497" class="path" text-anchor="start">/results/</text>
+<path d="M750 482H310" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="530" y="467" class="small" text-anchor="middle">App writes directly to run outputs</text>
+<rect x="56" y="551" width="248" height="68" rx="10" fill="#f0fdf4" stroke="none"/>
+<text x="72" y="577" class="small" text-anchor="start">Managed directory source</text>
+<text x="72" y="601" class="path" text-anchor="start">/srv/project/data/</text>
+<rect x="386" y="551" width="288" height="68" rx="10" fill="#f0fdf4" stroke="none"/>
+<text x="530" y="577" class="body" text-anchor="middle">OverlayFS merged view</text>
+<text x="530" y="601" class="small" text-anchor="middle">Host lower + run upper</text>
+<rect x="756" y="551" width="308" height="68" rx="10" fill="#f0fdf4" stroke="none"/>
+<text x="772" y="577" class="small" text-anchor="start">Writable bind target</text>
+<text x="772" y="601" class="path" text-anchor="start">/workspace/data/</text>
+<path d="M304 587H380" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<text x="342" y="572" class="small" text-anchor="middle">Lower</text>
+<path d="M674 587H750" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="386" y="640" width="288" height="42" rx="10" fill="#dcfce7" stroke="none"/>
+<text x="530" y="666" class="small" text-anchor="middle">Run upper + work directories</text>
+<path d="M530 640V625" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"/>
+<rect x="40" y="730" width="1040" height="82" rx="10" fill="#e2e8f0" stroke="none"/>
+<text x="62" y="758" class="heading" text-anchor="start">Managed directory finalization</text>
+<text x="62" y="789" class="body" text-anchor="start">Stop writers  →  unmount overlay  →  retain changes or write back under the configured policy</text>
+</svg>

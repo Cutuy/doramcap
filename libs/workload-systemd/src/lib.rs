@@ -152,6 +152,14 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
                     program.id
                 ));
             }
+            if program.binds.iter().any(|bind| {
+                !Path::new(&bind.source).is_absolute() || !Path::new(&bind.target).is_absolute()
+            }) {
+                return Err(format!(
+                    "{}: bind sources and targets must be absolute",
+                    program.id
+                ));
+            }
             if !program.cpus.is_empty() {
                 resource_policy::CpuSet::parse(&program.cpus).map_err(error)?;
             }

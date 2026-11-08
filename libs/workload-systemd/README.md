@@ -3,8 +3,13 @@
 Run one experiment's apps as owned systemd units in a per-repository slice, controlled
 over D-Bus. Groups start in order and stop in reverse; repository `.service` files are
 adopted with native references preserved. Declared stop grace takes precedence over the plan fallback. An optional Dora coordinator and daemon start first as units; Dora CLI commands run as oneshot units. A failed unit is recorded and the run continues until stop.
+Generated units use private roots with read-only host system directories and per-unit bind mounts.
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
+
+[Compose directory view](../workload-lifecycle/docs/110726-compose-bind-mounts.svg)
+
+![Console systemd directory views](../workload-lifecycle/docs/110726-systemd-bind-mounts.svg)
 
 ```sh
 cargo build --release --locked -p workload-systemd --example systemd_run
