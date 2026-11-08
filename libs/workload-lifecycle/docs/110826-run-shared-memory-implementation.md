@@ -76,4 +76,5 @@ dependency.
 - [ ] Dora exchanges data and finishes recordings in both modes; test native overrides that split apps into different shm groups.
 - [ ] Run the [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration. Record native backend and GPU checks separately.
 
-Evidence: documentation checks pending. Runtime checks wait for implementation.
+Evidence: links, milestone structure, both diagrams and design consistency checked.
+Runtime checks wait for implementation.
