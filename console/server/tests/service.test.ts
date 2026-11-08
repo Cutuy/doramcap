@@ -21,8 +21,8 @@ class Engine implements NativeExecution {
   profileNames: string[] = [];
   needsProfiles = false;
   inspected?: Parameters<NativeExecution['inspect']>[0];
-  async profiles() {
-    return execution.Profiles.create({ names: this.profileNames });
+  async composeProfiles() {
+    return execution.ComposeProfiles.create({ names: this.profileNames });
   }
   async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
     if (this.needsProfiles && !request.compose!.projects![0].profiles?.length) throw new Error('EmptySelection');
@@ -288,8 +288,8 @@ for (const rejection of ['Busy', 'Closing'])
       );
       assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
       // Act / Assert: preparation also preserves owner availability failures.
-      const profiles = engine.profiles;
-      engine.profiles = async () => {
+      const profiles = engine.composeProfiles;
+      engine.composeProfiles = async () => {
         throw new Error(rejection);
       };
       await assert.rejects(
@@ -300,7 +300,7 @@ for (const rejection of ['Busy', 'Closing'])
         ),
         { message: rejection },
       );
-      engine.profiles = profiles;
+      engine.composeProfiles = profiles;
       const next = wire.Review.decode(
         await backend.prepare(
           Buffer.from(
@@ -318,7 +318,7 @@ for (const rejection of ['Busy', 'Closing'])
 test('a failed Review keeps its cause beside the browser error code', async () => {
   // Arrange
   const { root, engine, backend } = await fixture();
-  engine.profiles = async () => {
+  engine.composeProfiles = async () => {
     throw new Error('compose.yaml: services must be a mapping');
   };
   try {
@@ -336,7 +336,7 @@ test('a failed Review keeps its cause beside the browser error code', async () =
 test('a long Review failure keeps the end of its cause', async () => {
   // Arrange
   const { root, engine, backend } = await fixture();
-  engine.profiles = async () => {
+  engine.composeProfiles = async () => {
     throw new Error(`${'x'.repeat(3000)} the cause`);
   };
   try {

@@ -175,8 +175,8 @@ impl Execution {
 #[napi]
 impl Execution {
     #[napi]
-    pub async fn profiles(&self, input: Buffer) -> Result<Buffer> {
-        let request = protocol::ProfilesRequest::decode(input.as_ref()).map_err(failure)?;
+    pub async fn compose_profiles(&self, input: Buffer) -> Result<Buffer> {
+        let request = protocol::ComposeProfilesRequest::decode(input.as_ref()).map_err(failure)?;
         let reply = self.dispatch(move |state| {
             let adapter = state.adapter.clone();
             let (tx, rx) = tokio::sync::oneshot::channel();
@@ -192,7 +192,7 @@ impl Execution {
                         )
                         .await
                         .map_err(|e| e.to_string())?;
-                    Ok(protocol::Profiles { names }.encode_to_vec())
+                    Ok(protocol::ComposeProfiles { names }.encode_to_vec())
                 }
                 .await;
                 let _ = tx.send(result);

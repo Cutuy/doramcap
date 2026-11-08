@@ -22,8 +22,8 @@ const temporary = () => mkdtemp(join(tmpdir(), 'console-history-'));
 class Engine implements NativeExecution {
   update = execution.ExecutionUpdate.create();
   starts = 0;
-  async profiles() {
-    return execution.Profiles.create({ names: ['gpu'] });
+  async composeProfiles() {
+    return execution.ComposeProfiles.create({ names: ['gpu'] });
   }
   async inspect() {
     return execution.Inspection.create({ plan: { services: { worker: { imageId: 'sha256:a' } } }, snapshot: { manifestSha256: 'a' } });

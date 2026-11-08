@@ -2,9 +2,10 @@ import type { doramcap } from '../src/generated/console.js';
 
 /** Typed execution client; the TypeScript adapter owns native serialization. */
 export interface NativeExecution {
-  profiles(
-    request: doramcap.console.execution.v1.ProfilesRequest,
-  ): Promise<doramcap.console.execution.v1.Profiles>;
+  /** List profiles declared by the project's Docker Compose files. */
+  composeProfiles(
+    request: doramcap.console.execution.v1.ComposeProfilesRequest,
+  ): Promise<doramcap.console.execution.v1.ComposeProfiles>;
   /** Resolve the plan and configuration snapshot without starting execution. */
   inspect(
     request: doramcap.console.execution.v1.RunRequest,

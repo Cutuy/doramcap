@@ -187,8 +187,8 @@ export class ConsoleService implements ConsoleBackend {
         // The relay runs only when a selected app declares a live output.
         apps = chosen.filter((app) => !app.liveRelay || chosen.some((other) => other.liveOutputs?.length));
       const profiles = (
-        await this.engine.profiles(
-          execution.ProfilesRequest.create({
+        await this.engine.composeProfiles(
+          execution.ComposeProfilesRequest.create({
             runId: id,
             repositoryRoot: project.directory,
             project,
