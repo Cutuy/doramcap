@@ -22,8 +22,9 @@ Created: 2026-11-08. [Architecture](110826-run-only-worker.md).
 - [x] Run all three archives on `.22`; record counts and gaps below.
 - [x] Verify the approved 64 MiB soft/hard memlock limit and 1 GiB RAM limit.
 - [x] Package the approved Docker CLI and Compose executables with archive checksums.
-- [ ] Repeat all suites after CLI provisioning and the memlock change.
-- [ ] Review against implementation/design guides, mark ready and release lease.
+- [x] Repeat all suites after CLI provisioning and the memlock change.
+- [x] Review against implementation/design guides.
+- [x] Confirm all six hosted checks.
 
 ## Mechanisms
 
@@ -49,29 +50,32 @@ No application dependencies or environment inputs are added.
 
 ## Validation record
 
-WSL Pueue 622 built source `9a0a8471` in 30 seconds using its warm cache.
-The cold-cache trial (621) took 3m43s. Archives total about 1.6 GiB; SCP `-3`
-streams them without requiring that much free space on the submitter.
+Final code: `18f26316ef5704df24e9f2aba0639e59173c0d9a`. WSL Pueue 623 built
+the native ARM64 archives in 34 seconds using its warm cache; the cold-cache
+trial took 3m43s. Archives and runtime tools total about 1.7 GiB. SCP `-3`
+streams them through the submitter, which stores only the 2.1 MiB source archive.
 
 The Mac mini completed all three suites with zero cgroup OOM kills:
 
 | Suite | Passed | Failed | Skipped |
 | --- | ---: | ---: | ---: |
-| Default workspace | 438 | 15 | 99 |
-| All-feature workspace | 443 | 16 | 99 |
-| Storage without defaults | 62 | 3 | 1 |
+| Default workspace | 453 | 0 | 99 |
+| All-feature workspace | 459 | 0 | 99 |
+| Storage without defaults | 65 | 0 | 1 |
 
-Eight Compose preparation tests per workspace suite fail because Docker/Compose
-CLI tools are absent. Recorder/storage tests return `ENOMEM` while registering
-I/O buffers under an 8 MiB hard memlock limit. The user approved the CLI transfer
-and raised memlock to 64 MiB; both soft/hard limits were verified with the RAM
-limit still 1 GiB. Follow-up execution is pending; no tests have been excluded.
-This is a completed execution trial with failures, not a full CI pass.
+The complete submit/build/transfer/execute command returned 0. The runner has
+nextest 0.9.151, Docker CLI 29.9.2 and Compose 5.6.1; installed CLI hashes match
+the builder's executables. The user raised soft/hard memlock from 8 to 64 MiB
+and approved CLI transfer, resolving the first trial's allocation and preparation
+failures. The 1 GiB RAM limit remains in place; Cargo and Node are absent.
 
-Source and results: `~/jobs/45a76376ddce49f8bfbeed7794f764ef` on each host.
-The runner retains `run.log`, `results.tsv` and `exit-code` (1).
-Corrupted-archive rejection, stale-result reset and failed-build transfer gating
-also passed. SSH intermittently stalled during handshakes and output streaming;
-the retained files confirmed execution completion. Key-exchange diagnosis is
-unconfirmed. The latest coordinator returns compact statuses and keeps verbose
-logs on the runner. Native BPF remains unsupported in this container.
+Source and results: `~/jobs/c6a3e8469dc74a5a92e74d872ebb0bd7` on each host.
+The runner retains `run.log`, all-zero `results.tsv` and `exit-code` (0).
+Local checks passed: 20 CI-tool tests, TypeScript, shell syntax, boundaries and
+diff whitespace. Corrupted-archive rejection, stale-result reset and failed-build
+transfer gating also passed. Earlier SSH interruptions were not reproduced by
+the final compact-result workflow; its full logs remain on the runner.
+
+The skipped tests retain their existing ignore status. Privileged native BPF,
+doctests, Dora and CUDA qualification remain separate checks. Hosted Rust, Node
+and MCAP checks passed on both ARM64 and x86_64.
