@@ -1801,8 +1801,13 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker Engine, Dora CLI and built node binaries"]
 async fn public_dora_records_and_stops_system_apps() {
-    compose_public_run("complete").await;
-    compose_public_run("timer-consumer").await;
+    for access in [
+        workload_lifecycle::launch::HostShmAccess::Blocked,
+        workload_lifecycle::launch::HostShmAccess::Passthrough,
+    ] {
+        compose_public_run_with_access("complete", access).await;
+        compose_public_run_with_access("timer-consumer", access).await;
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1935,6 +1940,14 @@ async fn public_dora_resets_after_launcher_crash() {
 }
 
 async fn compose_public_run(outcome: &str) {
+    compose_public_run_with_access(outcome, workload_lifecycle::launch::HostShmAccess::Blocked)
+        .await;
+}
+
+async fn compose_public_run_with_access(
+    outcome: &str,
+    access: workload_lifecycle::launch::HostShmAccess,
+) {
     use prost::Message;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     // Arrange
@@ -2011,7 +2024,7 @@ async fn compose_public_run(outcome: &str) {
         serde_json::json!({"services":{
             "source": {
                 "depends_on": {"recorder": {"condition": "service_healthy"}},
-                "image": image, "network_mode":"host", "user":user, "shm_size":"64m",
+                "image": image, "network_mode":"host", "user":user,
                 "ulimits":{"memlock":{"soft":67108864,"hard":67108864}},
                 "entrypoint":["/fixture"],
                 "command":["source", daemon_port.to_string(), runtime.join("source.ready").to_str().unwrap(),
@@ -2033,7 +2046,7 @@ async fn compose_public_run(outcome: &str) {
             },
             "recorder": {
                 "healthcheck": {"test": ["CMD", "test", "-s", runtime.join("recorder.ready")], "interval": "200ms", "timeout": "1s", "retries": 75},
-                "image":image, "network_mode":"host", "user":user, "shm_size":"64m",
+                "image":image, "network_mode":"host", "user":user,
                 "entrypoint":["/recorder"],
                 "command":["--config", "/config/recorder.pbtxt"],
                 "environment":{"DORAMCAP_READY_FILE":runtime.join("recorder.ready")},
@@ -2080,13 +2093,23 @@ async fn compose_public_run(outcome: &str) {
         serde_json::json!({"services":{"support":support}}),
     );
     let spec = ComposeRun {
-        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+        host_shm_access: access as i32,
         id: run.clone(),
         artifacts: artifacts.clone(),
         filesystem: None,
         repository_root: root.clone(),
         projects: vec![project(&root, "adopted")],
-        system_apps: vec![project(&root, "session"), project(&root, "support")],
+        system_apps: vec![
+            project(&root, "session"),
+            project(&root, "support"),
+            ComposeProject {
+                key: "shm".into(),
+                directory: format!("{}/deploy/shm", env!("CARGO_MANIFEST_DIR")),
+                files: vec!["compose.yaml".into()],
+                manifest: "shm.pbtxt".into(),
+                ..Default::default()
+            },
+        ],
         dora_apps,
         dataflow_file: graph.to_string_lossy().into_owned(),
         recordings: vec![],
@@ -2109,15 +2132,18 @@ async fn compose_public_run(outcome: &str) {
     let done = runtime.join("source.done");
     let (ready, mut ready_rx) = tokio::sync::oneshot::channel::<ResolvedComposeProject>();
     let ready_seen = std::cell::Cell::new(false);
+    let (cancel, cancelled) = tokio::sync::oneshot::channel();
+    let cancel = RefCell::new(Some(cancel));
 
     // Act: the public workflow owns startup, user stop, system stop and cleanup.
     let crash_startup = outcome == "crash-startup";
     let crash_removal = outcome == "crash-removal";
+    let cancel_startup = outcome == "cancel";
     let report = Box::pin(runner.run_with_ready(
         spec,
         async {
             if outcome == "cancel" {
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                let _ = cancelled.await;
                 return;
             }
             let Ok(plan) = (&mut ready_rx).await else {
@@ -2164,6 +2190,13 @@ async fn compose_public_run(outcome: &str) {
             .await;
         },
         move |event: &orchestrator::Event| {
+            if cancel_startup
+                && event.invocation.step == step_id::<StartCompose>()
+                && event.state == orchestrator::State::Succeeded
+                && let Some(cancel) = cancel.borrow_mut().take()
+            {
+                let _ = cancel.send(());
+            }
             if (crash_startup
                 && event.invocation.step == step_id::<RegisterDoraGraph>()
                 && event.state == orchestrator::State::Succeeded)
@@ -2256,9 +2289,13 @@ async fn compose_public_run(outcome: &str) {
             })
             .map(|(i, _)| i)
             .collect();
-        assert_eq!(starts.len(), 2);
-        assert!(succeeded(step_id::<StartDoraRuntime>()) < starts[0]);
-        assert!(starts[0] < starts[1]);
+        let offset = usize::from(access == workload_lifecycle::launch::HostShmAccess::Blocked);
+        assert_eq!(starts.len(), 2 + offset);
+        if offset == 1 {
+            assert!(starts[0] < succeeded(step_id::<StartDoraRuntime>()));
+        }
+        assert!(succeeded(step_id::<StartDoraRuntime>()) < starts[offset]);
+        assert!(starts[offset] < starts[offset + 1]);
         assert!(runtime.join("adopted.started").is_file());
         assert!(succeeded(step_id::<StopDoraRuntime>()) < succeeded(step_id::<FinalizeRun>()));
     }

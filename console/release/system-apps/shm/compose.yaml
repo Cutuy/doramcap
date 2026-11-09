@@ -5,6 +5,7 @@ services:
     command: [infinity]
     init: true
     ipc: shareable
+    shm_size: 134217728
     network_mode: none
     read_only: true
     cap_drop: [ALL]

@@ -11,6 +11,10 @@ readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 Shutdown stops adopted apps, then system apps, then Dora.
 System services use the same shutdown policy.
 
+Select `host_shm_access` explicitly: `BLOCKED` (2) shares run memory and requires
+the [shm system app](deploy/shm/shm.pbtxt); `PASSTHROUGH` (1) uses host memory.
+The shm app starts first and stops last. Explicit private settings remain native.
+
 Inspection and launch preparation share resolution; the caller compares their
 configuration snapshots before reservation and startup.
 

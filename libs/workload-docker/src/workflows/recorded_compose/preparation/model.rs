@@ -6,7 +6,7 @@ use crate::workflows::{
     recorded_compose::{MAX_STOP_SECONDS, MIN_STOP_SECONDS},
 };
 use dora_core::descriptor::Descriptor;
-use std::{collections::HashSet, os::unix::fs::MetadataExt};
+use std::collections::HashSet;
 
 /// Clone app inputs under the experiment identity and approved runtime directory.
 pub(super) fn app_input(app: &ComposeProject, runtime_directory: &str) -> Result<ComposeProject> {
@@ -244,8 +244,8 @@ pub(super) fn local_volume_source<'a>(driver: Option<&str>, options: &'a Value) 
 
 /// Reject a host-shm root or ancestor source, including mount and symlink aliases.
 pub(super) fn validate_host_shm_source(service: &str, source: &str) -> Result<()> {
-    let source_path = match Path::new(source).canonicalize() {
-        Ok(path) => path,
+    let exposes_host = match workload_lifecycle::files::exposes_host_shm_tree(Path::new(source)) {
+        Ok(exposes) => exposes,
         // Missing native sources are checked by execution preparation.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => {
@@ -254,12 +254,7 @@ pub(super) fn validate_host_shm_source(service: &str, source: &str) -> Result<()
             )));
         }
     };
-    let host = Path::new("/dev/shm").canonicalize()?;
-    let host_metadata = std::fs::metadata(&host)?;
-    let metadata = std::fs::metadata(&source_path)?;
-    if host.starts_with(&source_path)
-        || (metadata.dev(), metadata.ino()) == (host_metadata.dev(), host_metadata.ino())
-    {
+    if exposes_host {
         return Err(invalid(format!(
             "{service}: whole-host shm mount {source} requires host_shm_access PASSTHROUGH"
         )));

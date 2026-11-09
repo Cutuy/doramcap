@@ -65,11 +65,7 @@ pub(crate) fn validate_native_bind(
 }
 
 fn exposes_host_shm(source: &std::path::Path) -> Result<bool> {
-    let host = std::fs::canonicalize("/dev/shm").map_err(error)?;
-    let host_metadata = std::fs::metadata(&host).map_err(error)?;
-    let metadata = std::fs::metadata(source).map_err(error)?;
-    Ok(host.starts_with(source)
-        || (metadata.dev(), metadata.ino()) == (host_metadata.dev(), host_metadata.ino()))
+    workload_lifecycle::files::exposes_host_shm_tree(source).map_err(error)
 }
 
 /// Reject full host-shm exposure through typed binds before creating run resources.

@@ -4,6 +4,9 @@ The gallery manages one Compose generation per app through the shared Rust
 workflow. Viewers share that generation; it stops when their sessions expire.
 Each app has a separate repository scope; different apps may run concurrently.
 Docker Engine access and independently built app images are required.
+Runs select BLOCKED shared memory. Registrations include the shared
+[placeholder app](../../../../libs/workload-docker/deploy/shm/shm.pbtxt), using the
+shipped Dora image; its memory is released after each generation stops.
 
 ## Start
 

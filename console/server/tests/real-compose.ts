@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { ConsoleService } from '../src/service.js';
 import { wire } from '../src/native.js';
 
 /** Opt-in Engine test: build unprivileged, elevate only this test executable. */
-test('TypeScript Console runs and stops two real Compose experiments', async () => {
+for (const mode of ['BLOCKED', 'PASSTHROUGH']) test(`TypeScript Console runs and stops two real Compose experiments with ${mode}`, async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-typescript-compose-')),
     project = join(root, 'project');
@@ -20,7 +21,7 @@ test('TypeScript Console runs and stops two real Compose experiments', async () 
   await writeFile(join(root, 'secret'), 'test-secret', { mode: 0o600 });
   await writeFile(
     config,
-    `host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock" access_secret_file:"${root}/secret" runtime { readiness_seconds:30 stop_seconds:3 }`,
+    `host_shm_access: ${mode} apps { manifest:"${resolve(dirname(fileURLToPath(import.meta.url)), '../../release/system-apps/shm/shm.pbtxt')}" } listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock" access_secret_file:"${root}/secret" runtime { readiness_seconds:30 stop_seconds:3 }`,
   );
   const { backend } = await ConsoleService.open(config);
   try {

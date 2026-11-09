@@ -220,6 +220,53 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
     );
 }
 
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, python3 and the system service manager"]
+async fn passthrough_generated_units_share_host_posix_and_sysv_and_preserve_objects() {
+    // Arrange
+    let fixture = Fixture::new("host-shared-memory");
+    let key = std::process::id();
+    let plan = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            programs: vec![
+                shm_worker("producer", "producer", key, &fixture),
+                shm_worker("consumer", "consumer", key, &fixture),
+            ],
+            ..Default::default()
+        }],
+    );
+
+    // Act: the host consumes both objects after all run units and resources have been removed.
+    let report = run_for_a_while(plan).await;
+    let host_read = Command::new("/usr/bin/python3")
+        .args([
+            "-c",
+            SHM_WORKER,
+            "consumer",
+            &key.to_string(),
+            &fixture.root.join("producer-exited").to_string_lossy(),
+            &fixture.root.join("host-data-read").to_string_lossy(),
+        ])
+        .status()
+        .unwrap();
+    let cleanup = Command::new("/usr/bin/python3").args(["-c", "import ctypes,pathlib,sys; key=int(sys.argv[1]); libc=ctypes.CDLL(None); ident=libc.shmget(key,4096,0o600); ident < 0 or libc.shmctl(ident,0,None)==0 or sys.exit(1); pathlib.Path('/dev/shm', 'doramcap-test-'+str(key)).unlink(missing_ok=True)", &key.to_string()]).status().unwrap();
+
+    // Assert
+    assert!(cleanup.success());
+    assert!(report.successful(), "{report:#?}");
+    assert!(
+        report
+            .units
+            .iter()
+            .all(|unit| unit.result.as_deref() == Some("success")),
+        "{report:#?}"
+    );
+    assert!(host_read.success());
+    assert!(fixture.root.join("shared-data-read").exists());
+    assert!(fixture.root.join("host-data-read").exists());
+}
+
 async fn wait_for_file(path: &Path) -> bool {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     while !path.exists() {
@@ -407,6 +454,59 @@ async fn blocked_native_conflicts_fail_before_any_app_starts() {
         );
         assert!(report.cleanup_verified, "{report:#?}");
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn blocked_native_whole_host_mount_alias_fails_before_start() {
+    // Arrange: use a real recursive bind alias, which canonicalize cannot resolve to /dev.
+    struct Alias(PathBuf);
+    impl Drop for Alias {
+        fn drop(&mut self) {
+            if rustix::mount::unmount(&self.0, rustix::mount::UnmountFlags::DETACH).is_ok() {
+                let _ = std::fs::remove_dir(&self.0);
+            }
+        }
+    }
+    let alias = std::env::temp_dir().join(format!("systemd-host-dev-alias-{}", std::process::id()));
+    std::fs::create_dir(&alias).unwrap();
+    rustix::mount::mount_bind_recursive("/dev", &alias).unwrap();
+    let alias = Alias(alias);
+    let fixture = Fixture::new("native-host-alias");
+    let file = fixture.repo().join("native.service");
+    let marker = fixture.root.join("must-not-start");
+    std::fs::write(
+        &file,
+        format!(
+            "[Service]\nPrivateIPC=yes\nBindPaths={}:/host-dev\nExecStart=/bin/touch {}\n",
+            alias.0.display(),
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            unit_files: vec![file.to_string_lossy().into()],
+            ..Default::default()
+        }],
+    );
+    run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
+
+    // Act
+    let report = run_for_a_while((run, plan)).await;
+    drop(alias);
+
+    // Assert
+    assert!(
+        report
+            .execution_error
+            .as_deref()
+            .is_some_and(|error| error.contains("exposes whole host shm")),
+        "{report:#?}"
+    );
+    assert!(!marker.exists());
+    assert!(report.cleanup_verified, "{report:#?}");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1191,6 +1291,7 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     // Native project units preserve their filesystem; app units receive the shared config bind.
     let native = fixture.root.join("native.service");
     std::fs::write(&native, format!(r#"[Service]
+PrivateIPC=yes
 Environment=DORA_NODE_ID=native-chosen
 ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > {}; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
 "#, runtime.join("native-environment").display())).unwrap();
@@ -1199,6 +1300,7 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         .push(native.to_string_lossy().into_owned());
     let adopted = fixture.root.join("participant.service");
     std::fs::write(&adopted, r#"[Service]
+PrivateIPC=yes
 Environment=DORA_NODE_ID=app-chosen
 ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > /results/app-environment; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
 "#).unwrap();

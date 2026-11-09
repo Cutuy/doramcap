@@ -19,17 +19,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         )
     };
+    let lookup_error = io::Error::last_os_error();
     if args[1] == "absent" {
         assert!(!path.exists());
         assert_eq!(id, -1);
-        assert_eq!(
-            io::Error::last_os_error().raw_os_error(),
-            Some(libc::ENOENT)
-        );
+        assert_eq!(lookup_error.raw_os_error(), Some(libc::ENOENT));
         return Ok(());
     }
     if id == -1 {
-        return Err(io::Error::last_os_error().into());
+        return Err(lookup_error.into());
     }
     if args[1] == "remove" {
         std::fs::remove_file(path)?;

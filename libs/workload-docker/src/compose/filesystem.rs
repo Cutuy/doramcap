@@ -581,6 +581,12 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         }
         let path = if source.category == StorageCategory::NamedVolume {
             match volume_path(adapter, &source.identity).await {
+                Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+                    out.0
+                        .warnings
+                        .push(format!("{}: {HOST_SHM_SOURCE}", source.identity));
+                    continue;
+                }
                 Ok(p) => p,
                 Err(e) => {
                     out.0.coverage_complete = false;

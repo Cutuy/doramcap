@@ -81,6 +81,8 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
             let root = tempfile::tempdir().unwrap();
             let host = tempfile::tempdir_in("/dev/shm").unwrap();
             let source = host.path().join("live");
+            let shm_target = host.path().join("mounted-live");
+            assert!(!shm_target.exists());
             std::fs::write(&source, b"initial").unwrap();
             let identity = root
                 .path()
@@ -101,7 +103,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
             "volumes":[
                 {"type":"bind","source":fixture,"target":"/fixture","read_only":true},
                 {"type":"bind","source":source,"target":"/input/live","read_only":true},
-                {"type":"bind","source":source,"target":"/dev/shm/live","read_only":true},
+                    {"type":"bind","source":source,"target":shm_target,"read_only":true},
                 {"type":"bind","source":host.path(),"target":"/live"},
                 {"type":"volume","source":"selected","target":"/named","read_only":true}
             ]});
@@ -161,9 +163,9 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 .id;
             exec(consumer, &["/fixture", "read", &key, &object]).await;
             std::fs::write(&source, b"updated").unwrap();
-            exec(consumer, &["/bin/sh", "-c", "test \"$(cat /input/live)\" = updated && test \"$(cat /dev/shm/live)\" = updated && test \"$(cat /named/live)\" = updated && printf app > /live/written"]).await;
+            exec(consumer, &["/bin/sh", "-c", &format!("test \"$(cat /input/live)\" = updated && test \"$(cat {})\" = updated && test \"$(cat /named/live)\" = updated && printf app > /live/written", shm_target.display())]).await;
             assert_eq!(std::fs::read(host.path().join("written")).unwrap(), b"app");
-            for path in ["/input/live", "/dev/shm/live", "/named/live"] {
+            for path in ["/input/live", shm_target.to_str().unwrap(), "/named/live"] {
                 let command = format!("printf denied > {path}");
                 assert!(
                     !docker(&["exec", consumer, "/bin/sh", "-c", &command])

@@ -97,7 +97,11 @@ impl Manager {
         run: &RunPlan,
         plan: &crate::SystemdPlan,
     ) -> Result<()> {
-        let access = workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?;
+        if workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
+            != workload_lifecycle::launch::HostShmAccess::Blocked
+        {
+            return Ok(());
+        }
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut copies = Vec::new();
@@ -134,9 +138,6 @@ impl Manager {
             .await
             .map_err(error)?;
         self.manager.reload().await.map_err(error)?;
-        if access != workload_lifecycle::launch::HostShmAccess::Blocked {
-            return Ok(());
-        }
         for (name, app) in names {
             let unit = self.watch(&name).await?;
             let service = &unit.service;

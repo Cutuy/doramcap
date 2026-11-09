@@ -13,6 +13,24 @@ pub fn is_host_shm_source(source: &Path) -> io::Result<bool> {
     )
 }
 
+/// Whether a recursive bind source exposes the whole host shm tree, including ancestor aliases.
+/// Resolves symlinks and compares native directory identities; reads no contents.
+pub fn exposes_host_shm_tree(source: &Path) -> io::Result<bool> {
+    let source = source.canonicalize()?;
+    let metadata = std::fs::metadata(&source)?;
+    let host = Path::new("/dev/shm").canonicalize()?;
+    if host.starts_with(&source) {
+        return Ok(true);
+    }
+    for ancestor in host.ancestors() {
+        let ancestor = std::fs::metadata(ancestor)?;
+        if (metadata.dev(), metadata.ino()) == (ancestor.dev(), ancestor.ino()) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Subscribe before inspecting paths. Keep the watcher alive while waiting.
 /// Notifications coalesce; the first watcher error remains available to every wait.
 /// Read-only access does not wake waiters.
@@ -71,7 +89,7 @@ mod tests {
         let source = Path::new("/dev/shm").join(&name);
         let alias = std::env::temp_dir().join(&name);
         std::fs::write(&source, b"live").unwrap();
-        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o0)).unwrap();
         symlink(&source, &alias).unwrap();
 
         // Act
