@@ -8,7 +8,6 @@ mod preparation;
 mod runner;
 mod running;
 mod runtime;
-mod shm;
 
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
@@ -189,7 +188,7 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             ));
         }
     }
-    shm::validate_binds(run, plan)
+    runtime::validate_binds(run, plan)
 }
 
 /// IDs of programs and adopted units, in launch input order.

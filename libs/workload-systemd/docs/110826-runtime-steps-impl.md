@@ -6,17 +6,17 @@ Created: 2026-11-08. Follows the shared [workflow-step design](../../workload-do
 
 **Work items**
 
-- [x] Move native shm setup and mount creation into `systemd.runtime.prepare`.
+- [x] Move native shm setup and mount creation into `systemd.runtime.prepare`; remove `shm.rs`.
 - [x] Return the existing `Scope` identifiers and retain preparation/setup provenance.
-- [x] Route run removal and explicit cleanup through `systemd.runtime.remove`.
+- [x] Move verified runtime teardown into `systemd.runtime.remove`; remove Manager and Running forwarding methods.
 - [x] Preserve namespace ownership before setup and existing verified-shutdown rules.
 
 **Validation**
 
 - [x] Run release/locked unit tests and compile native tests and the shm worker.
-- [x] Check successful shm sharing, setup/removal events, payloads and dependencies.
-- [x] Check failed native setup and stop during setup still emit cleanup outcomes.
-- [x] Check abandoned-run cleanup and startup-timeout cleanup.
+- [ ] Check successful shm sharing, setup/removal events, payloads and dependencies.
+- [ ] Check failed native setup and stop during setup still emit cleanup outcomes.
+- [ ] Check abandoned-run cleanup and startup-timeout cleanup.
 - [x] Run focused Clippy, formatting and library-boundary checks.
 
 ## Milestone 2 — Document and publish the boundary contract
@@ -31,19 +31,12 @@ Created: 2026-11-08. Follows the shared [workflow-step design](../../workload-do
 
 - [x] Review the changed code against the implementation/design guides.
 - [x] Check relative documentation links and the embedded architecture SVG.
-- [x] Run ARM64 validation at the PR integration point.
+- [ ] Run ARM64 validation at the PR integration point.
 
-Runtime source: `16707045`, published in [PR #246](https://github.com/Cutuy/doramcap/pull/246).
-Local x86_64: 22 unit tests passed (1 ignored), all-target release Clippy,
-boundaries, formatting and documentation links passed. Five real systemd scenarios
-passed: live shm exchange with step lineage, native setup rejection, stop during
-runtime setup, abandoned-run cleanup and startup-timeout cleanup. Native tests and
-the shm worker were built unprivileged; only test execution was elevated.
-
-ARM64 worker job **624** passed against `16707045`, covering the worker's default
-and all-feature Rust tests and native validation suite. The five systemd scenarios
-above ran locally. GitHub Node CI passed; GitHub Rust CI was still running when
-this record was written. The final follow-up commit changes this validation record only.
+This replacement for PR #246 extracts the existing implementation into its owning
+steps. It removes the standalone shm module and forwarding cleanup methods.
+Release unit tests, native compilation and all-target Clippy pass. Native execution,
+ARM64 validation and GitHub CI are pending for the extraction revision.
 
 Native systemd evidence, GitHub checks and ARM64 worker results are recorded
 separately. Full local CI is deferred for this focused observation refactor.

@@ -1,6 +1,6 @@
 //! One run's units behind the shared run sequence's handle.
 use crate::{
-    Result, Scope, SystemdPlan,
+    Scope, SystemdPlan,
     manager::{Manager, Unit},
     runner::UnitExit,
 };
@@ -183,10 +183,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             }
         }
         let verified = if permit.remove {
-            match self.reset().await {
-                Ok(()) => true,
+            let input = match &self.runtime {
+                Some(runtime) => Input::new(runtime.value().clone()).after(runtime),
+                None => Input::new(self.scope.clone()).after(&self.prepared),
+            };
+            match self
+                .executor
+                .run::<crate::runtime::RemoveRuntime>(input)
+                .await
+            {
+                Ok(_) => true,
                 Err(error) => {
-                    self.diagnostics.push(error);
+                    self.diagnostics.push(crate::error(error));
                     false
                 }
             }
@@ -202,19 +210,5 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 diagnostics: self.diagnostics,
             },
         )
-    }
-}
-
-impl SystemdRunning {
-    async fn reset(&self) -> Result<()> {
-        let input = match &self.runtime {
-            Some(runtime) => Input::new(runtime.value().clone()).after(runtime),
-            None => Input::new(self.scope.clone()).after(&self.prepared),
-        };
-        self.executor
-            .run::<crate::runtime::RemoveRuntime>(input)
-            .await
-            .map(|output| output.into_value())
-            .map_err(crate::error)
     }
 }
