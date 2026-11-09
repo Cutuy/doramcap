@@ -913,8 +913,9 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&set.projects[0].manifest).unwrap()).unwrap();
         assert_eq!(execution, model);
 
-        // Act / Assert: discarding owned preparation never removes host objects.
+        // Act: discard the prepared run resources.
         finalize(set).await.unwrap();
+        // Assert
         assert_eq!(std::fs::read(&file).unwrap(), b"live");
     }
 }

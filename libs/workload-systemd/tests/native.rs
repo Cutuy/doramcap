@@ -173,6 +173,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         std::fs::read_to_string(fixture.root.join("shared-data-read")).unwrap(),
         "Shared file read after producer exit"
     );
+    // Act: inspect visibility from the host after the run stops.
     let status = Command::new("/usr/bin/python3")
         .args([
             "-c",
@@ -184,9 +185,10 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         ])
         .status()
         .unwrap();
+    // Assert
     assert!(status.success(), "run shm became visible on the host");
 
-    // Act / Assert: a new run receives new kernel resources.
+    // Arrange: a new run checks for objects left by the first run.
     let (mut run, plan) = fixture.plan(
         "r2",
         vec![SystemdPlan {
@@ -195,7 +197,9 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         }],
     );
     run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
+    // Act
     let report = run_for_a_while((run, plan)).await;
+    // Assert
     assert!(report.successful(), "{report:#?}");
     assert_eq!(
         report.units[0].result.as_deref(),

@@ -781,6 +781,7 @@ mod tests {
         // Act
         let prepared = prepare(run.clone(), plan.clone()).unwrap();
         std::fs::write(&source, "next frame").unwrap();
+        let live_snapshot = inspect(&run, &plan).await.unwrap();
 
         // Assert
         let binding = &prepared.plan.as_ref().unwrap().programs[0].binds[1];
@@ -792,13 +793,15 @@ mod tests {
             "next frame"
         );
         assert_eq!(expected, prepared.snapshot.unwrap());
-        assert_eq!(expected, inspect(&run, &plan).await.unwrap());
+        assert_eq!(expected, live_snapshot);
 
-        // Act / Assert: changing the source object changes the reviewed declaration.
+        // Act: change the source object in the reviewed declaration.
         let replacement = live.file("replacement", "third frame");
         std::fs::remove_file(&link).unwrap();
         std::os::unix::fs::symlink(replacement, &link).unwrap();
-        assert_ne!(expected, inspect(&run, &plan).await.unwrap());
+        let changed_snapshot = inspect(&run, &plan).await.unwrap();
+        // Assert
+        assert_ne!(expected, changed_snapshot);
     }
 
     #[tokio::test]
@@ -819,6 +822,7 @@ mod tests {
         // Act
         let prepared = prepare(run.clone(), plan.clone()).unwrap();
         std::fs::write(&last, "[Service]\nPrivateIPC=yes\n").unwrap();
+        let changed_snapshot = inspect(&run, &plan).await.unwrap();
 
         // Assert
         let unit = &prepared.plan.as_ref().unwrap().unit_files[0];
@@ -827,7 +831,7 @@ mod tests {
             "[Service]\nExecStart=/bin/true\n\n[Service]\nPrivateIPC=yes\n\n[Service]\nPrivateIPC=no\n"
         );
         assert_eq!(prepared.snapshot.unwrap(), expected);
-        assert_ne!(inspect(&run, &plan).await.unwrap(), expected);
+        assert_ne!(changed_snapshot, expected);
     }
 
     #[tokio::test]

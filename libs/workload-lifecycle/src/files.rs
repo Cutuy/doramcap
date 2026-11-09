@@ -99,15 +99,13 @@ mod tests {
             is_host_shm_source(&Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
         std::fs::remove_file(&alias).unwrap();
         std::fs::remove_file(&source).unwrap();
+        let missing = is_host_shm_source(&source);
 
         // Assert
         assert!(direct.unwrap());
         assert!(linked.unwrap());
         assert!(!ordinary.unwrap());
-        assert_eq!(
-            is_host_shm_source(&source).unwrap_err().kind(),
-            io::ErrorKind::NotFound
-        );
+        assert_eq!(missing.unwrap_err().kind(), io::ErrorKind::NotFound);
     }
 
     #[tokio::test]

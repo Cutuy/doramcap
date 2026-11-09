@@ -114,17 +114,21 @@ mod tests {
     fn runs_require_explicit_host_shm_access() {
         // Arrange
         let mut run = RunPlan::default();
-        // Act / Assert
         for value in [0, -1, 3, i32::MAX] {
+            // Arrange
             run.host_shm_access = value;
-            assert_eq!(
-                validate_apps(&run, ["app"]).unwrap_err(),
-                "host_shm_access must be PASSTHROUGH or BLOCKED"
-            );
+            // Act
+            let error = validate_apps(&run, ["app"]).unwrap_err();
+            // Assert
+            assert_eq!(error, "host_shm_access must be PASSTHROUGH or BLOCKED");
         }
         for access in [HostShmAccess::Passthrough, HostShmAccess::Blocked] {
+            // Arrange
             run.host_shm_access = access as i32;
-            assert!(validate_apps(&run, ["app"]).is_ok());
+            // Act
+            let result = validate_apps(&run, ["app"]);
+            // Assert
+            assert!(result.is_ok());
         }
     }
 }

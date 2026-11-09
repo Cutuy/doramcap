@@ -48,18 +48,22 @@ test('systemd Consoles need no Docker socket and reject one', () => {
 test('host shm access requires an explicit supported enum value', () => {
   // Arrange
   const base = config();
-  // Act / Assert
-  for (const hostShmAccess of [launch.HostShmAccess.PASSTHROUGH, launch.HostShmAccess.BLOCKED])
-    assert.doesNotThrow(() => validateConfig(wire.ConsoleConfig.create({ ...base, hostShmAccess })));
-  for (const hostShmAccess of [0, -1, 99])
-    assert.throws(
-      () => validateConfig(wire.ConsoleConfig.create({ ...base, hostShmAccess })),
-      /host_shm_access must be PASSTHROUGH or BLOCKED/,
-    );
-  assert.throws(
-    () => validateConfig(wire.ConsoleConfig.create({ ...base, hostShmAccess: undefined })),
-    /host_shm_access must be PASSTHROUGH or BLOCKED/,
-  );
+  for (const hostShmAccess of [launch.HostShmAccess.PASSTHROUGH, launch.HostShmAccess.BLOCKED]) {
+    // Arrange
+    const candidate = wire.ConsoleConfig.create({ ...base, hostShmAccess });
+    // Act
+    validateConfig(candidate);
+    // Assert
+    assert.equal(candidate.hostShmAccess, hostShmAccess);
+  }
+  for (const hostShmAccess of [0, -1, 99, undefined]) {
+    // Arrange
+    const candidate = wire.ConsoleConfig.create({ ...base, hostShmAccess });
+    // Act
+    const validate = () => validateConfig(candidate);
+    // Assert
+    assert.throws(validate, /host_shm_access must be PASSTHROUGH or BLOCKED/);
+  }
 });
 
 test('catalog selection distinguishes defaults from an explicit empty choice', () => {

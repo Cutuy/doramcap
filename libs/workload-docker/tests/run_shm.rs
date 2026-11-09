@@ -56,6 +56,7 @@ fn system_app(name: &str, manifest: &str) -> ComposeProject {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires real Docker, doramcap/dora:local, DORAMCAP_TEST_IMAGE and prebuilt --example shm_fixture; elevate only this executable"]
 async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
+    // Arrange
     let fixture = std::env::current_exe()
         .unwrap()
         .parent()
@@ -132,6 +133,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
             let mut runner = ComposeRunner::new(adapter.clone());
             let (ready, started) = tokio::sync::oneshot::channel();
             let (stop, stopped) = tokio::sync::oneshot::channel();
+            // Act: start the run and wait for the producer to finish.
             let mut run = Box::pin(runner.run_with_ready(
                 spec.clone(),
                 async {
@@ -141,7 +143,6 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 Some(ready),
             ));
 
-            // Act: join and read shared memory after the producer process exits.
             let plan = tokio::select! { ready = started => ready.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
             let state = adapter.project(&plan).inspect().await.unwrap();
             let producer = state
@@ -149,6 +150,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 .iter()
                 .find(|c| c.service == "producer")
                 .unwrap();
+            // Assert
             assert_eq!(producer.status, "exited");
             assert_eq!(producer.exit_code, Some(0));
             let consumer = &state
@@ -158,18 +160,20 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 .unwrap()
                 .id;
             exec(consumer, &["/fixture", "read", &object]).await;
+            // Act: exchange new data through the live host binds.
             std::fs::write(&source, b"updated").unwrap();
             exec(consumer, &["/bin/sh", "-c", &format!("test \"$(cat /input/live)\" = updated && test \"$(cat {})\" = updated && test \"$(cat /named/live)\" = updated && printf app > /live/written", shm_target.display())]).await;
+            // Assert
             assert_eq!(std::fs::read(host.path().join("written")).unwrap(), b"app");
             for path in ["/input/live", shm_target.to_str().unwrap(), "/named/live"] {
+                // Arrange
                 let command = format!("printf denied > {path}");
-                assert!(
-                    !docker(&["exec", consumer, "/bin/sh", "-c", &command])
-                        .await
-                        .status
-                        .success()
-                );
+                // Act
+                let write = docker(&["exec", consumer, "/bin/sh", "-c", &command]).await;
+                // Assert
+                assert!(!write.status.success());
             }
+            // Act: inspect the object from the host.
             let host_read = std::process::Command::new(&fixture)
                 .args([
                     if mode == HostShmAccess::Blocked {
@@ -181,10 +185,11 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 ])
                 .status()
                 .unwrap();
+            // Assert
             assert!(host_read.success());
 
-            // Assert: another private run cannot see this run's shared files.
             if mode == HostShmAccess::Blocked {
+                // Arrange: start an independent private run.
                 let other_root = tempfile::tempdir().unwrap();
                 std::fs::write(other_root.path().join("compose.json"), serde_json::to_vec(&json!({"services":{"other":{
                     "image":image,"entrypoint":["/bin/sh","-c"],"command":["trap 'exit 0' TERM INT; sleep infinity & wait $$!"],
@@ -199,6 +204,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 let mut other_runner = ComposeRunner::new(adapter.clone());
                 let (other_ready, other_started) = tokio::sync::oneshot::channel();
                 let (other_stop, other_stopped) = tokio::sync::oneshot::channel();
+                // Act
                 let mut other_run = Box::pin(other_runner.run_with_ready(
                     other_spec.clone(),
                     async {
@@ -215,34 +221,41 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                     .find(|c| c.service == "other")
                     .unwrap()
                     .id;
+                // Assert
                 exec(other, &["/fixture", "absent", &object]).await;
+
+                // Act: stop the second run while the first stays alive.
                 other_stop.send(()).unwrap();
-                assert!(other_run.await.unwrap().boundary_clean);
+                let other_report = other_run.await.unwrap();
+                // Assert
+                assert!(other_report.boundary_clean);
                 support::assert_no_run_resources(&adapter, &other_spec.id).await;
                 exec(consumer, &["/fixture", "read", &object]).await;
             }
 
-            // Act / Assert: cleanup removes owned containers and preserves host data.
+            // Act: stop the original run.
             stop.send(()).unwrap();
             let report = run.await.unwrap();
+            // Assert
             assert!(report.boundary_clean, "{report:?}");
             assert!(report.execution_error.is_none(), "{report:?}");
             assert_eq!(std::fs::read(&source).unwrap(), b"updated");
             if mode == HostShmAccess::Passthrough {
-                assert!(
-                    std::process::Command::new(&fixture)
-                        .args(["read", &object])
-                        .status()
-                        .unwrap()
-                        .success()
-                );
-                assert!(
-                    std::process::Command::new(&fixture)
-                        .args(["remove", &object])
-                        .status()
-                        .unwrap()
-                        .success()
-                );
+                // Act: read the surviving host object after run cleanup.
+                let host_read = std::process::Command::new(&fixture)
+                    .args(["read", &object])
+                    .status()
+                    .unwrap();
+                // Assert
+                assert!(host_read.success());
+
+                // Act: remove only the object created by this fixture.
+                let removed = std::process::Command::new(&fixture)
+                    .args(["remove", &object])
+                    .status()
+                    .unwrap();
+                // Assert
+                assert!(removed.success());
             }
             support::assert_no_run_resources(&adapter, &spec.id).await;
         }

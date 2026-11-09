@@ -677,6 +677,7 @@ test('cancelling a review without downloads discards its inspection', async () =
 
 
 test('Compose always includes configured run shared memory independently of optional apps', async () => {
+  // Arrange
   const { root, config, engine, backend } = await fixture();
   config.hostShmAccess = launch.HostShmAccess.BLOCKED;
   config.apps.push(wire.SystemAppDefinition.create({
@@ -684,16 +685,21 @@ test('Compose always includes configured run shared memory independently of opti
     input: { directory: config.projectRoot, files: ['compose.yaml'] },
   }));
   try {
+    // Act
     const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish())));
+    // Assert
     assert.deepEqual(engine.inspected!.run!.systemApps, ['doramcap-shm']);
     assert.equal(engine.inspected!.run!.hostShmAccess, launch.HostShmAccess.BLOCKED);
     assert.ok(engine.inspected!.compose!.projects!.some((project) => project.key === 'doramcap-shm'));
     assert.ok(!review.systemApps.some((app) => app.id === 'doramcap-shm'));
 
+    // Arrange: switch the same configuration to native units.
     config.form = launch.Form.SYSTEMD;
     config.binaries = '/opt/doramcap/bin';
     await writeFile(join(config.projectRoot, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
+    // Act
     await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    // Assert
     assert.deepEqual(engine.inspected!.run!.systemApps, []);
   } finally {
     await backend.close();

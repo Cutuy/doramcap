@@ -641,24 +641,26 @@ fn mcap_writers_get_unconfined_seccomp_and_memlock() {
 fn host_shm_access_requires_an_explicit_supported_mode() {
     // Arrange
     let mut spec = request();
-
-    // Act / Assert
     for mode in [0, -1, i32::MAX] {
+        // Arrange
         spec.host_shm_access = mode;
-        assert!(
-            validate(&spec)
-                .unwrap_err()
-                .to_string()
-                .contains("host_shm_access")
-        );
+        // Act
+        let error = validate(&spec).unwrap_err().to_string();
+        // Assert
+        assert!(error.contains("host_shm_access"));
     }
     for mode in [
         workload_lifecycle::launch::HostShmAccess::Blocked,
         workload_lifecycle::launch::HostShmAccess::Passthrough,
     ] {
+        // Arrange
         spec.host_shm_access = mode as i32;
-        validate(&spec).unwrap();
-        assert_eq!(spec.run_plan().host_shm_access, mode as i32);
+        // Act
+        let result = validate(&spec);
+        let plan = spec.run_plan();
+        // Assert
+        assert!(result.is_ok());
+        assert_eq!(plan.host_shm_access, mode as i32);
     }
 }
 
@@ -676,11 +678,13 @@ fn run_ipc_defaults_preserve_native_private_groups() {
         "selective":{"volumes":[{"type":"bind","source":"/dev/shm/camera","target":"/dev/shm/camera","read_only":true}]}
     }});
 
-    // Act / Assert
     for mode in [HostShmAccess::Blocked, HostShmAccess::Passthrough] {
+        // Arrange
         let mut model = original.clone();
         let mut systems = vec![SHM_SERVICE.into(), "default".into()];
+        // Act
         configure_shm(&mut model, &mut systems, mode as i32).unwrap();
+        // Assert
         assert_eq!(systems, ["default"]);
         for service in ["private", "native-group", "private-mount", "private-tmpfs"] {
             assert_eq!(model["services"][service], original["services"][service]);
@@ -698,27 +702,26 @@ fn run_ipc_defaults_preserve_native_private_groups() {
         );
     }
 
-    // Act / Assert: the placeholder is required only for participants using run memory.
+    // Arrange: only participants using run memory need the placeholder.
     let mut private = json!({"services":{"private":{"ipc":"private"}}});
-    configure_shm(&mut private, &mut vec![], HostShmAccess::Blocked as i32).unwrap();
     let mut missing = json!({"services":{"default":{}}});
-    assert!(
-        configure_shm(&mut missing, &mut vec![], HostShmAccess::Blocked as i32)
-            .unwrap_err()
-            .to_string()
-            .contains(SHM_SERVICE)
-    );
     let mut conflict = json!({"services":{"sized":{"shm_size":1234}}});
-    assert!(
-        configure_shm(
-            &mut conflict,
-            &mut vec![],
-            HostShmAccess::Passthrough as i32
-        )
+    // Act
+    let private_result = configure_shm(&mut private, &mut vec![], HostShmAccess::Blocked as i32);
+    let missing_error = configure_shm(&mut missing, &mut vec![], HostShmAccess::Blocked as i32)
         .unwrap_err()
-        .to_string()
-        .contains("sized: shm_size")
-    );
+        .to_string();
+    let conflict_error = configure_shm(
+        &mut conflict,
+        &mut vec![],
+        HostShmAccess::Passthrough as i32,
+    )
+    .unwrap_err()
+    .to_string();
+    // Assert
+    assert!(private_result.is_ok());
+    assert!(missing_error.contains(SHM_SERVICE));
+    assert!(conflict_error.contains("sized: shm_size"));
 }
 
 #[tokio::test]
@@ -760,38 +763,48 @@ fn blocked_rejects_whole_host_access_but_keeps_selective_native_binds() {
     let alias = alias_root.path().join("host-shm");
     std::os::unix::fs::symlink("/dev/shm", &alias).unwrap();
 
-    // Act / Assert
     for source in [
         Path::new("/dev/shm"),
         Path::new("/dev"),
         Path::new("/"),
         alias.as_path(),
     ] {
+        // Arrange
         let model = json!({"services":{"camera":{"volumes":[
             {"type":"bind","source":source,"target":"/input/host"}
         ]}}});
+        // Act
         let error = validate_host_shm(&model, HostShmAccess::Blocked as i32)
             .unwrap_err()
             .to_string();
+        let passthrough = validate_host_shm(&model, HostShmAccess::Passthrough as i32);
+        // Assert
         assert!(
             error.contains("camera") && error.contains("PASSTHROUGH"),
             "{error}"
         );
-        validate_host_shm(&model, HostShmAccess::Passthrough as i32).unwrap();
+        assert!(passthrough.is_ok());
     }
+    // Arrange
     let host_ipc = json!({"services":{"camera":{"ipc":"host"}}});
-    assert!(
-        validate_host_shm(&host_ipc, HostShmAccess::Blocked as i32)
-            .unwrap_err()
-            .to_string()
-            .contains("ipc: host")
-    );
-    validate_host_shm(&host_ipc, HostShmAccess::Passthrough as i32).unwrap();
+    // Act
+    let error = validate_host_shm(&host_ipc, HostShmAccess::Blocked as i32)
+        .unwrap_err()
+        .to_string();
+    let passthrough = validate_host_shm(&host_ipc, HostShmAccess::Passthrough as i32);
+    // Assert
+    assert!(error.contains("ipc: host"));
+    assert!(passthrough.is_ok());
+
     for access in [HostShmAccess::Blocked, HostShmAccess::Passthrough] {
+        // Arrange
         let selective = json!({"services":{"camera":{"ipc":"private","volumes":[
             {"type":"bind","source":shared.path(),"target":"/input/camera","read_only":true}
         ]}}});
-        validate_host_shm(&selective, access as i32).unwrap();
+        // Act
+        let result = validate_host_shm(&selective, access as i32);
+        // Assert
+        assert!(result.is_ok());
     }
 }
 
@@ -806,18 +819,24 @@ fn blocked_checks_local_named_volume_host_sources() {
         "type":"none","o":"ro,bind","device":"/dev/shm"
     }}}});
 
-    // Act / Assert
+    // Act
     let error = validate_host_shm(&model, HostShmAccess::Blocked as i32)
         .unwrap_err()
         .to_string();
+    let passthrough = validate_host_shm(&model, HostShmAccess::Passthrough as i32);
+    // Assert
     assert!(
         error.contains("camera") && error.contains("PASSTHROUGH"),
         "{error}"
     );
-    validate_host_shm(&model, HostShmAccess::Passthrough as i32).unwrap();
+    assert!(passthrough.is_ok());
+
+    // Act: restrict the named volume to a selected host directory.
     model["volumes"]["host-memory"]["driver_opts"]["device"] =
         shared.path().to_str().unwrap().into();
-    validate_host_shm(&model, HostShmAccess::Blocked as i32).unwrap();
+    let selective = validate_host_shm(&model, HostShmAccess::Blocked as i32);
+    // Assert
+    assert!(selective.is_ok());
 }
 
 #[tokio::test]
@@ -878,6 +897,8 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
             .await
             .unwrap();
 
+        let removed = adapter.docker.inspect_volume(&name).await;
+
         // Assert
         assert_eq!(result.is_err(), blocked);
         if let Err(error) = result {
@@ -886,6 +907,6 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
             );
         }
         passthrough.unwrap();
-        assert!(adapter.docker.inspect_volume(&name).await.is_err());
+        assert!(removed.is_err());
     }
 }
