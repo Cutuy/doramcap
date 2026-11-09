@@ -10,18 +10,17 @@ apps/cpu-viewer/dataflows/out/
 
 __pycache__/
 *.pyc
-**/generated/*_pb2.py
+# Generated protocol bindings.
+generated/
+.generated/
 
 # Generated assets at the legacy frontend location.
 /frontend/dist/
 
 apps/project-explorer/frontend/public/content/
 
-# Reproducible frontend build outputs and protocol bindings.
+# Reproducible frontend build outputs.
 /apps/*/frontend/dist/
-/apps/*/frontend/generated/
-/apps/*/frontend/src/generated/
-/apps/*/frontend/src/.generated/
 /apps/*/frontend/test-results/
 /apps/*/frontend/playwright-report/
 
