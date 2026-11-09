@@ -55,9 +55,19 @@ Run validation with `npm --prefix apps/cuda-shm-demo/frontend test`,
   polls return HTTP 204 with no body; completed logs are included on state change.
 - `session` and large integer fields retain exact u64 values in the decoder.
 - The schema generator is `npm --prefix apps/cuda-shm-demo/frontend run generate:proto`.
-  Python bindings use protoc 36.2 and the runtime in `requirements.txt`.
 - JSON appears only as local display formatting and the existing CLI summaries;
   the live API and trace files carry Protobuf.
+
+Generate the ignored Python test bindings before running `tests/live.py`.
+Requires protoc 36.2 and the runtime in `../requirements.txt`:
+
+```sh
+# From the repository root.
+mkdir -p apps/cuda-shm-demo/generated
+protoc -I apps/cuda-shm-demo/proto -I libs/activity-tracing/proto \
+  --python_out=apps/cuda-shm-demo/generated \
+  apps/cuda-shm-demo/proto/viewer.proto libs/activity-tracing/proto/activity.proto
+```
 
 
 ### Protobuf validation
