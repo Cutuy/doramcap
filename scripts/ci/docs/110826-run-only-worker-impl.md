@@ -26,7 +26,8 @@ Created: 2026-11-08. [Architecture](110826-run-only-worker.md).
 
 `submit-run-only.mts` stages a job under each account's `~/jobs`, waits for its
 Pueue build and transfers the checksummed artifacts through the submitter.
-The builder and runner need no SSH identity for one another.
+SCP's `-3` mode streams archives through the submitter without local artifact
+staging. The builder and runner need no SSH identity for one another.
 
 `run-only-worker.sh` uses Bash because the compiler-free runner has no Node.
 The build mode reuses the dependency-free TypeScript source verifier. The run

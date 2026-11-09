@@ -53,7 +53,8 @@ npm --prefix scripts/ci run typecheck
 
 `mac-mini-ubuntu24@100.64.0.22` is a Mac mini Linux container with a 1 GiB
 memory limit. WSL `.20` builds the Rust tests natively; `.22` runs nextest
-archives serially. The submitter transfers source and binaries over SSH.
+archives serially. The submitter streams source and binaries over SSH; it needs
+local disk space only for the source snapshot.
 
 ```sh
 npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund

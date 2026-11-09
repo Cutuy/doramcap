@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,11 +40,8 @@ export async function submitRunOnly(source: string, builder: string, runner: str
     ssh(builder, `pueue wait --quiet ${id}`, true);
     try { successfulBuild(ssh(builder, 'pueue status --json'), id); }
     catch (error) { ssh(builder, `pueue log --full ${id}`, true); throw error; }
-    const artifacts = join(temporary, 'artifacts');
-    mkdirSync(artifacts);
-    execaSync('scp', [...sshOptions, '-r', `${builder}:${job}/artifacts/.`, artifacts], { stdio: 'inherit' });
     ssh(runner, `mkdir -p ${job}/artifacts ${job}/source`);
-    execaSync('scp', [...sshOptions, '-r', artifacts + '/.', `${runner}:${job}/artifacts/`], { stdio: 'inherit' });
+    execaSync('scp', [...sshOptions, '-3', '-r', `${builder}:${job}/artifacts/.`, `${runner}:${job}/artifacts/`], { stdio: 'inherit' });
     ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && bash source/scripts/ci/run-only-worker.sh run`, true);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
