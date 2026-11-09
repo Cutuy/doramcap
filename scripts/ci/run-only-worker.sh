@@ -11,8 +11,8 @@ mkdir -p "$worker_cache"
 chmod 700 "$worker_cache"
 exec 9>"$worker_cache/worker.lock"
 flock 9
-uname -a
 if [[ $1 == build ]]; then
+    uname -a
     node "$worker_job/source/scripts/ci/prepare-build.mts" "$worker_job/source" "$worker_cache/source"
     cd "$worker_cache/source"
     bash scripts/ci/install-nextest.sh
@@ -38,6 +38,8 @@ if [[ $1 == build ]]; then
 else
     exec > >(tee "$worker_job/run.log") 2>&1
     trap 'worker_result=$?; printf "%s\n" "$worker_result" > "$worker_job/exit-code"' EXIT
+    rm -f -- "$worker_job/exit-code" "$worker_job/results.tsv"
+    uname -a
     cd "$worker_job/artifacts"
     sha256sum -c SHA256SUMS
     rm -rf -- "$worker_cache/source" "$worker_cache/target"
@@ -49,7 +51,8 @@ else
     cargo-nextest --version
     printf 'Source manifest: %s\n' "$worker_job/source/SOURCE.json"
     sha256sum SOURCE.json
-    printf '\nMemory limit: '; cat /sys/fs/cgroup/memory.max
+    printf '\nMemory limit: '
+    if [[ -r /sys/fs/cgroup/memory.max ]]; then cat /sys/fs/cgroup/memory.max; else echo unavailable; fi
     worker_failed=0
     : > "$worker_job/results.tsv"
     for suite in default all-features storage-no-default; do
