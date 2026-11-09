@@ -10,11 +10,12 @@ rules apply to both Docker Compose and systemd workflows.
 
 ## At a glance
 
-Every external operation that affects execution or its evidence must run inside an
-observed step. Helpers called inside that step share its boundary. Calling a helper
-directly from `Running::start`, `stop` or `remove` provides no step observation.
+Choose a step for a coherent, substantial unit of machine work whose effects and
+possible failure are worth observing; see [design principle D-14](../../../../docs/design-guide.md).
+Helpers inside a step share its boundary. Direct calls from `Running::start`,
+`stop` or `remove` provide no step observation.
 
-| Work | Required coverage |
+| Operation group | Typical step boundary |
 | --- | --- |
 | Resolve configuration or query external state used by the run | An inspection or preparation step |
 | Create, mount, load, start, stop or remove owned resources | A setup, execution or cleanup step |
@@ -31,6 +32,8 @@ otherwise execute between observed steps.
 A step should answer a useful execution question: which resources were prepared,
 which applications started, or whether cleanup completed. Group the backend calls
 needed to answer that question inside the same step.
+Keep its input/output contract suitable for `LocalExecutor` now and a possible
+remote executor later.
 
 Pure validation and configuration transforms belong inside their existing
 inspection/preparation step. Workflow decisions consume results and choose the
