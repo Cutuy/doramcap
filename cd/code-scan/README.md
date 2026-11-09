@@ -4,10 +4,12 @@ Review one rule clause against one code unit through schema-constrained model ca
 
 ![Workflow](workflow.svg)
 
-The diagram shows the intended handoff: the harness prepares an input directory,
-the agent reads it and returns structured artifacts, and the harness validates
-and advances the task. A required user decision includes repository/PR context,
-the problem and options; the recorded answer becomes part of the next input.
+The overview gives every model invocation its own harness boundary, including
+rule preparation, parallel filtering and confirmation, repair and independent
+review. Queues pass prepared inputs and validated outputs between calls. Up to
+eight filters and two confirmations can overlap; each repository has one serial
+repair/verification path. A required user choice includes repository/PR context,
+the problem and options, and becomes part of the next input to the same task.
 The current CLI pilot still embeds prepared task JSON in its prompt.
 
 The [execution policy](workflow-execution.json) proposes Luna/low screening,
