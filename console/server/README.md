@@ -33,3 +33,20 @@ under systemd; `DORAMCAP_TEST_BINARIES` names a directory of release-feature hos
 The [native client](src/native.ts) accepts and returns generated protobuf messages.
 It keeps N-API byte serialization private; application code uses the
 [typed interface](native/index.d.ts).
+
+Check an existing playground through HTTP with the saved launch instructions or
+startup log containing its private `Open:` link:
+
+```sh
+npm --prefix console/server run check:playground -- --launch-file /path/to/console-launch.txt --output /path/to/check.json
+```
+
+The check selects CPU monitoring with recording and the live bridge, starts a run,
+receives live frames, stops it, checks cleanup and downloads a sealed CPU MCAP.
+Use repeated `--expect-step ID` options to require specific successful workflow
+steps, such as `systemd.runtime.prepare` and `systemd.runtime.remove` with PR #247.
+It uses generated protobuf HTTP bindings and needs no native addon or root access.
+
+For a remote browser over Tailscale, keep Console on loopback and run the printed
+SSH forwarding command on the browser computer. Open the printed `127.0.0.1` link
+through that tunnel; its host and port preserve Console's Origin checks.
