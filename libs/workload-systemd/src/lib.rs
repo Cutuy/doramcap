@@ -7,6 +7,7 @@ mod manager;
 mod preparation;
 mod runner;
 mod running;
+mod runtime;
 mod shm;
 
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
@@ -57,7 +58,7 @@ pub fn parse_run(text: &str) -> Result<RunPlan> {
 }
 
 /// Names owned by one repository: its slice, unit prefix and runtime directory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scope {
     pub prefix: String,
     pub slice: String,

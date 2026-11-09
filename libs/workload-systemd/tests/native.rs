@@ -156,10 +156,40 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
     run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
 
     // Act
-    let report = run_for_a_while((run, plan)).await;
+    let (report, events) = observe_run_for_a_while((run, plan)).await;
 
     // Assert
     assert!(report.successful(), "{report:#?}");
+    let prepared = events
+        .iter()
+        .find(|event| event.invocation.step == "systemd.prepare")
+        .unwrap();
+    let setup = events
+        .iter()
+        .find(|event| {
+            event.invocation.step == "systemd.runtime.prepare"
+                && event.state == orchestrator::State::Succeeded
+        })
+        .unwrap();
+    let removal = events
+        .iter()
+        .find(|event| {
+            event.invocation.step == "systemd.runtime.remove"
+                && event.state == orchestrator::State::Succeeded
+        })
+        .unwrap();
+    assert_eq!(setup.invocation.dependencies, [prepared.invocation.id]);
+    assert!(
+        removal
+            .invocation
+            .dependencies
+            .contains(&setup.invocation.id)
+    );
+    assert!(setup.elapsed_ns < removal.elapsed_ns);
+    let directory = setup.payload.as_ref().unwrap()["directory"]
+        .as_str()
+        .unwrap();
+    assert!(!Path::new(directory).join("shm").exists());
     assert!(
         report
             .units
@@ -376,7 +406,7 @@ async fn blocked_native_conflicts_fail_before_any_app_starts() {
         run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
 
         // Act
-        let report = run_for_a_while((run, plan)).await;
+        let (report, events) = observe_run_for_a_while((run, plan)).await;
 
         // Assert
         assert!(
@@ -391,6 +421,20 @@ async fn blocked_native_conflicts_fail_before_any_app_starts() {
             "an earlier phase started before native validation"
         );
         assert!(report.cleanup_verified, "{report:#?}");
+        assert!(events.iter().any(|event| {
+            event.invocation.step == "systemd.runtime.prepare"
+                && event.state == orchestrator::State::Failed
+                && event
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains(expected))
+        }));
+        assert!(
+            events
+                .iter()
+                .any(|event| event.invocation.step == "systemd.runtime.remove"
+                    && event.state == orchestrator::State::Succeeded)
+        );
     }
 }
 
@@ -604,18 +648,115 @@ async fn passthrough_preserves_native_whole_shm_bind() {
     assert_eq!(payload.unwrap(), "host-data\n");
 }
 
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn stop_at_runtime_preparation_keeps_cleanup_observable() {
+    use std::{cell::RefCell, rc::Rc};
+    // Arrange: stop as runtime preparation begins, before any app is launched.
+    let fixture = Fixture::new("runtime-cancel");
+    let unit = fixture.repo().join("native.service");
+    let marker = fixture.root.join("must-not-start");
+    std::fs::write(
+        &unit,
+        format!("[Service]\nExecStart=/usr/bin/touch {}\n", marker.display()),
+    )
+    .unwrap();
+    let (mut run, plan) = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            unit_files: vec![unit.to_string_lossy().into()],
+            ..Default::default()
+        }],
+    );
+    run.host_shm_access = workload_lifecycle::launch::HostShmAccess::Blocked as i32;
+    let (stop, stopped) = oneshot::channel();
+    let stop = RefCell::new(Some(stop));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+
+    // Act
+    let report = SystemdRunner::new()
+        .run(
+            run,
+            plan,
+            async {
+                let _ = stopped.await;
+            },
+            move |event: &orchestrator::Event| {
+                observed.borrow_mut().push(event.clone());
+                if event.invocation.step == "systemd.runtime.prepare"
+                    && event.state == orchestrator::State::Started
+                {
+                    let _ = stop.borrow_mut().take().unwrap().send(());
+                }
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Assert: cancellation keeps the pre-owned scope available to the cleanup step.
+    assert!(report.cleanup_verified, "{report:#?}");
+    assert!(!marker.exists());
+    assert!(report.units.is_empty());
+    let events = events.borrow();
+    assert!(
+        events
+            .iter()
+            .any(|event| event.invocation.step == "systemd.runtime.prepare"
+                && matches!(
+                    event.state,
+                    orchestrator::State::Cancelled | orchestrator::State::Succeeded
+                ))
+    );
+    let removal = events
+        .iter()
+        .find(|event| {
+            event.invocation.step == "systemd.runtime.remove"
+                && event.state == orchestrator::State::Started
+        })
+        .unwrap();
+    let directory = removal.payload.as_ref().unwrap()["directory"]
+        .as_str()
+        .unwrap();
+    assert!(!Path::new(directory).join("shm").exists());
+    assert!(
+        events
+            .iter()
+            .any(|event| event.invocation.step == "systemd.runtime.remove"
+                && event.state == orchestrator::State::Succeeded)
+    );
+}
+
 /// Run `plan`, stop it `OBSERVATION` after readiness, and return its report.
 async fn run_for_a_while((run, plan): (RunPlan, SystemdPlan)) -> SystemdRunReport {
+    observe_run_for_a_while((run, plan)).await.0
+}
+
+async fn observe_run_for_a_while(
+    (run, plan): (RunPlan, SystemdPlan),
+) -> (SystemdRunReport, Vec<orchestrator::Event>) {
+    use std::{cell::RefCell, rc::Rc};
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
     let (ready, readiness) = oneshot::channel();
     let stop = async {
         if readiness.await.is_ok() {
             tokio::time::sleep(OBSERVATION).await;
         }
     };
-    SystemdRunner::new()
-        .run(run, plan, stop, |_: &orchestrator::Event| {}, Some(ready))
+    let report = SystemdRunner::new()
+        .run(
+            run,
+            plan,
+            stop,
+            move |event: &orchestrator::Event| observed.borrow_mut().push(event.clone()),
+            Some(ready),
+        )
         .await
-        .unwrap()
+        .unwrap();
+    let captured = events.borrow().clone();
+    (report, captured)
 }
 
 fn runtime_units() -> Vec<String> {

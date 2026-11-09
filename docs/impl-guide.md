@@ -38,3 +38,7 @@ procedures remain in [AGENTS.md](../AGENTS.md).
 
 - Keep API contracts in docstrings/Rust doc comments beside code: meaning, behavior, constraints, parameters/results, errors, ownership, concurrency, and cancellation as applicable, with manpage precision. Keep docstrings at most three lines; use named sections or bullets when more detail is needed. Link READMEs to API docs.
 - In functions with lengthy business logic, prefer concise, one-line inline comments explaining the key steps.
+
+## I-10 — Workflow steps
+
+- Apply the [workflow-step contract](../libs/workload-docker/src/workflows/README.md) to external operations affecting execution or its evidence. Keep helpers inside meaningful observed operations, preserve input/output provenance and retain cleanup ownership through failure and cancellation.
