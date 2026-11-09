@@ -53,7 +53,7 @@ pub(super) fn merge_app(
 
 const MCAP_MEMLOCK_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Reserved system service holding the run's Docker IPC namespace until final shutdown.
+/// Reserved system service keeping the run's /dev/shm available until final shutdown.
 pub(crate) const SHM_SERVICE: &str = "doramcap-shm";
 
 /// Apply the run's IPC default, preserving explicit IPC and complete private shm mounts.

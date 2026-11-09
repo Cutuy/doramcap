@@ -4,12 +4,10 @@ Run one experiment's apps as owned systemd units in a per-repository slice, cont
 over D-Bus. Rust starts Dora, then system apps and waits for recordings, then user apps; shutdown reverses that order. Repository `.service` files are
 adopted with native references preserved. Declared stop grace takes precedence over the plan fallback. An optional Dora coordinator and daemon start first as units; Dora CLI commands run as oneshot units. A failed unit is recorded and the run continues until stop.
 Generated units use private roots with read-only host system directories and per-unit bind mounts.
-`BLOCKED` shares a run-owned `/dev/shm` and IPC namespace between generated units;
-`PASSTHROUGH` keeps host access. Selective host shm binds remain live with their declared
-permissions. Native units are checked through systemd before any app starts. Under
-`BLOCKED`, they require explicit private IPC and retain private shm mounts; ambiguous
-native IPC defaults and `JoinsNamespaceOf` fail with a diagnostic. Adjacent unit drop-ins
-are captured with the unit for Review and Start.
+`BLOCKED` shares a run-owned `/dev/shm`; `PASSTHROUGH` keeps host access.
+Selective host binds stay live with their declared permissions. systemd parses native
+mounts before startup; explicit private mounts and native IPC settings are preserved.
+Adjacent unit drop-ins are captured with the unit for Review and Start.
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
 

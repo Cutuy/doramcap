@@ -15,17 +15,16 @@ Remove any `host_shms` field and support; none exists in the current source.
 | Backend | Main change |
 | --- | --- |
 | Docker | Start the configured `doramcap-shm` system app first, join default IPC participants, stop it last. |
-| systemd | Bind run tmpfs at `/dev/shm` and pin IPC for generated units through `IPCNamespacePath`. |
+| systemd | Bind run tmpfs at `/dev/shm` for generated and native units without an explicit private mount. |
 
 Resolve host sources before installing the run's private view. Existing backend
-cleanup releases run-owned mounts and namespaces. Native systemd units are loaded
-and checked through manager properties. BLOCKED rejects ambiguous default IPC
-and `JoinsNamespaceOf`; explicit private IPC and mounts remain native.
+cleanup releases the run-owned filesystem. Native systemd mounts are checked
+through manager properties; native IPC settings remain unchanged.
 
 Extend the shared [host observer](../../resources/system-config/src/lib.rs) and
 [`MachineState`](../../resources/system-config/proto/system_config.proto) with host
-shm metadata and capture errors. Use filesystem/IPC metadata operations and
-propagate errors to Console's UI. Keep ordinary configuration byte capture intact.
+filesystem metadata. Return observation errors through `Result` and propagate
+them separately to Console. Keep ordinary configuration byte capture intact.
 
 ## Required evidence
 
@@ -41,7 +40,7 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 **Validation**
 
-- [x] Two apps exchange live data; other runs and the host's ordinary shm view cannot see it. Check POSIX and System V separately.
+- [x] Two apps exchange live data; other runs and the host's ordinary shm view cannot see it.
 - [x] Verify kernel object lifetime across app exit, and cleanup after failed startup or controller crashes.
 
 ## Milestone 2 — Apply settings consistently
@@ -58,13 +57,13 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 - [x] Read-only host binds stay live at usual and alternate targets: host writes are visible, app writes are denied.
 - [x] Live writes leave Review valid; changed mount declarations or captured configuration require fresh preparation.
 - [x] The same host state yields the same shm metadata regardless of backend; larger objects do not increase capture I/O.
-- [x] Capture failure shows an error in the UI and leaves the host shm field absent.
+- [x] Capture failure shows an error in the UI and leaves the machine capture absent.
 
 ## Milestone 3 — Implement both backends
 
 **Work items**
 
-- [x] Connect shared mounts and namespaces to existing startup, shutdown and cleanup; remove unconditional Dora IPC overrides.
+- [x] Connect shared mounts to existing startup, shutdown and cleanup; remove unconditional Dora IPC overrides.
 
 **Validation**
 
@@ -83,16 +82,14 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 - [x] Focused Rust release/locked checks, Console tests and TypeScript checking pass.
 - [x] Dora exchanges data and finishes recordings in both modes.
-- [ ] Qualify Dora recording across explicitly split native IPC groups; deferred with GPU/CUDA acceptance.
+- [ ] Qualify GPU/CUDA workloads.
 - [x] Run [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration; record native backend and GPU checks separately.
 
-Validation: full local CI and ARM64 jobs 617/619 pass. Docker covers POSIX/SysV
-sharing with/without Dora and eight lifecycle/recording cases; systemd covers
-26 native scenarios. Real Console runs pass in both modes, including systemd
-CPU/Fault Watchdog MCAP recordings. Host observation has 116 server and 87 UI
-tests; runtime has 112 server tests and clean TypeScript (one installer skip).
+Current simplification: removes systemd IPC pins, namespace conflict checks and
+System V fixtures. Focused systemd tests and Docker default/private-mount tests
+pass; native tests compile. Native mount tests, full CI and ARM64 are not rerun
+for this follow-up.
 
-The native alias fixture now uses a private nonrecursive bind and checks host
-mount identities. Its earlier propagation side effect was repaired by restoring
-the original filesystems and existing objects; the corrected test preserves them.
-No further host-mount qualification runs are planned for this checkout.
+Earlier local CI and ARM64 jobs 617/619 passed before this simplification, with
+real Docker/systemd, Dora and Console recording checks. The earlier alias-fixture
+mount incident was repaired; host-mount tests remain disabled on this checkout.

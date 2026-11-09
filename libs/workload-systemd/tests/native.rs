@@ -88,23 +88,14 @@ fn program(id: &str, script: &str) -> Program {
     }
 }
 
-/// Real POSIX and System V payload exchange; the producer exits before the consumer attaches.
+/// Read a shared file after its producer exits.
 const SHM_WORKER: &str = r#"
-import ctypes, errno, os, pathlib, sys, time
-role, key, marker, done = sys.argv[1:]
-key = int(key)
-libc = ctypes.CDLL(None, use_errno=True)
-libc.shmat.restype = ctypes.c_void_p
-libc.shmdt.argtypes = [ctypes.c_void_p]
-path = pathlib.Path('/dev/shm') / ('doramcap-test-' + str(key))
+import os, pathlib, sys, time
+role, name, marker, done = sys.argv[1:]
+path = pathlib.Path('/dev/shm') / ('doramcap-test-' + name)
 if role == 'producer':
-    ident = libc.shmget(key, 4096, 0o1000 | 0o2000 | 0o600)
-    assert ident >= 0, ctypes.get_errno()
-    address = libc.shmat(ident, None, 0)
-    assert address != ctypes.c_void_p(-1).value, ctypes.get_errno()
-    ctypes.memmove(address, b'live data', 9)
-    assert libc.shmdt(address) == 0
-    path.write_text('live data')
+    with path.open('x') as output:
+        output.write('live data')
     pathlib.Path(marker).write_text(str(os.getpid()))
 elif role == 'consumer':
     deadline = time.monotonic() + 10
@@ -116,16 +107,9 @@ elif role == 'consumer':
         assert time.monotonic() < deadline
         time.sleep(0.01)
     assert path.read_text() == 'live data'
-    ident = libc.shmget(key, 4096, 0o600)
-    assert ident >= 0, ctypes.get_errno()
-    address = libc.shmat(ident, None, 0)
-    assert address != ctypes.c_void_p(-1).value, ctypes.get_errno()
-    assert ctypes.string_at(address, 9) == b'live data'
-    assert libc.shmdt(address) == 0
-    pathlib.Path(done).write_text('POSIX and SysV read after producer exit')
+    pathlib.Path(done).write_text('Shared file read after producer exit')
 else:
     assert not path.exists()
-    assert libc.shmget(key, 4096, 0o600) < 0 and ctypes.get_errno() == errno.ENOENT
 "#;
 
 fn shm_worker(id: &str, role: &str, key: u32, fixture: &Fixture) -> Program {
@@ -187,7 +171,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
     );
     assert_eq!(
         std::fs::read_to_string(fixture.root.join("shared-data-read")).unwrap(),
-        "POSIX and SysV read after producer exit"
+        "Shared file read after producer exit"
     );
     let status = Command::new("/usr/bin/python3")
         .args([
@@ -222,7 +206,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root, python3 and the system service manager"]
-async fn passthrough_generated_units_share_host_posix_and_sysv_and_preserve_objects() {
+async fn passthrough_generated_units_share_host_memory_and_preserve_objects() {
     // Arrange
     let fixture = Fixture::new("host-shared-memory");
     let key = std::process::id();
@@ -237,7 +221,7 @@ async fn passthrough_generated_units_share_host_posix_and_sysv_and_preserve_obje
         }],
     );
 
-    // Act: the host consumes both objects after all run units and resources have been removed.
+    // Act: the host reads the shared file after all run units and resources have been removed.
     let report = run_for_a_while(plan).await;
     let host_read = Command::new("/usr/bin/python3")
         .args([
@@ -250,10 +234,10 @@ async fn passthrough_generated_units_share_host_posix_and_sysv_and_preserve_obje
         ])
         .status()
         .unwrap();
-    let cleanup = Command::new("/usr/bin/python3").args(["-c", "import ctypes,pathlib,sys; key=int(sys.argv[1]); libc=ctypes.CDLL(None); ident=libc.shmget(key,4096,0o600); ident < 0 or libc.shmctl(ident,0,None)==0 or sys.exit(1); pathlib.Path('/dev/shm', 'doramcap-test-'+str(key)).unlink(missing_ok=True)", &key.to_string()]).status().unwrap();
+    let cleanup = std::fs::remove_file(Path::new("/dev/shm").join(format!("doramcap-test-{key}")));
 
     // Assert
-    assert!(cleanup.success());
+    cleanup.unwrap();
     assert!(report.successful(), "{report:#?}");
     assert!(
         report
@@ -379,36 +363,15 @@ pathlib.Path(done).write_text('live mount verified')
 async fn blocked_native_conflicts_fail_before_any_app_starts() {
     // Arrange
     for (index, settings, expected) in [
-        (0, "[Service]\n", "cannot establish private native IPC"),
         (
-            1,
-            "[Service]\nPrivateIPC=no\n",
-            "cannot establish private native IPC",
-        ),
-        (
-            2,
-            "[Service]\nIPCNamespacePath=/proc/1/ns/ipc\n",
-            "exposes host IPC",
-        ),
-        (
-            3,
-            "[Service]\nPrivateIPC=yes\nBindPaths=/dev/shm:/host-shm\n",
+            0,
+            "[Service]\nBindPaths=/dev/shm:/host-shm\n",
             "exposes whole host shm",
         ),
         (
-            4,
-            "[Unit]\nJoinsNamespaceOf=other.service\n[Service]\nPrivateIPC=yes\n",
-            "JoinsNamespaceOf is unsupported",
-        ),
-        (
-            5,
-            "[Service]\nIPCNamespacePath=/etc/hostname\n",
-            "not a usable private IPC namespace",
-        ),
-        (
-            6,
-            "[Service]\nIPCNamespacePath=/proc/1/ns/net\n",
-            "not a usable private IPC namespace",
+            1,
+            "[Service]\nBindReadOnlyPaths=/dev/shm:/host-shm\n",
+            "exposes whole host shm",
         ),
     ] {
         let fixture = Fixture::new(&format!("native-shm-conflict-{index}"));
@@ -489,7 +452,7 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
     std::fs::write(
         &file,
         format!(
-            "[Service]\nPrivateIPC=yes\nBindPaths={}:/host-dev\nExecStart=/bin/touch {}\n",
+            "[Service]\nBindPaths={}:/host-dev\nExecStart=/bin/touch {}\n",
             alias.0.display(),
             marker.display()
         ),
@@ -532,14 +495,18 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn native_private_ipc_drop_in_and_shared_posix_memory_reach_real_units() {
+async fn native_default_and_private_ipc_units_share_run_filesystem() {
     // Arrange
     let fixture = Fixture::new("native-shm-private");
     let producer = fixture.repo().join("producer.service");
     let consumer = fixture.repo().join("consumer.service");
     let output = fixture.root.join("observed");
     let exchange = format!("/dev/shm/doramcap-native-exchange-{}", std::process::id());
-    std::fs::write(&producer, format!("[Service]\nPrivateIPC=yes\nType=oneshot\nExecStart=/bin/sh -c 'echo native-data > {exchange}'\n")).unwrap();
+    std::fs::write(
+        &producer,
+        format!("[Service]\nType=oneshot\nExecStart=/bin/sh -c 'echo native-data > {exchange}'\n"),
+    )
+    .unwrap();
     std::fs::write(
         &consumer,
         format!(
@@ -593,13 +560,13 @@ async fn native_private_ipc_drop_in_and_shared_posix_memory_reach_real_units() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn native_explicit_private_posix_mount_is_preserved() {
+async fn native_explicit_private_shm_mount_is_preserved() {
     // Arrange
-    let fixture = Fixture::new("native-private-posix");
+    let fixture = Fixture::new("native-private-shm");
     let file = fixture.repo().join("private.service");
     let name = format!("/dev/shm/doramcap-native-private-{}", std::process::id());
     let private_done = fixture.root.join("private-done");
-    std::fs::write(&file, format!("[Service]\nPrivateIPC=yes\nTemporaryFileSystem=/dev/shm\nType=oneshot\nExecStart=/bin/sh -c 'echo private > {name}; echo complete > {}'\n", private_done.display())).unwrap();
+    std::fs::write(&file, format!("[Service]\nTemporaryFileSystem=/dev/shm\nType=oneshot\nExecStart=/bin/sh -c 'echo private > {name}; echo complete > {}'\n", private_done.display())).unwrap();
     let observed = fixture.root.join("observed");
     let consumer = sees(
         program(
@@ -635,14 +602,14 @@ async fn native_explicit_private_posix_mount_is_preserved() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn passthrough_preserves_native_host_ipc_and_whole_shm_bind() {
+async fn passthrough_preserves_native_whole_shm_bind() {
     // Arrange
     let fixture = Fixture::new("native-passthrough");
     let file = fixture.repo().join("host.service");
     let name = format!("doramcap-native-host-{}", std::process::id());
     let target = fixture.root.join("host-shm");
     std::fs::create_dir(&target).unwrap();
-    std::fs::write(&file, format!("[Service]\nIPCNamespacePath=/proc/1/ns/ipc\nBindPaths=/dev/shm:{}\nType=oneshot\nExecStart=/bin/sh -c 'echo host-data > {}/{name}'\n", target.display(), target.display())).unwrap();
+    std::fs::write(&file, format!("[Service]\nBindPaths=/dev/shm:{}\nType=oneshot\nExecStart=/bin/sh -c 'echo host-data > {}/{name}'\n", target.display(), target.display())).unwrap();
     let plan = fixture.plan(
         "r1",
         vec![SystemdPlan {
@@ -871,7 +838,7 @@ async fn timed_out_start_stops_and_reports_the_attempted_writer() {
     std::fs::write(
         &file,
         format!(
-            "[Service]\nPrivateIPC=yes\nType=oneshot\nExecStart=/bin/sh -c 'echo $$$$ > {}; exec sleep 300'\n",
+            "[Service]\nType=oneshot\nExecStart=/bin/sh -c 'echo $$$$ > {}; exec sleep 300'\n",
             pid.display()
         ),
     )
@@ -969,7 +936,7 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
     let file = fixture.repo().join("infinite.service");
     std::fs::write(
         &file,
-        "[Service]\nPrivateIPC=yes\nExecStart=/bin/sleep 300\nTimeoutStopSec=infinity\n",
+        "[Service]\nExecStart=/bin/sleep 300\nTimeoutStopSec=infinity\n",
     )
     .unwrap();
     let (mut run, plan) = fixture.plan(
@@ -997,7 +964,6 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
     let prefix = report.units[0].unit.strip_prefix("doramcap-").unwrap();
     let scope = Path::new("/run/doramcap").join(prefix.strip_suffix("-infinite.service").unwrap());
     assert!(scope.join("shm").is_dir());
-    assert!(scope.join("ipc").exists());
     // Act: wait for the already requested stop, then clean up explicitly.
     let status = Command::new("systemctl")
         .args(["stop", &report.units[0].unit])
@@ -1008,7 +974,6 @@ async fn infinite_grace_reports_incomplete_and_preserves_artifacts() {
     // Assert
     assert!(fixture.root.join("r1/report.json").exists());
     assert!(!scope.join("shm").exists());
-    assert!(!scope.join("ipc").exists());
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -1096,11 +1061,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
     let shared_name = format!("/dev/shm/doramcap-isolation-{}", std::process::id());
     let make_plan = |fixture: &Fixture, id: &str| {
         let file = fixture.repo().join("isolated.service");
-        std::fs::write(
-            &file,
-            "[Service]\nPrivateIPC=yes\nExecStart=/bin/sleep 300\n",
-        )
-        .unwrap();
+        std::fs::write(&file, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
         let (mut run, plan) = fixture.plan(
             id,
             vec![SystemdPlan {
@@ -1166,7 +1127,7 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
     let control = async {
         first_readiness.await.unwrap();
         second_readiness.await.unwrap();
-        // Both active runs can use the same POSIX name without sharing its contents.
+        // Both active runs can use the same shared-file name without sharing its contents.
         for fixture in [&first, &second] {
             assert!(wait_for_file(&fixture.root.join("memory-ready")).await);
         }
@@ -1312,7 +1273,6 @@ async fn dora_runs_as_units_and_registers_the_graph() {
     // Native project units preserve their filesystem; app units receive the shared config bind.
     let native = fixture.root.join("native.service");
     std::fs::write(&native, format!(r#"[Service]
-PrivateIPC=yes
 Environment=DORA_NODE_ID=native-chosen
 ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > {}; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
 "#, runtime.join("native-environment").display())).unwrap();
@@ -1321,7 +1281,6 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         .push(native.to_string_lossy().into_owned());
     let adopted = fixture.root.join("participant.service");
     std::fs::write(&adopted, r#"[Service]
-PrivateIPC=yes
 Environment=DORA_NODE_ID=app-chosen
 ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LISTEN_PORT" "$$DORA_ZENOH_CONFIG_OVERLAY" > /results/app-environment; test -s "$$DORA_ZENOH_CONFIG_OVERLAY" || exit 42; exec sleep 300'
 "#).unwrap();

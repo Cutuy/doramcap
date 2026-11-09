@@ -1,4 +1,4 @@
-//! Complete recorded-workflow acceptance with real POSIX and SysV payloads.
+//! Complete recorded-workflow acceptance with real /dev/shm payloads.
 mod support;
 use serde_json::json;
 use std::{path::Path, rc::Rc};
@@ -92,10 +92,6 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 .unwrap()
                 .trim_start_matches('.');
             let object = format!("doramcap-{identity}");
-            let key = format!(
-                "{}",
-                0x46000000 | (std::process::id() << 4) | ((with_dora as u32) << 2) | mode as u32
-            );
             let mut input = project(root.path());
             input.completed_services = vec!["producer".into()];
             let consumer = json!({"image":image,"entrypoint":["/bin/sh","-c"],"command":["trap 'exit 0' TERM INT; sleep infinity & wait $$!"],
@@ -108,7 +104,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 {"type":"volume","source":"selected","target":"/named","read_only":true}
             ]});
             std::fs::write(root.path().join("compose.json"), serde_json::to_vec(&json!({"services":{
-                "producer":{"image":image,"entrypoint":["/fixture"],"command":["write",key,object],"volumes":[{"type":"bind","source":fixture,"target":"/fixture","read_only":true}]},
+                "producer":{"image":image,"entrypoint":["/fixture"],"command":["write",object],"volumes":[{"type":"bind","source":fixture,"target":"/fixture","read_only":true}]},
                 "consumer":consumer
             },"volumes":{"selected":{"driver":"local","driver_opts":{"type":"none","o":"bind","device":host.path()}}}})).unwrap()).unwrap();
             let spec = ComposeRun {
@@ -145,7 +141,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 Some(ready),
             ));
 
-            // Act: join and read both kinds of shm after the producer process exits.
+            // Act: join and read shared memory after the producer process exits.
             let plan = tokio::select! { ready = started => ready.unwrap(), result = &mut run => panic!("startup failed: {result:?}") };
             let state = adapter.project(&plan).inspect().await.unwrap();
             let producer = state
@@ -161,7 +157,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 .find(|c| c.service == "consumer")
                 .unwrap()
                 .id;
-            exec(consumer, &["/fixture", "read", &key, &object]).await;
+            exec(consumer, &["/fixture", "read", &object]).await;
             std::fs::write(&source, b"updated").unwrap();
             exec(consumer, &["/bin/sh", "-c", &format!("test \"$(cat /input/live)\" = updated && test \"$(cat {})\" = updated && test \"$(cat /named/live)\" = updated && printf app > /live/written", shm_target.display())]).await;
             assert_eq!(std::fs::read(host.path().join("written")).unwrap(), b"app");
@@ -181,14 +177,13 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                     } else {
                         "read"
                     },
-                    &key,
                     &object,
                 ])
                 .status()
                 .unwrap();
             assert!(host_read.success());
 
-            // Assert: another private run cannot see this run's POSIX or SysV objects.
+            // Assert: another private run cannot see this run's shared files.
             if mode == HostShmAccess::Blocked {
                 let other_root = tempfile::tempdir().unwrap();
                 std::fs::write(other_root.path().join("compose.json"), serde_json::to_vec(&json!({"services":{"other":{
@@ -220,11 +215,11 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                     .find(|c| c.service == "other")
                     .unwrap()
                     .id;
-                exec(other, &["/fixture", "absent", &key, &object]).await;
+                exec(other, &["/fixture", "absent", &object]).await;
                 other_stop.send(()).unwrap();
                 assert!(other_run.await.unwrap().boundary_clean);
                 support::assert_no_run_resources(&adapter, &other_spec.id).await;
-                exec(consumer, &["/fixture", "read", &key, &object]).await;
+                exec(consumer, &["/fixture", "read", &object]).await;
             }
 
             // Act / Assert: cleanup removes owned containers and preserves host data.
@@ -236,14 +231,14 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
             if mode == HostShmAccess::Passthrough {
                 assert!(
                     std::process::Command::new(&fixture)
-                        .args(["read", &key, &object])
+                        .args(["read", &object])
                         .status()
                         .unwrap()
                         .success()
                 );
                 assert!(
                     std::process::Command::new(&fixture)
-                        .args(["remove", &key, &object])
+                        .args(["remove", &object])
                         .status()
                         .unwrap()
                         .success()

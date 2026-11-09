@@ -90,7 +90,7 @@ impl Manager {
     }
 
     /// Let systemd parse every frozen native unit before any app starts.
-    /// BLOCKED rejects native IPC whose private scope cannot be established from D-Bus facts.
+    /// BLOCKED checks effective mounts and supplies run memory where no private mount is declared.
     pub(crate) async fn prepare_native_shm(
         &self,
         scope: &Scope,
@@ -141,29 +141,6 @@ impl Manager {
         for (name, app) in names {
             let unit = self.watch(&name).await?;
             let service = &unit.service;
-            let namespace = service.ipc_namespace_path().await.map_err(error)?;
-            let private = service.private_ipc().await.map_err(error)?;
-            if namespace.is_empty() && !private {
-                return Err(format!(
-                    "{name}: BLOCKED cannot establish private native IPC from systemd properties; set PrivateIPC=yes or a private IPCNamespacePath, or select PASSTHROUGH"
-                ));
-            }
-            if !namespace.is_empty() && crate::shm::is_host_namespace(&namespace)? {
-                return Err(format!(
-                    "{name}: IPCNamespacePath={namespace} exposes host IPC; select PASSTHROUGH"
-                ));
-            }
-            if !unit
-                .unit
-                .joins_namespace_of()
-                .await
-                .map_err(error)?
-                .is_empty()
-            {
-                return Err(format!(
-                    "{name}: JoinsNamespaceOf is unsupported with BLOCKED because its IPC scope cannot be established before launch"
-                ));
-            }
             let mut binds = service.bind_paths().await.map_err(error)?;
             binds.extend(service.bind_read_only_paths().await.map_err(error)?);
             for (source, target, optional, _) in &binds {
@@ -746,12 +723,6 @@ async fn private_root(
         ("MountAPIVFS".into(), value(true)?),
         ("BindReadOnlyPaths".into(), value(read_only)?),
     ];
-    if blocked {
-        properties.push((
-            "IPCNamespacePath".into(),
-            value(crate::shm::namespace(scope).to_string_lossy().into_owned())?,
-        ));
-    }
     if !writable.is_empty() {
         properties.push(("BindPaths".into(), value(writable)?));
     }
