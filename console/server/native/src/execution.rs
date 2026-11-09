@@ -667,7 +667,11 @@ mod tests {
                 for expected in [None, Some(wrong)] {
                     let request = StartRequest {
                         run: Some(RunRequest {
-                            run: Some(Default::default()),
+                            run: Some(workload_lifecycle::launch::RunPlan {
+                                host_shm_access:
+                                    workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+                                ..Default::default()
+                            }),
                             backend: Some(backend.clone()),
                         }),
                         backend: expected,

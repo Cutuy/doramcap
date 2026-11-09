@@ -459,18 +459,29 @@ async fn blocked_native_conflicts_fail_before_any_app_starts() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn blocked_native_whole_host_mount_alias_fails_before_start() {
-    // Arrange: use a real recursive bind alias, which canonicalize cannot resolve to /dev.
+    // Arrange: an inode alias is enough; keep host submounts outside the test mount.
+    use std::os::unix::fs::MetadataExt;
+    let original_mounts: Vec<_> = ["/dev/shm", "/dev/pts", "/dev/mqueue", "/dev/hugepages"]
+        .into_iter()
+        .filter_map(|path| {
+            std::fs::metadata(path)
+                .ok()
+                .map(|metadata| (path, metadata.dev(), metadata.ino()))
+        })
+        .collect();
     struct Alias(PathBuf);
     impl Drop for Alias {
         fn drop(&mut self) {
-            if rustix::mount::unmount(&self.0, rustix::mount::UnmountFlags::DETACH).is_ok() {
+            if rustix::mount::unmount(&self.0, rustix::mount::UnmountFlags::empty()).is_ok() {
                 let _ = std::fs::remove_dir(&self.0);
             }
         }
     }
     let alias = std::env::temp_dir().join(format!("systemd-host-dev-alias-{}", std::process::id()));
     std::fs::create_dir(&alias).unwrap();
-    rustix::mount::mount_bind_recursive("/dev", &alias).unwrap();
+    rustix::mount::mount_bind("/dev", &alias).unwrap();
+    // Do not install an unmount guard until propagation is private.
+    rustix::mount::mount_change(&alias, rustix::mount::MountPropagationFlags::PRIVATE).unwrap();
     let alias = Alias(alias);
     let fixture = Fixture::new("native-host-alias");
     let file = fixture.repo().join("native.service");
@@ -495,9 +506,19 @@ async fn blocked_native_whole_host_mount_alias_fails_before_start() {
 
     // Act
     let report = run_for_a_while((run, plan)).await;
+    let alias_path = alias.0.clone();
     drop(alias);
 
     // Assert
+    assert!(!alias_path.exists(), "test alias cleanup failed");
+    for (path, device, inode) in original_mounts {
+        let metadata = std::fs::metadata(path).unwrap();
+        assert_eq!(
+            (metadata.dev(), metadata.ino()),
+            (device, inode),
+            "host mount changed: {path}"
+        );
+    }
     assert!(
         report
             .execution_error

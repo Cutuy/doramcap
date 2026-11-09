@@ -839,8 +839,9 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
         .unwrap()
         .trim_start_matches('.');
     for (suffix, source, blocked) in [
-        ("whole", Path::new("/dev/shm"), true),
-        ("selected", selected.path(), false),
+        ("whole", Some(Path::new("/dev/shm")), true),
+        ("selected", Some(selected.path()), false),
+        ("ordinary", None, false),
     ] {
         let name = format!("codex-shm-{identity}-{suffix}");
         adapter
@@ -848,11 +849,13 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
             .create_volume(bollard::models::VolumeCreateRequest {
                 name: Some(name.clone()),
                 driver: Some("local".into()),
-                driver_opts: Some(HashMap::from([
-                    ("type".into(), "none".into()),
-                    ("o".into(), "bind".into()),
-                    ("device".into(), source.to_string_lossy().into_owned()),
-                ])),
+                driver_opts: source.map(|source| {
+                    HashMap::from([
+                        ("type".into(), "none".into()),
+                        ("o".into(), "bind".into()),
+                        ("device".into(), source.to_string_lossy().into_owned()),
+                    ])
+                }),
                 ..Default::default()
             })
             .await

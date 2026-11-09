@@ -371,7 +371,9 @@ async fn validate_external_ipc(adapter: &DockerAdapter, model: &Value, access: i
                 .flatten()
                 .filter(|mount| mount.destination.as_deref() == Some("/dev/shm"))
             {
-                if let Some(source) = &mount.source {
+                if mount.typ.as_deref() == Some("bind")
+                    && let Some(source) = &mount.source
+                {
                     model::validate_host_shm_source(service, source)?;
                 }
                 if mount.typ.as_deref() == Some("volume")
@@ -438,7 +440,6 @@ async fn validate_external_volume_shm(
             if let Some(source) = model::local_volume_source(Some(&volume.driver), &options) {
                 model::validate_host_shm_source(service, source)?;
             }
-            model::validate_host_shm_source(service, &volume.mountpoint)?;
         }
     }
     Ok(())
