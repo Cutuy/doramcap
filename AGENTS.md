@@ -55,16 +55,24 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 ## Documentation style
 
-- All Markdown: brief prose, short bullets, compact tables; no walls of text.
-- Validation records: keep only the latest result and unresolved blockers in a few short bullets. Link to CI or logs for details; replace stale results instead of appending test histories, counts or command transcripts.
+### Writing
+
+- Use plain language, brief prose, short bullets and compact tables. State what things do directly; avoid contrastive “A, not B” phrasing.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
-- State what things do directly; avoid contrastive “A, not B” phrasing.
-- In SVGs and web apps, NEVER add footnotes such as “this is A, not B” or explanatory notes about caveats unless explicitly requested.
-- Architecture: SVGs with short labels showing components and exchanged artifacts.
-- Plans: use `component/docs/mmddyy-feature-name.md` with the creation date; keep updates in that file and supporting SVGs alongside it.
-- Plans: lead with an embedded architecture SVG. A short high-level plan may precede the detailed milestones.
-- Plans: give each milestone its own clearly labeled section containing both **Work items** and **Validation** checklists. Keep acceptance checks beside the work they verify; a separate global validation list does not replace per-milestone validation.
-- Plans: record evidence in the relevant milestone before checking an item. Mark a milestone complete only when its work items and validations are complete.
+- Keep validation records brief, following the [pull request description standard](#pull-request-descriptions).
+
+### Visuals
+
+- Use architecture SVGs with short labels showing components and exchanged artifacts.
+- In SVGs and web apps, never add footnotes or explanatory notes about caveats unless explicitly requested.
+
+### Plans
+
+- Trivial changes need no plan document. For other work, keep architecture and implementation in separate, linked documents.
+- Architecture explains the high-level idea, expected behavior, major components, responsibilities and key tradeoffs. Lead with an embedded architecture SVG.
+- Implementation holds the code-level details: code/API changes, chosen mechanisms, milestones and checks.
+- Use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-impl.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
+- Give each implementation milestone a labeled section with **Work items** and **Validation** checklists.
 
 ## Pull request descriptions
 
