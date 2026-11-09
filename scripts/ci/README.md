@@ -49,6 +49,35 @@ npm --prefix scripts/ci test
 npm --prefix scripts/ci run typecheck
 ```
 
+## Run-only ARM64 worker
+
+`mac-mini-ubuntu24@100.64.0.22` is a Mac mini Linux container with a 1 GiB
+memory limit. WSL `.20` builds the Rust tests natively; `.22` runs nextest
+archives serially. The submitter transfers source and binaries over SSH.
+
+```sh
+npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
+node scripts/ci/submit-run-only.mts --source /absolute/path/to/checkout
+```
+
+Both accounts need key-based SSH access from the submitter. Use `--build-host`
+or `--run-host` to select an equivalent ARM64 worker. The command waits for its
+Pueue build and runner completion, returning failure for either stage.
+The pinned nextest executable installs into each account's `~/.local/bin`.
+No compiler or queue daemon is installed on `.22`.
+
+The command prints both job directories. On WSL, inspect the returned Pueue ID.
+On `.22`, read `~/jobs/JOB/run.log`, `results.tsv` and `exit-code`; rerun with
+`cd ~/jobs/JOB && bash source/scripts/ci/run-only-worker.sh run`.
+Keep SSH connected during execution. A missing exit-code means completion is
+unconfirmed. Source/artifacts remain in each job directory, with replaceable
+build/execution caches under `/tmp/doramcap-ci-run-only`. Remove only idle jobs
+and caches; no retention cleanup runs automatically.
+
+Coverage: default/all-feature workspace unit and integration tests, plus storage
+without default features. Privileged BPF/cgroup tests, doctests, linting and Node
+checks stay on the existing workers. See the [architecture and validation](docs/110826-run-only-worker.md).
+
 ## Provisioning
 
 Use ARM64 Ubuntu with systemd, SSH, kernel BTF, cgroup v2 and outbound download

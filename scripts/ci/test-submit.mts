@@ -45,6 +45,9 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   put('.sudo-password', 'fixture exclusion');
   put('unrelated.txt', 'excluded');
   put('scripts/ci/unrelated.mts', 'excluded');
+  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.sh', 'install-nextest.sh']) {
+    put(`scripts/ci/${name}`, '// run-only worker fixture');
+  }
   // Act
   const submitted = await createSnapshot(source, archive);
   const extracted = join(root, 'extracted');
@@ -65,6 +68,9 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   assert.equal(digest(join(extracted, 'run-worker-job.sh')), manifest.runner_sha256);
   assert.equal(existsSync(join(extracted, 'scripts/ci/check-boundaries.mts')), true);
   assert.equal(existsSync(join(extracted, 'scripts/ci/package.json')), true);
+  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.sh', 'install-nextest.sh']) {
+    assert.equal(existsSync(join(extracted, 'scripts/ci', name)), true, name);
+  }
   for (const excluded of ['.git', '.sudo-password', 'console/private.secret', 'unrelated.txt', 'scripts/ci/unrelated.mts']) {
     assert.equal(existsSync(join(extracted, excluded)), false, excluded);
   }
