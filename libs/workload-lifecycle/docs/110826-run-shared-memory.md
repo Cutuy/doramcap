@@ -4,31 +4,43 @@
 
 Created: 2026-11-08. Implementation pending.
 
-Apps in a run share memory with each other. By default, that memory stays separate
-from the host and other runs. The same rules apply to user and system apps on
-Docker and systemd, using pbtxt or native files.
+Apps in a run share memory with each other. The same rules apply to user and
+system apps on Docker and systemd, using pbtxt or native files.
 
-## Two global modes
+## Host shm access
+
+Select one of two enum values explicitly. The unset/default value and unknown
+values are unsupported and fail preparation.
 
 | Mode | What apps use | What happens after the run |
 | --- | --- | --- |
-| **Isolated — default** | Shared memory belonging to this run | Release it after the apps stop |
-| **Host** | The host's shared memory, with normal access permissions | Leave it alone |
+| **BLOCKED** | Shared memory belonging to this run | Release it after the apps stop |
+| **PASSTHROUGH** | The host's shared memory, with normal access permissions | Leave it alone |
 
 ## Native settings
 
-Apply native IPC and mount declarations to the launched apps. A selective host
-bind stays live, including read-only binds; explicit private settings may separate
-sharing groups. Whole-host mounts and Docker `ipc: host` require global **Host**
-mode. Reject conflicting settings before launch with an error identifying the app
-and setting.
+| Native setting | With BLOCKED |
+| --- | --- |
+| None | Mount run memory at `/dev/shm` |
+| Selective host bind | Keep run memory; bind the host source at the declared target and permissions |
+| Whole-host shm or Docker `ipc: host` | Fail preparation; identify the app and setting and require PASSTHROUGH |
+| Explicit private shm | Apply the declaration; reject incompatible IPC or mount settings |
+
+PASSTHROUGH uses host shm; explicit private settings still apply. Selective host
+binds stay live, including read-only binds and alternate targets. Apply accepted
+declarations to launched apps; source Compose and unit files remain unchanged.
+Review and launch use the same prepared configuration.
 
 ## Experiment snapshots
 
-Extend existing A/B snapshots with host shm metadata. Capture object identity,
-size, permissions and timestamps without reading or hashing contents. Work scales
-with object count, independently of byte size. Live observations stay separate
-from Review's configuration identity.
+The common host observer captures host shm as-is for existing A/B snapshots,
+independently of launch backend and app mounts. Capture object identity, size,
+permissions and timestamps without reading, copying or hashing contents. Work
+scales with object count, independently of byte size. Live observations stay
+separate from Review's configuration identity.
+
+If capture fails, report the error in the UI and leave the host shm field
+empty/absent.
 
 ## Cleanup
 

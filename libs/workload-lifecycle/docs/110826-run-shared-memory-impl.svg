@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="365" viewBox="0 0 900 365" role="img" aria-labelledby="title desc">
 <title id="title">Shared-memory launch flow</title>
-<desc id="desc">The RunPlan field and native app settings enter preparation, which rejects conflicts and captures configuration plus live host-shm metadata. The prepared launch settings go to Docker and systemd, which own app startup and run resource cleanup.</desc>
+<desc id="desc">The RunPlan enum and native app settings enter preparation, which validates the mode and rejects conflicts. The prepared launch settings go to Docker and systemd, which own app startup and run resource cleanup.</desc>
 <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7" fill="#526679"/></marker></defs>
 <rect width="900" height="365" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
 <rect x="60" y="25" width="330" height="64" rx="8" fill="#dbeaf2" stroke="#8ca6b8"/>
-<text x="225" y="51" font-size="17" font-weight="600">RunPlan</text><text x="225" y="75" font-size="14">host_shared_memory</text>
+<text x="225" y="51" font-size="17" font-weight="600">RunPlan</text><text x="225" y="75" font-size="14">host_shm_access enum</text>
 <rect x="510" y="25" width="330" height="64" rx="8" fill="#fcebdc" stroke="#bc906b"/>
 <text x="675" y="51" font-size="17" font-weight="600">Native app settings</text><text x="675" y="75" font-size="14">IPC and mounts</text>
 <rect x="250" y="120" width="400" height="86" rx="8" fill="#eef1f4" stroke="#a9b4bf"/>
-<text x="450" y="145" font-size="17" font-weight="600">Prepare launch</text><text x="450" y="169" font-size="14">Validate IPC and mounts</text><text x="450" y="192" font-size="14">Snapshot config + host shm metadata</text>
+<text x="450" y="145" font-size="17" font-weight="600">Prepare launch</text><text x="450" y="169" font-size="14">Validate mode, IPC and mounts</text><text x="450" y="192" font-size="14">Resolve configuration</text>
 <text x="450" y="232" font-size="14">Prepared launch settings</text>
 <rect x="60" y="265" width="330" height="73" rx="8" fill="#e0efe5" stroke="#7ea68d"/>
 <text x="225" y="294" font-size="17" font-weight="600">Docker</text><text x="225" y="320" font-size="14">Start apps · Stop apps · Clean up</text>
