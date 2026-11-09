@@ -104,6 +104,22 @@ test('two captured runs compare their Prepare captures by group', () => {
   assert.equal(row(comparison, 'governor')?.result, Result.COMPARISON_CHANGED);
 });
 
+test('capture errors stay visible when setup differences exhaust the comparison row budget', () => {
+  // Arrange
+  const before = { ...machine('performance'), hostShmError: '/dev/shm: permission denied' };
+  const baseline = side('a'.repeat(32), { before });
+  const current = side('b'.repeat(32), { before, setup: {
+    images: Array.from({ length: 3000 }, (_, i) => ({ service: `service-${i}`, imageId: `image-${i}` })),
+  } });
+  // Act
+  const comparisons = [compareRuns(baseline, current), compareReview(baseline, { ...current, profiles: [] })];
+  // Assert
+  for (const comparison of comparisons) {
+    assert.equal(comparison.truncated, true);
+    assert.equal(cell(row(comparison, 'host_shm_error'), 1), '/dev/shm: permission denied');
+  }
+});
+
 test('post-run changes list only what differs, and nothing when a capture is missing', () => {
   // Arrange
   const state = (governor: string, load: number) => execution.RunCapture.fromObject({ before: machine(governor, load) }).before;

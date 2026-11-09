@@ -512,6 +512,50 @@ test('an oversized capture is refused without changing what is saved', async () 
   await run.backend.close();
 });
 
+test('oversized shm metadata leaves an error in persisted comparison and the live UI while other facts survive', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: {
+    ...machine('performance'), hostShm: { posix: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })) },
+  } }).machineBefore;
+
+  // Act
+  const live = wire.Status.decode(await run.backend.status());
+  const saved = new History(run.store).capture(runId);
+
+  // Assert
+  assert.equal(saved.before?.hostShm, null);
+  assert.match(saved.before?.hostShmError ?? '', /could not be saved/);
+  assert.equal(saved.before?.configuration?.governor?.[0].value, 'performance');
+  assert.equal(saved.setup?.images?.[0].imageId, 'sha256:a');
+  assert.match(live.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
+
+  // Act / Assert: a successful post-run observation does not erase the save failure.
+  run.engine.update.machineAfter = execution.ExecutionUpdate.fromObject({ machineAfter: { ...machine('powersave'), hostShm: {} } }).machineAfter;
+  const finished = await finishRun(run, runId);
+  assert.match(finished.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
+  await run.backend.close();
+});
+
+test('database capture failure reaches live status without presenting unsaved shm metadata', async (t) => {
+  // Arrange
+  t.mock.method(console, 'error', () => {});
+  const root = await temporary(), run = await service(root);
+  const runId = await startRun(run);
+  run.store.db.exec("CREATE TRIGGER refuse_capture BEFORE UPDATE OF capture ON runs BEGIN SELECT RAISE(FAIL, 'capture storage unavailable'); END");
+  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: { ...machine('performance'), hostShm: {} } }).machineBefore;
+
+  // Act
+  const status = wire.Status.decode(await run.backend.status());
+
+  // Assert
+  assert.match(status.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /capture storage unavailable/);
+  assert.equal(new History(run.store).capture(runId).before, null);
+  assert.equal(new History(run.store).capture(runId).setup?.images?.[0].imageId, 'sha256:a');
+  await run.backend.close();
+});
+
 test('a review compares with the latest completed captured run, or with the run it came from', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);

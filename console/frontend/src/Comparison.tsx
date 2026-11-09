@@ -21,7 +21,7 @@ const value = (row: Row, side: number) => {
 const resultLabel = (row: Row) => row.result === Result.COMPARISON_SAME ? 'Same' : row.result === Result.COMPARISON_CHANGED ? 'Changed' : 'Unavailable';
 const factsOnly = (rows: Row[]) => rows.filter(row => row.name !== 'host_shm_error');
 
-function CaptureErrors({ rows, sides }: { rows: Row[]; sides: string[] }) {
+export function HostShmCaptureErrors({ rows, sides }: { rows: Row[]; sides: string[] }) {
   return <>{rows.filter(row => row.name === 'host_shm_error').flatMap(row => sides.flatMap((side, index) =>
     [...new Set(row.cells[index]?.values ?? [])].filter(Boolean).map(error => <p className="notice failure-notice" role="alert" key={`${side}:${error}`}>Host shared memory capture failed ({side}): {error}</p>),
   ))}</>;
@@ -65,7 +65,7 @@ function ComparisonView({ comparison, clear }: { comparison: HistoryComparison; 
     <div className="panel-heading"><h2>Compare runs</h2><div className="comparison-actions"><ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton><a className="history-back" href={clear}>Clear selection</a></div></div>
     <div className="comparison-runs">{comparison.sides.flatMap(side => side.runs.map(run => <RunHeader key={run.entry!.runId} label={side.label} entry={run.entry!}/>))}</div>
     {missing.length > 0 && <p className="notice">No machine capture for run {missing.join(' or ')}.</p>}
-    <CaptureErrors rows={comparison.rows} sides={sides}/>
+    <HostShmCaptureErrors rows={comparison.rows} sides={sides}/>
     {GROUPS.map(({ group, title }) => group === Group.COMPARISON_CONDITION ? <ConditionSection key={group} title={title} rows={comparison.rows.filter(row => row.group === group)} sides={sides}/> : <GroupSection key={group} group={group} title={title} rows={comparison.rows.filter(row => row.group === group)} warn={group === Group.COMPARISON_CONFIGURATION} showMatching={showMatching} sides={sides}/>)}
     {comparison.truncated && <p className="muted">Some matching facts are not shown.</p>}
   </section>;
@@ -84,7 +84,7 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
   return <section className="panel comparison" aria-label="Machine review">
     <div className="panel-heading"><h2>Compared with</h2>{baseline && <ActionButton variant="secondary" onClick={() => setShowMatching(!showMatching)}>{showMatching ? 'Show differences only' : 'Show all'}</ActionButton>}</div>
     {baseline ? <p><a className="history-back mono" href={historyHash(baseline.runId, basePath)}>{baseline.runId.slice(0, 8)}</a> <span className="muted">{timeLabel(baseline.startedAtMs)}</span></p> : <p className="muted">No earlier capture to compare with.</p>}
-    <CaptureErrors rows={comparison.rows} sides={['Then', 'Now']}/>
+    <HostShmCaptureErrors rows={comparison.rows} sides={['Then', 'Now']}/>
     {baseline && <GroupSection group={Group.COMPARISON_SETUP} title="Experiment setup" rows={rows(Group.COMPARISON_SETUP)} warn={false} showMatching={showMatching} sides={['Then', 'Now']}/>}
     {baseline
       ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={rows(Group.COMPARISON_CONFIGURATION)} warn showMatching={showMatching} sides={['Then', 'Now']}/>
@@ -99,7 +99,7 @@ export function MachineChanges({ rows }: { rows: Row[] }) {
   const configuration = inGroup(Group.COMPARISON_CONFIGURATION);
   return <section className="panel comparison machine-changes" aria-label="Machine changes during this run">
     <h2>Machine during this run</h2>
-    <CaptureErrors rows={rows} sides={['Before', 'After']}/>
+    <HostShmCaptureErrors rows={rows} sides={['Before', 'After']}/>
     {configuration.length
       ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={configuration} warn showMatching={false} sides={['Before', 'After']}/>
       : <p className="muted">Machine configuration did not change.</p>}

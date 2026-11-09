@@ -156,7 +156,7 @@ export function diffFacts(group: number, a: Facts, b: Facts): Row[] {
   });
 }
 const differs = (row: Row) => row.result !== Result.COMPARISON_SAME;
-/** Keep all differences first; a large comparison gives up matching facts. */
+/** Prioritize capture errors, differences, then matching facts within the row budget. */
 function boundRows(rows: Row[]) {
   if (rows.length <= MAX_ROWS) return { rows, truncated: false };
   const errors = rows.filter(row => row.name === 'host_shm_error');
@@ -164,7 +164,7 @@ function boundRows(rows: Row[]) {
   const kept = [...errors, ...facts.filter(differs), ...facts.filter((row) => !differs(row))].slice(0, MAX_ROWS);
   return { rows: kept, truncated: true };
 }
-/** What changed between a run's Prepare and post-run captures. Empty when either is missing. */
+/** Changes between Prepare and post-run captures; capture errors remain visible with either side missing. */
 export function machineChanges(before: Capture['before'], after: Capture['before']) {
   return [
     ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(before), configurationFacts(after)),

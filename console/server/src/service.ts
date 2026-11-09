@@ -82,7 +82,7 @@ export class ConsoleService implements ConsoleBackend {
   private closing?: Promise<void>;
   private closed = false;
   private startedAt = 0;
-  private machineBefore = false;
+  private machineBefore: typeof execution.RunCapture.prototype.before = null;
   private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
@@ -356,7 +356,8 @@ export class ConsoleService implements ConsoleBackend {
       liveStreams: prepared.review.liveStreams,
     });
     this.startedAt = Date.now();
-    this.machineBefore = this.machineAfter = false;
+    this.machineBefore = null;
+    this.machineAfter = false;
     this.recordTransition();
     this.startPromise = this.startRequest(prepared);
     return this.startPromise;
@@ -456,22 +457,25 @@ export class ConsoleService implements ConsoleBackend {
     const images = prepared.review.services.map(({ name, imageId }) => ({ service: name, imageId }));
     return execution.ExperimentSetup.create({ ...(await sourceState(prepared.project.directory!)), images });
   }
-  /** Save newly known parts of the run's capture; comparison loses them on failure, but the run continues. */
+  /** Save newly known capture parts; unavailable shm remains visible as an error while the run continues. */
   private saveCapture(parts: Partial<typeof execution.RunCapture.prototype>) {
     try {
-      this.runIndex.saveCapture(this.snapshot.runId, parts);
+      return this.runIndex.saveCapture(this.snapshot.runId, parts);
     } catch (error) {
       console.error('Could not save run capture', error);
+      return execution.RunCapture.create({ ...parts, ...(parts.before ? { before: {
+        ...parts.before, hostShm: null, hostShmError: `Machine capture could not be saved: ${browserError(errorCode(error))}`,
+      } } : {}) });
     }
   }
   private saveMachineStates(update: typeof execution.ExecutionUpdate.prototype) {
     if (update.machineBefore && !this.machineBefore) {
-      this.machineBefore = true;
-      this.saveCapture({ before: update.machineBefore });
+      this.machineBefore = this.saveCapture({ before: update.machineBefore }).before;
+      this.snapshot.machineChanges = machineChanges(this.machineBefore, null);
     }
     if (update.machineAfter && !this.machineAfter) {
       this.machineAfter = true;
-      this.snapshot.machineChanges = machineChanges(update.machineBefore, update.machineAfter);
+      this.snapshot.machineChanges = machineChanges(this.machineBefore, update.machineAfter);
     }
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
