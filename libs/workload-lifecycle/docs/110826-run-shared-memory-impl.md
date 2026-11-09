@@ -3,7 +3,7 @@
 # Shared memory: implementation
 
 Created: 2026-11-08. Implements the [architecture](110826-run-shared-memory.md).
-Runtime implementation is in validation; host observation is tracked separately in #236.
+Implemented in #237 (runtime) and #236 (host observation).
 
 ## Changes
 
@@ -37,12 +37,12 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 **Work items**
 
-- [ ] Try the smallest native approach on Docker and systemd, with and without Dora.
+- [x] Try the smallest native approach on Docker and systemd, with and without Dora.
 
 **Validation**
 
-- [ ] Two apps exchange live data; other runs and the host's ordinary shm view cannot see it. Check POSIX and System V separately.
-- [ ] Verify kernel object lifetime across app exit, and cleanup after failed startup or controller crashes.
+- [x] Two apps exchange live data; other runs and the host's ordinary shm view cannot see it. Check POSIX and System V separately.
+- [x] Verify kernel object lifetime across app exit, and cleanup after failed startup or controller crashes.
 
 ## Milestone 2 — Apply settings consistently
 
@@ -50,15 +50,15 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 - [x] Wire the enum field through existing callers and preparation; remove any remaining `host_shms` support.
 - [x] Resolve native settings through Compose merges and systemd unit/drop-in loading.
-- [ ] Add host shm observation to common machine capture and expose capture errors in the UI.
+- [x] Add host shm observation to common machine capture and expose capture errors in the UI.
 
 **Validation**
 
-- [ ] Unset/unknown modes fail preparation; both supported values work for user/system apps and pbtxt/native inputs.
-- [ ] Read-only host binds stay live at usual and alternate targets: host writes are visible, app writes are denied.
-- [ ] Live writes leave Review valid; changed mount declarations or captured configuration require fresh preparation.
-- [ ] The same host state yields the same shm metadata regardless of backend; larger objects do not increase capture I/O.
-- [ ] Capture failure shows an error in the UI and leaves the host shm field absent.
+- [x] Unset/unknown modes fail preparation; both supported values work for user/system apps and pbtxt/native inputs.
+- [x] Read-only host binds stay live at usual and alternate targets: host writes are visible, app writes are denied.
+- [x] Live writes leave Review valid; changed mount declarations or captured configuration require fresh preparation.
+- [x] The same host state yields the same shm metadata regardless of backend; larger objects do not increase capture I/O.
+- [x] Capture failure shows an error in the UI and leaves the host shm field absent.
 
 ## Milestone 3 — Implement both backends
 
@@ -68,23 +68,31 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 **Validation**
 
-- [ ] BLOCKED shares run memory; selective host binds stay live. Cover read-only/writable binds, files/directories and alternate targets.
-- [ ] Whole-host mounts and Docker `ipc: host` fail before launch with BLOCKED and work with PASSTHROUGH; host/app writes are mutually visible.
-- [ ] Explicit private settings apply; incompatible IPC or mounts fail with a clear error.
-- [ ] Host objects survive cleanup; run resources disappear after verified shutdown. Cover partial startup, cancellation and abandoned runs.
+- [x] BLOCKED shares run memory; selective host binds stay live. Cover read-only/writable binds, files/directories and alternate targets.
+- [x] Whole-host mounts and Docker `ipc: host` fail before launch with BLOCKED and work with PASSTHROUGH; host/app writes are mutually visible.
+- [x] Explicit private settings apply; incompatible IPC or mounts fail with a clear error.
+- [x] Host objects survive cleanup; run resources disappear after verified shutdown. Cover partial startup, cancellation and abandoned runs.
 
 ## Milestone 4 — Check complete workloads
 
 **Work items**
 
-- [ ] Add small runnable examples; exercise Console, direct callers and Dora on both backends.
+- [x] Add small runnable examples; exercise Console, direct callers and Dora on both backends.
 
 **Validation**
 
-- [ ] Focused Rust release/locked checks, Console tests and TypeScript checking pass.
-- [ ] Dora exchanges data and finishes recordings in both modes, including native settings that split sharing groups.
-- [ ] Run [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration; record native backend and GPU checks separately.
+- [x] Focused Rust release/locked checks, Console tests and TypeScript checking pass.
+- [x] Dora exchanges data and finishes recordings in both modes.
+- [ ] Qualify Dora recording across explicitly split native IPC groups; deferred with GPU/CUDA acceptance.
+- [x] Run [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration; record native backend and GPU checks separately.
 
-Provisional checks: 17 lifecycle, 78 Docker and 22 systemd release tests pass;
-Console has 112 passing tests, one opt-in installer skip, and clean TypeScript.
-Native acceptance, full local CI and ARM64 remain pending.
+Validation: full local CI and ARM64 jobs 617/619 pass. Docker covers POSIX/SysV
+sharing with/without Dora and eight lifecycle/recording cases; systemd covers
+26 native scenarios. Real Console runs pass in both modes, including systemd
+CPU/Fault Watchdog MCAP recordings. Host observation has 116 server and 87 UI
+tests; runtime has 112 server tests and clean TypeScript (one installer skip).
+
+The native alias fixture now uses a private nonrecursive bind and checks host
+mount identities. Its earlier propagation side effect was repaired by restoring
+the original filesystems and existing objects; the corrected test preserves them.
+No further host-mount qualification runs are planned for this checkout.
