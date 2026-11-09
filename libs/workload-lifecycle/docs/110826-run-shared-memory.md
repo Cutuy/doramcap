@@ -37,8 +37,8 @@ shared through `/dev/shm`.
 ## Experiment snapshots
 
 The common host observer captures host shm as-is for existing A/B snapshots,
-independently of launch backend and app mounts. Capture object identity, size,
-permissions and timestamps without reading, copying or hashing contents. Work
+independently of launch backend and app mounts. Capture paths, ownership,
+permissions, sizes and timestamps without reading, copying or hashing contents. Work
 scales with object count, independently of byte size. Live observations stay
 separate from Review's configuration identity.
 

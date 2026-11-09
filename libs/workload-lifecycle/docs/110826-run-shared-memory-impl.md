@@ -22,9 +22,10 @@ cleanup releases the run-owned filesystem. Native systemd mounts are checked
 through manager properties; native IPC settings remain unchanged.
 
 Extend the shared [host observer](../../resources/system-config/src/lib.rs) and
-[`MachineState`](../../resources/system-config/proto/system_config.proto) with host
-filesystem metadata. Return observation errors through `Result` and propagate
-them separately to Console. Keep ordinary configuration byte capture intact.
+[`MachineState`](../../resources/system-config/proto/system_config.proto) with
+`repeated FileMetadata host_shm`: path, mode, UID/GID, size, and modification/change
+times as signed Unix nanoseconds. Return observation errors through `Result` and
+propagate them separately to Console. Keep ordinary configuration byte capture intact.
 
 ## Required evidence
 
