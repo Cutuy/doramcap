@@ -20,7 +20,7 @@ test('TypeScript Console runs and stops two real Compose experiments', async () 
   await writeFile(join(root, 'secret'), 'test-secret', { mode: 0o600 });
   await writeFile(
     config,
-    `listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock" access_secret_file:"${root}/secret" runtime { readiness_seconds:30 stop_seconds:3 }`,
+    `host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock" access_secret_file:"${root}/secret" runtime { readiness_seconds:30 stop_seconds:3 }`,
   );
   const { backend } = await ConsoleService.open(config);
   try {

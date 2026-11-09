@@ -43,7 +43,7 @@ pub async fn inspect(run: &RunPlan, plan: &SystemdPlan) -> Result<ConfigurationS
 }
 
 /// Validate structure and fingerprint unit, graph and read-only regular-file inputs on this host.
-/// Live directories, writable binds and binaries retain their native behavior.
+/// Host shm, live directories, writable binds and binaries retain their native behavior.
 pub struct InspectRun;
 impl Step for InspectRun {
     const ID: Option<&'static str> = Some("systemd.inspect");
@@ -135,66 +135,110 @@ impl Write for InputWriter {
 }
 
 fn input(source: &str, name: &str, destination: Option<&Path>) -> Result<String> {
-    let read = || -> Result<String> {
-        // Follow native symlinks once; validate the opened handle without blocking on FIFOs.
-        let mut file = OpenOptions::new()
-            .read(true)
-            .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
-            .open(source)
-            .map_err(error)?;
-        let metadata = file.metadata().map_err(error)?;
-        if !metadata.is_file() {
-            return Err("configuration input must be a regular file".into());
+    capture_files(&[PathBuf::from(source)], name, destination)
+}
+
+/// Capture the unit and its adjacent native drop-ins into one ordered unit file.
+fn unit_input(source: &str, name: &str, destination: Option<&Path>) -> Result<String> {
+    let directory = PathBuf::from(format!("{source}.d"));
+    let mut drop_ins = Vec::new();
+    match std::fs::read_dir(&directory) {
+        Ok(entries) => {
+            for entry in entries {
+                let path = entry.map_err(error)?.path();
+                if path
+                    .extension()
+                    .is_some_and(|extension| extension == "conf")
+                {
+                    drop_ins.push(path);
+                }
+            }
         }
-        let acl = acl(&file)?;
-        let copy = destination
-            .map(|directory| {
-                OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(PRIVATE_FILE_MODE)
-                    .open(directory.join(CAPTURE_FILE))
-                    .map_err(error)
-            })
-            .transpose()?;
-        let mut writer = InputWriter {
-            hash: Sha256::new(),
-            file: copy,
-        };
-        writer.hash.update(metadata.mode().to_le_bytes());
-        writer.hash.update(metadata.uid().to_le_bytes());
-        writer.hash.update(metadata.gid().to_le_bytes());
-        let access = acl.as_deref().unwrap_or_default();
-        writer.hash.update((access.len() as u64).to_le_bytes());
-        writer.hash.update(access);
-        // Stream the observed size so growing inputs cannot cause unbounded capture.
-        let copied =
-            std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?;
-        let after = file.metadata().map_err(error)?;
-        if copied != metadata.len()
-            || metadata.len() != after.len()
-            || metadata.mtime() != after.mtime()
-            || metadata.mtime_nsec() != after.mtime_nsec()
-            || metadata.ctime() != after.ctime()
-            || metadata.ctime_nsec() != after.ctime_nsec()
-        {
-            return Err("configuration input changed while being captured".into());
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(format!("{}: {e}", directory.display())),
+    }
+    drop_ins.sort();
+    let mut sources = vec![PathBuf::from(source)];
+    for path in drop_ins {
+        // A /dev/null symlink is systemd's native way to mask a drop-in.
+        if std::fs::canonicalize(&path).map_err(error)? != Path::new("/dev/null") {
+            sources.push(path);
         }
-        let key = format!("{}/{name}", hex::encode(writer.hash.finalize()));
-        if let (Some(directory), Some(copy)) = (destination, writer.file) {
-            restore_access(&copy, &metadata, acl.as_deref())?;
-            let target = directory.join(&key);
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .mode(PRIVATE_DIRECTORY_MODE)
-                .create(target.parent().expect("input directory"))
-                .map_err(error)?;
-            // The key includes bytes and access metadata, so equivalent copies can share a path.
-            std::fs::rename(directory.join(CAPTURE_FILE), target).map_err(error)?;
-        }
-        Ok(format!("{ARTIFACTS}/{INPUTS}/{key}"))
+    }
+    capture_files(&sources, name, destination)
+}
+
+fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) -> Result<String> {
+    let copy = destination
+        .map(|directory| {
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(PRIVATE_FILE_MODE)
+                .open(directory.join(CAPTURE_FILE))
+                .map_err(error)
+        })
+        .transpose()?;
+    let mut writer = InputWriter {
+        hash: Sha256::new(),
+        file: copy,
     };
-    read().map_err(|e| format!("{source}: {e}"))
+    let mut access = None;
+    for (index, source) in sources.iter().enumerate() {
+        let mut read = || -> Result<(Metadata, Option<Vec<u8>>)> {
+            // Follow native symlinks once; never block on FIFOs.
+            let mut file = OpenOptions::new()
+                .read(true)
+                .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32)
+                .open(source)
+                .map_err(error)?;
+            let metadata = file.metadata().map_err(error)?;
+            if !metadata.is_file() {
+                return Err("configuration input must be a regular file".into());
+            }
+            let acl = acl(&file)?;
+            if index != 0 {
+                writer.write_all(b"\n").map_err(error)?;
+            }
+            writer.hash.update(metadata.mode().to_le_bytes());
+            writer.hash.update(metadata.uid().to_le_bytes());
+            writer.hash.update(metadata.gid().to_le_bytes());
+            let access = acl.as_deref().unwrap_or_default();
+            writer.hash.update((access.len() as u64).to_le_bytes());
+            writer.hash.update(access);
+            // Stream the observed size so growing inputs cannot cause unbounded capture.
+            let copied =
+                std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?;
+            let after = file.metadata().map_err(error)?;
+            if copied != metadata.len()
+                || metadata.len() != after.len()
+                || metadata.mtime() != after.mtime()
+                || metadata.mtime_nsec() != after.mtime_nsec()
+                || metadata.ctime() != after.ctime()
+                || metadata.ctime_nsec() != after.ctime_nsec()
+            {
+                return Err("configuration input changed while being captured".into());
+            }
+            Ok((metadata, acl))
+        };
+        let observed = read().map_err(|e| format!("{}: {e}", source.display()))?;
+        if access.is_none() {
+            access = Some(observed);
+        }
+    }
+    let key = format!("{}/{name}", hex::encode(writer.hash.finalize()));
+    if let (Some(directory), Some(copy), Some((metadata, acl))) = (destination, writer.file, access)
+    {
+        restore_access(&copy, &metadata, acl.as_deref())?;
+        let target = directory.join(&key);
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(PRIVATE_DIRECTORY_MODE)
+            .create(target.parent().expect("input directory"))
+            .map_err(error)?;
+        std::fs::rename(directory.join(CAPTURE_FILE), target).map_err(error)?;
+    }
+    Ok(format!("{ARTIFACTS}/{INPUTS}/{key}"))
 }
 
 fn restore_access(file: &File, metadata: &Metadata, acl: Option<&[u8]>) -> Result<()> {
@@ -282,10 +326,10 @@ fn capture(
     crate::validate(&run, &plan)?;
     for file in &mut plan.unit_files {
         let name = format!("{}.service", crate::unit_stem(file)?);
-        *file = input(file, &name, destination)?;
+        *file = unit_input(file, &name, destination)?;
     }
     for app in &mut plan.app_units {
-        app.file = input(&app.file, &format!("{}.service", app.id), destination)?;
+        app.file = unit_input(&app.file, &format!("{}.service", app.id), destination)?;
     }
     for bind in plan
         .programs
@@ -293,11 +337,21 @@ fn capture(
         .flat_map(|program| &mut program.binds)
         .chain(plan.app_units.iter_mut().flat_map(|app| &mut app.binds))
     {
+        let source = Path::new(&bind.source);
+        let metadata = std::fs::metadata(source);
+        if metadata.is_ok()
+            && workload_lifecycle::files::is_host_shm_source(source).map_err(error)?
+        {
+            bind.source = std::fs::canonicalize(source)
+                .map_err(error)?
+                .to_string_lossy()
+                .into_owned();
+            continue;
+        }
         if !bind.read_only {
             continue;
         }
-        let source = Path::new(&bind.source);
-        match std::fs::metadata(source) {
+        match metadata {
             Ok(metadata) if metadata.is_file() => {
                 bind.source = input(&bind.source, "file", destination)?
             }
@@ -435,6 +489,7 @@ mod tests {
                 artifacts: self.0.join(name).to_string_lossy().into(),
                 readiness_seconds: 10,
                 stop_seconds: 5,
+                host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 ..Default::default()
             }
         }
@@ -702,6 +757,77 @@ mod tests {
         );
         assert_eq!(crate::unit_stem(&frozen.unit_files[0]).unwrap(), "worker");
         assert_ne!(snapshot, inspect(&run, &plan).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn readonly_host_shm_stays_live_through_a_symlink_at_an_alternate_target() {
+        // Arrange
+        let fixture = Fixture::new();
+        let shm = std::path::Path::new("/dev/shm").join(fixture.0.file_name().unwrap());
+        std::fs::create_dir(&shm).unwrap();
+        let live = Fixture(shm);
+        let source = live.file("camera", "first frame");
+        let link = fixture.0.join("camera-link");
+        std::os::unix::fs::symlink(&source, &link).unwrap();
+        let run = fixture.run("execution");
+        let mut plan = fixture.plan();
+        plan.programs[0].binds.push(Bind {
+            source: link.to_string_lossy().into(),
+            target: "/input/camera".into(),
+            read_only: true,
+        });
+        let expected = inspect(&run, &plan).await.unwrap();
+
+        // Act
+        let prepared = prepare(run.clone(), plan.clone()).unwrap();
+        std::fs::write(&source, "next frame").unwrap();
+
+        // Assert
+        let binding = &prepared.plan.as_ref().unwrap().programs[0].binds[1];
+        assert_eq!(binding.source, source);
+        assert_eq!(binding.target, "/input/camera");
+        assert!(binding.read_only);
+        assert_eq!(
+            std::fs::read_to_string(&binding.source).unwrap(),
+            "next frame"
+        );
+        assert_eq!(expected, prepared.snapshot.unwrap());
+        assert_eq!(expected, inspect(&run, &plan).await.unwrap());
+
+        // Act / Assert: changing the source object changes the reviewed declaration.
+        let replacement = live.file("replacement", "third frame");
+        std::fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(replacement, &link).unwrap();
+        assert_ne!(expected, inspect(&run, &plan).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn adjacent_unit_drop_ins_are_captured_in_native_order_and_make_review_stale() {
+        // Arrange
+        let fixture = Fixture::new();
+        let run = fixture.run("execution");
+        let plan = fixture.plan();
+        let directory = PathBuf::from(format!("{}.d", plan.unit_files[0]));
+        std::fs::create_dir(&directory).unwrap();
+        let first = directory.join("10-first.conf");
+        let last = directory.join("90-last.conf");
+        std::fs::write(&first, "[Service]\nPrivateIPC=yes\n").unwrap();
+        std::fs::write(&last, "[Service]\nPrivateIPC=no\n").unwrap();
+        std::os::unix::fs::symlink("/dev/null", directory.join("99-masked.conf")).unwrap();
+        let expected = inspect(&run, &plan).await.unwrap();
+
+        // Act
+        let prepared = prepare(run.clone(), plan.clone()).unwrap();
+        std::fs::write(&last, "[Service]\nPrivateIPC=yes\n").unwrap();
+
+        // Assert
+        let unit = &prepared.plan.as_ref().unwrap().unit_files[0];
+        assert_eq!(
+            std::fs::read_to_string(unit).unwrap(),
+            "[Service]\nExecStart=/bin/true\n\n[Service]\nPrivateIPC=yes\n\n[Service]\nPrivateIPC=no\n"
+        );
+        assert_eq!(prepared.snapshot.unwrap(), expected);
+        assert_ne!(inspect(&run, &plan).await.unwrap(), expected);
     }
 
     #[tokio::test]

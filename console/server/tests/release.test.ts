@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { capabilities, wire } from '../src/native.js';
+import { capabilities, launch, wire } from '../src/native.js';
 import { validateConfig } from '../src/config.js';
 import { requireMultiArch } from '../src/images.js';
 import { doctor, initialize, installRelease, projectId, releaseConfig } from '../src/release.js';
@@ -49,7 +49,7 @@ test('release manifests expand to the same apps as the inline release configurat
   // Act
   const expanded = releaseConfig(manifests, '/playground', systemApps, '/state');
   // Assert: common launch settings expand for both backends; prior app selection facts survive.
-  assert.ok(expanded.apps.every((app) => app.process?.argv?.length && !app.systemd));
+  assert.ok(expanded.apps.every((app) => (app.id === 'doramcap-shm' || app.process?.argv?.length) && !app.systemd));
   for (const app of expanded.apps) { app.process = null; app.files = []; app.input!.manifest = ''; }
   const inlineApps = releaseConfig(inline, '/playground', systemApps, '/state');
   for (const app of inlineApps.apps) { app.systemd = null; app.process = null; app.files = []; app.input!.manifest = ''; }
@@ -205,7 +205,7 @@ test('the repository release template resolves to existing current app inputs', 
   await access(config.projectRoot);
   for (const app of config.apps) {
     for (const file of app.input!.files!) await access(join(app.input!.directory!, file));
-    if (app.liveRelay || config.doraApps.includes(app.id!)) continue;
+    if (app.id === 'doramcap-shm' || app.liveRelay || config.doraApps.includes(app.id!)) continue;
     if (app.graph) await access(app.graph);
     const profiles = app.launchProfiles ?? [];
     for (const profile of profiles) {
@@ -215,7 +215,7 @@ test('the repository release template resolves to existing current app inputs', 
     // An app's default launch produces something the user can see or download.
     assert.ok(app.recordings!.length + app.liveOutputs!.length + (profiles[0]?.recordings?.length ?? 0) > 0, app.id!);
   }
-  assert.deepEqual(config.apps.map(app => app.id), ['dora-coordinator', 'dora-daemon', 'live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
+  assert.deepEqual(config.apps.map(app => app.id), ['dora-coordinator', 'dora-daemon', 'doramcap-shm', 'live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog']);
   const profiles = config.apps.find(app => app.id === 'cpu-monitor')!.launchProfiles!;
   assert.deepEqual(profiles.map(profile => [profile.id, profile.recordings!.length]), [['record', 1], ['live', 0]]);
   const live = await readFile(join(systemApps, 'cpu-monitor/cpu-monitor-live.pbtxt'), 'utf8');
@@ -233,7 +233,7 @@ test('the repository release template resolves to existing current app inputs', 
 
 test('shared run facts identify writer apps independently of service names', () => {
   // Arrange
-  const config = wire.ConsoleConfig.create({ runtime: { readinessSeconds: 30, stopSeconds: 5 } });
+  const config = wire.ConsoleConfig.create({ hostShmAccess: launch.HostShmAccess.BLOCKED, runtime: { readinessSeconds: 30, stopSeconds: 5 } });
   const apps = [
     { id: 'capture', outputMounts: [{ service: 'writer', target: '/results' }], recordings: [{ id: 'a', path: 'a.mcap' }] },
     { id: 'monitor', recordings: [] },
@@ -245,6 +245,7 @@ test('shared run facts identify writer apps independently of service names', () 
   assert.deepEqual(run.mcapApps, ['capture']);
   assert.equal(run.recordings[0].recording, '/artifacts/a.mcap');
   assert.equal(run.dataflowFile, '/flow.yml');
+  assert.equal(run.hostShmAccess, launch.HostShmAccess.BLOCKED);
   assert.deepEqual(run.doraApps, []);
 });
 

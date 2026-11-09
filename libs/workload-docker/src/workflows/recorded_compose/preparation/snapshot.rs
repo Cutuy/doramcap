@@ -193,6 +193,7 @@ pub(super) async fn capture(
         .collect();
     let settings = serde_json::to_vec(&(
         &spec.filesystem,
+        spec.host_shm_access,
         spec.readiness_seconds,
         spec.stop_seconds,
         recordings,
@@ -281,6 +282,7 @@ mod tests {
         let bytes = serde_json::to_vec(&model(root.path().to_str().unwrap())).unwrap();
         tokio::fs::write(&path, &bytes).await.unwrap();
         let mut spec = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             filesystem: None,
             id: "compare".into(),
             artifacts: root.path().into(),

@@ -3,7 +3,7 @@
 # Shared memory: implementation
 
 Created: 2026-11-08. Implements the [architecture](110826-run-shared-memory.md).
-Implementation has not started; the milestones below are pending.
+Runtime implementation is in validation; host observation is tracked separately in #236.
 
 ## Changes
 
@@ -14,11 +14,13 @@ Remove any `host_shms` field and support; none exists in the current source.
 
 | Backend | Main change |
 | --- | --- |
-| Docker | Attach participating containers to the same run shm and IPC setup, with or without Dora. |
-| systemd | Mount the same run-private shm filesystem in participating units. |
+| Docker | Start the configured `doramcap-shm` system app first, join default IPC participants, stop it last. |
+| systemd | Bind run tmpfs at `/dev/shm` and pin IPC for generated units through `IPCNamespacePath`. |
 
 Resolve host sources before installing the run's private view. Existing backend
-cleanup releases run-owned mounts and namespaces.
+cleanup releases run-owned mounts and namespaces. Native systemd units are loaded
+and checked through manager properties. BLOCKED rejects ambiguous default IPC
+and `JoinsNamespaceOf`; explicit private IPC and mounts remain native.
 
 Extend the shared [host observer](../../resources/system-config/src/lib.rs) and
 [`MachineState`](../../resources/system-config/proto/system_config.proto) with host
@@ -46,8 +48,8 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 **Work items**
 
-- [ ] Wire the enum field through existing callers and preparation; remove any remaining `host_shms` support.
-- [ ] Resolve native settings through Compose merges and systemd unit/drop-in loading.
+- [x] Wire the enum field through existing callers and preparation; remove any remaining `host_shms` support.
+- [x] Resolve native settings through Compose merges and systemd unit/drop-in loading.
 - [ ] Add host shm observation to common machine capture and expose capture errors in the UI.
 
 **Validation**
@@ -62,7 +64,7 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 **Work items**
 
-- [ ] Connect shared mounts and namespaces to existing startup, shutdown and cleanup; remove unconditional Dora IPC overrides.
+- [x] Connect shared mounts and namespaces to existing startup, shutdown and cleanup; remove unconditional Dora IPC overrides.
 
 **Validation**
 
@@ -83,4 +85,6 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 - [ ] Dora exchanges data and finishes recordings in both modes, including native settings that split sharing groups.
 - [ ] Run [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration; record native backend and GPU checks separately.
 
-Documentation checks are recorded in PR #234. Runtime acceptance remains pending.
+Provisional checks: 17 lifecycle, 78 Docker and 22 systemd release tests pass;
+Console has 112 passing tests, one opt-in installer skip, and clean TypeScript.
+Native acceptance, full local CI and ARM64 remain pending.

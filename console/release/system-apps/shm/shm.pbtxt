@@ -1,0 +1,3 @@
+id: "doramcap-shm"
+label: "Run shared memory"
+compose { files: "compose.yaml" service: "doramcap-shm" }

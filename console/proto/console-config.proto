@@ -20,6 +20,8 @@ message ConsoleConfig {
   doramcap.launch.v1.Form form = 12;
   // Absolute directory of host binaries (`dora` and each manifest's executable); SYSTEMD only.
   string binaries = 13;
+  // Required host shm access for every run: PASSTHROUGH or BLOCKED.
+  doramcap.launch.v1.HostShmAccess host_shm_access = 14;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.

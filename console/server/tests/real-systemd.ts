@@ -30,6 +30,7 @@ test('systemd Start rejects changed inputs and handles immediate Stop', async ()
   const owner = await capabilities.open(join(root, 'absent-docker.sock'), 1);
   const run = (id: string) => execution.RunRequest.create({
     run: launch.RunPlan.create({
+      hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
       id, repositoryRoot: project, artifacts: join(runs, id),
       readinessSeconds: 5, stopSeconds: 1,
     }),
@@ -105,7 +106,7 @@ test('Console runs CPU monitoring, Fault Watchdog and a user unit under systemd'
   const config = join(root, 'console.pbtxt');
   await writeFile(
     config,
-    `form: SYSTEMD binaries:"${binaries}" listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" ` +
+    `form: SYSTEMD binaries:"${binaries}" host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" ` +
       `project_root:"${project}" data_root:"${root}/data" access_secret_file:"${root}/secret" ` +
       `runtime { readiness_seconds:30 stop_seconds:5 } ` +
       `dora_apps:"dora-coordinator" dora_apps:"dora-daemon" ` +

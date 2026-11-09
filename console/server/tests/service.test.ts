@@ -64,6 +64,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
+    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
@@ -519,6 +520,7 @@ test('the selected launch profile mounts its config read-only and declares only 
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
+    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
@@ -667,6 +669,32 @@ test('cancelling a review without downloads discards its inspection', async () =
     // Assert
     await assert.rejects(review, /^Error: Stopped$/);
     assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('Compose always includes configured run shared memory independently of optional apps', async () => {
+  const { root, config, engine, backend } = await fixture();
+  config.hostShmAccess = launch.HostShmAccess.BLOCKED;
+  config.apps.push(wire.SystemAppDefinition.create({
+    id: 'doramcap-shm',
+    input: { directory: config.projectRoot, files: ['compose.yaml'] },
+  }));
+  try {
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish())));
+    assert.deepEqual(engine.inspected!.run!.systemApps, ['doramcap-shm']);
+    assert.equal(engine.inspected!.run!.hostShmAccess, launch.HostShmAccess.BLOCKED);
+    assert.ok(engine.inspected!.compose!.projects!.some((project) => project.key === 'doramcap-shm'));
+    assert.ok(!review.systemApps.some((app) => app.id === 'doramcap-shm'));
+
+    config.form = launch.Form.SYSTEMD;
+    config.binaries = '/opt/doramcap/bin';
+    await writeFile(join(config.projectRoot, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    assert.deepEqual(engine.inspected!.run!.systemApps, []);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

@@ -199,6 +199,14 @@ impl ComposeRunning {
             Err(error) => execution::record_failure(&self.diagnostics, "Dora shutdown", error),
         }
 
+        if self.plan.services.contains_key(preparation::SHM_SERVICE)
+            && !(adopted.stopped && systems.stopped && runtime_stopped)
+        {
+            return Err(invalid(
+                "run shared memory retained because app shutdown is unconfirmed",
+            ));
+        }
+
         // Filesystem evidence requires every writer stopped.
         let mut input = Input::new(StopInput {
             allow_volume_deletion: false,

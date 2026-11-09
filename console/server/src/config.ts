@@ -21,6 +21,8 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
   return { config, secret };
 }
 export function validateConfig(config: Config) {
+  if (![launch.HostShmAccess.PASSTHROUGH, launch.HostShmAccess.BLOCKED].includes(config.hostShmAccess))
+    throw new Error('host_shm_access must be PASSTHROUGH or BLOCKED');
   switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {
     case launch.Form.FORM_UNSPECIFIED:
     case launch.Form.COMPOSE:

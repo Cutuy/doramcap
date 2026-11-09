@@ -8,6 +8,7 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    ipc: private
     shm_size: 64mb
     tmpfs: [/tmp]
     deploy:

@@ -1,7 +1,17 @@
-//! Filesystem notifications shared by recording and process readiness waits.
+//! Shared filesystem observations and recording/process readiness notifications.
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use std::{io, path::Path};
+use std::{io, os::unix::fs::MetadataExt, path::Path};
 use tokio::sync::watch;
+
+/// Identify live host shm through its resolved path or filesystem, including bind aliases.
+/// Follows symlinks and reports inaccessible sources; reads no file contents.
+pub fn is_host_shm_source(source: &Path) -> io::Result<bool> {
+    let host = Path::new("/dev/shm");
+    Ok(
+        std::fs::metadata(source)?.dev() == std::fs::metadata(host)?.dev()
+            || source.canonicalize()?.starts_with(host.canonicalize()?),
+    )
+}
 
 /// Subscribe before inspecting paths. Keep the watcher alive while waiting.
 /// Notifications coalesce; the first watcher error remains available to every wait.
@@ -45,6 +55,42 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     const EVENT_DEADLINE: Duration = Duration::from_secs(2);
     const READ_QUIET_INTERVAL: Duration = Duration::from_millis(50);
+
+    #[test]
+    fn host_shm_detection_follows_symlinks_without_reading_payloads() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        // Arrange
+        let name = format!(
+            "doramcap-shm-source-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let source = Path::new("/dev/shm").join(&name);
+        let alias = std::env::temp_dir().join(&name);
+        std::fs::write(&source, b"live").unwrap();
+        std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0)).unwrap();
+        symlink(&source, &alias).unwrap();
+
+        // Act
+        let direct = is_host_shm_source(&source);
+        let linked = is_host_shm_source(&alias);
+        let ordinary =
+            is_host_shm_source(&Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"));
+        std::fs::remove_file(&alias).unwrap();
+        std::fs::remove_file(&source).unwrap();
+
+        // Assert
+        assert!(direct.unwrap());
+        assert!(linked.unwrap());
+        assert!(!ordinary.unwrap());
+        assert_eq!(
+            is_host_shm_source(&source).unwrap_err().kind(),
+            io::ErrorKind::NotFound
+        );
+    }
 
     #[tokio::test]
     async fn creation_wakes_waiter_and_inspection_does_not() {

@@ -1,10 +1,12 @@
 # Records a user node's messages: Console merges dora.yml with the chosen profile's flow.yml.
 # dataflow_file is relative to this directory; app paths are relative to console/.
 dataflow_file: "dora.yml"
+host_shm_access: BLOCKED
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
 apps { id: "dora-coordinator" input { directory: "release/system-apps/dora-coordinator" files: "compose.yaml" manifest: "dora-coordinator.pbtxt" } }
 apps { id: "dora-daemon" input { directory: "release/system-apps/dora-daemon" files: "compose.yaml" manifest: "dora-daemon.pbtxt" } }
+apps { id: "doramcap-shm" input { directory: "release/system-apps/shm" files: "compose.yaml" manifest: "shm.pbtxt" } }
 apps {
   id: "data-recorder"
   label: "Data recorder"

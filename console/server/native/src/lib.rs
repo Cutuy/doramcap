@@ -363,6 +363,7 @@ mod tests {
         runtime.block_on(async {
             let request = protocol::RunRequest {
                 run: Some(workload_lifecycle::launch::RunPlan {
+                    host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                     id: "systemd-only".into(),
                     repository_root: "/tmp".into(),
                     artifacts: "/tmp/systemd-only/run".into(),

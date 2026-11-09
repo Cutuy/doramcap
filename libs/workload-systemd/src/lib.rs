@@ -7,6 +7,7 @@ mod manager;
 mod preparation;
 mod runner;
 mod running;
+mod shm;
 
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
@@ -187,7 +188,7 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             ));
         }
     }
-    Ok(())
+    shm::validate_binds(run, plan)
 }
 
 /// IDs of programs and adopted units, in launch input order.
@@ -241,6 +242,7 @@ mod tests {
             artifacts: "/data/r1".into(),
             readiness_seconds: 10,
             stop_seconds: 5,
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             ..Default::default()
         }
     }

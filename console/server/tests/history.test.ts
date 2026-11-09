@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { validateConfig } from '../src/config.js';
 import { History } from '../src/history.js';
 import { createConsoleServer } from '../src/http.js';
-import { execution, wire, type NativeExecution } from '../src/native.js';
+import { execution, launch, wire, type NativeExecution } from '../src/native.js';
 import { ConsoleService } from '../src/service.js';
 import { MIGRATIONS, Store, migrate } from '../src/store.js';
 import { LIMITS, MEDIA_TYPE, historyRunPath, routes } from '../src/generated/transport.js';
@@ -47,6 +47,7 @@ async function service(root: string) {
   await mkdir(project, { recursive: true });
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
+    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',

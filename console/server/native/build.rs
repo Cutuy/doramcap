@@ -31,6 +31,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../proto/console-config.proto");
     println!("cargo:rerun-if-changed=../../proto/execution.proto");
     println!("cargo:rerun-if-changed=../../proto/live.proto");
+    println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/launch.proto");
+    println!("cargo:rerun-if-changed=../../../libs/workload-systemd/proto/systemd_plan.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/compose.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/compose_plan.proto");
     println!(

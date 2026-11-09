@@ -234,9 +234,27 @@ async fn recorded_demo(
         remove_volumes: true,
         ..Default::default()
     };
+    // Reuse the configured Ubuntu-based monitor image for the ordinary IPC placeholder.
+    tokio::fs::write(
+        workspace.join("shm.yaml"),
+        include_bytes!("../../../../../libs/workload-docker/deploy/shm/compose.yaml"),
+    )
+    .await?;
+    tokio::fs::write(
+        workspace.join("shm-image.json"),
+        serde_json::to_vec(&json!({"services":{"doramcap-shm":{"image":monitor}}}))?,
+    )
+    .await?;
+    let shared_memory = ComposeProject {
+        key: "doramcap-shm".into(),
+        directory: workspace.to_string_lossy().into_owned(),
+        files: vec!["shm.yaml".into(), "shm-image.json".into()],
+        ..Default::default()
+    };
     Ok(runner
         .run(
             ComposeRun {
+                host_shm_access: workload_lifecycle::launch::HostShmAccess::Blocked as i32,
                 filesystem: Some(Default::default()),
                 id: session.into(),
                 artifacts: artifacts.to_owned(),
@@ -251,7 +269,7 @@ async fn recorded_demo(
                     remove_volumes: true,
                     ..Default::default()
                 }],
-                system_apps: vec![collector],
+                system_apps: vec![collector, shared_memory],
                 dora_apps: vec![],
                 dataflow_file: String::new(),
                 mcap_writers: Default::default(),

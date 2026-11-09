@@ -3,10 +3,12 @@ public_origin: "http://127.0.0.1:43187"
 project_root: "/absolute/path/to/projects"
 data_root: "/absolute/path/to/private-console-data"
 docker_socket: "/var/run/docker.sock"
+host_shm_access: BLOCKED
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
 apps { manifest: "/absolute/path/to/doramcap/console/release/system-apps/dora-coordinator/dora-coordinator.pbtxt" }
 apps { manifest: "/absolute/path/to/doramcap/console/release/system-apps/dora-daemon/dora-daemon.pbtxt" }
+apps { manifest: "/absolute/path/to/doramcap/console/release/system-apps/shm/shm.pbtxt" }
 # Optional apps use approved Compose inputs; no gallery demos are injected.
 # See release/console.pbtxt for the CPU monitoring, Dora recording and Fault Watchdog apps.
 # See release/system-apps/live-bridge for the live telemetry relay of apps' live_outputs.

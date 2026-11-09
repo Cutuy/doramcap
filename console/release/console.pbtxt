@@ -1,10 +1,12 @@
 # Release template: system app manifests are relative to system-apps, project paths to the playground.
 # The release workflow replaces each :local image with its multi-arch digest.
 form: COMPOSE
+host_shm_access: BLOCKED
 dora_apps: "dora-coordinator"
 dora_apps: "dora-daemon"
 apps { manifest: "dora-coordinator/dora-coordinator.pbtxt" }
 apps { manifest: "dora-daemon/dora-daemon.pbtxt" }
+apps { manifest: "shm/shm.pbtxt" }
 runtime { readiness_seconds: 60 stop_seconds: 30 sample_interval_ms: 100 }
 apps {
   manifest: "live-bridge/live-bridge.pbtxt"

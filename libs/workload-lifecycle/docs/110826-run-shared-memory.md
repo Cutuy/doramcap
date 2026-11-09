@@ -2,7 +2,7 @@
 
 # Shared memory: architecture
 
-Created: 2026-11-08. Implementation pending.
+Created: 2026-11-08.
 
 Apps in a run share memory with each other. The same rules apply to user and
 system apps on Docker and systemd, using pbtxt or native files.
@@ -31,6 +31,9 @@ binds stay live, including read-only binds and alternate targets. Apply accepted
 declarations to launched apps; source Compose and unit files remain unchanged.
 Review and launch use the same prepared configuration.
 
+BLOCKED rejects native systemd units whose effective IPC scope cannot be
+established before launch. Generated units support the run default.
+
 ## Experiment snapshots
 
 The common host observer captures host shm as-is for existing A/B snapshots,
@@ -45,7 +48,9 @@ empty/absent.
 ## Cleanup
 
 The kernel manages shm lifetime. Release run-owned mounts and namespaces after
-verified shutdown; leave host memory alone. If shutdown is unconfirmed, retain
+verified shutdown; leave host memory alone. Docker uses a run infrastructure
+container to retain its namespace; systemd retains kernel mounts without a helper
+process. If shutdown is unconfirmed, retain
 run resources and report incomplete cleanup.
 
 See the [implementation plan](110826-run-shared-memory-impl.md).

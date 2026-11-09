@@ -14,3 +14,4 @@ dora_apps: "dora-coordinator"
 apps { key: "dora-coordinator" directory: "." files: "../../../libs/workload-docker/deploy/dora-coordinator/compose.yaml" manifest: "../../../libs/workload-docker/deploy/dora-coordinator/dora-coordinator.pbtxt" files: "dora-coordinator.identity.yaml" }
 dora_apps: "dora-daemon"
 apps { key: "dora-daemon" directory: "." files: "../../../libs/workload-docker/deploy/dora-daemon/compose.yaml" manifest: "../../../libs/workload-docker/deploy/dora-daemon/dora-daemon.pbtxt" files: "dora-daemon.identity.yaml" }
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

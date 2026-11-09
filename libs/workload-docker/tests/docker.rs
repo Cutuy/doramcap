@@ -70,6 +70,7 @@ fn recordings(artifacts: &Path) -> Vec<Recording> {
 }
 fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
     ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         filesystem: Some(Default::default()),
         artifacts: root.join(&id),
         repository_root: root.to_path_buf(),
@@ -143,6 +144,7 @@ async fn native_recorded_workflow() {
     let mut runner = ComposeRunner::new(adapter);
     let artifacts = root.join(&run);
     let spec = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         filesystem: Some(Default::default()),
         id: run,
         artifacts: artifacts.clone(),
@@ -882,6 +884,7 @@ async fn direct_session_lifecycle_and_prerun_reset() {
         let id = format!("session-{}-{}", std::process::id(), mode);
         let artifacts = root.join(&id);
         let spec = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: artifacts.clone(),
             filesystem: None,
@@ -1032,6 +1035,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         );
         let id = format!("stop-grace-{}-{key}", std::process::id());
         let spec = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(&id),
             filesystem: None,
@@ -1148,6 +1152,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
         let events = Rc::new(RefCell::new(Vec::<orchestrator::Event>::new()));
         let sink = events.clone();
         let spec = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(&id),
             filesystem: None,
@@ -1292,6 +1297,7 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
     );
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
     let original = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: format!("partial-{}", std::process::id()),
         artifacts: root.join("first"),
         repository_root: root.clone(),
@@ -1414,6 +1420,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         let mut project = project(&root, "session");
         project.remove_volumes = false;
         let input = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(id),
             repository_root: root.clone(),
@@ -1498,6 +1505,7 @@ async fn selected_profile_starts_its_service() {
         let mut project = project(&root, "session");
         project.profiles = profiles;
         ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             artifacts: root.join(&id),
             id,
             repository_root: root.clone(),
@@ -1576,6 +1584,7 @@ async fn active_experiments_are_exclusive_per_repository_and_independent_between
         })
         .collect();
     let input = |repository: &Path, id: &str| ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: id.into(),
         artifacts: repository.join(id),
         repository_root: repository.to_owned(),
@@ -1695,6 +1704,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     );
     let mut runner = ComposeRunner::new(adapter.clone());
     let original = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "abandoned".into(),
         artifacts: root.path().join("first"),
         repository_root: root.path().into(),
@@ -1732,6 +1742,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     reset_probe(
         adapter.clone(),
         ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: "other-repository".into(),
             artifacts: root.path().join("other-artifacts"),
             repository_root: other_repository,
@@ -1753,6 +1764,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     );
     for attempt in 0..2 {
         let request = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: format!("next-{attempt}"),
             artifacts: root.path().join(format!("next-{attempt}")),
             repository_root: root.path().to_owned(),
@@ -1886,6 +1898,7 @@ async fn public_dora_resets_after_launcher_crash() {
             reset_probe(
                 adapter.clone(),
                 ComposeRun {
+                    host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                     id: format!("after-crash-{attempt}"),
                     artifacts: root.join(format!("next-{attempt}")),
                     repository_root: root.clone(),
@@ -2067,6 +2080,7 @@ async fn compose_public_run(outcome: &str) {
         serde_json::json!({"services":{"support":support}}),
     );
     let spec = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: run.clone(),
         artifacts: artifacts.clone(),
         filesystem: None,
@@ -2299,6 +2313,7 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
         serde_json::json!({"services":{"worker":service(&image)}}),
     );
     let spec = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "occupied-ports".into(),
         artifacts: root.path().join("inspection"),
         repository_root: root.path().into(),
@@ -2394,6 +2409,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         ..Default::default()
     };
     let spec = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "inspected".into(),
         artifacts: root.path().join("inspection"),
         filesystem: None,
@@ -2524,6 +2540,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         .environment
         .insert("SETTING".into(), "explicit".into());
     let spec = ComposeRun {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: format!("inputs-{}", std::process::id()),
         artifacts: root.join("frozen"),
         filesystem: None,
@@ -2754,6 +2771,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
     let report = runner
         .run_with_ready(
             ComposeRun {
+                host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 id: run.clone(),
                 artifacts: artifacts.clone(),
                 filesystem: None,
@@ -2857,6 +2875,7 @@ async fn incomplete_volume_scan_retains_volumes() {
     let report = runner
         .run_with_ready(
             ComposeRun {
+                host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 id: run.clone(),
                 artifacts: artifacts.clone(),
                 filesystem: None,
@@ -3003,6 +3022,7 @@ async fn shared_plan_resolves_writer_app_services() {
         serde_json::json!({"services": {"producer": service(&image)}}),
     );
     let shared = RunPlan {
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "shared-plan".into(),
         repository_root: root.to_string_lossy().into(),
         artifacts: root.join("artifacts").to_string_lossy().into(),

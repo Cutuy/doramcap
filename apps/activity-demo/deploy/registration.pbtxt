@@ -9,3 +9,4 @@ result_file: "activity.mcap"
 env_prefix: "ACTIVITY"
 requires_explicit_enable: false
 mcap_services: "activity"
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

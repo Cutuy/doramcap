@@ -35,6 +35,14 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
+        self.manager
+            .prepare_native_shm(&self.scope, &self.run, &self.plan)
+            .await?;
+        if workload_lifecycle::plan::validate_host_shm_access(self.run.host_shm_access)?
+            == workload_lifecycle::launch::HostShmAccess::Blocked
+        {
+            crate::shm::create(&self.scope)?;
+        }
         let readiness = Duration::from_secs(self.run.readiness_seconds);
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
@@ -72,12 +80,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 for program in &phase.programs {
                     jobs.push(
                         self.manager
-                            .start_program(
-                                &self.scope,
-                                &self.run.id,
-                                program,
-                                self.run.stop_seconds,
-                            )
+                            .start_program(&self.scope, &self.run, program)
                             .await?,
                     );
                 }
