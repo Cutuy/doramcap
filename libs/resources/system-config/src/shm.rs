@@ -128,13 +128,15 @@ mod tests {
             expected.ctime() * 1_000_000_000 + expected.ctime_nsec()
         );
 
-        // Act / Assert: signed epoch timestamps retain subsecond precision before 1970.
+        // Act: observe a timestamp before 1970.
         file.set_times(
             std::fs::FileTimes::new()
                 .set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(1)),
         )
         .unwrap();
         let snapshot = observe(root.path()).unwrap();
+
+        // Assert
         assert_eq!(
             snapshot
                 .iter()
@@ -154,14 +156,18 @@ mod tests {
         let invalid_name = std::ffi::OsString::from_vec(vec![0xff]);
         fs::write(directory.join(&invalid_name), "data").unwrap();
 
-        // Act / Assert
+        // Act
         let error = crate::observe_root(root.path(), root.path()).unwrap_err();
+
+        // Assert
         assert!(error.contains("not UTF-8"));
 
-        // Act / Assert: an empty capture remains a successful observation.
+        // Act: retry after removing the invalid name and remaining object.
         fs::remove_file(directory.join(invalid_name)).unwrap();
         fs::remove_file(directory.join("present")).unwrap();
         let state = crate::observe_root(root.path(), root.path()).unwrap();
+
+        // Assert
         assert!(state.host_shm.is_empty());
     }
 
@@ -169,12 +175,10 @@ mod tests {
     fn a_missing_directory_fails_capture() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
-        // Act / Assert
-        assert!(
-            crate::observe_root(root.path(), root.path())
-                .unwrap_err()
-                .contains("dev/shm")
-        );
+        // Act
+        let error = crate::observe_root(root.path(), root.path()).unwrap_err();
+        // Assert
+        assert!(error.contains("dev/shm"));
     }
 
     #[test]
@@ -183,10 +187,12 @@ mod tests {
         use std::{env, process::Command};
         const CHILD: &str = "SYSTEM_CONFIG_SHM_MOUNT_TEST_CHILD";
         if env::var_os(CHILD).is_none() {
-            // Re-exec only this test inside a private namespace before creating mounts.
+            // Arrange: re-exec only this test inside a private mount namespace.
+            let executable = env::current_exe().unwrap();
+            // Act
             let status = Command::new("unshare")
                 .args(["--mount", "--propagation", "private"])
-                .arg(env::current_exe().unwrap())
+                .arg(executable)
                 .args([
                     "--ignored",
                     "--exact",
@@ -196,6 +202,7 @@ mod tests {
                 .env(CHILD, "1")
                 .status()
                 .unwrap();
+            // Assert
             assert!(status.success());
             return;
         }
@@ -215,6 +222,7 @@ mod tests {
         fs::write(source.join("payload"), "unread payload").unwrap();
         let mut mounts = Mounts(Vec::new());
         for name in ["one", "two", "cycle"] {
+            // Arrange: add an independent alias, then a recursive mount.
             let target = directory.join(name);
             fs::create_dir(&target).unwrap();
             let source = if name == "cycle" { &directory } else { &source };
@@ -226,8 +234,9 @@ mod tests {
                 .unwrap();
             assert!(status.success());
             mounts.0.push(target);
-            // Act / Assert
+            // Act
             let state = crate::observe_root(root.path(), root.path());
+            // Assert
             if name == "cycle" {
                 assert!(state.unwrap_err().contains("recursive directory mount"));
             } else {

@@ -530,12 +530,15 @@ test('oversized observations save an error and never produce false live addition
   assert.equal(saved.setup?.images?.[0].imageId, 'sha256:a');
   assert.match(live.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
 
-  // Act / Assert: a successful post-run observation does not erase the save failure.
+  // Act: finish with a successful post-run observation.
   run.engine.update.machineAfter = run.engine.update.machineBefore;
   const finished = await finishRun(run, runId);
+  const encoded = wire.Status.encode(finished).finish();
+
+  // Assert
   assert.match(finished.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
   assert.equal(finished.machineChanges.length, 1);
-  assert.ok(wire.Status.encode(finished).finish().length < 256 * 1024);
+  assert.ok(encoded.length < 256 * 1024);
   await run.backend.close();
 });
 
@@ -559,12 +562,13 @@ test('observation failures remain visible in review, stored history, and live re
   run.engine.update.machineAfterError = '/dev/shm: entry disappeared';
   const finished = await finishRun(run, runId);
   const saved = new History(run.store).capture(runId);
+  const entry = (await detail(run, runId)).entry;
   // Assert
   assert.equal(saved.before, null);
   assert.match(saved.beforeError, /permission denied/);
   assert.equal(finished.machineChanges.length, 1);
   assert.match(finished.machineChanges[0].cells?.[1].values?.[0] ?? '', /entry disappeared/);
-  assert.equal((await detail(run, runId)).entry?.state, State.HISTORY_COMPLETED);
+  assert.equal(entry?.state, State.HISTORY_COMPLETED);
   await run.backend.close();
 });
 
@@ -578,11 +582,12 @@ test('database capture failure reaches live status without presenting unsaved sh
 
   // Act
   const status = wire.Status.decode(await run.backend.status());
+  const saved = new History(run.store).capture(runId);
 
   // Assert
   assert.match(status.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /capture storage unavailable/);
-  assert.equal(new History(run.store).capture(runId).before, null);
-  assert.equal(new History(run.store).capture(runId).setup?.images?.[0].imageId, 'sha256:a');
+  assert.equal(saved.before, null);
+  assert.equal(saved.setup?.images?.[0].imageId, 'sha256:a');
   await run.backend.close();
 });
 
