@@ -76,7 +76,7 @@ test('a finished run offers Compare, which opens History with that run selected'
   const live = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
   const stored = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}} past={past}/>);
   // Assert
-  const target = /<a class="button secondary" href="([^"]+)">Compare<\/a>/.exec(live)?.[1];
+  const target = /<a class="button primary" href="([^"]+)">Compare<\/a>/.exec(live)?.[1];
   assert.deepEqual(historyRoute(target ?? ''), { runId: '', compare: [runId] });
   assert.doesNotMatch(stored, />Compare</);
 });
