@@ -17,9 +17,10 @@ Created: 2026-11-08. [Architecture](110826-run-only-worker.md).
 - [x] Existing WSL-built protocol executable: 3 tests passed on `.22`.
 - [x] Monitor ABI smoke check succeeds; BPF attachment fails on the unavailable kernel symbol.
 - [x] Focused CI-tool tests and shell syntax checks.
-- [ ] Type checking and snapshot inventory coverage on the final revision.
-- [ ] Publish draft PR before remote end-to-end validation.
-- [ ] Run all three archives on `.22`; record counts and gaps below.
+- [x] Type checking and snapshot inventory coverage.
+- [x] Publish draft PR before remote end-to-end validation.
+- [x] Run all three archives on `.22`; record counts and gaps below.
+- [ ] Resolve missing Compose CLI and the registered-I/O memlock limit; repeat validation.
 - [ ] Review against implementation/design guides, mark ready and release lease.
 
 ## Mechanisms
@@ -44,5 +45,28 @@ No application dependencies or environment inputs are added.
 
 ## Validation record
 
-Remote full-suite validation pending. The initial smoke test establishes ARM64
-binary compatibility; it does not establish a CI pass or native BPF support.
+WSL Pueue 622 built source `9a0a8471` in 30 seconds using its warm cache.
+The cold-cache trial (621) took 3m43s. Archives total about 1.6 GiB; SCP `-3`
+streams them without requiring that much free space on the submitter.
+
+The Mac mini completed all three suites with zero cgroup OOM kills:
+
+| Suite | Passed | Failed | Skipped |
+| --- | ---: | ---: | ---: |
+| Default workspace | 438 | 15 | 99 |
+| All-feature workspace | 443 | 16 | 99 |
+| Storage without defaults | 62 | 3 | 1 |
+
+Eight Compose preparation tests per workspace suite fail because Docker/Compose
+CLI tools are absent. Recorder/storage tests return `ENOMEM` while registering
+I/O buffers under an 8 MiB hard memlock limit. Raising the limit and transferring
+the existing CLI tools require user approval; no tests have been excluded.
+This is a completed execution trial with failures, not a full CI pass.
+
+Source and results: `~/jobs/45a76376ddce49f8bfbeed7794f764ef` on each host.
+The runner retains `run.log`, `results.tsv` and `exit-code` (1).
+Corrupted-archive rejection, stale-result reset and failed-build transfer gating
+also passed. SSH intermittently stalled during handshakes and output streaming;
+the retained files confirmed execution completion. Key-exchange diagnosis is
+unconfirmed. The latest coordinator returns compact statuses and keeps verbose
+logs on the runner. Native BPF remains unsupported in this container.
