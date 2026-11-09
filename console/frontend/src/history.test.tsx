@@ -198,16 +198,26 @@ test('the comparison selection lives in the URL, holds two runs and survives a r
 });
 
 test('compared facts read by their unit, and exact names stay exact', () => {
-  // Arrange / Act / Assert
-  assert.equal(factLabel('memory_available_bytes'), 'Memory available');
-  assert.equal(factLabel('cpu_model'), 'CPU model');
-  assert.equal(factLabel('environment.worker.FIXED_DT'), 'environment.worker.FIXED_DT');
-  assert.equal(factValue('disk_free_bytes', String(2 * 1024 ** 3)), '2.0 GiB');
-  assert.equal(factValue('uptime_seconds', '172800'), '2.0 days');
-  assert.equal(factValue('max_temperature_celsius', '49'), '49 °C');
-  assert.equal(factValue('kernel_release', '7.0'), '7.0');
-  assert.equal(factLabel('host_shm'), 'Host shared memory');
-  assert.equal(factLabel('host_shm./dev/shm/camera.data'), '/dev/shm/camera.data');
+  // Arrange
+  const labels = [
+    ['memory_available_bytes', 'Memory available'],
+    ['cpu_model', 'CPU model'],
+    ['environment.worker.FIXED_DT', 'environment.worker.FIXED_DT'],
+    ['host_shm', 'Host shared memory'],
+    ['host_shm./dev/shm/camera.data', '/dev/shm/camera.data'],
+  ];
+  const values = [
+    ['disk_free_bytes', String(2 * 1024 ** 3), '2.0 GiB'],
+    ['uptime_seconds', '172800', '2.0 days'],
+    ['max_temperature_celsius', '49', '49 °C'],
+    ['kernel_release', '7.0', '7.0'],
+  ];
+  // Act
+  const actualLabels = labels.map(([name]) => factLabel(name));
+  const actualValues = values.map(([name, value]) => factValue(name, value));
+  // Assert
+  assert.deepEqual(actualLabels, labels.map(([, expected]) => expected));
+  assert.deepEqual(actualValues, values.map(([, , expected]) => expected));
 });
 
 test('shm capture failure is an alert and leaves its review value unavailable', () => {

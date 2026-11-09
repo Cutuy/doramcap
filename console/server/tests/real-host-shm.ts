@@ -24,6 +24,7 @@ test('native inspection carries host shm metadata separately from reviewed input
     });
     let reviewed: typeof execution.Inspection.prototype.systemdSnapshot;
     for (const size of [4096, 2 ** 40]) {
+      // Arrange
       await payload.truncate(size);
       // Act
       const start = performance.now();

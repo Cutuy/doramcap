@@ -269,13 +269,16 @@ mod tests {
         // Arrange
         let root = tempfile::tempdir().unwrap();
         fs::create_dir_all(root.path().join("dev/shm")).unwrap();
-        // Act / Assert
-        assert!(configuration(root.path()).machine_fingerprint.is_empty());
+        // Act
+        let missing = configuration(root.path());
+        // Assert
+        assert!(missing.machine_fingerprint.is_empty());
         for id in ["", " \n\t"] {
             // Act
             write(root.path(), "etc/machine-id", id);
+            let blank = configuration(root.path());
             // Assert
-            assert!(configuration(root.path()).machine_fingerprint.is_empty());
+            assert!(blank.machine_fingerprint.is_empty());
         }
     }
 
