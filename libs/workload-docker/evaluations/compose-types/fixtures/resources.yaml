@@ -1,0 +1,12 @@
+services:
+  app:
+    image: busybox:1.37
+    networks: [shared]
+    volumes: [shared:/data]
+    secrets: [token]
+networks:
+  shared: {external: true, name: existing-network}
+volumes:
+  shared: {external: true, name: existing-volume}
+secrets:
+  token: {external: true, name: existing-token}

@@ -1,0 +1,7 @@
+services:
+  empty:
+    image: busybox:1.37
+    entrypoint: []
+    command: []
+  absent:
+    image: busybox:1.37

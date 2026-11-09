@@ -1,0 +1,9 @@
+services:
+  app:
+    image: busybox:1.37
+    configs:
+      - source: settings
+        target: /etc/settings
+configs:
+  settings:
+    content: 'literal settings'

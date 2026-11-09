@@ -1,0 +1,15 @@
+[package]
+name = "compose-type-evaluation"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Keep evaluation dependencies outside the application workspace.
+[workspace]
+
+[dependencies]
+compose_spec = "=0.3.0"
+docker-compose-types = { version = "=0.24.0", default-features = false, features = ["indexmap", "norway"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"

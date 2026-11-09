@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="190" viewBox="0 0 900 190" role="img" aria-labelledby="title desc">
+<title id="title">Compose type evaluation</title>
+<desc id="desc">Compose renders native files into JSON. Rust models read and write it. Compose renders the result again for comparison with the original.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8" fill="#475569"/></marker></defs>
+<rect width="900" height="190" rx="12" fill="#f8fafc"/>
+<g fill="white" stroke="#64748b" stroke-width="1.5"><rect x="20" y="75" width="140" height="70" rx="8"/><rect x="200" y="75" width="170" height="70" rx="8"/><rect x="410" y="75" width="160" height="70" rx="8"/><rect x="610" y="75" width="150" height="70" rx="8"/><rect x="790" y="75" width="90" height="70" rx="8"/></g>
+<g font-family="sans-serif" font-size="16" fill="#0f172a" text-anchor="middle"><text x="90" y="104">Compose files</text><text x="90" y="126">and fixtures</text><text x="285" y="104">Compose config</text><text x="285" y="126">resolved JSON</text><text x="490" y="104">Rust models</text><text x="490" y="126">read / write</text><text x="685" y="104">Compose config</text><text x="685" y="126">resolved JSON</text><text x="835" y="115">Compare</text></g>
+<g fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"><path d="M160 110 H194"/><path d="M370 110 H404"/><path d="M570 110 H604"/><path d="M760 110 H784"/><path d="M285 75 V35 H835 V69"/></g>
+<text x="550" y="27" font-family="sans-serif" font-size="14" fill="#475569" text-anchor="middle">Original resolved JSON</text>
+</svg>

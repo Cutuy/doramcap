@@ -1,0 +1,30 @@
+services:
+  app:
+    image: busybox:1.37
+    entrypoint: [sh]
+    command: [-c, 'echo $$HOME']
+    environment:
+      LITERAL: '$$HOME'
+    labels:
+      example.owner: evaluation
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGTERM
+    healthcheck:
+      test: [CMD, 'true']
+      interval: 1s
+    depends_on:
+      init:
+        condition: service_completed_successfully
+        restart: true
+        required: true
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+    security_opt: [no-new-privileges:true]
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+  init:
+    image: busybox:1.37
+    command: ['true']

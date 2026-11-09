@@ -1,0 +1,221 @@
+{
+  "compose_version": "5.6.0",
+  "observations": [
+    {
+      "fixture": "configs",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": "unknown attribute \"configs\", extensions must start with 'x-' (see https://docs.docker.com/compose/compose-file/#extension)",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "configs",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": "extension key `name` does not start with \"x-\"",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "core",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/networks/default",
+        "/services/init/entrypoint",
+        "/services/init/networks/default"
+      ],
+      "compose_error": null,
+      "normalized_changes": [
+        "/services/app/networks/default",
+        "/services/init/networks/default"
+      ]
+    },
+    {
+      "fixture": "core",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/depends_on/init/required",
+        "/services/init/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "empty-command",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/absent/command",
+        "/services/absent/entrypoint",
+        "/services/absent/networks/default",
+        "/services/empty/networks/default"
+      ],
+      "compose_error": null,
+      "normalized_changes": [
+        "/services/absent/networks/default",
+        "/services/empty/networks/default"
+      ]
+    },
+    {
+      "fixture": "empty-command",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/absent/command",
+        "/services/absent/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "extensions",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/command",
+        "/services/app/entrypoint",
+        "/services/app/networks/default"
+      ],
+      "compose_error": null,
+      "normalized_changes": [
+        "/services/app/networks/default"
+      ]
+    },
+    {
+      "fixture": "extensions",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/command",
+        "/services/app/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "gpus",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": "unknown attribute \"gpus\", extensions must start with 'x-' (see https://docs.docker.com/compose/compose-file/#extension)",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "gpus",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": "extension key `gpus` does not start with \"x-\"",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "hooks",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": "unknown attribute \"post_start\", extensions must start with 'x-' (see https://docs.docker.com/compose/compose-file/#extension)",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "hooks",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": "extension key `post_start` does not start with \"x-\"",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "mounts",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": "data did not match any variant of untagged enum Volumes",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "mounts",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/command",
+        "/services/app/entrypoint",
+        "/services/app/volumes/0/bind/create_host_path",
+        "/services/app/volumes/2/tmpfs/size"
+      ],
+      "compose_error": null,
+      "normalized_changes": [
+        "/services/app/volumes/0/bind/create_host_path"
+      ]
+    },
+    {
+      "fixture": "resources",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/app/command",
+        "/services/app/entrypoint",
+        "/services/app/networks/shared"
+      ],
+      "compose_error": null,
+      "normalized_changes": [
+        "/services/app/networks/shared"
+      ]
+    },
+    {
+      "fixture": "resources",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": "cannot set `external` and fields other than `name`",
+      "serialization_changes": [],
+      "compose_error": null,
+      "normalized_changes": null
+    },
+    {
+      "fixture": "dora-coordinator",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/dora-coordinator/command",
+        "/services/dora-coordinator/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "dora-coordinator",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/dora-coordinator/command",
+        "/services/dora-coordinator/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "dora-daemon",
+      "crate_name": "docker-compose-types 0.24.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/dora-daemon/command",
+        "/services/dora-daemon/entrypoint"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    },
+    {
+      "fixture": "dora-daemon",
+      "crate_name": "compose_spec 0.3.0",
+      "parse_error": null,
+      "serialization_changes": [
+        "/services/dora-daemon/command",
+        "/services/dora-daemon/entrypoint",
+        "/services/dora-daemon/shm_size"
+      ],
+      "compose_error": null,
+      "normalized_changes": []
+    }
+  ]
+}

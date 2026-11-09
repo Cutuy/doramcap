@@ -1,0 +1,8 @@
+x-evaluation: {purpose: roundtrip, nested: [1, true, text]}
+services:
+  app:
+    image: busybox:1.37
+    x-evaluation: {purpose: service, nested: {enabled: true}}
+    healthcheck:
+      test: [CMD, 'true']
+      x-evaluation: {purpose: healthcheck}

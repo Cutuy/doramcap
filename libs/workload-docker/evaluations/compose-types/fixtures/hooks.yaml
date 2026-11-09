@@ -1,0 +1,8 @@
+services:
+  app:
+    image: busybox:1.37
+    post_start:
+      - command: ['true']
+        user: root
+    pre_stop:
+      - command: ['true']
