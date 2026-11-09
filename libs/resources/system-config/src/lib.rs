@@ -1,4 +1,5 @@
-//! Typed, read-only observation of host machine state from Linux `/proc` and `/sys`.
+//! Typed, read-only observation of Linux host state and shared-memory metadata.
+mod shm;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -177,20 +178,26 @@ fn condition(root: &Path, data_directory: &Path) -> MachineCondition {
 
 /// Observe this host now. `data_directory` selects the filesystem reported as free disk.
 ///
-/// Returns: every readable fact; an unreadable fact keeps its zero value, so this never fails.
-/// The caller adds Docker facts. No privileges are required for the facts this reads.
+/// Returns: readable facts; host-shm capture failure leaves `host_shm` absent with `host_shm_error`.
+/// Other unreadable facts keep their zero values. The caller adds Docker facts.
 pub fn observe(data_directory: &Path) -> MachineState {
     observe_root(Path::new("/"), data_directory)
 }
 
 /// Observe the Linux file layout beneath `root`.
 pub fn observe_root(root: &Path, data_directory: &Path) -> MachineState {
+    let (host_shm, host_shm_error) = match shm::observe(root) {
+        Ok(snapshot) => (Some(snapshot), String::new()),
+        Err(error) => (None, error),
+    };
     MachineState {
         captured_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_millis() as u64),
         configuration: Some(configuration(root)),
         condition: Some(condition(root, data_directory)),
+        host_shm,
+        host_shm_error,
     }
 }
 

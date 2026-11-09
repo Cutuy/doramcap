@@ -54,8 +54,24 @@ const options = { enums: String, arrays: false } as const;
 const { MachineConfiguration, MachineCondition } = systemConfig;
 export const configurationFacts = (state: Capture['before']) =>
   state?.configuration ? flatten(MachineConfiguration.toObject(MachineConfiguration.fromObject(state.configuration), options)) : new Map() as Facts;
-export const conditionFacts = (state: Capture['before']) =>
-  state?.condition ? flatten(MachineCondition.toObject(MachineCondition.fromObject(state.condition), options)) : new Map() as Facts;
+export function conditionFacts(state: Capture['before']): Facts {
+  const facts = state?.condition ? flatten(MachineCondition.toObject(MachineCondition.fromObject(state.condition), options)) : new Map() as Facts;
+  if (state?.hostShmError) {
+    facts.set('host_shm', { value: '' });
+    facts.set('host_shm_error', { value: state.hostShmError });
+    return facts;
+  }
+  if (!state?.hostShm) return facts;
+  const snapshot = systemConfig.HostSharedMemory.toObject(systemConfig.HostSharedMemory.fromObject(state.hostShm), { longs: String, defaults: true });
+  facts.set('host_shm', { value: `${snapshot.posix.length} POSIX entries, ${snapshot.systemV.length} System V segments` });
+  for (const object of snapshot.posix) {
+    const { path, ...metadata } = object;
+    facts.set(`host_shm.posix.${path}`, { value: JSON.stringify(metadata) });
+  }
+  for (const object of snapshot.systemV)
+    facts.set(`host_shm.system_v.${object.id}`, { value: JSON.stringify(object) });
+  return facts;
+}
 
 /** Read one saved configuration through the safe open, with its own run ID removed. */
 export function readManifest(root: string, id: string, relative = `${id}/${MANIFEST_FILE}`): Manifest {
@@ -143,7 +159,9 @@ const differs = (row: Row) => row.result !== Result.COMPARISON_SAME;
 /** Keep all differences first; a large comparison gives up matching facts. */
 function boundRows(rows: Row[]) {
   if (rows.length <= MAX_ROWS) return { rows, truncated: false };
-  const kept = [...rows.filter(differs), ...rows.filter((row) => !differs(row))].slice(0, MAX_ROWS);
+  const errors = rows.filter(row => row.name === 'host_shm_error');
+  const facts = rows.filter(row => row.name !== 'host_shm_error');
+  const kept = [...errors, ...facts.filter(differs), ...facts.filter((row) => !differs(row))].slice(0, MAX_ROWS);
   return { rows: kept, truncated: true };
 }
 /** What changed between a run's Prepare and post-run captures. Empty when either is missing. */
@@ -151,7 +169,7 @@ export function machineChanges(before: Capture['before'], after: Capture['before
   return [
     ...diffFacts(Group.COMPARISON_CONFIGURATION, configurationFacts(before), configurationFacts(after)),
     ...diffFacts(Group.COMPARISON_CONDITION, conditionFacts(before), conditionFacts(after)),
-  ].filter((row) => row.result === Result.COMPARISON_CHANGED);
+  ].filter((row) => row.result === Result.COMPARISON_CHANGED || row.name === 'host_shm_error');
 }
 const setupSide = (side: Side): SetupSide => ({ ...side, profiles: side.detail.entry?.profiles ?? [], apps: side.detail.entry?.systemApps as never });
 

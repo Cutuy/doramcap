@@ -1,6 +1,8 @@
 # System configuration
 
-Typed, read-only observation of host machine state. A missing or unreadable fact keeps its zero value, so `observe` never fails.
+Typed, read-only observation of host machine state and shared-memory metadata.
+Shared-memory capture failures leave `host_shm` absent and populate `host_shm_error`
+for the UI. Other missing facts keep their zero values.
 
 ```rust
 let state = system_config::observe(Path::new("/var/lib/doramcap"));

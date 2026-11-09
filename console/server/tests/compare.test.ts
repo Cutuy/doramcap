@@ -50,6 +50,46 @@ test('zero and false machine values equal an unset one, and differ from a set on
   assert.equal(row(comparison, 'memory_total_bytes'), undefined);
 });
 
+test('host shm metadata survives stored captures and compares without changing configuration facts', () => {
+  // Arrange
+  const capture = (bytes: string) => execution.RunCapture.fromObject({ before: {
+    ...machine('performance'),
+    hostShm: { posix: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }], systemV: [{ id: '12', key: '-4', sizeBytes: '4096', mode: 384 }] },
+  } });
+  const a = execution.RunCapture.decode(execution.RunCapture.encode(capture('4096')).finish());
+  const b = execution.RunCapture.decode(execution.RunCapture.encode(capture('8192')).finish());
+
+  // Act
+  const comparison = compareRuns(side('a'.repeat(32), a), side('b'.repeat(32), b));
+
+  // Assert
+  const posix = row(comparison, 'host_shm.posix./dev/shm/camera');
+  assert.equal(posix?.group, Group.COMPARISON_CONDITION);
+  assert.equal(posix?.result, Result.COMPARISON_CHANGED);
+  assert.equal(JSON.parse(cell(posix, 0)!).inode, '9007199254740993');
+  assert.equal(JSON.parse(cell(posix, 1)!).sizeBytes, '8192');
+  assert.equal(row(comparison, 'host_shm.system_v.12')?.result, Result.COMPARISON_SAME);
+  assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_CONFIGURATION).every(item => item.result === Result.COMPARISON_SAME));
+});
+
+test('host shm capture errors remain visible and never turn partial metadata into successful facts', () => {
+  // Arrange
+  const failed = side('a'.repeat(32), { before: { ...machine('performance'), hostShmError: '/dev/shm/private: permission denied', hostShm: { posix: [{ path: '/dev/shm/partial' }] } } });
+  const empty = side('b'.repeat(32), { before: { ...machine('performance'), hostShm: {} } });
+
+  // Act
+  const comparison = compareRuns(failed, empty);
+  const review = compareReview(null, { ...failed, profiles: [] });
+  const changes = machineChanges(failed.capture.before, failed.capture.before);
+
+  // Assert
+  assert.equal(cell(row(comparison, 'host_shm'), 0), '');
+  assert.equal(cell(row(comparison, 'host_shm'), 1), '0 POSIX entries, 0 System V segments');
+  assert.equal(row(comparison, 'host_shm.posix./dev/shm/partial'), undefined);
+  assert.match(cell(row(review, 'host_shm_error'), 1)!, /permission denied/);
+  assert.equal(cell(changes.find(item => item.name === 'host_shm_error'), 1), '/dev/shm/private: permission denied');
+});
+
 test('two captured runs compare their Prepare captures by group', () => {
   // Arrange
   const a = side('a'.repeat(32), { setup: { sourceCommit: 'abc', images: [{ service: 'worker', imageId: 'sha256:1' }] }, before: machine('powersave') });
