@@ -36,7 +36,7 @@ if [[ $1 == build ]]; then
     cd "$worker_job/artifacts"
     sha256sum source.tar.gz cargo-nextest default.tar.zst all-features.tar.zst storage-no-default.tar.zst > SHA256SUMS
 else
-    exec > >(tee "$worker_job/run.log") 2>&1
+    exec > "$worker_job/run.log" 2>&1
     trap 'worker_result=$?; printf "%s\n" "$worker_result" > "$worker_job/exit-code"' EXIT
     rm -f -- "$worker_job/exit-code" "$worker_job/results.tsv"
     uname -a

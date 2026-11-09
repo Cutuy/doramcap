@@ -42,7 +42,7 @@ export async function submitRunOnly(source: string, builder: string, runner: str
     catch (error) { ssh(builder, `pueue log --full ${id}`, true); throw error; }
     ssh(runner, `mkdir -p ${job}/artifacts ${job}/source`);
     execaSync('scp', [...sshOptions, '-3', '-r', `${builder}:${job}/artifacts/.`, `${runner}:${job}/artifacts/`], { stdio: 'inherit' });
-    ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && bash source/scripts/ci/run-only-worker.sh run`, true);
+    ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && { bash source/scripts/ci/run-only-worker.sh run; worker_result=$?; test ! -f results.tsv || cat results.tsv; echo "Runner log: $PWD/run.log"; exit "$worker_result"; }`, true);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

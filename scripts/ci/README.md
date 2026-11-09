@@ -68,6 +68,7 @@ The pinned nextest executable installs into each account's `~/.local/bin`.
 No compiler or queue daemon is installed on `.22`.
 
 The command prints both job directories. On WSL, inspect the returned Pueue ID.
+The command prints per-suite statuses; full logs stay on the runner.
 On `.22`, read `~/jobs/JOB/run.log`, `results.tsv` and `exit-code`; rerun with
 `cd ~/jobs/JOB && bash source/scripts/ci/run-only-worker.sh run`.
 Keep SSH connected during execution. A missing exit-code means completion is
