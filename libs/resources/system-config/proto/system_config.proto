@@ -54,4 +54,16 @@ message MachineState {
   uint64 captured_unix_ms = 1;
   MachineConfiguration configuration = 2;
   MachineCondition condition = 3;
+  repeated FileMetadata host_shm = 4;
+}
+
+// One entry beneath /dev/shm. Symlinks are observed themselves and never traversed.
+message FileMetadata {
+  string path = 1;
+  uint32 mode = 2; // Native file type and permission bits.
+  uint32 uid = 3;
+  uint32 gid = 4;
+  uint64 size_bytes = 5;
+  int64 modified_unix_ns = 6; // Content modification time, nanoseconds since Unix epoch.
+  int64 changed_unix_ns = 7; // Metadata change time, nanoseconds since Unix epoch.
 }

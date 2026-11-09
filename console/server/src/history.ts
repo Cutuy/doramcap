@@ -90,11 +90,18 @@ export class History {
       return execution.RunCapture.create();
     }
   }
-  /** Merge newly known parts into one run's capture. Errors: a database failure throws; an oversized capture is left unsaved. */
+  /** Save capture parts; an oversized observation is replaced with an error. Other storage failures throw. */
   saveCapture(id: string, parts: Partial<Capture>) {
-    const bytes = execution.RunCapture.encode({ ...this.capture(id), ...parts }).finish();
+    const capture = execution.RunCapture.create({ ...this.capture(id), ...parts });
+    let bytes = execution.RunCapture.encode(capture).finish();
+    if (bytes.length > MAX_CAPTURE_BYTES && capture.before) {
+      capture.before = null;
+      capture.beforeError = 'Machine capture could not be saved: run capture is too large.';
+      bytes = execution.RunCapture.encode(capture).finish();
+    }
     if (bytes.length > MAX_CAPTURE_BYTES) throw new Error('run capture too large');
     this.store.db.prepare('UPDATE runs SET capture = ? WHERE run_id = ?').run(bytes, id);
+    return capture;
   }
   private upsert(status: Snapshot, state: number, startedAt: number, finishedAt: number | undefined, error: string) {
     const entry = wire.HistoryEntry.create({

@@ -22,6 +22,16 @@ pub mod protocol {
         "/doramcap.console.execution.v1.rs"
     ));
 }
+/// Split an observation result at the protobuf boundary; pending capture has neither field.
+fn capture_parts(
+    capture: Option<std::result::Result<system_config::MachineState, String>>,
+) -> (Option<system_config::MachineState>, String) {
+    match capture {
+        Some(Ok(state)) => (Some(state), String::new()),
+        Some(Err(error)) => (None, error),
+        None => (None, String::new()),
+    }
+}
 fn failure(error: impl std::fmt::Display) -> Error {
     Error::new(Status::GenericFailure, error.to_string())
 }
@@ -226,12 +236,15 @@ impl Execution {
                                     .parent()
                                     .map(std::path::Path::to_path_buf)
                                     .unwrap_or_default();
+                                let (machine, machine_error) =
+                                    capture_parts(Some(system_config::observe(&data)));
                                 Ok(protocol::Inspection {
                                     plan: None,
                                     backend: Some(protocol::inspection::Backend::SystemdSnapshot(
                                         snapshot,
                                     )),
-                                    machine: Some(system_config::observe(&data)),
+                                    machine,
+                                    machine_error,
                                 }
                                 .encode_to_vec())
                             })
@@ -259,12 +272,14 @@ impl Execution {
                             &resolved.artifacts,
                         )
                         .await;
+                    let (machine, machine_error) = capture_parts(Some(machine));
                     Ok(protocol::Inspection {
                         plan: Some(resolved.plan),
                         backend: Some(protocol::inspection::Backend::ComposeSnapshot(
                             resolved.snapshot,
                         )),
-                        machine: Some(machine),
+                        machine,
+                        machine_error,
                     }
                     .encode_to_vec())
                 }

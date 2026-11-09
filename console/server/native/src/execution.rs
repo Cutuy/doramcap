@@ -228,8 +228,10 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             let capture = machine_rx.borrow_and_update().clone();
             let mut update = machine.lock().unwrap();
             if update.run_id == run_id {
-                update.machine_before = capture.before;
-                update.machine_after = capture.after;
+                (update.machine_before, update.machine_before_error) =
+                    crate::capture_parts(capture.before);
+                (update.machine_after, update.machine_after_error) =
+                    crate::capture_parts(capture.after);
             }
         }
     });
@@ -406,7 +408,12 @@ fn start_systemd(
             .parent()
             .map(std::path::Path::to_path_buf)
             .unwrap_or_default();
-        updates.lock().unwrap().machine_before = Some(system_config::observe(&data));
+        {
+            let before = system_config::observe(&data);
+            let mut update = updates.lock().unwrap();
+            (update.machine_before, update.machine_before_error) =
+                crate::capture_parts(Some(before));
+        }
         let admission = Rc::new(RefCell::new(Some(accepted)));
         let check = admission.clone();
         let mut runner = runner.lock().await;
@@ -458,7 +465,7 @@ fn start_systemd(
         let after = system_config::observe(&data);
         {
             let mut update = updates.lock().unwrap();
-            update.machine_after = Some(after);
+            (update.machine_after, update.machine_after_error) = crate::capture_parts(Some(after));
             update.result = Some(result);
         }
         if let Some(reply) = admission.borrow_mut().take() {
@@ -519,8 +526,8 @@ fn publish_result(
 ) {
     let capture = machine.borrow().clone();
     let mut update = updates.lock().unwrap();
-    update.machine_before = capture.before;
-    update.machine_after = capture.after;
+    (update.machine_before, update.machine_before_error) = crate::capture_parts(capture.before);
+    (update.machine_after, update.machine_after_error) = crate::capture_parts(capture.after);
     update.result = Some(result);
 }
 
@@ -798,14 +805,14 @@ mod tests {
         let updates = Mutex::new(ExecutionUpdate::default());
         sender
             .send(MachineCapture {
-                before: Some(system_config::MachineState {
+                before: Some(Ok(system_config::MachineState {
                     captured_unix_ms: 1,
                     ..Default::default()
-                }),
-                after: Some(system_config::MachineState {
+                })),
+                after: Some(Ok(system_config::MachineState {
                     captured_unix_ms: 2,
                     ..Default::default()
-                }),
+                })),
             })
             .unwrap();
         // Act
@@ -823,6 +830,26 @@ mod tests {
         assert_eq!(update.result.unwrap().error.as_deref(), Some("failed"));
         assert_eq!(update.machine_before.unwrap().captured_unix_ms, 1);
         assert_eq!(update.machine_after.unwrap().captured_unix_ms, 2);
+    }
+
+    #[test]
+    fn observation_errors_reach_the_console_without_failing_the_run() {
+        // Arrange
+        let (_, receiver) = watch::channel(MachineCapture {
+            before: Some(Err("/dev/shm: permission denied".into())),
+            after: Some(Err("/dev/shm: entry disappeared".into())),
+        });
+        let updates = Mutex::new(ExecutionUpdate::default());
+        // Act
+        publish_result(&updates, &receiver, ExecutionResult::default());
+        let update =
+            ExecutionUpdate::decode(updates.lock().unwrap().encode_to_vec().as_slice()).unwrap();
+        // Assert
+        assert!(update.machine_before.is_none());
+        assert!(update.machine_after.is_none());
+        assert!(update.machine_before_error.contains("permission denied"));
+        assert!(update.machine_after_error.contains("entry disappeared"));
+        assert!(update.result.unwrap().error.is_none());
     }
 
     #[test]

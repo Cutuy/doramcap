@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createClient, routes, wire, workflow, Phase, StepState, type HistoryPage } from './api';
 import { MEDIA_TYPE, artifactPath } from './generated/transport';
 import { HistoryRun, HistoryTable } from './History';
-import { ReviewPreview } from './Comparison';
+import { MachineChanges, ReviewPreview } from './Comparison';
 import { ConsoleContext } from './context';
 import { compareHash, durationLabel, entryRecordingBytes, factLabel, factValue, historyHash, historyRoute, phaseAfterFinish, runHash, toggleCompared } from './model';
 import { Result } from './Result';
@@ -206,6 +206,26 @@ test('compared facts read by their unit, and exact names stay exact', () => {
   assert.equal(factValue('uptime_seconds', '172800'), '2.0 days');
   assert.equal(factValue('max_temperature_celsius', '49'), '49 °C');
   assert.equal(factValue('kernel_release', '7.0'), '7.0');
+  assert.equal(factLabel('host_shm'), 'Host shared memory');
+  assert.equal(factLabel('host_shm./dev/shm/camera.data'), '/dev/shm/camera.data');
+});
+
+test('shm capture failure is an alert and leaves its review value unavailable', () => {
+  // Arrange
+  const rows = [
+    wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'host_shm', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: [''] }] }),
+    wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['/dev/shm/private: permission denied'] }] }),
+  ];
+
+  // Act
+  const review = renderToStaticMarkup(<ReviewPreview comparison={wire.ReviewComparison.create({ rows })}/>);
+  const result = renderToStaticMarkup(<MachineChanges rows={rows}/>);
+
+  // Assert
+  assert.match(review, /role="alert">Machine capture unavailable \(Now\): \/dev\/shm\/private: permission denied/);
+  assert.match(review, /Host shared memory<\/dt><dd>Unavailable/);
+  assert.match(result, /role="alert">Machine capture unavailable \(After\)/);
+  assert.doesNotMatch(review, /Host shm error/);
 });
 
 test('an embedded host keeps every route and link beneath its base path', () => {

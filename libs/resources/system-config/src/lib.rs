@@ -1,4 +1,5 @@
-//! Typed, read-only observation of host machine state from Linux `/proc` and `/sys`.
+//! Typed, read-only observation of Linux host state.
+mod shm;
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
@@ -175,23 +176,24 @@ fn condition(root: &Path, data_directory: &Path) -> MachineCondition {
     }
 }
 
-/// Observe this host now. `data_directory` selects the filesystem reported as free disk.
-///
-/// Returns: every readable fact; an unreadable fact keeps its zero value, so this never fails.
-/// The caller adds Docker facts. No privileges are required for the facts this reads.
-pub fn observe(data_directory: &Path) -> MachineState {
+/// Observe this host; `data_directory` selects the filesystem reported as free disk.
+/// Errors: an incomplete metadata traversal returns its cause, without a partial state.
+/// Other unreadable facts keep their zero values. The caller adds Docker facts.
+pub fn observe(data_directory: &Path) -> Result<MachineState, String> {
     observe_root(Path::new("/"), data_directory)
 }
 
-/// Observe the Linux file layout beneath `root`.
-pub fn observe_root(root: &Path, data_directory: &Path) -> MachineState {
-    MachineState {
+/// Observe the Linux layout beneath `root`, with the same failure contract as `observe`.
+pub fn observe_root(root: &Path, data_directory: &Path) -> Result<MachineState, String> {
+    let host_shm = shm::observe(root)?;
+    Ok(MachineState {
         captured_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.as_millis() as u64),
         configuration: Some(configuration(root)),
         condition: Some(condition(root, data_directory)),
-    }
+        host_shm,
+    })
 }
 
 #[cfg(test)]
@@ -208,8 +210,9 @@ mod tests {
     fn an_empty_host_reports_zero_values() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("dev/shm")).unwrap();
         // Act
-        let state = observe_root(root.path(), root.path());
+        let state = observe_root(root.path(), root.path()).unwrap();
         // Assert
         let configuration = state.configuration.unwrap();
         assert_eq!(
@@ -225,6 +228,7 @@ mod tests {
     fn mixed_cpu_settings_report_each_value_with_its_cpus() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("dev/shm")).unwrap();
         write(root.path(), "sys/devices/system/cpu/online", "0-3\n");
         for (cpu, governor) in [
             (0, "performance"),
@@ -240,6 +244,7 @@ mod tests {
         }
         // Act
         let governor = observe_root(root.path(), root.path())
+            .unwrap()
             .configuration
             .unwrap()
             .governor;
@@ -263,6 +268,7 @@ mod tests {
     fn missing_and_blank_machine_ids_have_no_fingerprint() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("dev/shm")).unwrap();
         // Act / Assert
         assert!(configuration(root.path()).machine_fingerprint.is_empty());
         for id in ["", " \n\t"] {
@@ -277,6 +283,7 @@ mod tests {
     fn host_files_become_typed_facts() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("dev/shm")).unwrap();
         let host = root.path();
         write(host, "etc/machine-id", "secret-machine-id\n");
         write(
@@ -306,7 +313,7 @@ mod tests {
         );
         write(host, "proc/sys/vm/swappiness", "not a number\n");
         // Act
-        let state = observe_root(host, host);
+        let state = observe_root(host, host).unwrap();
         let (configuration, condition) = (state.configuration.unwrap(), state.condition.unwrap());
         // Assert
         assert_eq!(configuration.machine_fingerprint.len(), 64);
