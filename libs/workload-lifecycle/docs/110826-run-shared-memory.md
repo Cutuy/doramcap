@@ -2,57 +2,39 @@
 
 # Shared memory: architecture
 
-Created: 2026-11-08. Updated from PR #234 review; implementation pending.
+Created: 2026-11-08. Implementation pending.
 
-Apps in a run should share memory with each other. By default, that memory stays
-separate from the host and other runs. When the apps stop, we remove it.
-
-The same rules apply to user apps and system apps, whether they run in Docker or
-systemd and whether their settings come from pbtxt or native files.
+Apps in a run share memory with each other. By default, that memory stays separate
+from the host and other runs. The same rules apply to user and system apps on
+Docker and systemd, using pbtxt or native files.
 
 ## Two global modes
 
 | Mode | What apps use | What happens after the run |
 | --- | --- | --- |
-| **Isolated — default** | Shared memory belonging to this run | We remove it after the apps stop |
-| **Host** | The host's shared memory, with normal access permissions | We leave it alone |
+| **Isolated — default** | Shared memory belonging to this run | Release it after the apps stop |
+| **Host** | The host's shared memory, with normal access permissions | Leave it alone |
 
-## Native settings and conflicts
+## Native settings
 
-Native mounts specify the host source, app-visible target and access permissions.
-We apply those declarations to the launched container or unit. The source Compose
-and unit files remain unchanged.
+Apply native IPC and mount declarations to the launched apps. A selective host
+bind stays live, including read-only binds; explicit private settings may separate
+sharing groups. Whole-host mounts and Docker `ipc: host` require global **Host**
+mode. Reject conflicting settings before launch with an error identifying the app
+and setting.
 
-An app can mount one host segment read-only while keeping the rest of its shared
-memory private to the run. Host updates remain visible through that live mount.
-Explicit private shm settings remain app choices and may separate sharing groups.
+## Experiment snapshots
 
-Access to the entire host shm, including Docker `ipc: host`, requires global
-**Host** mode. In **Isolated** mode, preparation rejects these settings with an
-error naming the app, setting and required mode. Other incompatible IPC or mount
-settings also fail before launch; preparation never silently skips run isolation.
+Extend existing A/B snapshots with host shm metadata. Capture object identity,
+size, permissions and timestamps without reading or hashing contents. Work scales
+with object count, independently of byte size. Live observations stay separate
+from Review's configuration identity.
 
-Selective access belongs in native mounts. The global choice is one boolean field
-on the existing `RunPlan`; it needs no settings message or `host_shms` list.
+## Cleanup
 
-## Host shm in experiment snapshots
+The kernel manages shm lifetime. Release run-owned mounts and namespaces after
+verified shutdown; leave host memory alone. If shutdown is unconfirmed, retain
+run resources and report incomplete cleanup.
 
-The existing A/B snapshots capture host shm metadata as well as the mount
-declarations. Capture records object identity, size, access metadata and timestamps
-without reading or copying shm contents. Work scales with the number of objects
-observed, independently of their byte sizes.
-
-These observations describe live inputs at capture time; they cannot establish
-content equality. Normal host writes keep Review valid. Mount or configuration
-changes still require fresh preparation.
-
-## Cleanup follows ownership
-
-The kernel manages shared-memory objects. An app exiting does not authorize
-tearing down the run's shared mounts or namespaces while other apps use them.
-After verified shutdown, the backend releases the resources it created for the
-run. Host memory and externally owned mounts remain. If shutdown is unconfirmed,
-we retain run resources and report incomplete cleanup.
-
-See the [implementation design and work plan](110826-run-shared-memory-impl.md)
-for how to build and test this. This design replaces [#206](https://github.com/Cutuy/doramcap/pull/206).
+See the [implementation plan](110826-run-shared-memory-impl.md).
+This design replaces [#206](https://github.com/Cutuy/doramcap/pull/206).
