@@ -61,21 +61,37 @@ Other `Value` uses represent Docker HTTP fixtures, Dora status, event/evidence
 payloads or UI responses. Those are separate schemas. `workload-docker` currently
 has no direct YAML parser dependency.
 
-## Initial measured compatibility
+## Measured compatibility
 
-Ten fixtures rendered by Docker Compose 5.6.0, then read/written through each crate
-and rendered again. A raw JSON control passed for every fixture.
-[Recorded observations](../evaluations/compose-types/results.json) include all
-changed JSON pointers. Additional isolation probes are pending.
+Eighteen fixtures rendered by Docker Compose 5.6.0, then read/written through
+each crate and rendered again. All 18 raw JSON controls passed. Both candidates
+also passed an image-pin/restart-override mutation on the basic Dora daemon
+fixture. [Recorded observations](../evaluations/compose-types/results.json)
+include every changed JSON pointer and failure diagnostic.
+
+| Outcome across 18 fixtures | `docker-compose-types` | `compose_spec` |
+| --- | --- | --- |
+| Matches after Compose re-rendering | 4 | 8 |
+| Parses, but normalized JSON changes | 5 | 3 |
+| Parses, but Compose rejects serialized output | 1 | 0 |
+| Rejects valid normalized input | 8 | 7 |
 
 | Case | `docker-compose-types` | `compose_spec` |
 | --- | --- | --- |
-| Repository Dora coordinator and daemon | Both pass normalized comparison | Both pass normalized comparison |
-| Core policy, empty commands, extensions | Parses; network attachment shape changes | Pass normalized comparison |
-| Config resources | Rejects `configs` | Rejects normalized config `name` |
+| Repository Dora coordinator/daemon; scale; external volume/secret | Pass normalized comparison | Pass normalized comparison |
+| Core policy, empty commands, extensions | Network attachment changes from `null` to object | Pass normalized comparison |
+| Config resources, both file and inline | Rejects `configs` | Rejects Compose-generated config `name` |
 | GPU requests; lifecycle hooks | Rejects `gpus` / `post_start` | Rejects `gpus` / `post_start` |
-| Bind, volume and tmpfs options | Rejects mount fixture | Drops explicit `bind.create_host_path: false` |
-| External resources | Network attachment shape changes | Rejects normalized external resource |
+| GPU device reservation, `count: all` | Rejects Compose's normalized `count: -1` | Rejects normalized `count: -1` |
+| Generated app settings with `cpuset` | Rejects `cpuset` | Drops explicit bind creation flag |
+| Strict bind defaults | Emits null optional bind fields; Compose rejects them | Drops explicit `create_host_path: false` |
+| Tmpfs mode | Rejects mount | Pass normalized comparison |
+| External network | Network attachment shape changes | Rejects Compose-generated empty `ipam` alongside `external` |
+
+The combined mounts and resources fixtures reproduce these isolated failures.
+The fixture set covers selected behavior used or preserved by our Compose paths;
+it does not establish full schema coverage. The basic repository Dora fixtures
+and mutation check do not qualify the fully assembled Dora workflow.
 
 Shape changes are not automatically Docker runtime behavior changes. Network
 `null`/object differences affect exact snapshot comparisons. Omitting

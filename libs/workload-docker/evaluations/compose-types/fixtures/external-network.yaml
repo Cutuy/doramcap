@@ -1,0 +1,6 @@
+services:
+  app:
+    image: busybox:1.37
+    networks: [shared]
+networks:
+  shared: {external: true, name: existing-network}

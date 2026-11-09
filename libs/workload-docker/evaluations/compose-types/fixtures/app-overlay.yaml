@@ -1,0 +1,18 @@
+services:
+  app:
+    image: busybox:1.37
+    network_mode: host
+    entrypoint: [capture]
+    command: ['$$LITERAL']
+    working_dir: /work
+    cpuset: '0'
+    stop_signal: '15'
+    stop_grace_period: 10s
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    volumes:
+      - type: bind
+        source: /tmp/evaluation-config
+        target: /config
+        read_only: true
+        bind: {create_host_path: false}

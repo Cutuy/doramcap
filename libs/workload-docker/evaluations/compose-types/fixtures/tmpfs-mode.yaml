@@ -1,0 +1,8 @@
+services:
+  app:
+    image: busybox:1.37
+    network_mode: host
+    volumes:
+      - type: tmpfs
+        target: /scratch
+        tmpfs: {size: 1048576, mode: 0700}

@@ -1,0 +1,16 @@
+services:
+  app:
+    image: busybox:1.37
+    network_mode: host
+    volumes:
+      - type: bind
+        source: /tmp/evaluation-strict
+        target: /strict
+        bind: {create_host_path: false}
+      - type: bind
+        source: /tmp/evaluation-create
+        target: /create
+        bind: {create_host_path: true}
+      - type: bind
+        source: /tmp/evaluation-absent
+        target: /absent

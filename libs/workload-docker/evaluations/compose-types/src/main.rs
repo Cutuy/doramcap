@@ -18,7 +18,9 @@ struct Observation {
 #[derive(Serialize)]
 struct Report {
     compose_version: String,
+    raw_json_controls: usize,
     observations: Vec<Observation>,
+    mutations: Vec<Observation>,
 }
 
 // Report every differing JSON pointer; values stay out of the report.
@@ -59,7 +61,7 @@ fn normalize(file: &Path, directory: &Path) -> Result<Value> {
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr)
             .trim()
-            .to_owned()
+            .replace(file.to_string_lossy().as_ref(), "<compose-file>")
             .into());
     }
     Ok(serde_json::from_slice(&output.stdout)?)
@@ -86,11 +88,19 @@ fn evaluate<T: DeserializeOwned + Serialize>(
             return Ok(observation);
         }
     };
-    let output = serde_json::to_value(typed)?;
-    differences(model, &output, "", &mut observation.serialization_changes);
+    compare(observation, model, &serde_json::to_value(typed)?, directory)
+}
+
+fn compare(
+    mut observation: Observation,
+    model: &Value,
+    output: &Value,
+    directory: &Path,
+) -> Result<Observation> {
+    differences(model, output, "", &mut observation.serialization_changes);
     let temporary = tempfile::tempdir()?;
     let file = temporary.path().join("compose.json");
-    fs::write(&file, serde_json::to_vec(&output)?)?;
+    fs::write(&file, serde_json::to_vec(output)?)?;
     match normalize(&file, directory) {
         Ok(rendered) => {
             let mut changes = Vec::new();
@@ -100,6 +110,46 @@ fn evaluate<T: DeserializeOwned + Serialize>(
         Err(error) => observation.compose_error = Some(error.to_string()),
     }
     Ok(observation)
+}
+
+// Apply the same image pin and restart override as the production resolver.
+fn mutations(model: &Value, directory: &Path) -> Result<Vec<Observation>> {
+    let image = format!("sha256:{}", "a".repeat(64));
+    let mut expected = model.clone();
+    expected["services"]["dora-daemon"]["image"] = image.clone().into();
+    expected["services"]["dora-daemon"]["restart"] = "no".into();
+    let mut docker: docker_compose_types::Compose = serde_json::from_value(model.clone())?;
+    let service = docker
+        .services
+        .0
+        .get_mut("dora-daemon")
+        .and_then(Option::as_mut)
+        .ok_or("daemon missing")?;
+    service.image = Some(image.clone());
+    service.restart = Some("no".into());
+    let mut spec: compose_spec::Compose = serde_json::from_value(model.clone())?;
+    let service = spec
+        .services
+        .get_mut("dora-daemon")
+        .ok_or("daemon missing")?;
+    service.image = Some(image.parse()?);
+    service.restart = Some(compose_spec::service::Restart::No);
+    let mut results = Vec::new();
+    for (crate_name, output) in [
+        ("docker-compose-types 0.24.0", serde_json::to_value(docker)?),
+        ("compose_spec 0.3.0", serde_json::to_value(spec)?),
+    ] {
+        let observation = Observation {
+            fixture: "dora-daemon: pin image and disable restart".into(),
+            crate_name,
+            parse_error: None,
+            serialization_changes: vec![],
+            compose_error: None,
+            normalized_changes: None,
+        };
+        results.push(compare(observation, &expected, &output, directory)?);
+    }
+    Ok(results)
 }
 
 fn main() -> Result<()> {
@@ -120,7 +170,9 @@ fn main() -> Result<()> {
     }
     let mut report = Report {
         compose_version: String::from_utf8(version.stdout)?.trim().into(),
+        raw_json_controls: 0,
         observations: vec![],
+        mutations: vec![],
     };
     for file in fixtures {
         let file = fs::canonicalize(file)?;
@@ -151,6 +203,7 @@ fn main() -> Result<()> {
             )
             .into());
         }
+        report.raw_json_controls += 1;
         report
             .observations
             .push(evaluate::<docker_compose_types::Compose>(
@@ -165,6 +218,9 @@ fn main() -> Result<()> {
             &model,
             directory,
         )?);
+        if name == "dora-daemon" {
+            report.mutations = mutations(&model, directory)?;
+        }
     }
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())

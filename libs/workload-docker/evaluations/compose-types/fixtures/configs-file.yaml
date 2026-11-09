@@ -1,0 +1,7 @@
+services:
+  app:
+    image: busybox:1.37
+    configs: [settings]
+configs:
+  settings:
+    file: ./settings.txt
