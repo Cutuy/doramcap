@@ -96,10 +96,10 @@ fn shm_fixture() -> PathBuf {
         .unwrap()
         .parent()
         .unwrap()
-        .join("examples/shm_fixture");
+        .join("examples/systemd_shm_fixture");
     assert!(
         path.is_file(),
-        "build workload-systemd --example shm_fixture first"
+        "build workload-systemd --example systemd_shm_fixture first"
     );
     path
 }
@@ -138,7 +138,7 @@ fn shm_worker(id: &str, role: &str, key: u32, fixture: &Fixture) -> Program {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
+#[ignore = "requires root, the system service manager and prebuilt --example systemd_shm_fixture"]
 async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
     // Arrange
     let fixture = Fixture::new("shared-memory");
@@ -200,7 +200,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
+#[ignore = "requires root, the system service manager and prebuilt --example systemd_shm_fixture"]
 async fn passthrough_generated_units_share_host_memory_and_preserve_objects() {
     // Arrange
     let fixture = Fixture::new("host-shared-memory");
@@ -256,7 +256,7 @@ async fn wait_for_file(path: &Path) -> bool {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
+#[ignore = "requires root, the system service manager and prebuilt --example systemd_shm_fixture"]
 async fn selective_host_shm_stays_live_with_native_permissions_in_both_modes() {
     // Arrange
     use workload_lifecycle::launch::HostShmAccess::{Blocked, Passthrough};
