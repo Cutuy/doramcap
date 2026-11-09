@@ -191,7 +191,10 @@ test('release requires committed and integrated source, then cleans outputs and 
   for (const output of outputs) f.write(slot.path, `${output}/artifact`);
   f.ok(...f.releaseArgs(slot));
   assert.equal(f.state().slots[0].lease, null);
-  assert.equal(f.git(slot.path, 'branch', '--show-current'), BRANCH);
+  assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+  assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), commit);
+  assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
+  assert.equal(f.git(f.repo, 'branch', '--show-current'), 'main');
   for (const output of outputs) assert.ok(!existsSync(join(slot.path, output)));
   for (const path of preserved) assert.equal(readFileSync(path, 'utf8'), 'preserve or clean');
 });
@@ -320,9 +323,16 @@ test('cleanup failure retains the lease and succeeds after repair', { skip: proc
   assert.equal(f.state().slots[0].lease, null);
 });
 
-test('publication release verifies PR identity, branch, state and exact HEAD', t => {
+test('publication release verifies the exact PR, deletes the local branch and preserves the remote', t => {
   // Arrange
   const f = fixture(t), slot = f.acquire();
+  f.write(slot.path, 'source', 'published feature');
+  const published = f.commit(slot.path);
+  const remote = join(f.temp, 'remote.git');
+  f.git(f.repo, 'init', '--bare', remote);
+  f.git(f.repo, 'remote', 'add', 'origin', remote);
+  f.git(slot.path, 'push', '--set-upstream', 'origin', BRANCH);
+  const remoteBefore = f.git(f.repo, 'ls-remote', '--heads', 'origin');
   const args = ['release', '--owner', OWNER, '--token', slot.lease.token, '--pr', PR_URL];
 
   // Act / Assert
@@ -335,7 +345,92 @@ test('publication release verifies PR identity, branch, state and exact HEAD', t
   f.ok(...args);
   assert.equal(f.state().slots[0].lease, null);
   assert.equal(f.state().slots[0].last_pr, PR_URL);
+  assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+  assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), published);
+  assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
+  assert.equal(f.git(f.repo, 'ls-remote', '--heads', 'origin'), remoteBefore);
+  assert.equal(f.git(f.repo, 'rev-parse', `refs/remotes/origin/${BRANCH}`), published);
 });
+
+
+test('main cannot be acquired or released, including a legacy main lease', t => {
+  // Arrange
+  const f = fixture(t);
+  f.git(f.repo, 'branch', '-m', 'primary');
+
+  // Act / Assert: main is forbidden even when that branch does not exist yet.
+  assert.match(f.command('acq', '--owner', OWNER, '--branch', 'main').stderr, /Cannot lease main/);
+  const slot = f.acquire();
+  f.git(slot.path, 'branch', '-m', 'main');
+  const state = f.state();
+  state.slots[0].lease.branch = 'main';
+  f.write(f.repo, '.git/agent-pool/state.json', JSON.stringify(state));
+  const originalHead = f.git(slot.path, 'rev-parse', 'HEAD');
+  const artifact = f.write(slot.path, 'target/artifact');
+
+  // Act / Assert: a legacy lease cannot delete main or clean its checkout.
+  for (const target of [['--main'], ['--pr', PR_URL]]) {
+    const result = f.command('release', '--owner', OWNER, '--token', slot.lease.token, ...target);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Cannot release or delete main/);
+    assert.equal(f.git(slot.path, 'branch', '--show-current'), 'main');
+    assert.equal(f.git(slot.path, 'rev-parse', 'refs/heads/main'), originalHead);
+    assert.ok(existsSync(artifact));
+    assert.equal(f.state().slots[0].lease.token, slot.lease.token);
+  }
+});
+
+test('failed local branch deletion restores the checkout and retains the lease for retry', t => {
+  // Arrange
+  const f = fixture(t), slot = f.acquire();
+  const originalHead = f.git(slot.path, 'rev-parse', 'HEAD');
+  const lock = f.write(f.repo, `.git/refs/heads/${BRANCH}.lock`, '');
+
+  // Act
+  const result = f.command(...f.releaseArgs(slot));
+
+  // Assert
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /cannot lock ref/);
+  assert.equal(f.git(slot.path, 'branch', '--show-current'), BRANCH);
+  assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), originalHead);
+  assert.equal(f.state().slots[0].lease.token, slot.lease.token);
+
+  // Act / Assert: removing the competing lock lets the same lease finish release.
+  rmSync(lock);
+  f.ok(...f.releaseArgs(slot));
+  assert.equal(f.state().slots[0].lease, null);
+  assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+  assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
+});
+
+for (const deleted of [false, true]) {
+  test(`detached checkout warns before manual repair with branch ${deleted ? 'deleted' : 'present'}`, t => {
+    // Arrange: simulate an interruption before or after branch deletion.
+    const f = fixture(t), slot = f.acquire();
+    const original = f.git(slot.path, 'rev-parse', 'HEAD');
+    f.git(slot.path, 'checkout', '--detach');
+    if (deleted) f.git(slot.path, 'branch', '-D', BRANCH);
+    const artifact = f.write(slot.path, 'target/artifact');
+
+    // Act / Assert: warning preserves the lease and checkout for user inspection.
+    const result = f.command(...f.releaseArgs(slot));
+    assert.notEqual(result.status, 0);
+    for (const detail of ['WARNING', slot.path, original, BRANCH, 'Obtain user confirmation']) {
+      assert.ok(result.stderr.includes(detail), result.stderr);
+    }
+    assert.ok(existsSync(artifact));
+    assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+    assert.equal(f.state().slots[0].lease.token, slot.lease.token);
+
+    // Act / Assert: after user-confirmed manual repair, ordinary release succeeds.
+    f.git(slot.path, 'checkout', ...(deleted ? ['-b', BRANCH, original] : [BRANCH]));
+    f.ok(...f.releaseArgs(slot));
+    assert.equal(f.state().slots[0].lease, null);
+    assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), original);
+    assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
+  });
+}
 
 test('publication release rechecks source and branch after verification', t => {
   // Arrange
