@@ -36,8 +36,9 @@ with an empty extracted target directory. Source snapshots and archives remain
 in the per-job directory; `/tmp` holds replaceable caches. Remove only idle
 CI-owned job/cache directories when reclaiming disk.
 
-`install-nextest.sh` installs into `~/.local/bin` without sudo or services.
-Its release SHA256 is pinned from the upstream GitHub release asset digest.
+`install-nextest.sh` installs into the builder's `~/.local/bin` without sudo or
+services. The verified executable travels with the archives and installs on the
+runner. Its release SHA256 is pinned from the upstream GitHub release asset digest.
 No application dependencies or environment inputs are added.
 
 ## Validation record

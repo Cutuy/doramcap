@@ -32,8 +32,9 @@ if [[ $1 == build ]]; then
         cargo nextest archive --locked "${options[@]}" --archive-file "$worker_job/artifacts/$suite.tar.zst"
     done
     cp "$worker_job/source/source.tar.gz" "$worker_job/artifacts/source.tar.gz"
+    cp "$HOME/.local/bin/cargo-nextest" "$worker_job/artifacts/cargo-nextest"
     cd "$worker_job/artifacts"
-    sha256sum source.tar.gz default.tar.zst all-features.tar.zst storage-no-default.tar.zst > SHA256SUMS
+    sha256sum source.tar.gz cargo-nextest default.tar.zst all-features.tar.zst storage-no-default.tar.zst > SHA256SUMS
 else
     exec > >(tee "$worker_job/run.log") 2>&1
     trap 'worker_result=$?; printf "%s\n" "$worker_result" > "$worker_job/exit-code"' EXIT
@@ -43,7 +44,9 @@ else
     mkdir "$worker_cache/source"
     tar -xzpf source.tar.gz -C "$worker_cache/source"
     cd "$worker_cache/source"
-    bash scripts/ci/install-nextest.sh
+    mkdir -p "$HOME/.local/bin"
+    install -m 755 "$worker_job/artifacts/cargo-nextest" "$HOME/.local/bin/cargo-nextest"
+    cargo-nextest --version
     printf 'Source manifest: %s\n' "$worker_job/source/SOURCE.json"
     sha256sum SOURCE.json
     printf '\nMemory limit: '; cat /sys/fs/cgroup/memory.max
