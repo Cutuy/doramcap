@@ -10,16 +10,17 @@ Reuse an active task's lease; after release, acquire a fresh lease and fork to a
 
 For local integration, rebase onto current main, cherry-pick, then release. Never integrate with `git merge`.
 
-Read the [implementation guide](docs/impl-guide.md) for code rules and the
-[design guide](docs/design-guide.md) for architectural guidance. Use
-[Scanner](.agents/skills/scanner/SKILL.md) to review a PR or branch and reconcile
+Before planning, implementing, or reviewing code changes, read both the
+[implementation guide](docs/impl-guide.md) and [design guide](docs/design-guide.md).
+Briefly identify applicable rule IDs and check the final changes against them.
+Re-read if the guides change or leave context.
+
+Use [Scanner](.agents/skills/scanner/SKILL.md) to review a PR or branch and reconcile
 implementation/design guidance. Keep agent process instructions in this file.
 
 ## Important decisions
 
 For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives.
-
-Check large feature work against the [design guide](docs/design-guide.md) before implementation and during design review.
 
 Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
