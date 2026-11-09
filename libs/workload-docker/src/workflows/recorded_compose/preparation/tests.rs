@@ -674,6 +674,7 @@ fn run_ipc_defaults_preserve_native_private_groups() {
         "private":{"ipc":"private","shm_size":1234},
         "native-group":{"ipc":"service:private"},
         "private-mount":{"volumes":[{"type":"tmpfs","target":"/dev/shm"}]},
+        "hugepage-mount":{"volumes":[{"type":"bind","source":"/mnt/hugepages","target":"/dev/shm"}]},
         "private-tmpfs":{"tmpfs":["/dev/shm:size=16384"]},
         "selective":{"volumes":[{"type":"bind","source":"/dev/shm/camera","target":"/dev/shm/camera","read_only":true}]}
     }});
@@ -686,7 +687,13 @@ fn run_ipc_defaults_preserve_native_private_groups() {
         configure_shm(&mut model, &mut systems, mode as i32).unwrap();
         // Assert
         assert_eq!(systems, ["default"]);
-        for service in ["private", "native-group", "private-mount", "private-tmpfs"] {
+        for service in [
+            "private",
+            "native-group",
+            "private-mount",
+            "hugepage-mount",
+            "private-tmpfs",
+        ] {
             assert_eq!(model["services"][service], original["services"][service]);
         }
         let expected = if mode == HostShmAccess::Blocked {

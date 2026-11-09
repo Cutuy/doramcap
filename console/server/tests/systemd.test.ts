@@ -100,7 +100,7 @@ test('systemd needs absolute binaries and a unit file for every selected app', a
   // Arrange
   const template = (text: string) => capabilities.parseConfig(text);
   // Act / Assert: binaries are required.
-  assert.throws(() => releaseConfig(template('host_shm_access: PASSTHROUGH form: SYSTEMD'), '/playground', systemApps, '/state'), /binaries must be absolute/);
+  assert.throws(() => releaseConfig(template('host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH form: SYSTEMD'), '/playground', systemApps, '/state'), /binaries must be absolute/);
   // Act / Assert: an inline app without a unit file cannot launch.
   const config = releaseConfig(
     template('form: SYSTEMD binaries: "/opt/bin" apps {id:"inline" input {directory:"cpu-monitor" files:"compose.yaml"}}'),
@@ -121,7 +121,7 @@ test('systemd launch inputs preserve manifest IDs independently of native filena
   await writeFile(join(apps, 'app.pbtxt'), 'id:"capture" compose { files:"compose.yaml" } output_targets:"/results" systemd { unit:"worker.service" }');
   await writeFile(join(apps, 'worker.service'), '[Service]\nExecStart=/bin/true\n');
   try {
-    const config = releaseConfig(capabilities.parseConfig('host_shm_access:PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"app.pbtxt"}'), project, apps, '/state');
+    const config = releaseConfig(capabilities.parseConfig('host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"app.pbtxt"}'), project, apps, '/state');
     // Act
     const request = await systemdPlan(config, {
       id: 'r1', project, artifacts: '/state/r1', workspace: directory,
@@ -165,7 +165,7 @@ test('common process settings support systemd without Compose files and reject n
   const directory = await mkdtemp(join(tmpdir(), 'console-shared-process-'));
   const path = join(directory, 'capture.pbtxt');
   const manifest = 'id:"capture" process { argv:"capture" argv:"--rate" argv:"7" working_directory:"/results" memlock_bytes:8388608 cpus:"0" stop_signal:2 stop_seconds:17 }';
-  const template = () => capabilities.parseConfig('host_shm_access:PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"capture.pbtxt"}');
+  const template = () => capabilities.parseConfig('host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH form:SYSTEMD binaries:"/opt/bin" runtime {readiness_seconds:60 stop_seconds:30} apps {manifest:"capture.pbtxt"}');
   try {
     await writeFile(path, manifest);
     // Act

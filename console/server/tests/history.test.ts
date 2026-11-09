@@ -47,7 +47,7 @@ async function service(root: string) {
   await mkdir(project, { recursive: true });
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
+    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',

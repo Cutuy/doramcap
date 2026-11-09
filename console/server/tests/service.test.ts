@@ -64,7 +64,7 @@ async function fixture(recording = false, liveOutput = false, systemApps?: strin
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
+    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
@@ -520,7 +520,7 @@ test('the selected launch profile mounts its config read-only and declares only 
   await mkdir(project);
   await writeFile(join(project, 'compose.yaml'), 'services: {}');
   const config = wire.ConsoleConfig.create({
-    hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
+    hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
     projectRoot: project,
     dataRoot: join(root, 'data'),
     dockerSocket: '/unused.sock',
@@ -679,7 +679,7 @@ test('cancelling a review without downloads discards its inspection', async () =
 test('Compose always includes configured run shared memory independently of optional apps', async () => {
   // Arrange
   const { root, config, engine, backend } = await fixture();
-  config.hostShmAccess = launch.HostShmAccess.BLOCKED;
+  config.hostShmAccess = launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED;
   config.apps.push(wire.SystemAppDefinition.create({
     id: 'doramcap-shm',
     input: { directory: config.projectRoot, files: ['compose.yaml'] },
@@ -689,7 +689,7 @@ test('Compose always includes configured run shared memory independently of opti
     const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish())));
     // Assert
     assert.deepEqual(engine.inspected!.run!.systemApps, ['doramcap-shm']);
-    assert.equal(engine.inspected!.run!.hostShmAccess, launch.HostShmAccess.BLOCKED);
+    assert.equal(engine.inspected!.run!.hostShmAccess, launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED);
     assert.ok(engine.inspected!.compose!.projects!.some((project) => project.key === 'doramcap-shm'));
     assert.ok(!review.systemApps.some((app) => app.id === 'doramcap-shm'));
 

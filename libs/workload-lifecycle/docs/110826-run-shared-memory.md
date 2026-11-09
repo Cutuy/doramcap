@@ -29,7 +29,8 @@ values are unsupported and fail preparation.
 PASSTHROUGH uses host shm; explicit private settings still apply. Selective host
 binds stay live, including read-only binds and alternate targets. Apply accepted
 declarations to launched apps; source Compose and unit files remain unchanged.
-Review and launch use the same prepared configuration.
+Review and launch use the same prepared configuration. Native declarations can
+bind host hugetlbfs at custom paths; those sources stay live and host-owned.
 
 systemd preserves native IPC settings. Its run default applies to the filesystem
 shared through `/dev/shm`.

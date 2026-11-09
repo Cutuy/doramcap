@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 pub fn validate_host_shm_access(value: i32) -> Result<HostShmAccess, String> {
     match HostShmAccess::try_from(value) {
         Ok(access @ (HostShmAccess::Passthrough | HostShmAccess::Blocked)) => Ok(access),
-        _ => Err("host_shm_access must be PASSTHROUGH or BLOCKED".into()),
+        _ => Err(
+            "host_shm_access must be HOST_SHM_ACCESS_PASSTHROUGH or HOST_SHM_ACCESS_BLOCKED".into(),
+        ),
     }
 }
 
@@ -120,7 +122,10 @@ mod tests {
             // Act
             let error = validate_apps(&run, ["app"]).unwrap_err();
             // Assert
-            assert_eq!(error, "host_shm_access must be PASSTHROUGH or BLOCKED");
+            assert_eq!(
+                error,
+                "host_shm_access must be HOST_SHM_ACCESS_PASSTHROUGH or HOST_SHM_ACCESS_BLOCKED"
+            );
         }
         for access in [HostShmAccess::Passthrough, HostShmAccess::Blocked] {
             // Arrange

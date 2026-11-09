@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 const config = (extra = '') =>
   capabilities.parseConfig(
-    `host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" docker_socket:"/docker.sock" access_secret_file:"/secret" ${extra}`,
+    `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" docker_socket:"/docker.sock" access_secret_file:"/secret" ${extra}`,
   );
 
 test('TypeScript applies protobuf configuration defaults and rejects invalid deployment policy', () => {
@@ -36,7 +36,7 @@ test('systemd Consoles need no Docker socket and reject one', () => {
   // Arrange
   const systemd = (socket: string) =>
     capabilities.parseConfig(
-      `form: SYSTEMD host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" ${socket}`,
+      `form: SYSTEMD host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"/projects" data_root:"/data" ${socket}`,
     );
   // Act / Assert
   validateConfig(systemd(''));
@@ -48,7 +48,7 @@ test('systemd Consoles need no Docker socket and reject one', () => {
 test('host shm access requires an explicit supported enum value', () => {
   // Arrange
   const base = config();
-  for (const hostShmAccess of [launch.HostShmAccess.PASSTHROUGH, launch.HostShmAccess.BLOCKED]) {
+  for (const hostShmAccess of [launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH, launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED]) {
     // Arrange
     const candidate = wire.ConsoleConfig.create({ ...base, hostShmAccess });
     // Act
@@ -62,7 +62,7 @@ test('host shm access requires an explicit supported enum value', () => {
     // Act
     const validate = () => validateConfig(candidate);
     // Assert
-    assert.throws(validate, /host_shm_access must be PASSTHROUGH or BLOCKED/);
+    assert.throws(validate, /host_shm_access must be HOST_SHM_ACCESS_PASSTHROUGH or HOST_SHM_ACCESS_BLOCKED/);
   }
 });
 
@@ -131,7 +131,7 @@ test('launch configuration generates fresh access without a secret file', async 
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-launch-config-'));
   const path = join(root, 'console.pbtxt');
-  await writeFile(path, `host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:43187" public_origin:"http://127.0.0.1:43187" project_root:"${root}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock"`);
+  await writeFile(path, `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address:"127.0.0.1:43187" public_origin:"http://127.0.0.1:43187" project_root:"${root}" data_root:"${root}/data" docker_socket:"/var/run/docker.sock"`);
   try {
     // Act
     const first = await loadConfig(path), second = await loadConfig(path);

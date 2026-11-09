@@ -8,7 +8,7 @@ import { ConsoleService } from '../src/service.js';
 import { wire } from '../src/native.js';
 
 /** Opt-in Engine test: build unprivileged, elevate only this test executable. */
-for (const mode of ['BLOCKED', 'PASSTHROUGH']) test(`TypeScript Console runs and stops two real Compose experiments with ${mode}`, async () => {
+for (const mode of ['HOST_SHM_ACCESS_BLOCKED', 'HOST_SHM_ACCESS_PASSTHROUGH']) test(`TypeScript Console runs and stops two real Compose experiments with ${mode}`, async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'console-typescript-compose-')),
     project = join(root, 'project');

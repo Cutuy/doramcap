@@ -12,8 +12,8 @@ enum Form {
 // Access to the host's /dev/shm filesystem; callers must choose a supported value.
 enum HostShmAccess {
   HOST_SHM_ACCESS_UNSPECIFIED = 0;
-  PASSTHROUGH = 1;
-  BLOCKED = 2;
+  HOST_SHM_ACCESS_PASSTHROUGH = 1;
+  HOST_SHM_ACCESS_BLOCKED = 2;
 }
 
 // One recording checked after its writers stop. Paths are absolute.

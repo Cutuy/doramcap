@@ -146,7 +146,7 @@ impl Manager {
             for (source, target, optional, _) in &binds {
                 crate::shm::validate_native_bind(&name, source, target, *optional)?;
             }
-            let root = std::path::Path::new("/dev/shm");
+            let root = std::path::Path::new(workload_lifecycle::files::SHM_PATH);
             let private_mount = binds
                 .iter()
                 .any(|(_, target, _, _)| root.starts_with(target))
@@ -166,8 +166,9 @@ impl Manager {
                 tokio::fs::write(
                     drop_in.join(SHM_DROP_IN),
                     format!(
-                        "[Service]\nBindPaths={}:/dev/shm\n",
+                        "[Service]\nBindPaths={}:{}\n",
                         crate::shm::directory(scope).display(),
+                        workload_lifecycle::files::SHM_PATH,
                     ),
                 )
                 .await
@@ -688,13 +689,13 @@ async fn private_root(
     let blocked = workload_lifecycle::plan::validate_host_shm_access(host_shm_access)?
         == workload_lifecycle::launch::HostShmAccess::Blocked;
     if blocked
-        && !binds
-            .iter()
-            .any(|bind| std::path::Path::new("/dev/shm").starts_with(&bind.target))
+        && !binds.iter().any(|bind| {
+            std::path::Path::new(workload_lifecycle::files::SHM_PATH).starts_with(&bind.target)
+        })
     {
         writable.push(mount(
             &crate::shm::directory(scope).to_string_lossy(),
-            "/dev/shm",
+            workload_lifecycle::files::SHM_PATH,
             false,
         ));
     }

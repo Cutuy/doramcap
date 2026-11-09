@@ -23,7 +23,7 @@ test('an empty Docker socket opens without Docker and refuses Compose work', asy
       /Docker is not configured/,
     );
     const run = execution.RunRequest.create({
-      run: { hostShmAccess: launch.HostShmAccess.PASSTHROUGH, id: 'r1', repositoryRoot: '/', artifacts: '/tmp/console-no-docker', readinessSeconds: 1, stopSeconds: 1 },
+      run: { hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH, id: 'r1', repositoryRoot: '/', artifacts: '/tmp/console-no-docker', readinessSeconds: 1, stopSeconds: 1 },
       compose: {},
     });
     await assert.rejects(owner.inspect(run), /Docker is not configured/);
@@ -65,7 +65,7 @@ test('opens and closes twice without contacting Docker', async () => {
   server.listen(socket);
   await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `host_shm_access: PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
+  await writeFile(config, `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   try {
     // Act
     const first = await openService(config);
@@ -104,7 +104,7 @@ test('artifact descriptors stay beneath the current run and reject symlinks', as
   server.listen(socket);
   await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `host_shm_access: PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
+  await writeFile(config, `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "/tmp"\ndata_root: "${directory}"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   const handle = await openService(config) as ConsoleHandle & { openArtifact(id: string, kind: string): Promise<number> };
   try {
     // Act
@@ -142,7 +142,7 @@ test('close waits for in-flight preparation without blocking Node', async () => 
   const server = createServer((_request, response) => { response.writeHead(200, { 'content-type': 'application/json' }); response.end('{"ApiVersion":"1.45"}'); });
   server.listen(socket); await once(server, 'listening');
   await writeFile(join(directory, 'secret'), 'test-secret\n', { mode: 0o600 });
-  await writeFile(config, `host_shm_access: PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${project}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
+  await writeFile(config, `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address: "127.0.0.1:8080"\npublic_origin: "http://127.0.0.1:8080"\nproject_root: "${project}"\ndata_root: "${directory}/data"\ndocker_socket: "${socket}"\naccess_secret_file: "${directory}/secret"\n${doraApps}\n`);
   const originalPath = process.env.PATH;
   process.env.PATH = `${bin}:/usr/bin:/bin`;
   const handle = await openService(config) as ConsoleHandle & { prepare(input: Buffer): Promise<Buffer> };
@@ -181,7 +181,7 @@ test('invalid host configuration fails before creating native state', async () =
   const config = join(directory, 'console.pbtxt');
   const data = join(directory, 'data');
   const secret = join(directory, 'secret');
-  const text = (origin: string) => `host_shm_access: PASSTHROUGH listen_address: "127.0.0.1:8080"
+  const text = (origin: string) => `host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address: "127.0.0.1:8080"
 public_origin: "${origin}"
 project_root: "${directory}"
 data_root: "${data}"
@@ -232,7 +232,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
   await writeFile(join(bin,'docker'),cli);await chmod(join(bin,'docker'),0o755);
   await writeFile(join(root,'secret'),'test-secret');
   const config=join(root,'console.pbtxt');
-  await writeFile(config,`host_shm_access: PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"${socket}" access_secret_file:"${root}/secret"`);
+  await writeFile(config,`host_shm_access: HOST_SHM_ACCESS_PASSTHROUGH listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" project_root:"${project}" data_root:"${root}/data" docker_socket:"${socket}" access_secret_file:"${root}/secret"`);
   const oldPath=process.env.PATH;process.env.PATH=`${bin}:${oldPath}`;
   const handle=await openService(config) as ConsoleHandle & {prepare(input:Buffer):Promise<Buffer>;start(input:Buffer):Promise<Buffer>};
   const wire=doramcap.console.v1;
@@ -283,7 +283,7 @@ test('native Start preserves a budget rejection and publishes its terminal facts
   const request = execution.RunRequest.create({
     compose: composePlan.ComposePlan.create(),
     run: launch.RunPlan.create({
-      hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
+      hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
       id: 'rejected-budget', repositoryRoot: root, artifacts: join(root, 'artifacts'),
       readinessSeconds: 0, stopSeconds: 1,
     }),

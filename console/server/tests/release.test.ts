@@ -233,7 +233,7 @@ test('the repository release template resolves to existing current app inputs', 
 
 test('shared run facts identify writer apps independently of service names', () => {
   // Arrange
-  const config = wire.ConsoleConfig.create({ hostShmAccess: launch.HostShmAccess.BLOCKED, runtime: { readinessSeconds: 30, stopSeconds: 5 } });
+  const config = wire.ConsoleConfig.create({ hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED, runtime: { readinessSeconds: 30, stopSeconds: 5 } });
   const apps = [
     { id: 'capture', outputMounts: [{ service: 'writer', target: '/results' }], recordings: [{ id: 'a', path: 'a.mcap' }] },
     { id: 'monitor', recordings: [] },
@@ -245,7 +245,7 @@ test('shared run facts identify writer apps independently of service names', () 
   assert.deepEqual(run.mcapApps, ['capture']);
   assert.equal(run.recordings[0].recording, '/artifacts/a.mcap');
   assert.equal(run.dataflowFile, '/flow.yml');
-  assert.equal(run.hostShmAccess, launch.HostShmAccess.BLOCKED);
+  assert.equal(run.hostShmAccess, launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED);
   assert.deepEqual(run.doraApps, []);
 });
 

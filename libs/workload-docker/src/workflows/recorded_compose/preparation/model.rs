@@ -83,9 +83,9 @@ pub(super) fn configure_shm(
             .into_iter()
             .flatten()
             .any(|mount| {
-                mount["target"]
-                    .as_str()
-                    .is_some_and(|target| Path::new("/dev/shm").starts_with(target))
+                mount["target"].as_str().is_some_and(|target| {
+                    Path::new(workload_lifecycle::files::SHM_PATH).starts_with(target)
+                })
             })
             || service["tmpfs"]
                 .as_array()
@@ -93,7 +93,8 @@ pub(super) fn configure_shm(
                 .flatten()
                 .any(|mount| {
                     mount.as_str().is_some_and(|target| {
-                        Path::new("/dev/shm").starts_with(target.split(':').next().unwrap())
+                        Path::new(workload_lifecycle::files::SHM_PATH)
+                            .starts_with(target.split(':').next().unwrap())
                     })
                 });
         if private_mount {

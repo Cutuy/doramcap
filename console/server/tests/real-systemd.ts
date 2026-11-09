@@ -30,7 +30,7 @@ test('systemd Start rejects changed inputs and handles immediate Stop', async ()
   const owner = await capabilities.open(join(root, 'absent-docker.sock'), 1);
   const run = (id: string) => execution.RunRequest.create({
     run: launch.RunPlan.create({
-      hostShmAccess: launch.HostShmAccess.PASSTHROUGH,
+      hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
       id, repositoryRoot: project, artifacts: join(runs, id),
       readinessSeconds: 5, stopSeconds: 1,
     }),
@@ -92,7 +92,7 @@ test('systemd Start rejects changed inputs and handles immediate Stop', async ()
  * `fault-watchdog` in one directory named by DORAMCAP_TEST_BINARIES, and run only this
  * test executable as root.
  */
-for (const mode of ['BLOCKED', 'PASSTHROUGH']) test(`Console records CPU and Fault Watchdog with native private IPC under systemd ${mode}`, async () => {
+for (const mode of ['HOST_SHM_ACCESS_BLOCKED', 'HOST_SHM_ACCESS_PASSTHROUGH']) test(`Console records CPU and Fault Watchdog with native private IPC under systemd ${mode}`, async () => {
   // Arrange
   const binaries = process.env.DORAMCAP_TEST_BINARIES;
   assert.ok(binaries, 'DORAMCAP_TEST_BINARIES names the host binaries directory');

@@ -8,7 +8,7 @@ Implemented in #237 (runtime) and #236 (host observation).
 ## Changes
 
 Add `HostShmAccess host_shm_access` to the existing `RunPlan`, with enum values
-`HOST_SHM_ACCESS_UNSPECIFIED = 0`, `PASSTHROUGH = 1` and `BLOCKED = 2`.
+`HOST_SHM_ACCESS_UNSPECIFIED = 0`, `HOST_SHM_ACCESS_PASSTHROUGH = 1` and `HOST_SHM_ACCESS_BLOCKED = 2`.
 Reject zero and unknown values during preparation. No new settings message.
 Remove any `host_shms` field and support; none exists in the current source.
 
@@ -83,13 +83,15 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 - [x] Focused Rust release/locked checks, Console tests and TypeScript checking pass.
 - [x] Dora exchanges data and finishes recordings in both modes.
+- [ ] Qualify declared hugetlbfs mounts with real Docker/systemd workloads.
 - [ ] Qualify GPU/CUDA workloads.
 - [x] Run [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration; record native backend and GPU checks separately.
 
-Current simplification: removes systemd IPC pins, namespace conflict checks and
-System V fixtures. Focused systemd tests and Docker default/private-mount tests
-pass; native tests compile. Native mount tests, full CI and ARM64 are not rerun
-for this follow-up.
+Current follow-up: enum values use the `HOST_SHM_ACCESS_` prefix. Native mount
+declarations remain authoritative; hugetlbfs sources use filesystem metadata.
+Standalone Rust/TypeScript fixtures replace embedded Python. Path checks and the
+metadata-only hugepage probe pass; native tests compile. Native mount tests, full
+CI and ARM64 are not rerun for this follow-up.
 
 Earlier local CI and ARM64 jobs 617/619 passed before this simplification, with
 real Docker/systemd, Dora and Console recording checks. The earlier alias-fixture

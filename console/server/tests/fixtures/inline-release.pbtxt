@@ -1,4 +1,4 @@
-host_shm_access: BLOCKED
+host_shm_access: HOST_SHM_ACCESS_BLOCKED
 # Release template before app manifests; tests compare manifest expansion against it.
 # The release workflow replaces each :local image with its multi-arch digest.
 dora_apps: "dora-coordinator"

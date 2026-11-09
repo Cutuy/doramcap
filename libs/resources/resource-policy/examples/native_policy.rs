@@ -4,6 +4,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     use resource_policy::{Goal, linux::*, proto};
     use std::{fs, path::Path};
     let args: Vec<_> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--verify-inheritance") {
+        let current = inspect_current_thread()?;
+        assert_eq!(current.cpus.canonical(), args[2]);
+        assert_eq!(current.priority, args[3].parse::<i32>()?);
+        assert!(
+            fs::read_to_string("/proc/self/cgroup")?
+                .trim()
+                .ends_with(&args[4])
+        );
+        return Ok(());
+    }
     let before = inspect_current_thread()?;
     let cpu = args.get(3).map(String::as_str).unwrap_or("0");
     let policy = |priority| {
@@ -114,10 +125,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .join()
         .unwrap();
-        let child = std::process::Command::new("python3").args([
-            "-c", "import os,sys; assert os.sched_getaffinity(0)=={int(sys.argv[1])}; assert os.sched_getparam(0).sched_priority==int(sys.argv[2]); assert open('/proc/self/cgroup').read().strip().endswith(sys.argv[3])",
-            cpu, &priority.to_string(), name,
-        ]).status()?;
+        let child = std::process::Command::new(std::env::current_exe()?)
+            .args(["--verify-inheritance", cpu, &priority.to_string(), name])
+            .status()?;
         assert!(child.success(), "exec child must inherit policy and cgroup");
         // Deliberate thread policy drift followed by explicit reconciliation.
         apply_current_thread(&policy(0)?)?;

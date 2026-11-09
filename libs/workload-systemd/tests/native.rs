@@ -88,38 +88,36 @@ fn program(id: &str, script: &str) -> Program {
     }
 }
 
-/// Read a shared file after its producer exits.
-const SHM_WORKER: &str = r#"
-import os, pathlib, sys, time
-role, name, marker, done = sys.argv[1:]
-path = pathlib.Path('/dev/shm') / ('doramcap-test-' + name)
-if role == 'producer':
-    with path.open('x') as output:
-        output.write('live data')
-    pathlib.Path(marker).write_text(str(os.getpid()))
-elif role == 'consumer':
-    deadline = time.monotonic() + 10
-    while not pathlib.Path(marker).exists():
-        assert time.monotonic() < deadline
-        time.sleep(0.01)
-    pid = pathlib.Path(marker).read_text()
-    while pathlib.Path('/proc', pid).exists():
-        assert time.monotonic() < deadline
-        time.sleep(0.01)
-    assert path.read_text() == 'live data'
-    pathlib.Path(done).write_text('Shared file read after producer exit')
-else:
-    assert not path.exists()
-"#;
+/// Prebuilt Rust worker used by the host and by units with private roots.
+fn shm_fixture() -> PathBuf {
+    let executable = std::env::current_exe().unwrap();
+    let path = executable
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("examples/shm_fixture");
+    assert!(
+        path.is_file(),
+        "build workload-systemd --example shm_fixture first"
+    );
+    path
+}
+
+fn unit_shm_fixture(fixture: &Fixture) -> PathBuf {
+    let path = fixture.root.join("shm-fixture");
+    if !path.exists() {
+        std::fs::copy(shm_fixture(), &path).unwrap();
+    }
+    path
+}
 
 fn shm_worker(id: &str, role: &str, key: u32, fixture: &Fixture) -> Program {
     sees(
         Program {
             id: id.into(),
             argv: vec![
-                "/usr/bin/python3".into(),
-                "-c".into(),
-                SHM_WORKER.into(),
+                unit_shm_fixture(fixture).to_string_lossy().into(),
                 role.into(),
                 key.to_string(),
                 fixture
@@ -140,7 +138,7 @@ fn shm_worker(id: &str, role: &str, key: u32, fixture: &Fixture) -> Program {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, python3 and the system service manager"]
+#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
 async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
     // Arrange
     let fixture = Fixture::new("shared-memory");
@@ -174,15 +172,8 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         "Shared file read after producer exit"
     );
     // Act: inspect visibility from the host after the run stops.
-    let status = Command::new("/usr/bin/python3")
-        .args([
-            "-c",
-            SHM_WORKER,
-            "absent",
-            &key.to_string(),
-            "unused",
-            "unused",
-        ])
+    let status = Command::new(shm_fixture())
+        .args(["absent", &key.to_string(), "unused", "unused"])
         .status()
         .unwrap();
     // Assert
@@ -209,7 +200,7 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, python3 and the system service manager"]
+#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
 async fn passthrough_generated_units_share_host_memory_and_preserve_objects() {
     // Arrange
     let fixture = Fixture::new("host-shared-memory");
@@ -227,10 +218,8 @@ async fn passthrough_generated_units_share_host_memory_and_preserve_objects() {
 
     // Act: the host reads the shared file after all run units and resources have been removed.
     let report = run_for_a_while(plan).await;
-    let host_read = Command::new("/usr/bin/python3")
+    let host_read = Command::new(shm_fixture())
         .args([
-            "-c",
-            SHM_WORKER,
             "consumer",
             &key.to_string(),
             &fixture.root.join("producer-exited").to_string_lossy(),
@@ -267,7 +256,7 @@ async fn wait_for_file(path: &Path) -> bool {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, python3 and the system service manager"]
+#[ignore = "requires root, the system service manager and prebuilt --example shm_fixture"]
 async fn selective_host_shm_stays_live_with_native_permissions_in_both_modes() {
     // Arrange
     use workload_lifecycle::launch::HostShmAccess::{Blocked, Passthrough};
@@ -284,30 +273,12 @@ async fn selective_host_shm_stays_live_with_native_permissions_in_both_modes() {
             std::os::unix::fs::symlink(&source, &alias).unwrap();
             let observed = fixture.root.join("initial-read");
             let done = fixture.root.join("live-read");
-            let script = r#"
-import errno, pathlib, sys, time
-source, observed, done, readonly = map(str, sys.argv[1:])
-source = pathlib.Path(source)
-assert source.read_text() == 'initial'
-pathlib.Path(observed).touch()
-deadline = time.monotonic() + 10
-while source.read_text() != 'host update':
-    assert time.monotonic() < deadline
-    time.sleep(0.01)
-try:
-    source.write_text('app update')
-    assert readonly == 'false'
-except OSError as error:
-    assert readonly == 'true' and error.errno in (errno.EROFS, errno.EACCES)
-pathlib.Path(done).write_text('live mount verified')
-"#;
             let mut consumer = sees(
                 Program {
                     id: "consumer".into(),
                     argv: vec![
-                        "/usr/bin/python3".into(),
-                        "-c".into(),
-                        script.into(),
+                        unit_shm_fixture(&fixture).to_string_lossy().into(),
+                        "live".into(),
                         "/input/camera".into(),
                         observed.to_string_lossy().into(),
                         done.to_string_lossy().into(),
@@ -1151,10 +1122,8 @@ async fn concurrent_repositories_keep_units_and_cleanup_separate() {
             assert!(wait_for_file(&fixture.root.join("shared-data-read")).await);
         }
         assert!(
-            Command::new("/usr/bin/python3")
+            Command::new(shm_fixture())
                 .args([
-                    "-c",
-                    SHM_WORKER,
                     "absent",
                     &std::process::id().to_string(),
                     "unused",

@@ -3,9 +3,12 @@ use orchestrator::{
     process::{ProcessInput, ProcessStep},
 };
 use serde_json::json;
-fn script(code: &str) -> ProcessInput {
-    let mut input = ProcessInput::new("python3", json!({"value": 7}));
-    input.args = vec!["-c".into(), code.into()];
+fn fixture(mode: &str) -> ProcessInput {
+    let mut input = ProcessInput::new("node", json!({"value": 7}));
+    input.args = vec![
+        concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/process.ts").into(),
+        mode.into(),
+    ];
     input
 }
 #[tokio::test(flavor = "current_thread")]
@@ -13,9 +16,7 @@ async fn protocol_and_diagnostics() {
     // Arrange
     let mut executor = LocalExecutor::default();
     executor.register::<ProcessStep>(|| ProcessStep);
-    let input = script(
-        "import json,sys; r=json.load(sys.stdin); print(json.dumps(r['input']['value']+3)); print(r['protocol'],file=sys.stderr)",
-    );
+    let input = fixture("protocol");
     // Act
     let result = executor.run::<ProcessStep>(input).await.unwrap();
     // Assert
@@ -28,17 +29,11 @@ async fn errors_are_exposed_and_captures_bounded() {
     let mut executor = LocalExecutor::default();
     executor.register::<ProcessStep>(|| ProcessStep);
     // Act
-    let failed = executor
-        .run::<ProcessStep>(script(
-            "import sys; print('bad',file=sys.stderr); sys.exit(7)",
-        ))
-        .await;
+    let failed = executor.run::<ProcessStep>(fixture("failure")).await;
     // Assert
     assert!(matches!(failed, Err(Error::Process { code: Some(7), stderr }) if stderr == "bad\n"));
     // Act
-    let invalid = executor
-        .run::<ProcessStep>(script("print('invalid')"))
-        .await;
+    let invalid = executor.run::<ProcessStep>(fixture("invalid")).await;
     // Assert
     assert!(matches!(
         invalid,
@@ -48,7 +43,7 @@ async fn errors_are_exposed_and_captures_bounded() {
         })
     ));
     // Act
-    let mut input = script("print('x'*100000)");
+    let mut input = fixture("overflow");
     input.max_stdout_bytes = 32;
     let overflow = executor.run::<ProcessStep>(input).await;
     // Assert
@@ -60,7 +55,7 @@ async fn errors_are_exposed_and_captures_bounded() {
         })
     ));
     // Act
-    let mut input = script("import time; time.sleep(30)");
+    let mut input = fixture("timeout");
     input.timeout_ms = 50;
     let timeout = executor.run::<ProcessStep>(input).await;
     // Assert
