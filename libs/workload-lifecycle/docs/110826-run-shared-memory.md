@@ -41,5 +41,5 @@ We remove memory that belongs to the run. We preserve host memory and externally
 owned mounts. If we cannot confirm that the apps have stopped, we keep the run's
 resources and report that cleanup is incomplete.
 
-See the [implementation design and work plan](110826-run-shared-memory-implementation.md)
+See the [implementation design and work plan](110826-run-shared-memory-impl.md)
 for how to build and test this. This design replaces [#206](https://github.com/Cutuy/doramcap/pull/206).

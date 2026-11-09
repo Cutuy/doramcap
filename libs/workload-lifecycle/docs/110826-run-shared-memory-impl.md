@@ -1,4 +1,4 @@
-![Shared-memory launch flow](110826-run-shared-memory-implementation.svg)
+![Shared-memory launch flow](110826-run-shared-memory-impl.svg)
 
 # Shared memory: implementation
 
@@ -113,5 +113,5 @@ mark a missing platform check as blocked.
 - [ ] Dora exchanges data and finishes recordings in both modes; test native overrides that split apps into different shm groups.
 - [ ] Run the [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration. Record native backend and GPU checks separately.
 
-Evidence: document checks pending for this update. All runtime acceptance checks
-remain pending; no native test results are claimed.
+Evidence: document links, milestone structure and design review pass. All runtime
+acceptance checks remain pending; no native test results are claimed.
