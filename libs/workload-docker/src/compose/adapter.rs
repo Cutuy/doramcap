@@ -139,7 +139,8 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
             .block_on(async {
                 let directory = tempfile::tempdir().unwrap();
                 let socket_path = directory.path().join("engine.sock");
-                let _listener = std::os::unix::net::UnixListener::bind(&socket_path).unwrap();
+                // Keep the path for Bollard, but close the listener so Compose probes fail immediately.
+                drop(std::os::unix::net::UnixListener::bind(&socket_path).unwrap());
                 let socket = socket_path.to_str().unwrap();
                 let adapter = DockerAdapter {
                     docker: Docker::connect_with_unix(socket, 120, bollard::API_DEFAULT_VERSION)
