@@ -85,3 +85,49 @@ async fn cancelled_failure_wait_keeps_capture_alive_and_preserves_the_error() {
     // Act: finish capture explicitly.
     capture.finish().await.unwrap();
 }
+
+#[test]
+fn exec_events_do_not_wake_inspection_but_state_and_health_changes_do() {
+    // Arrange: real Docker exec actions include the command after a colon.
+    let (changed, mut changes) = watch::channel(());
+    let exec_actions = [
+        "exec_create: /bin/sh -c test -s /tmp/ready",
+        "exec_start: /bin/sh -c test -s /tmp/ready",
+        "exec_die",
+        "exec_detach",
+    ];
+
+    // Act: repeated healthcheck and Dora inspection commands emit exec events.
+    for _ in 0..1000 {
+        for action in exec_actions {
+            notify_state_change(&changed, &event(action, &[]));
+        }
+    }
+
+    // Assert: command activity alone leaves the inspector asleep.
+    assert!(!changes.has_changed().unwrap());
+
+    for action in [
+        "create",
+        "start",
+        "stop",
+        "die",
+        "destroy",
+        "kill",
+        "oom",
+        "pause",
+        "unpause",
+        "restart",
+        "rename",
+        "update",
+        "health_status: healthy",
+        "health_status: unhealthy",
+        "new-container-action",
+    ] {
+        // Act
+        notify_state_change(&changed, &event(action, &[]));
+        // Assert: state transitions and unknown actions retain immediate notification.
+        assert!(changes.has_changed().unwrap(), "{action}");
+        changes.borrow_and_update();
+    }
+}

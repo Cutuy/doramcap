@@ -84,6 +84,17 @@ async fn track_stop(
     }
 }
 
+/// Exec bookkeeping cannot change container readiness; keep it in the audit stream without waking inspection.
+fn notify_state_change(changed: &watch::Sender<()>, event: &EventMessage) {
+    if !event
+        .action
+        .as_deref()
+        .is_some_and(|action| action.starts_with("exec_"))
+    {
+        changed.send_replace(());
+    }
+}
+
 /// Own the background stream until teardown; dropping the owner aborts capture.
 pub(super) struct EventCapture {
     finish: watch::Sender<bool>,
@@ -255,7 +266,7 @@ async fn record_events(
             }
             event = stream.next() => {
                 let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| crate::compose::error::engine("Docker events", e))?;
-                changed.send_replace(());
+                notify_state_change(&changed, &event);
                 track_stop(&docker, &mut waiting, &stopping, &event).await;
                 let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');
                 file.write_all(&bytes).await?;
