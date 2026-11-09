@@ -54,17 +54,17 @@ message MachineState {
   uint64 captured_unix_ms = 1;
   MachineConfiguration configuration = 2;
   MachineCondition condition = 3;
-  HostSharedMemory host_shm = 4; // Absent if capture failed or an older version did not capture it.
-  string host_shm_error = 5; // Capture failure to display in the UI; host_shm is absent on failure.
+  HostSharedMemory host_shm = 4; // Absent in captures from older versions.
+  reserved 5; // Former embedded capture error.
 }
 
 // Metadata observed without reading or attaching to shared-memory payloads.
 message HostSharedMemory {
-  repeated PosixShmObject posix = 1;
-  repeated SystemVShmObject system_v = 2;
+  repeated FileMetadata entries = 1;
+  reserved 2; // Former System V observation.
 }
 // One entry beneath /dev/shm. Symlinks are observed themselves and never traversed.
-message PosixShmObject {
+message FileMetadata {
   string path = 1;
   uint64 device = 2;
   uint64 inode = 3;
@@ -76,16 +76,4 @@ message PosixShmObject {
   uint32 modified_nanos = 9;
   int64 changed_seconds = 10;
   uint32 changed_nanos = 11;
-}
-// One segment reported by the host IPC namespace through /proc/sysvipc/shm.
-message SystemVShmObject {
-  uint64 id = 1;
-  int64 key = 2;
-  uint32 mode = 3; // Native permission and state bits.
-  uint32 uid = 4;
-  uint32 gid = 5;
-  uint64 size_bytes = 6;
-  int64 attached_seconds = 7;
-  int64 detached_seconds = 8;
-  int64 changed_seconds = 9;
 }

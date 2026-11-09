@@ -82,7 +82,7 @@ export class ConsoleService implements ConsoleBackend {
   private closing?: Promise<void>;
   private closed = false;
   private startedAt = 0;
-  private machineBefore: typeof execution.RunCapture.prototype.before = null;
+  private machineBefore: typeof execution.RunCapture.prototype | null = null;
   private machineAfter = false;
   private recorded = Phase.PHASE_UNSPECIFIED;
   private runIndex: History;
@@ -457,25 +457,25 @@ export class ConsoleService implements ConsoleBackend {
     const images = prepared.review.services.map(({ name, imageId }) => ({ service: name, imageId }));
     return execution.ExperimentSetup.create({ ...(await sourceState(prepared.project.directory!)), images });
   }
-  /** Save newly known capture parts; unavailable shm remains visible as an error while the run continues. */
+  /** Save capture parts; observation and storage failures remain visible while the run continues. */
   private saveCapture(parts: Partial<typeof execution.RunCapture.prototype>) {
     try {
       return this.runIndex.saveCapture(this.snapshot.runId, parts);
     } catch (error) {
       console.error('Could not save run capture', error);
-      return execution.RunCapture.create({ ...parts, ...(parts.before ? { before: {
-        ...parts.before, hostShm: null, hostShmError: `Machine capture could not be saved: ${browserError(errorCode(error))}`,
-      } } : {}) });
+      return execution.RunCapture.create({ ...parts, before: null,
+        beforeError: `Machine capture could not be saved: ${browserError(errorCode(error))}`,
+      });
     }
   }
   private saveMachineStates(update: typeof execution.ExecutionUpdate.prototype) {
-    if (update.machineBefore && !this.machineBefore) {
-      this.machineBefore = this.saveCapture({ before: update.machineBefore }).before;
-      this.snapshot.machineChanges = machineChanges(this.machineBefore, null);
+    if ((update.machineBefore || update.machineBeforeError) && !this.machineBefore) {
+      this.machineBefore = this.saveCapture({ before: update.machineBefore, beforeError: browserError(update.machineBeforeError) });
+      this.snapshot.machineChanges = machineChanges(this.machineBefore.before, null, this.machineBefore.beforeError);
     }
-    if (update.machineAfter && !this.machineAfter) {
+    if ((update.machineAfter || update.machineAfterError) && !this.machineAfter) {
       this.machineAfter = true;
-      this.snapshot.machineChanges = machineChanges(this.machineBefore, update.machineAfter);
+      this.snapshot.machineChanges = machineChanges(this.machineBefore?.before, update.machineAfter, this.machineBefore?.beforeError, browserError(update.machineAfterError));
     }
   }
   private async consume(update: typeof execution.ExecutionUpdate.prototype) {
@@ -712,7 +712,7 @@ export class ConsoleService implements ConsoleBackend {
         images: Object.entries(inspected.plan?.services ?? {}).map(([name, service]) => ({ service: name, imageId: service.imageId })),
       });
       return compareReview(chosen ? this.side(chosen) : null, {
-        capture: execution.RunCapture.create({ setup, before: inspected.machine }),
+        capture: execution.RunCapture.create({ setup, before: inspected.machine, beforeError: browserError(inspected.machineError) }),
         manifest: readManifest(join(this.config.dataRoot, 'reviews'), id, `${id}/resolved/experiment.input.json`),
         profiles: project.profiles ?? [],
         apps: wire.SystemAppSelection.create({ ids: apps.map((app) => app.id!), profiles: appProfiles(apps) }),

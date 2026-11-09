@@ -44,8 +44,8 @@ pub struct RunSignals {
 /// One run's machine states: before any service starts, and after the workload is gone.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MachineCapture {
-    pub before: Option<MachineState>,
-    pub after: Option<MachineState>,
+    pub before: Option<std::result::Result<MachineState, String>>,
+    pub after: Option<std::result::Result<MachineState, String>>,
 }
 
 impl RunSignals {

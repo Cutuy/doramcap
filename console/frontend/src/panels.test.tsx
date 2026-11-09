@@ -38,13 +38,13 @@ test('the step table shows why a step failed', () => {
 test('capture failure is visible while a run is active', () => {
   // Arrange
   const snapshot = wire.Status.fromObject({ phase: Phase.RUNNING, machineChanges: [{
-    group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'host_shm_error',
+    group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error',
     cells: [{ values: ['capture storage unavailable'] }, { values: [] }],
   }] });
   // Act
   const html = renderToStaticMarkup(<RunActivity snapshot={snapshot} stopping={false} disconnected={false}/>);
   // Assert
-  assert.match(html, /role="alert">Host shared memory capture failed \(Before run\): capture storage unavailable/);
+  assert.match(html, /role="alert">Machine capture unavailable \(Before run\): capture storage unavailable/);
 });
 test('timeline events are keyboard buttons and completed view supports elapsed-time browsing', () => {
   // Arrange / Act

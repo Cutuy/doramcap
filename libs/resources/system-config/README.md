@@ -1,11 +1,10 @@
 # System configuration
 
-Typed, read-only observation of host machine state and shared-memory metadata.
-Shared-memory capture failures leave `host_shm` absent and populate `host_shm_error`
-for the UI. Other missing facts keep their zero values.
+Typed, read-only observation of host machine configuration and condition.
+Observation returns `Result<MachineState, String>`; errors identify unavailable captures.
 
 ```rust
-let state = system_config::observe(Path::new("/var/lib/doramcap"));
+let state = system_config::observe(Path::new("/var/lib/doramcap"))?;
 ```
 
 - [Schema](proto/system_config.proto)

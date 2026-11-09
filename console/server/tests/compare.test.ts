@@ -54,7 +54,7 @@ test('host shm metadata survives stored captures and compares without changing c
   // Arrange
   const capture = (bytes: string) => execution.RunCapture.fromObject({ before: {
     ...machine('performance'),
-    hostShm: { posix: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }], systemV: [{ id: '12', key: '-4', sizeBytes: '4096', mode: 384 }] },
+    hostShm: { entries: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }] },
   } });
   const a = execution.RunCapture.decode(execution.RunCapture.encode(capture('4096')).finish());
   const b = execution.RunCapture.decode(execution.RunCapture.encode(capture('8192')).finish());
@@ -63,31 +63,30 @@ test('host shm metadata survives stored captures and compares without changing c
   const comparison = compareRuns(side('a'.repeat(32), a), side('b'.repeat(32), b));
 
   // Assert
-  const posix = row(comparison, 'host_shm.posix./dev/shm/camera');
+  const posix = row(comparison, 'host_shm./dev/shm/camera');
   assert.equal(posix?.group, Group.COMPARISON_CONDITION);
   assert.equal(posix?.result, Result.COMPARISON_CHANGED);
   assert.equal(JSON.parse(cell(posix, 0)!).inode, '9007199254740993');
   assert.equal(JSON.parse(cell(posix, 1)!).sizeBytes, '8192');
-  assert.equal(row(comparison, 'host_shm.system_v.12')?.result, Result.COMPARISON_SAME);
   assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_CONFIGURATION).every(item => item.result === Result.COMPARISON_SAME));
 });
 
 test('host shm capture errors remain visible and never turn partial metadata into successful facts', () => {
   // Arrange
-  const failed = side('a'.repeat(32), { before: { ...machine('performance'), hostShmError: '/dev/shm/private: permission denied', hostShm: { posix: [{ path: '/dev/shm/partial' }] } } });
+  const failed = side('a'.repeat(32), { beforeError: '/dev/shm/private: permission denied' });
   const empty = side('b'.repeat(32), { before: { ...machine('performance'), hostShm: {} } });
 
   // Act
   const comparison = compareRuns(failed, empty);
   const review = compareReview(null, { ...failed, profiles: [] });
-  const changes = machineChanges(failed.capture.before, failed.capture.before);
+  const changes = machineChanges(failed.capture.before, failed.capture.before, failed.capture.beforeError, failed.capture.beforeError);
 
   // Assert
   assert.equal(cell(row(comparison, 'host_shm'), 0), '');
-  assert.equal(cell(row(comparison, 'host_shm'), 1), '0 POSIX entries, 0 System V segments');
-  assert.equal(row(comparison, 'host_shm.posix./dev/shm/partial'), undefined);
-  assert.match(cell(row(review, 'host_shm_error'), 1)!, /permission denied/);
-  assert.equal(cell(changes.find(item => item.name === 'host_shm_error'), 1), '/dev/shm/private: permission denied');
+  assert.equal(cell(row(comparison, 'host_shm'), 1), '0 entries');
+  assert.equal(row(comparison, 'host_shm./dev/shm/partial'), undefined);
+  assert.match(cell(row(review, 'machine_capture_error'), 1)!, /permission denied/);
+  assert.equal(cell(changes.find(item => item.name === 'machine_capture_error'), 1), '/dev/shm/private: permission denied');
 });
 
 test('two captured runs compare their Prepare captures by group', () => {
@@ -106,9 +105,9 @@ test('two captured runs compare their Prepare captures by group', () => {
 
 test('capture errors stay visible when setup differences exhaust the comparison row budget', () => {
   // Arrange
-  const before = { ...machine('performance'), hostShmError: '/dev/shm: permission denied' };
-  const baseline = side('a'.repeat(32), { before });
-  const current = side('b'.repeat(32), { before, setup: {
+  const beforeError = '/dev/shm: permission denied';
+  const baseline = side('a'.repeat(32), { beforeError });
+  const current = side('b'.repeat(32), { beforeError, setup: {
     images: Array.from({ length: 3000 }, (_, i) => ({ service: `service-${i}`, imageId: `image-${i}` })),
   } });
   // Act
@@ -116,7 +115,7 @@ test('capture errors stay visible when setup differences exhaust the comparison 
   // Assert
   for (const comparison of comparisons) {
     assert.equal(comparison.truncated, true);
-    assert.equal(cell(row(comparison, 'host_shm_error'), 1), '/dev/shm: permission denied');
+    assert.equal(cell(row(comparison, 'machine_capture_error'), 1), '/dev/shm: permission denied');
   }
 });
 
@@ -128,6 +127,18 @@ test('post-run changes list only what differs, and nothing when a capture is mis
   // Assert
   assert.deepEqual(changes.map(item => [item.group, item.name]).sort(), [[Group.COMPARISON_CONFIGURATION, 'governor'], [Group.COMPARISON_CONDITION, 'load_1m']]);
   assert.deepEqual(machineChanges(null, state('performance', 2)), []);
+});
+
+test('live machine changes refuse an oversized comparison with a visible error', () => {
+  // Arrange
+  const before = { ...machine('performance'), hostShm: { entries: [] } };
+  const after = { ...machine('performance'), hostShm: { entries: Array.from({ length: 3000 }, (_, i) => ({ path: `/dev/shm/object-${i}` })) } };
+  // Act
+  const changes = machineChanges(before, after);
+  // Assert
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].name, 'machine_capture_error');
+  assert.match(cell(changes[0], 1)!, /too large/);
 });
 
 test('sensitive values, Compose secrets and frozen files never reach a comparison, while changes still show', () => {

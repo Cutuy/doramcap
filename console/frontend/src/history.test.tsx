@@ -207,15 +207,14 @@ test('compared facts read by their unit, and exact names stay exact', () => {
   assert.equal(factValue('max_temperature_celsius', '49'), '49 °C');
   assert.equal(factValue('kernel_release', '7.0'), '7.0');
   assert.equal(factLabel('host_shm'), 'Host shared memory');
-  assert.equal(factLabel('host_shm.posix./dev/shm/camera.data'), 'POSIX shm /dev/shm/camera.data');
-  assert.equal(factLabel('host_shm.system_v.12'), 'System V shm 12');
+  assert.equal(factLabel('host_shm./dev/shm/camera.data'), '/dev/shm/camera.data');
 });
 
 test('shm capture failure is an alert and leaves its review value unavailable', () => {
   // Arrange
   const rows = [
     wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'host_shm', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: [''] }] }),
-    wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'host_shm_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['/dev/shm/private: permission denied'] }] }),
+    wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['/dev/shm/private: permission denied'] }] }),
   ];
 
   // Act
@@ -223,9 +222,9 @@ test('shm capture failure is an alert and leaves its review value unavailable', 
   const result = renderToStaticMarkup(<MachineChanges rows={rows}/>);
 
   // Assert
-  assert.match(review, /role="alert">Host shared memory capture failed \(Now\): \/dev\/shm\/private: permission denied/);
+  assert.match(review, /role="alert">Machine capture unavailable \(Now\): \/dev\/shm\/private: permission denied/);
   assert.match(review, /Host shared memory<\/dt><dd>Unavailable/);
-  assert.match(result, /role="alert">Host shared memory capture failed \(After\)/);
+  assert.match(result, /role="alert">Machine capture unavailable \(After\)/);
   assert.doesNotMatch(review, /Host shm error/);
 });
 

@@ -512,12 +512,12 @@ test('an oversized capture is refused without changing what is saved', async () 
   await run.backend.close();
 });
 
-test('oversized shm metadata leaves an error in persisted comparison and the live UI while other facts survive', async () => {
+test('oversized observations save an error and never produce false live additions', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: {
-    ...machine('performance'), hostShm: { posix: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })) },
+    ...machine('performance'), hostShm: { entries: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })) },
   } }).machineBefore;
 
   // Act
@@ -525,16 +525,46 @@ test('oversized shm metadata leaves an error in persisted comparison and the liv
   const saved = new History(run.store).capture(runId);
 
   // Assert
-  assert.equal(saved.before?.hostShm, null);
-  assert.match(saved.before?.hostShmError ?? '', /could not be saved/);
-  assert.equal(saved.before?.configuration?.governor?.[0].value, 'performance');
+  assert.equal(saved.before, null);
+  assert.match(saved.beforeError ?? '', /could not be saved/);
   assert.equal(saved.setup?.images?.[0].imageId, 'sha256:a');
-  assert.match(live.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
+  assert.match(live.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
 
   // Act / Assert: a successful post-run observation does not erase the save failure.
-  run.engine.update.machineAfter = execution.ExecutionUpdate.fromObject({ machineAfter: { ...machine('powersave'), hostShm: {} } }).machineAfter;
+  run.engine.update.machineAfter = run.engine.update.machineBefore;
   const finished = await finishRun(run, runId);
-  assert.match(finished.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
+  assert.match(finished.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /could not be saved/);
+  assert.equal(finished.machineChanges.length, 1);
+  assert.ok(wire.Status.encode(finished).finish().length < 256 * 1024);
+  await run.backend.close();
+});
+
+test('observation failures remain visible in review, stored history, and live results without failing the run', async () => {
+  // Arrange
+  const root = await temporary(), run = await service(root);
+  const inspect = run.engine.inspect.bind(run.engine);
+  run.engine.inspect = async () => {
+    const inspected = await inspect();
+    inspected.machineError = '/dev/shm: permission denied';
+    return inspected;
+  };
+  // Act
+  const review = wire.Review.decode(await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+  // Assert
+  assert.match(review.comparison?.rows?.find(row => row.name === 'machine_capture_error')?.cells?.[1].values?.[0] ?? '', /permission denied/);
+  // Act
+  const runId = await startRun(run);
+  run.engine.update.machineBeforeError = '/dev/shm: permission denied';
+  await run.backend.status();
+  run.engine.update.machineAfterError = '/dev/shm: entry disappeared';
+  const finished = await finishRun(run, runId);
+  const saved = new History(run.store).capture(runId);
+  // Assert
+  assert.equal(saved.before, null);
+  assert.match(saved.beforeError, /permission denied/);
+  assert.equal(finished.machineChanges.length, 1);
+  assert.match(finished.machineChanges[0].cells?.[1].values?.[0] ?? '', /entry disappeared/);
+  assert.equal((await detail(run, runId)).entry?.state, State.HISTORY_COMPLETED);
   await run.backend.close();
 });
 
@@ -550,7 +580,7 @@ test('database capture failure reaches live status without presenting unsaved sh
   const status = wire.Status.decode(await run.backend.status());
 
   // Assert
-  assert.match(status.machineChanges.find(row => row.name === 'host_shm_error')?.cells?.[0].values?.[0] ?? '', /capture storage unavailable/);
+  assert.match(status.machineChanges.find(row => row.name === 'machine_capture_error')?.cells?.[0].values?.[0] ?? '', /capture storage unavailable/);
   assert.equal(new History(run.store).capture(runId).before, null);
   assert.equal(new History(run.store).capture(runId).setup?.images?.[0].imageId, 'sha256:a');
   await run.backend.close();

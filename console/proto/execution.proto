@@ -22,6 +22,7 @@ message Inspection {
     doramcap.systemd_plan.v1.ConfigurationSnapshot systemd_snapshot = 4;
   }
   doramcap.system_config.v1.MachineState machine = 3;
+  string machine_error = 5; // Observation failed; machine is absent.
 }
 // List profiles declared by the project's Docker Compose files.
 message ComposeProfilesRequest {
@@ -75,6 +76,7 @@ message ExperimentSetup {
 message RunCapture {
   ExperimentSetup setup = 1;
   doramcap.system_config.v1.MachineState before = 2;
+  string before_error = 4; // Observation or storage failed; before is absent.
   reserved 3; // Formerly the post-run state, which is no longer saved.
 }
 // Completion remains available even when the bounded progress queue overflows.
@@ -88,4 +90,6 @@ message ExecutionUpdate {
   repeated doramcap.compose.v1.StoppingService stopping_services = 7;
   doramcap.system_config.v1.MachineState machine_before = 8;
   doramcap.system_config.v1.MachineState machine_after = 9;
+  string machine_before_error = 10; // Observation failed; machine_before is absent.
+  string machine_after_error = 11; // Observation failed; machine_after is absent.
 }

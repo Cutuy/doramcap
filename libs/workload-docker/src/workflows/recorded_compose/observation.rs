@@ -203,11 +203,14 @@ async fn compose_version(adapter: &DockerAdapter, directory: &Path) -> String {
     .map_or_else(|_| String::new(), |(version, _)| version.trim().to_owned())
 }
 /// Observe this machine with its Docker facts. `data_directory` selects the disk reported as free.
-/// Unreadable facts stay unset, so this never fails a run.
-pub async fn machine_state(adapter: &DockerAdapter, data_directory: &Path) -> MachineState {
-    let mut state = system_config::observe(data_directory);
+/// Errors: incomplete host observation; callers report capture failure separately from the run.
+pub async fn machine_state(
+    adapter: &DockerAdapter,
+    data_directory: &Path,
+) -> std::result::Result<MachineState, String> {
+    let mut state = system_config::observe(data_directory)?;
     docker_facts(adapter, data_directory, &mut state).await;
-    state
+    Ok(state)
 }
 async fn record_events(
     docker: bollard::Docker,

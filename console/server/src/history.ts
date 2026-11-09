@@ -90,12 +90,13 @@ export class History {
       return execution.RunCapture.create();
     }
   }
-  /** Save capture parts; oversized shm is replaced with a capture error. Other storage failures throw. */
+  /** Save capture parts; an oversized observation is replaced with an error. Other storage failures throw. */
   saveCapture(id: string, parts: Partial<Capture>) {
     const capture = execution.RunCapture.create({ ...this.capture(id), ...parts });
     let bytes = execution.RunCapture.encode(capture).finish();
-    if (bytes.length > MAX_CAPTURE_BYTES && capture.before?.hostShm) {
-      capture.before = { ...capture.before, hostShm: null, hostShmError: 'Shared-memory metadata could not be saved: run capture is too large.' };
+    if (bytes.length > MAX_CAPTURE_BYTES && capture.before) {
+      capture.before = null;
+      capture.beforeError = 'Machine capture could not be saved: run capture is too large.';
       bytes = execution.RunCapture.encode(capture).finish();
     }
     if (bytes.length > MAX_CAPTURE_BYTES) throw new Error('run capture too large');
