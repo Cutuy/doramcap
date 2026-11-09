@@ -517,7 +517,7 @@ test('oversized observations save an error and never produce false live addition
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: {
-    ...machine('performance'), hostShm: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })),
+    ...machine('performance'), hostShm: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, sizeBytes: '4096' })),
   } }).machineBefore;
 
   // Act

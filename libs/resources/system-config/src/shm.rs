@@ -3,6 +3,7 @@ use crate::FileMetadata;
 use std::{collections::HashSet, path::Path};
 
 const SHM_DIRECTORY: &str = "dev/shm";
+const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
 pub(super) fn observe(root: &Path) -> Result<Vec<FileMetadata>, String> {
     entries(&root.join(SHM_DIRECTORY))
@@ -46,18 +47,19 @@ fn entries(directory: &Path) -> Result<Vec<FileMetadata>, String> {
         } else {
             None
         };
+        let unix_ns = |seconds: i64, nanos: u32| {
+            i64::try_from(i128::from(seconds) * NANOS_PER_SECOND + i128::from(nanos)).map_err(
+                |_| format!("/{SHM_DIRECTORY}{path}: timestamp exceeds signed Unix nanoseconds"),
+            )
+        };
         objects.push(FileMetadata {
             path: format!("/{SHM_DIRECTORY}{path}"),
-            device: metadata.st_dev,
-            inode: metadata.st_ino,
             mode: metadata.st_mode,
             uid: metadata.st_uid,
             gid: metadata.st_gid,
             size_bytes: metadata.st_size as u64,
-            modified_seconds: metadata.st_mtime as i64,
-            modified_nanos: metadata.st_mtime_nsec as u32,
-            changed_seconds: metadata.st_ctime as i64,
-            changed_nanos: metadata.st_ctime_nsec as u32,
+            modified_unix_ns: unix_ns(metadata.st_mtime as i64, metadata.st_mtime_nsec as u32)?,
+            changed_unix_ns: unix_ns(metadata.st_ctime as i64, metadata.st_ctime_nsec as u32)?,
         });
         if let Some(child) = child {
             let identity = (metadata.st_dev, metadata.st_ino);
@@ -97,6 +99,10 @@ mod tests {
         file.set_permissions(fs::Permissions::from_mode(0o0))
             .unwrap();
         symlink("missing-target", directory.join("link")).unwrap();
+        file.set_times(std::fs::FileTimes::new().set_modified(
+            std::time::UNIX_EPOCH + std::time::Duration::new(1_700_000_000, 123_456_789),
+        ))
+        .unwrap();
         let expected = file.metadata().unwrap();
 
         // Act
@@ -114,12 +120,29 @@ mod tests {
             .find(|object| object.path == "/dev/shm/nested/data")
             .unwrap();
         assert_eq!(object.size_bytes, 1 << 40);
-        assert_eq!(object.inode, expected.ino());
-        assert_eq!(object.device, expected.dev());
         assert_eq!((object.uid, object.gid), (expected.uid(), expected.gid()));
         assert_eq!(object.mode & 0o777, 0);
-        assert_eq!(object.modified_seconds, expected.mtime());
-        assert_eq!(object.changed_nanos, expected.ctime_nsec() as u32);
+        assert_eq!(object.modified_unix_ns, 1_700_000_000_123_456_789);
+        assert_eq!(
+            object.changed_unix_ns,
+            expected.ctime() * 1_000_000_000 + expected.ctime_nsec()
+        );
+
+        // Act / Assert: signed epoch timestamps retain subsecond precision before 1970.
+        file.set_times(
+            std::fs::FileTimes::new()
+                .set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_nanos(1)),
+        )
+        .unwrap();
+        let snapshot = observe(root.path()).unwrap();
+        assert_eq!(
+            snapshot
+                .iter()
+                .find(|object| object.path == "/dev/shm/nested/data")
+                .unwrap()
+                .modified_unix_ns,
+            -1
+        );
     }
 
     #[test]

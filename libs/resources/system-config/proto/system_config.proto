@@ -60,14 +60,10 @@ message MachineState {
 // One entry beneath /dev/shm. Symlinks are observed themselves and never traversed.
 message FileMetadata {
   string path = 1;
-  uint64 device = 2;
-  uint64 inode = 3;
-  uint32 mode = 4; // Native file type and permission bits.
-  uint32 uid = 5;
-  uint32 gid = 6;
-  uint64 size_bytes = 7;
-  int64 modified_seconds = 8;
-  uint32 modified_nanos = 9;
-  int64 changed_seconds = 10;
-  uint32 changed_nanos = 11;
+  uint32 mode = 2; // Native file type and permission bits.
+  uint32 uid = 3;
+  uint32 gid = 4;
+  uint64 size_bytes = 5;
+  int64 modified_unix_ns = 6; // Content modification time, nanoseconds since Unix epoch.
+  int64 changed_unix_ns = 7; // Metadata change time, nanoseconds since Unix epoch.
 }

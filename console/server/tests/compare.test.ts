@@ -54,7 +54,7 @@ test('host shm metadata survives stored captures and compares without changing c
   // Arrange
   const capture = (bytes: string) => execution.RunCapture.fromObject({ before: {
     ...machine('performance'),
-    hostShm: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }],
+    hostShm: [{ path: '/dev/shm/camera', modifiedUnixNs: '1700000000123456789', changedUnixNs: '1700000000987654321', sizeBytes: bytes, mode: 33152 }],
   } });
   const a = execution.RunCapture.decode(execution.RunCapture.encode(capture('4096')).finish());
   const b = execution.RunCapture.decode(execution.RunCapture.encode(capture('8192')).finish());
@@ -66,7 +66,8 @@ test('host shm metadata survives stored captures and compares without changing c
   const file = row(comparison, 'host_shm./dev/shm/camera');
   assert.equal(file?.group, Group.COMPARISON_CONDITION);
   assert.equal(file?.result, Result.COMPARISON_CHANGED);
-  assert.equal(JSON.parse(cell(file, 0)!).inode, '9007199254740993');
+  assert.equal(JSON.parse(cell(file, 0)!).modifiedUnixNs, '1700000000123456789');
+  assert.equal(JSON.parse(cell(file, 1)!).changedUnixNs, '1700000000987654321');
   assert.equal(JSON.parse(cell(file, 1)!).sizeBytes, '8192');
   assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_CONFIGURATION).every(item => item.result === Result.COMPARISON_SAME));
 });
