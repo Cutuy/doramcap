@@ -3,7 +3,7 @@
 # Shared memory: implementation
 
 Created: 2026-11-08. Implements the [architecture](110826-run-shared-memory.md).
-Host observation is implemented in #236; runtime milestones remain pending.
+Implementation has not started; the milestones below are pending.
 
 ## Changes
 
@@ -48,7 +48,7 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 
 - [ ] Wire the enum field through existing callers and preparation; remove any remaining `host_shms` support.
 - [ ] Resolve native settings through Compose merges and systemd unit/drop-in loading.
-- [x] Add host shm observation to common machine capture and expose capture errors in the UI.
+- [ ] Add host shm observation to common machine capture and expose capture errors in the UI.
 
 **Validation**
 
@@ -56,12 +56,7 @@ checks cannot satisfy native acceptance; mark unavailable platform checks blocke
 - [ ] Read-only host binds stay live at usual and alternate targets: host writes are visible, app writes are denied.
 - [ ] Live writes leave Review valid; changed mount declarations or captured configuration require fresh preparation.
 - [ ] The same host state yields the same shm metadata regardless of backend; larger objects do not increase capture I/O.
-- [x] Capture failure shows an error in the UI and leaves the host shm field absent.
-
-Host observation (#236): 8 release tests, Clippy, native POSIX/SysV and bind-cycle
-checks, 116 server tests and 87 UI tests pass. Syscall tracing confirms no payload
-reads/maps at 4 KiB and 1 TiB; real addon capture preserves reviewed configuration.
-Full local CI and ARM64 remain pending; one opt-in installer test was skipped.
+- [ ] Capture failure shows an error in the UI and leaves the host shm field absent.
 
 ## Milestone 3 — Implement both backends
 
