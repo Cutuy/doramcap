@@ -68,11 +68,11 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 ### Plans
 
-- Keep architecture and implementation in separate, linked documents. A trivial local change with no architectural decisions may use one short document.
+- Trivial changes need no plan document. For other work, keep architecture and implementation in separate, linked documents.
 - Architecture explains the high-level idea, expected behavior, major components, responsibilities and key tradeoffs. Lead with an embedded architecture SVG.
 - Implementation holds the code-level details: code/API changes, chosen mechanisms, milestones and checks.
-- Use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-implementation.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
-- Give each implementation milestone a labeled section with **Work items** and **Validation** checklists. Keep acceptance checks and evidence beside the work they verify. Record evidence before checking an item; mark the milestone complete only when both checklists are complete.
+- Use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-impl.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
+- Give each implementation milestone a labeled section with **Work items** and **Validation** checklists.
 
 ## Pull request descriptions
 
