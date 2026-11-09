@@ -49,7 +49,7 @@ cargo build --locked -p resource-policy --examples
 cargo run --locked -p resource-policy --example policy_overhead
 # Elevate only the prebuilt native suite using the repository credential workflow.
 node libs/resources/resource-policy/tests/validate_native.ts --binary target/debug/examples/native_policy
-npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
+npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
 node scripts/ci/submit.mts --source /absolute/path/to/checkout
 ```
 
