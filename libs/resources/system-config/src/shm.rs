@@ -161,7 +161,8 @@ mod tests {
         let path = directory.join("nested/data");
         let file = File::create(&path).unwrap();
         file.set_len(1 << 40).unwrap();
-        file.set_permissions(fs::Permissions::from_mode(0o0)).unwrap();
+        file.set_permissions(fs::Permissions::from_mode(0o0))
+            .unwrap();
         symlink("missing-target", directory.join("link")).unwrap();
         let expected = file.metadata().unwrap();
 
@@ -354,7 +355,8 @@ mod tests {
         let directory = tempfile::tempdir_in("/dev/shm").unwrap();
         let path = directory.path().join("unreadable-payload");
         let file = File::create(&path).unwrap();
-        file.set_permissions(fs::Permissions::from_mode(0o0)).unwrap();
+        file.set_permissions(fs::Permissions::from_mode(0o0))
+            .unwrap();
         let created = Command::new("ipcmk").args(["-M", "8192"]).output().unwrap();
         assert!(created.status.success());
         let output = String::from_utf8(created.stdout).unwrap();
