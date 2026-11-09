@@ -185,7 +185,7 @@ pub fn observe(data_directory: &Path) -> Result<MachineState, String> {
 
 /// Observe the Linux layout beneath `root`, with the same failure contract as `observe`.
 pub fn observe_root(root: &Path, data_directory: &Path) -> Result<MachineState, String> {
-    let host_shm = Some(shm::observe(root)?);
+    let host_shm = shm::observe(root)?;
     Ok(MachineState {
         captured_unix_ms: SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -41,7 +41,7 @@ pub struct RunSignals {
     pub machine: watch::Sender<MachineCapture>,
 }
 
-/// One run's machine states: before any service starts, and after the workload is gone.
+/// Before startup and after shutdown: None is pending, Some carries the observation result.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MachineCapture {
     pub before: Option<std::result::Result<MachineState, String>>,

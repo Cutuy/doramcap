@@ -1,13 +1,11 @@
 //! Observe shared-memory metadata; a failed traversal never yields a partial snapshot.
-use crate::{FileMetadata, HostSharedMemory};
+use crate::FileMetadata;
 use std::{collections::HashSet, path::Path};
 
 const SHM_DIRECTORY: &str = "dev/shm";
 
-pub(super) fn observe(root: &Path) -> Result<HostSharedMemory, String> {
-    Ok(HostSharedMemory {
-        entries: entries(&root.join(SHM_DIRECTORY))?,
-    })
+pub(super) fn observe(root: &Path) -> Result<Vec<FileMetadata>, String> {
+    entries(&root.join(SHM_DIRECTORY))
 }
 
 fn entries(directory: &Path) -> Result<Vec<FileMetadata>, String> {
@@ -105,15 +103,13 @@ mod tests {
         let snapshot = observe(root.path()).unwrap();
 
         // Assert
-        assert_eq!(snapshot.entries.len(), 3);
+        assert_eq!(snapshot.len(), 3);
         let link = snapshot
-            .entries
             .iter()
             .find(|object| object.path == "/dev/shm/link")
             .unwrap();
         assert_eq!(link.mode & 0o170000, 0o120000);
         let object = snapshot
-            .entries
             .iter()
             .find(|object| object.path == "/dev/shm/nested/data")
             .unwrap();
@@ -143,7 +139,7 @@ mod tests {
         fs::remove_file(directory.join(invalid_name)).unwrap();
         fs::remove_file(directory.join("present")).unwrap();
         let state = crate::observe_root(root.path(), root.path()).unwrap();
-        assert_eq!(state.host_shm, Some(HostSharedMemory::default()));
+        assert!(state.host_shm.is_empty());
     }
 
     #[test]
@@ -212,7 +208,7 @@ mod tests {
             if name == "cycle" {
                 assert!(state.unwrap_err().contains("recursive directory mount"));
             } else {
-                let snapshot = state.unwrap().host_shm.unwrap();
+                let snapshot = state.unwrap().host_shm;
                 for alias in if name == "two" {
                     &["one", "two"][..]
                 } else {
@@ -220,7 +216,6 @@ mod tests {
                 } {
                     assert!(
                         snapshot
-                            .entries
                             .iter()
                             .any(|object| { object.path == format!("/dev/shm/{alias}/payload") })
                     );

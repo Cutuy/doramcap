@@ -54,7 +54,7 @@ test('host shm metadata survives stored captures and compares without changing c
   // Arrange
   const capture = (bytes: string) => execution.RunCapture.fromObject({ before: {
     ...machine('performance'),
-    hostShm: { entries: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }] },
+    hostShm: [{ path: '/dev/shm/camera', device: '8', inode: '9007199254740993', sizeBytes: bytes, mode: 33152 }],
   } });
   const a = execution.RunCapture.decode(execution.RunCapture.encode(capture('4096')).finish());
   const b = execution.RunCapture.decode(execution.RunCapture.encode(capture('8192')).finish());
@@ -63,18 +63,18 @@ test('host shm metadata survives stored captures and compares without changing c
   const comparison = compareRuns(side('a'.repeat(32), a), side('b'.repeat(32), b));
 
   // Assert
-  const posix = row(comparison, 'host_shm./dev/shm/camera');
-  assert.equal(posix?.group, Group.COMPARISON_CONDITION);
-  assert.equal(posix?.result, Result.COMPARISON_CHANGED);
-  assert.equal(JSON.parse(cell(posix, 0)!).inode, '9007199254740993');
-  assert.equal(JSON.parse(cell(posix, 1)!).sizeBytes, '8192');
+  const file = row(comparison, 'host_shm./dev/shm/camera');
+  assert.equal(file?.group, Group.COMPARISON_CONDITION);
+  assert.equal(file?.result, Result.COMPARISON_CHANGED);
+  assert.equal(JSON.parse(cell(file, 0)!).inode, '9007199254740993');
+  assert.equal(JSON.parse(cell(file, 1)!).sizeBytes, '8192');
   assert.ok(comparison.rows.filter(item => item.group === Group.COMPARISON_CONFIGURATION).every(item => item.result === Result.COMPARISON_SAME));
 });
 
 test('host shm capture errors remain visible and never turn partial metadata into successful facts', () => {
   // Arrange
   const failed = side('a'.repeat(32), { beforeError: '/dev/shm/private: permission denied' });
-  const empty = side('b'.repeat(32), { before: { ...machine('performance'), hostShm: {} } });
+  const empty = side('b'.repeat(32), { before: { ...machine('performance'), hostShm: [] } });
 
   // Act
   const comparison = compareRuns(failed, empty);
@@ -131,8 +131,8 @@ test('post-run changes list only what differs, and nothing when a capture is mis
 
 test('live machine changes refuse an oversized comparison with a visible error', () => {
   // Arrange
-  const before = { ...machine('performance'), hostShm: { entries: [] } };
-  const after = { ...machine('performance'), hostShm: { entries: Array.from({ length: 3000 }, (_, i) => ({ path: `/dev/shm/object-${i}` })) } };
+  const before = { ...machine('performance'), hostShm: [] };
+  const after = { ...machine('performance'), hostShm: Array.from({ length: 3000 }, (_, i) => ({ path: `/dev/shm/object-${i}` })) };
   // Act
   const changes = machineChanges(before, after);
   // Assert

@@ -54,15 +54,9 @@ message MachineState {
   uint64 captured_unix_ms = 1;
   MachineConfiguration configuration = 2;
   MachineCondition condition = 3;
-  HostSharedMemory host_shm = 4; // Absent in captures from older versions.
-  reserved 5; // Former embedded capture error.
+  repeated FileMetadata host_shm = 4;
 }
 
-// Metadata observed without reading or attaching to shared-memory payloads.
-message HostSharedMemory {
-  repeated FileMetadata entries = 1;
-  reserved 2; // Former System V observation.
-}
 // One entry beneath /dev/shm. Symlinks are observed themselves and never traversed.
 message FileMetadata {
   string path = 1;

@@ -32,7 +32,7 @@ test('native inspection carries host shm metadata separately from reviewed input
       const capture = execution.RunCapture.decode(execution.RunCapture.encode({ before: inspected.machine }).finish());
       // Assert
       assert.equal(capture.beforeError, '');
-      const object = capture.before?.hostShm?.entries?.find(object => object.path === path);
+      const object = capture.before?.hostShm?.find(object => object.path === path);
       assert.ok(object);
       assert.equal(String(object.sizeBytes), String(size));
       assert.equal(object.mode! & 0o777, 0);

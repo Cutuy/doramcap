@@ -56,11 +56,11 @@ export const configurationFacts = (state: Capture['before']) =>
   state?.configuration ? flatten(MachineConfiguration.toObject(MachineConfiguration.fromObject(state.configuration), options)) : new Map() as Facts;
 export function conditionFacts(state: Capture['before']): Facts {
   const facts = state?.condition ? flatten(MachineCondition.toObject(MachineCondition.fromObject(state.condition), options)) : new Map() as Facts;
-  if (!state?.hostShm) return facts;
-  const snapshot = systemConfig.HostSharedMemory.toObject(systemConfig.HostSharedMemory.fromObject(state.hostShm), { longs: String, defaults: true });
-  facts.set('host_shm', { value: `${snapshot.entries.length} entries` });
-  for (const object of snapshot.entries) {
-    const { path, ...metadata } = object;
+  if (!state) return facts;
+  const entries = state.hostShm ?? [];
+  facts.set('host_shm', { value: `${entries.length} entries` });
+  for (const entry of entries) {
+    const { path, ...metadata } = systemConfig.FileMetadata.toObject(systemConfig.FileMetadata.fromObject(entry), { longs: String, defaults: true });
     facts.set(`host_shm.${path}`, { value: JSON.stringify(metadata) });
   }
   return facts;

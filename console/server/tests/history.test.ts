@@ -517,7 +517,7 @@ test('oversized observations save an error and never produce false live addition
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: {
-    ...machine('performance'), hostShm: { entries: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })) },
+    ...machine('performance'), hostShm: Array.from({ length: 6000 }, (_, index) => ({ path: `/dev/shm/object-${index}-${'x'.repeat(40)}`, inode: String(index), sizeBytes: '4096' })),
   } }).machineBefore;
 
   // Act
@@ -574,7 +574,7 @@ test('database capture failure reaches live status without presenting unsaved sh
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   run.store.db.exec("CREATE TRIGGER refuse_capture BEFORE UPDATE OF capture ON runs BEGIN SELECT RAISE(FAIL, 'capture storage unavailable'); END");
-  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: { ...machine('performance'), hostShm: {} } }).machineBefore;
+  run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: { ...machine('performance'), hostShm: [] } }).machineBefore;
 
   // Act
   const status = wire.Status.decode(await run.backend.status());
