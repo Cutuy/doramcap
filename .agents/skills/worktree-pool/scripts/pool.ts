@@ -101,28 +101,26 @@ function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     repo: { type: 'string', default: '.' }, owner: { type: 'string' },
     branch: { type: 'string' }, token: { type: 'string' }, pr: { type: 'string' },
-    main: { type: 'boolean' }, 'discard-dirty': { type: 'boolean' },
-    'confirm-detached': { type: 'boolean' }, help: { type: 'boolean' },
+    main: { type: 'boolean' }, 'discard-dirty': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   if (values.help) {
     console.log(`Usage: node pool.ts [--repo CHECKOUT] COMMAND
   init
   status
   acq --owner TASK --branch codex/NAME [--token TOKEN] [--discard-dirty]
-  release --owner TASK --token TOKEN (--pr URL | --main) [--confirm-detached]
+  release --owner TASK --token TOKEN (--pr URL | --main)
 
 Five non-expiring leases. Save the acquisition token. Resume with the same owner,
 branch and token. Commands block on the shared flock; a full pool fails explicitly.
 Release detaches the checkout and deletes its local feature branch; main is protected.
 Remote branches are preserved.
---confirm-detached requires user confirmation of the displayed checkout, commit and branch.
 --discard-dirty requires prior user approval for the displayed path and files.`);
     return;
   }
   const command = positionals[0] === 'acquire' ? 'acq' : positionals[0];
   const allowed: Record<string, string[]> = {
     init: [], status: [], acq: ['owner', 'branch', 'token', 'discard-dirty'],
-    release: ['owner', 'token', 'pr', 'main', 'confirm-detached'],
+    release: ['owner', 'token', 'pr', 'main'],
   };
   if (positionals.length !== 1 || !Object.hasOwn(allowed, command)) throw new Error('Expected init, status, acq or release; see --help');
   for (const key of Object.keys(values)) {
@@ -171,9 +169,8 @@ Remote branches are preserved.
       const path = safe(slot);
       if (slot.lease!.state !== 'active') throw new Error('Incomplete acquisition needs manual repair; lease remains reserved');
       const currentBranch = branch(path);
-      if (command === 'release' && !currentBranch) {
-        if (!values['confirm-detached']) throw new Error(`WARNING: ${path} is detached at ${head(path)}; release will delete local branch ${slot.lease!.branch} if present and clear the lease. Obtain user confirmation, then retry with --confirm-detached.`);
-      } else if (currentBranch !== slot.lease!.branch) throw new Error('Worktree branch differs from leased branch');
+      if (!currentBranch) throw new Error(`WARNING: ${path} is detached at ${head(path)}. Obtain user confirmation before restoring leased branch ${slot.lease!.branch} here, then retry.`);
+      if (currentBranch !== slot.lease!.branch) throw new Error('Worktree branch differs from leased branch');
       return slot;
     };
     if (command === 'init') {
@@ -253,7 +250,6 @@ Remote branches are preserved.
       const lease = slot.lease!;
       if (lease.branch === MAIN_BRANCH) throw new Error('Cannot release or delete main');
       const featureHead = head(path);
-      const currentBranch = branch(path);
       cleanBuildOutputs(path);
       if (dirt(path)) throw new Error(`Worktree has uncommitted changes; commit and integrate them before release:\n${dirt(path)}`);
       if (values.main) {
@@ -267,15 +263,13 @@ Remote branches are preserved.
         slot.last_pr = pr.url;
       }
       cleanBuildOutputs(path);
-      if (dirt(path) || head(path) !== featureHead || branch(path) !== currentBranch) throw new Error('Worktree changed during release; lease remains active');
-      const localHead = git(path, 'branch', '--list', '--format=%(objectname)', '--', lease.branch).toString().trim();
-      if (localHead && localHead !== featureHead) throw new Error('Leased branch differs from verified HEAD; inspect manually');
+      if (dirt(path) || head(path) !== featureHead || branch(path) !== lease.branch) throw new Error('Worktree changed during release; lease remains active');
       git(path, 'checkout', '--no-overwrite-ignore', '--detach', featureHead);
       try {
         // Publication or patch-equivalence was verified above; delete only the local ref.
-        if (localHead) git(path, 'branch', '-D', '--', lease.branch);
+        git(path, 'branch', '-D', '--', lease.branch);
       } catch (error) {
-        if (currentBranch) git(path, 'checkout', '--no-overwrite-ignore', lease.branch);
+        git(path, 'checkout', '--no-overwrite-ignore', lease.branch);
         throw error;
       }
       slot.lease = null;

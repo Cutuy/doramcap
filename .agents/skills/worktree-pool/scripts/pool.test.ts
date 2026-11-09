@@ -404,83 +404,33 @@ test('failed local branch deletion restores the checkout and retains the lease f
   assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
 });
 
-for (const target of ['main', 'pr']) {
-  for (const deleted of [false, true]) {
-    test(`detached ${target} release requires confirmation with branch ${deleted ? 'deleted' : 'present'}`, t => {
-      // Arrange: reproduce either interruption boundary using real Git state.
-      const f = fixture(t), slot = f.acquire();
-      f.write(slot.path, 'source', 'verified feature');
-      const feature = f.commit(slot.path);
-      if (target === 'main') f.git(f.repo, 'cherry-pick', feature);
-      else f.mockPr(slot);
-      const args = ['release', '--owner', OWNER, '--token', slot.lease.token,
-        ...(target === 'main' ? ['--main'] : ['--pr', PR_URL])];
-      f.git(slot.path, 'checkout', '--detach');
-      if (deleted) f.git(slot.path, 'branch', '-D', BRANCH);
-      const artifact = f.write(slot.path, 'target/artifact');
+for (const deleted of [false, true]) {
+  test(`detached checkout warns before manual repair with branch ${deleted ? 'deleted' : 'present'}`, t => {
+    // Arrange: simulate an interruption before or after branch deletion.
+    const f = fixture(t), slot = f.acquire();
+    const original = f.git(slot.path, 'rev-parse', 'HEAD');
+    f.git(slot.path, 'checkout', '--detach');
+    if (deleted) f.git(slot.path, 'branch', '-D', BRANCH);
+    const artifact = f.write(slot.path, 'target/artifact');
 
-      // Act / Assert: warning leaves the checkout and lease untouched.
-      const result = f.command(...args);
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /WARNING.*detached/);
-      assert.ok(result.stderr.includes(slot.path));
-      assert.ok(result.stderr.includes(BRANCH));
-      assert.ok(result.stderr.includes(feature));
-      assert.match(result.stderr, /user confirmation.*--confirm-detached/);
-      assert.ok(existsSync(artifact));
-      assert.equal(f.state().slots[0].lease.token, slot.lease.token);
-      assert.match(f.command('acq', '--owner', OWNER, '--branch', BRANCH,
-        '--token', slot.lease.token).stderr, /differs from leased branch/);
+    // Act / Assert: warning preserves the lease and checkout for user inspection.
+    const result = f.command(...f.releaseArgs(slot));
+    assert.notEqual(result.status, 0);
+    for (const detail of ['WARNING', slot.path, original, BRANCH, 'Obtain user confirmation']) {
+      assert.ok(result.stderr.includes(detail), result.stderr);
+    }
+    assert.ok(existsSync(artifact));
+    assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+    assert.equal(f.state().slots[0].lease.token, slot.lease.token);
 
-      // Act / Assert: explicit confirmation completes release at the verified commit.
-      f.ok(...args, '--confirm-detached');
-      assert.equal(f.state().slots[0].lease, null);
-      assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
-      assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), feature);
-      assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
-      assert.ok(!existsSync(artifact));
-    });
-  }
+    // Act / Assert: after user-confirmed manual repair, ordinary release succeeds.
+    f.git(slot.path, 'checkout', ...(deleted ? ['-b', BRANCH, original] : [BRANCH]));
+    f.ok(...f.releaseArgs(slot));
+    assert.equal(f.state().slots[0].lease, null);
+    assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), original);
+    assert.equal(f.git(f.repo, 'branch', '--list', BRANCH), '');
+  });
 }
-
-test('detached confirmation preserves ownership, cleanliness and publication checks', t => {
-  // Arrange
-  const f = fixture(t), slot = f.acquire();
-  f.write(slot.path, 'source', 'unpublished feature');
-  const feature = f.commit(slot.path);
-  f.git(slot.path, 'checkout', '--detach');
-  const args = ['release', '--owner', OWNER, '--token', slot.lease.token, '--confirm-detached'];
-
-  // Act / Assert
-  assert.match(f.command('release', '--owner', 'other', '--token', slot.lease.token,
-    '--confirm-detached', '--main').stderr, /owner and token/);
-  const dirty = f.write(slot.path, 'unfinished.ts');
-  assert.match(f.command(...args, '--main').stderr, /uncommitted/);
-  rmSync(dirty);
-  assert.match(f.command(...args, '--main').stderr, /unintegrated/);
-  f.mockPr(slot, { headRefOid: 'stale' });
-  assert.match(f.command(...args, '--pr', PR_URL).stderr, /PR must be published/);
-  assert.equal(f.state().slots[0].lease.token, slot.lease.token);
-  assert.equal(f.git(f.repo, 'rev-parse', `refs/heads/${BRANCH}`), feature);
-});
-
-test('detached confirmation refuses a leased branch that moved', t => {
-  // Arrange
-  const f = fixture(t), slot = f.acquire();
-  const original = f.git(slot.path, 'rev-parse', 'HEAD');
-  f.write(slot.path, 'source', 'branch work to preserve');
-  const feature = f.commit(slot.path);
-  f.git(slot.path, 'checkout', '--detach', original);
-
-  // Act
-  const result = f.command(...f.releaseArgs(slot), '--confirm-detached');
-
-  // Assert: the detached commit is integrated, but the local branch has other work.
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Leased branch differs from verified HEAD/);
-  assert.equal(f.git(f.repo, 'rev-parse', `refs/heads/${BRANCH}`), feature);
-  assert.equal(f.state().slots[0].lease.token, slot.lease.token);
-});
 
 test('publication release rechecks source and branch after verification', t => {
   // Arrange
