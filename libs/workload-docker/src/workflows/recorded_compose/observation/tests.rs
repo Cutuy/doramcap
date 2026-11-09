@@ -91,7 +91,9 @@ fn exec_events_do_not_wake_inspection_but_state_and_health_changes_do() {
     // Arrange: real Docker exec actions include the command after a colon.
     let (changed, mut changes) = watch::channel(());
     let exec_actions = [
+        "exec_create",
         "exec_create: /bin/sh -c test -s /tmp/ready",
+        "exec_start",
         "exec_start: /bin/sh -c test -s /tmp/ready",
         "exec_die",
         "exec_detach",
@@ -122,6 +124,11 @@ fn exec_events_do_not_wake_inspection_but_state_and_health_changes_do() {
         "update",
         "health_status: healthy",
         "health_status: unhealthy",
+        "exec_future",
+        "exec_create_extra: /bin/true",
+        "exec_start_extra",
+        "exec_die_extra",
+        "exec_detach_extra",
         "new-container-action",
     ] {
         // Act

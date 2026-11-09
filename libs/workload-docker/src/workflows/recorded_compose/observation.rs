@@ -84,13 +84,14 @@ async fn track_stop(
     }
 }
 
-/// Exec bookkeeping cannot change container readiness; keep it in the audit stream without waking inspection.
+/// Only Docker's defined exec actions skip readiness inspection; every event remains in the audit stream.
 fn notify_state_change(changed: &watch::Sender<()>, event: &EventMessage) {
-    if !event
-        .action
-        .as_deref()
-        .is_some_and(|action| action.starts_with("exec_"))
-    {
+    if !event.action.as_deref().is_some_and(|action| {
+        matches!(
+            action.split_once(':').map_or(action, |(name, _)| name),
+            "exec_create" | "exec_start" | "exec_die" | "exec_detach"
+        )
+    }) {
         changed.send_replace(());
     }
 }
