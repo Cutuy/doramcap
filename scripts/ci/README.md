@@ -65,7 +65,10 @@ Both accounts need key-based SSH access from the submitter. Use `--build-host`
 or `--run-host` to select an equivalent ARM64 worker. The command waits for its
 Pueue build and runner completion, returning failure for either stage.
 The pinned nextest executable installs into each account's `~/.local/bin`.
-No compiler or queue daemon is installed on `.22`.
+The builder supplies its Docker CLI and `/usr/libexec/docker/cli-plugins/docker-compose`;
+the runner installs them in `~/.local/bin` and `~/.docker/cli-plugins`.
+The runner uses a 64 MiB soft/hard memlock limit for registered-I/O tests.
+No compiler, Docker daemon or queue daemon is installed on `.22`.
 
 The command prints both job directories. On WSL, inspect the returned Pueue ID.
 The command prints per-suite statuses; full logs stay on the runner.

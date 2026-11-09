@@ -19,8 +19,10 @@ The Mac mini container has a 1 GiB memory limit, no swap, and Linux 6.18.35.
 The observed kernel/capability restrictions prevent privileged BPF and cgroup
 validation. Those tests, doctests, Node checks and linting remain with the
 existing WSL/GitHub workflows. Ignored tests retain their normal ignore status.
-The new worker installs only a pinned user-level nextest executable; it needs
-neither a compiler nor a queue daemon.
+The new worker installs user-level nextest, Docker CLI and Compose executables.
+Docker and Compose come from the builder and render preparation-test fixtures
+without a daemon. Registered-I/O tests use a 64 MiB soft/hard memlock limit.
+The worker needs neither a compiler nor a queue daemon.
 
 Each job retains its source snapshot, archive checksums and logs in `~/jobs`.
 A failed queued build stops transfer. Execution attempts all three suites,

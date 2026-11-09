@@ -20,7 +20,9 @@ Created: 2026-11-08. [Architecture](110826-run-only-worker.md).
 - [x] Type checking and snapshot inventory coverage.
 - [x] Publish draft PR before remote end-to-end validation.
 - [x] Run all three archives on `.22`; record counts and gaps below.
-- [ ] Resolve missing Compose CLI and the registered-I/O memlock limit; repeat validation.
+- [x] Verify the approved 64 MiB soft/hard memlock limit and 1 GiB RAM limit.
+- [x] Package the approved Docker CLI and Compose executables with archive checksums.
+- [ ] Repeat all suites after CLI provisioning and the memlock change.
 - [ ] Review against implementation/design guides, mark ready and release lease.
 
 ## Mechanisms
@@ -41,6 +43,8 @@ CI-owned job/cache directories when reclaiming disk.
 `install-nextest.sh` installs into the builder's `~/.local/bin` without sudo or
 services. The verified executable travels with the archives and installs on the
 runner. Its release SHA256 is pinned from the upstream GitHub release asset digest.
+The builder also packages its Docker CLI and Compose plugin. Both install into
+the runner's home directory and their versions appear in the retained log.
 No application dependencies or environment inputs are added.
 
 ## Validation record
@@ -59,8 +63,9 @@ The Mac mini completed all three suites with zero cgroup OOM kills:
 
 Eight Compose preparation tests per workspace suite fail because Docker/Compose
 CLI tools are absent. Recorder/storage tests return `ENOMEM` while registering
-I/O buffers under an 8 MiB hard memlock limit. Raising the limit and transferring
-the existing CLI tools require user approval; no tests have been excluded.
+I/O buffers under an 8 MiB hard memlock limit. The user approved the CLI transfer
+and raised memlock to 64 MiB; both soft/hard limits were verified with the RAM
+limit still 1 GiB. Follow-up execution is pending; no tests have been excluded.
 This is a completed execution trial with failures, not a full CI pass.
 
 Source and results: `~/jobs/45a76376ddce49f8bfbeed7794f764ef` on each host.

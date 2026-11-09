@@ -22,6 +22,10 @@ if [[ $1 == build ]]; then
     test "$(node --version)" = "v$(cat .node-version)"
     rustc --version
     cargo --version
+    docker --version
+    docker compose version
+    compose_plugin=/usr/libexec/docker/cli-plugins/docker-compose
+    test -x "$compose_plugin"
     mkdir -p "$worker_job/artifacts"
     for suite in default all-features storage-no-default; do
         case $suite in
@@ -33,8 +37,10 @@ if [[ $1 == build ]]; then
     done
     cp "$worker_job/source/source.tar.gz" "$worker_job/artifacts/source.tar.gz"
     cp "$HOME/.local/bin/cargo-nextest" "$worker_job/artifacts/cargo-nextest"
+    cp "$(command -v docker)" "$worker_job/artifacts/docker"
+    cp "$compose_plugin" "$worker_job/artifacts/docker-compose"
     cd "$worker_job/artifacts"
-    sha256sum source.tar.gz cargo-nextest default.tar.zst all-features.tar.zst storage-no-default.tar.zst > SHA256SUMS
+    sha256sum source.tar.gz cargo-nextest docker docker-compose default.tar.zst all-features.tar.zst storage-no-default.tar.zst > SHA256SUMS
 else
     exec > "$worker_job/run.log" 2>&1
     trap 'worker_result=$?; printf "%s\n" "$worker_result" > "$worker_job/exit-code"' EXIT
@@ -46,9 +52,14 @@ else
     mkdir "$worker_cache/source"
     tar -xzpf source.tar.gz -C "$worker_cache/source"
     cd "$worker_cache/source"
-    mkdir -p "$HOME/.local/bin"
+    mkdir -p "$HOME/.local/bin" "$HOME/.docker/cli-plugins"
     install -m 755 "$worker_job/artifacts/cargo-nextest" "$HOME/.local/bin/cargo-nextest"
+    install -m 755 "$worker_job/artifacts/docker" "$HOME/.local/bin/docker"
+    install -m 755 "$worker_job/artifacts/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"
     cargo-nextest --version
+    docker --version
+    docker compose version
+    printf 'Memlock soft/hard (KiB): '; ulimit -l; ulimit -Hl
     printf 'Source manifest: %s\n' "$worker_job/source/SOURCE.json"
     sha256sum SOURCE.json
     printf '\nMemory limit: '
