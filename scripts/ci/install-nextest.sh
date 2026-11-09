@@ -10,7 +10,8 @@ if [[ -x $nextest_binary ]] && "$nextest_binary" --version | grep -q "^cargo-nex
 fi
 nextest_stage=$(mktemp -d)
 trap 'rm -rf -- "$nextest_stage"' EXIT
-curl --fail --location --show-error --connect-timeout 10 --max-time 120 \
+curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 \
+    --retry 3 --retry-all-errors --retry-delay 2 \
     "https://get.nexte.st/$nextest_version/linux-arm" -o "$nextest_stage/nextest.tar.gz"
 printf '%s  %s\n' "$nextest_sha256" "$nextest_stage/nextest.tar.gz" | sha256sum -c -
 tar -xzf "$nextest_stage/nextest.tar.gz" -C "$nextest_stage"
