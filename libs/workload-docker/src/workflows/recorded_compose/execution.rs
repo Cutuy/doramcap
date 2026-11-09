@@ -16,6 +16,19 @@ pub(super) async fn launch_apps(
     overlays: Option<&Output<overlay::OverlaySet>>,
     last_launch: &mut Option<Output<ComposeProjectState>>,
 ) -> orchestrator::Result<()> {
+    // Keep the run namespace alive before Dora or application containers can join it.
+    if plan.services.contains_key(preparation::SHM_SERVICE) {
+        let mut input = Input::new(StartInput {
+            plan: Some(plan.clone()),
+            services: vec![preparation::SHM_SERVICE.into()],
+            readiness_seconds: spec.readiness_seconds,
+        })
+        .after(prepared);
+        if let Some(overlays) = overlays {
+            input = input.after(overlays);
+        }
+        *last_launch = Some(executor.run::<StartCompose>(input).await?);
+    }
     // Start communication and register the graph before any application containers.
     let daemon = executor
         .run::<super::super::experiment::StartDoraRuntime>(Input::new(()).after(prepared))

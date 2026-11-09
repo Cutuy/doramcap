@@ -48,6 +48,8 @@ type Prepared = {
 const { Phase } = wire;
 const active = (phase: number) => [Phase.STARTING, Phase.RUNNING, Phase.STOPPING].includes(phase);
 const MAX_METRICS = 1200;
+/** Compose system app that keeps the run IPC namespace available until shutdown. */
+const RUN_SHM_APP = 'doramcap-shm';
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 const relayApp = (apps: App[]) => apps.find((app) => app.liveRelay);
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
@@ -185,7 +187,7 @@ export class ConsoleService implements ConsoleBackend {
     try {
       const ids = request.systemApps?.ids ?? undefined;
       const project = await this.project(request.profiles),
-        chosen = selectApps(this.config.apps.filter((app) => !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),
+        chosen = selectApps(this.config.apps.filter((app) => app.id !== RUN_SHM_APP && !this.config.doraApps.includes(app.id!)), ids, request.systemApps?.profiles ?? {}),
         // The relay runs only when a selected app declares a live output.
         apps = chosen.filter((app) => !app.liveRelay || chosen.some((other) => other.liveOutputs?.length));
       // Compose profiles select services; systemd projects have none.
@@ -219,7 +221,7 @@ export class ConsoleService implements ConsoleBackend {
           return Buffer.from(
             wire.Review.encode({
               availableProfiles: profiles,
-              systemApps: appOptions(this.config.apps, chosen, this.config.doraApps),
+              systemApps: appOptions(this.config.apps.filter((app) => app.id !== RUN_SHM_APP), chosen, this.config.doraApps),
               warnings: ['Select a profile to enable at least one service.'],
             }).finish(),
           );
@@ -237,7 +239,7 @@ export class ConsoleService implements ConsoleBackend {
           name,
           imageId: service.imageId,
         })),
-        systemApps: appOptions(this.config.apps, chosen, this.config.doraApps),
+        systemApps: appOptions(this.config.apps.filter((app) => app.id !== RUN_SHM_APP), chosen, this.config.doraApps),
         recordings: outputs(apps),
         warnings: [],
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
@@ -291,11 +293,13 @@ export class ConsoleService implements ConsoleBackend {
         id, project: project.directory!, artifacts, workspace, stage, apps,
         graph: dataflowFile, relaySettings: bound?.settings,
       });
+    // The configured IPC placeholder belongs to the run, independent of optional app selection.
+    const composeApps = [...apps, ...this.config.apps.filter((app) => app.id === RUN_SHM_APP)];
     const request = execution.RunRequest.create({
-      run: runPlan(this.config, { id, project: project.directory!, artifacts, apps }, dataflowFile),
+      run: runPlan(this.config, { id, project: project.directory!, artifacts, apps: composeApps }, dataflowFile),
       compose: composePlan.ComposePlan.create({ projects: [project, ...this.config.apps.filter((app) => this.config.doraApps.includes(app.id!)).map((app) => ({ ...app.input!, key: app.id! }))] }),
     });
-    await bindOutputs(apps, request, workspace, stage);
+    await bindOutputs(composeApps, request, workspace, stage);
     if (bound) request.compose!.projects!.find((input) => input.key === relay!.id)!.files!.push(bound.overlay);
     return request;
   }

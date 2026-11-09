@@ -3,5 +3,3 @@ services:
     image: doramcap/dora:local
     network_mode: host
     user: "0:0"
-    ipc: shareable
-    shm_size: 134217728

@@ -167,7 +167,9 @@ impl ComposeRunner {
         signals: RunSignals,
         check: impl FnOnce(&preparation::PreparedRun) -> Result<()>,
     ) -> Result<ComposeRunReport> {
-        // Reset the fixed ownership scope before preparing this run's immutable inputs.
+        // Validate before reset can affect a previous run.
+        workload_lifecycle::plan::validate_host_shm_access(spec.host_shm_access)
+            .map_err(invalid)?;
         validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
         let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
         self.blocked = true;
@@ -356,6 +358,9 @@ pub struct ComposeRun {
     /// supplied mounts directly. Omitted JSON retains the default write-back policy.
     #[serde(default = "default_filesystem")]
     pub filesystem: Option<OverlayPolicy>,
+    /// Required host shm access policy; zero and unknown values fail preparation.
+    #[serde(default)]
+    pub host_shm_access: i32,
     /// Caller-selected run identifier used in Docker ownership labels and output names.
     pub id: String,
     /// Absolute, new artifact directory; its parent must already exist.
@@ -409,6 +414,7 @@ impl ComposeRun {
             dora_apps: self.dora_apps.iter().map(|app| app.key.clone()).collect(),
             dataflow_file: self.dataflow_file.clone(),
             dora_runtime: None,
+            host_shm_access: self.host_shm_access,
         }
     }
 
@@ -439,6 +445,7 @@ impl ComposeRun {
             },
             artifacts,
             filesystem: Some(Default::default()),
+            host_shm_access: run.host_shm_access,
             system_apps,
             projects,
             dora_apps,
@@ -550,6 +557,7 @@ mod tests {
         // Arrange
         use workload_lifecycle::launch::RunPlan;
         let run = RunPlan {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: "r1".into(),
             repository_root: "/repo".into(),
             artifacts: "/data/r1".into(),
@@ -578,6 +586,7 @@ mod tests {
         assert_eq!(mapped.mcap_writers.apps, ["monitor"]);
         assert_eq!(mapped.mcap_writers.directories, [PathBuf::from("/data")]);
         assert_eq!(mapped.dataflow_file, "/graph.yml");
+        assert_eq!(mapped.host_shm_access, run.host_shm_access);
         assert_eq!(mapped.dora_apps[0].key, "communication");
         assert_eq!((mapped.readiness_seconds, mapped.stop_seconds), (60, 15));
         // Act / Assert: roles must refer to an actual app.

@@ -9,6 +9,13 @@ enum Form {
   SUPERVISOR = 3;
 }
 
+// Access to the host's /dev/shm filesystem; callers must choose a supported value.
+enum HostShmAccess {
+  HOST_SHM_ACCESS_UNSPECIFIED = 0;
+  HOST_SHM_ACCESS_PASSTHROUGH = 1;
+  HOST_SHM_ACCESS_BLOCKED = 2;
+}
+
 // One recording checked after its writers stop. Paths are absolute.
 message Recording {
   string stream = 1;
@@ -39,6 +46,8 @@ message RunPlan {
   string dataflow_file = 10;
   // Filled by preparation from app inputs; callers must leave this absent.
   DoraRuntime dora_runtime = 11;
+  // Required: PASSTHROUGH uses host /dev/shm; BLOCKED shares a private run filesystem.
+  HostShmAccess host_shm_access = 12;
 }
 
 // Per-preparation Dora facts consumed by launch adapters and runtime control.

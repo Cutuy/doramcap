@@ -1,5 +1,5 @@
 //! Service manager calls over the system bus, typed for this crate's units.
-use crate::{Program, Result, Scope, error};
+use crate::{Program, Result, RunPlan, Scope, error};
 use futures_util::StreamExt;
 use std::time::Duration;
 use zbus::{
@@ -36,6 +36,8 @@ const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 const BITS_PER_BYTE: usize = 8;
 /// Drop-in filename.
 const SLICE_DROP_IN: &str = "10-doramcap-slice.conf";
+/// Run shm defaults, separate from native declarations and the slice/root drop-in.
+const SHM_DROP_IN: &str = "20-doramcap-shm.conf";
 
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
@@ -85,6 +87,95 @@ impl Manager {
             connection,
             manager,
         })
+    }
+
+    /// Let systemd parse every frozen native unit before any app starts.
+    /// BLOCKED checks effective mounts and supplies run memory where no private mount is declared.
+    pub(crate) async fn prepare_native_shm(
+        &self,
+        scope: &Scope,
+        run: &RunPlan,
+        plan: &crate::SystemdPlan,
+    ) -> Result<()> {
+        if workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
+            != workload_lifecycle::launch::HostShmAccess::Blocked
+        {
+            return Ok(());
+        }
+        let units = scope.directory.join("units");
+        tokio::fs::create_dir_all(&units).await.map_err(error)?;
+        let mut copies = Vec::new();
+        let mut names = Vec::new();
+        let sources = plan
+            .unit_files
+            .iter()
+            .map(|file| (file, None))
+            .chain(plan.app_units.iter().map(|app| (&app.file, Some(app))));
+        for (file, app) in sources {
+            let id = app.map_or_else(|| crate::unit_stem(file), |app| Ok(app.id.as_str()))?;
+            let name = scope.unit(id);
+            let copy = units.join(&name);
+            let mut bytes = if app.is_some() {
+                format!(
+                    "[Service]\nExecSearchPath={}:{}\n",
+                    plan.binaries,
+                    DEFAULT_SEARCH_PATH.join(":")
+                )
+                .into_bytes()
+            } else {
+                Vec::new()
+            };
+            bytes.extend(tokio::fs::read(file).await.map_err(error)?);
+            tokio::fs::write(&copy, bytes).await.map_err(error)?;
+            copies.push(copy.to_string_lossy().into_owned());
+            names.push((name, app));
+        }
+        if copies.is_empty() {
+            return Ok(());
+        }
+        self.manager
+            .link_unit_files(copies, true, true)
+            .await
+            .map_err(error)?;
+        self.manager.reload().await.map_err(error)?;
+        for (name, app) in names {
+            let unit = self.watch(&name).await?;
+            let service = &unit.service;
+            let mut binds = service.bind_paths().await.map_err(error)?;
+            binds.extend(service.bind_read_only_paths().await.map_err(error)?);
+            for (source, target, optional, _) in &binds {
+                crate::shm::validate_native_bind(&name, source, target, *optional)?;
+            }
+            let root = std::path::Path::new(workload_lifecycle::files::SHM_PATH);
+            let private_mount = binds
+                .iter()
+                .any(|(_, target, _, _)| root.starts_with(target))
+                || service
+                    .temporary_file_system()
+                    .await
+                    .map_err(error)?
+                    .iter()
+                    .any(|(target, _)| root.starts_with(target))
+                || service.private_devices().await.map_err(error)?
+                || app
+                    .is_some_and(|app| app.binds.iter().any(|bind| root.starts_with(&bind.target)));
+            if !private_mount {
+                let drop_in =
+                    std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
+                tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
+                tokio::fs::write(
+                    drop_in.join(SHM_DROP_IN),
+                    format!(
+                        "[Service]\nBindPaths={}:{}\n",
+                        crate::shm::directory(scope).display(),
+                        workload_lifecycle::files::SHM_PATH,
+                    ),
+                )
+                .await
+                .map_err(error)?;
+            }
+        }
+        self.manager.reload().await.map_err(error)
     }
 
     /// Load `name` and subscribe to its state before it starts.
@@ -142,12 +233,11 @@ impl Manager {
     pub async fn start_program(
         &self,
         scope: &Scope,
-        run: &str,
+        run: &RunPlan,
         program: &Program,
-        stop_seconds: u64,
     ) -> Result<StartJob> {
         let name = scope.unit(&program.id);
-        let mut properties = transient_properties(scope, run, program, stop_seconds)?;
+        let mut properties = transient_properties(scope, &run.id, program, run.stop_seconds)?;
         properties.extend(
             private_root(
                 scope,
@@ -155,6 +245,7 @@ impl Manager {
                 &program.argv[0],
                 &program.working_directory,
                 &program.binds,
+                run.host_shm_access,
             )
             .await?,
         );
@@ -177,10 +268,9 @@ impl Manager {
         &self,
         scope: &Scope,
         name: &str,
-        argv: &[String],
-        user: &str,
+        program: &Program,
         output: &std::path::Path,
-        binds: &[crate::Bind],
+        host_shm_access: i32,
     ) -> Result<()> {
         let mut properties = vec![
             (
@@ -191,17 +281,27 @@ impl Manager {
             ("Type".into(), value("oneshot")?),
             (
                 "ExecStart".into(),
-                value(vec![(argv[0].clone(), argv.to_vec(), false)])?,
+                value(vec![(program.argv[0].clone(), program.argv.clone(), false)])?,
             ),
             (
                 "StandardOutputFileToTruncate".into(),
                 value(output.to_string_lossy().into_owned())?,
             ),
         ];
-        if !user.is_empty() {
-            properties.push(("User".into(), value(user.to_owned())?));
+        if !program.user.is_empty() {
+            properties.push(("User".into(), value(program.user.clone())?));
         }
-        properties.extend(private_root(scope, name, &argv[0], "", binds).await?);
+        properties.extend(
+            private_root(
+                scope,
+                name,
+                &program.argv[0],
+                "",
+                &program.binds,
+                host_shm_access,
+            )
+            .await?,
+        );
         let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
         let job = self
             .manager
@@ -416,6 +516,7 @@ impl Manager {
         }
         remove_path(&scope.directory.join("units")).await?;
         remove_path(&scope.directory.join(ROOTS)).await?;
+        crate::shm::remove(scope)?;
         self.manager.reload().await.map_err(error)
     }
 
@@ -572,6 +673,7 @@ async fn private_root(
     executable: &str,
     working_directory: &str,
     binds: &[crate::Bind],
+    host_shm_access: i32,
 ) -> Result<Vec<(String, OwnedVariant)>> {
     let root = scope.directory.join(ROOTS).join(name);
     tokio::fs::create_dir_all(&root).await.map_err(error)?;
@@ -584,6 +686,19 @@ async fn private_root(
         .collect();
     read_only.push(mount(executable, executable, false));
     let mut writable = Vec::new();
+    let blocked = workload_lifecycle::plan::validate_host_shm_access(host_shm_access)?
+        == workload_lifecycle::launch::HostShmAccess::Blocked;
+    if blocked
+        && !binds.iter().any(|bind| {
+            std::path::Path::new(workload_lifecycle::files::SHM_PATH).starts_with(&bind.target)
+        })
+    {
+        writable.push(mount(
+            &crate::shm::directory(scope).to_string_lossy(),
+            workload_lifecycle::files::SHM_PATH,
+            false,
+        ));
+    }
     if !working_directory.is_empty()
         && !binds
             .iter()

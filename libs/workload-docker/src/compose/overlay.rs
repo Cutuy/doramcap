@@ -330,7 +330,8 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             }
             let meta = tokio::fs::symlink_metadata(&source).await?;
             let owned = source.starts_with(&artifacts);
-            if !bind.read_only && !owned {
+            let host_shm = workload_lifecycle::files::is_host_shm_source(&source)?;
+            if !bind.read_only && !owned && !host_shm {
                 if !meta.is_dir()
                     || ["/proc", "/sys", "/dev"]
                         .iter()
@@ -363,7 +364,9 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                 original: source.clone(),
                 effective: source,
                 read_only: bind.read_only,
-                reason: if owned {
+                reason: if host_shm {
+                    "live host shared memory"
+                } else if owned {
                     "fresh run artifact"
                 } else if bind.read_only {
                     "read-only input"
@@ -855,4 +858,64 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     )
     .await?;
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn host_shm_binds_bypass_overlay_copy_and_writeback() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        std::fs::create_dir(&artifacts).unwrap();
+        let shared = tempfile::tempdir_in("/dev/shm").unwrap();
+        let file = shared.path().join("segment");
+        std::fs::write(&file, b"initial").unwrap();
+        let model = serde_json::json!({"services":{"app":{"volumes":[
+            {"type":"bind","source":shared.path(),"target":"/input/shm"},
+            {"type":"bind","source":file,"target":"/input/camera"},
+            {"type":"bind","source":file,"target":"/read-only","read_only":true}
+        ]}}});
+        let bytes = serde_json::to_vec(&model).unwrap();
+        let manifest = artifacts.join("input.json");
+        std::fs::write(&manifest, &bytes).unwrap();
+        let project = ResolvedComposeProject {
+            key: "project".into(),
+            manifest: manifest.to_string_lossy().into(),
+            sha256: digest(&bytes),
+            ..Default::default()
+        };
+
+        // Act
+        let set = prepare(PrepareInput {
+            artifacts,
+            workspace: root.path().join("workspace"),
+            projects: vec![project],
+            policy: OverlayPolicy {
+                disposition: Disposition::Discard,
+            },
+        })
+        .await
+        .unwrap();
+        std::fs::write(&file, b"live").unwrap();
+
+        // Assert
+        assert!(set.trees.is_empty());
+        assert_eq!(set.mappings.len(), 3);
+        assert!(
+            set.mappings
+                .iter()
+                .all(|mapping| mapping.original == mapping.effective)
+        );
+        let execution: Value =
+            serde_json::from_slice(&std::fs::read(&set.projects[0].manifest).unwrap()).unwrap();
+        assert_eq!(execution, model);
+
+        // Act: discard the prepared run resources.
+        finalize(set).await.unwrap();
+        // Assert
+        assert_eq!(std::fs::read(&file).unwrap(), b"live");
+    }
 }

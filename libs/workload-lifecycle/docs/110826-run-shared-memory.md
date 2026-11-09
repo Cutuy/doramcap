@@ -2,9 +2,9 @@
 
 # Shared memory: architecture
 
-Created: 2026-11-08. Implementation pending.
+Created: 2026-11-08.
 
-Apps in a run share memory with each other. The same rules apply to user and
+Apps in a run share the `/dev/shm` filesystem. The same rules apply to user and
 system apps on Docker and systemd, using pbtxt or native files.
 
 ## Host shm access
@@ -29,24 +29,29 @@ values are unsupported and fail preparation.
 PASSTHROUGH uses host shm; explicit private settings still apply. Selective host
 binds stay live, including read-only binds and alternate targets. Apply accepted
 declarations to launched apps; source Compose and unit files remain unchanged.
-Review and launch use the same prepared configuration.
+Review and launch use the same prepared configuration. Native declarations can
+bind host hugetlbfs at custom paths; those sources stay live and host-owned.
+
+systemd preserves native IPC settings. Its run default applies to the filesystem
+shared through `/dev/shm`.
 
 ## Experiment snapshots
 
 The common host observer captures host shm as-is for existing A/B snapshots,
-independently of launch backend and app mounts. Capture object identity, size,
-permissions and timestamps without reading, copying or hashing contents. Work
+independently of launch backend and app mounts. Capture paths, ownership,
+permissions, sizes and timestamps without reading, copying or hashing contents. Work
 scales with object count, independently of byte size. Live observations stay
 separate from Review's configuration identity.
 
-If capture fails, report the error in the UI and leave the host shm field
-empty/absent.
+Observation returns `Result<MachineState, String>`. Failed captures remain absent;
+Console reports their errors separately.
 
 ## Cleanup
 
-The kernel manages shm lifetime. Release run-owned mounts and namespaces after
-verified shutdown; leave host memory alone. If shutdown is unconfirmed, retain
-run resources and report incomplete cleanup.
+Release the run-owned filesystem after verified shutdown; leave host memory alone.
+Docker uses a run infrastructure container to retain its shared `/dev/shm`; systemd
+retains a tmpfs mount. If shutdown is unconfirmed, retain run resources and report
+incomplete cleanup.
 
 See the [implementation plan](110826-run-shared-memory-impl.md).
 This design replaces [#206](https://github.com/Cutuy/doramcap/pull/206).

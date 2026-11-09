@@ -1,47 +1,15 @@
 # systemd workload lifecycle
 
-Run one experiment's apps as owned systemd units in a per-repository slice, controlled
-over D-Bus. Rust starts Dora, then system apps and waits for recordings, then user apps; shutdown reverses that order. Repository `.service` files are
-adopted with native references preserved. Declared stop grace takes precedence over the plan fallback. An optional Dora coordinator and daemon start first as units; Dora CLI commands run as oneshot units. A failed unit is recorded and the run continues until stop.
-Generated units use private roots with read-only host system directories and per-unit bind mounts.
+Run experiment apps as owned systemd units over D-Bus, with startup, recording
+readiness and verified cleanup managed by the shared lifecycle.
 
 ![systemd mode](../workload-lifecycle/docs/110726-systemd-slice.svg)
-
-[Compose directory view](../workload-lifecycle/docs/110726-compose-bind-mounts.svg)
-
-![Console systemd directory views](../workload-lifecycle/docs/110726-systemd-bind-mounts.svg)
 
 ```sh
 cargo build --release --locked -p workload-systemd --example systemd_run
 sudo target/release/examples/systemd_run run.pbtxt plan.pbtxt
-sudo target/release/examples/systemd_run --cleanup /absolute/repository
 ```
 
-Inputs: [`SystemdPlan`](proto/systemd_plan.proto). Needs root and the system service
-manager. Native tests: [tests/native.rs](tests/native.rs); the Dora test reads a `dora`
-binary path from `DORAMCAP_TEST_DORA`.
-[Plan](../workload-lifecycle/docs/110726-launch-forms.md) · API: `cargo doc -p workload-systemd --no-deps`.
-
-Admission refuses prior owned resources. A crash leaves units running and artifacts
-intact until explicit cleanup. Normal shutdown waits for each unit's effective
-stop timeout plus the reporting margin. Unconfirmed shutdown preserves resources
-and skips recording finalization; unavailable required exit evidence fails the report.
-
-`inspect` validates plan structure and fingerprints explicit unit files, the merged
-graph and read-only regular-file binds, including their mode, owner and POSIX access
-ACL. Its async `InspectRun` step dispatches reads to a blocking worker without writes
-or systemd calls. Callers rediscover project units before Start so additions and
-removals enter the fresh plan.
-
-`run_with_preflight` captures those inputs into private runtime artifacts and calls
-the preflight callback after admission, before starting units. Compare its snapshot
-with Review and check cancellation before acknowledging Start. Rejection removes
-the new private artifacts. Generated artifact roots and automatic Dora ports do not
-change the fingerprint; explicit settings and captured contents do. Exported
-`InspectRun`, `PrepareRun` and `DiscardRun` steps accept generated protobuf inputs;
-preparation and rejected-run cleanup share the runner's executor and dependency lineage.
-
-Shipped apps keep their pbtxt process configuration and generated units. External
-units keep native references. Directory mounts, writable binds, executable files
-and paths referenced inside native units or graphs remain live dependencies. Runtime
-readiness and Dora endpoint checks run during launch.
+Inputs: [`SystemdPlan`](proto/systemd_plan.proto). Requires root and the system
+service manager. [Architecture](../workload-lifecycle/docs/110726-launch-forms.md) ·
+[Native tests](tests/native.rs) · API: `cargo doc -p workload-systemd --no-deps`.

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 workload-docker = { path = "../../../libs/workload-docker" }
+workload-lifecycle = { path = "../../../libs/workload-lifecycle" }
 telemetry-protocol = { path = "../../../libs/telemetry/protocol" }
 orchestrator = { path = "../../../libs/orchestrator" }
 workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }

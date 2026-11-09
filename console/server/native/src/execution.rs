@@ -613,6 +613,8 @@ mod tests {
             let request = StartRequest {
                 run: Some(RunRequest {
                     run: Some(workload_lifecycle::launch::RunPlan {
+                        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough
+                            as i32,
                         id: "pending".into(),
                         repository_root: directory.to_str().unwrap().into(),
                         artifacts: directory.join("run").to_str().unwrap().into(),
@@ -672,7 +674,11 @@ mod tests {
                 for expected in [None, Some(wrong)] {
                     let request = StartRequest {
                         run: Some(RunRequest {
-                            run: Some(Default::default()),
+                            run: Some(workload_lifecycle::launch::RunPlan {
+                                host_shm_access:
+                                    workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+                                ..Default::default()
+                            }),
                             backend: Some(backend.clone()),
                         }),
                         backend: expected,
@@ -697,6 +703,7 @@ mod tests {
         let directory = socket_directory("systemd-stop");
         let artifacts = directory.join("run");
         let run = workload_lifecycle::launch::RunPlan {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: "stopped-before-preflight".into(),
             repository_root: directory.to_str().unwrap().into(),
             artifacts: artifacts.to_str().unwrap().into(),

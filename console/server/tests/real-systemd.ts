@@ -30,6 +30,7 @@ test('systemd Start rejects changed inputs and handles immediate Stop', async ()
   const owner = await capabilities.open(join(root, 'absent-docker.sock'), 1);
   const run = (id: string) => execution.RunRequest.create({
     run: launch.RunPlan.create({
+      hostShmAccess: launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH,
       id, repositoryRoot: project, artifacts: join(runs, id),
       readinessSeconds: 5, stopSeconds: 1,
     }),
@@ -91,21 +92,21 @@ test('systemd Start rejects changed inputs and handles immediate Stop', async ()
  * `fault-watchdog` in one directory named by DORAMCAP_TEST_BINARIES, and run only this
  * test executable as root.
  */
-test('Console runs CPU monitoring, Fault Watchdog and a user unit under systemd', async () => {
+for (const mode of ['HOST_SHM_ACCESS_BLOCKED', 'HOST_SHM_ACCESS_PASSTHROUGH']) test(`Console records CPU and Fault Watchdog with native private IPC under systemd ${mode}`, async () => {
   // Arrange
   const binaries = process.env.DORAMCAP_TEST_BINARIES;
   assert.ok(binaries, 'DORAMCAP_TEST_BINARIES names the host binaries directory');
   const root = await mkdtemp(join(tmpdir(), 'console-systemd-'));
   const project = join(root, 'project'), apps = join(root, 'system-apps');
   await mkdir(project);
-  await writeFile(join(project, 'workload.service'), '[Service]\nExecStart=/bin/sleep 300\n');
+  await writeFile(join(project, 'workload.service'), '[Service]\nPrivateIPC=yes\nExecStart=/bin/sleep 300\n');
   await cp(join(repository, 'console/release/system-apps'), apps, { recursive: true });
   stageSystemAppInputs(repository, apps);
   await writeFile(join(root, 'secret'), 'test-secret', { mode: 0o600 });
   const config = join(root, 'console.pbtxt');
   await writeFile(
     config,
-    `form: SYSTEMD binaries:"${binaries}" listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" ` +
+    `form: SYSTEMD binaries:"${binaries}" host_shm_access: ${mode} listen_address:"127.0.0.1:8080" public_origin:"http://127.0.0.1:8080" ` +
       `project_root:"${project}" data_root:"${root}/data" access_secret_file:"${root}/secret" ` +
       `runtime { readiness_seconds:30 stop_seconds:5 } ` +
       `dora_apps:"dora-coordinator" dora_apps:"dora-daemon" ` +

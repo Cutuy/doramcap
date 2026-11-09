@@ -9,3 +9,4 @@ result_file: "monitor.pb"
 result_format: FILE
 env_prefix: "SYSTEM_MONITOR"
 requires_explicit_enable: true
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

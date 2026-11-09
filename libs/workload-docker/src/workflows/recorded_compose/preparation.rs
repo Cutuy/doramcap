@@ -1,6 +1,7 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
 mod model;
 mod snapshot;
+pub(super) use model::SHM_SERVICE;
 
 use super::ComposeRun;
 use crate::compose::{
@@ -169,6 +170,10 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
             diagnostics.extend(warnings);
         }
     }
+    model::validate_host_shm(&model, spec.host_shm_access)?;
+    validate_external_volume_shm(adapter, &model, spec.host_shm_access).await?;
+    validate_external_ipc(adapter, &model, spec.host_shm_access).await?;
+    model::configure_shm(&mut model, &mut system_services, spec.host_shm_access)?;
     dora.services = dora_services
         .iter()
         .map(|name| (name.clone(), model["services"][name].clone()))
@@ -184,7 +189,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     for (name, service) in &dora.services {
         model["services"][name] = service.clone();
     }
-    // Configure shared IPC, then validate graph bindings and startup dependencies.
+    // Configure Dora bindings, then validate graph bindings and startup dependencies.
     diagnostics.extend(model::configure_dora(
         &mut model,
         &dora,
@@ -311,6 +316,133 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         dora,
         snapshot,
     })
+}
+
+/// Resolve native external IPC references, refusing host access or unresolvable targets.
+async fn validate_external_ipc(adapter: &DockerAdapter, model: &Value, access: i32) -> Result<()> {
+    use crate::compose::error::engine;
+    use std::collections::BTreeSet;
+    use workload_lifecycle::launch::HostShmAccess;
+    if access != HostShmAccess::Blocked as i32 {
+        return Ok(());
+    }
+    for (service, value) in model["services"].as_object().unwrap() {
+        let Some(target) = value["ipc"]
+            .as_str()
+            .and_then(|ipc| ipc.strip_prefix("container:"))
+        else {
+            continue;
+        };
+        let mut target = target.to_owned();
+        let mut visited = BTreeSet::new();
+        loop {
+            if !visited.insert(target.clone()) {
+                return Err(invalid(format!(
+                    "{service}: cyclic external IPC reference {target}"
+                )));
+            }
+            let container = adapter
+                .docker
+                .inspect_container(&target, None)
+                .await
+                .map_err(|error| {
+                    engine(
+                        format!("{service}: inspect external IPC container {target}"),
+                        error,
+                    )
+                })?;
+            let ipc = container
+                .host_config
+                .as_ref()
+                .and_then(|config| config.ipc_mode.as_deref())
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "{service}: cannot resolve external IPC container {target}"
+                    ))
+                })?;
+            if ipc == "host" {
+                return Err(invalid(format!(
+                    "{service}: external IPC container {target} uses host IPC and requires host_shm_access PASSTHROUGH"
+                )));
+            }
+            for mount in container
+                .mounts
+                .iter()
+                .flatten()
+                .filter(|mount| mount.destination.as_deref() == Some("/dev/shm"))
+            {
+                if mount.typ.as_deref() == Some("bind")
+                    && let Some(source) = &mount.source
+                {
+                    model::validate_host_shm_source(service, source)?;
+                }
+                if mount.typ.as_deref() == Some("volume")
+                    && let Some(name) = &mount.name
+                {
+                    let volume = adapter.docker.inspect_volume(name).await.map_err(|error| {
+                        engine(
+                            format!("{service}: inspect external IPC volume {name}"),
+                            error,
+                        )
+                    })?;
+                    let options = serde_json::to_value(&volume.options)?;
+                    if let Some(source) = model::local_volume_source(Some(&volume.driver), &options)
+                    {
+                        model::validate_host_shm_source(service, source)?;
+                    }
+                }
+            }
+            if let Some(parent) = ipc.strip_prefix("container:") {
+                target = parent.to_owned();
+            } else if matches!(ipc, "" | "none" | "private" | "shareable") {
+                break;
+            } else {
+                return Err(invalid(format!(
+                    "{service}: cannot resolve external IPC mode {ipc} from {target}"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Check Engine-owned external volume sources before any container starts.
+async fn validate_external_volume_shm(
+    adapter: &DockerAdapter,
+    model: &Value,
+    access: i32,
+) -> Result<()> {
+    use crate::compose::error::engine;
+    use std::collections::BTreeMap;
+    use workload_lifecycle::launch::HostShmAccess;
+    if access != HostShmAccess::Blocked as i32 {
+        return Ok(());
+    }
+    let mut volumes = BTreeMap::new();
+    for (service, value) in model["services"].as_object().unwrap() {
+        for mount in value["volumes"].as_array().into_iter().flatten() {
+            if mount["type"] == "volume"
+                && let Some(key) = mount["source"].as_str()
+                && model["volumes"][key]["external"] == true
+            {
+                let name = model["volumes"][key]["name"].as_str().unwrap_or(key);
+                volumes.entry(name).or_insert(service);
+            }
+        }
+    }
+    for (name, service) in volumes {
+        let volume =
+            adapter.docker.inspect_volume(name).await.map_err(|error| {
+                engine(format!("{service}: inspect external volume {name}"), error)
+            })?;
+        if volume.driver == "local" {
+            let options = serde_json::to_value(&volume.options)?;
+            if let Some(source) = model::local_volume_source(Some(&volume.driver), &options) {
+                model::validate_host_shm_source(service, source)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether a kernel release is at least 6.1, the MCAP writer's io_uring requirement.
@@ -467,7 +599,13 @@ async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                         Err(error) => Err(error.into()),
                         Ok(metadata) if !metadata.is_file() => continue,
-                        Ok(_) => snapshot_file(source, &directory).await,
+                        Ok(_) => {
+                            match workload_lifecycle::files::is_host_shm_source(Path::new(source)) {
+                                Ok(true) => continue,
+                                Ok(false) => snapshot_file(source, &directory).await,
+                                Err(error) => Err(error.into()),
+                            }
+                        }
                     };
                     match frozen {
                         Ok(frozen) => mount["source"] = frozen.into(),

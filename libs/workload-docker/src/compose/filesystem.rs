@@ -22,6 +22,8 @@ use std::{
 };
 use tokio::io::{AsyncWriteExt, BufReader};
 
+const HOST_SHM_SOURCE: &str = "live host shared memory; no scan";
+
 /// Storage category is retained on every record and in separate artifact files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -311,6 +313,20 @@ async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathB
         {
             Ok(Some(PathBuf::from(v.mountpoint)))
         }
+        Ok(v) if v.driver == "local" => {
+            if v.options.get("o").is_some_and(|options| {
+                options
+                    .split(',')
+                    .any(|option| matches!(option, "bind" | "rbind"))
+            }) && let Some(source) = v.options.get("device")
+                && workload_lifecycle::files::is_host_shm_source(Path::new(source))?
+            {
+                return Ok(Some(PathBuf::from(source)));
+            }
+            Err(invalid(
+                "volume driver/options do not support direct local metadata inspection",
+            ))
+        }
         Ok(_) => Err(invalid(
             "volume driver/options do not support direct local metadata inspection",
         )),
@@ -379,6 +395,9 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
                     .ok_or_else(|| invalid("volume has no resolved name"))?
                     .to_owned();
                 let (path, reason) = match volume_path(adapter, &name).await {
+                    Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+                        (Some(path), Some(HOST_SHM_SOURCE.into()))
+                    }
                     Ok(p) => (p, None),
                     Err(e) => (None, Some(e.to_string())),
                 };
@@ -547,7 +566,10 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         }
         let before = wire::read_snapshot(&source.baseline).await?;
         if !before.complete {
-            if source.category == StorageCategory::NamedVolume || source.reason.is_none() {
+            if (source.category == StorageCategory::NamedVolume
+                && source.reason.as_deref() != Some(HOST_SHM_SOURCE))
+                || source.reason.is_none()
+            {
                 out.0.coverage_complete = false;
             }
             out.0.warnings.push(format!(
@@ -559,6 +581,12 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         }
         let path = if source.category == StorageCategory::NamedVolume {
             match volume_path(adapter, &source.identity).await {
+                Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+                    out.0
+                        .warnings
+                        .push(format!("{}: {HOST_SHM_SOURCE}", source.identity));
+                    continue;
+                }
                 Ok(p) => p,
                 Err(e) => {
                     out.0.coverage_complete = false;

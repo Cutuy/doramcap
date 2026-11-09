@@ -10,3 +10,4 @@ result_format: FILE
 shutdown_marker: "shutdown.complete"
 env_prefix: "PROVENANCE"
 requires_explicit_enable: true
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

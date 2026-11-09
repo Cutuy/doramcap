@@ -79,6 +79,7 @@ pub async fn run(
         }
         let dataflow_file = app.dataflow()?;
         let spec = ComposeRun {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Blocked as i32,
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
             filesystem: None, dora_apps, dataflow_file, recordings:vec![], repository_root: app.repository_root.clone(),
             mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {

@@ -298,7 +298,18 @@ impl Dora {
             });
         }
         manager
-            .run_oneshot(scope, &name, &argv, &user, &output, &binds)
+            .run_oneshot(
+                scope,
+                &name,
+                &crate::Program {
+                    argv,
+                    user,
+                    binds,
+                    ..Default::default()
+                },
+                &output,
+                run.host_shm_access,
+            )
             .await?;
         tokio::fs::read_to_string(output).await.map_err(error)
     }
