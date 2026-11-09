@@ -2,7 +2,7 @@
 
 # Shared memory: architecture
 
-Created: 2026-11-08. Sharing behavior agreed; implementation and default capacity pending.
+Created: 2026-11-08. Updated from PR #234 review; implementation pending.
 
 Apps in a run should share memory with each other. By default, that memory stays
 separate from the host and other runs. When the apps stop, we remove it.
@@ -17,29 +17,42 @@ systemd and whether their settings come from pbtxt or native files.
 | **Isolated — default** | Shared memory belonging to this run | We remove it after the apps stop |
 | **Host** | The host's shared memory, with normal access permissions | We leave it alone |
 
-## Explicit app settings take priority
+## Native settings and conflicts
 
-An app's explicit native settings override the global mode for that app and path.
-We supply defaults only where the app has left the relevant setting unspecified.
+Native mounts specify the host source, app-visible target and access permissions.
+We apply those declarations to the launched container or unit. The source Compose
+and unit files remain unchanged.
 
-For example, an app can mount one host segment read-only while keeping the rest
-of its shared memory private to the run. It can also request its own private
-memory or the entire host shm. Those choices may change which apps can share data.
-A host segment stays live even when mounted read-only: host updates remain visible.
+An app can mount one host segment read-only while keeping the rest of its shared
+memory private to the run. Host updates remain visible through that live mount.
+Explicit private shm settings remain app choices and may separate sharing groups.
 
-Selective access belongs in native mounts. We do not need a global read-only
-mode or a separate list of host shm names.
+Access to the entire host shm, including Docker `ipc: host`, requires global
+**Host** mode. In **Isolated** mode, preparation rejects these settings with an
+error naming the app, setting and required mode. Other incompatible IPC or mount
+settings also fail before launch; preparation never silently skips run isolation.
 
-## Shared capacity
+Selective access belongs in native mounts. The global choice is one boolean field
+on the existing `RunPlan`; it needs no settings message or `host_shms` list.
 
-Apps using the same run memory share its capacity. Direct host mounts use the
-host's capacity. The default run-pool size still needs to be agreed.
+## Host shm in experiment snapshots
+
+The existing A/B snapshots capture host shm metadata as well as the mount
+declarations. Capture records object identity, size, access metadata and timestamps
+without reading or copying shm contents. Work scales with the number of objects
+observed, independently of their byte sizes.
+
+These observations describe live inputs at capture time; they cannot establish
+content equality. Normal host writes keep Review valid. Mount or configuration
+changes still require fresh preparation.
 
 ## Cleanup follows ownership
 
-We remove memory that belongs to the run. We preserve host memory and externally
-owned mounts. If we cannot confirm that the apps have stopped, we keep the run's
-resources and report that cleanup is incomplete.
+The kernel manages shared-memory objects. An app exiting does not authorize
+tearing down the run's shared mounts or namespaces while other apps use them.
+After verified shutdown, the backend releases the resources it created for the
+run. Host memory and externally owned mounts remain. If shutdown is unconfirmed,
+we retain run resources and report incomplete cleanup.
 
 See the [implementation design and work plan](110826-run-shared-memory-impl.md)
 for how to build and test this. This design replaces [#206](https://github.com/Cutuy/doramcap/pull/206).

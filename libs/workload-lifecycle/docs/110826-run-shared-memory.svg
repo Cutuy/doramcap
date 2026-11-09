@@ -5,7 +5,7 @@
 <rect width="1000" height="440" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
 <text x="250" y="36" font-size="21" font-weight="600">Default: share within the run</text>
-<text x="750" y="36" font-size="21" font-weight="600">Host mode: use host memory</text>
+<text x="750" y="36" font-size="21" font-weight="600">Host mode: pass through host shm</text>
 <rect x="40" y="60" width="420" height="275" rx="12" fill="#edf5f8" stroke="#8ca6b8" stroke-width="1.5"/>
 <text x="250" y="89" font-size="15" font-weight="600">Run</text>
 <rect x="540" y="60" width="420" height="130" rx="12" fill="#edf5f8" stroke="#8ca6b8" stroke-width="1.5"/>

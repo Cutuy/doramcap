@@ -7,49 +7,77 @@ Implementation has not started; the milestones below are pending.
 
 ## Where the changes belong
 
-Add one protobuf setting for the global mode. Console and direct callers pass it
-through `RunPlan`. Preparation applies explicit native settings first, then fills
-in defaults. Review and launch use that same prepared configuration.
+Add `bool host_shared_memory` to the existing protobuf `RunPlan`: false selects
+Isolated mode; true selects Host pass-through. Console and direct callers pass
+that field through the existing launch path. No new settings message is needed.
+Remove any `host_shms` field, adapters or handling encountered during implementation;
+none exists in the current source. Native mounts supply selective host access.
+
+Preparation validates native IPC and mount settings against the global mode,
+then resolves the effective configuration shared by Review and launch.
 
 | Backend | Main change |
 | --- | --- |
-| Docker | Share run memory even without Dora. Preserve declared IPC settings and host mounts. |
-| systemd | Give the run a shared private shm filesystem. Preserve explicit unit settings. |
+| Docker | Attach participating containers to the same run shm and IPC setup, with or without Dora; apply accepted native IPC and bind declarations to the containers. |
+| systemd | Mount the same run-private shm filesystem in participating units; apply accepted native unit and bind declarations to those units. |
 
-Each backend tracks the memory it creates and removes it through its existing
+The original Compose and unit files remain unchanged. Each backend tracks the
+mounts and namespaces it creates and releases them through its existing
 stop/cleanup flow. Live host shm stays outside filesystem overlays.
 
-## When the global mode redirects
+## Native settings and the global mode
 
-Use native mounts and add our run mount only where the app has left room for it.
+Resolve native settings before generating mounts. In Isolated mode:
 
 | Explicit native setting | Final setup for that app |
 | --- | --- |
 | None | Mount run memory at `/dev/shm` |
 | One host segment | Keep run memory; bind the host segment at its declared target with its declared permissions |
-| Entire host shm, or Docker `ipc: host` | Skip the conflicting run-shm setup for that container or unit |
+| Entire host shm, or Docker `ipc: host` | Fail preparation; name the app and setting and require global Host mode |
+| Explicit private shm or another IPC arrangement | Apply the explicit setup if compatible with the requested mounts; otherwise fail preparation with the conflicting settings |
 
-Read native settings before generating mounts. Resolve native sources from the
-host before installing the run's private view. A native target such as
+In Host mode, the default and whole-host declarations use host shm. Explicit
+private settings still apply to the app that declares them. Never silently drop
+an IPC or mount declaration or fall back to host access after a conflict.
+
+Resolve native sources from the host before installing the run's private view.
+A native target such as
 `/input/camera` must still refer to the original host segment.
 
-Keep host shm live through preparation: record its mount declaration, without
-copying or hashing its changing contents. Read-only controls app writes; it does
-not change which memory the mount uses. Ordinary configuration files still get
-captured.
+## Extend the existing experiment snapshots
 
-## Decisions still open
+Use Docker's existing [snapshot capture](../../workload-docker/src/workflows/recorded_compose/preparation/snapshot.rs)
+and systemd's [input capture](../../workload-systemd/src/preparation.rs). Retain
+host-shm observations in their existing `ConfigurationSnapshot` records for A/B
+comparison, alongside the stable configuration fingerprints.
 
-- What keeps run memory alive when an app exits? Prove the approach before adding a helper process or dependency.
-- What effective capacity does each backend give a new run pool? Agree the defaults and handling of conflicting native sizes before implementation. No new size setting or numeric default has been approved.
+- For each host-shm source, record the resolved source, target, access mode,
+  device/inode identity, object type, byte size, owner/group, permissions and
+  modification/change timestamps using filesystem metadata calls.
+- For directory binds and whole-host mode, enumerate the exposed objects and
+  record their metadata, including nested entries. Record capture failures
+  explicitly. The observation describes that traversal of a live filesystem.
+- Read no shm payload bytes, touch no mapped pages and create no frozen shm copy.
+  Cost is O(number of observed entries), independent of total shm byte size.
+  Metadata is sufficient; do not compute a payload SHA or claim content equality.
+- Keep live observations separate from the configuration identity used by
+  Review/Start. Ordinary host writes must not invalidate Review. Changed mount
+  declarations or captured configuration still require fresh preparation.
 
-Apps sharing a pool share its capacity. Host binds use host capacity; a native
-private filesystem has its own limit. Preserve existing app-failure handling when
-allocations fail and report the observed outcome.
+Detect host shm from the resolved host source, including symlinks and alternate
+targets. A read-only shm bind stays live through preparation; read-only controls
+app writes. Ordinary configuration files retain their existing byte capture.
+
+## Kernel lifetime and run cleanup
+
+Use native kernel object, mount and namespace lifetimes. An app exiting does not
+trigger removal of shared run resources while other apps still use them. Track
+the run-owned attachments through the existing backend lifecycle and release
+them after verified shutdown. Validate restart and crash cleanup with real apps.
 
 ## Required evidence
 
-Sharing, mount precedence, permissions, capacity and cleanup must be tested on a
+Sharing, conflict errors, permissions, snapshot capture and cleanup must be tested on a
 real Docker Engine and a real systemd service manager, using real producer and
 consumer processes. Mocks and generated-configuration assertions cannot satisfy
 these acceptance checks. Record mount/IPC observations and actual reads/writes;
@@ -60,44 +88,46 @@ mark a missing platform check as blocked.
 **Work items**
 
 - [ ] Try the smallest native approach on Docker and systemd, with and without Dora.
-- [ ] Choose how run memory stays alive and how it is recovered after a crash.
-- [ ] Record each backend's effective run capacity and agree the default and native-size conflict rules.
+- [ ] Use native mounts and namespaces shared for the run; connect their cleanup to existing backend recovery.
 
 **Validation**
 
 - [ ] Two apps exchange live data; another run and the host's ordinary shm view cannot see it.
-- [ ] App exit, failed startup and controller crashes leave resources that can be cleaned up safely.
+- [ ] A producer exits while another app continues using the shared object; verify native lifetime and eventual run cleanup.
+- [ ] Failed startup and controller crashes leave resources that can be cleaned up safely.
 - [ ] Check POSIX and System V shared memory separately.
 
 ## Milestone 2 — Apply settings consistently
 
 **Work items**
 
-- [ ] Wire the two global modes through configuration, `RunPlan` and preparation; reject unknown modes.
+- [ ] Add the single boolean field to `RunPlan` and wire it through existing callers and preparation; remove any remaining `host_shms` support.
 - [ ] Keep track of explicit native settings through Compose merges and systemd unit/drop-in loading.
-- [ ] Preserve live host shm files through systemd's [read-only file capture](../../workload-systemd/src/preparation.rs), including alternate mount targets.
+- [ ] Keep host shm live through both backends' preparation, including read-only binds and alternate mount targets.
+- [ ] Extend both existing snapshots with host-shm metadata observations; keep Review/Start configuration comparison independent of live data changes.
 
 **Validation**
 
 - [ ] Real launches distinguish missing settings from explicit ones; user/system apps and pbtxt/native inputs behave consistently.
 - [ ] A read-only host shm file stays live after preparation and launch, at both its usual path and an alternate target. Host writes are visible; app writes are denied.
 - [ ] Live data changes leave Review valid. Changing the mount declaration or captured configuration requires fresh preparation; ordinary configuration capture still works.
+- [ ] A/B snapshots contain metadata for selective host binds and whole-host access, including nested objects and explicit capture errors.
+- [ ] With a fixed object count and increasing shm byte sizes, capture performs metadata operations without reading payloads; record syscall/IO evidence and timings.
 
 ## Milestone 3 — Implement both backends
 
 **Work items**
 
 - [ ] Connect the proven sharing approach to app startup, shutdown and cleanup.
-- [ ] Remove unconditional Dora IPC overrides and preserve explicit host shm mounts through filesystem preparation.
+- [ ] Remove unconditional Dora IPC overrides; apply accepted native mounts and reject conflicting IPC/mount settings before launch.
 
 **Validation**
 
-- [ ] With redirect and no override, real apps use the same run memory; host memory remains separate.
-- [ ] With redirect and one native host bind, the selected host segment stays live while ordinary shm still belongs to the run. Cover read-only and writable binds, files/directories, and alternate targets.
-- [ ] With redirect and a whole-host mount (or Docker `ipc: host`), the app accesses host memory directly. Files created by host and app after startup are visible to each other.
-- [ ] With host mode, apps use host memory; explicit private native shm settings still take priority.
-- [ ] At least two apps fill the shared pool with real writes and touched mapped pages. Verify the effective limit, exhaustion failures/app status and cleanup; check host/private overrides use their own backing capacity.
-- [ ] Explicit IPC, mount and capacity settings are preserved. Incompatible requirements produce a clear error before launch.
+- [ ] In Isolated mode with no override, real apps use the same run memory; host memory remains separate.
+- [ ] In Isolated mode with one native host bind, the selected host segment stays live while ordinary shm still belongs to the run. Cover read-only and writable binds, files/directories, symlinks and alternate targets.
+- [ ] In Isolated mode, whole-host mounts and Docker `ipc: host` fail preparation before any app starts; diagnostics identify the app, setting and required Host mode.
+- [ ] In Host mode, whole-host mounts and Docker `ipc: host` succeed. Files created by host and app after startup are visible to each other; explicit private native settings still apply.
+- [ ] Inspect real containers and units to verify accepted IPC and mount settings take effect. Incompatible requirements produce a clear error before launch.
 - [ ] Host objects and app writes to them survive cleanup; run-owned memory disappears after verified shutdown. Cover partial startup, cancellation and abandoned runs.
 
 ## Milestone 4 — Check complete workloads
@@ -113,5 +143,5 @@ mark a missing platform check as blocked.
 - [ ] Dora exchanges data and finishes recordings in both modes; test native overrides that split apps into different shm groups.
 - [ ] Run the [required local CI](../../../AGENTS.md#testing-and-ci) and ARM64 checks at integration. Record native backend and GPU checks separately.
 
-Evidence: document links, milestone structure and design review pass. All runtime
-acceptance checks remain pending; no native test results are claimed.
+Evidence: documentation checks are recorded in PR #234. All runtime acceptance
+checks remain pending; no native test results are claimed.
