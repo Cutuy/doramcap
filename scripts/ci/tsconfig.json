@@ -6,10 +6,16 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"],
-    "typeRoots": ["./node_modules/@types"],
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
     "allowImportingTsExtensions": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["*.mts", "tests/*.mts", "../../scripts/ci/*.mts"]
+  "include": [
+    "*.mts"
+  ]
 }

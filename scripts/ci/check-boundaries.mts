@@ -1,75 +1,59 @@
 #!/usr/bin/env node
-import { Command, cli, isMain, canonicalPath, globMatcher, capture } from '../../libs/tooling/tooling.mts';
-// Check forbidden Cargo dependency paths using workspace path dependencies.
-import { readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-
-type Dependency = { name: string; kind?: string | null; path?: string };
-export type Metadata = {
-  workspace_members: string[];
-  packages: { id: string; name: string; manifest_path: string; dependencies: Dependency[] }[];
-};
-type Rule = { from: string; forbid: string[]; kinds?: string[] };
-
-/** Return unique forbidden dependency paths; reject malformed policies and ambiguous workspace names. */
-export function violations(metadata: Metadata, config: unknown): string[] {
-  if (!config || typeof config !== 'object' || Object.keys(config).join() !== 'rules'
-      || !('rules' in config) || !Array.isArray(config.rules) || !config.rules.length) {
-    throw new Error('config requires a nonempty rules list and no other keys');
+import assert from 'node:assert/strict';
+import { readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Command, CommanderError } from 'commander';
+import { execaSync } from 'execa';
+import { minimatch } from 'minimatch';
+export type Metadata = { workspace_members: string[]; packages: {
+  id: string; name: string; manifest_path: string; dependencies: { name: string; kind?: string | null; path?: string }[];
+}[] };
+function canonical(path: string): string {
+  try { return realpathSync(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return join(canonical(dirname(resolve(path))), basename(path));
   }
-  const members = new Set(metadata.workspace_members);
-  const packages = metadata.packages.filter(pkg => members.has(pkg.id));
+}
+/** Return unique forbidden paths, following workspace dependencies and validating every rule. */
+export function violations(metadata: Metadata, config: any): string[] {
+  assert(config && Object.keys(config).join() === 'rules' && Array.isArray(config.rules) && config.rules.length, 'config requires a nonempty rules list and no other keys');
+  const packages = metadata.packages.filter(pkg => metadata.workspace_members.includes(pkg.id));
   const byName = new Map(packages.map(pkg => [pkg.name, pkg]));
-  if (byName.size !== packages.length) throw new Error('ambiguous workspace package names');
+  assert.equal(byName.size, packages.length, 'ambiguous workspace package names');
   const errors = new Set<string>();
-  for (const input of config.rules) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)
-        || Object.keys(input).some(key => !['from', 'forbid', 'kinds'].includes(key))) {
-      throw new Error('unknown rule fields');
-    }
-    const { from: source, forbid: patterns, kinds = ['normal', 'build'] } = input as Rule;
-    if (typeof source !== 'string' || !byName.has(source)) throw new Error(`unknown source package: ${source}`);
-    if (!Array.isArray(patterns) || !patterns.length || patterns.some(p => typeof p !== 'string' || !p)) {
-      throw new Error('forbid must be a nonempty list of patterns');
-    }
-    if (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !['normal', 'build', 'dev'].includes(k))) {
-      throw new Error('invalid dependency kinds');
-    }
-    const forbidden = globMatcher(patterns);
-    const queue: [string, string[]][] = [[source, [source]]];
-    const visited = new Set([source]);
-    for (let index = 0; index < queue.length; index++) {
-      const [name, path] = queue[index];
-      for (const dependency of byName.get(name)!.dependencies) {
-        if (!kinds.includes(dependency.kind || 'normal')) continue;
-        const target = dependency.name;
-        const nextPath = [...path, target];
-        if (forbidden(target)) errors.add(nextPath.join(' -> '));
-        // External packages may share a workspace member's name.
-        const pkg = byName.get(target);
-        const local = pkg && dependency.path && canonicalPath(dependency.path) === dirname(canonicalPath(pkg.manifest_path));
-        if (local && !visited.has(target)) {
-          visited.add(target);
-          queue.push([target, nextPath]);
-        }
+  for (const rule of config.rules) {
+    assert(rule && !Array.isArray(rule) && Object.keys(rule).every(key => ['from', 'forbid', 'kinds'].includes(key)), 'unknown rule fields');
+    const { from: source, forbid, kinds = ['normal', 'build'] } = rule;
+    assert(typeof source === 'string' && byName.has(source), `unknown source package: ${source}`);
+    assert(Array.isArray(forbid) && forbid.length && forbid.every(p => typeof p === 'string' && p), 'forbid must be a nonempty list of patterns');
+    assert(Array.isArray(kinds) && kinds.length && kinds.every(k => ['normal', 'build', 'dev'].includes(k)), 'invalid dependency kinds');
+    const queue: string[][] = [[source]], visited = new Set([source]);
+    for (const path of queue) for (const dep of byName.get(path.at(-1)!)!.dependencies) {
+      if (!kinds.includes(dep.kind || 'normal')) continue;
+      const next = [...path, dep.name], pkg = byName.get(dep.name);
+      if (forbid.some(pattern => minimatch(dep.name, pattern, { dot: true }))) errors.add(next.join(' -> '));
+      // External packages may share a workspace member's name.
+      if (pkg && dep.path && canonical(dep.path) === dirname(canonical(pkg.manifest_path)) && !visited.has(dep.name)) {
+        visited.add(dep.name);
+        queue.push(next);
       }
     }
   }
   return [...errors].sort();
 }
-
-if (isMain(import.meta.url)) await cli(new Command()
-  .description('Check forbidden Cargo dependency paths.')
-  .option('--repo <directory>', 'source checkout', process.cwd())
-  .requiredOption('--rules <file>', 'dependency rules JSON')
-  .option('--metadata <file>', 'existing Cargo metadata JSON')
-  .action((values: { repo: string; rules: string; metadata?: string }) => {
-    const config: unknown = JSON.parse(readFileSync(values.rules, 'utf8'));
-    const metadata: Metadata = JSON.parse(values.metadata ? readFileSync(values.metadata, 'utf8') : capture(
-      'cargo', ['metadata', '--no-deps', '--offline', '--format-version', '1'], { cwd: values.repo },
-    ).stdout);
-    const found = violations(metadata, config);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const args = new Command().exitOverride().option('--repo <directory>', 'source checkout', process.cwd())
+    .requiredOption('--rules <file>', 'dependency rules JSON').option('--metadata <file>', 'Cargo metadata JSON').parse().opts();
+    const metadata = args.metadata ? readFileSync(args.metadata, 'utf8') : execaSync('cargo',
+      ['metadata', '--no-deps', '--offline', '--format-version', '1'], { cwd: args.repo, maxBuffer: Infinity }).stdout;
+    const found = violations(JSON.parse(metadata), JSON.parse(readFileSync(args.rules, 'utf8')));
     for (const path of found) console.log(`forbidden dependency: ${path}`);
     if (!found.length) console.log('Dependency boundaries passed (workspace paths and direct dependencies).');
     process.exitCode = found.length ? 1 : 0;
-  }), 2);
+  } catch (error) {
+    if (!(error instanceof CommanderError)) console.error((error as Error).message);
+    process.exitCode = error instanceof CommanderError && error.exitCode === 0 ? 0 : 2;
+  }
+}

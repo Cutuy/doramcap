@@ -51,9 +51,9 @@ jobs:
           cache-dependency-path: |
             apps/*/frontend/package-lock.json
             console/*/package-lock.json
-            libs/tooling/package-lock.json
+            scripts/ci/package-lock.json
       - name: Install tooling
-        run: npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
+        run: npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
       - name: Set up Rust for the Console native bridge
         run: rustup show
       - name: Cache Cargo downloads
@@ -67,8 +67,8 @@ jobs:
           restore-keys: node-cargo-${{ runner.os }}-${{ runner.arch }}-
       - name: Check tooling libraries
         run: |
-          npm --prefix libs/tooling test
-          npm --prefix libs/tooling run typecheck
+          npm --prefix scripts/ci test
+          npm --prefix scripts/ci run typecheck
       - name: Test Node suites
         run: node scripts/ci/test-node.mts
       - name: Build Project Explorer

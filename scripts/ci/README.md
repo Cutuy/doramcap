@@ -11,7 +11,7 @@ GitHub Actions runs these suites on ARM64 and x86_64 Ubuntu runners:
 The workflows define path filters and exact commands. Rust uses the `ci` Cargo
 profile; runtimes are pinned in [rust-toolchain.toml](../../rust-toolchain.toml)
 and [.node-version](../../.node-version). CI tools run directly as TypeScript using
-[shared tooling](../../libs/tooling/tooling.mts), Git, SSH/SCP, and rsync.
+the CI npm dependencies, Git, GNU tar, SSH/SCP, and rsync.
 The worker also uses system tar to extract submitted archives.
 
 ## ARM64 worker
@@ -21,7 +21,7 @@ Keep WSL running. Pueue runs jobs serially in its default queue.
 Submit worker jobs explicitly.
 
 ```sh
-npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
+npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
 node scripts/ci/submit.mts --source /absolute/path/to/checkout
 ssh doramcap-ci@100.64.0.20 pueue status
 ssh doramcap-ci@100.64.0.20 pueue follow JOB_ID
@@ -44,10 +44,9 @@ Boundary rules use standard minimatch syntax; matching is case-sensitive.
 Run focused CI-tool tests locally with the pinned Node runtime, Git, GNU tar, and rsync:
 
 ```sh
-npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
-npm --prefix libs/tooling test
-npm --prefix libs/tooling run typecheck
-node --test scripts/ci/test-boundaries.mts scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts
+npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
+npm --prefix scripts/ci test
+npm --prefix scripts/ci run typecheck
 ```
 
 ## Provisioning

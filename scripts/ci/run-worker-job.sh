@@ -20,12 +20,11 @@ uname -a
 rustc --version
 cargo --version
 cat SOURCE.json
-npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
-npm --prefix libs/tooling test
-npm --prefix libs/tooling run typecheck
+npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
+npm --prefix scripts/ci test
+npm --prefix scripts/ci run typecheck
 rustup component add rustfmt clippy --toolchain 1.99.1
 node scripts/ci/check-boundaries.mts --rules scripts/ci/boundaries.json
-node --test scripts/ci/test-boundaries.mts scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts
 node scripts/ci/test-node.mts
 node scripts/ci/test-mcap.mts
 cargo fmt --all -- --check

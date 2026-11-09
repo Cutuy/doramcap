@@ -63,7 +63,7 @@ jobs:
           node-version-file: .node-version
 
       - name: Install tooling
-        run: npm --prefix libs/tooling ci --ignore-scripts --no-audit --no-fund
+        run: npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
       - name: Install build dependencies
         run: |
           sudo apt-get update -qq

@@ -1,17 +1,18 @@
 {
-  "name": "@doramcap/tooling",
+  "name": "@doramcap/ci",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.18.0" },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "scripts": {
-    "test": "node --test tests/*.test.mts",
+    "test": "node --test test-boundaries.mts test-prepare-build.mts test-submit.mts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "commander": "15.1.0",
     "execa": "10.2.1",
-    "minimatch": "11.0.5",
-    "tar-stream": "3.2.2"
+    "minimatch": "11.0.5"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
