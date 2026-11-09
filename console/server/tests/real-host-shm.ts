@@ -16,9 +16,9 @@ test('native inspection carries host shm metadata separately from reviewed input
   const owner = await capabilities.open('', 1);
   try {
     const request = execution.RunRequest.create({
-      run: launch.RunPlan.create({
+      run: launch.RunPlan.fromObject({
         id: 'host-observation', repositoryRoot: root, artifacts: join(root, 'artifacts'),
-        readinessSeconds: 1, stopSeconds: 1,
+        readinessSeconds: 1, stopSeconds: 1, hostShmAccess: 'PASSTHROUGH',
       }),
       systemd: systemd.SystemdPlan.create({ unitFiles: [unit] }),
     });
