@@ -29,7 +29,7 @@ Backend migration, full CI and ARM64 qualification remain pending.
 - [x] Exercise request/reply frames over actual WebSocket connections, including Ping/Pong and explicit authentication.
 - [x] Exercise silent handshake/stop, disconnect, invalid replies and incompatible versions.
 - [x] Exercise cancellation before/after UUID receipt and ambiguous/foreign graph identities.
-- [ ] Complete focused checks and library-boundary review on the published revision.
+- [x] Complete focused checks and library-boundary review on the published source revision.
 - [x] Exercise the typed exchanges against a real Dora 1.1.0 coordinator and verify native process exit.
 
 ## Milestone 2: Backend migration and CLI parity
@@ -58,9 +58,13 @@ upstream preparation API or reuse the larger CLI dependency's session helpers.
 
 ## Milestone 3: Integration qualification
 
+Cloud validation is tracked in [PR #251 checks](https://github.com/Cutuy/doramcap/pull/251/checks).
+Full local CI and the ARM64 worker remain deferred to backend integration.
+
 **Work items**
 
-- [ ] Publish implementation separately from the plan and update runtime documents.
+- [x] Publish the client foundation in draft [PR #251](https://github.com/Cutuy/doramcap/pull/251), separately from the plan.
+- [ ] Update runtime documents after backend adoption.
 - [ ] Finish Scanner review and record current validation gaps.
 
 **Validation**
