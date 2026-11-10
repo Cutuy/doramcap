@@ -74,7 +74,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
         href={link({ ...context, capability: 'orchestration' })}
         aria-current={capability?.id === 'orchestration' && !integration ? 'true' : undefined}
       >
-        <Workflow size={16} aria-hidden="true" />Orchestrated and recorded by doramcap
+        <Workflow size={16} aria-hidden="true" />Console
       </a>
 
       <div className="layer-connector" aria-hidden="true" />
