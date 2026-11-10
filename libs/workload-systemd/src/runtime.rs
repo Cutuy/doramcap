@@ -98,7 +98,7 @@ impl PrepareRuntime {
                 for (source, target, optional, _) in &binds {
                     validate_native_bind(&name, source, target, *optional)?;
                 }
-                let root = std::path::Path::new(workload_lifecycle::files::SHM_PATH);
+                let root = std::path::Path::new(host_filesystem::SHM_PATH);
                 let private_mount = binds
                     .iter()
                     .any(|(_, target, _, _)| root.starts_with(target))
@@ -121,7 +121,7 @@ impl PrepareRuntime {
                         format!(
                             "[Service]\nBindPaths={}:{}\n",
                             shm_directory(scope).display(),
-                            workload_lifecycle::files::SHM_PATH,
+                            host_filesystem::SHM_PATH,
                         ),
                     )
                     .await
@@ -222,7 +222,7 @@ fn validate_native_bind(id: &str, source: &str, target: &str, optional: bool) ->
         Err(e) if optional && e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(format!("{id}: bind {source}:{target}: {e}")),
     };
-    if workload_lifecycle::files::exposes_host_shm_tree(&resolved).map_err(error)? {
+    if host_filesystem::exposes_host_shm_tree(&resolved).map_err(error)? {
         return Err(format!(
             "{id}: bind {source}:{target} exposes whole host shm; select PASSTHROUGH"
         ));
@@ -250,7 +250,7 @@ pub(crate) fn validate_binds(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(format!("{id}: {}: {e}", bind.source)),
             };
-            if workload_lifecycle::files::exposes_host_shm_tree(&source).map_err(error)? {
+            if host_filesystem::exposes_host_shm_tree(&source).map_err(error)? {
                 return Err(format!(
                     "{id}: bind {}:{} exposes whole host shm; select PASSTHROUGH",
                     bind.source, bind.target,

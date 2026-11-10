@@ -17,9 +17,10 @@ use self::{
     preparation::PrepareRun,
 };
 use crate::compose::{
+    ComposePrepareInput, PrepareOverlays,
     error::invalid,
     filesystem::FilesystemChanges,
-    overlay::{ComposePrepareInput, OverlayPolicy, OverlayResults, PrepareOverlays},
+    overlay::{OverlayPolicy, OverlayResults},
     *,
 };
 use orchestrator::{Input, Observer};
@@ -272,7 +273,7 @@ impl ComposeRunner {
             resources.clone(),
         )?;
         let events = EventCapture::start(
-            self.adapter.docker.clone(),
+            self.adapter.engine.client().clone(),
             plan.name.clone(),
             artifacts.join("docker-events.jsonl"),
             signals.stopping.clone(),

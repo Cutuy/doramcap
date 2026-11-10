@@ -1,11 +1,11 @@
 //! Compose manifest rewriting around shared filesystem view creation.
-use super::{OverlayPolicy, OverlaySet, PrepareInput, prepare, unmount};
 use crate::compose::{
     DockerAdapter, ResolvedComposeProject, Result,
     adapter::{digest, private_write},
     error::invalid,
     mounts,
 };
+use crate::engine::overlay::{OverlayPolicy, OverlaySet, PrepareInput, prepare, unmount};
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -183,7 +183,9 @@ mod tests {
             prepared.projects[0].sha256,
             digest(&std::fs::read(&prepared.projects[0].manifest).unwrap())
         );
-        super::super::finalize(prepared.views).await.unwrap();
+        crate::engine::overlay::finalize(prepared.views)
+            .await
+            .unwrap();
         server.await.unwrap();
     }
 

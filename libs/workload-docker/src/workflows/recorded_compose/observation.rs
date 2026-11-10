@@ -157,7 +157,7 @@ impl Drop for EventCapture {
 
 /// Read the Docker facts, each within its own deadline, so one slow source only leaves its own facts unset.
 async fn docker_facts(adapter: &DockerAdapter, data_directory: &Path, state: &mut MachineState) {
-    let docker = &adapter.docker;
+    let docker = &adapter.engine.client();
     let (version, info, containers, compose_version) = tokio::join!(
         tokio::time::timeout(DOCKER_FACTS_DEADLINE, docker.version()),
         tokio::time::timeout(DOCKER_FACTS_DEADLINE, docker.info()),

@@ -25,7 +25,7 @@ fn wait_for(mut ready: impl FnMut() -> bool) -> io::Result<()> {
 }
 
 fn memory(role: &str, name: &str, marker: &Path, done: &Path) -> io::Result<()> {
-    let path = Path::new(workload_lifecycle::files::SHM_PATH).join(format!("doramcap-test-{name}"));
+    let path = Path::new(host_filesystem::SHM_PATH).join(format!("doramcap-test-{name}"));
     match role {
         "producer" => {
             fs::File::create_new(path)?.write_all(b"live data")?;

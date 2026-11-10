@@ -104,16 +104,21 @@ impl ResetExperiment {
             .ok_or_else(|| invalid("controller path is not UTF-8"))?;
         let owner = super::super::shared_dora::owner(&self.controller.repository);
         // Stop and verify this repository's writers before touching its overlay workspace.
-        self.adapter
-            .experiment_resources(scope, &owner)
-            .quiesce(self.stop_seconds)
-            .await?;
+        let resources = self.adapter.engine.resources(scope, &owner);
+        let stopped = resources.quiesce(self.stop_seconds).await?;
         overlay::discard(&self.controller.workspace()).await?;
+        let mut last = None;
+        for container in stopped {
+            if container.labels.is_some_and(|labels| {
+                labels.contains_key(crate::compose::adapter::EXPERIMENT_OWNER_LABEL)
+            }) && last.replace(container.id.unwrap()).is_some()
+            {
+                return Err(invalid("multiple experiment IPC owners"));
+            }
+        }
         // Empty containers/networks and an absent workspace are the success conditions.
-        self.adapter
-            .experiment_resources(scope, &owner)
-            .remove()
-            .await
+        resources.remove(last.as_deref()).await?;
+        Ok(())
     }
 }
 

@@ -6,6 +6,7 @@
 //! through Rust or serialized requests; no particular UI or input producer is required.
 //! Generic step execution is supplied by the independent `orchestrator` crate.
 pub mod compose;
+pub mod engine;
 pub mod evidence;
 pub mod workflows;
 

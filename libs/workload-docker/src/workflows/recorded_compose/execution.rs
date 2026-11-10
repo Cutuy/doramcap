@@ -14,7 +14,7 @@ pub(super) async fn launch_apps(
     spec: &ComposeRun,
     prepared: &Output<preparation::PreparedRun>,
     plan: &ResolvedComposeProject,
-    overlays: Option<&Output<overlay::PreparedOverlays>>,
+    overlays: Option<&Output<PreparedOverlays>>,
     last_launch: &mut Option<Output<ComposeProjectState>>,
     system_apps: &Option<Rc<workload_lifecycle::cgroup::Group>>,
     adapter: &DockerAdapter,
@@ -111,7 +111,8 @@ pub(super) async fn launch_apps(
     for container in &state.containers {
         if infrastructure(&container.service) {
             let inspected = adapter
-                .docker
+                .engine
+                .client()
                 .inspect_container(&container.id, None)
                 .await
                 .map_err(|e| orchestrator::Error::message(e.to_string()))?;
@@ -180,7 +181,7 @@ async fn start_services(
     executor: &LocalExecutor,
     input: StartInput,
     graph: &Output<()>,
-    overlays: Option<&Output<overlay::PreparedOverlays>>,
+    overlays: Option<&Output<PreparedOverlays>>,
     previous: Option<&Output<ComposeProjectState>>,
 ) -> orchestrator::Result<Output<ComposeProjectState>> {
     let mut input = Input::new(input).after(graph);

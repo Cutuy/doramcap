@@ -18,7 +18,7 @@ pub(super) struct ComposeRunning {
     pub spec: ComposeRun,
     pub prepared: Output<PreparedRun>,
     pub plan: ResolvedComposeProject,
-    pub overlays: Option<Output<overlay::PreparedOverlays>>,
+    pub overlays: Option<Output<PreparedOverlays>>,
     pub resources: super::super::experiment::SharedExperiment,
     pub events: EventCapture,
     pub signals: RunSignals,

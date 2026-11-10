@@ -20,7 +20,7 @@ pub(super) async fn placement(
 ) -> Result<CgroupPlacement> {
     let info = tokio::time::timeout(
         Duration::from_secs(run.readiness_seconds),
-        adapter.docker.info(),
+        adapter.engine.client().info(),
     )
     .await
     .map_err(|_| invalid("Docker cgroup capability deadline exceeded"))?

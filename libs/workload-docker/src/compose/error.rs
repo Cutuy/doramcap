@@ -90,3 +90,16 @@ pub(crate) fn absent(error: &bollard::errors::Error) -> bool {
         }
     )
 }
+
+impl From<crate::engine::Error> for Error {
+    fn from(error: crate::engine::Error) -> Self {
+        match error {
+            crate::engine::Error::Invalid(message) => Self::Invalid(message),
+            crate::engine::Error::Engine { operation, source } => {
+                Self::Engine { operation, source }
+            }
+            crate::engine::Error::Io(error) => Self::Io(error),
+            crate::engine::Error::Json(error) => Self::Json(error),
+        }
+    }
+}

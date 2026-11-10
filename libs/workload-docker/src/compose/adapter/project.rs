@@ -51,7 +51,7 @@ impl ComposeExecution<'_> {
         let mut args = self.args();
         args.extend(["config".into(), "--quiet".into()]);
         compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             Path::new(&self.plan.manifest)
                 .parent()
                 .ok_or_else(|| invalid("manifest parent missing"))?,
@@ -82,7 +82,8 @@ impl ComposeExecution<'_> {
     }
     pub(super) async fn containers(&self) -> Result<Vec<bollard::models::ContainerSummary>> {
         self.adapter
-            .docker
+            .engine
+            .client()
             .list_containers(Some(ListContainersOptions {
                 all: true,
                 filters: project_filters(&self.plan.name),
@@ -93,7 +94,8 @@ impl ComposeExecution<'_> {
     }
     pub(super) async fn networks(&self) -> Result<Vec<bollard::models::Network>> {
         self.adapter
-            .docker
+            .engine
+            .client()
             .list_networks(Some(ListNetworksOptions {
                 filters: project_filters(&self.plan.name),
             }))
@@ -102,7 +104,8 @@ impl ComposeExecution<'_> {
     }
     pub(super) async fn volumes(&self) -> Result<Vec<bollard::models::Volume>> {
         self.adapter
-            .docker
+            .engine
+            .client()
             .list_volumes(Some(ListVolumesOptions {
                 filters: Some(HashMap::from([(
                     "label".into(),
@@ -132,7 +135,8 @@ impl ComposeExecution<'_> {
                 .ok_or_else(|| invalid("Engine omitted container ID"))?;
             let info = self
                 .adapter
-                .docker
+                .engine
+                .client()
                 .inspect_container(&id, None)
                 .await
                 .map_err(|e| engine(format!("inspect {id}"), e))?;
@@ -190,7 +194,7 @@ impl ComposeExecution<'_> {
             tail: "20".into(),
             ..Default::default()
         };
-        let mut logs = self.adapter.docker.logs(id, Some(options));
+        let mut logs = self.adapter.engine.client().logs(id, Some(options));
         let mut output = String::new();
         while let Some(Ok(chunk)) = logs.next().await {
             append_output(&mut output, &chunk.into_bytes());
@@ -223,7 +227,7 @@ impl ComposeExecution<'_> {
             .map_err(|error| invalid(error.to_string()))?
             .as_secs()
             .to_string();
-        let events = self.adapter.docker.events(Some(EventsOptions {
+        let events = self.adapter.engine.client().events(Some(EventsOptions {
             since: Some(since),
             filters: project_filters(&self.plan.name),
             ..Default::default()
@@ -279,7 +283,13 @@ impl ComposeExecution<'_> {
             "launch-{}.log",
             &digest(&serde_json::to_vec(&args)?)[..16]
         ));
-        let socket = self.adapter.socket.clone();
+        let socket = self
+            .adapter
+            .engine
+            .socket_path()
+            .to_str()
+            .unwrap()
+            .to_owned();
         let directory = Path::new(&self.plan.manifest)
             .parent()
             .unwrap()
@@ -304,7 +314,9 @@ impl ComposeExecution<'_> {
             .finish_start()
             .await?
             .ok_or_else(|| invalid("startup command already consumed"))?;
-        private_write(&log, format!("{out}\n{err}").as_bytes()).await
+        private_write(&log, format!("{out}\n{err}").as_bytes())
+            .await
+            .map_err(Into::into)
     }
     // Keep the native up request alive across cancellation; shutdown joins it
     // before inspecting resources, so delayed container creation cannot escape cleanup.
@@ -351,7 +363,7 @@ impl ComposeExecution<'_> {
         args.extend(["exec".into(), "--no-TTY".into(), service.into()]);
         args.extend_from_slice(command);
         compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             Path::new(&self.plan.manifest).parent().unwrap(),
             &BTreeMap::new(),
             &args,
@@ -397,7 +409,8 @@ impl ComposeExecution<'_> {
         let container = Self::running_service(self.inspect().await?, service)?;
         let info = self
             .adapter
-            .docker
+            .engine
+            .client()
             .inspect_container(&container.id, None)
             .await
             .map_err(|e| engine("inspect endpoint container", e))?;
@@ -417,7 +430,8 @@ impl ComposeExecution<'_> {
             .await?;
             let current = self
                 .adapter
-                .docker
+                .engine
+                .client()
                 .inspect_container(&container.id, None)
                 .await
                 .map_err(|e| engine("recheck endpoint container", e))?;
@@ -444,7 +458,8 @@ impl ComposeExecution<'_> {
             .ok_or_else(|| invalid("endpoint has no network ID"))?;
         let network_info = self
             .adapter
-            .docker
+            .engine
+            .client()
             .inspect_network(network_id, None::<InspectNetworkOptions>)
             .await
             .map_err(|e| engine("inspect endpoint network", e))?;
@@ -493,7 +508,7 @@ impl ComposeExecution<'_> {
                 {
                     result
                         .diagnostics
-                        .push(error.diagnostic("startup evidence"));
+                        .push(crate::compose::Error::from(error).diagnostic("startup evidence"));
                 }
             }
             Ok(None) => {}
@@ -524,12 +539,18 @@ impl ComposeExecution<'_> {
             // Dependent services stop one after another, so allow for every grace period in turn.
             let mut deadline = STOP_REQUEST_MARGIN;
             for id in before.iter().filter_map(|c| c.id.as_deref()) {
-                if let Ok(info) = self.adapter.docker.inspect_container(id, None).await {
+                if let Ok(info) = self
+                    .adapter
+                    .engine
+                    .client()
+                    .inspect_container(id, None)
+                    .await
+                {
                     deadline += stop_timeout(&info);
                 }
             }
             if let Err(e) = compose(
-                &self.adapter.socket,
+                self.adapter.engine.socket_path().to_str().unwrap(),
                 Path::new(&self.plan.manifest).parent().unwrap(),
                 &BTreeMap::new(),
                 &args,
@@ -554,12 +575,19 @@ impl ComposeExecution<'_> {
             let Some(id) = summary.id else {
                 continue;
             };
-            match self.adapter.docker.inspect_container(&id, None).await {
+            match self
+                .adapter
+                .engine
+                .client()
+                .inspect_container(&id, None)
+                .await
+            {
                 Ok(info) => {
                     if info.state.as_ref().and_then(|s| s.running) == Some(true)
                         && let Err(e) = self
                             .adapter
-                            .docker
+                            .engine
+                            .client()
                             .clone()
                             .with_timeout(stop_timeout(&info) + STOP_REQUEST_MARGIN)
                             .stop_container(&id, None)
@@ -570,7 +598,13 @@ impl ComposeExecution<'_> {
                             .diagnostics
                             .push(engine(format!("stop {id}"), e).diagnostic("stop"));
                     }
-                    match self.adapter.docker.inspect_container(&id, None).await {
+                    match self
+                        .adapter
+                        .engine
+                        .client()
+                        .inspect_container(&id, None)
+                        .await
+                    {
                         Ok(stopped) => {
                             let exited = stopped
                                 .state
@@ -675,7 +709,8 @@ impl ComposeExecution<'_> {
                 && let Some(id) = summary.id
                 && let Err(e) = self
                     .adapter
-                    .docker
+                    .engine
+                    .client()
                     .remove_container(
                         &id,
                         Some(RemoveContainerOptions {
@@ -698,7 +733,7 @@ impl ComposeExecution<'_> {
                 // Compose-scoped names were validated before launch; unknown names
                 // require explicit reconciliation rather than destructive cleanup.
                 if network.labels.as_ref().and_then(|l| l.get(RUN_LABEL)) == Some(&self.plan.run) {
-                    if let Err(e) = self.adapter.docker.remove_network(&id).await
+                    if let Err(e) = self.adapter.engine.client().remove_network(&id).await
                         && !absent(&e)
                     {
                         result
@@ -723,7 +758,8 @@ impl ComposeExecution<'_> {
                 }
                 if let Err(e) = self
                     .adapter
-                    .docker
+                    .engine
+                    .client()
                     .remove_volume(&volume.name, None::<RemoveVolumeOptions>)
                     .await
                     && !absent(&e)
@@ -756,7 +792,8 @@ impl ComposeExecution<'_> {
             && let Some(id) = experiment_owner
             && let Err(error) = self
                 .adapter
-                .docker
+                .engine
+                .client()
                 .remove_container(&id, None::<RemoveContainerOptions>)
                 .await
             && !absent(&error)

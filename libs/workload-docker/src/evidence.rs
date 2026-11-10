@@ -6,11 +6,6 @@ use tokio::io::AsyncReadExt;
 /// Largest private workflow metadata document read or written as evidence.
 pub(crate) const MAX_METADATA_BYTES: usize = 2 * 1024 * 1024;
 
-/// Create a fresh owner-only directory; existing paths and missing parents fail.
-pub(crate) async fn create_private_dir(path: &Path) -> io::Result<()> {
-    tokio::fs::DirBuilder::new().mode(0o700).create(path).await
-}
-
 /// Read bounded private metadata without following its final component.
 /// Rejects non-regular files and growth beyond `limit`; parents are caller-owned.
 pub(crate) async fn read_regular(path: &Path, limit: u64) -> crate::compose::Result<Vec<u8>> {

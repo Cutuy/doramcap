@@ -5,12 +5,11 @@ pub(super) use model::SHM_SERVICE;
 
 use super::ComposeRun;
 use crate::compose::{
+    PreparedOverlays,
     adapter::{digest, private_write},
     error::invalid,
     filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline},
-    mounts,
-    overlay::PreparedOverlays,
-    *,
+    mounts, *,
 };
 use crate::workflows::shared_dora::MAX_GRAPH_BYTES;
 use orchestrator::{LocalExecutor, Step};
@@ -111,7 +110,7 @@ pub struct ResolvedRun {
 pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
     // Validate the request before creating run artifacts.
     model::validate(&spec)?;
-    crate::evidence::create_private_dir(&spec.artifacts).await?;
+    crate::engine::files::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     if !spec.mcap_writers.services.is_empty() || !spec.mcap_writers.apps.is_empty() {
         validate_recording_host(&spec.mcap_writers.directories, &spec.id).await?;
@@ -360,7 +359,8 @@ async fn validate_external_ipc(adapter: &DockerAdapter, model: &Value, access: i
                 )));
             }
             let container = adapter
-                .docker
+                .engine
+                .client()
                 .inspect_container(&target, None)
                 .await
                 .map_err(|error| {
@@ -397,12 +397,18 @@ async fn validate_external_ipc(adapter: &DockerAdapter, model: &Value, access: i
                 if mount.typ.as_deref() == Some("volume")
                     && let Some(name) = &mount.name
                 {
-                    let volume = adapter.docker.inspect_volume(name).await.map_err(|error| {
-                        engine(
-                            format!("{service}: inspect external IPC volume {name}"),
-                            error,
-                        )
-                    })?;
+                    let volume =
+                        adapter
+                            .engine
+                            .client()
+                            .inspect_volume(name)
+                            .await
+                            .map_err(|error| {
+                                engine(
+                                    format!("{service}: inspect external IPC volume {name}"),
+                                    error,
+                                )
+                            })?;
                     let options = serde_json::to_value(&volume.options)?;
                     if let Some(source) = model::local_volume_source(Some(&volume.driver), &options)
                     {
@@ -449,10 +455,12 @@ async fn validate_external_volume_shm(
         }
     }
     for (name, service) in volumes {
-        let volume =
-            adapter.docker.inspect_volume(name).await.map_err(|error| {
-                engine(format!("{service}: inspect external volume {name}"), error)
-            })?;
+        let volume = adapter
+            .engine
+            .client()
+            .inspect_volume(name)
+            .await
+            .map_err(|error| engine(format!("{service}: inspect external volume {name}"), error))?;
         if volume.driver == "local" {
             let options = serde_json::to_value(&volume.options)?;
             if let Some(source) = model::local_volume_source(Some(&volume.driver), &options) {
@@ -605,7 +613,7 @@ fn failed(failures: &[String]) -> Result<()> {
 /// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
-    crate::evidence::create_private_dir(&directory).await?;
+    crate::engine::files::create_private_dir(&directory).await?;
     let mut failures = Vec::new();
     for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
@@ -619,13 +627,11 @@ async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                         Err(error) => Err(error.into()),
                         Ok(metadata) if !metadata.is_file() => continue,
-                        Ok(_) => {
-                            match workload_lifecycle::files::is_host_shm_source(Path::new(source)) {
-                                Ok(true) => continue,
-                                Ok(false) => snapshot_file(source, &directory).await,
-                                Err(error) => Err(error.into()),
-                            }
-                        }
+                        Ok(_) => match host_filesystem::is_host_shm_source(Path::new(source)) {
+                            Ok(true) => continue,
+                            Ok(false) => snapshot_file(source, &directory).await,
+                            Err(error) => Err(error.into()),
+                        },
                     };
                     match frozen {
                         Ok(frozen) => mount["source"] = frozen.into(),
