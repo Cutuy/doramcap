@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="260" viewBox="0 0 920 260">
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#475569"/></marker></defs>
+<rect width="920" height="260" rx="12" fill="#f8fafc"/>
+<g font-family="sans-serif" text-anchor="middle" fill="#0f172a">
+<g stroke="#94a3b8"><rect x="25" y="88" width="180" height="74" rx="9" fill="#e0e7ff"/><rect x="280" y="88" width="180" height="74" rx="9" fill="#dcfce7"/><rect x="535" y="88" width="160" height="74" rx="9" fill="#dbeafe"/><rect x="760" y="88" width="135" height="74" rx="9" fill="#fef3c7"/></g>
+<g font-size="18"><text x="115" y="116">CUDA kernel</text><text x="370" y="116">Registered slab</text><text x="615" y="116">MCAP writer</text><text x="827" y="116">NVMe</text></g>
+<g font-size="14" fill="#475569"><text x="115" y="143">Non-default stream</text><text x="370" y="143">Payload + framing</text><text x="615" y="143">io_uring</text><text x="827" y="143">File ranges</text><text x="242" y="72">GPU stores</text><text x="498" y="72">Ready event</text><text x="727" y="72">DMA</text><text x="590" y="216">Completion releases slab</text></g>
+<g fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"><path d="M205 125H280"/><path d="M460 125H535"/><path d="M695 125H760"/><path d="M827 162V190H370V162"/></g></g></svg>
