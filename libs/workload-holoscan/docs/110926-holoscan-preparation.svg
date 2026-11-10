@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1150" height="530" viewBox="0 0 1150 530" role="img" aria-labelledby="title desc">
+  <title id="title">Holoscan Build before Prepare</title>
+  <desc id="desc">Selected project settings feed Build and Prepare. Build produces native artifacts; Prepare resolves the run; Start launches the prepared application. Build and preparation retain separate outcomes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .name {font-size:23px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .focus {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1150" height="530" fill="white"/>
+  <rect class="box" x="365" y="25" width="420" height="85" rx="10"/>
+  <text class="name" x="575" y="59" text-anchor="middle">Selected project and application</text>
+  <text class="detail" x="575" y="88" text-anchor="middle">Native settings and run choices</text>
+  <rect class="focus" x="35" y="200" width="300" height="90" rx="10"/>
+  <text class="name" x="185" y="235" text-anchor="middle">Build</text>
+  <text class="detail" x="185" y="264" text-anchor="middle">Upstream build workflow</text>
+  <rect class="focus" x="425" y="200" width="300" height="90" rx="10"/>
+  <text class="name" x="575" y="235" text-anchor="middle">Prepare</text>
+  <text class="detail" x="575" y="264" text-anchor="middle">Check and resolve the run</text>
+  <rect class="box" x="815" y="200" width="300" height="90" rx="10"/>
+  <text class="name" x="965" y="235" text-anchor="middle">Start</text>
+  <text class="detail" x="965" y="264" text-anchor="middle">Launch prepared application</text>
+  <rect class="box" x="35" y="400" width="300" height="85" rx="10"/>
+  <text class="name" x="185" y="434" text-anchor="middle">Build outcome</text>
+  <text class="detail" x="185" y="463" text-anchor="middle">Artifacts and build logs</text>
+  <rect class="box" x="425" y="400" width="300" height="85" rx="10"/>
+  <text class="name" x="575" y="434" text-anchor="middle">Preparation outcome</text>
+  <text class="detail" x="575" y="463" text-anchor="middle">Resolved inputs and diagnostics</text>
+  <path class="flow" d="M465 110 V155 H185 V200"/>
+  <path class="flow" d="M575 110 V200"/>
+  <text class="label" x="595" y="159">inputs</text>
+  <path class="flow" d="M335 245 H425"/>
+  <text class="label" x="380" y="217" text-anchor="middle">built</text>
+  <text class="label" x="380" y="236" text-anchor="middle">outputs</text>
+  <path class="flow" d="M725 245 H815"/>
+  <text class="label" x="770" y="217" text-anchor="middle">prepared</text>
+  <text class="label" x="770" y="236" text-anchor="middle">run</text>
+  <path class="flow" d="M185 290 V400"/>
+  <text class="label" x="205" y="350">result</text>
+  <path class="flow" d="M575 290 V400"/>
+  <text class="label" x="595" y="350">result</text>
+</svg>

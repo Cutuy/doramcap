@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520" role="img" aria-labelledby="title desc">
+  <title id="title">Holoscan and Console control ownership</title>
+  <desc id="desc">Declared Holoscan settings and explicitly selected Console limits feed conflict checks. Findings accompany the prepared run.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .name {font-size:23px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .focus {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="900" height="520" fill="white"/>
+  <rect class="box" x="35" y="35" width="360" height="85" rx="10"/>
+  <text class="name" x="215" y="69" text-anchor="middle">Holoscan controls</text>
+  <text class="detail" x="215" y="98" text-anchor="middle">Placement and sensor recording</text>
+  <rect class="box" x="505" y="35" width="360" height="85" rx="10"/>
+  <text class="name" x="685" y="69" text-anchor="middle">Console controls</text>
+  <text class="detail" x="685" y="98" text-anchor="middle">Selected limits and observations</text>
+  <rect class="focus" x="270" y="220" width="360" height="85" rx="10"/>
+  <text class="name" x="450" y="254" text-anchor="middle">Conflict checks</text>
+  <text class="detail" x="450" y="283" text-anchor="middle">Compare supported settings</text>
+  <rect class="box" x="270" y="400" width="360" height="85" rx="10"/>
+  <text class="name" x="450" y="434" text-anchor="middle">Preparation outcome</text>
+  <text class="detail" x="450" y="463" text-anchor="middle">Run settings and findings</text>
+  <path class="flow" d="M215 120 V165 H360 V220"/>
+  <text class="label" x="175" y="155" text-anchor="end">declared settings</text>
+  <path class="flow" d="M685 120 V165 H540 V220"/>
+  <text class="label" x="710" y="155">selected settings</text>
+  <path class="flow" d="M450 305 V400"/>
+  <text class="label" x="470" y="357">findings</text>
+</svg>

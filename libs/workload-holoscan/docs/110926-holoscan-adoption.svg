@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="620" viewBox="0 0 1240 620" role="img" aria-labelledby="title desc">
+  <title id="title">Console adoption of Holoscan projects</title>
+  <desc id="desc">Console selects either a Compose or Holoscan workflow. The Holoscan workflow uses upstream project tools to run application containers through Docker. Both workflows can use shared steps and retain experiment results.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .name {font-size:22px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .focus {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1240" height="620" fill="white"/>
+  <rect class="box" x="430" y="25" width="350" height="75" rx="10"/>
+  <text class="name" x="605" y="56" text-anchor="middle">Console</text>
+  <text class="detail" x="605" y="82" text-anchor="middle">Projects and experiments</text>
+
+  <rect class="box" x="75" y="180" width="300" height="90" rx="10"/>
+  <text class="name" x="225" y="215" text-anchor="middle">Compose workflow</text>
+  <text class="detail" x="225" y="244" text-anchor="middle">workload-docker</text>
+
+  <rect class="focus" x="515" y="180" width="320" height="90" rx="10"/>
+  <text class="name" x="675" y="215" text-anchor="middle">Holoscan workflow</text>
+  <text class="detail" x="675" y="244" text-anchor="middle">workload-holoscan</text>
+
+  <rect class="box" x="935" y="180" width="255" height="90" rx="10"/>
+  <text class="name" x="1062" y="215" text-anchor="middle">Holoscan tools</text>
+  <text class="detail" x="1062" y="244" text-anchor="middle">Catalog and launch settings</text>
+
+  <rect class="box" x="295" y="345" width="540" height="85" rx="10"/>
+  <text class="name" x="565" y="378" text-anchor="middle">Shared steps and subworkflows</text>
+  <text class="detail" x="565" y="407" text-anchor="middle">Host observation and file collection</text>
+
+  <rect class="box" x="935" y="345" width="255" height="85" rx="10"/>
+  <text class="name" x="1062" y="378" text-anchor="middle">Docker execution</text>
+  <text class="detail" x="1062" y="407" text-anchor="middle">Application containers</text>
+
+  <rect class="box" x="295" y="500" width="540" height="75" rx="10"/>
+  <text class="name" x="565" y="531" text-anchor="middle">Retained experiment</text>
+  <text class="detail" x="565" y="558" text-anchor="middle">Run outcomes, observations and files</text>
+
+  <rect class="box" x="935" y="500" width="255" height="75" rx="10"/>
+  <text class="name" x="1062" y="531" text-anchor="middle">Holoscan application</text>
+  <text class="detail" x="1062" y="558" text-anchor="middle">Graph, placement, recordings</text>
+
+  <path class="flow" d="M490 100 V135 H225 V180"/>
+  <path class="flow" d="M675 100 V180"/>
+  <text class="label" x="696" y="145">selection</text>
+  <path class="flow" d="M835 225 H935"/>
+  <text class="label" x="885" y="210" text-anchor="middle">project</text>
+  <path class="flow" d="M225 270 V387 H295"/>
+  <path class="flow" d="M675 270 V345"/>
+  <text class="label" x="695" y="315">operations</text>
+  <path class="flow" d="M1062 270 V345"/>
+  <path class="flow" d="M935 387 H835"/>
+  <text class="label" x="885" y="371" text-anchor="middle">state</text>
+  <path class="flow" d="M1062 430 V500"/>
+  <path class="flow" d="M565 430 V500"/>
+  <path class="flow" d="M935 537 H835"/>
+  <text class="label" x="885" y="521" text-anchor="middle">files</text>
+</svg>
