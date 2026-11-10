@@ -52,3 +52,17 @@ Local validation: shell syntax checks, submission CLI execution, and diff
 whitespace checks passed. See [worker instructions](../README.md).
 Dora end-to-end validation is not part of this queued job yet. Windows/WSL
 startup scheduling and automatic Git triggers are not configured.
+
+## Milestone: native WSL job
+
+**Work items**
+
+- [x] Replace the full WSL job script with TypeScript; reuse process and lock handling.
+- [x] Queue the pinned Node executable and verify the canonical worker in snapshots.
+
+**Validation**
+
+- [x] 51 CI-tool tests, type checks, ordering, snapshot integrity and cancellation.
+- [x] Full WSL CI, native allocations and Dora recording; 977 Mac test executions passed.
+
+Evidence: code `e122ec9e`, Pueue 631/632; Mac job `d725cbe7a3a740cb991393cbebec4a68`.

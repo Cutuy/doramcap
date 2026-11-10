@@ -5,7 +5,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { prepare, PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
+import { prepare, PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
 
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -25,11 +25,14 @@ function fixture(t: TestContext) {
       manifest.files_sha256[relative] = digest(path);
       manifest.files_mode[relative] = 0o644;
     }
-    for (const [relative, key] of [['run-worker-job.sh', 'runner_sha256'], [PREPARE_PATH, 'prepare_sha256']] as const) {
+    for (const [relative, key] of [[RUNNER_PATH, 'runner_sha256'], [PREPARE_PATH, 'prepare_sha256']] as const) {
       const path = join(directory, relative);
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, 'runner helper');
       manifest[key] = digest(path);
+      manifest.files_sha256[relative] = manifest[key];
+      manifest.files_mode[relative] = 0o644;
+      chmodSync(path, 0o644);
     }
     writeFileSync(join(directory, 'SOURCE.json'), JSON.stringify(manifest));
     writeFileSync(join(directory, 'source.tar.gz'), 'archive remains in snapshot');
@@ -123,7 +126,7 @@ for (const corruption of ['content', 'extra', 'symlink', 'runner', 'mode', 'path
     if (corruption === 'content') writeFileSync(join(source, 'src.rs'), 'tampered');
     else if (corruption === 'extra') writeFileSync(join(source, 'extra'), 'unlisted');
     else if (corruption === 'symlink') symlinkSync(join(source, 'src.rs'), join(source, 'link'));
-    else if (corruption === 'runner') writeFileSync(join(source, 'run-worker-job.sh'), 'tampered');
+    else if (corruption === 'runner') writeFileSync(join(source, RUNNER_PATH), 'tampered');
     else if (corruption === 'mode') chmodSync(join(source, 'src.rs'), 0o755);
     else {
       const manifest: SnapshotManifest = JSON.parse(readFileSync(join(source, 'SOURCE.json'), 'utf8'));

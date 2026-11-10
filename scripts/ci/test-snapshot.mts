@@ -6,8 +6,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
-import { createSnapshot } from './submit.mts';
+import { PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
+import { createSnapshot } from './snapshot.mts';
 
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -27,6 +27,7 @@ function fixture(t: TestContext) {
   put('scripts/ci/check-boundaries.mts', '// checker');
   put(PREPARE_PATH, readFileSync(new URL('./prepare-build.mts', import.meta.url), 'utf8'));
   put('scripts/ci/package.json', '{}');
+  put(RUNNER_PATH, '// fixture native runner');
   execFileSync('git', ['init', '-q', source]);
   execFileSync('git', ['-C', source, 'add', '.']);
   execFileSync('git', ['-C', source, '-c', 'user.name=CI Fixture', '-c', 'user.email=ci@example.invalid',
@@ -45,6 +46,9 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   put('.sudo-password', 'fixture exclusion');
   put('unrelated.txt', 'excluded');
   put('scripts/ci/unrelated.mts', 'excluded');
+  for (const name of ['wsl2/submit.mts', 'wsl2/worker.mts', 'wsl2/test-worker.mts', 'macos-linux/submit.mts', 'macos-linux/worker.mts', 'macos-linux/artifacts.mts', 'macos-linux/install-nextest.mts', 'macos-linux/test-artifacts.mts', 'macos-linux/test-worker.mts', 'macos-linux/artifacts.txt', 'hash-file.mts', 'worker-process.mts', 'worker-ssh.mts', 'install-node.mts', 'test-worker-runtime.mts']) {
+    put(`scripts/ci/${name}`, '// run-only worker fixture');
+  }
   // Act
   const submitted = await createSnapshot(source, archive);
   const extracted = join(root, 'extracted');
@@ -62,9 +66,12 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   assert.equal(readFileSync(join(extracted, 'apps/new file\nwith newline.ts'), 'utf8'), '// untracked');
   assert.equal(statSync(join(extracted, 'libs/run.sh')).mode & 0o777, 0o755);
   assert.equal(digest(join(extracted, PREPARE_PATH)), manifest.prepare_sha256);
-  assert.equal(digest(join(extracted, 'run-worker-job.sh')), manifest.runner_sha256);
+  assert.equal(digest(join(extracted, RUNNER_PATH)), manifest.runner_sha256);
   assert.equal(existsSync(join(extracted, 'scripts/ci/check-boundaries.mts')), true);
   assert.equal(existsSync(join(extracted, 'scripts/ci/package.json')), true);
+  for (const name of ['wsl2/submit.mts', 'wsl2/worker.mts', 'wsl2/test-worker.mts', 'macos-linux/submit.mts', 'macos-linux/worker.mts', 'macos-linux/artifacts.mts', 'macos-linux/install-nextest.mts', 'macos-linux/test-artifacts.mts', 'macos-linux/test-worker.mts', 'macos-linux/artifacts.txt', 'hash-file.mts', 'worker-process.mts', 'worker-ssh.mts', 'install-node.mts', 'test-worker-runtime.mts']) {
+    assert.equal(existsSync(join(extracted, 'scripts/ci', name)), true, name);
+  }
   for (const excluded of ['.git', '.sudo-password', 'console/private.secret', 'unrelated.txt', 'scripts/ci/unrelated.mts']) {
     assert.equal(existsSync(join(extracted, excluded)), false, excluded);
   }
