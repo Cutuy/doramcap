@@ -2,8 +2,8 @@
 use crate::compose::{
     Diagnostics, DockerAdapter, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose,
     StartCompose,
-    filesystem::{CaptureFilesystemBaseline, CollectFilesystemChanges},
 };
+use docker_engine::filesystem::{CaptureFilesystemBaseline, CollectFilesystemChanges};
 use orchestrator::{LocalExecutor, Observer};
 use std::rc::{Rc, Weak};
 
@@ -94,7 +94,8 @@ pub(super) fn attach(
     diagnostics: Diagnostics,
 ) -> Rc<LocalExecutor> {
     use super::recorded_compose::{finalization::*, preparation::PrepareRun};
-    use crate::compose::{PrepareOverlays, overlay::FinalizeOverlays};
+    use crate::compose::PrepareOverlays;
+    use docker_engine::overlay::FinalizeOverlays;
     Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());
         let dependency = adapter.clone();

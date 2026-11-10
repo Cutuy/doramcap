@@ -1,4 +1,5 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
+use docker_engine::filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline};
 mod model;
 mod snapshot;
 pub(super) use model::SHM_SERVICE;
@@ -8,7 +9,6 @@ use crate::compose::{
     PreparedOverlays,
     adapter::{digest, private_write},
     error::invalid,
-    filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline},
     mounts, *,
 };
 use crate::workflows::shared_dora::MAX_GRAPH_BYTES;
@@ -110,7 +110,7 @@ pub struct ResolvedRun {
 pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<ResolvedRun> {
     // Validate the request before creating run artifacts.
     model::validate(&spec)?;
-    crate::engine::files::create_private_dir(&spec.artifacts).await?;
+    docker_engine::files::create_private_dir(&spec.artifacts).await?;
     let artifacts = tokio::fs::canonicalize(&spec.artifacts).await?;
     if !spec.mcap_writers.services.is_empty() || !spec.mcap_writers.apps.is_empty() {
         validate_recording_host(&spec.mcap_writers.directories, &spec.id).await?;
@@ -613,7 +613,7 @@ fn failed(failures: &[String]) -> Result<()> {
 /// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
-    crate::engine::files::create_private_dir(&directory).await?;
+    docker_engine::files::create_private_dir(&directory).await?;
     let mut failures = Vec::new();
     for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {

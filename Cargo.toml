@@ -14,6 +14,7 @@ members = [
     "libs/session",
     "libs/workload-lifecycle",
     "libs/host-filesystem",
+    "libs/docker-engine",
     "libs/dora-app",
     "libs/dora-control",
     "libs/workload-supervisor",

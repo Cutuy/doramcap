@@ -1,5 +1,6 @@
 //! Explicitly opt-in real Engine validation. The harness builds unprivileged and
 //! elevates only this executable. Every scenario owns distinct named resources.
+use docker_engine::overlay;
 mod support;
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -348,8 +349,8 @@ async fn multi_project_lifecycle() {
             .filesystem_changes
             .as_ref()
             .expect("filesystem collection");
-        async fn rows(path: &Path) -> Vec<workload_docker::compose::filesystem::FileChange> {
-            let mut reader = workload_docker::compose::filesystem::FileChanges::open(path)
+        async fn rows(path: &Path) -> Vec<docker_engine::filesystem::FileChange> {
+            let mut reader = docker_engine::filesystem::FileChanges::open(path)
                 .await
                 .unwrap();
             let mut records = Vec::new();
@@ -358,7 +359,7 @@ async fn multi_project_lifecycle() {
             }
             records
         }
-        use workload_docker::compose::filesystem::{ChangeKind, StorageCategory};
+        use docker_engine::filesystem::{ChangeKind, StorageCategory};
         let host_rows = rows(&evidence.host_binds.manifest).await;
         assert!(host_rows.iter().any(
             |r| r.path.as_os_str().as_bytes() == b"byte-\xff" && r.kind == ChangeKind::Modified
@@ -2884,8 +2885,8 @@ async fn mixed_volume_policies_and_evidence_preservation() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker and prebuilt images"]
 async fn incomplete_volume_scan_retains_volumes() {
+    use docker_engine::filesystem_proto as pb;
     use prost::Message;
-    use workload_docker::filesystem_proto as pb;
 
     // Arrange: an ordinary run whose policy would otherwise delete its named volume.
     let root = tempfile::tempdir().unwrap();

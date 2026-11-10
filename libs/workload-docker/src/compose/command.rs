@@ -13,7 +13,7 @@ use tokio::{
     process::Command,
 };
 
-use crate::engine::ProcessGroup;
+use docker_engine::ProcessGroup;
 /// Largest Compose stdout or stderr stream retained from one command.
 const MAX_COMPOSE_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Largest `/proc/net/tcp*` table parsed while verifying a Dora listener.
