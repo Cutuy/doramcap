@@ -8,6 +8,7 @@ pub(crate) mod command;
 pub(crate) mod error;
 pub mod filesystem;
 mod model;
+pub(crate) mod mounts;
 pub mod overlay;
 mod state;
 mod steps;

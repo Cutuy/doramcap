@@ -18,7 +18,7 @@ pub(super) struct ComposeRunning {
     pub spec: ComposeRun,
     pub prepared: Output<PreparedRun>,
     pub plan: ResolvedComposeProject,
-    pub overlays: Option<Output<overlay::OverlaySet>>,
+    pub overlays: Option<Output<overlay::PreparedOverlays>>,
     pub resources: super::super::experiment::SharedExperiment,
     pub events: EventCapture,
     pub signals: RunSignals,
@@ -238,7 +238,7 @@ impl ComposeRunning {
                     id: self.spec.id.clone(),
                     artifacts: prepared.artifacts.clone(),
                     baseline: prepared.baseline.clone(),
-                    overlays: self.overlays.take().map(|output| output.into_value()),
+                    overlays: self.overlays.take().map(|output| output.into_value().views),
                     shutdown: writer_evidence,
                     project: self.plan.clone(),
                 })

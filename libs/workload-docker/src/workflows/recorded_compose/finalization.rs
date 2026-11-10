@@ -7,9 +7,13 @@ use crate::compose::{
     filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
     overlay::{FinalizeOverlays, OverlayResults, OverlaySet},
 };
+use crate::docker_proto::{HostView, OwnedContainer};
 use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf, rc::Weak};
+use std::{
+    path::PathBuf,
+    rc::{Rc, Weak},
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeInput {
@@ -35,6 +39,7 @@ pub struct FinalizedRun {
 /// Failure retains resources and diagnostics in the output.
 pub struct FinalizeRun {
     pub executor: Weak<LocalExecutor>,
+    pub adapter: Rc<crate::compose::DockerAdapter>,
     pub diagnostics: Diagnostics,
 }
 impl Step for FinalizeRun {
@@ -47,19 +52,39 @@ impl Step for FinalizeRun {
             .executor
             .upgrade()
             .ok_or_else(|| orchestrator::Error::message("run executor dropped"))?;
-        let collect = CollectInput {
-            baseline: input.baseline,
-            host_views: input
-                .overlays
-                .as_ref()
-                .into_iter()
-                .flat_map(|o| &o.trees)
-                .map(|t| (t.source.clone(), t.merged.clone()))
-                .collect(),
-            projects: vec![input.project],
-        };
         let changes = if input.shutdown.stopped {
-            match executor.run::<CollectFilesystemChanges>(collect).await {
+            let result = async {
+                let state = self
+                    .adapter
+                    .project(&input.project)
+                    .inspect()
+                    .await
+                    .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+                let collect = CollectInput {
+                    baseline: input.baseline,
+                    host_views: input
+                        .overlays
+                        .as_ref()
+                        .into_iter()
+                        .flat_map(|o| &o.trees)
+                        .map(|tree| HostView {
+                            source: tree.source.to_string_lossy().into(),
+                            view: tree.merged.to_string_lossy().into(),
+                        })
+                        .collect(),
+                    containers: state
+                        .containers
+                        .into_iter()
+                        .map(|container| OwnedContainer {
+                            consumer: format!("{}/{}", input.project.name, container.service),
+                            id: container.id,
+                        })
+                        .collect(),
+                };
+                executor.run::<CollectFilesystemChanges>(collect).await
+            }
+            .await;
+            match result {
                 Ok(changes) => Some(changes),
                 Err(error) => {
                     self.failure("filesystem changes", error);

@@ -13,3 +13,8 @@ pub mod workflows;
 pub mod filesystem_proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
 }
+
+/// Resolved Docker mounts, owned container identities and filesystem views.
+pub mod docker_proto {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.docker.v1.rs"));
+}

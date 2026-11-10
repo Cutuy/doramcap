@@ -14,7 +14,7 @@ pub(super) async fn launch_apps(
     spec: &ComposeRun,
     prepared: &Output<preparation::PreparedRun>,
     plan: &ResolvedComposeProject,
-    overlays: Option<&Output<overlay::OverlaySet>>,
+    overlays: Option<&Output<overlay::PreparedOverlays>>,
     last_launch: &mut Option<Output<ComposeProjectState>>,
     system_apps: &Option<Rc<workload_lifecycle::cgroup::Group>>,
     adapter: &DockerAdapter,
@@ -180,7 +180,7 @@ async fn start_services(
     executor: &LocalExecutor,
     input: StartInput,
     graph: &Output<()>,
-    overlays: Option<&Output<overlay::OverlaySet>>,
+    overlays: Option<&Output<overlay::PreparedOverlays>>,
     previous: Option<&Output<ComposeProjectState>>,
 ) -> orchestrator::Result<Output<ComposeProjectState>> {
     let mut input = Input::new(input).after(graph);

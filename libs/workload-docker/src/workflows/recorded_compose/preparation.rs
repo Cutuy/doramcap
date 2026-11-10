@@ -8,7 +8,8 @@ use crate::compose::{
     adapter::{digest, private_write},
     error::invalid,
     filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline},
-    overlay::OverlaySet,
+    mounts,
+    overlay::PreparedOverlays,
     *,
 };
 use crate::workflows::shared_dora::MAX_GRAPH_BYTES;
@@ -38,7 +39,7 @@ pub struct PreparedRun {
     pub snapshot: ConfigurationSnapshot,
 }
 impl PreparedRun {
-    pub fn execution_plan(&self, overlays: Option<&OverlaySet>) -> ResolvedComposeProject {
+    pub fn execution_plan(&self, overlays: Option<&PreparedOverlays>) -> ResolvedComposeProject {
         overlays.map_or_else(|| self.plan.clone(), |o| o.projects[0].clone())
     }
 }
@@ -519,7 +520,7 @@ impl PrepareRun {
     async fn prepare(&self, spec: ComposeRun) -> Result<PreparedRun> {
         let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
-        let model = serde_json::from_slice(&tokio::fs::read(&resolved.plan.manifest).await?)?;
+        let model = mounts::model(&resolved.plan, "filesystem baseline manifest changed").await?;
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         super::super::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
@@ -530,7 +531,8 @@ impl PrepareRun {
             .ok_or_else(|| invalid("executor dropped"))?;
         let baseline = executor
             .run::<CaptureFilesystemBaseline>(BaselineInput {
-                projects: vec![resolved.plan.clone()],
+                bind_mounts: mounts::binds(&resolved.plan.name, &model)?,
+                volume_mounts: mounts::volumes(&resolved.plan, &model)?,
                 artifacts: resolved.artifacts.clone(),
             })
             .await
