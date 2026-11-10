@@ -106,4 +106,8 @@ target/release/examples/cuda_mcap /absolute/path/io.mcap io-only 8388608 128 4
 - [x] Cargo metadata resolves both relocated targets; release compilation check passes.
 - [x] Shared CUDA source remains byte-for-byte unchanged; local documentation links resolve.
 - [x] Formatting and diff checks pass.
-- [ ] Execute the relocated CUDA hardware test.
+- [x] Execute the relocated CUDA hardware test: all 12 cases passed on the RTX 5070 Ti.
+
+The relocation preserves the measured code and Cargo target names. This follow-up
+reran the local hardware test and focused compilation checks. The benchmark and
+ARM64 worker results above remain the earlier behavior qualification.
