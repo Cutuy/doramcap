@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 
-const SLOT_COUNT = 5;
+const SLOT_COUNT = 7;
 const MAIN_BRANCH = 'main';
 const LOCK_FD = 3;
 const MAX_COMMAND_OUTPUT = 64 * 1024 * 1024;
@@ -110,7 +110,7 @@ function main() {
   acq --owner TASK --branch codex/NAME [--token TOKEN] [--discard-dirty]
   release --owner TASK --token TOKEN (--pr URL | --main)
 
-Five non-expiring leases. Save the acquisition token. Resume with the same owner,
+${SLOT_COUNT} non-expiring leases. Save the acquisition token. Resume with the same owner,
 branch and token. Commands block on the shared flock; a full pool fails explicitly.
 Release detaches the checkout and deletes its local feature branch; main is protected.
 Remote branches are preserved.
