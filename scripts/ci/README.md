@@ -33,7 +33,7 @@ Replace `JOB_ID` with the returned ID. On the worker, use `pueue wait JOB_ID` to
 
 - Submit trusted code only: the native-test launcher gives submitted code effective root access to the worker.
 - [Submission](submit.mts) includes uncommitted source and a `SOURCE.json` manifest, excluding Git-ignored files and `.git`.
-- [Jobs](run-worker-job.sh) run Rust, Node and MCAP checks plus privileged native cgroup/allocation tests. Rust uses the dev profile with line-table debug information.
+- [Jobs](run-worker-job.mts) run Rust, Node and MCAP checks plus privileged native cgroup/allocation tests. Rust uses the dev profile with line-table debug information.
 - Dora recording checks require the CLI at `~/.local/bin/dora`. Use a CUDA-capable host for GPU/IPC qualification. Project Explorer builds in GitHub CI because it needs Git metadata.
 - [Cache preparation](prepare-build.mts) verifies snapshots and synchronizes a locked source cache before tooling dependencies are installed. Jobs share `~/target`; snapshots stay in `~/jobs`.
 - Logs and snapshots remain until manually removed. `pueue clean` removes finished queue records/logs; remove snapshots separately. Keep active snapshots and the shared target intact during jobs.

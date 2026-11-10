@@ -30,3 +30,15 @@ See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 - [x] Fresh nextest installation and Node provisioning/reuse checked.
 
 Evidence: code `02c530ac`, Pueue 629, job `55f7d5a80228400ebf1b8ab38055ee33` on both hosts.
+
+## Milestone: native WSL job
+
+**Work items**
+
+- [x] Replace the full WSL job script with TypeScript; reuse process and lock handling.
+- [x] Queue the pinned Node executable and verify the canonical worker in snapshots.
+
+**Validation**
+
+- [x] Local command ordering, failure status, snapshot integrity and cancellation tests.
+- [ ] Full queued WSL job and Mac archive run.

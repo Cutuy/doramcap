@@ -6,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
+import { PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
 import { createSnapshot } from './submit.mts';
 
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -27,6 +27,7 @@ function fixture(t: TestContext) {
   put('scripts/ci/check-boundaries.mts', '// checker');
   put(PREPARE_PATH, readFileSync(new URL('./prepare-build.mts', import.meta.url), 'utf8'));
   put('scripts/ci/package.json', '{}');
+  put(RUNNER_PATH, '// fixture native runner');
   execFileSync('git', ['init', '-q', source]);
   execFileSync('git', ['-C', source, 'add', '.']);
   execFileSync('git', ['-C', source, '-c', 'user.name=CI Fixture', '-c', 'user.email=ci@example.invalid',
@@ -65,7 +66,7 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   assert.equal(readFileSync(join(extracted, 'apps/new file\nwith newline.ts'), 'utf8'), '// untracked');
   assert.equal(statSync(join(extracted, 'libs/run.sh')).mode & 0o777, 0o755);
   assert.equal(digest(join(extracted, PREPARE_PATH)), manifest.prepare_sha256);
-  assert.equal(digest(join(extracted, 'run-worker-job.sh')), manifest.runner_sha256);
+  assert.equal(digest(join(extracted, RUNNER_PATH)), manifest.runner_sha256);
   assert.equal(existsSync(join(extracted, 'scripts/ci/check-boundaries.mts')), true);
   assert.equal(existsSync(join(extracted, 'scripts/ci/package.json')), true);
   for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.mts', 'worker-process.mts', 'worker-artifacts.mts', 'worker-ssh.mts', 'install-node.mts', 'install-nextest.mts', 'test-worker-runtime.mts', 'run-only-artifacts.txt']) {

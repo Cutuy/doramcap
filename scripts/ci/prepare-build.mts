@@ -7,6 +7,7 @@ import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+export const RUNNER_PATH = 'scripts/ci/run-worker-job.mts';
 export const PREPARE_PATH = 'scripts/ci/prepare-build.mts';
 export type SnapshotManifest = { head?: string; dirty?: boolean; files_sha256: Record<string, string>;
   files_mode: Record<string, number>; runner_sha256: string; prepare_sha256: string };
@@ -35,7 +36,7 @@ export function prepare(snapshot: string, destination: string): void {
   [snapshot, destination] = paths.map(canonical);
   assert([relative(snapshot, destination), relative(destination, snapshot)].every(path => path === '..' || path.startsWith('../')), 'Snapshot and cache must be separate, non-overlapping directories');
   const manifest: SnapshotManifest = JSON.parse(readFileSync(join(snapshot, 'SOURCE.json'), 'utf8'));
-  const expected = { ...manifest.files_sha256, 'run-worker-job.sh': manifest.runner_sha256,
+  const expected = { ...manifest.files_sha256, [RUNNER_PATH]: manifest.runner_sha256,
     [PREPARE_PATH]: manifest.prepare_sha256, 'SOURCE.json': digest(join(snapshot, 'SOURCE.json')) };
   for (const name of Object.keys(expected)) {
     assert(name && !isAbsolute(name) && !name.split('/').includes('..') && posix.normalize(name) === name, `Invalid manifest path: ${name}`);
