@@ -68,8 +68,13 @@ Local checks focus on this library; hosted CI and the ARM64 worker qualify works
 **Validation**
 
 - [x] Reproduce the skipped Destroy with real WebSocket frames, then pass all 19 protocol tests, including destruction rejection and uncertain-stop protection.
-- [ ] Run strict Clippy/Rustdoc, formatting, boundaries and the real Dora lifecycle on the fix.
-- [ ] Verify final hosted checks and ARM64 worker qualification.
+- [x] Run strict Clippy/Rustdoc, formatting, boundaries and the real Dora lifecycle on the fix.
+- [x] Verify final hosted checks and ARM64 worker qualification.
+
+Evidence for runtime source `2028e137`: 19 WebSocket tests, strict local checks and
+real Dora 1.1.0 passed; hosted [Rust CI](https://github.com/Cutuy/doramcap/actions/runs/42784702353),
+Node/MCAP CI and Bugbot passed. ARM64 worker 640 passed from snapshot
+`4ee42bec33b84f5581970078911d2e6f`. Full local workspace CI was not duplicated.
 
 ## Follow-up PR: Compose adoption
 
