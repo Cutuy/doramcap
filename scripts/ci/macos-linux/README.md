@@ -8,7 +8,9 @@ npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
 node scripts/ci/macos-linux/submit.mts --source /absolute/path/to/checkout
 ```
 
-Requires SSH access and the pinned Node runtime on both hosts. Provision Node with
+Requires SSH access and the pinned Node runtime on both hosts. Install Ubuntu's
+`libatomic1` package in the Mac Linux container as root before provisioning Node.
+Provision Node with
 `node scripts/ci/install-node.mts --host USER@HOST`; it installs under `~/.local`.
 Keep submission connected until completion. The printed job directories retain
 `run.log`, `results.tsv` and `exit-code` until manually removed.
