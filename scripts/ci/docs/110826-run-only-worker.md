@@ -29,3 +29,15 @@ See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 - [x] Failed-build gating, corrupt archives and stale-result reset checked.
 
 Evidence: code `18f26316`, Pueue 623, job `c6a3e8469dc74a5a92e74d872ebb0bd7` on both hosts.
+
+## Milestone 2: failure handling
+
+**Work items**
+
+- [x] Record interrupted runs explicitly and clear stale results before locking.
+- [x] Require the complete artifact inventory; name deadlines and explain prerequisite failures.
+
+**Validation**
+
+- [x] 35 focused tests, TypeScript, shell syntax and boundary checks passed.
+- [ ] Repeat the WSL build and Mac suites on the fixed revision.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,18 @@ import { execaSync } from 'execa';
 import { createSnapshot } from './submit.mts';
 
 const sshOptions = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3'];
+export const artifactNames = readFileSync(new URL('./run-only-artifacts.txt', import.meta.url), 'utf8').trimEnd().split('\n');
+/** Require the complete artifact inventory before remote verification or extraction. */
+export function verifyArtifactInventory(manifest: string): void {
+  const remaining = new Set(artifactNames), lines = manifest.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  for (const line of lines) {
+    const match = /^[a-f0-9]{64}  ([a-z][a-z0-9.-]*)$/i.exec(line);
+    assert(match, `Malformed checksum entry: ${line}`);
+    assert(remaining.delete(match[1]), `Unexpected or duplicate artifact: ${match[1]}`);
+  }
+  assert.equal(remaining.size, 0, `Missing checksum entries: ${[...remaining].join(', ')}`);
+}
 /** Accept SSH account/host names; reject option injection and remote-shell syntax. */
 export function workerHost(value: string): string {
   assert(/^(?:[a-zA-Z0-9_][a-zA-Z0-9_.-]*@)?[a-zA-Z0-9][a-zA-Z0-9.-]*$/.test(value), `Invalid SSH worker: ${value}`);
@@ -40,8 +52,10 @@ export async function submitRunOnly(source: string, builder: string, runner: str
     ssh(builder, `pueue wait --quiet ${id}`, true);
     try { successfulBuild(ssh(builder, 'pueue status --json'), id); }
     catch (error) { ssh(builder, `pueue log --full ${id}`, true); throw error; }
+    verifyArtifactInventory(ssh(builder, `cat ${job}/artifacts/SHA256SUMS`));
     ssh(runner, `mkdir -p ${job}/artifacts ${job}/source`);
     execaSync('scp', [...sshOptions, '-3', '-r', `${builder}:${job}/artifacts/.`, `${runner}:${job}/artifacts/`], { stdio: 'inherit' });
+    verifyArtifactInventory(ssh(runner, `cat ${job}/artifacts/SHA256SUMS`));
     ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && { bash source/scripts/ci/run-only-worker.sh run; worker_result=$?; test ! -f results.tsv || cat results.tsv; echo "Runner log: $PWD/run.log"; exit "$worker_result"; }`, true);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
