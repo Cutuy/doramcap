@@ -59,7 +59,9 @@ npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
 node scripts/ci/submit-run-only.mts --source /absolute/path/to/checkout
 ```
 
-Requires SSH access to both hosts; keep the command connected until completion.
+Requires SSH access and the pinned Node runtime on both hosts. Provision Node
+with `node scripts/ci/install-node.mts --host USER@HOST`; it installs under
+`~/.local` and preserves system Node. Keep submission connected until completion.
 It prints job directories containing `run.log`, `results.tsv` and `exit-code`.
 Jobs persist until manually removed. Native BPF checks stay on WSL.
 See the [worker plan and validation](docs/110826-run-only-worker.md).

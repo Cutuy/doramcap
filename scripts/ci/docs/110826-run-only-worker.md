@@ -10,7 +10,7 @@ The Mac runs tests serially; a failed build stops transfer.
 
 Matching paths under `/tmp/doramcap-ci-run-only` preserve embedded fixtures;
 worker locks protect caches. The builder supplies nextest and Docker/Compose CLI
-tools. Privileged BPF, doctests, Node and CUDA checks use existing workers.
+tools. Privileged BPF, doctests, application Node and CUDA checks use existing workers.
 
 See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 
@@ -30,3 +30,17 @@ See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 - [x] Failed builds, incomplete/corrupt manifests, signals and stale-result reset checked.
 
 Evidence: code `97f2ad6f`, Pueue 627, job `35c8f2c3126f4abf90c1ee2ca64f653e` on both hosts.
+
+## Milestone 2: TypeScript worker
+
+**Work items**
+
+- [x] Replace worker and nextest shell logic with dependency-free TypeScript.
+- [x] Pin user-level Node on both hosts; validate versions before submission.
+- [x] Stream hashes, publish results atomically and terminate child process groups.
+
+**Validation**
+
+- [x] Local CI-tool tests and TypeScript checks.
+- [ ] Native build on WSL and serial archive execution on Mac.
+- [ ] Hosted checks and guide review.

@@ -1,16 +1,75 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { artifactNames, successfulBuild, verifyArtifactInventory, workerHost } from './submit-run-only.mts';
+import { successfulBuild } from './submit-run-only.mts';
+import { artifactNames } from './worker-artifacts.mts';
+import { workerHost } from './worker-ssh.mts';
+import { validateWorkerPlatform } from './run-only-worker.mts';
+import { runCommand, WorkerInterrupted } from './worker-process.mts';
 
-test('SSH workers accept account/host names and reject command and option injection', () => {
+const TEST_TIMEOUT_MS = 10_000;
+const workerURL = new URL('./run-only-worker.mts', import.meta.url).href;
+const workerScript = fileURLToPath(workerURL);
+const executable = (body: string) => `#!${process.execPath}\n${body}\n`;
+
+function workerFixture(t: TestContext, failingSuite = '', runningBody = '') {
+  const root = mkdtempSync(join(tmpdir(), 'run-only-test-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const job = join(root, 'job'), cache = join(root, 'cache'), home = join(root, 'home');
+  const artifacts = join(job, 'artifacts'), source = join(job, 'source'), trace = join(root, 'commands');
+  for (const path of [artifacts, source, cache, home]) mkdirSync(path, { recursive: true });
+  writeFileSync(join(source, 'SOURCE.json'), '{"fixture":true}');
+  writeFileSync(join(source, '.node-version'), process.versions.node + '\n');
+  for (const name of artifactNames) writeFileSync(join(artifacts, name), 'fixture');
+  assert.equal(spawnSync('tar', ['-czf', join(artifacts, 'source.tar.gz'), '-C', source, '.']).status, 0);
+  writeFileSync(join(artifacts, 'cargo-nextest'), executable(`
+const { appendFileSync } = require('node:fs');
+if (process.argv[2] === '--version') { console.log('fixture-nextest'); process.exit(0); }
+appendFileSync(${JSON.stringify(trace)}, process.argv.slice(2).join(' ') + '\\n');
+${runningBody || `process.exit(process.argv.includes(${JSON.stringify(join(artifacts, failingSuite))}) ? 7 : 0);`}
+`));
+  for (const name of ['docker', 'docker-compose']) writeFileSync(join(artifacts, name), executable('process.exit(0);'));
+  const manifest = artifactNames.map(name => createHash('sha256').update(readFileSync(join(artifacts, name))).digest('hex') + '  ' + name).join('\n') + '\n';
+  writeFileSync(join(artifacts, 'SHA256SUMS'), manifest);
+  const options = { mode: 'run', job, cache, home };
+  const harness = join(root, 'harness.mts');
+  writeFileSync(harness, `import {runWorker} from ${JSON.stringify(workerURL)};\nprocess.exitCode = await runWorker(${JSON.stringify(options)});\n`);
+  return { root, job, cache, home, artifacts, trace, manifest, harness, options };
+}
+function runWorkerFixture(fixture: ReturnType<typeof workerFixture>) {
+  return spawnSync(process.execPath, [fixture.harness], { encoding: 'utf8', timeout: TEST_TIMEOUT_MS });
+}
+function start(t: TestContext, program: string, args: string[], extraPipe = false) {
+  const child = spawn(program, args, { detached: true, stdio: extraPipe ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'] });
+  const done = once(child, 'close');
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) {
+      try { process.kill(-child.pid!, 'SIGKILL'); } catch {}
+    }
+  });
+  return { child, done };
+}
+async function notification(t: TestContext) {
+  const server = createServer(); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => server.close());
+  const received = once(server, 'connection').then(async ([socket]) => {
+    const [data] = await once(socket, 'data'); socket.destroy(); return Number(data.toString());
+  });
+  const port = (server.address() as AddressInfo).port;
+  const code = `require('node:net').connect(${port}, '127.0.0.1', function() { this.end(String(process.pid)); });`;
+  return { received, code };
+}
+function log(fixture: ReturnType<typeof workerFixture>) { return readFileSync(join(fixture.job, 'run.log'), 'utf8'); }
+
+test('SSH worker names reject command and option injection', () => {
   // Arrange / Act / Assert
   assert.equal(workerHost('mac-mini-ubuntu24@100.64.0.22'), 'mac-mini-ubuntu24@100.64.0.22');
   assert.equal(workerHost('arm-builder'), 'arm-builder');
@@ -27,79 +86,21 @@ test('only a successful build of the exact queued task permits transfer', () => 
   for (const id of ['8', '9', '10']) assert.throws(() => successfulBuild(status, id), /did not succeed/);
   assert.throws(() => successfulBuild(status, '7;id'), /Invalid Pueue task ID/);
 });
-
-// Exercise the real shell functions with private job/cache paths and fixture tools.
-const TEST_TIMEOUT_MS = 5_000;
-const workerScript = fileURLToPath(new URL('./run-only-worker.sh', import.meta.url));
-const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-
-function workerFixture(t: TestContext, failingSuite = '') {
-  const root = mkdtempSync(join(tmpdir(), 'run-only-test-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const job = join(root, 'job'), cache = join(root, 'cache'), tools = join(root, 'tools');
-  const artifacts = join(job, 'artifacts'), source = join(root, 'source'), trace = join(root, 'commands');
-  for (const path of [artifacts, source, tools, cache]) mkdirSync(path, { recursive: true });
-  writeFileSync(join(source, 'SOURCE.json'), '{"fixture":true}');
-  for (const name of artifactNames) writeFileSync(join(artifacts, name), 'fixture');
-  assert.equal(spawnSync('tar', ['-czf', join(artifacts, 'source.tar.gz'), '-C', source, '.']).status, 0);
-  writeFileSync(join(artifacts, 'cargo-nextest'), `#!/bin/bash
-if [[ $1 == --version ]]; then echo fixture-nextest; exit 0; fi
-printf '%s\\n' "$*" >> ${quote(trace)}
-if [[ -n ${quote(failingSuite)} && $* == *${quote(failingSuite)}* ]]; then exit 7; fi
-`);
-  for (const name of ['docker', 'docker-compose']) writeFileSync(join(artifacts, name), '#!/bin/sh\nexit 0\n');
-  const manifest = artifactNames.map(name => createHash('sha256').update(readFileSync(join(artifacts, name))).digest('hex') + '  ' + name).join('\n') + '\n';
-  writeFileSync(join(artifacts, 'SHA256SUMS'), manifest);
-  const harness = (extra = '') => {
-    const path = join(root, 'harness.sh');
-    writeFileSync(path, `source ${quote(workerScript)}
-export PATH=${quote(tools)}:$PATH
-install() { command install "$1" "$2" "$3" ${quote(tools)}/"\${4##*/}"; }
-mkdir() {
-  if [[ $* == "-p $HOME/.local/bin $HOME/.docker/cli-plugins" ]]; then return 0; fi
-  command mkdir "$@"
-}
-${extra}
-run_worker run ${quote(job)} ${quote(cache)}
-`);
-    return path;
-  };
-  return { root, job, cache, artifacts, trace, manifest, harness };
-}
-
-function runShell(path: string) {
-  return spawnSync('bash', [path], { encoding: 'utf8', timeout: TEST_TIMEOUT_MS });
-}
-function startShell(t: TestContext, path: string) {
-  const child = spawn('bash', [path], { detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
-  const done = once(child, 'close');
-  t.after(() => {
-    if (child.exitCode === null && child.signalCode === null) process.kill(-child.pid!, 'SIGKILL');
-  });
-  return { child, done };
-}
-function ready(child: ChildProcess): Promise<void> {
-  return new Promise((resolve, reject) => {
-    (child.stdio[3] as Readable).once('data', () => resolve());
-    child.once('error', reject);
-    child.once('exit', code => reject(new Error(`Worker exited before readiness: ${code}`)));
-  });
-}
-
 for (const failed of ['', 'all-features.tar.zst']) {
-  test(`worker attempts every suite when ${failed || 'all suites pass'}`, { timeout: TEST_TIMEOUT_MS }, t => {
+  test(`worker attempts every suite when ${failed || 'all suites pass'}`, t => {
     // Arrange
     const fixture = workerFixture(t, failed);
     // Act
-    const result = runShell(fixture.harness());
+    const result = runWorkerFixture(fixture);
     // Assert
-    assert.equal(result.status, failed ? 1 : 0, result.stderr + readFileSync(join(fixture.job, 'run.log'), 'utf8'));
+    assert.equal(result.status, failed ? 1 : 0, result.stderr + log(fixture));
     assert.equal(readFileSync(join(fixture.job, 'exit-code'), 'utf8'), failed ? '1\n' : '0\n');
     assert.equal(readFileSync(join(fixture.job, 'results.tsv'), 'utf8'), `default\t0\nall-features\t${failed ? 7 : 0}\nstorage-no-default\t0\n`);
-    assert.equal(readFileSync(fixture.trace, 'utf8').trim().split('\n').length, 3);
+    const commands = readFileSync(fixture.trace, 'utf8').trim().split('\n');
+    assert.equal(commands.length, 3);
+    for (const command of commands) assert.match(command, /--test-threads 1 --no-fail-fast/);
   });
 }
-
 for (const problem of ['missing', 'duplicate', 'extra', 'malformed', 'corrupt']) {
   test(`worker rejects ${problem} artifacts before installation or cache replacement`, t => {
     // Arrange
@@ -111,96 +112,130 @@ for (const problem of ['missing', 'duplicate', 'extra', 'malformed', 'corrupt'])
     if (problem === 'extra') lines.push('0'.repeat(64) + '  unexpected');
     if (problem === 'malformed') lines[0] = 'not a checksum';
     if (problem === 'corrupt') writeFileSync(join(fixture.artifacts, 'docker'), 'changed');
-    const manifest = lines.join('\n') + '\n'; writeFileSync(join(fixture.artifacts, 'SHA256SUMS'), manifest);
-    const installTrace = join(fixture.root, 'installed');
+    writeFileSync(join(fixture.artifacts, 'SHA256SUMS'), lines.join('\n') + '\n');
     // Act
-    const result = runShell(fixture.harness(`install() { touch ${quote(installTrace)}; }`));
+    const result = runWorkerFixture(fixture);
     // Assert
-    assert.notEqual(result.status, 0);
+    assert.equal(result.status, 1, result.stderr);
     assert.equal(readFileSync(sentinel, 'utf8'), 'unchanged');
-    assert.equal(existsSync(installTrace), false);
+    assert.equal(existsSync(join(fixture.home, '.local/bin/cargo-nextest')), false);
     assert.equal(readFileSync(join(fixture.job, 'exit-code'), 'utf8'), '1\n');
-    if (problem !== 'corrupt') assert.throws(() => verifyArtifactInventory(manifest));
   });
 }
-
-test('coordinator and shell accept a complete reordered inventory', t => {
+test('worker accepts a complete reordered inventory', t => {
   // Arrange
-  const fixture = workerFixture(t), reversed = fixture.manifest.trimEnd().split('\n').reverse().join('\n') + '\n';
-  writeFileSync(join(fixture.artifacts, 'SHA256SUMS'), reversed);
+  const fixture = workerFixture(t);
+  writeFileSync(join(fixture.artifacts, 'SHA256SUMS'), fixture.manifest.trimEnd().split('\n').reverse().join('\n') + '\n');
   // Act / Assert
-  verifyArtifactInventory(reversed);
-  assert.equal(runShell(fixture.harness()).status, 0);
+  assert.equal(runWorkerFixture(fixture).status, 0, log(fixture));
 });
-
 for (const [signal, status] of [['SIGHUP', 129], ['SIGINT', 130], ['SIGTERM', 143]] as const) {
-  test(`${signal} records interruption before any suite completes`, { timeout: TEST_TIMEOUT_MS }, async t => {
+  test(`${signal} cleans up an active suite and records interruption`, { timeout: TEST_TIMEOUT_MS }, async t => {
     // Arrange
-    const fixture = workerFixture(t);
-    const { child, done } = startShell(t, fixture.harness('sha256sum() { printf ready >&3; read -r ignored; }'));
-    await ready(child);
+    const notice = await notification(t);
+    const fixture = workerFixture(t, '', notice.code + '\nsetInterval(() => {}, 1000);');
+    const worker = start(t, process.execPath, [fixture.harness]);
+    const testPid = await notice.received;
     // Act
-    child.kill(signal);
-    await done;
+    worker.child.kill(signal); await worker.done;
     // Assert
-    assert.equal(child.exitCode, status);
+    assert.equal(worker.child.exitCode, status, log(fixture));
     assert.equal(readFileSync(join(fixture.job, 'exit-code'), 'utf8'), `${status}\n`);
-    assert.equal(existsSync(join(fixture.job, 'results.tsv')), false);
+    assert.equal(readFileSync(join(fixture.job, 'results.tsv'), 'utf8'), '');
+    assert.throws(() => process.kill(testPid, 0), /ESRCH/);
   });
 }
-
 test('cancellation while waiting for the cache lock replaces old success and reaps the waiter', { timeout: TEST_TIMEOUT_MS }, async t => {
   // Arrange
   const fixture = workerFixture(t), lock = join(fixture.cache, 'worker.lock');
-  const holderPath = join(fixture.root, 'holder.sh');
-  writeFileSync(holderPath, `exec 9>${quote(lock)}\nflock 9\nprintf ready >&3\nread -r release\n`);
-  const holder = startShell(t, holderPath); await ready(holder.child);
+  const holder = start(t, 'flock', [lock, process.execPath, '-e', "require('node:fs').writeSync(3, 'ready'); process.stdin.resume();"], true);
+  await once(holder.child.stdio[3] as Readable, 'data');
+  const notice = await notification(t), tools = join(fixture.home, '.local/bin'); mkdirSync(tools, { recursive: true });
+  writeFileSync(join(tools, 'flock'), executable(notice.code + `\nconst child = require('node:child_process').spawn('/usr/bin/flock', process.argv.slice(2), {stdio: ['ignore', 1, 2, 3]}); child.on('exit', code => process.exit(code));`), { mode: 0o755 });
   writeFileSync(join(fixture.job, 'exit-code'), '0\n'); writeFileSync(join(fixture.job, 'results.tsv'), 'old\t0\n');
-  const waiter = join(fixture.root, 'waiter.pid');
-  const worker = startShell(t, fixture.harness(`flock() { printf '%s\\n' "$BASHPID" > ${quote(waiter)}; printf ready >&3; exec /usr/bin/flock "$@"; }`));
-  await ready(worker.child);
+  const worker = start(t, process.execPath, [fixture.harness]);
+  const waiterPid = await notice.received;
   assert.equal(existsSync(join(fixture.job, 'exit-code')), false);
   assert.equal(existsSync(join(fixture.job, 'results.tsv')), false);
   // Act
   worker.child.kill('SIGTERM'); await worker.done;
   // Assert
-  assert.equal(worker.child.exitCode, 143);
+  assert.equal(worker.child.exitCode, 143, log(fixture));
   assert.equal(readFileSync(join(fixture.job, 'exit-code'), 'utf8'), '143\n');
-  assert.throws(() => process.kill(Number(readFileSync(waiter, 'utf8')), 0), /ESRCH/);
-  holder.child.stdin!.end('release\n'); await holder.done;
+  assert.throws(() => process.kill(waiterPid, 0), /ESRCH/);
+  holder.child.stdin!.end(); await holder.done;
 });
-
-test('invalid worker invocation explains the expected mode and platform', t => {
+test('process cancellation escalates when a child ignores termination', { timeout: TEST_TIMEOUT_MS }, async t => {
+  // Arrange
+  const notice = await notification(t), controller = new AbortController();
+  const pending = runCommand(process.execPath, ['-e', `process.on('SIGTERM', () => {}); ${notice.code} setInterval(() => {}, 1000);`], {
+    signal: controller.signal, cwd: tmpdir(), env: process.env, output: 1, shutdownGraceMs: 50,
+  });
+  const pid = await notice.received;
+  // Act / Assert
+  const rejected = assert.rejects(pending, WorkerInterrupted);
+  controller.abort(new WorkerInterrupted('SIGTERM')); await rejected;
+  assert.throws(() => process.kill(pid, 0), /ESRCH/);
+});
+test('cancellation reaches descendants before the root command exits', { timeout: TEST_TIMEOUT_MS }, async t => {
+  // Arrange
+  const notice = await notification(t), controller = new AbortController();
+  const descendant = notice.code + 'setInterval(() => {}, 1000);';
+  const root = `process.on('SIGTERM', () => {}); const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio: 'inherit'}); child.on('close', () => process.exit(0));`;
+  const pending = runCommand(process.execPath, ['-e', root], { signal: controller.signal, cwd: tmpdir(), env: process.env, output: 1 });
+  const descendantPid = await notice.received;
+  // Act / Assert
+  const rejected = assert.rejects(pending, WorkerInterrupted);
+  controller.abort(new WorkerInterrupted('SIGTERM')); await rejected;
+  assert.throws(() => process.kill(descendantPid, 0), /ESRCH/);
+});
+test('an active cache consumer retains the lock after its controller is killed', { timeout: TEST_TIMEOUT_MS }, async t => {
+  // Arrange
+  const notice = await notification(t);
+  const fixture = workerFixture(t, '', notice.code + 'setInterval(() => {}, 1000);');
+  const worker = start(t, process.execPath, [fixture.harness]);
+  const consumerPid = await notice.received;
+  t.after(() => { try { process.kill(-consumerPid, 'SIGKILL'); } catch {} });
+  // Act
+  worker.child.kill('SIGKILL'); await worker.done;
+  // Assert
+  assert.equal(existsSync(join(fixture.job, 'exit-code')), false);
+  assert.equal(spawnSync('flock', ['--nonblock', join(fixture.cache, 'worker.lock'), 'true']).status, 1);
+  const nextOwner = start(t, 'flock', [join(fixture.cache, 'worker.lock'), 'true']);
+  process.kill(consumerPid, 'SIGTERM'); await nextOwner.done;
+  assert.equal(nextOwner.child.exitCode, 0);
+});
+test('process startup failure and already-cancelled work fail without hanging', async () => {
+  // Arrange
+  const controller = new AbortController();
+  const context = { signal: controller.signal, cwd: tmpdir(), env: process.env, output: 1 };
+  // Act / Assert
+  await assert.rejects(runCommand('/missing-worker-command', [], context), { code: 'ENOENT' });
+  controller.abort(new WorkerInterrupted('SIGINT'));
+  await assert.rejects(runCommand(process.execPath, ['-e', 'process.exit(0)'], context), WorkerInterrupted);
+});
+test('invalid invocation explains the expected mode and platform', () => {
   // Arrange / Act / Assert
   for (const args of [[], ['invalid']]) {
-    const invalid = spawnSync('bash', [workerScript, ...args], { encoding: 'utf8' });
+    const invalid = spawnSync(process.execPath, [workerScript, ...args], { encoding: 'utf8' });
     assert.equal(invalid.status, 2); assert.match(invalid.stderr, /Usage:.*build\|run/);
   }
-  const fixture = workerFixture(t), environment = join(fixture.root, 'bash-env');
-  writeFileSync(environment, 'uname() { echo unsupported; }\n');
-  const wrongPlatform = spawnSync('bash', [workerScript, 'run'], { encoding: 'utf8', env: { ...process.env, BASH_ENV: environment } });
-  assert.notEqual(wrongPlatform.status, 0); assert.match(wrongPlatform.stderr, /requires Linux aarch64/);
-  const installer = fileURLToPath(new URL('./install-nextest.sh', import.meta.url));
-  const wrongInstallerPlatform = spawnSync('bash', [installer], { encoding: 'utf8', env: { ...process.env, BASH_ENV: environment } });
-  assert.notEqual(wrongInstallerPlatform.status, 0); assert.match(wrongInstallerPlatform.stderr, /requires Linux aarch64/);
+  assert.throws(() => validateWorkerPlatform('darwin', 'arm64'), /requires Linux arm64/);
+  assert.throws(() => validateWorkerPlatform('linux', 'x64'), /requires Linux arm64/);
+  validateWorkerPlatform('linux', 'arm64');
 });
-
 for (const problem of ['node-version', 'compose-plugin']) {
   test(`build explains ${problem} failure before preparing source or installing tools`, t => {
     // Arrange
-    const fixture = workerFixture(t), prepare = join(fixture.root, 'prepared'), script = join(fixture.root, 'build.sh');
-    mkdirSync(join(fixture.job, 'source')); writeFileSync(join(fixture.job, 'source/.node-version'), '1.2.3\n');
-    writeFileSync(script, `source ${quote(workerScript)}
-compose_plugin=${quote(join(fixture.root, 'missing-compose'))}
-node() { if [[ $1 == --version ]]; then echo ${problem === 'node-version' ? 'v0.0.0' : 'v1.2.3'}; else touch ${quote(prepare)}; fi; }
-rustc() { :; }; cargo() { :; }; docker() { :; }
-run_worker build ${quote(fixture.job)} ${quote(fixture.cache)}
-`);
+    const fixture = workerFixture(t);
+    if (problem === 'node-version') writeFileSync(join(fixture.job, 'source/.node-version'), '0.0.0\n');
+    writeFileSync(fixture.harness, `import {runWorker} from ${JSON.stringify(workerURL)};\nprocess.exitCode = await runWorker(${JSON.stringify({ ...fixture.options, mode: 'build', composePlugin: join(fixture.root, 'missing-compose') })});`);
     // Act
-    const result = runShell(script);
+    const result = runWorkerFixture(fixture);
     // Assert
-    assert.notEqual(result.status, 0);
-    assert.match(result.stderr, problem === 'node-version' ? /Node version v0\.0\.0; expected v1\.2\.3/ : /Missing Docker Compose plugin:/);
-    assert.equal(existsSync(prepare), false);
+    assert.equal(result.status, 1);
+    assert.match(result.stdout + result.stderr, problem === 'node-version' ? /Node version .*; expected v0\.0\.0/ : /Missing Docker Compose plugin:/);
+    assert.equal(existsSync(join(fixture.cache, 'source')), false);
+    assert.equal(existsSync(join(fixture.home, '.local/bin/cargo-nextest')), false);
   });
 }

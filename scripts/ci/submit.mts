@@ -10,8 +10,8 @@ import { execaSync } from 'execa';
 import { minimatch } from 'minimatch';
 import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
 const included = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.node-version', 'libs/**', 'apps/**', 'console/**',
-  'scripts/ci/{check-boundaries,test-boundaries,test-node,test-mcap,prepare-build,test-prepare-build,submit,test-submit,submit-run-only,test-run-only}.mts',
-  'scripts/ci/{boundaries.json,package.json,package-lock.json,tsconfig.json,run-worker-job.sh,run-only-worker.sh,install-nextest.sh,run-only-artifacts.txt}'];
+  'scripts/ci/{check-boundaries,test-boundaries,test-node,test-mcap,prepare-build,test-prepare-build,submit,test-submit,submit-run-only,test-run-only,run-only-worker,worker-process,worker-artifacts,worker-ssh,install-node,install-nextest,test-worker-runtime}.mts',
+  'scripts/ci/{boundaries.json,package.json,package-lock.json,tsconfig.json,run-worker-job.sh,run-only-artifacts.txt}'];
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 /** Stage exact source bytes and permissions; tar gives every entry one timestamp. Always remove staging files. */
 export async function createSnapshot(source: string, archive: string): Promise<{ manifest: SnapshotManifest; checksum: string }> {

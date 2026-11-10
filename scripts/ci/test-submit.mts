@@ -45,7 +45,7 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   put('.sudo-password', 'fixture exclusion');
   put('unrelated.txt', 'excluded');
   put('scripts/ci/unrelated.mts', 'excluded');
-  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.sh', 'install-nextest.sh', 'run-only-artifacts.txt']) {
+  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.mts', 'worker-process.mts', 'worker-artifacts.mts', 'worker-ssh.mts', 'install-node.mts', 'install-nextest.mts', 'test-worker-runtime.mts', 'run-only-artifacts.txt']) {
     put(`scripts/ci/${name}`, '// run-only worker fixture');
   }
   // Act
@@ -68,7 +68,7 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   assert.equal(digest(join(extracted, 'run-worker-job.sh')), manifest.runner_sha256);
   assert.equal(existsSync(join(extracted, 'scripts/ci/check-boundaries.mts')), true);
   assert.equal(existsSync(join(extracted, 'scripts/ci/package.json')), true);
-  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.sh', 'install-nextest.sh', 'run-only-artifacts.txt']) {
+  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.mts', 'worker-process.mts', 'worker-artifacts.mts', 'worker-ssh.mts', 'install-node.mts', 'install-nextest.mts', 'test-worker-runtime.mts', 'run-only-artifacts.txt']) {
     assert.equal(existsSync(join(extracted, 'scripts/ci', name)), true, name);
   }
   for (const excluded of ['.git', '.sudo-password', 'console/private.secret', 'unrelated.txt', 'scripts/ci/unrelated.mts']) {
