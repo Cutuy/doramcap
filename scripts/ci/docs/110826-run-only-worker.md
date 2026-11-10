@@ -14,33 +14,20 @@ tools. Privileged BPF, doctests, application Node and CUDA checks use existing w
 
 See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 
-## Milestone 1: build and run
+## Milestone: build and run
 
 **Work items**
 
-- [x] Queue source snapshots and nextest archives through WSL Pueue.
-- [x] Stream archives and user-level tools with SCP `-3`; serialize Mac execution.
-- [x] Retain source, checksums, logs and per-suite exit status in `~/jobs`.
-- [x] Verify every artifact and record interruptions before lock waiting.
+- [x] Queue native builds, transfer verified archives and run suites serially.
+- [x] Use dependency-free TypeScript for worker, hashing and nextest installation.
+- [x] Pin user-level Node on both hosts; retain logs and atomic completion status.
 
 **Validation**
 
-- [x] Mac: 453 default, 459 all-feature and 65 storage tests without default features passed; 199 existing skips, zero OOM kills.
-- [x] 35 CI-tool tests, TypeScript, shell, boundaries and six hosted checks passed.
-- [x] Failed builds, incomplete/corrupt manifests, signals and stale-result reset checked.
+- [x] 45 CI-tool tests, TypeScript, boundaries and 19 Mac worker regressions.
+- [x] Mac: 453 default, 459 all-feature and 65 storage tests passed; 199 existing skips, zero OOM kills.
+- [x] Signals, child cleanup, lock recovery and invalid artifacts checked.
+- [x] Fresh nextest installation and Node provisioning/reuse checked.
+- [ ] Hosted checks and final guide review.
 
-Evidence: code `97f2ad6f`, Pueue 627, job `35c8f2c3126f4abf90c1ee2ca64f653e` on both hosts.
-
-## Milestone 2: TypeScript worker
-
-**Work items**
-
-- [x] Replace worker and nextest shell logic with dependency-free TypeScript.
-- [x] Pin user-level Node on both hosts; validate versions before submission.
-- [x] Stream hashes, publish results atomically and terminate child process groups.
-
-**Validation**
-
-- [x] Local CI-tool tests and TypeScript checks.
-- [ ] Native build on WSL and serial archive execution on Mac.
-- [ ] Hosted checks and guide review.
+Evidence: code `02c530ac`, Pueue 629, job `55f7d5a80228400ebf1b8ab38055ee33` on both hosts.
