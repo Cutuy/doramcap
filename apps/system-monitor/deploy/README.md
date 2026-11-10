@@ -18,7 +18,7 @@ until stopped. It uses `seccomp=unconfined` for the direct MCAP writer’s io_ur
 
 A native run uses the fixed [Supervisor recipe](supervisor/recording.conf).
 Set the executable paths, a fresh output directory and an existing delegated
-cgroup parent in [run.pbtxt](supervisor/run.pbtxt), then run from the repository root:
+cgroup parent with memory enabled for children in [run.pbtxt](supervisor/run.pbtxt), then run from the repository root:
 
 ```sh
 cargo build --profile ci --locked -p system-monitor --features bpf

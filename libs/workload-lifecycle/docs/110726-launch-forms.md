@@ -91,7 +91,9 @@ selects the launcher.
 
 ![systemd mode](110726-systemd-slice.svg)
 
-Each run owns one slice. The graph accepts only dynamic nodes, so each app is one unit
+Each run owns a parent slice and a nested system-app slice, including Dora.
+See [system-app accounting placement](110926-system-app-cgroup.md).
+The graph accepts only dynamic nodes, so each app is one unit
 connected to the Dora daemon. Units share the host `/dev/shm`; units must not set
 `PrivateIPC`. Ownership records the run's shared-memory segments for reset.
 

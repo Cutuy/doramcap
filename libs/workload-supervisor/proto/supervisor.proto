@@ -10,6 +10,9 @@ message MonitorRun {
   string monitor_binary = 5;
   uint64 readiness_seconds = 6;
   uint64 stop_seconds = 7;
+  // Canonical absolute delegated cgroup v2 directory, e.g. /sys/fs/cgroup/apps.
+  // Its cgroup.subtree_control must enable memory so the new <id> child exposes
+  // memory.current for memory accounting; preparation verifies this prerequisite.
   string cgroup_parent = 8;
 }
 

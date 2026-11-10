@@ -53,6 +53,23 @@ pub(super) fn merge_app(
 
 const MCAP_MEMLOCK_BYTES: u64 = 256 * 1024 * 1024;
 
+/// Assign owned infrastructure, including the retained shm holder, to the system-app slice.
+/// User settings remain native.
+pub(super) fn configure_system_cgroup(
+    model: &mut Value,
+    services: &[String],
+    parent: &str,
+) -> Result<()> {
+    let shm = model["services"].get(SHM_SERVICE).map(|_| SHM_SERVICE);
+    for name in services.iter().map(String::as_str).chain(shm) {
+        let service = model["services"][name]
+            .as_object_mut()
+            .ok_or_else(|| invalid(format!("{name}: system-app service missing")))?;
+        service.insert("cgroup_parent".into(), parent.into());
+    }
+    Ok(())
+}
+
 /// Reserved system service keeping the run's /dev/shm available until final shutdown.
 pub(crate) const SHM_SERVICE: &str = "doramcap-shm";
 

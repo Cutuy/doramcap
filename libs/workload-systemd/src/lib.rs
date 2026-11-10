@@ -2,6 +2,7 @@
 //!
 //! Requires the system service manager and root privileges. The repository root
 //! scopes admission, unit names, the slice and reset.
+pub mod cgroup;
 mod dora;
 mod manager;
 mod preparation;
@@ -66,10 +67,7 @@ pub(crate) struct Scope {
 impl Scope {
     /// Derive names from the canonical repository root.
     pub fn of(repository: &std::path::Path) -> Result<Self> {
-        use sha2::Digest;
-        let canonical = std::fs::canonicalize(repository).map_err(error)?;
-        let digest = sha2::Sha256::digest(canonical.as_os_str().as_encoded_bytes());
-        let hash = &hex::encode(digest)[..SCOPE_CHARS];
+        let hash = repository_id(repository)?;
         let prefix = format!("doramcap-{hash}");
         Ok(Self {
             slice: format!("{prefix}.slice"),
@@ -81,6 +79,13 @@ impl Scope {
     pub fn unit(&self, id: &str) -> String {
         format!("{}-{id}.service", self.prefix)
     }
+}
+
+fn repository_id(repository: &std::path::Path) -> Result<String> {
+    use sha2::Digest;
+    let canonical = std::fs::canonicalize(repository).map_err(error)?;
+    let digest = sha2::Sha256::digest(canonical.as_os_str().as_encoded_bytes());
+    Ok(hex::encode(digest)[..SCOPE_CHARS].to_owned())
 }
 
 /// An absolute path that unit-file syntax carries without quoting.

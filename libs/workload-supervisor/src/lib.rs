@@ -108,8 +108,15 @@ impl SupervisorRunner {
             .with_label(&run.id)
             .capture_payloads(true);
         steps::register(&mut executor, state.clone());
+        let cgroup = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
+            steps::CgroupBackend {
+                state: state.clone(),
+            },
+        )));
+        workload_lifecycle::cgroup::register(&mut executor, cgroup.clone());
         let mut phases = SupervisorPhases {
             executor,
+            cgroup,
             run: run.clone(),
             state,
             prepared: None,
@@ -146,6 +153,7 @@ impl SupervisorRunner {
 }
 struct SupervisorPhases {
     executor: LocalExecutor,
+    cgroup: Rc<workload_lifecycle::cgroup::Group>,
     run: MonitorRun,
     state: steps::State,
     prepared: Option<Output<Ownership>>,
@@ -170,11 +178,25 @@ impl Phases for SupervisorPhases {
             .await
             .map_err(error)?;
         self.prepared = Some(prepared);
+        let cgroup = self
+            .executor
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                    action: workload_lifecycle::cgroup::Action::Create.into(),
+                    artifacts: self.run.output_directory.clone(),
+                    readiness_seconds: self.run.readiness_seconds,
+                    pids: Vec::new(),
+                })
+                .after(self.prepared.as_ref().unwrap()),
+            )
+            .await
+            .map_err(error)?;
         let launched = self
             .executor
             .run::<steps::Launch>(
                 Input::new(self.prepared.as_ref().unwrap().value().clone())
-                    .after(self.prepared.as_ref().unwrap()),
+                    .after(self.prepared.as_ref().unwrap())
+                    .after(&cgroup),
             )
             .await
             .map_err(error)?;
@@ -201,6 +223,8 @@ impl Phases for SupervisorPhases {
             // SAFETY: OwnedFd keeps this descriptor open and unchanged until it is dropped.
             unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }.map_err(error)
         };
+        self.cgroup.verify_pid(daemon_pid)?;
+        self.cgroup.verify_pid(monitor_pid)?;
         self.exits = Some((observe(daemon_pid)?, observe(monitor_pid)?));
         self.inspect().await
     }
@@ -266,14 +290,17 @@ impl Phases for SupervisorPhases {
         Ok(())
     }
     async fn remove(&mut self) -> Result<bool> {
-        let mut input = Input::new(());
+        let mut input = Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+            action: workload_lifecycle::cgroup::Action::Remove.into(),
+            ..Default::default()
+        });
         if let Some(stopped) = &self.stopped {
             input = input.after(stopped);
         }
         self.executor
-            .run::<steps::Remove>(input)
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(input)
             .await
-            .map(|o| o.into_value())
+            .map(|o| o.value().is_none())
             .map_err(error)
     }
     async fn finish(&mut self) -> Result<()> {
@@ -339,6 +366,11 @@ mod tests {
             let mut phases = SupervisorPhases {
                 executor: LocalExecutor::new(|_: &orchestrator::Event| {}),
                 run: MonitorRun::default(),
+                cgroup: Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
+                    steps::CgroupBackend {
+                        state: Rc::new(RefCell::new(None)),
+                    },
+                ))),
                 state: Rc::new(RefCell::new(None)),
                 prepared: None,
                 launched: None,

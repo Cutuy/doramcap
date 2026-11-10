@@ -6,3 +6,13 @@ import "compose.proto";
 message ComposePlan {
   repeated doramcap.compose.v1.ComposeProject projects = 1;
 }
+
+// Docker's native parent setting and its expected host cgroup location.
+message CgroupPlacement {
+  // Docker cgroup_parent: a cgroupfs path such as /apps/system, or a systemd
+  // slice name such as apps-system.slice; excludes the /sys/fs/cgroup mount path.
+  string parent = 1;
+  // Absolute host cgroup v2 directory: /sys/fs/cgroup/apps/system for cgroupfs,
+  // or /sys/fs/cgroup/apps.slice/apps-system.slice for the slice above.
+  string path = 2;
+}

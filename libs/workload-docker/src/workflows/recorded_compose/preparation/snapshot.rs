@@ -83,6 +83,12 @@ fn manifest(
     if let Some(services) = model.get_mut("services").and_then(Value::as_object_mut) {
         for (name, service) in services {
             let runtime = dora.services.contains_key(name);
+            if runtime || systems.contains(name) || name == super::SHM_SERVICE {
+                service
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("cgroup_parent".into(), "@system-apps/cgroup-parent".into());
+            }
             if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
                 for mount in mounts {
                     let frozen = mount["source"].as_str().is_some_and(|source| {
@@ -219,6 +225,28 @@ mod tests {
                 "volumes":[{"type":"bind", "source":format!("{root}/inputs/abc-444"), "target":"/settings"}]},
             "collector": {"volumes":[{"type":"bind", "source":format!("{root}/recordings"), "target":"/results"}]}
         }, "volumes":{"data":{"name":format!("run_{root}"), "labels":{RUN_LABEL:"run"}}}})
+    }
+    #[test]
+    fn generated_cgroup_parents_vary_by_run_and_preserve_user_configuration_identity() {
+        // Arrange
+        let dora = Default::default();
+        let first = json!({"services":{"collector":{"cgroup_parent":"/first"}, "workload":{"cgroup_parent":"/user"}}});
+        let second = json!({"services":{"collector":{"cgroup_parent":"/second"}, "workload":{"cgroup_parent":"/user"}}});
+        let normalize = |model| {
+            manifest(
+                model,
+                Path::new("/artifacts"),
+                &["collector".into()],
+                &dora,
+                None,
+            )
+        };
+        // Act / Assert
+        assert_eq!(normalize(first.clone()), normalize(second));
+        // Act / Assert: native user placement remains a meaningful reviewed setting.
+        let mut changed = first.clone();
+        changed["services"]["workload"]["cgroup_parent"] = "/different-user".into();
+        assert_ne!(normalize(first), normalize(changed));
     }
     #[test]
     fn generated_paths_compare_equal_but_commands_images_and_host_binds_remain_exact() {

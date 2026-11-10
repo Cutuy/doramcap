@@ -1,4 +1,5 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
+mod cgroup;
 mod execution;
 pub mod finalization;
 pub mod observation;
@@ -208,6 +209,18 @@ impl ComposeRunner {
             .machine
             .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
+        let system_apps = prepared
+            .value()
+            .system_cgroup
+            .clone()
+            .map(cgroup::DockerCgroup::group);
+        let mut executor = Rc::try_unwrap(executor)
+            .map_err(|_| invalid("executor still running during cgroup binding"))?;
+        if let Some(group) = &system_apps {
+            workload_lifecycle::cgroup::register(&mut executor, group.clone());
+        }
+        let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
+        self.blocked = false;
         if spec.filesystem.is_some() {
             overlay::verify_namespace(self.adapter.socket_path()).await?;
         }
@@ -266,6 +279,8 @@ impl ComposeRunner {
         );
         let machine = signals.machine.clone();
         let running = running::ComposeRunning {
+            system_apps,
+            adapter: self.adapter.clone(),
             executor: executor.clone(),
             spec: spec.clone(),
             prepared: prepared.clone(),

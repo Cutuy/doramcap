@@ -12,6 +12,8 @@ use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
 /// Prepared Compose resources, from the first start attempt until removal.
 pub(super) struct ComposeRunning {
+    pub system_apps: Option<Rc<workload_lifecycle::cgroup::Group>>,
+    pub adapter: Rc<DockerAdapter>,
     pub executor: Rc<LocalExecutor>,
     pub spec: ComposeRun,
     pub prepared: Output<PreparedRun>,
@@ -68,6 +70,8 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             &self.plan,
             self.overlays.as_ref(),
             &mut self.last_launch,
+            &self.system_apps,
+            &self.adapter,
         );
         // A lost event stream ends startup as it ends observation.
         tokio::select! {
@@ -255,7 +259,7 @@ impl ComposeRunning {
 
     /// Remove project resources when permitted; otherwise report them preserved.
     async fn remove_stopped(&self, stopped: Stopped, permit: &RemovalPermit) -> Completed {
-        let cleanup = if permit.remove {
+        let removed = if permit.remove {
             match self
                 .executor
                 .run::<RemoveCompose>(
@@ -269,7 +273,7 @@ impl ComposeRunning {
                 )
                 .await
             {
-                Ok(cleanup) => Some(cleanup.into_value()),
+                Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     execution::record_failure(&self.diagnostics, "completion", error);
                     None
@@ -277,14 +281,43 @@ impl ComposeRunning {
             }
         } else {
             None
-        }
-        .unwrap_or_else(|| Cleanup {
-            project: self.plan.name.clone(),
-            remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
-            ..Default::default()
-        });
+        };
+        let cleanup = removed
+            .as_ref()
+            .map(|output| output.value().clone())
+            .unwrap_or_else(|| Cleanup {
+                project: self.plan.name.clone(),
+                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
+                ..Default::default()
+            });
+        let cgroup_removed = if permit.remove && cleanup.verified && self.system_apps.is_some() {
+            match self
+                .executor
+                .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                    Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                        action: workload_lifecycle::cgroup::Action::Remove.into(),
+                        ..Default::default()
+                    })
+                    .after(removed.as_ref().expect("verified Compose removal")),
+                )
+                .await
+            {
+                Ok(_) => true,
+                Err(error) => {
+                    execution::record_failure(
+                        &self.diagnostics,
+                        "system-app cgroup removal",
+                        error,
+                    );
+                    false
+                }
+            }
+        } else {
+            self.system_apps.is_none() && permit.remove && cleanup.verified
+        };
         let finalized = stopped.finalized.into_value();
-        let boundary_clean = stopped.runtime_stopped
+        let boundary_clean = cgroup_removed
+            && stopped.runtime_stopped
             && finalized.can_remove
             && cleanup.verified
             && cleanup.diagnostics.is_empty()

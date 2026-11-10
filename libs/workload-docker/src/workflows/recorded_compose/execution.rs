@@ -8,6 +8,7 @@ use std::time::Duration;
 const DORA_GRAPH_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 const SYSTEM_APPS_STABILITY_INTERVAL: Duration = Duration::from_millis(500);
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn launch_apps(
     executor: &LocalExecutor,
     spec: &ComposeRun,
@@ -15,6 +16,8 @@ pub(super) async fn launch_apps(
     plan: &ResolvedComposeProject,
     overlays: Option<&Output<overlay::OverlaySet>>,
     last_launch: &mut Option<Output<ComposeProjectState>>,
+    system_apps: &Option<Rc<workload_lifecycle::cgroup::Group>>,
+    adapter: &DockerAdapter,
 ) -> orchestrator::Result<()> {
     // Keep the run namespace alive before Dora or application containers can join it.
     if plan.services.contains_key(preparation::SHM_SERVICE) {
@@ -81,6 +84,80 @@ pub(super) async fn launch_apps(
                 return Err(orchestrator::Error::message("system apps lost readiness"));
             }
         }
+    }
+    // Verify every infrastructure container before permitting adopted workload startup.
+    let inspected = executor.run::<InspectCompose>(plan.clone()).await?;
+    let mut state = inspected.value().clone();
+    let infrastructure = |name: &String| {
+        name == preparation::SHM_SERVICE
+            || prepared.value().system_services.contains(name)
+            || prepared.value().dora.services.contains_key(name)
+    };
+    state
+        .plan
+        .as_mut()
+        .ok_or_else(|| orchestrator::Error::message("Compose state plan missing"))?
+        .services
+        .retain(|name, _| infrastructure(name));
+    if !state
+        .ready()
+        .map_err(|e| orchestrator::Error::message(e.to_string()))?
+    {
+        return Err(orchestrator::Error::message(
+            "system apps lost readiness before cgroup verification",
+        ));
+    }
+    let mut pids = Vec::new();
+    for container in &state.containers {
+        if infrastructure(&container.service) {
+            let inspected = adapter
+                .docker
+                .inspect_container(&container.id, None)
+                .await
+                .map_err(|e| orchestrator::Error::message(e.to_string()))?;
+            if inspected
+                .host_config
+                .and_then(|config| config.cgroup_parent)
+                .as_deref()
+                != prepared
+                    .value()
+                    .system_cgroup
+                    .as_ref()
+                    .map(|placement| placement.parent.as_str())
+            {
+                return Err(orchestrator::Error::message(format!(
+                    "{}: system-app cgroup assignment differs",
+                    container.service
+                )));
+            }
+            if plan.services[&container.service].completed && container.status == "exited" {
+                continue;
+            }
+            let pid = u32::try_from(container.pid)
+                .ok()
+                .filter(|pid| *pid != 0)
+                .ok_or_else(|| {
+                    orchestrator::Error::message(format!(
+                        "{}: system-app host PID unavailable",
+                        container.service
+                    ))
+                })?;
+            pids.push(pid);
+        }
+    }
+    if system_apps.is_some() {
+        executor
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                    action: workload_lifecycle::cgroup::Action::Create.into(),
+                    artifacts: prepared.value().artifacts.to_string_lossy().into_owned(),
+                    readiness_seconds: spec.readiness_seconds,
+                    pids,
+                })
+                .after(prepared)
+                .after(&inspected),
+            )
+            .await?;
     }
     // Retain the last successful launch's producer identity across partial startup failure.
     let adopted = &prepared.value().user_services;
