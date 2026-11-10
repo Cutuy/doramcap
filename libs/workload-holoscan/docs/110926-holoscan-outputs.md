@@ -2,34 +2,60 @@
 
 # Holoscan observations and automatic filesystem capture
 
-Created November 9, 2026. Stage 5 architecture: automatic capture and reuse direction.
+Created November 9, 2026. Updated November 10, 2026. Stage 5 architecture: automatic capture agreed; shared owner agreed.
 [Adoption overview](110926-holoscan-adoption.md).
 
 Adopt the existing automatic filesystem capture workflow for Holoscan. The backend
-supplies the application's resolved mounts and uses the prepared filesystem views
-when launching its containers.
+prepares the filesystem views first and passes the view to the Holoscan CLI as its
+project root.
 
 ## Reuse boundary
 
 | Owner | Responsibility |
 | --- | --- |
-| Holoscan backend | Resolve its container mounts and apply the prepared host-source mappings to its own launch. |
-| Compose backend | Preserve its manifest resolution and mount rewriting. |
-| Shared filesystem operations | Prepare private views, collect file changes, finalize writes and report coverage. |
+| Holoscan backend | Name the folders to capture, pass their views to its own launch and supply its container IDs. |
+| Compose backend | Preserve its manifest resolution, mount rewriting and Compose validation. |
+| Shared Docker crate | Docker client, cleanup of owned resources by label, private views, file-change collection, write finalization and coverage. |
 | Holoscan application | Continue its native sensor recording and file formats. |
 
-Current filesystem steps accept Compose project inputs. Extract the common
-operations behind mount-based inputs owned outside Compose orchestration.
-Preserve their existing behavior and acceptance cases. The implementation design
-will choose their shared location and concrete contracts.
+## Shared Docker crate
+
+A new crate holds the Docker operations both backends need. `workload-docker`
+keeps the Compose parts and depends on the new crate, as `workload-holoscan` does.
+The crate name is open.
+
+Current filesystem steps accept Compose project inputs, so the work has two stages:
+
+1. Change the step inputs in place to mounts and container IDs. Compose keeps
+   reading its manifest and rewriting it. Existing acceptance cases keep passing.
+2. Move the code to the new crate with no behavior change.
+
+| Compose phase | Stays in `workload-docker` | Shared Docker crate |
+| --- | --- | --- |
+| Reset | Repository lock and the reset step. | Stop, verify and remove resources by ownership label; discard leftover views. |
+| Prepare | Resolve and pin the manifest; read its binds and volumes. | Record the file baseline. |
+| Views | Rewrite manifest sources; Compose validation. | Create views; return each source and its view. |
+| Start, stop, remove | Compose project operations. | None. |
+| Finalize | List the project's containers. | Collect file changes; write back or discard; close views. |
+
+`workload-docker` keeps its own prepare step around view creation and manifest
+rewriting. A failed Compose validation discards the new views, as today, and the
+step keeps its current identity.
+
+Open details for the implementation plan:
+
+- Mount records name a Compose project and service today. They become a plain consumer name.
+- Reset removes the container holding the shared-memory reservation last. The shared operation takes that as an input.
+- The saved view record includes Compose projects. Its readers need tracing before its shape changes.
 
 ## Run sequence
 
 1. Clean up lingering owned runs.
 2. Build through the existing Holoscan workflow.
-3. During Prepare, resolve mounts and create the automatic capture views.
-4. Start the application with those views at its expected container paths.
-5. Stop writers, collect changes and finalize through the existing filesystem policy.
+3. Prepare saves the Review snapshot.
+4. Start creates the automatic capture views.
+5. Start runs the application with the view as its project root.
+6. Stop writers, collect changes and finalize through the existing filesystem policy.
 
 Build completes before the application's capture views are created. The native
 application writes its files through the prepared mounts. Console retains its
@@ -52,12 +78,16 @@ its writers and discards temporary views after any best-effort salvage.
 
 ## Holoscan integration work
 
-The [launch handoff discussion](111026-holoscan-launch-handoff.md) compares the
-two ownership choices and the required Prepare/Start behavior.
+The [launch document](111026-holoscan-launch-handoff.md) records the agreed
+launch design and the designs it was compared with.
 
-The adapter must obtain the actual mount set and apply the prepared source paths
-to the CLI's container launch. Catalog and mode responses cover discovery; mount
-integration needs its own implementation design and qualification.
+Captured folders reach the container through inputs Console controls: the
+project root, and extra data folders where the CLI accepts them. Mounts declared
+in a project's own Docker options keep their original source and are reported as
+outside capture coverage.
+
+The default launch also shares host networking, host IPC and `/dev`. These pass
+through to the host unchanged.
 
 Qualify the resulting launch against native behavior, including project mounts,
 additional data mounts, shared aliases and device/shared-memory access. Reuse the
@@ -72,9 +102,13 @@ Source inspected at repository revision `935212e1`:
 - [Output finalization ordering](../../workload-docker/src/workflows/recorded_compose/finalization.rs).
 - [Existing overlay acceptance cases](../../workload-docker/tests/overlay.rs).
 
-The [upstream container launcher][launcher] generates the native mounts and offers
-a configurable Docker invocation point. The implementation discussion will select
-and qualify the launch integration mechanism.
+The [upstream container launcher][launcher] generates the native mounts from the
+project root it receives.
+
+Shared-crate boundary reviewed against
+[ownership cleanup](../../workload-docker/src/compose/adapter/scope.rs),
+[Compose project operations](../../workload-docker/src/compose/adapter/project.rs) and the
+[Compose run sequence](../../workload-docker/src/workflows/recorded_compose/mod.rs).
 
 Carry the existing isolation, shared-alias, deletion, write-back, full-disk and
 interruption cases into acceptance for both consumers. Extraction must preserve
