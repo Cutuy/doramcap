@@ -16,6 +16,6 @@
     "erasableSyntaxOnly": true
   },
   "include": [
-    "*.mts"
+    "**/*.mts"
   ]
 }

@@ -1,22 +1,21 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { Command } from 'commander';
 import { execaSync } from 'execa';
 import { minimatch } from 'minimatch';
-import { PREPARE_PATH, type SnapshotManifest } from './prepare-build.mts';
+import { PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
 const included = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.node-version', 'libs/**', 'apps/**', 'console/**',
-  'scripts/ci/{check-boundaries,test-boundaries,test-node,test-mcap,prepare-build,test-prepare-build,submit,test-submit}.mts',
-  'scripts/ci/{boundaries.json,package.json,package-lock.json,tsconfig.json,run-worker-job.sh}'];
+  'scripts/ci/{check-boundaries,test-boundaries,test-node,test-mcap,prepare-build,test-prepare-build,snapshot,test-snapshot,hash-file,worker-process,worker-ssh,install-node,test-worker-runtime}.mts',
+  'scripts/ci/{wsl2,macos-linux}/**/*.mts',
+  'scripts/ci/{boundaries.json,package.json,package-lock.json,tsconfig.json,macos-linux/artifacts.txt}'];
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 /** Stage exact source bytes and permissions; tar gives every entry one timestamp. Always remove staging files. */
 export async function createSnapshot(source: string, archive: string): Promise<{ manifest: SnapshotManifest; checksum: string }> {
   source = realpathSync(source);
-  for (const name of ['apps/system-monitor/tests/validate_native.ts', 'libs/resources/cgroup-bpf/examples/native_allocations.rs', PREPARE_PATH]) {
+  for (const name of ['apps/system-monitor/tests/validate_native.ts', 'libs/resources/cgroup-bpf/examples/native_allocations.rs', PREPARE_PATH, RUNNER_PATH]) {
     assert(statSync(join(source, name), { throwIfNoEntry: false })?.isFile(), `Source lacks ${name}; use a checkout containing the native validation suite and CI tools`);
   }
   const git = (args: string[]) => execaSync('git', args, { cwd: source, stripFinalNewline: false, maxBuffer: Infinity }).stdout;
@@ -35,26 +34,10 @@ export async function createSnapshot(source: string, archive: string): Promise<{
       chmodSync(target, manifest.files_mode[name] = status.mode & 0o777);
       manifest.files_sha256[name] = hash(data);
     }
-    const runner = readFileSync(new URL('./run-worker-job.sh', import.meta.url));
-    manifest.runner_sha256 = hash(runner);
+    manifest.runner_sha256 = manifest.files_sha256[RUNNER_PATH];
     manifest.prepare_sha256 = manifest.files_sha256[PREPARE_PATH];
-    writeFileSync(join(staged, 'run-worker-job.sh'), runner);
-    writeFileSync(join(staged, 'SOURCE.json'), JSON.stringify(manifest));
-    for (const name of ['SOURCE.json', 'run-worker-job.sh']) chmodSync(join(staged, name), 0o644);
+    writeFileSync(join(staged, 'SOURCE.json'), JSON.stringify(manifest), { mode: 0o644 });
     execaSync('tar', ['-czf', resolve(archive), `--mtime=@${Math.floor(Date.now() / 1000)}`, '-C', staged, '.']);
     return { manifest, checksum: hash(readFileSync(archive)) };
   } finally { rmSync(staged, { recursive: true, force: true }); }
-}
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = new Command().option('--source <checkout>', 'source checkout', process.cwd()).option('--host <host>', 'SSH worker', 'doramcap-ci@100.64.0.20').parse().opts();
-  const temporary = mkdtempSync(join(tmpdir(), 'doramcap-submit-')), job = '/home/doramcap-ci/jobs/' + randomUUID().replaceAll('-', '');
-  const ssh = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=10', '-o', 'ServerAliveCountMax=3'];
-  try {
-    const archive = join(temporary, 'source.tar.gz'), { checksum } = await createSnapshot(args.source, archive);
-    execaSync('ssh', [...ssh, args.host, `mkdir -p ${job}`], { stdio: 'inherit' });
-    execaSync('scp', [...ssh, archive, `${args.host}:${job}/source.tar.gz`], { stdio: 'inherit' });
-    execaSync('ssh', [...ssh, args.host, `cd ${job} && echo "${checksum}  source.tar.gz" | sha256sum -c - && tar -xzpf source.tar.gz && pueue add --label doramcap-native -- bash run-worker-job.sh`], { stdio: 'inherit' });
-    console.log(`Worker snapshot: ${args.host}:${job}`);
-  } catch (error) { console.error((error as Error).message); process.exitCode = 1; }
-  finally { rmSync(temporary, { recursive: true, force: true }); }
 }

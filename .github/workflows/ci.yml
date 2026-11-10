@@ -120,4 +120,4 @@ jobs:
           cargo test --profile ci --locked --workspace --all-features
 
       - name: Test CI snapshot synchronization
-        run: node --test scripts/ci/test-prepare-build.mts scripts/ci/test-submit.mts
+        run: node --test scripts/ci/test-prepare-build.mts scripts/ci/test-snapshot.mts

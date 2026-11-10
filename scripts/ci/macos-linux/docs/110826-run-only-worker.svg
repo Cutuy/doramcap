@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="140" viewBox="0 0 780 140">
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#64748b"/></marker></defs>
+  <g font-family="sans-serif" font-size="15" fill="#0f172a" text-anchor="middle">
+    <rect x="10" y="40" width="190" height="80" rx="10" fill="#e0f2fe"/><text x="105" y="74">Submitter</text><text x="105" y="98">source snapshot</text>
+    <rect x="290" y="40" width="190" height="80" rx="10" fill="#dcfce7"/><text x="385" y="74">WSL ARM64 .20</text><text x="385" y="98">queued native build</text>
+    <rect x="580" y="40" width="190" height="80" rx="10" fill="#fef3c7"/><text x="675" y="74">Mac mini ARM64 .22</text><text x="675" y="98">serial test execution</text>
+    <text x="245" y="60" font-size="12">source</text><text x="530" y="60" font-size="12">archives</text>
+  </g>
+  <g stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"><path d="M200 80H280"/><path d="M480 80H570"/></g>
+</svg>

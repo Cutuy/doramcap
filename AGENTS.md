@@ -50,7 +50,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 
 ```sh
 npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
-node scripts/ci/submit.mts --source /absolute/path/to/checkout
+node scripts/ci/wsl2/submit.mts --source /absolute/path/to/checkout
 ssh doramcap-ci@100.64.0.20 pueue status
 ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ```
