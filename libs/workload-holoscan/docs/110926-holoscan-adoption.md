@@ -19,7 +19,7 @@ Docker command. Our tests have not run a real Holoscan application through Conso
 | Console | Project selection, review, run controls, results and comparisons. |
 | `workload-holoscan` | Holoscan discovery, build, preparation, execution, recovery and output collection. |
 | Holoscan project and tools | Application definitions, build rules, launch settings and graph execution. |
-| Shared Docker crate | Docker client, cleanup of owned resources, filesystem views and file-change collection for both Docker backends. |
+| Shared Docker crate (`docker-engine`) | Docker client, cleanup of owned resources, filesystem views and file-change collection for both Docker backends. |
 | Shared steps and subworkflows | Reusable host observation and other operations with matching contracts. |
 | `workload-docker` | The existing Compose adoption workflow. |
 
@@ -145,7 +145,8 @@ purpose, inputs, results and failure behavior.
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
 Stage 5 adopts the existing automatic filesystem capture workflow.
 
-**Current step: stage 5 implementation planning.**
+**Current step: stage 5 implementation planning.** The
+[`docker-engine` crate plan](111026-docker-engine-crate-impl.md) is drafted.
 The launch design, container ownership, shared Docker crate and Review rule are
 agreed. A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
 supports the launch design. Real-container qualification remains.
