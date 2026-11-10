@@ -18,7 +18,7 @@ const MS_REC: u64 = 16384;
 const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
 /// systemd sets PATH to ExecSearchPath, so app units keep the usual system directories after
 /// the binaries directory.
-const DEFAULT_SEARCH_PATH: [&str; 6] = [
+pub(crate) const DEFAULT_SEARCH_PATH: [&str; 6] = [
     "/usr/local/sbin",
     "/usr/local/bin",
     "/usr/sbin",
@@ -27,17 +27,15 @@ const DEFAULT_SEARCH_PATH: [&str; 6] = [
     "/bin",
 ];
 /// Scope subdirectory holding each generated unit's private root.
-const ROOTS: &str = "roots";
+pub(crate) const ROOTS: &str = "roots";
 /// Plain runtime source names beside a unit root; normal root cleanup removes these links.
 const BIND_SOURCES_SUFFIX: &str = ".bind-sources";
 /// Drop-in placing an adopted unit in the run slice.
-const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
+pub(crate) const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
 const BITS_PER_BYTE: usize = 8;
 /// Drop-in filename.
 const SLICE_DROP_IN: &str = "10-doramcap-slice.conf";
-/// Run shm defaults, separate from native declarations and the slice/root drop-in.
-const SHM_DROP_IN: &str = "20-doramcap-shm.conf";
 
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
@@ -75,7 +73,7 @@ pub(crate) struct StartJob {
 /// The system service manager, subscribed to unit signals.
 pub(crate) struct Manager {
     connection: zbus::Connection,
-    manager: ManagerProxy<'static>,
+    pub(crate) manager: ManagerProxy<'static>,
 }
 impl Manager {
     pub async fn connect() -> Result<Self> {
@@ -87,95 +85,6 @@ impl Manager {
             connection,
             manager,
         })
-    }
-
-    /// Let systemd parse every frozen native unit before any app starts.
-    /// BLOCKED checks effective mounts and supplies run memory where no private mount is declared.
-    pub(crate) async fn prepare_native_shm(
-        &self,
-        scope: &Scope,
-        run: &RunPlan,
-        plan: &crate::SystemdPlan,
-    ) -> Result<()> {
-        if workload_lifecycle::plan::validate_host_shm_access(run.host_shm_access)?
-            != workload_lifecycle::launch::HostShmAccess::Blocked
-        {
-            return Ok(());
-        }
-        let units = scope.directory.join("units");
-        tokio::fs::create_dir_all(&units).await.map_err(error)?;
-        let mut copies = Vec::new();
-        let mut names = Vec::new();
-        let sources = plan
-            .unit_files
-            .iter()
-            .map(|file| (file, None))
-            .chain(plan.app_units.iter().map(|app| (&app.file, Some(app))));
-        for (file, app) in sources {
-            let id = app.map_or_else(|| crate::unit_stem(file), |app| Ok(app.id.as_str()))?;
-            let name = scope.unit(id);
-            let copy = units.join(&name);
-            let mut bytes = if app.is_some() {
-                format!(
-                    "[Service]\nExecSearchPath={}:{}\n",
-                    plan.binaries,
-                    DEFAULT_SEARCH_PATH.join(":")
-                )
-                .into_bytes()
-            } else {
-                Vec::new()
-            };
-            bytes.extend(tokio::fs::read(file).await.map_err(error)?);
-            tokio::fs::write(&copy, bytes).await.map_err(error)?;
-            copies.push(copy.to_string_lossy().into_owned());
-            names.push((name, app));
-        }
-        if copies.is_empty() {
-            return Ok(());
-        }
-        self.manager
-            .link_unit_files(copies, true, true)
-            .await
-            .map_err(error)?;
-        self.manager.reload().await.map_err(error)?;
-        for (name, app) in names {
-            let unit = self.watch(&name).await?;
-            let service = &unit.service;
-            let mut binds = service.bind_paths().await.map_err(error)?;
-            binds.extend(service.bind_read_only_paths().await.map_err(error)?);
-            for (source, target, optional, _) in &binds {
-                crate::shm::validate_native_bind(&name, source, target, *optional)?;
-            }
-            let root = std::path::Path::new(workload_lifecycle::files::SHM_PATH);
-            let private_mount = binds
-                .iter()
-                .any(|(_, target, _, _)| root.starts_with(target))
-                || service
-                    .temporary_file_system()
-                    .await
-                    .map_err(error)?
-                    .iter()
-                    .any(|(target, _)| root.starts_with(target))
-                || service.private_devices().await.map_err(error)?
-                || app
-                    .is_some_and(|app| app.binds.iter().any(|bind| root.starts_with(&bind.target)));
-            if !private_mount {
-                let drop_in =
-                    std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
-                tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
-                tokio::fs::write(
-                    drop_in.join(SHM_DROP_IN),
-                    format!(
-                        "[Service]\nBindPaths={}:{}\n",
-                        crate::shm::directory(scope).display(),
-                        workload_lifecycle::files::SHM_PATH,
-                    ),
-                )
-                .await
-                .map_err(error)?;
-            }
-        }
-        self.manager.reload().await.map_err(error)
     }
 
     /// Load `name` and subscribe to its state before it starts.
@@ -210,7 +119,7 @@ impl Manager {
     }
 
     /// Await the end of start job `job`; a result other than `done` failed the start.
-    async fn started(
+    pub(crate) async fn started(
         &self,
         name: &str,
         jobs: &mut zbus_systemd::systemd1::JobRemovedStream,
@@ -468,60 +377,8 @@ impl Manager {
         Ok(remaining)
     }
 
-    /// Explicit cleanup: stop owned services, then remove their runtime files.
-    pub async fn reset(&self, scope: &Scope) -> Result<Vec<String>> {
-        let loaded = self.units(&format!("{}*", scope.prefix)).await?;
-        let mut units = Vec::new();
-        for (name, load, _) in &loaded {
-            if name.ends_with(".service") && load != "not-found" {
-                units.push(self.watch(name).await?);
-            }
-        }
-        let results =
-            futures_util::future::join_all(units.iter_mut().map(|unit| self.stop_and_wait(unit)))
-                .await;
-        for result in results {
-            result?;
-        }
-        // Slice teardown has no service work remaining; wait for its stop job.
-        if loaded
-            .iter()
-            .any(|(name, load, _)| name == &scope.slice && load != "not-found")
-        {
-            let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
-            let job = self
-                .manager
-                .stop_unit(scope.slice.clone(), "replace".into())
-                .await
-                .map_err(error)?;
-            tokio::time::timeout(
-                STOP_REPORT_MARGIN,
-                self.started(&scope.slice, &mut jobs, job),
-            )
-            .await
-            .map_err(|_| format!("{}: slice stop not confirmed", scope.slice))??;
-        }
-        for (name, ..) in loaded {
-            self.release(&name).await;
-        }
-        self.unlink(scope).await?;
-        remove_path(&scope.directory.join(crate::ACTIVE_RUN)).await?;
-        self.remaining(scope).await
-    }
-
-    /// Remove owned runtime links, drop-ins and copies; propagate filesystem errors.
-    async fn unlink(&self, scope: &Scope) -> Result<()> {
-        for path in runtime_files(scope).await? {
-            remove_path(&path).await?;
-        }
-        remove_path(&scope.directory.join("units")).await?;
-        remove_path(&scope.directory.join(ROOTS)).await?;
-        crate::shm::remove(scope)?;
-        self.manager.reload().await.map_err(error)
-    }
-
     /// Loaded units matching `pattern`: name, load state and active state.
-    async fn units(&self, pattern: &str) -> Result<Vec<(String, String, String)>> {
+    pub(crate) async fn units(&self, pattern: &str) -> Result<Vec<(String, String, String)>> {
         Ok(self
             .manager
             .list_units_by_patterns(vec![], vec![pattern.into()])
@@ -547,7 +404,7 @@ async fn entries(directory: &std::path::Path) -> Result<Vec<std::path::PathBuf>>
     Ok(paths)
 }
 
-async fn runtime_files(scope: &Scope) -> Result<Vec<std::path::PathBuf>> {
+pub(crate) async fn runtime_files(scope: &Scope) -> Result<Vec<std::path::PathBuf>> {
     let prefix = format!("{}-", scope.prefix);
     Ok(entries(std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS))
         .await?
@@ -560,7 +417,7 @@ async fn runtime_files(scope: &Scope) -> Result<Vec<std::path::PathBuf>> {
         .collect())
 }
 
-async fn remove_path(path: &std::path::Path) -> Result<()> {
+pub(crate) async fn remove_path(path: &std::path::Path) -> Result<()> {
     let metadata = match tokio::fs::symlink_metadata(path).await {
         Ok(metadata) => metadata,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -694,7 +551,7 @@ async fn private_root(
         })
     {
         writable.push(mount(
-            &crate::shm::directory(scope).to_string_lossy(),
+            &crate::runtime::shm_directory(scope).to_string_lossy(),
             workload_lifecycle::files::SHM_PATH,
             false,
         ));
@@ -850,10 +707,14 @@ mod environment_tests {
                 .map_err(error)
         }
         .await;
-        let cleanup = manager.reset(&scope).await;
+        let mut executor = orchestrator::LocalExecutor::default();
+        crate::runtime::register(&mut executor, std::rc::Rc::new(manager), scope.clone());
+        let cleanup = executor
+            .run::<crate::runtime::RemoveRuntime>(scope.clone())
+            .await;
 
         // Assert: no byte changed, no assignment was injected, and no unit remains.
-        assert!(cleanup.unwrap().is_empty());
+        cleanup.unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         std::fs::remove_dir(&scope.directory).unwrap();
         let mut observed = observed.unwrap();

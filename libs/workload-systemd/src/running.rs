@@ -1,10 +1,10 @@
 //! One run's units behind the shared run sequence's handle.
 use crate::{
-    Result, Scope, SystemdPlan,
+    Scope, SystemdPlan,
     manager::{Manager, Unit},
     runner::UnitExit,
 };
-use orchestrator::LocalExecutor;
+use orchestrator::{Input, LocalExecutor, Output};
 use std::{rc::Rc, time::Duration};
 use workload_lifecycle::{
     launch::{CleanupRecord, RemovalPermit, StopRecord},
@@ -23,6 +23,8 @@ pub(crate) struct SystemdRunning {
     pub phases: Vec<Vec<Unit>>,
     pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
+    pub prepared: Output<crate::PreparedRun>,
+    pub runtime: Option<Output<Scope>>,
 }
 
 /// Unit results and failures handed back by removal.
@@ -35,14 +37,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
-        self.manager
-            .prepare_native_shm(&self.scope, &self.run, &self.plan)
-            .await?;
-        if workload_lifecycle::plan::validate_host_shm_access(self.run.host_shm_access)?
-            == workload_lifecycle::launch::HostShmAccess::Blocked
-        {
-            crate::shm::create(&self.scope)?;
-        }
+        self.runtime = Some(
+            self.executor
+                .run::<crate::runtime::PrepareRuntime>(
+                    Input::new(crate::PreparationInput {
+                        run: Some(self.run.clone()),
+                        plan: Some(self.plan.clone()),
+                    })
+                    .after(&self.prepared),
+                )
+                .await
+                .map_err(crate::error)?,
+        );
         let readiness = Duration::from_secs(self.run.readiness_seconds);
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
@@ -177,10 +183,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             }
         }
         let verified = if permit.remove {
-            match self.reset().await {
-                Ok(()) => true,
+            let input = match &self.runtime {
+                Some(runtime) => Input::new(runtime.value().clone()).after(runtime),
+                None => Input::new(self.scope.clone()).after(&self.prepared),
+            };
+            match self
+                .executor
+                .run::<crate::runtime::RemoveRuntime>(input)
+                .await
+            {
+                Ok(_) => true,
                 Err(error) => {
-                    self.diagnostics.push(error);
+                    self.diagnostics.push(crate::error(error));
                     false
                 }
             }
@@ -196,16 +210,5 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 diagnostics: self.diagnostics,
             },
         )
-    }
-}
-
-impl SystemdRunning {
-    async fn reset(&self) -> Result<()> {
-        let remaining = self.manager.reset(&self.scope).await?;
-        if remaining.is_empty() {
-            Ok(())
-        } else {
-            Err(format!("units remain after removal: {remaining:?}"))
-        }
     }
 }

@@ -7,7 +7,7 @@ mod manager;
 mod preparation;
 mod runner;
 mod running;
-mod shm;
+mod runtime;
 
 pub use preparation::{DiscardRun, InspectRun, PrepareRun, inspect};
 pub use runner::{SystemdRunReport, SystemdRunner, UnitExit};
@@ -57,7 +57,7 @@ pub fn parse_run(text: &str) -> Result<RunPlan> {
 }
 
 /// Names owned by one repository: its slice, unit prefix and runtime directory.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scope {
     pub prefix: String,
     pub slice: String,
@@ -188,7 +188,7 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
             ));
         }
     }
-    shm::validate_binds(run, plan)
+    runtime::validate_binds(run, plan)
 }
 
 /// IDs of programs and adopted units, in launch input order.

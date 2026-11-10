@@ -85,10 +85,16 @@ impl SystemdRunner {
         let scope = Scope::of(repository)?;
         let _lock = lock_scope(&scope)?;
         self.blocked = true;
-        let remaining = Manager::connect().await?.reset(&scope).await?;
-        if !remaining.is_empty() {
-            return Err(format!("cleanup left resources: {remaining:?}"));
-        }
+        let mut executor = LocalExecutor::default();
+        crate::runtime::register(
+            &mut executor,
+            Rc::new(Manager::connect().await?),
+            scope.clone(),
+        );
+        executor
+            .run::<crate::runtime::RemoveRuntime>(scope)
+            .await
+            .map_err(error)?;
         self.blocked = false;
         Ok(())
     }
@@ -152,6 +158,7 @@ impl SystemdRunner {
         executor.register::<crate::DiscardRun>(|| crate::DiscardRun);
         executor.register::<WaitForRecordings>(|| WaitForRecordings);
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
+        crate::runtime::register(&mut executor, manager.clone(), scope.clone());
         let executor = Rc::new(executor);
         let prepared = executor
             .run::<crate::PrepareRun>(crate::PreparationInput {
@@ -205,6 +212,8 @@ impl SystemdRunner {
             dora: None,
             phases: Vec::new(),
             diagnostics: Vec::new(),
+            prepared,
+            runtime: None,
         };
         let (outcome, removed) =
             workload_lifecycle::run::run(running, &executor, recordings, stop).await;
