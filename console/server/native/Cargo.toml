@@ -19,7 +19,7 @@ workflow-protocol = { path = "../../../libs/telemetry/workflow-protocol" }
 napi = { version = "=3.16.1", features = ["tokio_rt", "napi8"] }
 napi-derive = "=3.7.0"
 orchestrator = { version = "0.1.0", path = "../../../libs/orchestrator" }
-rustix = { version = "=1.1.5", features = ["fs"] }
+rustix = { version = "=1.1.6", features = ["fs"] }
 
 [build-dependencies]
 prost-build = "0.14"
