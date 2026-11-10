@@ -173,20 +173,6 @@ impl ComposeRunner {
         validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
         let controller = Rc::new(reset::Controller::acquire(&spec.repository_root)?);
         self.blocked = true;
-        let info = tokio::time::timeout(
-            std::time::Duration::from_secs(spec.readiness_seconds),
-            self.adapter.docker.info(),
-        )
-        .await
-        .map_err(|_| invalid("Docker cgroup preflight deadline exceeded"))?
-        .map_err(|e| invalid(format!("Docker cgroup preflight: {e}")))?;
-        if info.cgroup_version != Some(bollard::models::SystemInfoCgroupVersionEnum::_2)
-            || info.cgroup_driver != Some(bollard::models::SystemInfoCgroupDriverEnum::SYSTEMD)
-        {
-            return Err(invalid(
-                "system-app cgroup requires Docker cgroup v2 with the systemd driver",
-            ));
-        }
         let mut spec = spec;
         spec.repository_root = controller.repository.clone();
         let diagnostics = Rc::new(RefCell::new(Vec::new()));
@@ -212,10 +198,6 @@ impl ComposeRunner {
             .run::<reset::ResetExperiment>(())
             .await
             .map_err(step_error)?;
-        let system_apps = workload_systemd::cgroup::SystemAppSlice::connect(&spec.repository_root)
-            .await
-            .map_err(invalid)?;
-        system_apps.remove().await.map_err(invalid)?;
         self.blocked = false;
         let prepared = executor
             .run::<PrepareRun>(spec.clone())
@@ -226,6 +208,26 @@ impl ComposeRunner {
             .machine
             .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
+        let info = tokio::time::timeout(
+            std::time::Duration::from_secs(spec.readiness_seconds),
+            self.adapter.docker.info(),
+        )
+        .await
+        .map_err(|_| invalid("Docker cgroup preflight deadline exceeded"))?
+        .map_err(|e| invalid(format!("Docker cgroup preflight: {e}")))?;
+        if info.cgroup_version != Some(bollard::models::SystemInfoCgroupVersionEnum::_2)
+            || info.cgroup_driver != Some(bollard::models::SystemInfoCgroupDriverEnum::SYSTEMD)
+        {
+            return Err(invalid(
+                "system-app cgroup requires Docker cgroup v2 with the systemd driver",
+            ));
+        }
+        self.blocked = true;
+        let system_apps = workload_systemd::cgroup::SystemAppSlice::connect(&spec.repository_root)
+            .await
+            .map_err(invalid)?;
+        system_apps.remove().await.map_err(invalid)?;
+        self.blocked = false;
         if spec.filesystem.is_some() {
             overlay::verify_namespace(self.adapter.socket_path()).await?;
         }

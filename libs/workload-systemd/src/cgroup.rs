@@ -19,7 +19,14 @@ use zbus_systemd::systemd1::SliceProxy;
 pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";
 /// Typed runtime identity retained in the experiment's artifacts.
 pub const IDENTITY_FILE: &str = "system-app-cgroup.pbtxt";
-const COMPOSE_SCOPE_SUFFIX: &str = "compose";
+const COMPOSE_SCOPE_PREFIX: &str = "doramcap-compose";
+
+fn compose_prefix(repository: &Path) -> Result<String> {
+    Ok(format!(
+        "{COMPOSE_SCOPE_PREFIX}-{}",
+        crate::repository_id(repository)?
+    ))
+}
 
 pub(crate) fn native_name(scope: &Scope) -> String {
     format!("{}-system.slice", scope.prefix)
@@ -37,10 +44,9 @@ impl SystemAppSlice {
     /// Connect for a Compose repository without creating resources.
     /// Compose and native runs have separate ownership names and recovery paths.
     pub async fn connect(repository: &Path) -> Result<Self> {
-        let scope = Scope::of(repository)?;
         Ok(Self::new(
             Rc::new(Manager::connect().await?),
-            format!("{}{COMPOSE_SCOPE_SUFFIX}", scope.prefix),
+            compose_prefix(repository)?,
         ))
     }
 
@@ -58,10 +64,7 @@ impl SystemAppSlice {
 
     /// Native parent name for Compose's generated execution configuration.
     pub fn compose_name(repository: &Path) -> Result<String> {
-        Ok(format!(
-            "{}{COMPOSE_SCOPE_SUFFIX}-system.slice",
-            Scope::of(repository)?.prefix
-        ))
+        Ok(format!("{}-system.slice", compose_prefix(repository)?))
     }
 
     /// Slice name passed to native services or Docker's systemd cgroup driver.

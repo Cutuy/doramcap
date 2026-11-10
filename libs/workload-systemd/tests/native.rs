@@ -1989,3 +1989,91 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
     );
     assert!(runtime_units().is_empty());
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
+async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
+    use std::os::unix::fs::MetadataExt;
+    use workload_lifecycle::launch::SystemAppCgroup;
+    // Arrange
+    let fixture = Fixture::new("cgroup-restart");
+    let unit = fixture.repo().join("restart.service");
+    std::fs::write(&unit, "[Service]\nExecStart=/bin/sleep 300\n").unwrap();
+    let (run, plan) = fixture.plan(
+        "r1",
+        vec![
+            SystemdPlan {
+                unit_files: vec![unit.to_string_lossy().into()],
+                ..Default::default()
+            },
+            SystemdPlan::default(),
+        ],
+    );
+    let artifacts = run.artifacts.clone();
+    let mut runner = SystemdRunner::new();
+    let (ready, started) = oneshot::channel();
+    let (stop, stopped) = oneshot::channel();
+    let mut running = Box::pin(runner.run(
+        run,
+        plan,
+        async {
+            let _ = stopped.await;
+        },
+        |_: &orchestrator::Event| {},
+        Some(ready),
+    ));
+    tokio::select! { ready = started => ready.unwrap(), report = &mut running => panic!("startup failed: {report:?}") };
+    let pool = prost_reflect::DescriptorPool::decode(
+        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
+    )
+    .unwrap();
+    let identity: SystemAppCgroup = prost_reflect::DynamicMessage::parse_text_format(
+        pool.get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
+            .unwrap(),
+        &std::fs::read_to_string(
+            Path::new(&artifacts).join(workload_systemd::cgroup::IDENTITY_FILE),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+    .transcode_to()
+    .unwrap();
+    let name = format!(
+        "{}-restart.service",
+        identity.slice.strip_suffix("-system.slice").unwrap()
+    );
+    // Act
+    assert!(
+        Command::new("systemctl")
+            .args(["restart", &name])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let observed = Command::new("systemctl")
+        .args(["show", "-p", "MainPID", "--value", &name])
+        .output()
+        .unwrap();
+    let pid = String::from_utf8(observed.stdout).unwrap();
+    let membership = std::fs::read_to_string(format!("/proc/{}/cgroup", pid.trim())).unwrap();
+    let group = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::/"))
+        .unwrap();
+    // Assert
+    assert!(
+        Path::new(workload_systemd::cgroup::CGROUP_ROOT)
+            .join(group)
+            .starts_with(&identity.path)
+    );
+    assert_eq!(
+        std::fs::metadata(&identity.path).unwrap().ino(),
+        identity.id
+    );
+    // Act
+    stop.send(()).unwrap();
+    let report = running.await.unwrap();
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    assert!(!Path::new(&identity.path).exists());
+}

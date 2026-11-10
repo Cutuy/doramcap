@@ -225,3 +225,55 @@ async fn empty_owned_slices_are_recoverable_and_names_can_be_reused() {
     assert_ne!(recovered.identity().unwrap().id, identity.id);
     recovered.remove().await.unwrap();
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, systemd and cgroup v2"]
+async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
+    use futures_util::StreamExt;
+    use zbus_systemd::systemd1::ManagerProxy;
+    // Arrange: subscribe before the first possible slice side effect.
+    let directory =
+        std::env::temp_dir().join(format!("system-app-cgroup-cancel-{}", std::process::id()));
+    fs::create_dir(&directory).unwrap();
+    let mut slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let _cleanup = Cleanup {
+        directory: directory.clone(),
+        unit: "cgroup-fixture-absent.service".into(),
+        slice: slice.name(),
+    };
+    let parent = format!(
+        "{}.slice",
+        slice.name().strip_suffix("-system.slice").unwrap()
+    );
+    let connection = zbus::Connection::system().await.unwrap();
+    let manager = ManagerProxy::new(&connection).await.unwrap();
+    manager.subscribe().await.unwrap();
+    let mut created = manager.receive_unit_new().await.unwrap();
+    {
+        let creation = slice.create(&directory, STARTUP);
+        tokio::pin!(creation);
+        // Act: drop the creation future after observing its first owned unit.
+        tokio::time::timeout(STARTUP, async {
+        tokio::select! {
+            biased;
+            result = async {
+                while let Some(signal) = created.next().await {
+                    if signal.args().unwrap().id == parent { return; }
+                }
+                panic!("unit creation notifications ended");
+            } => result,
+            result = &mut creation => panic!("creation completed before cancellation: {result:?}"),
+        }
+    })
+    .await
+    .unwrap();
+    }
+    // The original handle retains its connection references after cancellation.
+    slice.remove().await.unwrap();
+    // Assert
+    let remaining = manager
+        .list_units_by_patterns(vec![], vec![parent, slice.name()])
+        .await
+        .unwrap();
+    assert!(remaining.is_empty(), "{remaining:?}");
+}
