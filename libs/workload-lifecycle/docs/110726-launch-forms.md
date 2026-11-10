@@ -261,7 +261,7 @@ Latest #204 validation passed release/native tests, real systemd and Compose run
 | Item | Notes |
 | --- | --- |
 | Compose run end | A lost container is recorded instead of ending the run; the run ends on stop, lost observation or the Dora graph stopping. |
-| Supervisor launcher | Move `workload-supervisor` onto the shared sequence; XML-RPC; event-listener relay; then delete `recorded_run::Phases`. |
+| Supervisor launcher | [Retire the legacy run driver](111026-supervisor-run-driver.md); XML-RPC and event-listener relay remain separate. |
 | Live status feed | Layer 1 monitoring for the Console live view. |
 | Readiness protocol | `sd_notify` everywhere, or a ready file; decide with the owner. |
 | Child-process launcher | Real processes for integration tests; pidfd and `waitid` as parent. |

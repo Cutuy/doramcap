@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="220" viewBox="0 0 800 220" role="img" aria-labelledby="title desc">
+<title id="title">One run sequence for three backends</title>
+<desc id="desc">Compose, systemd and Supervisor supply Running handles to the shared lifecycle sequence.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#52667a"/></marker></defs>
+<rect width="800" height="220" fill="#ffffff"/>
+<g font-family="Arial, sans-serif" text-anchor="middle" fill="#172b4d">
+<g fill="#edf4ff" stroke="#6483ac" stroke-width="1.5">
+<rect x="25" y="22" width="220" height="60" rx="8"/>
+<rect x="290" y="22" width="220" height="60" rx="8"/>
+<rect x="555" y="22" width="220" height="60" rx="8"/>
+</g>
+<g font-size="17" font-weight="600"><text x="135" y="58">Compose</text><text x="400" y="58">systemd</text><text x="665" y="58">Supervisor</text></g>
+<g stroke="#52667a" stroke-width="1.5" marker-end="url(#arrow)"><path d="M135 82V125"/><path d="M400 82V125"/><path d="M665 82V125"/></g>
+<g font-size="12"><text x="184" y="108">Running</text><text x="449" y="108">Running</text><text x="714" y="108">Running</text></g>
+<rect x="25" y="127" width="750" height="70" rx="8" fill="#eaf6ef" stroke="#56866a" stroke-width="1.5"/>
+<text x="400" y="153" font-size="17" font-weight="600">Shared run sequence</text>
+<text x="400" y="178" font-size="15">Start → readiness → observe → stop → recordings → remove</text>
+</g>
+</svg>
