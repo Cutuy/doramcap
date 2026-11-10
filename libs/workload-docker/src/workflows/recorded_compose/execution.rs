@@ -106,7 +106,8 @@ pub(super) async fn launch_apps(
         .await?
         .into_value();
     let infrastructure = |name: &String| {
-        prepared.value().system_services.contains(name)
+        name == preparation::SHM_SERVICE
+            || prepared.value().system_services.contains(name)
             || prepared.value().dora.services.contains_key(name)
     };
     state

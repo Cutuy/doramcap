@@ -26,6 +26,7 @@ const STARTUP_SECONDS: u64 = 10;
 const STOP_SECONDS: u64 = 3;
 const RUN_LABEL: &str = "label=io.doramcap.run";
 const SERVICE_LABEL: &str = "label=com.docker.compose.service";
+const SHM_SERVICE: &str = "doramcap-shm";
 
 struct Fixture {
     directory: tempfile::TempDir,
@@ -95,9 +96,13 @@ impl Fixture {
                 service["volumes"] =
                     serde_json::json!([{ "type":"bind", "source":data, "target":"/data" }]);
             }
+            let mut services = serde_json::json!({name:service});
+            if name == "system" {
+                services[SHM_SERVICE] = serde_json::json!({"image":fixture.image, "command":["-c",background], "ipc":"shareable"});
+            }
             fs::write(
                 fixture.directory.path().join(format!("{file}.json")),
-                serde_json::to_vec(&serde_json::json!({"services":{name:service}})).unwrap(),
+                serde_json::to_vec(&serde_json::json!({"services":services})).unwrap(),
             )
             .unwrap();
         }
@@ -203,7 +208,14 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
         let events = Rc::new(RefCell::new(Vec::new()));
         let observed = events.clone();
         let mut run = Box::pin(runner.run_with_ready(
-            fixture.spec(index),
+            ComposeRun {
+                host_shm_access: if index == 0 {
+                    HostShmAccess::Passthrough
+                } else {
+                    HostShmAccess::Blocked
+                } as i32,
+                ..fixture.spec(index)
+            },
             async {
                 let _ = stopped.await;
             },
@@ -228,6 +240,14 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
             .unwrap();
         assert!(membership(system.pid).starts_with(&identity.path));
         assert!(!membership(user.pid).starts_with(&identity.path));
+        if index == 1 {
+            let shm = state
+                .containers
+                .iter()
+                .find(|container| container.service == SHM_SERVICE)
+                .unwrap();
+            assert!(membership(shm.pid).starts_with(&identity.path));
+        }
         {
             let events = events.borrow();
             let prepared = events
@@ -357,65 +377,75 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root, local Docker with Compose, systemd and cgroup v2"]
 async fn misplaced_system_app_prevents_user_start() {
-    // Arrange
-    let fixture = Fixture::new();
-    let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
-    let mut runner = ComposeRunner::new(adapter);
-    let socket = fixture.socket.clone();
-    let filter = format!("{RUN_LABEL}={}-0", fixture.prefix);
-    let destination = membership(i64::from(std::process::id())).join("cgroup.procs");
-    let moved = Rc::new(Cell::new(false));
-    let observed = moved.clone();
-    // Act: simulate an external placement change after system readiness and before the user gate.
-    let report = tokio::time::timeout(
-        RUN_LIMIT,
-        runner.run(
-            fixture.spec(0),
-            std::future::pending(),
-            move |event: &Event| {
-                if event.invocation.step
-                    == WaitForRecordings::ID.unwrap_or(std::any::type_name::<WaitForRecordings>())
-                    && event.state == State::Succeeded
-                    && !observed.get()
-                {
-                    let service = format!("{SERVICE_LABEL}=system");
-                    let ids = docker(
-                        &socket,
-                        &["ps", "--quiet", "--filter", &filter, "--filter", &service],
-                    );
-                    assert!(
-                        ids.status.success(),
-                        "{}",
-                        String::from_utf8_lossy(&ids.stderr)
-                    );
-                    let id = String::from_utf8(ids.stdout).unwrap();
-                    assert!(!id.trim().is_empty());
-                    let inspected = docker(
-                        &socket,
-                        &["inspect", "--format", "{{.State.Pid}}", id.trim()],
-                    );
-                    fs::write(
-                        &destination,
-                        String::from_utf8(inspected.stdout).unwrap().trim(),
-                    )
-                    .unwrap();
-                    observed.set(true);
-                }
-            },
-        ),
-    )
-    .await
-    .unwrap()
-    .unwrap();
-    // Assert
-    assert!(moved.get());
-    assert!(
-        report
-            .execution_error
-            .as_deref()
-            .is_some_and(|error| error.contains("expected") || error.contains("cgroup")),
-        "{report:#?}"
-    );
-    assert!(!fixture.directory.path().join("user-data/started").exists());
-    assert!(report.boundary_clean, "{report:#?}");
+    for service in ["system", SHM_SERVICE] {
+        // Arrange
+        let fixture = Fixture::new();
+        let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
+        let mut runner = ComposeRunner::new(adapter);
+        let socket = fixture.socket.clone();
+        let filter = format!("{RUN_LABEL}={}-0", fixture.prefix);
+        let destination = membership(i64::from(std::process::id())).join("cgroup.procs");
+        let moved = Rc::new(Cell::new(false));
+        let observed = moved.clone();
+        // Act: simulate an external placement change after system readiness and before the user gate.
+        let report = tokio::time::timeout(
+            RUN_LIMIT,
+            runner.run(
+                ComposeRun {
+                    host_shm_access: if service == SHM_SERVICE {
+                        HostShmAccess::Blocked
+                    } else {
+                        HostShmAccess::Passthrough
+                    } as i32,
+                    ..fixture.spec(0)
+                },
+                std::future::pending(),
+                move |event: &Event| {
+                    if event.invocation.step
+                        == WaitForRecordings::ID
+                            .unwrap_or(std::any::type_name::<WaitForRecordings>())
+                        && event.state == State::Succeeded
+                        && !observed.get()
+                    {
+                        let service = format!("{SERVICE_LABEL}={service}");
+                        let ids = docker(
+                            &socket,
+                            &["ps", "--quiet", "--filter", &filter, "--filter", &service],
+                        );
+                        assert!(
+                            ids.status.success(),
+                            "{}",
+                            String::from_utf8_lossy(&ids.stderr)
+                        );
+                        let id = String::from_utf8(ids.stdout).unwrap();
+                        assert!(!id.trim().is_empty());
+                        let inspected = docker(
+                            &socket,
+                            &["inspect", "--format", "{{.State.Pid}}", id.trim()],
+                        );
+                        fs::write(
+                            &destination,
+                            String::from_utf8(inspected.stdout).unwrap().trim(),
+                        )
+                        .unwrap();
+                        observed.set(true);
+                    }
+                },
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        // Assert
+        assert!(moved.get());
+        assert!(
+            report
+                .execution_error
+                .as_deref()
+                .is_some_and(|error| error.contains("expected") || error.contains("cgroup")),
+            "{report:#?}"
+        );
+        assert!(!fixture.directory.path().join("user-data/started").exists());
+        assert!(report.boundary_clean, "{report:#?}");
+    }
 }

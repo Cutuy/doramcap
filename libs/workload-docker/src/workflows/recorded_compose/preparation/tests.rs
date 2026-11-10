@@ -2,15 +2,19 @@ use super::{model::*, *};
 
 #[test]
 fn system_app_cgroup_placement_preserves_native_user_placement() {
+    use workload_lifecycle::launch::HostShmAccess;
     // Arrange
     let mut model = json!({"services":{
         "dora":{"image":"dora:local"},
         "monitor":{"image":"monitor:local", "cgroup_parent":"previous.slice"},
-        "user":{"image":"user:local", "cgroup_parent":"application.slice"}
+        SHM_SERVICE:{"image":"shm:local", "ipc":"shareable"},
+        "user":{"image":"user:local", "ipc":"private", "cgroup_parent":"application.slice"}
     }});
     let original_user = model["services"]["user"].clone();
+    let mut systems = vec!["monitor".into(), SHM_SERVICE.into()];
 
     // Act
+    configure_shm(&mut model, &mut systems, HostShmAccess::Blocked as i32).unwrap();
     configure_system_cgroup(
         &mut model,
         &["dora".into(), "monitor".into()],
@@ -28,6 +32,10 @@ fn system_app_cgroup_placement_preserves_native_user_placement() {
         "experiment-system.slice"
     );
     assert_eq!(model["services"]["user"], original_user);
+    assert_eq!(
+        model["services"][SHM_SERVICE]["cgroup_parent"],
+        "experiment-system.slice"
+    );
 }
 
 #[test]
