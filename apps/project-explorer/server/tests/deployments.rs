@@ -73,6 +73,12 @@ async fn check_deployment(app: &str) {
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
+    if app == "gpudirect-demo" {
+        copy_tree(
+            &source.join("libs/workload-docker/deploy/shm"),
+            &workspace.join("libs/workload-docker/deploy/shm"),
+        );
+    }
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
     let registry = Registry::load(&workspace, &[app.into()]).unwrap();
@@ -109,7 +115,9 @@ async fn check_deployment(app: &str) {
             .map_err(|e| format!("{e:?}"))?
         {
             curl(address, "/", None).await?;
-            let route = if app == "cpu-viewer" {
+            let route = if app == "gpudirect-demo" {
+                "/health"
+            } else if app == "cpu-viewer" {
                 "/health/ready"
             } else {
                 "/api/state"
@@ -119,6 +127,7 @@ async fn check_deployment(app: &str) {
                 let result = curl(address, route, None).await;
                 if let Ok(bytes) = &result
                     && (app == "cpu-viewer"
+                        || (app == "gpudirect-demo" && bytes == b"verified")
                         || serde_json::from_slice::<serde_json::Value>(bytes)
                             .is_ok_and(|v| v["complete"] == true))
                 {
@@ -129,7 +138,7 @@ async fn check_deployment(app: &str) {
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            if app != "cpu-viewer" {
+            if matches!(app, "fault-demo" | "fault-watchdog") {
                 curl(
                     address,
                     "/api/control",
@@ -168,6 +177,17 @@ async fn check_deployment(app: &str) {
     assert_eq!(state, Status::Stopped { error: None }, "{root:?}");
     let (complete, result, _) = service.recording_paths(app, launch.generation).unwrap();
     assert!(complete.is_file() && result.is_file(), "{root:?}");
+    if app == "gpudirect-demo" {
+        let files = service.additional_files(app, launch.generation).unwrap();
+        assert_eq!(files.len(), 3);
+        for name in ["staged.mcap", "io-only.mcap", "stats.txt"] {
+            assert!(
+                files
+                    .iter()
+                    .any(|(actual, path)| actual == name && path.is_file())
+            );
+        }
+    }
     for resource in [
         vec!["ps", "-aq"],
         vec!["network", "ls", "-q"],
@@ -211,5 +231,13 @@ async fn gallery_dora_deployments() {
                 Box::pin(check_deployment(app)).await;
             }
         })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker GPU access, the built GPU demo image and gallery test workspace/socket"]
+async fn gallery_gpu_storage_deployment() {
+    tokio::task::LocalSet::new()
+        .run_until(check_deployment("gpudirect-demo"))
         .await;
 }

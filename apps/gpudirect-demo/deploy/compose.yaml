@@ -1,0 +1,29 @@
+services:
+  demo:
+    image: doramcap/gpudirect-demo:local
+    user: "${GPUDIRECT_UID:?}:${GPUDIRECT_GID:?}"
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true, seccomp:unconfined]
+    tmpfs: [/tmp]
+    ulimits:
+      memlock: {soft: 268435456, hard: 268435456}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - type: bind
+        source: ${GPUDIRECT_RESULTS_DIR:?}
+        target: /results
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health', {signal: AbortSignal.timeout(1000)}).then(r => { if (!r.ok) process.exitCode = 1 }).catch(() => process.exitCode = 1)"]
+      interval: 2s
+      timeout: 3s
+      retries: 45

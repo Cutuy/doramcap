@@ -1,0 +1,16 @@
+id: "gpudirect-demo"
+compose_file: "compose.yaml"
+service: "demo"
+network: "default"
+port: 8080
+readiness_seconds: 90
+stop_seconds: 60
+result_file: "mapped.mcap"
+additional_files: "staged.mcap"
+additional_files: "io-only.mcap"
+additional_files: "stats.txt"
+shutdown_marker: "shutdown.complete"
+env_prefix: "GPUDIRECT"
+requires_explicit_enable: true
+mcap_services: "demo"
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

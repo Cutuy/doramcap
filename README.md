@@ -47,6 +47,9 @@ Explore [live CPU activity](apps/cpu-viewer/docs/running.md) or
 [recording and storage behavior](apps/storage-demo/) for a closer look at resource
 contention and capture. Each demo includes its own setup and validation guide.
 
+The [GPU storage demo](apps/gpudirect-demo/) records GPU-produced payloads
+through pinned host memory to NVMe.
+
 ## Build with doramcap
 
 Use the [project explorer](apps/project-explorer/) to browse applications,
