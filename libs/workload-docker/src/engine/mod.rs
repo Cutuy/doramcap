@@ -10,11 +10,13 @@ use error::{engine, invalid};
 pub use scope::OwnedResources;
 use std::path::Path;
 
+const ENGINE_REQUEST_TIMEOUT_SECONDS: u64 = 120;
+
 pub const RUN_LABEL: &str = "io.doramcap.run";
 pub const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
 pub const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 
-/// Negotiated local Docker connection; clones share the underlying client.
+/// Local Docker connection; clones share the underlying client.
 /// Callers own lifecycle ordering and cleanup of the resources they create.
 #[derive(Clone)]
 pub struct Engine {
@@ -22,19 +24,27 @@ pub struct Engine {
     socket: String,
 }
 impl Engine {
-    /// Connect to an absolute Unix socket and negotiate the Engine API version.
-    /// Errors retain the Engine operation and source diagnostic.
-    pub async fn connect(socket: impl Into<String>) -> Result<Self> {
+    /// Create a client for an absolute Unix socket with the supplied request timeout in seconds.
+    /// Makes no Engine request; invalid paths or transport setup return errors.
+    pub fn new(socket: impl Into<String>, seconds: u64) -> Result<Self> {
         let socket = socket.into();
         if !Path::new(&socket).is_absolute() {
             return Err(invalid("Docker socket must be absolute"));
         }
-        let docker = Docker::connect_with_unix(&socket, 120, bollard::API_DEFAULT_VERSION)
-            .map_err(|e| engine("connect", e))?
+        let docker = Docker::connect_with_unix(&socket, seconds, bollard::API_DEFAULT_VERSION)
+            .map_err(|error| engine("connect", error))?;
+        Ok(Self { docker, socket })
+    }
+    /// Connect to an absolute Unix socket and negotiate the Engine API version.
+    /// Errors retain the Engine operation and source diagnostic.
+    pub async fn connect(socket: impl Into<String>) -> Result<Self> {
+        let mut connection = Self::new(socket, ENGINE_REQUEST_TIMEOUT_SECONDS)?;
+        connection.docker = connection
+            .docker
             .negotiate_version()
             .await
-            .map_err(|e| engine("negotiate", e))?;
-        Ok(Self { docker, socket })
+            .map_err(|error| engine("negotiate", error))?;
+        Ok(connection)
     }
     /// Borrow the client connected to this Engine's socket.
     pub fn client(&self) -> &Docker {
@@ -51,14 +61,6 @@ impl Engine {
             engine: self,
             scope,
             owner: reservation,
-        }
-    }
-    #[cfg(test)]
-    pub(crate) fn test_connection(socket: &str, timeout: u64) -> Self {
-        Self {
-            docker: Docker::connect_with_unix(socket, timeout, bollard::API_DEFAULT_VERSION)
-                .unwrap(),
-            socket: socket.into(),
         }
     }
 }

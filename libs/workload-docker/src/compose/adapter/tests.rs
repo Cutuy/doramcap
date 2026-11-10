@@ -5,6 +5,7 @@ use crate::compose::{
 };
 use serde_json::{Value, json};
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 
 fn input_project(directory: &Path) -> ComposeProject {
     ComposeProject {
@@ -51,7 +52,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
     let socket = root.path().join("engine.sock");
     let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let adapter = DockerAdapter {
-        engine: Engine::test_connection(socket.to_str().unwrap(), 120),
+        engine: Engine::new(socket.to_str().unwrap(), 120).unwrap(),
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
@@ -282,27 +283,51 @@ pub(crate) fn test_engine(
     root: &Path,
     responses: Vec<(&'static str, Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
-    let (engine, server) = crate::engine::tests::test_engine(root, responses);
-    (
-        DockerAdapter {
-            engine,
-            starting: Default::default(),
-        },
-        server,
+    test_engine_status(
+        root,
+        responses
+            .into_iter()
+            .map(|(path, body)| (path, 200, body))
+            .collect(),
     )
 }
+
 pub(crate) fn test_engine_status(
     root: &Path,
     responses: Vec<(&'static str, u16, Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
-    let (engine, server) = crate::engine::tests::test_engine_status(root, responses);
-    (
-        DockerAdapter {
-            engine,
-            starting: Default::default(),
-        },
-        server,
-    )
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let socket = root.join("engine.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let adapter = DockerAdapter {
+        engine: Engine::new(socket.to_str().unwrap(), 1).unwrap(),
+        starting: Default::default(),
+    };
+    let server = tokio::spawn(async move {
+        for (path, status, response) in responses {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut stream = BufReader::new(stream);
+            let mut line = String::new();
+            stream.read_line(&mut line).await.unwrap();
+            assert!(line.contains(path), "unexpected Engine request: {line}");
+            loop {
+                line.clear();
+                assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let body = if status == 204 {
+                String::new()
+            } else {
+                response.to_string()
+            };
+            stream.get_mut().write_all(format!(
+                "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+            ).as_bytes()).await.unwrap();
+        }
+    });
+    (adapter, server)
 }
 
 #[tokio::test]

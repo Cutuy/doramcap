@@ -22,7 +22,7 @@ pub(crate) fn test_engine_status(
     use tokio::io::{AsyncBufReadExt, BufReader};
     let socket = root.join("engine.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    let adapter = Engine::test_connection(socket.to_str().unwrap(), 1);
+    let adapter = Engine::new(socket.to_str().unwrap(), 1).unwrap();
     let server = tokio::spawn(async move {
         for (path, status, response) in responses {
             let (stream, _) = listener.accept().await.unwrap();

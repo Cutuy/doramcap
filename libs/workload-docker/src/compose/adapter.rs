@@ -100,7 +100,7 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
                 drop(std::os::unix::net::UnixListener::bind(&socket_path).unwrap());
                 let socket = socket_path.to_str().unwrap();
                 let adapter = DockerAdapter {
-                    engine: Engine::test_connection(socket, 120),
+                    engine: Engine::new(socket, 120).unwrap(),
                     starting: Default::default(),
                 };
                 adapter
