@@ -32,7 +32,8 @@ target/release/examples/cuda_mcap /absolute/path/output.mcap mapped 1048576 2048
 
 Modes: `mapped`, `staged`, `io-only`. Output creation is exclusive. Slabs and
 messages must be nonzero; payload size is limited by the kernel's `u32` launch
-index. Registration capacity is derived from slab pages and writer buffers.
+index. The writer's default registration budget applies; `prepare_slabs` reports
+registration exhaustion using the writer's actual allocation ranges.
 The example requires CUDA driver/runtime/NVRTC libraries and a Linux filesystem
 supporting direct I/O and io_uring. Normal CPU-only CI leaves the hardware test
 ignored. Build unprivileged; use test-executable elevation only when required.
@@ -111,3 +112,23 @@ target/release/examples/cuda_mcap /absolute/path/io.mcap io-only 8388608 128 4
 The relocation preserves the measured code and Cargo target names. This follow-up
 reran the local hardware test and focused compilation checks. The benchmark and
 ARM64 worker results above remain the earlier behavior qualification.
+
+## M3 — Large-slab registration capacity · 2026-11-10
+
+**Work items**
+
+- [x] Reproduce review finding `discussion_r4522431581`: four 64-MiB payload slabs fail with `InvalidInput` at writer creation.
+- [x] Remove the example's page-count capacity override; use the writer's existing registration budget.
+- [x] Add mapped/staged hardware regression cases with four slabs and five messages, including reuse and exact independent readback.
+
+**Validation**
+
+- [x] New regression failed before the fix.
+- [ ] Release compilation and focused Clippy/format checks.
+- [ ] Existing 12 hardware cases and both new 64-MiB cases pass.
+
+The old estimate confused the 4-KiB alignment with registration units. Each
+64-MiB payload needs a 64-MiB-plus-padding slab, so four slabs requested 65,544
+entries and exceeded the writer's 65,535-entry limit. Production registration
+uses ranges up to 1 GiB. The writer remains responsible for this internal
+segmentation and reports its actual budget exhaustion.

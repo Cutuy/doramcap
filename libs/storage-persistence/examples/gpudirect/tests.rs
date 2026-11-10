@@ -29,3 +29,28 @@ fn cuda_registered_slabs_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+#[test]
+#[ignore = "requires an NVIDIA CUDA GPU, NVRTC, and Linux O_DIRECT/io_uring"]
+fn large_cuda_slabs_use_writer_registration_budget() -> Result<(), Box<dyn std::error::Error>> {
+    // Arrange: four 64-MiB payload slabs exceed u16::MAX when counted as pages.
+    const PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
+    const SLABS: usize = 4;
+    const MESSAGES: u32 = 5;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    for mode in [support::Mode::Mapped, support::Mode::Staged] {
+        let path = std::env::temp_dir().join(format!(
+            "cuda-mcap-large-{}-{stamp}-{}.mcap",
+            std::process::id(),
+            mode.name()
+        ));
+        // Act: create the writer, recycle registered slabs and finalize real CUDA output.
+        let result = support::run(&path, mode, PAYLOAD_BYTES, MESSAGES, SLABS);
+        let _ = std::fs::remove_file(&path);
+        // Assert: run() checks every payload byte and complete slab recycling.
+        result?.print();
+    }
+    Ok(())
+}

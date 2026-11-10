@@ -11,7 +11,6 @@ use std::{error::Error, ffi::c_void, fs::File, io, path::Path, sync::Arc, time::
 use storage_persistence::{
     mcap::{ALIGNMENT, Channel, McapConfig, McapWriter, Message, PreparedBlock, Schema},
     slabs::SlabPool,
-    writer::WriterConfig,
 };
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -352,11 +351,6 @@ pub fn run(
         .checked_add(RECORD_HEADER_BYTES + RECORD_PADDING_HEADER_BYTES)
         .and_then(|n| n.checked_next_multiple_of(ALIGNMENT))
         .ok_or("slab size overflow")?;
-    let registrations = slab_count
-        .checked_mul(slab_bytes / ALIGNMENT)
-        .and_then(|n| n.checked_add(WRITER_BUFFERS as usize * 2))
-        .and_then(|n| u32::try_from(n).ok())
-        .ok_or("registration count overflow")?;
     let context = CudaContext::new(0)?;
     let gpu = context.name()?;
     let integrated = context.attribute(CUdevice_attribute::CU_DEVICE_ATTRIBUTE_INTEGRATED)? != 0;
@@ -376,10 +370,6 @@ pub fn run(
         McapConfig {
             buffers: WRITER_BUFFERS,
             buffer_size: ALIGNMENT * 2,
-            io: WriterConfig {
-                registration_capacity: registrations,
-                ..Default::default()
-            },
             ..Default::default()
         },
     )?;
