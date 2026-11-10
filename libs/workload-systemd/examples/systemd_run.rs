@@ -1,5 +1,26 @@
 //! Run protobuf-text `RunPlan` and `SystemdPlan` files until Ctrl-C, then print the report.
 //! Usage (as root): `systemd_run RUN.pbtxt PLAN.pbtxt`
+
+/// Decode strict protobuf text from the file at argument `index` into message `name`.
+fn read<M: prost::Message + Default>(index: usize, name: &str) -> Result<M, String> {
+    let error = |e: &dyn std::fmt::Display| e.to_string();
+    let path = std::env::args()
+        .nth(index)
+        .ok_or("usage: systemd_run RUN.pbtxt PLAN.pbtxt")?;
+    let text = std::fs::read_to_string(path).map_err(|e| error(&e))?;
+    let pool = prost_reflect::DescriptorPool::decode(
+        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
+    )
+    .map_err(|e| error(&e))?;
+    let descriptor = pool
+        .get_message_by_name(name)
+        .ok_or_else(|| format!("{name} descriptor absent"))?;
+    prost_reflect::DynamicMessage::parse_text_format(descriptor, &text)
+        .map_err(|e| error(&e))?
+        .transcode_to()
+        .map_err(|e| error(&e))
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {
     if std::env::args().nth(1).as_deref() == Some("--cleanup") {
@@ -10,14 +31,8 @@ async fn main() -> Result<(), String> {
             .cleanup(std::path::Path::new(&repository))
             .await;
     }
-    let read = |index: usize| -> Result<String, String> {
-        let path = std::env::args()
-            .nth(index)
-            .ok_or("usage: systemd_run RUN.pbtxt PLAN.pbtxt")?;
-        std::fs::read_to_string(path).map_err(|e| e.to_string())
-    };
-    let run = workload_systemd::parse_run(&read(1)?)?;
-    let plan = workload_systemd::parse_plan(&read(2)?)?;
+    let run: workload_systemd::RunPlan = read(1, "doramcap.launch.v1.RunPlan")?;
+    let plan: workload_systemd::SystemdPlan = read(2, "doramcap.systemd_plan.v1.SystemdPlan")?;
     let stop = async {
         let _ = tokio::signal::ctrl_c().await;
     };

@@ -10,7 +10,6 @@ dora-app = { path = "../dora-app", default-features = false }
 futures-util = "0.3"
 orchestrator = { path = "../orchestrator" }
 prost = "0.14"
-prost-reflect = { version = "0.16", features = ["text-format"] }
 resource-policy = { path = "../resources/resource-policy" }
 rustix = { version = "1.1.5", features = ["fs", "mount"] }
 serde = { version = "1", features = ["derive"] }
@@ -25,6 +24,9 @@ zbus_systemd = { version = "0.26201", features = ["systemd1"] }
 [build-dependencies]
 prost-build = "0.14"
 protoc-bin-vendored = "3"
+
+[dev-dependencies]
+prost-reflect = { version = "0.16", features = ["text-format"] }
 
 [lints]
 workspace = true

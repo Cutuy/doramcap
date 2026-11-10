@@ -1,7 +1,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR")?);
-    // launch.proto joins the descriptor set so its RunPlan text decodes; its Rust types
-    // stay in workload-lifecycle.
+    // The descriptor set serves the example and tests that read protobuf text. launch.proto
+    // joins it so RunPlan and AppManifest text decode; its Rust types stay in workload-lifecycle.
     prost_build::Config::new()
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .file_descriptor_set_path(out.join("systemd_plan.bin"))
