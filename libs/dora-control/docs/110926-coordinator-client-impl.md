@@ -58,6 +58,19 @@ Local checks focus on this library; hosted CI and the ARM64 worker qualify works
 - [x] Pass cloud workspace checks on x86_64 and ARM64.
 - [x] Verify ARM64 worker completion and the separate real-Dora lifecycle result.
 
+## Review fix: Destroy after confirmed stop with node errors
+
+**Work items**
+
+- [x] Continue runtime destruction after a matching `DataflowStopped` reply with node errors.
+- [x] Preserve node failures and any destruction failure together; retain graph identity.
+
+**Validation**
+
+- [x] Reproduce the skipped Destroy with real WebSocket frames, then pass all 19 protocol tests, including destruction rejection and uncertain-stop protection.
+- [ ] Run strict Clippy/Rustdoc, formatting, boundaries and the real Dora lifecycle on the fix.
+- [ ] Verify final hosted checks and ARM64 worker qualification.
+
 ## Follow-up PR: Compose adoption
 
 **Work items**

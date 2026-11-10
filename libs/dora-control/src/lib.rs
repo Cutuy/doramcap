@@ -280,8 +280,8 @@ impl DoraCoordinatorClient {
     }
 
     /// Force-stop the owned graph, then destroy the exclusively owned coordinator and daemons.
-    /// The caller must drain apps first and own the whole runtime; uncertain stop prevents Destroy.
-    /// Errors retain graph identity so the caller can complete native teardown.
+    /// Drain apps first; uncertain stop prevents Destroy, while confirmed node errors do not.
+    /// Errors retain graph identity; node and destruction failures are reported together.
     pub async fn shutdown(&mut self, deadline: Instant) -> Result<()> {
         let result = self.shutdown_inner(deadline).await;
         self.disconnect();
@@ -289,6 +289,7 @@ impl DoraCoordinatorClient {
     }
 
     async fn shutdown_inner(&mut self, deadline: Instant) -> Result<()> {
+        let mut stop_error = None;
         if let Some(uuid) = self.reconcile_graph(deadline).await? {
             let request = ControlRequest::Stop {
                 dataflow_uuid: uuid,
@@ -301,8 +302,8 @@ impl DoraCoordinatorClient {
                     result,
                 } if stopped == uuid => {
                     if !result.is_ok() {
-                        return Err(Error::Remote(format!(
-                            "dataflow stop failed: {:?}",
+                        stop_error = Some(Error::Remote(format!(
+                            "dataflow stopped with node errors: {:?}",
                             result.node_results
                         )));
                     }
@@ -310,9 +311,17 @@ impl DoraCoordinatorClient {
                 other => return Err(self.reject("Stop", other)),
             }
         }
-        match self.request(ControlRequest::Destroy, deadline).await? {
-            ControlRequestReply::DestroyOk => Ok(()),
-            other => Err(self.reject("Destroy", other)),
+        let destroyed = match self.request(ControlRequest::Destroy, deadline).await {
+            Ok(ControlRequestReply::DestroyOk) => Ok(()),
+            Ok(other) => Err(self.reject("Destroy", other)),
+            Err(error) => Err(error),
+        };
+        match (stop_error, destroyed) {
+            (Some(stop), Err(destroy)) => Err(Error::Remote(format!(
+                "{stop}; runtime destruction failed: {destroy}"
+            ))),
+            (Some(stop), Ok(())) => Err(stop),
+            (None, result) => result,
         }
     }
 

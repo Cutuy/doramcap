@@ -4,6 +4,7 @@ use dora_control::{
     protocol::{
         self, DataflowId, SessionId,
         cli_to_coordinator::ControlRequest,
+        common::{NodeError, NodeErrorCause, NodeExitStatus},
         coordinator_to_cli::{
             ControlRequestReply, DataflowIdAndName, DataflowList, DataflowListEntry,
             DataflowResult, DataflowStatus,
@@ -120,6 +121,69 @@ async fn stop_graph(peer: &mut Peer, uuid: DataflowId) {
     let (request, control) = receive(peer).await;
     assert!(matches!(control, ControlRequest::Destroy));
     reply(peer, request, ControlRequestReply::DestroyOk).await;
+}
+
+#[tokio::test]
+async fn node_errors_do_not_skip_destroy_and_remain_reported() {
+    for destroy_fails in [false, true] {
+        // Arrange
+        let (listener, address) = listener().await;
+        let uuid = DataflowId::new_v4();
+        let peer = tokio::spawn(async move {
+            let mut peer = accept(&listener).await;
+            hello(&mut peer).await;
+            spawn_graph(&mut peer, uuid).await;
+            let (request, control) = receive(&mut peer).await;
+            assert!(
+                matches!(control, ControlRequest::Stop { dataflow_uuid, force: true, .. } if dataflow_uuid == uuid)
+            );
+            let mut result =
+                DataflowResult::ok_empty(uuid, protocol::uhlc::HLC::default().new_timestamp());
+            result.node_results.insert(
+                SYSTEM_NODE.to_owned().into(),
+                Err(NodeError {
+                    timestamp: result.timestamp,
+                    cause: NodeErrorCause::Other {
+                        stderr: "regression node error".into(),
+                    },
+                    exit_status: NodeExitStatus::ExitCode(1),
+                }),
+            );
+            reply(
+                &mut peer,
+                request,
+                ControlRequestReply::DataflowStopped { uuid, result },
+            )
+            .await;
+            let (request, control) = receive(&mut peer).await;
+            assert!(matches!(control, ControlRequest::Destroy));
+            let response = if destroy_fails {
+                ControlRequestReply::Error("destroy rejected".into())
+            } else {
+                ControlRequestReply::DestroyOk
+            };
+            reply(&mut peer, request, response).await;
+            assert!(
+                peer.next().await.is_none_or(|frame| {
+                    frame.is_err() || matches!(frame, Ok(Message::Close(_)))
+                })
+            );
+        });
+        let mut client = DoraCoordinatorClient::new(address, None);
+        client.start_graph(start(), deadline()).await.unwrap();
+        // Act
+        let result = client.shutdown(deadline()).await;
+        // Assert: confirmed stop permits Destroy, and both failure causes stay visible.
+        let Err(Error::Remote(message)) = result else {
+            panic!("node error was lost: {result:?}");
+        };
+        assert!(message.contains(SYSTEM_NODE) && message.contains("regression node error"));
+        if destroy_fails {
+            assert!(message.contains("destroy rejected"));
+        }
+        assert_eq!(client.graph().unwrap().uuid, Some(uuid));
+        peer.await.unwrap();
+    }
 }
 
 #[tokio::test]
