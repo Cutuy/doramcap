@@ -7,6 +7,8 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { successfulBuild } from './submit-run-only.mts';
+import { workerHost } from './worker-ssh.mts';
 import { downloadNodeArchive, nodeArchiveChecksum } from './install-node.mts';
 import { artifactNames, hashFile, parseArtifactManifest, verifyArtifacts, writeArtifactManifest } from './worker-artifacts.mts';
 
@@ -81,4 +83,22 @@ test('cancelled hashing stops before reading a file or replacing a manifest', as
   await assert.rejects(hashFile(join(path, 'missing'), controller.signal), /interrupted/);
   await assert.rejects(writeArtifactManifest(path, controller.signal), /interrupted/);
   assert.equal(readFileSync(join(path, 'SHA256SUMS'), 'utf8'), 'previous');
+});
+
+test('SSH worker names reject command and option injection', () => {
+  // Arrange / Act / Assert
+  assert.equal(workerHost('mac-mini-ubuntu24@100.64.0.22'), 'mac-mini-ubuntu24@100.64.0.22');
+  assert.equal(workerHost('arm-builder'), 'arm-builder');
+  for (const host of ['-oProxyCommand=id', '-user@host', 'user@host;id', 'user@$(id)', 'host name', 'user@-host']) {
+    assert.throws(() => workerHost(host), /Invalid SSH worker/);
+  }
+});
+test('only a successful build of the exact queued task permits transfer', () => {
+  // Arrange
+  const status = JSON.stringify({ tasks: { 7: { status: { Done: { result: 'Success' } } },
+    8: { status: { Done: { result: { Failed: 1 } } } }, 9: { status: 'Running' } } });
+  // Act / Assert
+  successfulBuild(status, '7');
+  for (const id of ['8', '9', '10']) assert.throws(() => successfulBuild(status, id), /did not succeed/);
+  assert.throws(() => successfulBuild(status, '7;id'), /Invalid Pueue task ID/);
 });

@@ -76,6 +76,7 @@ export async function runWorker(options: WorkerOptions): Promise<number> {
     lockFd = openSync(join(cache, 'worker.lock'), 'a', PRIVATE_FILE_MODE);
     // flock shares this open file description; children inherit it to protect active cache consumers.
     await checked('flock', ['--exclusive', String(LOCK_CHILD_FD)]);
+    log(`Node: ${process.version}`);
     await checked('uname', ['-a']);
     if (options.mode === 'build') {
       const compose = options.composePlugin ?? COMPOSE_PLUGIN;
@@ -105,6 +106,7 @@ export async function runWorker(options: WorkerOptions): Promise<number> {
       installExecutable(join(artifacts, 'docker'), join(bin, 'docker'));
       installExecutable(join(artifacts, 'docker-compose'), join(home, '.docker/cli-plugins/docker-compose'));
       await checked('cargo-nextest', ['--version']); await checked('docker', ['--version']); await checked('docker', ['compose', 'version']);
+      log(readFileSync('/proc/self/limits', 'utf8').split('\n').find(line => line.startsWith('Max locked memory')) ?? 'Memlock: unavailable');
       log(`Source manifest SHA256: ${await hashFile(join(cachedSource, 'SOURCE.json'), signal)}`);
       for (const name of ['memory.max', 'memory.events']) {
         try { log(`${name}: ${readFileSync(join('/sys/fs/cgroup', name), 'utf8').trim()}`); }
@@ -144,8 +146,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     if (process.argv.length !== 3 || !['build', 'run'].includes(process.argv[2])) {
       console.error('Usage: run-only-worker.mts build|run (from a staged job directory)'); process.exitCode = 2;
     } else {
-    validateWorkerPlatform();
-    process.exitCode = await runWorker({ mode: process.argv[2] as WorkerMode, job: process.cwd() });
+      validateWorkerPlatform();
+      process.exitCode = await runWorker({ mode: process.argv[2] as WorkerMode, job: process.cwd() });
     }
   } catch (error) { console.error((error as Error).message); process.exitCode = 1; }
 }

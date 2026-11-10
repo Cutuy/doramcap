@@ -9,9 +9,7 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { successfulBuild } from './submit-run-only.mts';
 import { artifactNames } from './worker-artifacts.mts';
-import { workerHost } from './worker-ssh.mts';
 import { validateWorkerPlatform } from './run-only-worker.mts';
 import { runCommand, WorkerInterrupted } from './worker-process.mts';
 
@@ -69,23 +67,6 @@ async function notification(t: TestContext) {
 }
 function log(fixture: ReturnType<typeof workerFixture>) { return readFileSync(join(fixture.job, 'run.log'), 'utf8'); }
 
-test('SSH worker names reject command and option injection', () => {
-  // Arrange / Act / Assert
-  assert.equal(workerHost('mac-mini-ubuntu24@100.64.0.22'), 'mac-mini-ubuntu24@100.64.0.22');
-  assert.equal(workerHost('arm-builder'), 'arm-builder');
-  for (const host of ['-oProxyCommand=id', '-user@host', 'user@host;id', 'user@$(id)', 'host name', 'user@-host']) {
-    assert.throws(() => workerHost(host), /Invalid SSH worker/);
-  }
-});
-test('only a successful build of the exact queued task permits transfer', () => {
-  // Arrange
-  const status = JSON.stringify({ tasks: { 7: { status: { Done: { result: 'Success' } } },
-    8: { status: { Done: { result: { Failed: 1 } } } }, 9: { status: 'Running' } } });
-  // Act / Assert
-  successfulBuild(status, '7');
-  for (const id of ['8', '9', '10']) assert.throws(() => successfulBuild(status, id), /did not succeed/);
-  assert.throws(() => successfulBuild(status, '7;id'), /Invalid Pueue task ID/);
-});
 for (const failed of ['', 'all-features.tar.zst']) {
   test(`worker attempts every suite when ${failed || 'all suites pass'}`, t => {
     // Arrange
