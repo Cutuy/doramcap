@@ -13,6 +13,7 @@ members = [
     "libs/session",
     "libs/workload-lifecycle",
     "libs/dora-app",
+    "libs/dora-control",
     "libs/workload-supervisor",
     "libs/workload-systemd",
     "libs/workload-docker",
