@@ -28,6 +28,5 @@ See the [README](../README.md#run-only-arm64-worker) for usage and requirements.
 - [x] Mac: 453 default, 459 all-feature and 65 storage tests passed; 199 existing skips, zero OOM kills.
 - [x] Signals, child cleanup, lock recovery and invalid artifacts checked.
 - [x] Fresh nextest installation and Node provisioning/reuse checked.
-- [ ] Hosted checks and final guide review.
 
 Evidence: code `02c530ac`, Pueue 629, job `55f7d5a80228400ebf1b8ab38055ee33` on both hosts.
