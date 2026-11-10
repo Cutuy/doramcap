@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stage profiles for the proposed review pilot",
+  "type": "object",
+  "properties": {
+    "compile": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "const": "gpt-6.1-sol"
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": {
+              "const": "high"
+            }
+          },
+          "required": [
+            "effort"
+          ],
+          "additionalProperties": false
+        },
+        "max_in_flight": {
+          "const": 1
+        }
+      },
+      "required": [
+        "model",
+        "reasoning",
+        "max_in_flight"
+      ],
+      "additionalProperties": false
+    },
+    "screen": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "const": "gpt-6-luna"
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": {
+              "const": "low"
+            }
+          },
+          "required": [
+            "effort"
+          ],
+          "additionalProperties": false
+        },
+        "max_in_flight": {
+          "const": 8
+        }
+      },
+      "required": [
+        "model",
+        "reasoning",
+        "max_in_flight"
+      ],
+      "additionalProperties": false
+    },
+    "confirm": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "const": "gpt-6.1-sol"
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": {
+              "const": "high"
+            }
+          },
+          "required": [
+            "effort"
+          ],
+          "additionalProperties": false
+        },
+        "max_in_flight": {
+          "const": 2
+        }
+      },
+      "required": [
+        "model",
+        "reasoning",
+        "max_in_flight"
+      ],
+      "additionalProperties": false
+    },
+    "fix": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "const": "gpt-6-astra"
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": {
+              "const": "xhigh"
+            }
+          },
+          "required": [
+            "effort"
+          ],
+          "additionalProperties": false
+        },
+        "max_in_flight": {
+          "const": 1
+        }
+      },
+      "required": [
+        "model",
+        "reasoning",
+        "max_in_flight"
+      ],
+      "additionalProperties": false
+    },
+    "recheck": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "const": "gpt-6.1-sol"
+        },
+        "reasoning": {
+          "type": "object",
+          "properties": {
+            "effort": {
+              "const": "high"
+            }
+          },
+          "required": [
+            "effort"
+          ],
+          "additionalProperties": false
+        },
+        "max_in_flight": {
+          "const": 1
+        }
+      },
+      "required": [
+        "model",
+        "reasoning",
+        "max_in_flight"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "compile",
+    "screen",
+    "confirm",
+    "fix",
+    "recheck"
+  ],
+  "additionalProperties": false
+}
