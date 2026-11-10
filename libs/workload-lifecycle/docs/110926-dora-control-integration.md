@@ -2,7 +2,7 @@
 
 # Dora control integration
 
-Created: 2026-11-09. [Implementation plan](110926-dora-control-integration-impl.md).
+Created: 2026-11-09. Updated: 2026-11-10. [Implementation plan](110926-dora-control-integration-impl.md).
 
 [PR #251](https://github.com/Cutuy/doramcap/pull/251) provides the qualified
 `DoraCoordinatorClient`. Two adoption PRs will replace transient Dora control
@@ -35,6 +35,10 @@ Compose removes its control `exec` calls. systemd removes its `dora-cli-*`
 oneshots and their `cli-*.out` files. Existing backend observation policies and
 application drain order continue to apply.
 
+## Workflow, cleanup and recovery
+
+![Client calls by workflow phase and recovery path](110926-dora-control-workflow-recovery.svg)
+
 ## Failure and cleanup
 
 Connect, daemon readiness and graph registration share one absolute startup
@@ -47,7 +51,9 @@ backend stop rules even when control fails.
 Cleanup can reconnect and reconcile an uncertain Start by exact run name. Missing
 or ambiguous identity stays unknown. Preserve that diagnostic, continue native
 teardown and verify actual exit before removal. Mutations are never replayed
-automatically. Force shutdown requires exclusive coordinator/daemon ownership.
+automatically. A matching stopped reply permits Destroy even when nodes failed;
+report node and destruction errors together. Force shutdown requires exclusive
+coordinator/daemon ownership.
 After controller exit, the existing persisted run ownership and reset path recover
 native resources. Socket closure alone never establishes graph or process exit.
 

@@ -1,6 +1,6 @@
 # Dora control integration implementation
 
-Created: 2026-11-09. [Architecture](110926-dora-control-integration.md).
+Created: 2026-11-09. Updated: 2026-11-10. [Architecture](110926-dora-control-integration.md).
 Parent: [standalone client PR #251](https://github.com/Cutuy/doramcap/pull/251).
 
 This PR records the integration work. Compose and systemd changes ship as separate
@@ -14,13 +14,14 @@ remain open until that backend is changed and tested.
 - [x] Map current control process launches to the existing client API.
 - [x] Record retained ownership, preparation parity and bounded cleanup.
 - [x] Separate Compose and systemd adoption and their acceptance checks.
+- [x] Map every workflow phase to retained client use, recovery and native cleanup in the workflow/recovery SVG.
 
 **Validation**
 
 - [x] Trace both backends against parent source `cb45f12b` and review applicable guide rules.
 - [x] Check relative links, SVG XML/rendering and whitespace; visually inspect the rendered architecture.
 
-Planning validation: source mapping, 16 relative links/anchors, SVG XML, rendered
+Planning validation: source mapping, 17 relative links/anchors, SVG XML, rendered
 layout and whitespace passed. Backend implementation and runtime qualification
 remain pending in the two adoption PRs.
 

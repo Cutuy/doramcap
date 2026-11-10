@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1550" height="1825" viewBox="0 0 1550 1825" role="img" aria-labelledby="title desc">
+<title id="title">Dora client use through the workflow, cleanup and recovery</title>
+<desc id="desc">Planned Compose and systemd adoption: retained backend owners use one client through readiness, graph registration, observation and shutdown. Cancelled requests retain graph identity. Cleanup reconciles uncertain starts, destroys only after a confirmed stop, always verifies native exit and gates resource removal on stopped writers and durable evidence. Controller restart recovers from persisted native ownership.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" fill="none" stroke="#475569" stroke-width="1.6"/></marker></defs>
+<rect width="1550" height="1825" rx="16" fill="#f8fafc"/>
+<text x="30" y="43" font-family="DejaVu Sans, sans-serif" font-size="30" fill="#0f172a" font-weight="600" text-anchor="start">Dora client use, cleanup and recovery</text>
+<text x="30" y="69" font-family="DejaVu Sans, sans-serif" font-size="17" fill="#475569" font-weight="normal" text-anchor="start">Planned backend adoption · one client per experiment · typed JSON over a reused WebSocket</text>
+<rect x="30" y="90" width="710" height="82" rx="10" fill="#dbeafe"/>
+<text x="44" y="119" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Compose: ExperimentOwner</text>
+<text x="44" y="143" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Step factories + ComposeRunning.resources retain the same owner</text>
+<rect x="780" y="90" width="740" height="82" rx="10" fill="#dbeafe"/>
+<text x="794" y="119" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">systemd: SystemdRunning.dora</text>
+<text x="794" y="143" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Dora retains the client; the running handle retains native unit ownership</text>
+<path d="M385 172V190H650V207" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M1150 172V190H850V207" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="44" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Workflow entry</text>
+<text x="514" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Retained client / same connection</text>
+<text x="1014" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Coordinator messages + native effects</text>
+<rect x="492" y="234" width="496" height="884" rx="10" fill="#dff5ef"/>
+<rect x="30" y="242" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="271" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">1  Prepare &amp; bind</text>
+<text x="44" y="295" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: PrepareRun + bind_experiment</text>
+<text x="44" y="317" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: prepare + retained run state</text>
+<rect x="500" y="242" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="271" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Prepare retained run owner</text>
+<text x="514" y="295" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Freeze descriptor, session and path facts</text>
+<text x="514" y="317" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Retain native handles; no control RPC yet</text>
+<rect x="1000" y="242" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="271" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Prepared inputs</text>
+<text x="1014" y="295" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Validate graph hash, ownership and endpoint</text>
+<text x="1014" y="317" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep native source/target bindings</text>
+<path d="M480 291H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<path d="M980 291H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<rect x="30" y="352" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="381" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">2  Start Dora runtime</text>
+<text x="44" y="405" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: StartDoraRuntime</text>
+<text x="44" y="427" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: start the Dora phase</text>
+<rect x="500" y="352" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="381" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">new(endpoint, token)</text>
+<text x="514" y="405" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">wait_for_daemon(d_start)</text>
+<text x="514" y="427" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Shared startup deadline through registration</text>
+<rect x="1000" y="352" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="381" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Native launch, then readiness</text>
+<text x="1014" y="405" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Start owned coordinator + daemon</text>
+<text x="1014" y="427" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Hello; DaemonConnected (bounded checks)</text>
+<path d="M480 401H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 401H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="30" y="462" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="491" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">3  Register the graph</text>
+<text x="44" y="515" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: RegisterDoraGraph</text>
+<text x="44" y="537" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: Dora.register</text>
+<rect x="500" y="462" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="491" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">start_graph(Start, d_start)</text>
+<text x="514" y="515" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Record intent before the first await</text>
+<text x="514" y="537" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep UUID before waiting for graph spawn</text>
+<rect x="1000" y="462" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="491" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Start; WaitForSpawn</text>
+<text x="1014" y="515" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Use frozen dynamic graph + run/session ID</text>
+<text x="1014" y="537" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Return the owned graph UUID</text>
+<path d="M480 511H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 511H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="30" y="572" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="601" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">4  Start applications</text>
+<text x="44" y="625" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: StartCompose steps</text>
+<text x="44" y="647" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: System phase, then User phase</text>
+<rect x="500" y="572" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="601" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Keep client retained</text>
+<text x="514" y="625" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Native application launch uses no client RPC</text>
+<text x="514" y="647" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">The same client is available to later steps</text>
+<rect x="1000" y="572" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="601" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Ordered application startup</text>
+<text x="1014" y="625" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">System apps; WaitForRecordings</text>
+<text x="1014" y="647" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">User apps; publish readiness</text>
+<path d="M480 621H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<path d="M980 621H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<rect x="30" y="682" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="711" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">5  Observe the run</text>
+<text x="44" y="735" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: existing monitoring cadence</text>
+<text x="44" y="757" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: await the stop request</text>
+<rect x="500" y="682" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="711" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Compose: inspect_graph(d_observe)</text>
+<text x="514" y="735" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd retains the client while waiting</text>
+<text x="514" y="757" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Read failure ends the applicable observation</text>
+<rect x="1000" y="682" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="711" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Compose: List</text>
+<text x="1014" y="735" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Verify owned UUID, exact name and Running</text>
+<text x="1014" y="757" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Preserve each backend monitoring policy</text>
+<path d="M480 731H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 731H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="30" y="792" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="821" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">6  Drain / stop applications</text>
+<text x="44" y="845" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">ComposeRunning.stop / systemd stop</text>
+<text x="44" y="867" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">User apps first, then system apps</text>
+<rect x="500" y="792" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="821" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Compose: stop_node(node, grace, d_stop)</text>
+<text x="514" y="845" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd stops app units natively</text>
+<text x="514" y="867" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep graph identity available for cleanup</text>
+<rect x="1000" y="792" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="821" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">StopNode + native app shutdown</text>
+<text x="1014" y="845" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Preserve system-node grace and drain order</text>
+<text x="1014" y="867" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Verify writers and retain diagnostics</text>
+<path d="M480 841H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 841H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="30" y="902" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="931" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">7  Stop Dora runtime</text>
+<text x="44" y="955" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: StopDoraRuntime</text>
+<text x="44" y="977" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: Dora.down during reverse teardown</text>
+<rect x="500" y="902" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="931" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">shutdown(d_stop)</text>
+<text x="514" y="955" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Reconnect / reconcile when needed</text>
+<text x="514" y="977" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Close socket on return; retain graph identity</text>
+<rect x="1000" y="902" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="931" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Stop(force), then Destroy</text>
+<text x="1014" y="955" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Matching stopped reply permits Destroy</text>
+<text x="1014" y="977" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Report node errors even after destruction</text>
+<path d="M480 951H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 951H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="30" y="1012" width="450" height="99" rx="10" fill="#eaf1fc"/>
+<text x="44" y="1041" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">8  Finalize &amp; remove</text>
+<text x="44" y="1065" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: FinalizeRun / RemoveCompose</text>
+<text x="44" y="1087" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: evidence / RemoveRuntime</text>
+<rect x="500" y="1012" width="480" height="99" rx="10" fill="#ccfbf1"/>
+<text x="514" y="1041" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Release client after cleanup</text>
+<text x="514" y="1065" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Native ownership remains until verified cleanup</text>
+<text x="514" y="1087" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Retain reports, artifacts and unresolved errors</text>
+<rect x="1000" y="1012" width="520" height="99" rx="10" fill="#eef0ff"/>
+<text x="1014" y="1041" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">FinalizeRecordings + removal permit</text>
+<text x="1014" y="1065" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Verify native exit and evidence durability</text>
+<text x="1014" y="1087" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Remove only permitted owned resources</text>
+<path d="M480 1061H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<path d="M980 1061H1000" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" stroke-dasharray="5 4"/>
+<text x="30" y="1174" font-family="DejaVu Sans, sans-serif" font-size="27" fill="#0f172a" font-weight="600" text-anchor="start">Cleanup and recovery</text>
+<rect x="30" y="1195" width="1490" height="86" rx="10" fill="#e2e8f0"/>
+<text x="44" y="1224" font-family="DejaVu Sans, sans-serif" font-size="20" fill="#0f172a" font-weight="600" text-anchor="start">Cancellation / deadline / disconnect</text>
+<text x="44" y="1248" font-family="DejaVu Sans, sans-serif" font-size="17" fill="#0f172a" font-weight="normal" text-anchor="start">Drop the in-flight socket; keep the retained name / UUID. After cancelled startup, give cleanup a fresh stop budget.</text>
+<rect x="30" y="1300" width="450" height="100" rx="10" fill="#fef3c7"/>
+<text x="44" y="1329" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Start attempted; UUID unknown</text>
+<text x="44" y="1353" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Retain exact run name</text>
+<text x="44" y="1375" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Never replay Start automatically</text>
+<rect x="500" y="1300" width="480" height="100" rx="10" fill="#ccfbf1"/>
+<text x="514" y="1329" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">reconcile_graph(d_stop)</text>
+<text x="514" y="1353" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Reconnect + Hello; List the exact run name</text>
+<text x="514" y="1375" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Missing / ambiguous / error: native cleanup</text>
+<rect x="30" y="1420" width="450" height="100" rx="10" fill="#eaf1fc"/>
+<text x="44" y="1449" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Known graph UUID</text>
+<text x="44" y="1473" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Use retained or uniquely recovered identity</text>
+<text x="44" y="1495" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep all application / node diagnostics</text>
+<rect x="500" y="1420" width="480" height="100" rx="10" fill="#ccfbf1"/>
+<text x="514" y="1449" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Stop(force) within d_stop</text>
+<text x="514" y="1473" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Matching DataflowStopped: continue to Destroy</text>
+<text x="514" y="1495" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Unconfirmed stop: native cleanup</text>
+<rect x="30" y="1540" width="450" height="100" rx="10" fill="#eaf1fc"/>
+<text x="44" y="1569" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">No graph Start attempt</text>
+<text x="44" y="1593" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">The run still owns its native runtime</text>
+<text x="44" y="1615" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Skip graph stop; destroy the owned runtime</text>
+<rect x="500" y="1540" width="480" height="100" rx="10" fill="#ccfbf1"/>
+<text x="514" y="1569" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Destroy within d_stop</text>
+<text x="514" y="1593" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Confirmed node errors still permit Destroy</text>
+<text x="514" y="1615" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep node + Destroy errors; close the socket</text>
+<rect x="30" y="1660" width="450" height="100" rx="10" fill="#fde8d8"/>
+<text x="44" y="1689" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Controller process exits</text>
+<text x="44" y="1713" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Live client state is lost</text>
+<text x="44" y="1735" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Persisted native ownership remains</text>
+<rect x="500" y="1660" width="480" height="100" rx="10" fill="#eaf1fc"/>
+<text x="514" y="1689" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Existing restart / reset path</text>
+<text x="514" y="1713" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Recover native resource ownership</text>
+<text x="514" y="1735" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Inspect, stop and verify owned resources</text>
+<path d="M480 1350H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 1350H1015" fill="none" stroke="#475569" stroke-width="1.6"/>
+<path d="M480 1470H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 1470H1015" fill="none" stroke="#475569" stroke-width="1.6"/>
+<path d="M480 1590H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 1590H1015" fill="none" stroke="#475569" stroke-width="1.6"/>
+<path d="M480 1710H500" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M980 1710H1015" fill="none" stroke="#475569" stroke-width="1.6"/>
+<path d="M740 1400V1420" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="754" y="1415" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">unique UUID</text>
+<path d="M740 1520V1540" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="754" y="1535" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#475569" font-weight="normal" text-anchor="start">confirmed stop</text>
+<path d="M1015 1710V1350H1040" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1040" y="1300" width="480" height="145" rx="10" fill="#dbeafe"/>
+<text x="1054" y="1329" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">Native cleanup on every outcome</text>
+<text x="1054" y="1353" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Compose: quiesce owned runtime containers</text>
+<text x="1054" y="1375" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">systemd: stop_and_wait owned native units</text>
+<text x="1054" y="1397" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Verify process exit; preserve control errors</text>
+<text x="1054" y="1419" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Finalize evidence when writers stopped</text>
+<path d="M1280 1445V1470" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<rect x="1065" y="1470" width="430" height="90" rx="10" fill="#fff7ed"/>
+<text x="1079" y="1499" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Writers stopped + durable evidence?</text>
+<text x="1079" y="1523" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Derive the existing RemovalPermit</text>
+<path d="M1280 1560V1580H1155V1610" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M1280 1580H1405V1610" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="1155" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="middle">Yes</text>
+<text x="1405" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="middle">No</text>
+<rect x="1040" y="1610" width="230" height="125" rx="10" fill="#dcfce7"/>
+<text x="1054" y="1639" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Permit removal</text>
+<text x="1054" y="1663" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Remove permitted</text>
+<text x="1054" y="1685" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">owned resources</text>
+<text x="1054" y="1707" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep run artifacts</text>
+<rect x="1290" y="1610" width="230" height="125" rx="10" fill="#ffedd5"/>
+<text x="1304" y="1639" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Preserve resources</text>
+<text x="1304" y="1663" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Keep artifacts</text>
+<text x="1304" y="1685" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Report incomplete</text>
+<text x="1304" y="1707" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">cleanup</text>
+</svg>
