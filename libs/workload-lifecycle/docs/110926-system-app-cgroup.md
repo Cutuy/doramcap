@@ -9,6 +9,10 @@ beneath it; nested app groups retain their native accounting. Compose selects th
 parent with `cgroup_parent`; systemd selects it with `Slice=`. Existing system/user
 app inputs select placement.
 
+Both workflows need the host system service manager. Compose uses a local rootful
+Docker daemon with cgroup v2 and the systemd driver. User-app placement follows its
+native launch input.
+
 The launchers create the slice before system apps start and verify placement before
 user startup. A creation or placement failure aborts startup through existing
 shutdown and cleanup. A typed artifact records the host cgroup path and kernel ID.
