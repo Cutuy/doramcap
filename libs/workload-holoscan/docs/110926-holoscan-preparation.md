@@ -30,6 +30,12 @@ defined in stage 3; detailed run ownership and cancellation are defined in stage
 
 ## Reviewed inputs and changes
 
+Console's current Prepare request produces Review. Runtime preparation and
+filesystem mounting occur inside Start. A Build that affects image or launch
+identity must complete before the Review snapshot; the native runner then
+rechecks that snapshot before creating filesystem views.
+
+
 Review explains the selected inputs and the expected build and preparation work.
 Build, Prepare and Start use the same project context.
 

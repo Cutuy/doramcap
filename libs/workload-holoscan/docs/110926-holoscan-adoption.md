@@ -28,11 +28,11 @@ behavior. Extract shared operations after identifying that concrete overlap.
 
 1. Select a project and its configured Holoscan tools.
 2. Choose an application, language variant, run mode and execution environment.
-3. Review requirements, effective launch settings, resource controls and outputs.
+3. Select resource controls, observations and intended outputs.
 4. Clean up lingering owned runs and verify the cleanup result.
 5. Build through the existing Holoscan workflow as a separate operation.
-6. Prepare the selected run using the built outputs.
-7. Start the application with the selected Console observations.
+6. Capture the built application's launch settings for Review.
+7. On Start, recheck Review, prepare filesystem views and launch the application.
 8. Stop, collect results and inspect execution, recordings and cleanup outcomes.
 
 Review and execution use the same resolved inputs. A changed project or environment
@@ -141,9 +141,10 @@ purpose, inputs, results and failure behavior.
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
 Stage 5 adopts the existing automatic filesystem capture workflow.
 
-**Current discussion: [stage 5's launch and mount contract](111026-holoscan-launch-handoff.md).** Establish how Holoscan
-supplies its resolved container mounts and receives the prepared filesystem views,
-and where the shared filesystem operations belong. The mechanism remains open.
+**Current discussion: [stage 5's adapter feasibility and workflow](111026-holoscan-launch-handoff.md).**
+The recording-Docker probe validates capture, a gated runtime handoff and native
+status/cancellation behavior for the fixture. Production adoption, its configuration
+exception and the shared filesystem owner remain open.
 
 Backend acceptance follows in stage 6. Console UI is explicitly last in stage 7,
 including discovery presentation, saved selections, review, run controls and results.

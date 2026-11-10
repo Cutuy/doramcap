@@ -15,13 +15,13 @@
     </style>
   </defs>
   <rect width="1200" height="630" fill="white"/>
-  <text class="heading" x="40" y="40">Required run order</text>
+  <text class="heading" x="40" y="40">Required backend order</text>
   <rect class="box" x="40" y="65" width="300" height="70" rx="10"/>
   <text class="name" x="190" y="107" text-anchor="middle">Resolve final mounts</text>
   <rect class="console" x="450" y="65" width="300" height="70" rx="10"/>
   <text class="name" x="600" y="107" text-anchor="middle">Prepare filesystem views</text>
   <rect class="console" x="860" y="65" width="300" height="70" rx="10"/>
-  <text class="name" x="1010" y="107" text-anchor="middle">Start prepared launch</text>
+  <text class="name" x="1010" y="107" text-anchor="middle">Create app container</text>
   <path class="flow" d="M340 100 H450"/>
   <text class="label" x="395" y="87" text-anchor="middle">mounts</text>
   <path class="flow" d="M750 100 H860"/>
