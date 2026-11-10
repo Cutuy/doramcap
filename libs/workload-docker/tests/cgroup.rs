@@ -233,6 +233,7 @@ async fn placement_and_recovery(fixture: Fixture) {
                 } else {
                     HostShmAccess::Blocked
                 } as i32,
+                id: fixture.spec(0).id,
                 ..fixture.spec(index)
             },
             async {
@@ -347,10 +348,12 @@ async fn placement_and_recovery(fixture: Fixture) {
                 serde_json::from_value(events[created_index].payload.clone().unwrap()).unwrap();
             assert_eq!(output, Some(identity.clone()));
         }
-        if let Some(id) = previous {
-            assert_ne!(id, identity.id);
+        if let Some(previous) = previous {
+            let previous: SystemAppCgroup = previous;
+            assert_ne!(previous.id, identity.id);
+            assert_ne!(previous.path, identity.path);
         }
-        previous = Some(identity.id);
+        previous = Some(identity.clone());
         if index == 0 {
             // Act / Assert: dropping the controller leaves live resources for the next run's reset.
             drop(run);

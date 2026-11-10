@@ -16,11 +16,12 @@ the group and report whether cleanup removed it or retained an empty runtime par
 Compose supplies `cgroup_parent` using Docker's configured cgroupfs or systemd driver.
 Docker creates that parent before container execution. After system apps start, the
 shared step records the group and verifies host PIDs before user startup. Each run
-uses a distinct parent. Compose uses Docker APIs and requires cgroup v2 CPU/memory
+uses a distinct parent tied to its fresh artifact directory. Compose uses Docker APIs and requires cgroup v2 CPU/memory
 accounting; its workflow has no host D-Bus dependency.
 
 The native systemd backend creates slices through its existing service manager.
-Supervisor uses its existing filesystem allocation and durable ownership ledger.
+Supervisor uses its existing filesystem allocation and durable ownership ledger;
+its delegated parent must enable memory accounting for children.
 Both reuse the shared step and membership checks.
 
 After writers stop and evidence is finalized, directly owned groups are removed.

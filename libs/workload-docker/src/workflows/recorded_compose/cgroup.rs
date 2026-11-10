@@ -31,10 +31,13 @@ pub(super) async fn placement(
         ));
     }
     let repository = std::fs::canonicalize(&run.repository_root)?;
+    let artifacts = std::fs::canonicalize(&run.artifacts)?;
     let digest = Sha256::new()
         .chain_update(repository.as_os_str().as_encoded_bytes())
         .chain_update([0])
         .chain_update(run.id.as_bytes())
+        .chain_update([0])
+        .chain_update(artifacts.as_os_str().as_encoded_bytes())
         .finalize();
     let hash = &hex::encode(digest)[..PARENT_HASH_CHARS];
     let name = format!("{PARENT_PREFIX}-{hash}-system");
