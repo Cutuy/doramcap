@@ -13,3 +13,5 @@ cargo run --release --locked -p gpudirect-demo -- /absolute/path/output.mcap map
 ```
 
 Arguments: path, mode (`mapped`, `staged`, `io-only`), payload bytes, messages, slabs.
+
+[Start from the SPA](deploy/README.md).

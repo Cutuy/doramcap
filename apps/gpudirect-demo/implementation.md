@@ -32,3 +32,13 @@ three 1-GiB runs per mode, 8-MiB messages, four slabs (`798926cf`).
 Timing includes production, CPU payload clearing, drain and sync; excludes setup
 and readback. CPU measures process user+system time. Storage variability prevented
 a clear speedup conclusion. These are earlier measurements, not rerun for the app move.
+
+## SPA launch
+
+**Work items**
+
+- [x] Storage category and opt-in GPU wrapper using the existing gallery lifecycle.
+
+**Validation**
+
+- [ ] Catalog/build, registration, real GPU container, HTTP results and graceful stop.

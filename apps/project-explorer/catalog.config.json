@@ -5,6 +5,7 @@
     "apps/cpu-viewer": "Resources",
     "apps/system-monitor": "Resources",
     "apps/storage-demo": "Storage",
+    "apps/gpudirect-demo": "Storage",
     "apps/mcap-recorder": "Telemetry",
     "apps/fault-demo": "Faults",
     "apps/fault-watchdog": "Faults",
