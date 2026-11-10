@@ -184,6 +184,7 @@ main.shell{padding-top:28px}
 .console-soc-body span{font:10px ui-monospace,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .console-soc-body>div>div{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border:1px solid transparent;border-radius:4px;overflow-wrap:anywhere}
 .console-soc-body svg{flex-shrink:0;color:var(--muted)}
+.console-soc-body small{padding-top:4px;border-top:1px solid var(--line);color:var(--muted);font-size:11px;line-height:1.35}
 .console-soc-doramcap{grid-column:1/-1}
 .console-soc-body>.console-soc-doramcap>div{flex:1;border-color:var(--accent)}
 .console-soc-doramcap svg{color:var(--accent)}

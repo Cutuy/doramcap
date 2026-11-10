@@ -4,12 +4,12 @@ import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
-/** Console sits above peer application runtimes on the SoC. */
+/** Console manages experiments across peer application groups. */
 const SOC_GROUPS = [
-  { label: 'doramcap', Icon: Activity, items: ['Console'], className: 'console-soc-doramcap' },
-  { label: 'Holoscan SDK', Icon: Workflow, items: ['Runtime & graph', 'Modules'], className: '' },
-  { label: 'Containers', Icon: Box, items: ['camera', 'planner'], className: '' },
-  { label: 'supervisord', Icon: Cog, items: ['can-bus', 'gps'], className: '' },
+  { label: 'Experiment management', Icon: Activity, items: ['doramcap Console'], className: 'console-soc-doramcap' },
+  { label: 'Holoscan apps', Icon: Workflow, items: ['perception', 'control'], runtime: 'Runtime & graph · Modules' },
+  { label: 'Containers', Icon: Box, items: ['camera', 'planner'] },
+  { label: 'supervisord', Icon: Cog, items: ['can-bus', 'gps'] },
 ];
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
@@ -49,22 +49,23 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     <div className="console-install-intro">
       <div className="eyebrow"><Terminal size={14} aria-hidden="true" />Console</div>
       <h2 id="console-install-heading">Bring your existing apps to life.</h2>
-      <p>Bring Holoscan, containers, and supervisord apps into one view. Run experiments, watch live metrics, and capture MCAP recordings from your browser over an SSH tunnel.</p>
+      <p>Bring Holoscan apps, containers, and supervisord services into one view. Run experiments, watch live metrics, and capture MCAP recordings from your browser over an SSH tunnel.</p>
       <div className="console-install-actions">
         <a className="launch-link" href={releaseUrl} target="_blank" rel="noreferrer">Download Console <ArrowUpRight size={14} aria-hidden="true" /></a>
         <a className="console-try" href={`#${CONSOLE_PATH}`}>Try Console</a>
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel. Console sits above three peer groups on your SoC or workstation: Holoscan SDK with Runtime and graph and Modules, Docker containers, and supervisord units. An optional doramcap runtime sits below them.">
+    <div className="console-topology" role="img" aria-label="A browser connects over SSH to doramcap Console on your SoC or workstation. The experiment management layer spans Holoscan apps, containers, and supervisord services. Runtime and graph plus modules support the Holoscan apps. An optional doramcap runtime sits below the three groups.">
       <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
       <div className="console-soc">
         <div className="console-soc-title"><Cpu size={16} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong></div>
         <div className="console-soc-body">
-          {SOC_GROUPS.map(({ label, Icon, items, className }) => <div key={label} className={className}>
+          {SOC_GROUPS.map(({ label, Icon, items, className, runtime }) => <div key={label} className={className}>
             <span>{label}</span>
             {items.map((name) => <div key={name}><Icon size={13} aria-hidden="true" />{name}</div>)}
+            {runtime && <small>{runtime}</small>}
           </div>)}
         </div>
         <div className="console-soc-runtime"><Layers size={13} aria-hidden="true" /><strong>doramcap runtime</strong><span>optional</span></div>
