@@ -1993,8 +1993,11 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
 async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
+    use orchestrator::{Event, State, Step};
     use std::os::unix::fs::MetadataExt;
+    use std::{cell::RefCell, rc::Rc};
     use workload_lifecycle::launch::SystemAppCgroup;
+    use workload_systemd::cgroup::{Action, SystemAppsCgroups, SystemAppsCgroupsInput};
     // Arrange
     let fixture = Fixture::new("cgroup-restart");
     let unit = fixture.repo().join("restart.service");
@@ -2013,13 +2016,15 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
     let mut runner = SystemdRunner::new();
     let (ready, started) = oneshot::channel();
     let (stop, stopped) = oneshot::channel();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
     let mut running = Box::pin(runner.run(
         run,
         plan,
         async {
             let _ = stopped.await;
         },
-        |_: &orchestrator::Event| {},
+        move |event: &Event| observed.borrow_mut().push(event.clone()),
         Some(ready),
     ));
     tokio::select! { ready = started => ready.unwrap(), report = &mut running => panic!("startup failed: {report:?}") };
@@ -2076,4 +2081,46 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
     // Assert
     assert!(report.successful(), "{report:#?}");
     assert!(!Path::new(&identity.path).exists());
+    let events = events.borrow();
+    let prepared = events
+        .iter()
+        .find(|event| {
+            event.invocation.step
+                == workload_systemd::PrepareRun::ID
+                    .unwrap_or(std::any::type_name::<workload_systemd::PrepareRun>())
+                && event.state == State::Succeeded
+        })
+        .unwrap();
+    let cgroups: Vec<_> = events
+        .iter()
+        .filter(|event| {
+            event.invocation.step == SystemAppsCgroups::ID.unwrap() && event.state == State::Started
+        })
+        .collect();
+    assert_eq!(cgroups.len(), 2);
+    assert!(
+        cgroups[0]
+            .invocation
+            .dependencies
+            .contains(&prepared.invocation.id)
+    );
+    let actions: Vec<_> = cgroups
+        .iter()
+        .map(|event| {
+            serde_json::from_value::<SystemAppsCgroupsInput>(event.payload.clone().unwrap())
+                .unwrap()
+                .action
+        })
+        .collect();
+    assert_eq!(
+        actions,
+        [i32::from(Action::Create), i32::from(Action::Remove)]
+    );
+    let removal = events
+        .iter()
+        .find(|event| {
+            event.invocation.step == "systemd.runtime.remove" && event.state == State::Started
+        })
+        .unwrap();
+    assert_eq!(cgroups[1].invocation.parent, Some(removal.invocation.id));
 }

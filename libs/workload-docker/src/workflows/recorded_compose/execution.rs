@@ -19,6 +19,18 @@ pub(super) async fn launch_apps(
     system_apps: &workload_systemd::cgroup::SystemAppSlice,
     adapter: &DockerAdapter,
 ) -> orchestrator::Result<()> {
+    let mut input = Input::new(workload_systemd::SystemAppsCgroupsInput {
+        action: workload_systemd::cgroup::Action::Create.into(),
+        artifacts: prepared.value().artifacts.to_string_lossy().into_owned(),
+        readiness_seconds: spec.readiness_seconds,
+    })
+    .after(prepared);
+    if let Some(overlays) = overlays {
+        input = input.after(overlays);
+    }
+    let cgroups = executor
+        .run::<workload_systemd::cgroup::SystemAppsCgroups>(input)
+        .await?;
     // Keep the run namespace alive before Dora or application containers can join it.
     if plan.services.contains_key(preparation::SHM_SERVICE) {
         let mut input = Input::new(StartInput {
@@ -26,7 +38,8 @@ pub(super) async fn launch_apps(
             services: vec![preparation::SHM_SERVICE.into()],
             readiness_seconds: spec.readiness_seconds,
         })
-        .after(prepared);
+        .after(prepared)
+        .after(&cgroups);
         if let Some(overlays) = overlays {
             input = input.after(overlays);
         }
@@ -34,7 +47,9 @@ pub(super) async fn launch_apps(
     }
     // Start communication and register the graph before any application containers.
     let daemon = executor
-        .run::<super::super::experiment::StartDoraRuntime>(Input::new(()).after(prepared))
+        .run::<super::super::experiment::StartDoraRuntime>(
+            Input::new(()).after(prepared).after(&cgroups),
+        )
         .await?;
     let graph = executor
         .run::<super::super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))

@@ -1,13 +1,18 @@
 //! Native system-app accounting boundary checks. Build unprivileged and elevate this executable.
+use orchestrator::{Event, LocalExecutor, State};
 use std::{
+    cell::RefCell,
     fs,
     io::Write,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::Command,
+    rc::Rc,
     time::Duration,
 };
-use workload_systemd::cgroup::{IDENTITY_FILE, SystemAppSlice};
+use workload_systemd::cgroup::{
+    self, Action, IDENTITY_FILE, SystemAppSlice, SystemAppsCgroups, SystemAppsCgroupsInput,
+};
 
 const STARTUP: Duration = Duration::from_secs(10);
 const PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
@@ -55,7 +60,7 @@ async fn nested_apps_are_accounted_and_live_removal_is_refused() {
         slice: slice.name(),
     };
     slice.create(&directory, STARTUP).await.unwrap();
-    let identity = slice.identity().unwrap().clone();
+    let identity = slice.identity().unwrap();
     let parent = Path::new(&identity.path);
     let before = cpu(parent);
     let marker = directory.join("ready");
@@ -211,7 +216,7 @@ async fn empty_owned_slices_are_recoverable_and_names_can_be_reused() {
         slice: slice.name(),
     };
     slice.create(&directory, STARTUP).await.unwrap();
-    let identity = slice.identity().unwrap().clone();
+    let identity = slice.identity().unwrap();
     // Act: a new connection recovers the abandoned accounting boundary.
     drop(slice);
     let mut recovered = SystemAppSlice::connect(&directory).await.unwrap();
@@ -235,7 +240,7 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
     let directory =
         std::env::temp_dir().join(format!("system-app-cgroup-cancel-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
-    let mut slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let slice = SystemAppSlice::connect(&directory).await.unwrap();
     let _cleanup = Cleanup {
         directory: directory.clone(),
         unit: "cgroup-fixture-absent.service".into(),
@@ -249,8 +254,17 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
     let manager = ManagerProxy::new(&connection).await.unwrap();
     manager.subscribe().await.unwrap();
     let mut created = manager.receive_unit_new().await.unwrap();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let mut executor =
+        LocalExecutor::new(move |event: &Event| observed.borrow_mut().push(event.clone()));
+    cgroup::register(&mut executor, slice.clone());
     {
-        let creation = slice.create(&directory, STARTUP);
+        let creation = executor.run::<SystemAppsCgroups>(SystemAppsCgroupsInput {
+            action: Action::Create.into(),
+            artifacts: directory.to_string_lossy().into_owned(),
+            readiness_seconds: STARTUP.as_secs(),
+        });
         tokio::pin!(creation);
         // Act: drop the creation future after observing its first owned unit.
         tokio::time::timeout(STARTUP, async {
@@ -269,11 +283,73 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
     .unwrap();
     }
     // The original handle retains its connection references after cancellation.
-    slice.remove().await.unwrap();
+    executor
+        .run::<SystemAppsCgroups>(SystemAppsCgroupsInput {
+            action: Action::Remove.into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
     // Assert
     let remaining = manager
         .list_units_by_patterns(vec![], vec![parent, slice.name()])
         .await
         .unwrap();
     assert!(remaining.is_empty(), "{remaining:?}");
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| event.state == State::Cancelled)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, systemd and cgroup v2"]
+async fn failed_identity_save_is_observed_and_retains_cleanup_ownership() {
+    // Arrange
+    let directory = std::env::temp_dir().join(format!(
+        "system-app-cgroup-save-failure-{}",
+        std::process::id()
+    ));
+    fs::create_dir(&directory).unwrap();
+    fs::create_dir(directory.join(IDENTITY_FILE)).unwrap();
+    let slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let _cleanup = Cleanup {
+        directory: directory.clone(),
+        unit: "cgroup-fixture-absent.service".into(),
+        slice: slice.name(),
+    };
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let mut executor =
+        LocalExecutor::new(move |event: &Event| observed.borrow_mut().push(event.clone()));
+    cgroup::register(&mut executor, slice.clone());
+
+    // Act
+    let result = executor
+        .run::<SystemAppsCgroups>(SystemAppsCgroupsInput {
+            action: Action::Create.into(),
+            artifacts: directory.to_string_lossy().into_owned(),
+            readiness_seconds: STARTUP.as_secs(),
+        })
+        .await;
+    // Assert: a failed artifact write preserves the original launcher's live identity.
+    assert!(result.is_err());
+    let identity = slice.identity().unwrap();
+    assert!(Path::new(&identity.path).exists());
+    assert_eq!(events.borrow().last().unwrap().state, State::Failed);
+
+    // Act
+    let removed = executor
+        .run::<SystemAppsCgroups>(SystemAppsCgroupsInput {
+            action: Action::Remove.into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Assert
+    assert!(removed.value().is_none());
+    assert!(!Path::new(&identity.path).exists());
+    assert_eq!(events.borrow().last().unwrap().state, State::Succeeded);
 }

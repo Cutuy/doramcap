@@ -5,9 +5,17 @@ use crate::{
 };
 use orchestrator::{LocalExecutor, Step};
 use rustix::mount::{MountFlags, UnmountFlags};
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    path::PathBuf,
+    rc::{Rc, Weak},
+};
 
-pub(crate) fn register(executor: &mut LocalExecutor, manager: Rc<Manager>, scope: Scope) {
+pub(crate) fn register(
+    executor: &mut LocalExecutor,
+    manager: Rc<Manager>,
+    scope: Scope,
+    child: Weak<LocalExecutor>,
+) {
     let setup_manager = manager.clone();
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
         manager: setup_manager.clone(),
@@ -15,6 +23,7 @@ pub(crate) fn register(executor: &mut LocalExecutor, manager: Rc<Manager>, scope
     });
     executor.register::<RemoveRuntime>(move || RemoveRuntime {
         manager: manager.clone(),
+        executor: child.clone(),
     });
 }
 
@@ -130,6 +139,7 @@ impl PrepareRuntime {
 /// Failures retain remaining resources for explicit cleanup; absent resources are accepted.
 pub(crate) struct RemoveRuntime {
     manager: Rc<Manager>,
+    executor: Weak<LocalExecutor>,
 }
 impl Step for RemoveRuntime {
     const ID: Option<&'static str> = Some("systemd.runtime.remove");
@@ -161,9 +171,16 @@ impl RemoveRuntime {
         for result in results {
             result?;
         }
-        crate::cgroup::SystemAppSlice::native(self.manager.clone(), scope)
-            .remove_native()
-            .await?;
+        // Remove accounting only after every owned service has stopped.
+        self.executor
+            .upgrade()
+            .ok_or("runtime executor unavailable")?
+            .run::<crate::cgroup::SystemAppsCgroups>(crate::SystemAppsCgroupsInput {
+                action: crate::cgroup::Action::Remove.into(),
+                ..Default::default()
+            })
+            .await
+            .map_err(error)?;
         for (name, ..) in loaded {
             self.manager.release(&name).await;
         }

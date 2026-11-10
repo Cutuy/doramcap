@@ -2,7 +2,7 @@
 
 Created: 2026-11-09. [Architecture](110926-system-app-cgroup.md).
 
-Applicable rules: D-02/03/04/06/07/12/13; I-03/04/05/06/07/09. Reuse the approved
+Applicable rules: D-02/03/04/06/07/09/12/13/14; I-03/04/05/06/07/09. Reuse the approved
 `zbus` and `zbus_systemd` dependencies; keep systemd mechanics in `workload-systemd`.
 Compose uses that slice API. Existing app inputs remain the placement authority.
 
@@ -52,3 +52,18 @@ The owner requested: "just do local native tests for now". The new grouping test
 pass natively on x86_64. ARM64 compiles them; their native execution is deferred.
 Worker snapshot:
 `/home/doramcap-ci/jobs/359faba852e94441ad1adae911c37be1`.
+
+## Milestone 4: Observed cgroup operations
+
+**Work items**
+- [x] Use one backend-owned `SystemAppsCgroups` step with protobuf `Create`/`Remove` actions.
+- [x] Create after preparation/review; reuse removal for recovery and final cleanup.
+- [x] Share ownership and kernel identity across failed or cancelled step invocations.
+
+**Validation**
+- [ ] Verify real Compose/systemd events, ordering, dependencies and identity output.
+- [ ] Verify cancellation and failed identity persistence retain cleanup ownership.
+- [ ] Run focused locked release tests, Clippy, formatting and boundaries; update PR #252.
+
+The owner approved this ordering and requested updates to the existing PR branch.
+Focused validation is in progress. Native ARM64 workflow tests remain deferred.

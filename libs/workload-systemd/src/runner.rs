@@ -85,12 +85,14 @@ impl SystemdRunner {
         let scope = Scope::of(repository)?;
         let _lock = lock_scope(&scope)?;
         self.blocked = true;
-        let mut executor = LocalExecutor::default();
-        crate::runtime::register(
-            &mut executor,
-            Rc::new(Manager::connect().await?),
-            scope.clone(),
-        );
+        let manager = Rc::new(Manager::connect().await?);
+        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
+        let executor = Rc::new_cyclic(|weak| {
+            let mut executor = LocalExecutor::default();
+            crate::cgroup::register(&mut executor, system_apps);
+            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            executor
+        });
         executor
             .run::<crate::runtime::RemoveRuntime>(scope)
             .await
@@ -158,8 +160,12 @@ impl SystemdRunner {
         executor.register::<crate::DiscardRun>(|| crate::DiscardRun);
         executor.register::<WaitForRecordings>(|| WaitForRecordings);
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
-        crate::runtime::register(&mut executor, manager.clone(), scope.clone());
-        let executor = Rc::new(executor);
+        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
+        let executor = Rc::new_cyclic(|weak| {
+            crate::cgroup::register(&mut executor, system_apps.clone());
+            crate::runtime::register(&mut executor, manager.clone(), scope.clone(), weak.clone());
+            executor
+        });
         let prepared = executor
             .run::<crate::PrepareRun>(crate::PreparationInput {
                 run: Some(run),
@@ -201,7 +207,6 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
-        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
         let running = SystemdRunning {
             system_apps,
             manager,

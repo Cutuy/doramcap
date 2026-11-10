@@ -1,7 +1,7 @@
 //! Native Compose cgroup placement. Build unprivileged; elevate only this test executable.
 use orchestrator::{Event, State, Step};
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
@@ -10,14 +10,16 @@ use std::{
     time::Duration,
 };
 use workload_docker::{
-    compose::{ComposeProject, DockerAdapter},
-    workflows::recorded_compose::{ComposeRun, ComposeRunner},
+    compose::{ComposeProject, DockerAdapter, RemoveCompose, StartCompose},
+    workflows::recorded_compose::{ComposeRun, ComposeRunner, preparation::PrepareRun},
 };
 use workload_lifecycle::{
     launch::{HostShmAccess, SystemAppCgroup},
     recording::WaitForRecordings,
 };
-use workload_systemd::cgroup::{CGROUP_ROOT, IDENTITY_FILE, SystemAppSlice};
+use workload_systemd::cgroup::{
+    Action, CGROUP_ROOT, IDENTITY_FILE, SystemAppSlice, SystemAppsCgroups, SystemAppsCgroupsInput,
+};
 
 const RUN_LIMIT: Duration = Duration::from_secs(30);
 const STARTUP_SECONDS: u64 = 10;
@@ -198,12 +200,14 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
         let mut runner = ComposeRunner::new(adapter.clone());
         let (ready, started) = tokio::sync::oneshot::channel();
         let (stop, stopped) = tokio::sync::oneshot::channel();
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
         let mut run = Box::pin(runner.run_with_ready(
             fixture.spec(index),
             async {
                 let _ = stopped.await;
             },
-            |_: &Event| {},
+            move |event: &Event| observed.borrow_mut().push(event.clone()),
             Some(ready),
         ));
         // Act
@@ -224,6 +228,54 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
             .unwrap();
         assert!(membership(system.pid).starts_with(&identity.path));
         assert!(!membership(user.pid).starts_with(&identity.path));
+        {
+            let events = events.borrow();
+            let prepared = events
+                .iter()
+                .find(|event| {
+                    event.invocation.step
+                        == PrepareRun::ID.unwrap_or(std::any::type_name::<PrepareRun>())
+                        && event.state == State::Succeeded
+                })
+                .unwrap();
+            let created = events
+                .iter()
+                .find(|event| {
+                    event.invocation.step == SystemAppsCgroups::ID.unwrap()
+                        && event.state == State::Started
+                        && serde_json::from_value::<SystemAppsCgroupsInput>(
+                            event.payload.clone().unwrap(),
+                        )
+                        .unwrap()
+                        .action
+                            == i32::from(Action::Create)
+                })
+                .unwrap();
+            assert!(
+                created
+                    .invocation
+                    .dependencies
+                    .contains(&prepared.invocation.id)
+            );
+            let created_index = events
+                .iter()
+                .position(|event| {
+                    event.invocation.id == created.invocation.id && event.state == State::Succeeded
+                })
+                .unwrap();
+            let launched_index = events
+                .iter()
+                .position(|event| {
+                    event.invocation.step
+                        == StartCompose::ID.unwrap_or(std::any::type_name::<StartCompose>())
+                        && event.state == State::Started
+                })
+                .unwrap();
+            assert!(created_index < launched_index);
+            let output: Option<SystemAppCgroup> =
+                serde_json::from_value(events[created_index].payload.clone().unwrap()).unwrap();
+            assert_eq!(output, Some(identity.clone()));
+        }
         if let Some(id) = previous {
             assert_ne!(id, identity.id);
         }
@@ -254,6 +306,50 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
             assert!(report.execution_error.is_none(), "{report:#?}");
             assert!(!Path::new(&identity.path).exists());
             assert!(fixture.spec(index).artifacts.join(IDENTITY_FILE).is_file());
+            let events = events.borrow();
+            let actions: Vec<_> = events
+                .iter()
+                .filter(|event| {
+                    event.invocation.step == SystemAppsCgroups::ID.unwrap()
+                        && event.state == State::Started
+                })
+                .map(|event| {
+                    serde_json::from_value::<SystemAppsCgroupsInput>(event.payload.clone().unwrap())
+                        .unwrap()
+                        .action
+                })
+                .collect();
+            assert_eq!(
+                actions,
+                [
+                    i32::from(Action::Remove),
+                    i32::from(Action::Create),
+                    i32::from(Action::Remove)
+                ]
+            );
+            let removed = events
+                .iter()
+                .rev()
+                .find(|event| {
+                    event.invocation.step
+                        == RemoveCompose::ID.unwrap_or(std::any::type_name::<RemoveCompose>())
+                        && event.state == State::Succeeded
+                })
+                .unwrap();
+            let cgroup_removal = events
+                .iter()
+                .rev()
+                .find(|event| {
+                    event.invocation.step == SystemAppsCgroups::ID.unwrap()
+                        && event.state == State::Started
+                })
+                .unwrap();
+            assert!(
+                cgroup_removal
+                    .invocation
+                    .dependencies
+                    .contains(&removed.invocation.id)
+            );
         }
     }
 }

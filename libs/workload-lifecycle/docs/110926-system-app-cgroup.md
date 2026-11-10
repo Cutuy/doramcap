@@ -17,6 +17,11 @@ The launchers create the slice before system apps start and verify placement bef
 user startup. A creation or placement failure aborts startup through existing
 shutdown and cleanup. A typed artifact records the host cgroup path and kernel ID.
 
+Both workflows invoke one `SystemAppsCgroups` step type: `Create` follows preparation
+and the review check; `Remove` follows app shutdown and evidence finalization.
+Compose recovery reuses `Remove` before creation. The launcher retains ownership
+across failed or cancelled invocations.
+
 Systemd owns the slice hierarchy. Backend launchers stop their apps and preserve
 evidence before the empty slices are removed. Compose retains automatic recovery;
 native runs retain explicit cleanup. Their ownership names are separate.

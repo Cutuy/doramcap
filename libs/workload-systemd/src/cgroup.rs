@@ -4,8 +4,10 @@ use crate::{
     manager::{Manager, STOP_REPORT_MARGIN, Unit, value},
 };
 use futures_util::StreamExt;
+use orchestrator::{LocalExecutor, Step};
 use prost_reflect::{DescriptorPool, DynamicMessage};
 use std::{
+    cell::RefCell,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     rc::Rc,
@@ -14,6 +16,50 @@ use std::{
 use workload_lifecycle::launch::SystemAppCgroup;
 use zbus::proxy::CacheProperties;
 use zbus_systemd::systemd1::SliceProxy;
+
+pub use crate::{SystemAppsCgroupsInput, system_apps_cgroups_input::Action};
+
+/// Create or remove the registered launcher's accounting slices with lifecycle events.
+/// Create returns the kernel identity; Remove returns None after verified removal.
+/// The launcher and factory retain ownership when an invocation fails or is cancelled.
+pub struct SystemAppsCgroups {
+    slice: SystemAppSlice,
+}
+
+/// Register the shared step with the launcher's existing ownership handle.
+pub fn register(executor: &mut LocalExecutor, slice: SystemAppSlice) {
+    executor.register::<SystemAppsCgroups>(move || SystemAppsCgroups {
+        slice: slice.clone(),
+    });
+}
+
+impl Step for SystemAppsCgroups {
+    const ID: Option<&'static str> = Some("systemd.system-apps.cgroups");
+    const DISPLAY_NAME: Option<&'static str> = Some("System apps cgroups");
+    type Input = SystemAppsCgroupsInput;
+    type Output = Option<SystemAppCgroup>;
+
+    async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
+        let result = async {
+            match Action::try_from(input.action).map_err(error)? {
+                Action::Create => {
+                    let artifacts = Path::new(&input.artifacts);
+                    if !artifacts.is_absolute() || !artifacts.is_dir() || input.readiness_seconds == 0 {
+                        return Err("cgroup creation requires an existing absolute artifact directory and a positive readiness budget".into());
+                    }
+                    self.slice
+                        .create(artifacts, Duration::from_secs(input.readiness_seconds))
+                        .await?;
+                    self.slice.identity().map(Some)
+                }
+                Action::Remove => self.slice.remove().await.map(|()| None),
+                Action::Unspecified => Err("system-app cgroup action missing".into()),
+            }
+        }
+        .await;
+        result.map_err(orchestrator::Error::message)
+    }
+}
 
 /// Host cgroup v2 mount used for kernel identity and membership checks.
 pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";
@@ -34,10 +80,13 @@ pub(crate) fn native_name(scope: &Scope) -> String {
 
 /// Owns an experiment's parent and nested system-app slice from the first start attempt.
 /// Creation and removal are explicit; dropping this handle leaves resources for recovery.
+/// Clones share the connection and recorded kernel identity across step invocations.
+#[derive(Clone)]
 pub struct SystemAppSlice {
     manager: Rc<Manager>,
     prefix: String,
-    identity: Option<SystemAppCgroup>,
+    identity: Rc<RefCell<Option<SystemAppCgroup>>>,
+    owned_parent: bool,
 }
 
 impl SystemAppSlice {
@@ -51,14 +100,19 @@ impl SystemAppSlice {
     }
 
     pub(crate) fn native(manager: Rc<Manager>, scope: &Scope) -> Self {
-        Self::new(manager, scope.prefix.clone())
+        Self {
+            // Native recovery also owns parent slices created by earlier releases.
+            owned_parent: false,
+            ..Self::new(manager, scope.prefix.clone())
+        }
     }
 
     fn new(manager: Rc<Manager>, prefix: String) -> Self {
         Self {
             manager,
             prefix,
-            identity: None,
+            identity: Rc::new(RefCell::new(None)),
+            owned_parent: true,
         }
     }
 
@@ -73,10 +127,11 @@ impl SystemAppSlice {
     }
 
     /// Return the recorded identity after checking that the kernel cgroup still matches.
-    pub fn identity(&self) -> Result<&SystemAppCgroup> {
+    pub fn identity(&self) -> Result<SystemAppCgroup> {
         let identity = self
             .identity
-            .as_ref()
+            .borrow()
+            .clone()
             .ok_or("system-app cgroup has not been created")?;
         if std::fs::metadata(&identity.path).map_err(error)?.ino() != identity.id {
             return Err("system-app cgroup identity changed".into());
@@ -111,7 +166,7 @@ impl SystemAppSlice {
                 id: std::fs::metadata(&path).map_err(error)?.ino(),
                 path: path.to_string_lossy().into_owned(),
             };
-            self.identity = Some(identity.clone());
+            *self.identity.borrow_mut() = Some(identity.clone());
             let pool = DescriptorPool::decode(
                 include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
             )
@@ -212,13 +267,7 @@ impl SystemAppSlice {
             if !matches!(state.as_str(), "inactive" | "failed") && !exited {
                 return Err(format!("{}: live system-app cgroup unavailable", unit.name));
             }
-            return self.verify_path(Path::new(
-                &self
-                    .identity
-                    .as_ref()
-                    .ok_or("system-app cgroup missing")?
-                    .path,
-            ));
+            return self.identity().map(|_| ());
         }
         self.verify_path(&host_path(&path)?)
     }
@@ -226,12 +275,7 @@ impl SystemAppSlice {
     /// Remove owned, empty slices after backend shutdown and evidence finalization.
     /// Missing slices are accepted; foreign ownership, live processes and read failures preserve them.
     pub async fn remove(&self) -> Result<()> {
-        self.remove_slices(true).await
-    }
-
-    /// Native scope cleanup also owns parent slices left by releases predating the child slice.
-    pub(crate) async fn remove_native(&self) -> Result<()> {
-        self.remove_slices(false).await
+        self.remove_slices(self.owned_parent).await
     }
 
     async fn remove_slices(&self, owned_parent: bool) -> Result<()> {
@@ -269,7 +313,7 @@ impl SystemAppSlice {
             let group = slice.control_group().await.map_err(error)?;
             if !group.is_empty() {
                 let path = host_path(&group)?;
-                if name == self.name() && self.identity.is_some() {
+                if name == self.name() && self.identity.borrow().is_some() {
                     self.identity()?;
                 }
                 let events = std::fs::read_to_string(path.join("cgroup.events")).map_err(error)?;

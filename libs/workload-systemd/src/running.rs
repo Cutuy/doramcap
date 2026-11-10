@@ -39,9 +39,18 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn start(&mut self) -> std::result::Result<(), String> {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
-        self.system_apps
-            .create(std::path::Path::new(&self.run.artifacts), readiness)
-            .await?;
+        let cgroups = self
+            .executor
+            .run::<crate::cgroup::SystemAppsCgroups>(
+                Input::new(crate::SystemAppsCgroupsInput {
+                    action: crate::cgroup::Action::Create.into(),
+                    artifacts: self.run.artifacts.clone(),
+                    readiness_seconds: self.run.readiness_seconds,
+                })
+                .after(&self.prepared),
+            )
+            .await
+            .map_err(crate::error)?;
         self.runtime = Some(
             self.executor
                 .run::<crate::runtime::PrepareRuntime>(
@@ -49,7 +58,8 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                         run: Some(self.run.clone()),
                         plan: Some(self.plan.clone()),
                     })
-                    .after(&self.prepared),
+                    .after(&self.prepared)
+                    .after(&cgroups),
                 )
                 .await
                 .map_err(crate::error)?,

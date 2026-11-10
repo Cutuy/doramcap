@@ -707,8 +707,16 @@ mod environment_tests {
                 .map_err(error)
         }
         .await;
-        let mut executor = orchestrator::LocalExecutor::default();
-        crate::runtime::register(&mut executor, std::rc::Rc::new(manager), scope.clone());
+        let manager = std::rc::Rc::new(manager);
+        let executor = std::rc::Rc::new_cyclic(|weak| {
+            let mut executor = orchestrator::LocalExecutor::default();
+            crate::cgroup::register(
+                &mut executor,
+                crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+            );
+            crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            executor
+        });
         let cleanup = executor
             .run::<crate::runtime::RemoveRuntime>(scope.clone())
             .await;

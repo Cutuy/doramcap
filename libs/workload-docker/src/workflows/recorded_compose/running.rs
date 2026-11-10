@@ -62,12 +62,6 @@ impl workload_lifecycle::run::Running for ComposeRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
-        self.system_apps
-            .create(
-                &self.prepared.value().artifacts,
-                std::time::Duration::from_secs(self.spec.readiness_seconds),
-            )
-            .await?;
         let failure = self.events.failure();
         let launch = execution::launch_apps(
             &self.executor,
@@ -265,7 +259,7 @@ impl ComposeRunning {
 
     /// Remove project resources when permitted; otherwise report them preserved.
     async fn remove_stopped(&self, stopped: Stopped, permit: &RemovalPermit) -> Completed {
-        let cleanup = if permit.remove {
+        let removed = if permit.remove {
             match self
                 .executor
                 .run::<RemoveCompose>(
@@ -279,7 +273,7 @@ impl ComposeRunning {
                 )
                 .await
             {
-                Ok(cleanup) => Some(cleanup.into_value()),
+                Ok(cleanup) => Some(cleanup),
                 Err(error) => {
                     execution::record_failure(&self.diagnostics, "completion", error);
                     None
@@ -287,16 +281,28 @@ impl ComposeRunning {
             }
         } else {
             None
-        }
-        .unwrap_or_else(|| Cleanup {
-            project: self.plan.name.clone(),
-            remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
-            ..Default::default()
-        });
-        let finalized = stopped.finalized.into_value();
+        };
+        let cleanup = removed
+            .as_ref()
+            .map(|output| output.value().clone())
+            .unwrap_or_else(|| Cleanup {
+                project: self.plan.name.clone(),
+                remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
+                ..Default::default()
+            });
         let cgroup_removed = if permit.remove && cleanup.verified {
-            match self.system_apps.remove().await {
-                Ok(()) => true,
+            match self
+                .executor
+                .run::<workload_systemd::cgroup::SystemAppsCgroups>(
+                    Input::new(workload_systemd::SystemAppsCgroupsInput {
+                        action: workload_systemd::cgroup::Action::Remove.into(),
+                        ..Default::default()
+                    })
+                    .after(removed.as_ref().expect("verified Compose removal")),
+                )
+                .await
+            {
+                Ok(_) => true,
                 Err(error) => {
                     execution::record_failure(
                         &self.diagnostics,
@@ -309,6 +315,7 @@ impl ComposeRunning {
         } else {
             false
         };
+        let finalized = stopped.finalized.into_value();
         let boundary_clean = cgroup_removed
             && stopped.runtime_stopped
             && finalized.can_remove

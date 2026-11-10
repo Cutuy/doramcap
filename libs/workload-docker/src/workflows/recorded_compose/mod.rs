@@ -226,7 +226,20 @@ impl ComposeRunner {
         let system_apps = workload_systemd::cgroup::SystemAppSlice::connect(&spec.repository_root)
             .await
             .map_err(invalid)?;
-        system_apps.remove().await.map_err(invalid)?;
+        let mut executor = Rc::try_unwrap(executor)
+            .map_err(|_| invalid("executor still running during cgroup binding"))?;
+        workload_systemd::cgroup::register(&mut executor, system_apps.clone());
+        let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
+        executor
+            .run::<workload_systemd::cgroup::SystemAppsCgroups>(
+                Input::new(workload_systemd::SystemAppsCgroupsInput {
+                    action: workload_systemd::cgroup::Action::Remove.into(),
+                    ..Default::default()
+                })
+                .after(&prepared),
+            )
+            .await
+            .map_err(step_error)?;
         self.blocked = false;
         if spec.filesystem.is_some() {
             overlay::verify_namespace(self.adapter.socket_path()).await?;
