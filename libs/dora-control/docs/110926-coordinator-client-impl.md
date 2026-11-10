@@ -38,19 +38,25 @@ inspection, force shutdown and verified coordinator/daemon exit.
 
 ## Milestone 2: Ready for independent adoption
 
-Validation is tracked in [PR #251 checks](https://github.com/Cutuy/doramcap/pull/251/checks).
+Evidence for runtime source `375b0878`:
+
+- Local CI-profile client tests, strict Clippy/Rustdoc, workspace formatting, boundaries and snapshot tooling passed; real Dora 1.1.0 exited cleanly.
+- Hosted [Rust CI](https://github.com/Cutuy/doramcap/actions/runs/42773353944) passed on x86_64/ARM64; [Node](https://github.com/Cutuy/doramcap/actions/runs/42773354030) and [MCAP](https://github.com/Cutuy/doramcap/actions/runs/42773354068) passed.
+- ARM64 worker jobs 635 (full suites/native checks) and 636 (real Dora 1.1.0 client lifecycle) passed from snapshot `32d5237a24d041e78e301f6ce7343533`.
+
+Local checks focus on this library; hosted CI and the ARM64 worker qualify workspace integration. Compose/systemd adoption and GPU/IPC qualification are separate work.
 
 **Work items**
 
 - [x] Publish the standalone library separately from its migration roadmap.
-- [ ] Complete Scanner review against the implementation/design guides.
-- [ ] Record final validation evidence, mark the PR ready and release its lease.
+- [x] Complete Scanner review against the implementation/design guides.
+- [x] Record standalone validation evidence and separate adoption follow-ups.
 
 **Validation**
 
-- [ ] Pass local locked client tests, default/all-feature Clippy, formatting, documentation and dependency-boundary checks.
-- [ ] Pass cloud workspace checks on x86_64 and ARM64.
-- [ ] Verify ARM64 worker completion; record native Dora results separately.
+- [x] Pass local locked client tests, default/all-feature Clippy, formatting, documentation and dependency-boundary checks.
+- [x] Pass cloud workspace checks on x86_64 and ARM64.
+- [x] Verify ARM64 worker completion and the separate real-Dora lifecycle result.
 
 ## Follow-up PR: Compose adoption
 
