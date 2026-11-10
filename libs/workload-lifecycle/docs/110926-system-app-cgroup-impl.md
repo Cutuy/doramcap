@@ -41,13 +41,14 @@ The Console stale-review regression passes. Local logs: `/tmp/system-app-cgroup-
 
 **Work items**
 - [x] Review against the implementation and design guides; publish [PR #252](https://github.com/Cutuy/doramcap/pull/252).
-- [ ] Resolve the remaining native ARM64 qualification choice, then mark ready and release the lease.
+- [x] Record the owner's acceptance of local native tests for this PR.
 
 **Validation**
 - [x] [Cloud CI](https://github.com/Cutuy/doramcap/pull/252/checks): Rust, Node and MCAP pass on x86_64 and ARM64 for code revision `f9b2c265`.
 - [x] ARM64 worker 630 passes standard CI and its configured native accounting suite on the same source.
-- [ ] New native systemd/Compose tests on ARM64: worker sudo permits only the installed standard test launcher; owner scope decision pending.
+- [x] New native systemd/Compose tests on ARM64 are deferred by the owner; local native coverage is accepted for this PR.
 
-The new grouping tests pass natively on x86_64. ARM64 compiles them but its current
-privileged runner does not execute them. Worker snapshot:
+The owner requested: "just do local native tests for now". The new grouping tests
+pass natively on x86_64. ARM64 compiles them; their native execution is deferred.
+Worker snapshot:
 `/home/doramcap-ci/jobs/359faba852e94441ad1adae911c37be1`.
