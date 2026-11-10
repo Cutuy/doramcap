@@ -9,7 +9,6 @@ import { randomUUID } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 
-const SLOT_COUNT = 5;
 const MAIN_BRANCH = 'main';
 const LOCK_FD = 3;
 const MAX_COMMAND_OUTPUT = 64 * 1024 * 1024;
@@ -101,17 +100,21 @@ function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
     repo: { type: 'string', default: '.' }, owner: { type: 'string' },
     branch: { type: 'string' }, token: { type: 'string' }, pr: { type: 'string' },
-    main: { type: 'boolean' }, 'discard-dirty': { type: 'boolean' }, help: { type: 'boolean' },
+    main: { type: 'boolean' }, slots: { type: 'string' },
+    'discard-dirty': { type: 'boolean' }, help: { type: 'boolean' },
   } });
   if (values.help) {
     console.log(`Usage: node pool.ts [--repo CHECKOUT] COMMAND
-  init
+  init [--slots COUNT]
   status
   acq --owner TASK --branch codex/NAME [--token TOKEN] [--discard-dirty]
   release --owner TASK --token TOKEN (--pr URL | --main)
 
-Five non-expiring leases. Save the acquisition token. Resume with the same owner,
-branch and token. Commands block on the shared flock; a full pool fails explicitly.
+Initialize with --slots COUNT, a positive safe integer. It can grow an existing pool;
+plain init preserves its capacity. Shrinking is refused. Registered slots determine
+capacity for every command. Leases never expire; save the acquisition token and
+resume with the same owner, branch and token. Commands block on the shared flock;
+a full pool fails explicitly.
 Release detaches the checkout and deletes its local feature branch; main is protected.
 Remote branches are preserved.
 --discard-dirty requires prior user approval for the displayed path and files.`);
@@ -119,12 +122,16 @@ Remote branches are preserved.
   }
   const command = positionals[0] === 'acquire' ? 'acq' : positionals[0];
   const allowed: Record<string, string[]> = {
-    init: [], status: [], acq: ['owner', 'branch', 'token', 'discard-dirty'],
+    init: ['slots'], status: [], acq: ['owner', 'branch', 'token', 'discard-dirty'],
     release: ['owner', 'token', 'pr', 'main'],
   };
   if (positionals.length !== 1 || !Object.hasOwn(allowed, command)) throw new Error('Expected init, status, acq or release; see --help');
   for (const key of Object.keys(values)) {
     if (key !== 'repo' && !allowed[command].includes(key)) throw new Error(`Unexpected --${key} for ${command}`);
+  }
+  const requestedSlots = values.slots === undefined ? undefined : Number(values.slots);
+  if (requestedSlots !== undefined && (!/^[1-9]\d*$/.test(values.slots!) || !Number.isSafeInteger(requestedSlots))) {
+    throw new Error('--slots must be a positive safe integer');
   }
   if (['acq', 'release'].includes(command) && !values.owner?.trim()) throw new Error('--owner is required');
   if (command === 'acq' && !values.branch?.trim()) throw new Error('--branch is required');
@@ -145,7 +152,13 @@ Remote branches are preserved.
     if (locked.status !== 0) throw new Error(`Cannot lock pool: ${locked.stderr?.toString() || locked.signal}`);
     const stateFile = join(base, 'state.json');
     const state: State = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, 'utf8')) : { slots: [] };
-    if (!Array.isArray(state.slots) || new Set(state.slots.map(s => s.id)).size !== state.slots.length) throw new Error('Invalid pool state');
+    if (!Array.isArray(state.slots) || new Set(state.slots.map(s => s.id)).size !== state.slots.length
+      || state.slots.some(slot => !Number.isSafeInteger(slot.id) || slot.id < 1 || slot.id > state.slots.length)) {
+      throw new Error('Invalid pool state');
+    }
+    const capacity = command === 'init' ? requestedSlots ?? state.slots.length : state.slots.length;
+    if (command === 'init' && capacity < state.slots.length) throw new Error('Cannot shrink the pool; existing slots and leases are preserved');
+    if ((command === 'init' || command === 'acq') && capacity === 0) throw new Error('Run init --slots COUNT first');
     const save = () => {
       const temporary = join(base, 'state.tmp');
       writeFileSync(temporary, JSON.stringify(state, null, 2) + '\n', { mode: PRIVATE_FILE_MODE });
@@ -153,7 +166,7 @@ Remote branches are preserved.
     };
     const safe = (slot: Slot) => {
       const expected = join(base, 'worktrees', String(slot.id));
-      if (!Number.isInteger(slot.id) || slot.id < 1 || slot.id > SLOT_COUNT || slot.path !== expected || slot.path === mainRoot) throw new Error('Unsafe pool path; refusing mutation');
+      if (!Number.isSafeInteger(slot.id) || slot.id < 1 || slot.id > capacity || slot.path !== expected || slot.path === mainRoot) throw new Error('Unsafe pool path; refusing mutation');
       for (const path of [base, join(base, 'worktrees'), expected]) {
         if (stat(path)?.isSymbolicLink()) throw new Error(`Unsafe symlink in pool path: ${path}`);
       }
@@ -174,7 +187,7 @@ Remote branches are preserved.
       return slot;
     };
     if (command === 'init') {
-      for (let id = 1; id <= SLOT_COUNT; id++) {
+      for (let id = 1; id <= capacity; id++) {
         if (state.slots.some(s => s.id === id)) continue;
         const slot: Slot = { id, path: join(base, 'worktrees', String(id)), lease: null };
         const path = safe(slot);
@@ -190,7 +203,6 @@ Remote branches are preserved.
         print(slot);
         return;
       }
-      if (state.slots.length !== SLOT_COUNT) throw new Error(`Run init first; pool must contain ${SLOT_COUNT} slots`);
       if (state.slots.some(s => s.lease?.owner === values.owner)) throw new Error('Owner already has a lease; resume with its saved --token');
       git(mainRoot, 'check-ref-format', '--branch', values.branch!);
       const ref = spawnSync('git', ['-C', mainRoot, 'show-ref', '--verify', '--quiet', `refs/heads/${values.branch}`]);
