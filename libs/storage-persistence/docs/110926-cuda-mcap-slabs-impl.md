@@ -15,11 +15,12 @@ Created 2026-11-09. [Architecture](110926-cuda-mcap-slabs.md).
 
 **Validation**
 
-- [ ] Release compilation and focused Clippy/format/boundary checks.
-- [ ] Hardware roundtrip: page boundaries, arbitrary payload sizes and slab reuse.
-- [ ] Repeat NVMe measurements; record hardware, commands and timing scope.
-- [ ] ARM64 worker checks; report GPU/Thor checks separately.
-- [ ] Scanner review, final PR validation record and lease release.
+- [x] Release compilation and focused all-feature Clippy/format/boundary checks.
+- [x] Hardware roundtrip: page boundaries, arbitrary payload sizes and slab reuse.
+- [x] Repeat NVMe measurements; record hardware, commands and timing scope.
+- [x] ARM64 worker checks; GPU/Thor checks reported separately.
+- [x] Scanner review; no source findings or policy reconciliation changes.
+- [x] Final PR validation record.
 
 ## Commands
 
@@ -38,4 +39,56 @@ ignored. Build unprivileged; use test-executable elevation only when required.
 
 ## Results
 
-Pending hardware execution. No throughput or platform-qualification claim yet.
+Measured code revision: `798926cf73688514d2f5c0e4dfa16cf64edf821a`.
+Host: Intel Core i7-12700KF, Linux 7.0.0-38-generic, RTX 5070 Ti 16 GB,
+driver 595.104.02. Files: ext4 on the Samsung 970 EVO 250 GB root NVMe,
+about 91% full before testing. Tests ran unprivileged.
+
+All 12 hardware roundtrips passed: mapped, staged and storage-only modes with
+1, 4,065, 65,543 and 1,048,576-byte payloads, 19 messages and three slabs.
+Every decoded payload byte, sequence, topic and message count matched; all
+slabs returned before CUDA unregister. The non-default stream assertion passed.
+
+Benchmark: four slabs; three repetitions per mode; rotate mode order each
+repetition. Each 64-KiB run records 4,096 messages (256 MiB); each 1-MiB run
+records 1,024 messages (1 GiB); each 8-MiB run records 128 messages (1 GiB).
+All 27 recordings passed independent full-payload readback. Temporary benchmark
+files were removed after validation. [All samples](benchmarks/20261109-cuda-mcap.csv).
+
+8-MiB messages, median of three repetitions:
+
+| Mode | Payload MiB/s | Range MiB/s | CPU seconds/GiB | CPU, one core |
+|---|---:|---:|---:|---:|
+| GPU writes mapped slab | 108.228 | 98.569–127.768 | 0.495 | 5.351% |
+| GPU device memory → async copy → slab | 98.763 | 94.864–101.890 | 0.510 | 4.727% |
+| Pre-produced block → storage | 108.997 | 108.079–112.905 | 0.588 | 6.260% |
+
+The throughput interval includes production, the existing CPU payload clearing,
+slab submission, drain and final sync. CPU is process user+system time, normalized
+to one core; columns are independent medians. CUDA-event intervals include the
+kernel and, for staged output, the copy. Setup and readback are excluded.
+
+The initial small recordings reached about 1.3 GiB/s. Later 1-GiB recordings
+slowed to roughly 100 MiB/s in all modes, including storage-only output. This
+variation prevents attributing the throughput differences to GPU mapping. The
+experiment establishes correct GPU-produced slab recording without an explicit
+copy in mapped mode; it does not establish a clear performance advantage on this
+storage setup. No device firmware/cache-state cause was independently diagnosed.
+
+Validation:
+
+- `cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture`: passed.
+- `cargo test --release --locked -p storage-persistence --all-features`: passed; hardware tests remain opt-in, and the existing 100-MiB test remained ignored.
+- `cargo clippy --release --locked -p storage-persistence --all-targets --all-features --no-deps -- -D warnings`: passed.
+- Formatting, diff checks and library boundaries: passed.
+- GitHub Rust, Node and MCAP jobs: passed on x86_64 and ARM64 for the measured code revision.
+- ARM64 WSL2 Pueue **639: Success**, complete log retrieved and checked; default/all-feature Rust and native worker checks passed. Snapshot: `/home/doramcap-ci/jobs/ff2ed9fbea8d467e8840258cf7d572ec`.
+- ARM64 CUDA tests were ignored. No iGPU/Thor hardware qualification, GPU-fault injection or low-rate pacing benchmark was performed.
+
+Reproduce one 8-MiB run with the release executable:
+
+```sh
+target/release/examples/cuda_mcap /absolute/path/mapped.mcap mapped 8388608 128 4
+target/release/examples/cuda_mcap /absolute/path/staged.mcap staged 8388608 128 4
+target/release/examples/cuda_mcap /absolute/path/io.mcap io-only 8388608 128 4
+```

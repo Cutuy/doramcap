@@ -64,6 +64,7 @@ application's activity runtime. [Observation milestones](docs/101926-observabili
 | Input APIs and ownership | [Memory ingress](docs/101926-memory-ingress-cases.md) |
 | Managed buffers and benchmarks | [Managed-pool milestones](docs/101926-growable-buffer-pool.md) |
 | Slabs, limitations and evidence | [External-memory milestones](docs/101826-external-buffer-leases.md) |
+| CUDA-produced slabs and benchmarks | [CUDA slab qualification](docs/110926-cuda-mcap-slabs.md) |
 | Rust/TypeScript protobuf readback | [Reader compatibility](docs/110426-mcap-reader-compatibility.md) |
 | Live inspection and roadmap | [Observability milestones](docs/101926-observability.md) |
 
