@@ -109,7 +109,9 @@ async fn check_deployment(app: &str) {
             .map_err(|e| format!("{e:?}"))?
         {
             curl(address, "/", None).await?;
-            let route = if app == "cpu-viewer" {
+            let route = if app == "gpudirect-demo" {
+                "/health"
+            } else if app == "cpu-viewer" {
                 "/health/ready"
             } else {
                 "/api/state"
@@ -119,6 +121,7 @@ async fn check_deployment(app: &str) {
                 let result = curl(address, route, None).await;
                 if let Ok(bytes) = &result
                     && (app == "cpu-viewer"
+                        || (app == "gpudirect-demo" && bytes == b"verified")
                         || serde_json::from_slice::<serde_json::Value>(bytes)
                             .is_ok_and(|v| v["complete"] == true))
                 {
@@ -129,7 +132,7 @@ async fn check_deployment(app: &str) {
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-            if app != "cpu-viewer" {
+            if matches!(app, "fault-demo" | "fault-watchdog") {
                 curl(
                     address,
                     "/api/control",
@@ -211,5 +214,13 @@ async fn gallery_dora_deployments() {
                 Box::pin(check_deployment(app)).await;
             }
         })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker GPU access, the built GPU demo image and gallery test workspace/socket"]
+async fn gallery_gpu_storage_deployment() {
+    tokio::task::LocalSet::new()
+        .run_until(check_deployment("gpudirect-demo"))
         .await;
 }
