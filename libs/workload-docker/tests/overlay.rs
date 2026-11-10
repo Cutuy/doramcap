@@ -1056,8 +1056,14 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     child.wait().unwrap();
     assert!(marker.is_file(), "copy-back did not reach the pause");
     let wrapper_pid: i32 = std::fs::read_to_string(&marker).unwrap().parse().unwrap();
+    // The orphaned stopped group may already have exited after its parent died.
     // SAFETY: this PID is the paused wrapper created by this isolated test.
-    assert_eq!(unsafe { libc::kill(wrapper_pid, libc::SIGKILL) }, 0);
+    if unsafe { libc::kill(wrapper_pid, libc::SIGKILL) } != 0 {
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+    }
     let first = root.path().join("source-a/file");
     let second = root.path().join("source-b/file");
     assert_eq!(std::fs::read(&first).unwrap(), b"after");
