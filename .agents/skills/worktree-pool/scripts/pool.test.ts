@@ -18,7 +18,7 @@ const PR_URL = 'https://github.com/example/repo/pull/1';
 type Result = { status: number | null; stdout: string; stderr: string };
 type Slot = { id: number; path: string; lease: { owner: string; token: string; branch: string; state: string } };
 
-function fixture(t: TestContext) {
+function fixture(t: TestContext, capacity: number | null = 2) {
   const temp = mkdtempSync(join(tmpdir(), 'worktree-pool-'));
   t.after(() => rmSync(temp, { recursive: true, force: true }));
   const repo = join(temp, 'repo');
@@ -70,7 +70,7 @@ function fixture(t: TestContext) {
     const script = write(bin, 'gh', `#!${process.execPath}\n${extra}\nconsole.log(${JSON.stringify(JSON.stringify(pr))});\n`);
     chmodSync(script, 0o755);
   };
-  ok('init');
+  if (capacity !== null) ok('init', '--slots', String(capacity));
   return { temp, repo, git, write, command, ok, start, state, acquire, releaseArgs, commit, mockPr };
 }
 
@@ -94,21 +94,107 @@ test('ownership: owner and token are required, resume preserves work, status hid
   assert.ok(!f.command('status').stdout.includes(slot.lease.token));
 });
 
-test('simultaneous acquisition: five unique owners win and excess contenders fail', async t => {
+for (const capacity of [1, 3, 8]) {
+  test(`configured capacity ${capacity}: concurrent allocation, exhaustion and reuse`, async t => {
+    // Arrange
+    const f = fixture(t, capacity);
+    const excessContenders = 2;
+
+    // Act
+    const results = await Promise.all(Array.from({ length: capacity + excessContenders }, (_, id) =>
+      f.start('acq', '--owner', `owner-${id}`, '--branch', `codex/contender-${id}`).done));
+
+    // Assert: compare the requested capacity with externally observed allocations.
+    const wins: Slot[] = results.filter(result => result.status === 0).map(result => JSON.parse(result.stdout));
+    const losses = results.filter(result => result.status !== 0);
+    assert.equal(wins.length, capacity, JSON.stringify(results));
+    assert.equal(new Set(wins.map(slot => slot.id)).size, capacity);
+    assert.equal(new Set(wins.map(slot => slot.lease.token)).size, capacity);
+    assert.equal(losses.length, excessContenders);
+    for (const loss of losses) assert.match(loss.stderr, /Pool exhausted/);
+    assert.equal(f.state().slots.filter((slot: Slot) => slot.lease).length, capacity);
+
+    // Act / Assert: the highest registered slot can resume, release and be reused.
+    const last = wins.find(slot => slot.id === capacity)!;
+    assert.ok(last);
+    assert.deepEqual(f.ok('acq', '--owner', last.lease.owner, '--branch', last.lease.branch,
+      '--token', last.lease.token), last);
+    f.ok(...f.releaseArgs(last));
+    const replacement = f.acquire('replacement', 'codex/replacement');
+    assert.equal(replacement.id, last.id);
+    assert.notEqual(replacement.lease.token, last.lease.token);
+  });
+}
+
+for (const [initialCapacity, expandedCapacity] of [[1, 4], [5, 7]]) {
+  test(`init grows ${initialCapacity} slots to ${expandedCapacity} and preserves existing work`, t => {
+    // Arrange
+    const f = fixture(t, initialCapacity), leased = f.acquire();
+    const source = f.write(leased.path, 'unfinished.ts', 'work in progress');
+    const before = f.state();
+    const mainHead = f.git(f.repo, 'rev-parse', 'HEAD');
+
+    // Act
+    const expanded = f.ok('init', '--slots', String(expandedCapacity));
+
+    // Assert
+    assert.equal(expanded.slots.length, expandedCapacity);
+    assert.deepEqual(f.state().slots.slice(0, initialCapacity), before.slots);
+    assert.equal(readFileSync(source, 'utf8'), 'work in progress');
+    assert.equal(f.git(f.repo, 'rev-parse', 'HEAD'), mainHead);
+    for (const slot of expanded.slots.slice(initialCapacity)) {
+      assert.equal(slot.lease, null);
+      assert.equal(f.git(slot.path, 'branch', '--show-current'), '');
+      assert.equal(f.git(slot.path, 'rev-parse', 'HEAD'), mainHead);
+    }
+    assert.deepEqual(f.ok('acq', '--owner', OWNER, '--branch', BRANCH, '--token', leased.lease.token), leased);
+
+    // Act / Assert: both forms of repeated initialization preserve the configured pool.
+    const after = f.state();
+    f.ok('init');
+    f.ok('init', '--slots', String(expandedCapacity));
+    assert.deepEqual(f.state(), after);
+  });
+}
+
+test('shrinking is rejected before changing leases, worktrees or source', t => {
   // Arrange
-  const f = fixture(t);
+  const capacity = 3;
+  const f = fixture(t, capacity), leased = f.acquire();
+  const source = f.write(leased.path, 'unfinished.ts', 'work in progress');
+  const before = f.state();
+  const worktrees = f.git(f.repo, 'worktree', 'list', '--porcelain');
 
   // Act
-  const results = await Promise.all(Array.from({ length: 8 }, (_, id) =>
-    f.start('acq', '--owner', `owner-${id}`, '--branch', `codex/contender-${id}`).done));
+  const result = f.command('init', '--slots', String(capacity - 1));
 
   // Assert
-  const wins = results.filter(result => result.status === 0).map(result => JSON.parse(result.stdout));
-  assert.equal(wins.length, 5, JSON.stringify(results));
-  assert.equal(new Set(wins.map(slot => slot.id)).size, 5);
-  assert.equal(new Set(wins.map(slot => slot.lease.token)).size, 5);
-  for (const loss of results.filter(result => result.status !== 0)) assert.match(loss.stderr, /Pool exhausted/);
-  assert.equal(f.state().slots.filter((slot: Slot) => slot.lease).length, 5);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Cannot shrink/);
+  assert.deepEqual(f.state(), before);
+  assert.equal(f.git(f.repo, 'worktree', 'list', '--porcelain'), worktrees);
+  assert.equal(readFileSync(source, 'utf8'), 'work in progress');
+});
+
+test('initial capacity is explicit and invalid counts cannot create a pool', t => {
+  // Arrange
+  const f = fixture(t, null);
+  const worktrees = f.git(f.repo, 'worktree', 'list', '--porcelain');
+
+  // Act / Assert
+  for (const value of ['0', '-1', '1.5', 'NaN', 'Infinity', '9007199254740992', '1e2', '']) {
+    const result = f.command('init', `--slots=${value}`);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /positive safe integer/);
+    assert.ok(!existsSync(join(f.repo, '.git/agent-pool')));
+  }
+  for (const args of [['init'], ['acq', '--owner', OWNER, '--branch', BRANCH]]) {
+    const result = f.command(...args);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /init --slots COUNT/);
+    assert.ok(!existsSync(join(f.repo, '.git/agent-pool/state.json')));
+  }
+  assert.equal(f.git(f.repo, 'worktree', 'list', '--porcelain'), worktrees);
 });
 
 test('same-owner acquisition contention creates exactly one lease', async t => {
