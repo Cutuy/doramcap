@@ -50,7 +50,12 @@ Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is
 optional. The selected mapping detail precedes the compact architecture stack.
 
-[Holoscan SDK](https://nvidia-holoscan.github.io/) supplies application graph
-execution and reusable modules. The Console diagram places it alongside containers
-and supervisord, with Console above all three. Its platform entry describes the
-upstream SDK; it has no Docker-specific component or use-case mapping.
+The application platform places Your apps and System apps above the optional
+doramcap foundation. Docker containers, Holoscan containers, and systemd units
+share the lifecycle layer above orchestration and recording.
+
+The Console diagram shows Holoscan apps alongside containers and systemd services.
+NVIDIA's [Body Pose Estimation](https://nvidia-holoscan.github.io/holohub/applications/body_pose_estimation/)
+and [ROS2 IMX274 Camera](https://nvidia-holoscan.github.io/examples/legacy/imx274/)
+illustrate the Holoscan app group. The platform entry links to
+[NVIDIA Holoscan](https://nvidia-holoscan.github.io/).
