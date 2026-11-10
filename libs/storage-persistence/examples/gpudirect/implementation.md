@@ -1,50 +1,33 @@
-# CUDA slab details and results
+# Results and test
 
-Created 2026-11-09. [End-to-end flow](README.md).
-Source: [support.rs](support.rs); hardware tests: [tests.rs](tests.rs).
+Created 2026-11-09. [Flow diagram](README.md) · [Source](support.rs) · [Tests](tests.rs).
 
-The CPU handles MCAP framing, GPU readiness, submission and completion. Mapped
-mode lets the GPU write host RAM directly; staged mode adds a device-to-host
-copy on the same non-default stream. A slab becomes writable again only after
-its last I/O reference is released. If GPU synchronization fails, the example
-retains the allocation rather than freeing memory the GPU may still access.
+| Mode | Payload path |
+|---|---|
+| `mapped` | GPU → pinned slab → file |
+| `staged` | GPU device memory → async copy → pinned slab → file |
+| `io-only` | Reuse a pre-produced slab → file |
 
-Payload size must fit `u32`; payload, message count and slab count must be nonzero.
-The writer owns its registration budget and segmentation; `prepare_slabs`
-reports exhaustion. CUDA registration lasts for the pool's lifetime.
-
-## Hardware checks
-
-**Work items**
-
-- [x] Register reusable slabs with CUDA and io_uring; preserve completion ordering.
-
-**Validation**
-
-- [x] All 14 cases pass on RTX 5070 Ti: exact readback and slab reuse, including mapped/staged 64-MiB payloads. The large-slab regression failed before the capacity fix.
-- [x] Locked release compilation, focused Clippy, formatting and diff checks pass (code `188a0413`).
+Payload, messages and slabs must be nonzero; payload must fit `u32`.
+`prepare_slabs` reports registration-budget exhaustion.
 
 ```sh
 cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture --test-threads=1
 ```
 
-Earlier ARM64 CPU/native worker checks passed (job 639); CUDA tests were ignored.
-iGPU/Thor hardware remains unqualified. This documentation update changes no code.
+**Verified:** 14 RTX 5070 Ti cases, including 64-MiB payloads, slab reuse and
+independent full-byte MCAP readback; release build/Clippy passed (`188a0413`).
+Earlier ARM64 CPU/native checks passed (job 639); iGPU/Thor remains unqualified.
 
-## Benchmark
+**Benchmark:** RTX 5070 Ti, i7-12700KF, Samsung 970 EVO 250 GB, ext4 ~91% full;
+three 1-GiB runs per mode, 8-MiB messages, four slabs (`798926cf`).
 
-RTX 5070 Ti, i7-12700KF, Samsung 970 EVO 250 GB, ext4 about 91% full.
-Code `798926cf`; median of three 1-GiB recordings per mode, 8-MiB messages,
-four slabs. All 27 recordings across the benchmark's payload sizes passed readback.
-
-| Mode | MiB/s | CPU seconds/GiB | CPU, one core |
+| Mode | Median MiB/s | CPU seconds/GiB | CPU, one core |
 |---|---:|---:|---:|
-| Mapped slab | 108.228 | 0.495 | 5.351% |
-| Device memory → slab | 98.763 | 0.510 | 4.727% |
-| Pre-produced block I/O | 108.997 | 0.588 | 6.260% |
+| `mapped` | 108.228 | 0.495 | 5.351% |
+| `staged` | 98.763 | 0.510 | 4.727% |
+| `io-only` | 108.997 | 0.588 | 6.260% |
 
-Timing includes production, CPU payload clearing, I/O drain and final sync;
-setup and readback are excluded. CPU is process user+system time, not total
-machine CPU. Storage throughput varied substantially, so these results establish
-correct recording without a clear performance win. The capacity fix and this
-documentation update did not rerun the benchmark.
+Timing includes production, CPU payload clearing, drain and sync; excludes setup
+and readback. CPU measures process user+system time. Storage variability prevented
+a clear speedup conclusion. These are earlier measurements, not rerun for docs.

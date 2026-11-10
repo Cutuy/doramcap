@@ -1,8 +1,82 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="260" viewBox="0 0 920 260">
-<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#475569"/></marker></defs>
-<rect width="920" height="260" rx="12" fill="#f8fafc"/>
-<g font-family="sans-serif" text-anchor="middle" fill="#0f172a">
-<g stroke="#94a3b8"><rect x="25" y="88" width="180" height="74" rx="9" fill="#e0e7ff"/><rect x="280" y="88" width="180" height="74" rx="9" fill="#dcfce7"/><rect x="535" y="88" width="160" height="74" rx="9" fill="#dbeafe"/><rect x="760" y="88" width="135" height="74" rx="9" fill="#fef3c7"/></g>
-<g font-size="18"><text x="115" y="116">CUDA kernel</text><text x="370" y="116">Registered slab</text><text x="615" y="116">MCAP writer</text><text x="827" y="116">NVMe</text></g>
-<g font-size="14" fill="#475569"><text x="115" y="143">Non-default stream</text><text x="370" y="143">Payload + framing</text><text x="615" y="143">io_uring</text><text x="827" y="143">File ranges</text><text x="242" y="72">GPU stores</text><text x="498" y="72">Ready event</text><text x="727" y="72">DMA</text><text x="590" y="216">Completion releases slab</text></g>
-<g fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arrow)"><path d="M205 125H280"/><path d="M460 125H535"/><path d="M695 125H760"/><path d="M827 162V190H370V162"/></g></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="648" viewBox="0 0 1120 648" role="img" aria-labelledby="title desc">
+  <title id="title">GPU to NVMe through pinned MCAP slabs</title>
+  <desc id="desc">Register each host allocation with CUDA and io_uring once. A GPU fills its mapped payload on a non-default stream. Wait for its event before sealing and writing. I/O completion permits slab reuse; finalization precedes unregister and release.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#475569"/></marker>
+    <marker id="reuse" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#15803d"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #0f172a; }
+      .section { font-size: 18px; font-weight: 700; fill: #475569; }
+      .heading { font-size: 22px; font-weight: 700; }
+      .body { font-size: 17px; }
+      .api { font-size: 15px; fill: #475569; }
+      .edge { fill: none; stroke: #475569; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1120" height="648" rx="16" fill="#ffffff"/>
+  <text x="32" y="32" class="section">SETUP · ONCE PER POOL</text>
+  <g text-anchor="middle">
+    <rect x="32" y="56" width="304" height="104" rx="12" fill="#ede9fe" stroke="#c4b5fd"/>
+    <text x="184" y="86" class="heading">CUDA registration</text>
+    <text x="184" y="113" class="body">Pin + map host pages</text>
+    <text x="184" y="140" class="api">cudaHostRegisterMapped</text>
+    <rect x="408" y="56" width="304" height="104" rx="12" fill="#dcfce7" stroke="#86efac"/>
+    <text x="560" y="86" class="heading">Aligned slab pool</text>
+    <text x="560" y="113" class="body">Reusable host RAM</text>
+    <text x="560" y="140" class="api">SlabPool</text>
+    <rect x="784" y="56" width="304" height="104" rx="12" fill="#dbeafe" stroke="#93c5fd"/>
+    <text x="936" y="86" class="heading">io_uring registration</text>
+    <text x="936" y="113" class="body">Fixed buffer table</text>
+    <text x="936" y="140" class="api">prepare_slabs</text>
+  </g>
+  <path d="M336 108H400" class="edge"/>
+  <path d="M784 108H720" class="edge"/>
+
+  <rect x="16" y="188" width="1088" height="344" rx="16" fill="#f8fafc"/>
+  <text x="40" y="220" class="section">RECORD · REPEAT PER MESSAGE</text>
+  <path d="M560 160V264" class="edge" stroke-dasharray="5 5"/>
+  <text x="578" y="246" class="api">acquire</text>
+  <g text-anchor="middle">
+    <rect x="40" y="292" width="208" height="120" rx="12" fill="#ede9fe" stroke="#c4b5fd"/>
+    <text x="144" y="325" class="heading">GPU kernel</text>
+    <text x="144" y="354" class="body">Mapped address</text>
+    <text x="144" y="383" class="api">Non-default stream</text>
+
+    <rect x="344" y="272" width="328" height="160" rx="12" fill="#dcfce7" stroke="#86efac"/>
+    <text x="508" y="305" class="heading">Pinned MCAP slab</text>
+    <text x="508" y="332" class="api">CPU reserves + clears</text>
+    <rect x="364" y="352" width="100" height="52" rx="6" fill="#ffffff" stroke="#86efac"/>
+    <rect x="472" y="352" width="180" height="52" rx="6" fill="#bbf7d0" stroke="#86efac"/>
+    <text x="414" y="384" class="body">Header</text>
+    <text x="562" y="384" class="body">GPU payload</text>
+
+    <rect x="760" y="292" width="160" height="120" rx="12" fill="#dbeafe" stroke="#93c5fd"/>
+    <text x="840" y="325" class="heading">MCAP writer</text>
+    <text x="840" y="354" class="body">WriteFixed</text>
+    <text x="840" y="383" class="api">O_DIRECT · file offsets</text>
+
+    <rect x="984" y="292" width="104" height="120" rx="12" fill="#fef3c7" stroke="#fcd34d"/>
+    <text x="1036" y="339" class="heading">NVMe</text>
+    <text x="1036" y="373" class="body">MCAP file</text>
+  </g>
+  <path d="M248 352H336" class="edge"/>
+  <text x="292" y="333" class="api" text-anchor="middle">GPU stores</text>
+  <path d="M672 352H752" class="edge"/>
+  <g text-anchor="middle" class="api"><text x="716" y="308">Wait event</text><text x="716" y="329">then seal</text></g>
+  <path d="M920 352H976" class="edge"/>
+  <text x="952" y="333" class="api" text-anchor="middle">DMA</text>
+  <path d="M840 412V478H508V440" fill="none" stroke="#15803d" stroke-width="2.5" marker-end="url(#reuse)"/>
+  <text x="674" y="507" text-anchor="middle" class="body" style="fill:#15803d">I/O completion → slab reusable</text>
+
+  <text x="32" y="567" class="section">FINISH</text>
+  <g text-anchor="middle">
+    <rect x="32" y="584" width="304" height="44" rx="10" fill="#f1f5f9"/>
+    <text x="184" y="612" class="body">Drain + finalize + fsync</text>
+    <rect x="408" y="584" width="304" height="44" rx="10" fill="#f1f5f9"/>
+    <text x="560" y="612" class="body">CUDA unregister</text>
+    <rect x="784" y="584" width="304" height="44" rx="10" fill="#f1f5f9"/>
+    <text x="936" y="612" class="body">Release pool</text>
+  </g>
+  <path d="M336 606H400" class="edge"/>
+  <path d="M712 606H776" class="edge"/>
+</svg>
