@@ -38,6 +38,11 @@ Cleanup removes the temporary runtime resources owned by the interrupted run.
 Ownership information must survive the controller interruption that cleanup is
 intended to recover from.
 
+Console stops the container through the Docker Engine API with its own deadline.
+The CLI process ends when the container ends. The runner follows the shared run
+sequence in [`workload-lifecycle`](../../workload-lifecycle/src/run.rs): start,
+observe, stop, check recordings, remove.
+
 Normal Stop, cancellation and failed startup also stop writers before finalizing
 outputs and removing temporary resources. Execution, recording recovery and
 cleanup keep separate outcomes. Detailed stop deadlines, evidence storage and
@@ -52,8 +57,9 @@ backend operations belong in the implementation plan.
 | Holoscan decision | Run repeatable cleanup as part of the new-run workflow before Build/Prepare; block progression until required cleanup succeeds. |
 
 The common principle is verified cleanup before admission to a new execution.
-Holoscan owns its workflow. Share operations only where their purpose, inputs,
-results and failure behavior match.
+Holoscan owns its workflow. Cleanup of owned resources by label moves to the
+[shared Docker crate](110926-holoscan-outputs.md#shared-docker-crate), where both
+backends use it.
 
 ## Evidence and acceptance
 

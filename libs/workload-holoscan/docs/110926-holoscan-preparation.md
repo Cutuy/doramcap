@@ -38,10 +38,14 @@ rechecks that snapshot before creating filesystem views.
 Review explains the selected inputs and the expected build and preparation work.
 Build, Prepare and Start use the same project context.
 
+Review saves one snapshot of the expected launch, and Start requires the same
+snapshot. The [launch document](111026-holoscan-launch-handoff.md#review-and-start)
+lists what the snapshot covers.
+
 A meaningful change invalidates the affected result. Build-input changes require
 Build again; launch-input changes require Prepare again. Start uses the prepared
-selection and artifacts. The implementation plan must define how those identities
-and changes are checked.
+selection and artifacts. The implementation plan must define how build-input
+changes are detected.
 
 An application can be started repeatedly while the relevant prepared inputs and
 artifacts remain valid. The native build system continues to decide which build

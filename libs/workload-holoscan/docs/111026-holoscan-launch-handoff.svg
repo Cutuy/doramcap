@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
-  <title id="title">Holoscan launch handoff choices</title>
-  <desc id="desc">The required order is to resolve mounts, prepare filesystem views and start the prepared launch. Option one keeps the native CLI launch with a Console adapter. Option two exports a launch plan for Console to execute.</desc>
+  <title id="title">Holoscan launch designs compared</title>
+  <desc id="desc">Three launch designs. In the chosen design Console prepares filesystem views, passes the view to the Holoscan CLI as its project root and manages the created container through the Docker API. The fallback places a Docker stand-in between the CLI and Docker. The design set aside exports a launch plan for Console to execute.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
     <style>
@@ -15,19 +15,28 @@
     </style>
   </defs>
   <rect width="1200" height="630" fill="white"/>
-  <text class="heading" x="40" y="40">Required backend order</text>
-  <rect class="box" x="40" y="65" width="300" height="70" rx="10"/>
-  <text class="name" x="190" y="107" text-anchor="middle">Resolve final mounts</text>
-  <rect class="console" x="450" y="65" width="300" height="70" rx="10"/>
-  <text class="name" x="600" y="107" text-anchor="middle">Prepare filesystem views</text>
-  <rect class="console" x="860" y="65" width="300" height="70" rx="10"/>
-  <text class="name" x="1010" y="107" text-anchor="middle">Create app container</text>
-  <path class="flow" d="M340 100 H450"/>
-  <text class="label" x="395" y="87" text-anchor="middle">mounts</text>
-  <path class="flow" d="M750 100 H860"/>
-  <text class="label" x="805" y="87" text-anchor="middle">prepared plan</text>
 
-  <text class="heading" x="40" y="215">1. Native CLI with a Console handoff</text>
+  <text class="heading" x="40" y="40">Chosen: Console steers the native CLI</text>
+  <rect class="console" x="40" y="65" width="210" height="100" rx="10"/>
+  <text class="name" x="145" y="104" text-anchor="middle">Console backend</text>
+  <text class="detail" x="145" y="134" text-anchor="middle">Views and labels</text>
+  <rect class="box" x="330" y="65" width="230" height="100" rx="10"/>
+  <text class="name" x="445" y="104" text-anchor="middle">Holoscan CLI</text>
+  <text class="detail" x="445" y="134" text-anchor="middle">Resolve and launch</text>
+  <rect class="box" x="640" y="65" width="230" height="100" rx="10"/>
+  <text class="name" x="755" y="104" text-anchor="middle">Docker</text>
+  <text class="detail" x="755" y="134" text-anchor="middle">Application container</text>
+  <rect class="console" x="950" y="65" width="210" height="100" rx="10"/>
+  <text class="name" x="1055" y="104" text-anchor="middle">Console backend</text>
+  <text class="detail" x="1055" y="134" text-anchor="middle">Check, stop, remove</text>
+  <path class="flow" d="M250 115 H330"/>
+  <text class="label" x="290" y="99" text-anchor="middle">view root</text>
+  <path class="flow" d="M560 115 H640"/>
+  <text class="label" x="600" y="99" text-anchor="middle">launch</text>
+  <path class="flow" d="M870 115 H950"/>
+  <text class="label" x="910" y="99" text-anchor="middle">identity</text>
+
+  <text class="heading" x="40" y="225">Fallback: Docker stand-in</text>
   <rect class="box" x="40" y="250" width="210" height="100" rx="10"/>
   <text class="name" x="145" y="289" text-anchor="middle">Project + mode</text>
   <text class="detail" x="145" y="319" text-anchor="middle">Native settings</text>
@@ -35,7 +44,7 @@
   <text class="name" x="445" y="289" text-anchor="middle">Holoscan CLI</text>
   <text class="detail" x="445" y="319" text-anchor="middle">Resolve and launch</text>
   <rect class="console" x="640" y="250" width="230" height="100" rx="10"/>
-  <text class="name" x="755" y="289" text-anchor="middle">Console adapter</text>
+  <text class="name" x="755" y="289" text-anchor="middle">Docker stand-in</text>
   <text class="detail" x="755" y="319" text-anchor="middle">Mounts and ownership</text>
   <rect class="box" x="950" y="250" width="210" height="100" rx="10"/>
   <text class="name" x="1055" y="289" text-anchor="middle">Docker</text>
@@ -47,7 +56,7 @@
   <path class="flow" d="M870 300 H950"/>
   <text class="label" x="910" y="284" text-anchor="middle">launch</text>
 
-  <text class="heading" x="40" y="440">2. Export a launch plan for Console</text>
+  <text class="heading" x="40" y="440">Set aside: Console launches from a plan</text>
   <rect class="box" x="40" y="475" width="210" height="100" rx="10"/>
   <text class="name" x="145" y="514" text-anchor="middle">Project + mode</text>
   <text class="detail" x="145" y="544" text-anchor="middle">Native settings</text>

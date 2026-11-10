@@ -2,15 +2,15 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 10, 2026. Status: draft architecture; initial adoption scope agreed.
+Created November 9, 2026. Updated November 10, 2026. Status: draft architecture; adoption scope and launch design agreed.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
 workflow. Holoscan remains responsible for the application's graph and sensor
 processing.
 
-The Console integration remains to be implemented. The CLI/helper tests used a
-fake Docker command. Our tests have not run a real Holoscan application through Console.
+The Console integration remains to be implemented. The CLI tests used a fake
+Docker command. Our tests have not run a real Holoscan application through Console.
 
 ## Component ownership
 
@@ -19,13 +19,14 @@ fake Docker command. Our tests have not run a real Holoscan application through 
 | Console | Project selection, review, run controls, results and comparisons. |
 | `workload-holoscan` | Holoscan discovery, build, preparation, execution, recovery and output collection. |
 | Holoscan project and tools | Application definitions, build rules, launch settings and graph execution. |
-| Shared steps and subworkflows | Reusable host observation, file collection and other operations with matching contracts. |
+| Shared Docker crate | Docker client, cleanup of owned resources, filesystem views and file-change collection for both Docker backends. |
+| Shared steps and subworkflows | Reusable host observation and other operations with matching contracts. |
 | `workload-docker` | The existing Compose adoption workflow. |
 
 `workload-holoscan` has its own domain model and lifecycle. It has no dependency
-on Compose orchestration. Shared operations have an owner outside the Compose
-workflow when both consumers need the same purpose, inputs, results and failure
-behavior. Extract shared operations after identifying that concrete overlap.
+on `workload-docker`. Both depend on the
+[shared Docker crate](110926-holoscan-outputs.md#shared-docker-crate) for the
+operations they have in common.
 
 ## User workflow
 
@@ -34,8 +35,8 @@ behavior. Extract shared operations after identifying that concrete overlap.
 3. Select resource controls, observations and intended outputs.
 4. Clean up lingering owned runs and verify the cleanup result.
 5. Build through the existing Holoscan workflow as a separate operation.
-6. Capture the built application's launch settings for Review.
-7. On Start, recheck Review, prepare filesystem views and launch the application.
+6. Save a snapshot of the built application's expected launch for Review.
+7. On Start, require the same snapshot, prepare filesystem views and launch the application.
 8. Stop, collect results and inspect execution, recordings and cleanup outcomes.
 
 Review and execution use the same resolved inputs. A changed project or environment
@@ -121,7 +122,7 @@ the baseline. Later stages stay open until their discussion starts.
 | 2. [Build and preparation](110926-holoscan-preparation.md) | Separate Build from Prepare and preserve the selected native settings. | Build before Prepare; an isolated child Build operation is an accepted fallback. |
 | 3. [Conflicting controls](110926-holoscan-controls.md) | Preserve native placement/recording and compare practical declared settings. | Warn or fail clearly for supported comparisons; defer deeper application inspection. |
 | 4. [Execution and recovery](110926-holoscan-execution.md) | Owned run resources, repeatable pre-run cleanup and interruption recovery. | Stop lingering owned runs and verify cleanup before Build/Prepare; output retention is best effort. |
-| 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture direction; qualify Holoscan mount integration and preserve existing coverage. |
+| 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed, CLI probe pending. |
 | 6. Backend acceptance | Which existing projects and environments establish supported behavior. | Agree on comparison with upstream launches, failure scenarios and release evidence. |
 | 7. Console UI | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Agree on the complete web-app journey, saved selections, visible failure states and end-to-end checks. |
 
@@ -144,10 +145,9 @@ purpose, inputs, results and failure behavior.
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
 Stage 5 adopts the existing automatic filesystem capture workflow.
 
-**Current discussion: [stage 5's adapter feasibility and workflow](111026-holoscan-launch-handoff.md).**
-The recording-Docker probe validates capture, a gated runtime handoff and native
-status/cancellation behavior for the fixture. Production adoption, its configuration
-exception and the shared filesystem owner remain open.
+**Current step: the [stage 5 CLI probe](111026-holoscan-launch-handoff.md#pending-probe).**
+The launch design, container ownership, shared Docker crate and Review rule are
+agreed. The probe checks the two CLI behaviors the launch design depends on.
 
 Backend acceptance follows in stage 6. Console UI is explicitly last in stage 7,
 including discovery presentation, saved selections, review, run controls and results.
@@ -161,7 +161,10 @@ including discovery presentation, saved selections, review, run controls and res
 | Discovery | Projects described by the supported upstream Holoscan CLI. |
 | Build | Separate operation before Prepare; retain its own outcome when nested in a preparation workflow. |
 | Recovery | Repeat cleanup before the new run proceeds; stop lingering owned runs and attempt output retention. |
-| Filesystem capture | Reuse automatic capture at shared workflow/step level; retain backend-specific mount integration. |
+| Launch | Console prepares filesystem views and passes the view to the Holoscan CLI as its project root. A Docker stand-in is the fallback. |
+| Container ownership | The CLI discovers, builds and launches. Console manages the container through the Docker Engine API, including stop. |
+| Filesystem capture | Reuse automatic capture through a shared Docker crate; each backend keeps its own mount handling. |
+| Review | One snapshot of the expected launch must match at Start, as for Compose and systemd. |
 | Placement and recording | Preserve Holoscan controls; Console manages runs, its own observations and retained outputs. |
 | Conflicts | Warn or fail clearly for supported checks of conflicting declared settings. Defer costly inspection of application internals. |
 

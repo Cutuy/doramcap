@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="550" viewBox="0 0 1100 550" role="img" aria-labelledby="title desc">
   <title id="title">Shared automatic filesystem capture</title>
-  <desc id="desc">Compose and Holoscan backends supply their own resolved mounts to shared filesystem operations. The shared workflow prepares views, collects changes, finalizes writes and returns filesystem results.</desc>
+  <desc id="desc">Compose and Holoscan backends supply their mounts and container IDs to a shared Docker crate. The crate prepares views, collects changes, finalizes writes, cleans up owned resources and returns filesystem results.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
     <style>
@@ -16,20 +16,20 @@
   <rect width="1100" height="550" fill="white"/>
   <rect class="box" x="35" y="35" width="350" height="90" rx="10"/>
   <text class="name" x="210" y="70" text-anchor="middle">Compose backend</text>
-  <text class="detail" x="210" y="99" text-anchor="middle">Native manifests and mount updates</text>
+  <text class="detail" x="210" y="99" text-anchor="middle">Manifests and mount rewrite</text>
   <rect class="box" x="715" y="35" width="350" height="90" rx="10"/>
   <text class="name" x="890" y="70" text-anchor="middle">Holoscan backend</text>
-  <text class="detail" x="890" y="99" text-anchor="middle">Native launch and mount updates</text>
+  <text class="detail" x="890" y="99" text-anchor="middle">View passed as project root</text>
   <rect class="focus" x="340" y="220" width="420" height="90" rx="10"/>
-  <text class="name" x="550" y="255" text-anchor="middle">Shared filesystem workflow</text>
-  <text class="detail" x="550" y="284" text-anchor="middle">Prepare views, collect, finalize</text>
+  <text class="name" x="550" y="255" text-anchor="middle">Shared Docker crate</text>
+  <text class="detail" x="550" y="284" text-anchor="middle">Views, file changes, owned cleanup</text>
   <rect class="box" x="340" y="420" width="420" height="85" rx="10"/>
   <text class="name" x="550" y="454" text-anchor="middle">Filesystem results</text>
   <text class="detail" x="550" y="483" text-anchor="middle">Changes, retained paths and coverage</text>
   <path class="flow" d="M210 125 V165 H450 V220"/>
-  <text class="label" x="230" y="153">resolved mounts</text>
+  <text class="label" x="230" y="153">mounts, container IDs</text>
   <path class="flow" d="M890 125 V165 H650 V220"/>
-  <text class="label" x="870" y="153" text-anchor="end">resolved mounts</text>
+  <text class="label" x="870" y="153" text-anchor="end">mounts, container IDs</text>
   <path class="flow" d="M550 310 V420"/>
   <text class="label" x="570" y="370">run outcomes</text>
 </svg>
