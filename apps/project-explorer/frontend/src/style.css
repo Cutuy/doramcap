@@ -160,7 +160,7 @@ main.shell{padding-top:28px}
   border-radius: 6px;
   background: var(--panel);
 }
-.foundation-layer { border: 1px dashed var(--accent); }
+.foundation-layer { border: 3px dashed var(--accent); }
 .layer-heading {
   display: flex;
   align-items: baseline;
