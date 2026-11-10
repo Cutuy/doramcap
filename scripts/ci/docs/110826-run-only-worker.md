@@ -40,5 +40,7 @@ Evidence: code `02c530ac`, Pueue 629, job `55f7d5a80228400ebf1b8ab38055ee33` on 
 
 **Validation**
 
-- [x] Local command ordering, failure status, snapshot integrity and cancellation tests.
-- [ ] Full queued WSL job and Mac archive run.
+- [x] 51 CI-tool tests, type checks, ordering, snapshot integrity and cancellation.
+- [x] Full WSL CI, native allocations and Dora recording; 977 Mac test executions passed.
+
+Evidence: code `e122ec9e`, Pueue 631/632; Mac job `d725cbe7a3a740cb991393cbebec4a68`.
