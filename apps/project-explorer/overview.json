@@ -2,7 +2,7 @@
   "$schema": "./overview.schema.json",
   "version": 1,
   "title": "Your runtime foundation for Physical AI.",
-  "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
+  "summary": "Zero code changes for your existing Docker Compose apps.",
   "workloads": [
     "Perception",
     "Learned policies",
@@ -153,6 +153,7 @@
         "crates/workload-supervisor"
       ],
       "integrations": [
+        "holoscan",
         "linux"
       ],
       "evidence": [
@@ -164,6 +165,22 @@
     }
   ],
   "integrations": [
+    {
+      "id": "holoscan",
+      "title": "Holoscan",
+      "group": "execution",
+      "summary": "Run containerized Holoscan sensor-processing apps through your existing Docker Compose project.",
+      "url": "https://nvidia-holoscan.github.io/",
+      "status": "platform-dependent",
+      "components": [
+        "apps/console",
+        "crates/workload-docker"
+      ],
+      "evidence": [
+        "console/README.md",
+        "libs/workload-docker/README.md"
+      ]
+    },
     {
       "id": "linux",
       "title": "Linux",
@@ -264,7 +281,7 @@
     {
       "id": "repeat",
       "title": "Run and repeat an experiment",
-      "summary": "Run your existing Docker Compose workloads unchanged, side by side with doramcap. Inspect the results and run again: doramcap records each run, collects filesystem changes and verifies cleanup before the next.",
+      "summary": "Run your existing Docker Compose workloads, including containerized Holoscan apps, with zero code changes. Inspect the results and run again: doramcap records each run, collects filesystem changes and verifies cleanup before the next.",
       "outcome": "Repeat experiments on existing containers with recording and cleanup handled by doramcap.",
       "status": "illustrative",
       "capabilities": [
@@ -273,6 +290,7 @@
         "recording"
       ],
       "integrations": [
+        "holoscan",
         "linux",
         "mcap"
       ],

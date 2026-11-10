@@ -23,7 +23,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     const entries = item.components.map(id => catalog.components.find(c => c.id === id)!).filter(c => c.kind === kind);
     return entries.length ? <section><h3>{kind === 'apps' ? 'Apps' : 'Crates'}</h3><div className="mapping-links">{entries.map(c => <a key={c.id} href={componentHref(c)}>{displayName(c.name)} <span aria-hidden="true">→</span></a>)}</div></section> : null;
   }
-  return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
+  return <div className="overview"><div className="intro"><h1>{overview.title}</h1><p><strong>{overview.summary}</strong></p></div>
     <ConsoleInstall repository={catalog.repository} />
     <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
