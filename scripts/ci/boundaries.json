@@ -8,6 +8,7 @@
     {"from": "step-provenance", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "session", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "dora-app", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
+    {"from": "dora-control", "forbid": ["workload-*", "orchestrator", "bollard", "mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "telemetry-protocol", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "workflow-protocol", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "fault-schema", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},

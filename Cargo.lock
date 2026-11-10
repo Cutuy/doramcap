@@ -1491,6 +1491,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dora-control"
+version = "0.1.0"
+dependencies = [
+ "dora-message",
+ "futures-util",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite",
+]
+
+[[package]]
 name = "dora-core"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
