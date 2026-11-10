@@ -1,7 +1,0 @@
-{
-  "started_at": "2026-11-08T21:56:29.224Z",
-  "completed_at": "2026-11-08T21:56:45.489Z",
-  "requested_concurrency": 8,
-  "observed_peak_concurrency": 8,
-  "attempted_tasks": 19
-}

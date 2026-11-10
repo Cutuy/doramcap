@@ -32,8 +32,8 @@ Requires Node 22.18+ and an authenticated `codex` CLI. No added packages or
 environment variables. Run names identify immutable inputs; use a new name for a
 new source revision. Completed task files are retained when a run resumes.
 
-- [Pilot results](runs/20261108-i05/results.md), [machine-readable summary](runs/20261108-i05/summary.json), and [inventory](runs/20261108-i05/manifest.json).
-- Source inputs and CLI event logs remain in ignored `inputs/` and `raw/` folders.
+- Each run writes its inventory, source inputs, CLI logs, results and summary under `runs/RUN_NAME/`.
+- The entire `runs/` directory is local output and is ignored by Git.
 - Result files retain requested model/effort, usage, duration, disposition and exact evidence.
 - The CLI does not report the served model identity in these events; that field stays unknown.
 - Literal timer/wait matching selects the pilot. Unselected files and other languages remain unreviewed.
