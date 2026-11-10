@@ -82,7 +82,8 @@ The [launch document](111026-holoscan-launch-handoff.md) records the agreed
 launch design and the designs it was compared with.
 
 Captured folders reach the container through inputs Console controls: the
-project root, and extra data folders where the CLI accepts them. Mounts declared
+project root and extra data folders. The view of an extra data folder keeps the
+folder's name, because the CLI derives the container path from it. Mounts declared
 in a project's own Docker options keep their original source and are reported as
 outside capture coverage.
 
