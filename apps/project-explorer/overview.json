@@ -1,7 +1,7 @@
 {
   "$schema": "./overview.schema.json",
   "version": 1,
-  "title": "Your runtime foundation for Physical AI.",
+  "title": "Your runtime foundation for Physical AI on the edge",
   "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
   "workloads": [
     "Perception",
@@ -141,16 +141,17 @@
       "id": "orchestration",
       "title": "Workflow execution",
       "category": "Runtime",
-      "summary": "Run observable Rust steps, supervise Compose and Supervisor workloads, and collect filesystem changes before cleanup.",
+      "summary": "Run and record workloads launched through Docker Compose, systemd, or Supervisor.",
       "status": "building-blocks",
-      "limits": "Docker Compose and Supervisor execution and local Linux directory-bind overlays are implemented. Other lifecycle backends and hardware qualification remain roadmap work.",
+      "limits": "Docker Compose, systemd, and Supervisor execution are implemented. Hardware qualification remains roadmap work.",
       "components": [
         "apps/console",
         "apps/orchestrator-demo",
         "crates/orchestrator",
         "crates/workload-docker",
         "crates/workload-lifecycle",
-        "crates/workload-supervisor"
+        "crates/workload-supervisor",
+        "crates/workload-systemd"
       ],
       "integrations": [
         "linux"
@@ -159,11 +160,24 @@
         "libs/orchestrator/README.md",
         "libs/workload-docker/README.md",
         "libs/workload-lifecycle/README.md",
+        "libs/workload-systemd/README.md",
         "apps/orchestrator-demo/README.md"
       ]
     }
   ],
   "integrations": [
+    {
+      "id": "holoscan",
+      "title": "Holoscan",
+      "group": "execution",
+      "summary": "Application runtime, graph execution, and reusable modules for GPU-accelerated sensor processing.",
+      "url": "https://nvidia-holoscan.github.io/",
+      "status": "platform-dependent",
+      "components": [],
+      "evidence": [
+        "apps/project-explorer/docs/overview-mappings.md"
+      ]
+    },
     {
       "id": "linux",
       "title": "Linux",
