@@ -18,7 +18,11 @@ remain open until that backend is changed and tested.
 **Validation**
 
 - [x] Trace both backends against parent source `cb45f12b` and review applicable guide rules.
-- [ ] Check relative links, SVG XML/rendering and whitespace before marking this plan ready.
+- [x] Check relative links, SVG XML/rendering and whitespace; visually inspect the rendered architecture.
+
+Planning validation: source mapping, 16 relative links/anchors, SVG XML, rendered
+layout and whitespace passed. Backend implementation and runtime qualification
+remain pending in the two adoption PRs.
 
 ## Follow-up PR 1: Compose adoption
 
@@ -37,7 +41,7 @@ remain open until that backend is changed and tested.
 - [ ] Extend [`tests/docker.rs`](../../workload-docker/tests/docker.rs) for real Dora readiness, registration, observation, node-stop grace, recording completion and native runtime exit.
 - [ ] Compare descriptor hashes, runtime-visible paths, Dora session identity/artifacts and reports with the current supported dynamic-graph path; reject changed frozen input before Start.
 - [ ] Cancel before Start, after remote acceptance and after UUID receipt; hang/disconnect control. Verify bounded return, retained diagnostics and container teardown/removal rules.
-- [ ] Run concurrent experiments and a subsequent run; verify independent endpoints/UUIDs, retained artifacts and released resources.
+- [ ] Run concurrent experiments, a subsequent run and reset after controller exit; verify independent endpoints/UUIDs, retained artifacts and released resources.
 - [ ] Record Docker exec events for the full run and assert zero Dora control exec launches (`status`, `start`, `list`, `node stop`, `down`).
 - [ ] Run focused locked release-profile checks, then required workspace/hosted CI and ARM64 qualification on the adoption revision; record native Dora results separately.
 
@@ -58,7 +62,7 @@ remain open until that backend is changed and tested.
 - [ ] Extend [`tests/native.rs`](../../workload-systemd/tests/native.rs): `dora_runs_as_units_and_registers_the_graph` and `dora_app_units_resolve_their_native_executable_and_register_the_graph`.
 - [ ] Exercise generated programs and supplied native units with real Dora; compare descriptor/session artifacts, paths, shared-memory access and reports.
 - [ ] Cancel at the registration boundaries and hang/disconnect control; verify bounded cleanup, native unit exit and evidence/removal outcomes.
-- [ ] Run concurrent scopes and a subsequent run; verify independent graph identity, unit ownership and released resources.
+- [ ] Run concurrent scopes, a subsequent run and reset after controller exit; verify independent graph identity, unit ownership and released resources.
 - [ ] Capture transient-unit creation throughout the run and assert zero `dora-cli-*` control units and no generated `cli-*.out` files.
 - [ ] Run focused locked release-profile checks and required workspace/hosted CI/ARM64 qualification; build unprivileged and elevate only native test executables as documented in AGENTS.md.
 

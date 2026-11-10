@@ -48,6 +48,8 @@ Cleanup can reconnect and reconcile an uncertain Start by exact run name. Missin
 or ambiguous identity stays unknown. Preserve that diagnostic, continue native
 teardown and verify actual exit before removal. Mutations are never replayed
 automatically. Force shutdown requires exclusive coordinator/daemon ownership.
+After controller exit, the existing persisted run ownership and reset path recover
+native resources. Socket closure alone never establishes graph or process exit.
 
 ## Adoption boundaries
 
