@@ -3,6 +3,7 @@
 ![Pinned slab recording and reuse](architecture.svg)
 
 One host-RAM slab serves GPU production and direct file I/O.
+
 Created 2026-11-09. [Results and test](implementation.md).
 
 Requires NVIDIA CUDA driver/runtime/NVRTC and Linux direct I/O/io_uring.

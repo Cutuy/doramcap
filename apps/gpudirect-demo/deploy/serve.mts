@@ -28,7 +28,9 @@ async function record(binary: string, directory: string, mode: string): Promise<
   return { mode, throughput: metric('payload_mib_s'), cpu: metric('cpu_pct_one_core'), seconds: metric('wall_s'), line: stdout.trim() };
 }
 
-/** Run fixed, finite CUDA recordings; readiness follows independent byte verification. */
+/** Serve fixed CUDA recordings on 0.0.0.0:port; binary/results paths must be absolute.
+ * Returns server, completion (rejects on recording failure), and idempotent stop().
+ * stop() drains active GPU work; a complete run writes the gallery shutdown marker. */
 export async function start(binary: string, directory: string, port = 8080) {
   if (!isAbsolute(binary) || !isAbsolute(directory)) throw new Error('Binary and results paths must be absolute');
   await access(binary, constants.X_OK);

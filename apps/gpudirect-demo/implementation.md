@@ -41,4 +41,6 @@ a clear speedup conclusion. These are earlier measurements, not rerun for the ap
 
 **Validation**
 
-- [ ] Catalog/build, registration, real GPU container, HTTP results and graceful stop.
+- [x] SPA build/category, strict TypeScript checks and all 10 registry tests.
+- [x] Real GPU wrapper: HTTP downloads, failed startup and cancellation.
+- [x] Gallery container: joined sessions, readiness, expiry, all published outputs and verified cleanup (`12b5205f`).
