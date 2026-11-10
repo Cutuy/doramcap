@@ -6,7 +6,7 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "test": "node --test test-boundaries.mts test-prepare-build.mts test-submit.mts test-run-only.mts test-worker-runtime.mts test-native-worker.mts",
+    "test": "node --test test-boundaries.mts test-prepare-build.mts test-snapshot.mts test-worker-runtime.mts macos-linux/test-*.mts wsl2/test-*.mts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

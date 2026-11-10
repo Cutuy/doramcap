@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 import { PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
-import { createSnapshot } from './submit.mts';
+import { createSnapshot } from './snapshot.mts';
 
 const digest = (path: string) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
@@ -46,7 +46,7 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   put('.sudo-password', 'fixture exclusion');
   put('unrelated.txt', 'excluded');
   put('scripts/ci/unrelated.mts', 'excluded');
-  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.mts', 'worker-process.mts', 'worker-artifacts.mts', 'worker-ssh.mts', 'install-node.mts', 'install-nextest.mts', 'test-worker-runtime.mts', 'run-only-artifacts.txt']) {
+  for (const name of ['wsl2/submit.mts', 'wsl2/worker.mts', 'wsl2/test-worker.mts', 'macos-linux/submit.mts', 'macos-linux/worker.mts', 'macos-linux/artifacts.mts', 'macos-linux/install-nextest.mts', 'macos-linux/test-artifacts.mts', 'macos-linux/test-worker.mts', 'macos-linux/artifacts.txt', 'hash-file.mts', 'worker-process.mts', 'worker-ssh.mts', 'install-node.mts', 'test-worker-runtime.mts']) {
     put(`scripts/ci/${name}`, '// run-only worker fixture');
   }
   // Act
@@ -69,7 +69,7 @@ test('archives preserve source bytes, modes, allowlists, dirty edits, and helper
   assert.equal(digest(join(extracted, RUNNER_PATH)), manifest.runner_sha256);
   assert.equal(existsSync(join(extracted, 'scripts/ci/check-boundaries.mts')), true);
   assert.equal(existsSync(join(extracted, 'scripts/ci/package.json')), true);
-  for (const name of ['submit-run-only.mts', 'test-run-only.mts', 'run-only-worker.mts', 'worker-process.mts', 'worker-artifacts.mts', 'worker-ssh.mts', 'install-node.mts', 'install-nextest.mts', 'test-worker-runtime.mts', 'run-only-artifacts.txt']) {
+  for (const name of ['wsl2/submit.mts', 'wsl2/worker.mts', 'wsl2/test-worker.mts', 'macos-linux/submit.mts', 'macos-linux/worker.mts', 'macos-linux/artifacts.mts', 'macos-linux/install-nextest.mts', 'macos-linux/test-artifacts.mts', 'macos-linux/test-worker.mts', 'macos-linux/artifacts.txt', 'hash-file.mts', 'worker-process.mts', 'worker-ssh.mts', 'install-node.mts', 'test-worker-runtime.mts']) {
     assert.equal(existsSync(join(extracted, 'scripts/ci', name)), true, name);
   }
   for (const excluded of ['.git', '.sudo-password', 'console/private.secret', 'unrelated.txt', 'scripts/ci/unrelated.mts']) {

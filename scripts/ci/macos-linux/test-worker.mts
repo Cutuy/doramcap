@@ -9,12 +9,12 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { test, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { artifactNames } from './worker-artifacts.mts';
-import { validateWorkerPlatform } from './run-only-worker.mts';
-import { runCommand, WorkerInterrupted } from './worker-process.mts';
+import { artifactNames } from './artifacts.mts';
+import { validateWorkerPlatform } from './worker.mts';
+import { runCommand, WorkerInterrupted } from '../worker-process.mts';
 
 const TEST_TIMEOUT_MS = 10_000;
-const workerURL = new URL('./run-only-worker.mts', import.meta.url).href;
+const workerURL = new URL('./worker.mts', import.meta.url).href;
 const workerScript = fileURLToPath(workerURL);
 const executable = (body: string) => `#!${process.execPath}\n${body}\n`;
 

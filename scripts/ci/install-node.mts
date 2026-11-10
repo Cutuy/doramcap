@@ -9,7 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { execaSync } from 'execa';
-import { hashFile } from './worker-artifacts.mts';
+import { hashFile } from './hash-file.mts';
 import { sshOptions, workerHost, workerSsh } from './worker-ssh.mts';
 
 const NODE_DISTRIBUTION = 'https://nodejs.org/dist';

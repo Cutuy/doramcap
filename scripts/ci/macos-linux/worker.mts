@@ -4,9 +4,10 @@ import { accessSync, chmodSync, closeSync, constants, copyFileSync, lstatSync, m
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { hashFile, verifyArtifacts, writeArtifactManifest } from './worker-artifacts.mts';
+import { hashFile } from '../hash-file.mts';
+import { verifyArtifacts, writeArtifactManifest } from './artifacts.mts';
 import { installNextest } from './install-nextest.mts';
-import { runCommand, SIGNAL_STATUS, WorkerInterrupted, type WorkerCommand } from './worker-process.mts';
+import { runCommand, SIGNAL_STATUS, WorkerInterrupted, type WorkerCommand } from '../worker-process.mts';
 
 const CACHE_DIRECTORY = '/tmp/doramcap-ci-run-only';
 const PRIVATE_DIRECTORY_MODE = 0o700, PRIVATE_FILE_MODE = 0o600, EXECUTABLE_MODE = 0o755;
@@ -144,7 +145,7 @@ export async function runWorker(options: WorkerOptions): Promise<number> {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     if (process.argv.length !== 3 || !['build', 'run'].includes(process.argv[2])) {
-      console.error('Usage: run-only-worker.mts build|run (from a staged job directory)'); process.exitCode = 2;
+      console.error('Usage: macos-linux/worker.mts build|run (from a staged job directory)'); process.exitCode = 2;
     } else {
       validateWorkerPlatform();
       process.exitCode = await runWorker({ mode: process.argv[2] as WorkerMode, job: process.cwd() });

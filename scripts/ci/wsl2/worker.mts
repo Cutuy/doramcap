@@ -5,8 +5,8 @@ import { chmodSync, closeSync, lstatSync, mkdirSync, openSync, readFileSync } fr
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PREPARE_PATH } from './prepare-build.mts';
-import { runCommand, SIGNAL_STATUS, WorkerInterrupted } from './worker-process.mts';
+import { PREPARE_PATH } from '../prepare-build.mts';
+import { runCommand, SIGNAL_STATUS, WorkerInterrupted } from '../worker-process.mts';
 
 const RUST_TOOLCHAIN = '1.99.1';
 const LOCK_CHILD_FD = 3, PRIVATE_DIRECTORY_MODE = 0o700, PRIVATE_FILE_MODE = 0o600;
@@ -77,7 +77,7 @@ export async function runNativeWorker(snapshot: string, home = homedir()): Promi
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    assert(process.argv.length === 2, 'Usage: node scripts/ci/run-worker-job.mts (from a staged job directory)');
+    assert(process.argv.length === 2, 'Usage: node scripts/ci/wsl2/worker.mts (from a staged job directory)');
     assert(process.platform === 'linux' && process.arch === 'arm64', 'Native worker requires Linux arm64');
     process.exitCode = await runNativeWorker(process.cwd());
   } catch (error) { console.error((error as Error).message); process.exitCode = 1; }

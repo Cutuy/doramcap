@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { createReadStream, readFileSync } from 'node:fs';
-import { lstat, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { hashFile } from '../hash-file.mts';
 
-export const artifactNames: readonly string[] = Object.freeze(readFileSync(new URL('./run-only-artifacts.txt', import.meta.url), 'utf8').trimEnd().split('\n'));
+export const artifactNames: readonly string[] = Object.freeze(readFileSync(new URL('./artifacts.txt', import.meta.url), 'utf8').trimEnd().split('\n'));
 /** Parse the complete inventory; reject malformed, duplicate, missing or extra entries. */
 export function parseArtifactManifest(manifest: string): Map<string, string> {
   const remaining = new Set(artifactNames), entries = new Map<string, string>(), lines = manifest.split('\n');
@@ -21,15 +21,6 @@ export function parseArtifactManifest(manifest: string): Map<string, string> {
 }
 /** Require the complete artifact inventory before remote verification or extraction. */
 export function verifyArtifactInventory(manifest: string): void { parseArtifactManifest(manifest); }
-/** Stream a regular file through SHA256 with bounded memory and cancellation. */
-export async function hashFile(path: string, signal?: AbortSignal): Promise<string> {
-  signal?.throwIfAborted();
-  assert((await lstat(path)).isFile(), `Artifact must be a regular file: ${path}`);
-  const hash = createHash('sha256');
-  for await (const chunk of createReadStream(path, { signal })) hash.update(chunk);
-  signal?.throwIfAborted();
-  return hash.digest('hex');
-}
 /** Verify all required files before installing tools or replacing caches. */
 export async function verifyArtifacts(directory: string, signal?: AbortSignal): Promise<void> {
   const manifest = parseArtifactManifest(await readFile(join(directory, 'SHA256SUMS'), 'utf8'));

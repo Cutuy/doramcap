@@ -6,11 +6,11 @@ import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, type TestContext } from 'node:test';
-import { PREPARE_PATH, RUNNER_PATH } from './prepare-build.mts';
-import { createSnapshot } from './submit.mts';
+import { PREPARE_PATH, RUNNER_PATH } from '../prepare-build.mts';
+import { createSnapshot } from '../snapshot.mts';
 
 const TEST_TIMEOUT_MS = 10_000;
-const workerURL = new URL('./run-worker-job.mts', import.meta.url).href;
+const workerURL = new URL('./worker.mts', import.meta.url).href;
 const executable = (body: string) => `#!${process.execPath}\n${body}\n`;
 async function fixture(t: TestContext, failure = '', blocked = '') {
   const root = mkdtempSync(join(tmpdir(), 'native worker '));
@@ -23,7 +23,7 @@ async function fixture(t: TestContext, failure = '', blocked = '') {
   put('Cargo.toml', '[workspace]');
   put('apps/system-monitor/tests/validate_native.ts', '// fixture');
   put('libs/resources/cgroup-bpf/examples/native_allocations.rs', '// fixture');
-  for (const path of [PREPARE_PATH, RUNNER_PATH, 'scripts/ci/worker-process.mts']) put(path, readFileSync(new URL('./' + path.split('/').at(-1), import.meta.url), 'utf8'));
+  for (const path of [PREPARE_PATH, RUNNER_PATH, 'scripts/ci/worker-process.mts']) put(path, readFileSync(new URL('../' + path.slice('scripts/ci/'.length), import.meta.url), 'utf8'));
   const record = `require('node:fs').appendFileSync(${JSON.stringify(trace)}, JSON.stringify({name, args:process.argv.slice(2), cwd:process.cwd(), target:process.env.CARGO_TARGET_DIR, debug:process.env.CARGO_PROFILE_DEV_DEBUG, toolchain:process.env.RUSTUP_TOOLCHAIN, clang:process.env.CLANG}) + '\\n');`;
   const binary = (name: string) => executable(`const name=${JSON.stringify(name)}; ${record}`);
   const target = join(home, 'target');

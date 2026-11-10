@@ -7,9 +7,9 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { execaSync } from 'execa';
-import { createSnapshot } from './submit.mts';
-import { verifyArtifactInventory } from './worker-artifacts.mts';
-import { sshOptions, workerHost, workerSsh as ssh } from './worker-ssh.mts';
+import { createSnapshot } from '../snapshot.mts';
+import { verifyArtifactInventory } from './artifacts.mts';
+import { sshOptions, workerHost, workerSsh as ssh } from '../worker-ssh.mts';
 
 /** Require the exact queued build to succeed before downloading any artifacts. */
 export function successfulBuild(status: string, id: string): void {
@@ -32,7 +32,7 @@ export async function submitRunOnly(source: string, builder: string, runner: str
     const { checksum } = await createSnapshot(source, archive);
     ssh(builder, `mkdir -p ${job}/source`);
     execaSync('scp', [...sshOptions, archive, `${builder}:${job}/source/source.tar.gz`], { stdio: 'inherit' });
-    const id = ssh(builder, `cd ${job}/source && echo '${checksum}  source.tar.gz' | sha256sum -c - >&2 && tar -xzpf source.tar.gz && cd .. && pueue add --print-task-id --label doramcap-run-only-build -- "$HOME/.local/bin/node" source/scripts/ci/run-only-worker.mts build`).trim();
+    const id = ssh(builder, `cd ${job}/source && echo '${checksum}  source.tar.gz' | sha256sum -c - >&2 && tar -xzpf source.tar.gz && cd .. && pueue add --print-task-id --label doramcap-run-only-build -- "$HOME/.local/bin/node" source/scripts/ci/macos-linux/worker.mts build`).trim();
     assert(/^\d+$/.test(id), `Invalid Pueue task ID: ${id}`);
     console.log(`Builder: ${builder}:${job} (Pueue ${id})`);
     console.log(`Runner: ${runner}:${job}`);
@@ -43,7 +43,7 @@ export async function submitRunOnly(source: string, builder: string, runner: str
     ssh(runner, `mkdir -p ${job}/artifacts ${job}/source`);
     execaSync('scp', [...sshOptions, '-3', '-r', `${builder}:${job}/artifacts/.`, `${runner}:${job}/artifacts/`], { stdio: 'inherit' });
     verifyArtifactInventory(ssh(runner, `cat ${job}/artifacts/SHA256SUMS`));
-    ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && { "$HOME/.local/bin/node" source/scripts/ci/run-only-worker.mts run; worker_result=$?; test ! -f results.tsv || cat results.tsv; echo "Runner log: $PWD/run.log"; exit "$worker_result"; }`, true);
+    ssh(runner, `cd ${job}/artifacts && sha256sum -c SHA256SUMS && tar -xzpf source.tar.gz -C ../source && cd .. && { "$HOME/.local/bin/node" source/scripts/ci/macos-linux/worker.mts run; worker_result=$?; test ! -f results.tsv || cat results.tsv; echo "Runner log: $PWD/run.log"; exit "$worker_result"; }`, true);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

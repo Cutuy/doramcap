@@ -7,7 +7,7 @@ import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-export const RUNNER_PATH = 'scripts/ci/run-worker-job.mts';
+export const RUNNER_PATH = 'scripts/ci/wsl2/worker.mts';
 export const PREPARE_PATH = 'scripts/ci/prepare-build.mts';
 export type SnapshotManifest = { head?: string; dirty?: boolean; files_sha256: Record<string, string>;
   files_mode: Record<string, number>; runner_sha256: string; prepare_sha256: string };

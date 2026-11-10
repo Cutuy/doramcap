@@ -6,8 +6,8 @@ import { createWriteStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { hashFile } from './worker-artifacts.mts';
-import type { WorkerCommand } from './worker-process.mts';
+import { hashFile } from '../hash-file.mts';
+import type { WorkerCommand } from '../worker-process.mts';
 
 const VERSION = '0.9.151';
 const ARCHIVE_SHA256 = '3e35e8f6913af92558ba09d7155f74e35dd1f0024ef3cd891637433ae4eacbdd';
