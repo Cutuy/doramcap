@@ -51,37 +51,18 @@ npm --prefix scripts/ci run typecheck
 
 ## Run-only ARM64 worker
 
-`mac-mini-ubuntu24@100.64.0.22` is a Mac mini Linux container with a 1 GiB
-memory limit. WSL `.20` builds the Rust tests natively; `.22` runs nextest
-archives serially. The submitter streams source and binaries over SSH; it needs
-local disk space only for the source snapshot.
+WSL `.20` builds ARM64 test archives; `mac-mini-ubuntu24@100.64.0.22` runs
+them serially with 1 GiB RAM and 64 MiB soft/hard memlock.
 
 ```sh
 npm --prefix scripts/ci ci --ignore-scripts --no-audit --no-fund
 node scripts/ci/submit-run-only.mts --source /absolute/path/to/checkout
 ```
 
-Both accounts need key-based SSH access from the submitter. Use `--build-host`
-or `--run-host` to select an equivalent ARM64 worker. The command waits for its
-Pueue build and runner completion, returning failure for either stage.
-The pinned nextest executable installs into each account's `~/.local/bin`.
-The builder supplies its Docker CLI and `/usr/libexec/docker/cli-plugins/docker-compose`;
-the runner installs them in `~/.local/bin` and `~/.docker/cli-plugins`.
-The runner uses a 64 MiB soft/hard memlock limit for registered-I/O tests.
-No compiler, Docker daemon or queue daemon is installed on `.22`.
-
-The command prints both job directories. On WSL, inspect the returned Pueue ID.
-The command prints per-suite statuses; full logs stay on the runner.
-On `.22`, read `~/jobs/JOB/run.log`, `results.tsv` and `exit-code`; rerun with
-`cd ~/jobs/JOB && bash source/scripts/ci/run-only-worker.sh run`.
-Keep SSH connected during execution. A missing exit-code means completion is
-unconfirmed. Source/artifacts remain in each job directory, with replaceable
-build/execution caches under `/tmp/doramcap-ci-run-only`. Remove only idle jobs
-and caches; no retention cleanup runs automatically.
-
-Coverage: default/all-feature workspace unit and integration tests, plus storage
-without default features. Privileged BPF/cgroup tests, doctests, linting and Node
-checks stay on the existing workers. See the [architecture and validation](docs/110826-run-only-worker.md).
+Requires SSH access to both hosts; keep the command connected until completion.
+It prints job directories containing `run.log`, `results.tsv` and `exit-code`.
+Jobs persist until manually removed. Native BPF checks stay on WSL.
+See [architecture and validation](docs/110826-run-only-worker.md).
 
 ## Provisioning
 
