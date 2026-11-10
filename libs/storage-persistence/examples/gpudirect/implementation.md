@@ -1,141 +1,50 @@
-# CUDA slab example implementation
+# CUDA slab details and results
 
-Created 2026-11-09. [Architecture](README.md).
+Created 2026-11-09. [End-to-end flow](README.md).
+Source: [support.rs](support.rs); hardware tests: [tests.rs](tests.rs).
 
-## M1 — Hardware example and test
+The CPU handles MCAP framing, GPU readiness, submission and completion. Mapped
+mode lets the GPU write host RAM directly; staged mode adds a device-to-host
+copy on the same non-default stream. A slab becomes writable again only after
+its last I/O reference is released. If GPU synchronization fails, the example
+retains the allocation rather than freeing memory the GPU may still access.
+
+Payload size must fit `u32`; payload, message count and slab count must be nonzero.
+The writer owns its registration budget and segmentation; `prepare_slabs`
+reports exhaustion. CUDA registration lasts for the pool's lifetime.
+
+## Hardware checks
 
 **Work items**
 
-- [x] Reuse workspace `cudarc` as a development dependency; keep production dependencies unchanged.
-- [x] Register slab allocations once and retain their owner through unregister.
-- [x] Use a non-default stream and a blocking readiness event before sealing.
-- [x] Compare mapped output, staged device output and pre-produced-block I/O.
-- [x] Report wall time, payload/file throughput, process user/system CPU and GPU time.
-- [x] Verify every message and payload byte with the independent `mcap` reader.
+- [x] Register reusable slabs with CUDA and io_uring; preserve completion ordering.
 
 **Validation**
 
-- [x] Release compilation and focused all-feature Clippy/format/boundary checks.
-- [x] Hardware roundtrip: page boundaries, arbitrary payload sizes and slab reuse.
-- [x] Repeat NVMe measurements; record hardware, commands and timing scope.
-- [x] ARM64 worker checks; GPU/Thor checks reported separately.
-- [x] Scanner review; no source findings or policy reconciliation changes.
-- [x] Final PR validation record.
-
-## Commands
+- [x] All 14 cases pass on RTX 5070 Ti: exact readback and slab reuse, including mapped/staged 64-MiB payloads. The large-slab regression failed before the capacity fix.
+- [x] Locked release compilation, focused Clippy, formatting and diff checks pass (code `188a0413`).
 
 ```sh
-cargo build --release --locked -p storage-persistence --example cuda_mcap
-cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture
-target/release/examples/cuda_mcap /absolute/path/output.mcap mapped 1048576 2048 4
+cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture --test-threads=1
 ```
 
-Modes: `mapped`, `staged`, `io-only`. Output creation is exclusive. Slabs and
-messages must be nonzero; payload size is limited by the kernel's `u32` launch
-index. The writer's default registration budget applies; `prepare_slabs` reports
-registration exhaustion using the writer's actual allocation ranges.
-The example requires CUDA driver/runtime/NVRTC libraries and a Linux filesystem
-supporting direct I/O and io_uring. Normal CPU-only CI leaves the hardware test
-ignored. Build unprivileged; use test-executable elevation only when required.
+Earlier ARM64 CPU/native worker checks passed (job 639); CUDA tests were ignored.
+iGPU/Thor hardware remains unqualified. This documentation update changes no code.
 
-## Results
+## Benchmark
 
-Measured code revision: `798926cf73688514d2f5c0e4dfa16cf64edf821a`.
-Host: Intel Core i7-12700KF, Linux 7.0.0-38-generic, RTX 5070 Ti 16 GB,
-driver 595.104.02. Files: ext4 on the Samsung 970 EVO 250 GB root NVMe,
-about 91% full before testing. Tests ran unprivileged.
+RTX 5070 Ti, i7-12700KF, Samsung 970 EVO 250 GB, ext4 about 91% full.
+Code `798926cf`; median of three 1-GiB recordings per mode, 8-MiB messages,
+four slabs. All 27 recordings across the benchmark's payload sizes passed readback.
 
-All 12 hardware roundtrips passed: mapped, staged and storage-only modes with
-1, 4,065, 65,543 and 1,048,576-byte payloads, 19 messages and three slabs.
-Every decoded payload byte, sequence, topic and message count matched; all
-slabs returned before CUDA unregister. The non-default stream assertion passed.
+| Mode | MiB/s | CPU seconds/GiB | CPU, one core |
+|---|---:|---:|---:|
+| Mapped slab | 108.228 | 0.495 | 5.351% |
+| Device memory → slab | 98.763 | 0.510 | 4.727% |
+| Pre-produced block I/O | 108.997 | 0.588 | 6.260% |
 
-Benchmark: four slabs; three repetitions per mode; rotate mode order each
-repetition. Each 64-KiB run records 4,096 messages (256 MiB); each 1-MiB run
-records 1,024 messages (1 GiB); each 8-MiB run records 128 messages (1 GiB).
-All 27 recordings passed independent full-payload readback. Temporary benchmark
-files were removed after validation.
-
-8-MiB messages, median of three repetitions:
-
-| Mode | Payload MiB/s | Range MiB/s | CPU seconds/GiB | CPU, one core |
-|---|---:|---:|---:|---:|
-| GPU writes mapped slab | 108.228 | 98.569–127.768 | 0.495 | 5.351% |
-| GPU device memory → async copy → slab | 98.763 | 94.864–101.890 | 0.510 | 4.727% |
-| Pre-produced block → storage | 108.997 | 108.079–112.905 | 0.588 | 6.260% |
-
-The throughput interval includes production, the existing CPU payload clearing,
-slab submission, drain and final sync. CPU is process user+system time, normalized
-to one core; columns are independent medians. CUDA-event intervals include the
-kernel and, for staged output, the copy. Setup and readback are excluded.
-
-The initial small recordings reached about 1.3 GiB/s. Later 1-GiB recordings
-slowed to roughly 100 MiB/s in all modes, including storage-only output. This
-variation prevents attributing the throughput differences to GPU mapping. The
-experiment establishes correct GPU-produced slab recording without an explicit
-copy in mapped mode; it does not establish a clear performance advantage on this
-storage setup. No device firmware/cache-state cause was independently diagnosed.
-
-Validation:
-
-- `cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture`: passed.
-- `cargo test --release --locked -p storage-persistence --all-features`: passed; hardware tests remain opt-in, and the existing 100-MiB test remained ignored.
-- `cargo clippy --release --locked -p storage-persistence --all-targets --all-features --no-deps -- -D warnings`: passed.
-- Formatting, diff checks and library boundaries: passed.
-- GitHub Rust, Node and MCAP jobs: passed on x86_64 and ARM64 for the measured code revision.
-- ARM64 WSL2 Pueue **639: Success**, complete log retrieved and checked; default/all-feature Rust and native worker checks passed. Snapshot: `/home/doramcap-ci/jobs/ff2ed9fbea8d467e8840258cf7d572ec`.
-- ARM64 CUDA tests were ignored. No iGPU/Thor hardware qualification, GPU-fault injection or low-rate pacing benchmark was performed.
-
-Reproduce one 8-MiB run with the release executable:
-
-```sh
-target/release/examples/cuda_mcap /absolute/path/mapped.mcap mapped 8388608 128 4
-target/release/examples/cuda_mcap /absolute/path/staged.mcap staged 8388608 128 4
-target/release/examples/cuda_mcap /absolute/path/io.mcap io-only 8388608 128 4
-```
-
-## M2 — Example directory consolidation · 2026-11-10
-
-**Work items**
-
-- [x] Group source, hardware tests, design, SVG and evidence in this directory.
-- [x] Preserve the `cuda_mcap` example/test commands with explicit Cargo paths.
-- [x] Remove the raw CSV and its links; retain the benchmark summary above.
-
-**Validation**
-
-- [x] Cargo metadata resolves both relocated targets; release compilation check passes.
-- [x] Shared CUDA source remains byte-for-byte unchanged; local documentation links resolve.
-- [x] Formatting and diff checks pass.
-- [x] Execute the relocated CUDA hardware test: all 12 cases passed on the RTX 5070 Ti.
-
-The relocation preserves the measured code and Cargo target names. This follow-up
-reran the local hardware test and focused compilation checks. The benchmark and
-ARM64 worker results above remain the earlier behavior qualification.
-
-## M3 — Large-slab registration capacity · 2026-11-10
-
-**Work items**
-
-- [x] Reproduce review finding `discussion_r4522431581`: four 64-MiB payload slabs fail with `InvalidInput` at writer creation.
-- [x] Remove the example's page-count capacity override; use the writer's existing registration budget.
-- [x] Add mapped/staged hardware regression cases with four slabs and five messages, including reuse and exact independent readback.
-
-**Validation**
-
-- [x] New regression failed before the fix.
-- [x] Locked release compilation and focused Clippy/format/diff checks pass.
-- [x] All 14 hardware cases pass on the RTX 5070 Ti: the existing 12 cases and both new 64-MiB cases.
-
-The old estimate confused the 4-KiB alignment with registration units. Each
-64-MiB payload needs a 64-MiB-plus-padding slab, so four slabs requested 65,544
-entries and exceeded the writer's 65,535-entry limit. Production registration
-uses ranges up to 1 GiB. The writer remains responsible for this internal
-segmentation and reports its actual budget exhaustion.
-
-Validated code revision: `188a04133cf548f5ce210e04506559705dbb8814`. The
-serial release hardware test passed both test functions; each new mode recorded
-five messages through four slabs and verified all payload bytes and slab return.
-Focused Clippy covered the example and hardware test with warnings denied.
-The benchmark and ARM64 worker results above remain historical; neither was
-rerun for this capacity fix.
+Timing includes production, CPU payload clearing, I/O drain and final sync;
+setup and readback are excluded. CPU is process user+system time, not total
+machine CPU. Storage throughput varied substantially, so these results establish
+correct recording without a clear performance win. The capacity fix and this
+documentation update did not rerun the benchmark.
