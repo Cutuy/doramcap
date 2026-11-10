@@ -59,11 +59,20 @@ Worker snapshot:
 - [x] Use one backend-owned `SystemAppsCgroups` step with protobuf `Create`/`Remove` actions.
 - [x] Create after preparation/review; reuse removal for recovery and final cleanup.
 - [x] Share ownership and kernel identity across failed or cancelled step invocations.
+- [x] Include the shared-memory holder in Compose placement and the user-start gate.
 
 **Validation**
-- [ ] Verify real Compose/systemd events, ordering, dependencies and identity output.
-- [ ] Verify cancellation and failed identity persistence retain cleanup ownership.
-- [ ] Run focused locked release tests, Clippy, formatting and boundaries; update PR #252.
+- [x] Verify real Compose/systemd events, ordering, dependencies and identity output.
+- [x] Verify cancellation and failed identity persistence retain cleanup ownership.
+- [x] Run focused locked release tests, Clippy, formatting and boundaries; update PR #252.
 
-The owner approved this ordering and requested updates to the existing PR branch.
-Focused validation is in progress. Native ARM64 workflow tests remain deferred.
+Evidence: focused locked release libraries, all-target Clippy, formatting and
+boundaries pass on code revision `6e670efe`. Local native tests verify the shared
+step's events/dependencies, accounting, cancellation, failed identity persistence,
+restart, recovery and concurrent repositories. Expanded Compose cases verify
+BLOCKED-mode holder placement and deliberate holder misplacement preventing user
+startup. Logs: `/tmp/system-app-cgroup-validation`.
+
+The owner approved this ordering and reuse of the existing PR branch. Latest cloud
+results are on [PR #252's checks](https://github.com/Cutuy/doramcap/pull/252/checks).
+Native ARM64 workflow tests remain deferred by the owner.
