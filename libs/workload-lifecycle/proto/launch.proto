@@ -95,7 +95,8 @@ message CleanupRecord {
 
 // Kernel identity of one experiment's system-app accounting boundary.
 message SystemAppCgroup {
-  string slice = 1;
+  reserved 1;
+  reserved "slice";
   // Absolute path in the host's cgroup v2 filesystem.
   string path = 2;
   uint64 id = 3;
@@ -178,4 +179,18 @@ message RecordingOutput {
   string stream = 3;
   // The recording holds CPU accounting.
   bool cpu = 4;
+}
+
+// One observed operation on an experiment's system-app accounting boundary.
+message SystemAppsCgroupsInput {
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    CREATE = 1;
+    REMOVE = 2;
+  }
+  Action action = 1;
+  string artifacts = 2;
+  uint64 readiness_seconds = 3;
+  // Host PIDs obtained from the launcher; all must be descendants before admission.
+  repeated uint32 pids = 4;
 }

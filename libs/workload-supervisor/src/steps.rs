@@ -81,6 +81,16 @@ pub(crate) fn validate(run: &MonitorRun) -> Result<()> {
     {
         return Err("require canonical delegated cgroup v2 parent below /sys/fs/cgroup".into());
     }
+    if !std::fs::read_to_string(parent.join("cgroup.subtree_control"))
+        .map_err(error)?
+        .split_whitespace()
+        .any(|controller| controller == "memory")
+    {
+        return Err(format!(
+            "{}: delegated parent must enable memory accounting for child groups",
+            parent.display()
+        ));
+    }
     if parent.join(&run.id).exists() {
         return Err("owned cgroup exists; unfinished ownership blocks admission".into());
     }
@@ -462,27 +472,38 @@ impl Quiesce {
     }
 }
 
-pub struct Remove {
-    pub(crate) state: State,
+/// Adopt and remove the filesystem group already owned by Supervisor's durable ledger.
+pub(crate) struct CgroupBackend {
+    pub state: State,
 }
-impl Step for Remove {
-    type Input = ();
-    type Output = bool;
-    async fn run(&mut self, _: ()) -> orchestrator::Result<bool> {
-        let mut state = self.state.borrow_mut();
-        let Some(runtime) = state.as_mut() else {
-            return Ok(true);
-        };
-        if !runtime.daemon_reaped
-            || runtime.child.is_some()
-            || !ownership::empty(&runtime.ledger).map_err(step_error)?
-        {
-            return Err(step_error("daemon not reaped or cgroup populated"));
-        }
-        std::fs::remove_dir(&runtime.ledger.cgroup).map_err(step_error)?;
-        runtime.ledger.cleanup_verified = true;
-        ownership::save(&runtime.ledger).map_err(step_error)?;
-        Ok(true)
+impl workload_lifecycle::cgroup::Backend for CgroupBackend {
+    fn create(&self) -> futures_util::future::LocalBoxFuture<'_, Result<std::path::PathBuf>> {
+        Box::pin(async {
+            let state = self.state.borrow();
+            let runtime = state.as_ref().ok_or("Supervisor cgroup ownership absent")?;
+            ownership::verify(&runtime.ledger)?;
+            Ok(std::path::PathBuf::from(&runtime.ledger.cgroup))
+        })
+    }
+    fn remove(
+        &self,
+    ) -> futures_util::future::LocalBoxFuture<'_, Result<workload_lifecycle::cgroup::Removal>> {
+        Box::pin(async {
+            let mut state = self.state.borrow_mut();
+            let Some(runtime) = state.as_mut() else {
+                return Ok(workload_lifecycle::cgroup::Removal::Removed);
+            };
+            if !runtime.daemon_reaped
+                || runtime.child.is_some()
+                || !ownership::empty(&runtime.ledger)?
+            {
+                return Err("daemon not reaped or cgroup populated".into());
+            }
+            std::fs::remove_dir(&runtime.ledger.cgroup).map_err(error)?;
+            runtime.ledger.cleanup_verified = true;
+            ownership::save(&runtime.ledger)?;
+            Ok(workload_lifecycle::cgroup::Removal::Removed)
+        })
     }
 }
 
@@ -499,7 +520,6 @@ pub(crate) fn register(executor: &mut LocalExecutor, state: State) {
     register!(Launch);
     register!(Inspect);
     register!(Quiesce);
-    register!(Remove);
     executor.register::<workload_lifecycle::recording::WaitForRecordings>(|| {
         workload_lifecycle::recording::WaitForRecordings
     });

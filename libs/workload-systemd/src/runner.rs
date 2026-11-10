@@ -86,10 +86,12 @@ impl SystemdRunner {
         let _lock = lock_scope(&scope)?;
         self.blocked = true;
         let manager = Rc::new(Manager::connect().await?);
-        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
+        let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
+            crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+        )));
         let executor = Rc::new_cyclic(|weak| {
             let mut executor = LocalExecutor::default();
-            crate::cgroup::register(&mut executor, system_apps);
+            workload_lifecycle::cgroup::register(&mut executor, system_apps);
             crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
             executor
         });
@@ -160,9 +162,11 @@ impl SystemdRunner {
         executor.register::<crate::DiscardRun>(|| crate::DiscardRun);
         executor.register::<WaitForRecordings>(|| WaitForRecordings);
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
-        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
+        let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
+            crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+        )));
         let executor = Rc::new_cyclic(|weak| {
-            crate::cgroup::register(&mut executor, system_apps.clone());
+            workload_lifecycle::cgroup::register(&mut executor, system_apps.clone());
             crate::runtime::register(&mut executor, manager.clone(), scope.clone(), weak.clone());
             executor
         });

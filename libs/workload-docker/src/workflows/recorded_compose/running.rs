@@ -12,7 +12,7 @@ use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
 /// Prepared Compose resources, from the first start attempt until removal.
 pub(super) struct ComposeRunning {
-    pub system_apps: workload_systemd::cgroup::SystemAppSlice,
+    pub system_apps: Option<Rc<workload_lifecycle::cgroup::Group>>,
     pub adapter: Rc<DockerAdapter>,
     pub executor: Rc<LocalExecutor>,
     pub spec: ComposeRun,
@@ -290,12 +290,12 @@ impl ComposeRunning {
                 remaining: vec!["preserved: shutdown or filesystem evidence incomplete".into()],
                 ..Default::default()
             });
-        let cgroup_removed = if permit.remove && cleanup.verified {
+        let cgroup_removed = if permit.remove && cleanup.verified && self.system_apps.is_some() {
             match self
                 .executor
-                .run::<workload_systemd::cgroup::SystemAppsCgroups>(
-                    Input::new(workload_systemd::SystemAppsCgroupsInput {
-                        action: workload_systemd::cgroup::Action::Remove.into(),
+                .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                    Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                        action: workload_lifecycle::cgroup::Action::Remove.into(),
                         ..Default::default()
                     })
                     .after(removed.as_ref().expect("verified Compose removal")),
@@ -313,7 +313,7 @@ impl ComposeRunning {
                 }
             }
         } else {
-            false
+            self.system_apps.is_none() && permit.remove && cleanup.verified
         };
         let finalized = stopped.finalized.into_value();
         let boundary_clean = cgroup_removed

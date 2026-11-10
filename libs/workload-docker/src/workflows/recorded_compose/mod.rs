@@ -1,4 +1,5 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
+mod cgroup;
 mod execution;
 pub mod finalization;
 pub mod observation;
@@ -208,38 +209,17 @@ impl ComposeRunner {
             .machine
             .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
-        let info = tokio::time::timeout(
-            std::time::Duration::from_secs(spec.readiness_seconds),
-            self.adapter.docker.info(),
-        )
-        .await
-        .map_err(|_| invalid("Docker cgroup preflight deadline exceeded"))?
-        .map_err(|e| invalid(format!("Docker cgroup preflight: {e}")))?;
-        if info.cgroup_version != Some(bollard::models::SystemInfoCgroupVersionEnum::_2)
-            || info.cgroup_driver != Some(bollard::models::SystemInfoCgroupDriverEnum::SYSTEMD)
-        {
-            return Err(invalid(
-                "system-app cgroup requires Docker cgroup v2 with the systemd driver",
-            ));
-        }
-        self.blocked = true;
-        let system_apps = workload_systemd::cgroup::SystemAppSlice::connect(&spec.repository_root)
-            .await
-            .map_err(invalid)?;
+        let system_apps = prepared
+            .value()
+            .system_cgroup
+            .clone()
+            .map(cgroup::DockerCgroup::group);
         let mut executor = Rc::try_unwrap(executor)
             .map_err(|_| invalid("executor still running during cgroup binding"))?;
-        workload_systemd::cgroup::register(&mut executor, system_apps.clone());
+        if let Some(group) = &system_apps {
+            workload_lifecycle::cgroup::register(&mut executor, group.clone());
+        }
         let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
-        executor
-            .run::<workload_systemd::cgroup::SystemAppsCgroups>(
-                Input::new(workload_systemd::SystemAppsCgroupsInput {
-                    action: workload_systemd::cgroup::Action::Remove.into(),
-                    ..Default::default()
-                })
-                .after(&prepared),
-            )
-            .await
-            .map_err(step_error)?;
         self.blocked = false;
         if spec.filesystem.is_some() {
             overlay::verify_namespace(self.adapter.socket_path()).await?;

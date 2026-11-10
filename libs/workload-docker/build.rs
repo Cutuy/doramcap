@@ -38,6 +38,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
     // The Compose plan reuses the generated Compose input types.
     prost_build::Config::new()
+        .type_attribute(
+            ".doramcap.compose_plan.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .extern_path(".doramcap.compose.v1", "crate::compose")
         .compile_protos(&["proto/compose_plan.proto"], &["proto"])?;

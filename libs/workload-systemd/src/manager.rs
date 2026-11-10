@@ -710,9 +710,11 @@ mod environment_tests {
         let manager = std::rc::Rc::new(manager);
         let executor = std::rc::Rc::new_cyclic(|weak| {
             let mut executor = orchestrator::LocalExecutor::default();
-            crate::cgroup::register(
+            workload_lifecycle::cgroup::register(
                 &mut executor,
-                crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+                std::rc::Rc::new(workload_lifecycle::cgroup::Group::new(std::rc::Rc::new(
+                    crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+                ))),
             );
             crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
             executor

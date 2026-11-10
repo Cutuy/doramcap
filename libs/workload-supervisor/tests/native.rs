@@ -24,6 +24,7 @@ impl Sandbox {
         let parent = Path::new("/sys/fs/cgroup").join(&name);
         std::fs::create_dir(&dir).unwrap();
         std::fs::create_dir(&parent).expect("requires delegated cgroup v2 access");
+        std::fs::write(parent.join("cgroup.subtree_control"), "+memory").unwrap();
         Self { dir, parent }
     }
     fn spec(&self, id: &str, binary: &str) -> MonitorRun {

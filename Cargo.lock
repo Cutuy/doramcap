@@ -6435,7 +6435,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "workload-lifecycle",
- "workload-systemd",
 ]
 
 [[package]]
@@ -6448,6 +6447,7 @@ dependencies = [
  "orchestrator",
  "prost",
  "prost-build",
+ "prost-reflect",
  "protoc-bin-vendored",
  "serde",
  "tokio",
@@ -6457,6 +6457,7 @@ dependencies = [
 name = "workload-supervisor"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "hex",
  "libc",
  "mcap",

@@ -4,8 +4,9 @@ use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
     fs,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::{Child, Command, Output, Stdio},
     rc::Rc,
     time::Duration,
 };
@@ -13,12 +14,12 @@ use workload_docker::{
     compose::{ComposeProject, DockerAdapter, RemoveCompose, StartCompose},
     workflows::recorded_compose::{ComposeRun, ComposeRunner, preparation::PrepareRun},
 };
+use workload_lifecycle::cgroup::{
+    self, Action, CGROUP_ROOT, IDENTITY_FILE, SystemAppsCgroups, SystemAppsCgroupsInput,
+};
 use workload_lifecycle::{
     launch::{HostShmAccess, SystemAppCgroup},
     recording::WaitForRecordings,
-};
-use workload_systemd::cgroup::{
-    Action, CGROUP_ROOT, IDENTITY_FILE, SystemAppSlice, SystemAppsCgroups, SystemAppsCgroupsInput,
 };
 
 const RUN_LIMIT: Duration = Duration::from_secs(30);
@@ -33,16 +34,19 @@ struct Fixture {
     socket: String,
     image: String,
     prefix: String,
-    slice: String,
+    parents: RefCell<Vec<SystemAppCgroup>>,
 }
 impl Fixture {
     fn new() -> Self {
+        Self::on_socket("/var/run/docker.sock")
+    }
+    fn on_socket(socket: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let prefix = format!("cgroup-native-{}", std::process::id());
         let fixture = Self {
-            slice: SystemAppSlice::compose_name(directory.path()).unwrap(),
+            parents: RefCell::new(Vec::new()),
             directory,
-            socket: "/var/run/docker.sock".into(),
+            socket: socket.into(),
             image: format!("doramcap-cgroup-test:{}", std::process::id()),
             prefix,
         };
@@ -140,14 +144,16 @@ impl Fixture {
             include_bytes!(concat!(env!("OUT_DIR"), "/workflow_config.bin")).as_slice(),
         )
         .unwrap();
-        prost_reflect::DynamicMessage::parse_text_format(
+        let identity: SystemAppCgroup = prost_reflect::DynamicMessage::parse_text_format(
             pool.get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
                 .unwrap(),
             &fs::read_to_string(self.spec(index).artifacts.join(IDENTITY_FILE)).unwrap(),
         )
         .unwrap()
         .transcode_to()
-        .unwrap()
+        .unwrap();
+        self.parents.borrow_mut().push(identity.clone());
+        identity
     }
 }
 impl Drop for Fixture {
@@ -168,13 +174,23 @@ impl Drop for Fixture {
                 }
             }
         }
-        let parent = format!(
-            "{}.slice",
-            self.slice.strip_suffix("-system.slice").unwrap()
-        );
-        let _ = Command::new("systemctl")
-            .args(["stop", &self.slice, &parent])
-            .output();
+        for identity in self.parents.borrow().iter() {
+            if cgroup::verify_identity(identity).is_err()
+                || cgroup::verify_empty(Path::new(&identity.path)).is_err()
+            {
+                continue;
+            }
+            let path = Path::new(&identity.path);
+            let name = path.file_name().unwrap().to_str().unwrap();
+            if name.ends_with(".slice") {
+                let parent = format!("{}.slice", name.strip_suffix("-system.slice").unwrap());
+                let _ = Command::new("systemctl")
+                    .args(["stop", name, &parent])
+                    .output();
+            } else {
+                let _ = fs::remove_dir(path);
+            }
+        }
         self.docker(&["image", "rm", &self.image]);
     }
 }
@@ -195,10 +211,13 @@ fn membership(pid: i64) -> PathBuf {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, local Docker with Compose, systemd and cgroup v2"]
+#[ignore = "requires root, local Docker with Compose and cgroup v2"]
 async fn system_app_placement_survives_controller_crash_and_cleans_up() {
     // Arrange
-    let fixture = Fixture::new();
+    placement_and_recovery(Fixture::new()).await;
+}
+
+async fn placement_and_recovery(fixture: Fixture) {
     let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
     let mut previous = None;
     for index in 0..2 {
@@ -228,6 +247,25 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
         let identity = fixture.identity(index);
         // Assert: independent kernel membership agrees with the recorded boundary.
         assert!(state.ready().unwrap());
+        let memory: u64 = fs::read_to_string(Path::new(&identity.path).join("memory.current"))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let cpu: u64 = fs::read_to_string(Path::new(&identity.path).join("cpu.stat"))
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix("usage_usec "))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(memory > 0 && cpu > 0);
+        assert!(
+            fs::read_to_string(Path::new(&identity.path).join("cgroup.procs"))
+                .unwrap()
+                .trim()
+                .is_empty()
+        );
         let system = state
             .containers
             .iter()
@@ -291,7 +329,20 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
                         && event.state == State::Started
                 })
                 .unwrap();
-            assert!(created_index < launched_index);
+            let user_index = events
+                .iter()
+                .position(|event| {
+                    event.invocation.step
+                        == StartCompose::ID.unwrap_or(std::any::type_name::<StartCompose>())
+                        && event.state == State::Started
+                        && event.payload.as_ref().is_some_and(|value| {
+                            value["services"].as_array().is_some_and(|services| {
+                                services.iter().any(|service| service == "user")
+                            })
+                        })
+                })
+                .unwrap();
+            assert!(launched_index < created_index && created_index < user_index);
             let output: Option<SystemAppCgroup> =
                 serde_json::from_value(events[created_index].payload.clone().unwrap()).unwrap();
             assert_eq!(output, Some(identity.clone()));
@@ -324,7 +375,7 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
             // Assert
             assert!(report.boundary_clean, "{report:#?}");
             assert!(report.execution_error.is_none(), "{report:#?}");
-            assert!(!Path::new(&identity.path).exists());
+            cgroup::verify_empty(Path::new(&identity.path)).unwrap();
             assert!(fixture.spec(index).artifacts.join(IDENTITY_FILE).is_file());
             let events = events.borrow();
             let actions: Vec<_> = events
@@ -341,11 +392,7 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
                 .collect();
             assert_eq!(
                 actions,
-                [
-                    i32::from(Action::Remove),
-                    i32::from(Action::Create),
-                    i32::from(Action::Remove)
-                ]
+                [i32::from(Action::Create), i32::from(Action::Remove)]
             );
             let removed = events
                 .iter()
@@ -375,11 +422,15 @@ async fn system_app_placement_survives_controller_crash_and_cleans_up() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires root, local Docker with Compose, systemd and cgroup v2"]
+#[ignore = "requires root, local Docker with Compose and cgroup v2"]
 async fn misplaced_system_app_prevents_user_start() {
+    misplaced_on_socket("/var/run/docker.sock").await;
+}
+
+async fn misplaced_on_socket(socket: &str) {
     for service in ["system", SHM_SERVICE] {
         // Arrange
-        let fixture = Fixture::new();
+        let fixture = Fixture::on_socket(socket);
         let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
         let mut runner = ComposeRunner::new(adapter);
         let socket = fixture.socket.clone();
@@ -447,5 +498,112 @@ async fn misplaced_system_app_prevents_user_start() {
         );
         assert!(!fixture.directory.path().join("user-data/started").exists());
         assert!(report.boundary_clean, "{report:#?}");
+        fixture.identity(0);
     }
+}
+
+const DAEMON_START_LIMIT: Duration = Duration::from_secs(60);
+const DAEMON_STOP_LIMIT: Duration = Duration::from_secs(10);
+const DAEMON_CHECK_INTERVAL: Duration = Duration::from_millis(25);
+
+struct CgroupfsDaemon {
+    directory: tempfile::TempDir,
+    child: Child,
+    socket: String,
+}
+impl CgroupfsDaemon {
+    async fn start() -> Self {
+        let directory = tempfile::tempdir().unwrap();
+        let socket = directory
+            .path()
+            .join("engine.sock")
+            .to_string_lossy()
+            .into_owned();
+        let log = fs::File::create(directory.path().join("daemon.log")).unwrap();
+        let child = Command::new("dockerd")
+            .process_group(0)
+            .args([
+                "--host",
+                &format!("unix://{socket}"),
+                "--data-root",
+                directory.path().join("data").to_str().unwrap(),
+                "--exec-root",
+                directory.path().join("exec").to_str().unwrap(),
+                "--pidfile",
+                directory.path().join("daemon.pid").to_str().unwrap(),
+                "--bridge=none",
+                "--iptables=false",
+                "--ip6tables=false",
+                "--ip-forward=false",
+                "--ip-masq=false",
+                "--storage-driver=vfs",
+                "--exec-opt=native.cgroupdriver=cgroupfs",
+            ])
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .unwrap();
+        let mut daemon = Self {
+            directory,
+            child,
+            socket,
+        };
+        tokio::time::timeout(DAEMON_START_LIMIT, async {
+            loop {
+                assert!(
+                    daemon.child.try_wait().unwrap().is_none(),
+                    "{}",
+                    fs::read_to_string(daemon.directory.path().join("daemon.log")).unwrap()
+                );
+                if Path::new(&daemon.socket).exists() {
+                    let info = docker(&daemon.socket, &["info", "--format", "{{.CgroupDriver}}"]);
+                    if info.status.success() {
+                        assert_eq!(String::from_utf8(info.stdout).unwrap().trim(), "cgroupfs");
+                        break;
+                    }
+                }
+                tokio::time::sleep(DAEMON_CHECK_INTERVAL).await;
+            }
+        })
+        .await
+        .unwrap();
+        daemon
+    }
+}
+impl Drop for CgroupfsDaemon {
+    fn drop(&mut self) {
+        // This process group contains only the fixture daemon and its managed containerd.
+        unsafe {
+            libc::killpg(self.child.id() as i32, libc::SIGTERM);
+        }
+        let deadline = std::time::Instant::now() + DAEMON_STOP_LIMIT;
+        while self.child.try_wait().unwrap().is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(DAEMON_CHECK_INTERVAL);
+        }
+        if self.child.try_wait().unwrap().is_none() {
+            unsafe {
+                libc::killpg(self.child.id() as i32, libc::SIGKILL);
+            }
+            self.child.wait().unwrap();
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, dockerd with cgroupfs, Compose and cgroup v2"]
+async fn cgroupfs_placement_and_recovery_use_the_shared_step() {
+    // Arrange
+    let daemon = CgroupfsDaemon::start().await;
+    // Act / Assert: execute the same membership, restart, recovery and empty-parent checks.
+    placement_and_recovery(Fixture::on_socket(&daemon.socket)).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, dockerd with cgroupfs, Compose and cgroup v2"]
+async fn cgroupfs_misplacement_prevents_user_start() {
+    // Arrange
+    let daemon = CgroupfsDaemon::start().await;
+    // Act / Assert
+    misplaced_on_socket(&daemon.socket).await;
 }

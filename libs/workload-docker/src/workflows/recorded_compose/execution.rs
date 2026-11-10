@@ -16,21 +16,9 @@ pub(super) async fn launch_apps(
     plan: &ResolvedComposeProject,
     overlays: Option<&Output<overlay::OverlaySet>>,
     last_launch: &mut Option<Output<ComposeProjectState>>,
-    system_apps: &workload_systemd::cgroup::SystemAppSlice,
+    system_apps: &Option<Rc<workload_lifecycle::cgroup::Group>>,
     adapter: &DockerAdapter,
 ) -> orchestrator::Result<()> {
-    let mut input = Input::new(workload_systemd::SystemAppsCgroupsInput {
-        action: workload_systemd::cgroup::Action::Create.into(),
-        artifacts: prepared.value().artifacts.to_string_lossy().into_owned(),
-        readiness_seconds: spec.readiness_seconds,
-    })
-    .after(prepared);
-    if let Some(overlays) = overlays {
-        input = input.after(overlays);
-    }
-    let cgroups = executor
-        .run::<workload_systemd::cgroup::SystemAppsCgroups>(input)
-        .await?;
     // Keep the run namespace alive before Dora or application containers can join it.
     if plan.services.contains_key(preparation::SHM_SERVICE) {
         let mut input = Input::new(StartInput {
@@ -38,8 +26,7 @@ pub(super) async fn launch_apps(
             services: vec![preparation::SHM_SERVICE.into()],
             readiness_seconds: spec.readiness_seconds,
         })
-        .after(prepared)
-        .after(&cgroups);
+        .after(prepared);
         if let Some(overlays) = overlays {
             input = input.after(overlays);
         }
@@ -47,9 +34,7 @@ pub(super) async fn launch_apps(
     }
     // Start communication and register the graph before any application containers.
     let daemon = executor
-        .run::<super::super::experiment::StartDoraRuntime>(
-            Input::new(()).after(prepared).after(&cgroups),
-        )
+        .run::<super::super::experiment::StartDoraRuntime>(Input::new(()).after(prepared))
         .await?;
     let graph = executor
         .run::<super::super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
@@ -101,10 +86,8 @@ pub(super) async fn launch_apps(
         }
     }
     // Verify every infrastructure container before permitting adopted workload startup.
-    let mut state = executor
-        .run::<InspectCompose>(plan.clone())
-        .await?
-        .into_value();
+    let inspected = executor.run::<InspectCompose>(plan.clone()).await?;
+    let mut state = inspected.value().clone();
     let infrastructure = |name: &String| {
         name == preparation::SHM_SERVICE
             || prepared.value().system_services.contains(name)
@@ -124,9 +107,7 @@ pub(super) async fn launch_apps(
             "system apps lost readiness before cgroup verification",
         ));
     }
-    system_apps
-        .identity()
-        .map_err(orchestrator::Error::message)?;
+    let mut pids = Vec::new();
     for container in &state.containers {
         if infrastructure(&container.service) {
             let inspected = adapter
@@ -138,7 +119,11 @@ pub(super) async fn launch_apps(
                 .host_config
                 .and_then(|config| config.cgroup_parent)
                 .as_deref()
-                != Some(system_apps.name().as_str())
+                != prepared
+                    .value()
+                    .system_cgroup
+                    .as_ref()
+                    .map(|placement| placement.parent.as_str())
             {
                 return Err(orchestrator::Error::message(format!(
                     "{}: system-app cgroup assignment differs",
@@ -157,10 +142,22 @@ pub(super) async fn launch_apps(
                         container.service
                     ))
                 })?;
-            system_apps
-                .verify_pid(pid)
-                .map_err(orchestrator::Error::message)?;
+            pids.push(pid);
         }
+    }
+    if system_apps.is_some() {
+        executor
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                    action: workload_lifecycle::cgroup::Action::Create.into(),
+                    artifacts: prepared.value().artifacts.to_string_lossy().into_owned(),
+                    readiness_seconds: spec.readiness_seconds,
+                    pids,
+                })
+                .after(prepared)
+                .after(&inspected),
+            )
+            .await?;
     }
     // Retain the last successful launch's producer identity across partial startup failure.
     let adopted = &prepared.value().user_services;

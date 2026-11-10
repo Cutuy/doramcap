@@ -175,10 +175,12 @@ impl RemoveRuntime {
         self.executor
             .upgrade()
             .ok_or("runtime executor unavailable")?
-            .run::<crate::cgroup::SystemAppsCgroups>(crate::SystemAppsCgroupsInput {
-                action: crate::cgroup::Action::Remove.into(),
-                ..Default::default()
-            })
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                workload_lifecycle::launch::SystemAppsCgroupsInput {
+                    action: workload_lifecycle::cgroup::Action::Remove.into(),
+                    ..Default::default()
+                },
+            )
             .await
             .map_err(error)?;
         for (name, ..) in loaded {

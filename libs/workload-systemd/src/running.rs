@@ -12,7 +12,7 @@ use workload_lifecycle::{
 };
 
 pub(crate) struct SystemdRunning {
-    pub system_apps: crate::cgroup::SystemAppSlice,
+    pub system_apps: Rc<workload_lifecycle::cgroup::Group>,
     pub manager: Rc<Manager>,
     pub executor: Rc<LocalExecutor>,
     pub scope: Scope,
@@ -41,11 +41,12 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
         let cgroups = self
             .executor
-            .run::<crate::cgroup::SystemAppsCgroups>(
-                Input::new(crate::SystemAppsCgroupsInput {
-                    action: crate::cgroup::Action::Create.into(),
+            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
+                Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                    action: workload_lifecycle::cgroup::Action::Create.into(),
                     artifacts: self.run.artifacts.clone(),
                     readiness_seconds: self.run.readiness_seconds,
+                    pids: Vec::new(),
                 })
                 .after(&self.prepared),
             )
@@ -68,12 +69,17 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         for role in [Phase::Dora, Phase::System, Phase::User] {
             if role == Phase::User {
                 for unit in self.phases.iter().flatten() {
-                    self.system_apps.verify_unit(unit).await?;
+                    crate::cgroup::verify_unit(
+                        &self.system_apps,
+                        &crate::cgroup::native_name(&self.scope),
+                        unit,
+                    )
+                    .await?;
                 }
             }
             let mut placement = self.scope.clone();
             if role != Phase::User {
-                placement.slice = self.system_apps.name();
+                placement.slice = crate::cgroup::native_name(&self.scope);
             }
             let mut phase = crate::phase(&self.run, &self.plan, role);
             if role != Phase::Dora {
@@ -122,7 +128,12 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 .await?;
                 if role != Phase::User {
                     for unit in self.phases.last().unwrap() {
-                        self.system_apps.verify_unit(unit).await?;
+                        crate::cgroup::verify_unit(
+                            &self.system_apps,
+                            &crate::cgroup::native_name(&self.scope),
+                            unit,
+                        )
+                        .await?;
                     }
                 }
                 Ok::<_, String>(())

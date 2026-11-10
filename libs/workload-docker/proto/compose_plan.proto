@@ -6,3 +6,9 @@ import "compose.proto";
 message ComposePlan {
   repeated doramcap.compose.v1.ComposeProject projects = 1;
 }
+
+// Docker's native parent setting and its expected host cgroup location.
+message CgroupPlacement {
+  string parent = 1;
+  string path = 2;
+}

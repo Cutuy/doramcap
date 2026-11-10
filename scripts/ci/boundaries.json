@@ -21,7 +21,7 @@
     {"from": "orchestrator", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "workload-lifecycle", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "workload-supervisor", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
-    {"from": "workload-docker", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
+    {"from": "workload-docker", "forbid": ["mcap", "storage-persistence", "mcap-recorder", "workload-systemd"]},
     {"from": "workload-systemd", "forbid": ["mcap", "storage-persistence", "mcap-recorder", "workload-docker", "workload-supervisor", "bollard"]},
     {"from": "fault-demo", "forbid": ["fault-watchdog"]},
     {"from": "fault-reconciliation", "forbid": ["fault-watchdog"]},

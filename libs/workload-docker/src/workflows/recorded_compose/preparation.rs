@@ -29,6 +29,7 @@ pub struct PreparedRun {
     pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
+    pub system_cgroup: Option<super::plan::CgroupPlacement>,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
@@ -95,6 +96,7 @@ pub struct ResolvedRun {
     pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
+    pub system_cgroup: Option<super::plan::CgroupPlacement>,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
@@ -174,12 +176,20 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     validate_external_volume_shm(adapter, &model, spec.host_shm_access).await?;
     validate_external_ipc(adapter, &model, spec.host_shm_access).await?;
     model::configure_shm(&mut model, &mut system_services, spec.host_shm_access)?;
-    model::configure_system_cgroup(
-        &mut model,
-        &[dora_services.clone(), system_services.clone()].concat(),
-        &workload_systemd::cgroup::SystemAppSlice::compose_name(&spec.repository_root)
-            .map_err(invalid)?,
-    )?;
+    let system_cgroup = if !dora_services.is_empty()
+        || !system_services.is_empty()
+        || model["services"].get(SHM_SERVICE).is_some()
+    {
+        let placement = super::cgroup::placement(adapter, &spec).await?;
+        model::configure_system_cgroup(
+            &mut model,
+            &[dora_services.clone(), system_services.clone()].concat(),
+            &placement.parent,
+        )?;
+        Some(placement)
+    } else {
+        None
+    };
     dora.services = dora_services
         .iter()
         .map(|name| (name.clone(), model["services"][name].clone()))
@@ -316,6 +326,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         run,
         artifacts,
         plan,
+        system_cgroup,
         system_services,
         user_services,
         mcap_services,
@@ -529,6 +540,7 @@ impl PrepareRun {
             run: resolved.run,
             artifacts: resolved.artifacts,
             plan: resolved.plan,
+            system_cgroup: resolved.system_cgroup,
             system_services: resolved.system_services,
             user_services: resolved.user_services,
             mcap_services: resolved.mcap_services,

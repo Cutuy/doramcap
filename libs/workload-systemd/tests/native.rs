@@ -1996,8 +1996,8 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
     use orchestrator::{Event, State, Step};
     use std::os::unix::fs::MetadataExt;
     use std::{cell::RefCell, rc::Rc};
+    use workload_lifecycle::cgroup::{Action, SystemAppsCgroups, SystemAppsCgroupsInput};
     use workload_lifecycle::launch::SystemAppCgroup;
-    use workload_systemd::cgroup::{Action, SystemAppsCgroups, SystemAppsCgroupsInput};
     // Arrange
     let fixture = Fixture::new("cgroup-restart");
     let unit = fixture.repo().join("restart.service");
@@ -2036,7 +2036,7 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
         pool.get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
             .unwrap(),
         &std::fs::read_to_string(
-            Path::new(&artifacts).join(workload_systemd::cgroup::IDENTITY_FILE),
+            Path::new(&artifacts).join(workload_lifecycle::cgroup::IDENTITY_FILE),
         )
         .unwrap(),
     )
@@ -2045,7 +2045,13 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
     .unwrap();
     let name = format!(
         "{}-restart.service",
-        identity.slice.strip_suffix("-system.slice").unwrap()
+        Path::new(&identity.path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .strip_suffix("-system.slice")
+            .unwrap()
     );
     // Act
     assert!(
@@ -2067,7 +2073,7 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
         .unwrap();
     // Assert
     assert!(
-        Path::new(workload_systemd::cgroup::CGROUP_ROOT)
+        Path::new(workload_lifecycle::cgroup::CGROUP_ROOT)
             .join(group)
             .starts_with(&identity.path)
     );

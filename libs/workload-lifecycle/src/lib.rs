@@ -1,4 +1,5 @@
 //! Shared recording checks and cooperative recorded-run sequencing.
+pub mod cgroup;
 pub mod files;
 /// Form-independent run contracts (`doramcap.launch.v1`).
 pub mod launch {

@@ -10,9 +10,10 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-use workload_systemd::cgroup::{
-    self, Action, IDENTITY_FILE, SystemAppSlice, SystemAppsCgroups, SystemAppsCgroupsInput,
+use workload_lifecycle::cgroup::{
+    self, Action, Group, IDENTITY_FILE, SystemAppsCgroups, SystemAppsCgroupsInput,
 };
+use workload_systemd::cgroup::SystemAppSlice;
 
 const STARTUP: Duration = Duration::from_secs(10);
 const PAYLOAD_BYTES: u64 = 8 * 1024 * 1024;
@@ -52,12 +53,12 @@ async fn nested_apps_are_accounted_and_live_removal_is_refused() {
     // Arrange
     let directory = std::env::temp_dir().join(format!("system-app-cgroup-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
-    let mut slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let (name, slice) = group(&directory).await;
     let unit = format!("cgroup-fixture-{}.service", std::process::id());
     let cleanup = Cleanup {
         directory: directory.clone(),
         unit: unit.clone(),
-        slice: slice.name(),
+        slice: name.clone(),
     };
     slice.create(&directory, STARTUP).await.unwrap();
     let identity = slice.identity().unwrap();
@@ -84,7 +85,7 @@ async fn nested_apps_are_accounted_and_live_removal_is_refused() {
             "--unit",
             &unit,
             "--slice",
-            &slice.name(),
+            &name.clone(),
         ])
         .arg(worker)
         .arg(&marker)
@@ -160,11 +161,11 @@ async fn foreign_slice_is_preserved() {
     let directory =
         std::env::temp_dir().join(format!("system-app-cgroup-recovery-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
-    let mut slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let (name, slice) = group(&directory).await;
     let _cleanup = Cleanup {
         directory: directory.clone(),
         unit: "cgroup-fixture-absent.service".into(),
-        slice: slice.name(),
+        slice: name.clone(),
     };
     let connection = zbus::Connection::system().await.unwrap();
     let manager = ManagerProxy::new(&connection).await.unwrap();
@@ -173,7 +174,7 @@ async fn foreign_slice_is_preserved() {
     let foreign = "Foreign accounting slice";
     let job = manager
         .start_transient_unit(
-            slice.name(),
+            name.clone(),
             "fail".into(),
             vec![(
                 "Description".into(),
@@ -192,7 +193,7 @@ async fn foreign_slice_is_preserved() {
     assert!(slice.create(&directory, STARTUP).await.is_err());
     assert!(slice.remove().await.unwrap_err().contains("not owned"));
     let unit = UnitProxy::builder(&connection)
-        .path(manager.get_unit(slice.name()).await.unwrap())
+        .path(manager.get_unit(name.clone()).await.unwrap())
         .build()
         .await
         .unwrap();
@@ -209,24 +210,24 @@ async fn empty_owned_slices_are_recoverable_and_names_can_be_reused() {
     let directory =
         std::env::temp_dir().join(format!("system-app-cgroup-owned-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
-    let mut slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let (name, slice) = group(&directory).await;
     let _cleanup = Cleanup {
         directory: directory.clone(),
         unit: "cgroup-fixture-absent.service".into(),
-        slice: slice.name(),
+        slice: name.clone(),
     };
     slice.create(&directory, STARTUP).await.unwrap();
     let identity = slice.identity().unwrap();
     // Act: a new connection recovers the abandoned accounting boundary.
     drop(slice);
-    let mut recovered = SystemAppSlice::connect(&directory).await.unwrap();
+    let (_, recovered) = group(&directory).await;
     recovered.remove().await.unwrap();
     // Assert
     assert!(!Path::new(&identity.path).exists());
     assert!(directory.join(IDENTITY_FILE).exists());
     // Act / Assert: a subsequent run can create the same ownership names immediately.
     recovered.create(&directory, STARTUP).await.unwrap();
-    assert_eq!(recovered.identity().unwrap().slice, identity.slice);
+    assert_eq!(recovered.identity().unwrap().path, identity.path);
     assert_ne!(recovered.identity().unwrap().id, identity.id);
     recovered.remove().await.unwrap();
 }
@@ -240,15 +241,15 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
     let directory =
         std::env::temp_dir().join(format!("system-app-cgroup-cancel-{}", std::process::id()));
     fs::create_dir(&directory).unwrap();
-    let slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let (name, slice) = group(&directory).await;
     let _cleanup = Cleanup {
         directory: directory.clone(),
         unit: "cgroup-fixture-absent.service".into(),
-        slice: slice.name(),
+        slice: name.clone(),
     };
     let parent = format!(
         "{}.slice",
-        slice.name().strip_suffix("-system.slice").unwrap()
+        name.clone().strip_suffix("-system.slice").unwrap()
     );
     let connection = zbus::Connection::system().await.unwrap();
     let manager = ManagerProxy::new(&connection).await.unwrap();
@@ -264,6 +265,7 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
             action: Action::Create.into(),
             artifacts: directory.to_string_lossy().into_owned(),
             readiness_seconds: STARTUP.as_secs(),
+            pids: Vec::new(),
         });
         tokio::pin!(creation);
         // Act: drop the creation future after observing its first owned unit.
@@ -292,7 +294,7 @@ async fn cancellation_after_parent_creation_retains_cleanup_ownership() {
         .unwrap();
     // Assert
     let remaining = manager
-        .list_units_by_patterns(vec![], vec![parent, slice.name()])
+        .list_units_by_patterns(vec![], vec![parent, name.clone()])
         .await
         .unwrap();
     assert!(remaining.is_empty(), "{remaining:?}");
@@ -314,11 +316,11 @@ async fn failed_identity_save_is_observed_and_retains_cleanup_ownership() {
     ));
     fs::create_dir(&directory).unwrap();
     fs::create_dir(directory.join(IDENTITY_FILE)).unwrap();
-    let slice = SystemAppSlice::connect(&directory).await.unwrap();
+    let (name, slice) = group(&directory).await;
     let _cleanup = Cleanup {
         directory: directory.clone(),
         unit: "cgroup-fixture-absent.service".into(),
-        slice: slice.name(),
+        slice: name.clone(),
     };
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -332,6 +334,7 @@ async fn failed_identity_save_is_observed_and_retains_cleanup_ownership() {
             action: Action::Create.into(),
             artifacts: directory.to_string_lossy().into_owned(),
             readiness_seconds: STARTUP.as_secs(),
+            pids: Vec::new(),
         })
         .await;
     // Assert: a failed artifact write preserves the original launcher's live identity.
@@ -352,4 +355,9 @@ async fn failed_identity_save_is_observed_and_retains_cleanup_ownership() {
     assert!(removed.value().is_none());
     assert!(!Path::new(&identity.path).exists());
     assert_eq!(events.borrow().last().unwrap().state, State::Succeeded);
+}
+
+async fn group(directory: &Path) -> (String, Rc<Group>) {
+    let backend = SystemAppSlice::connect(directory).await.unwrap();
+    (backend.name(), Rc::new(Group::new(Rc::new(backend))))
 }

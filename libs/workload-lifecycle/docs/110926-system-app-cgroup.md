@@ -4,27 +4,26 @@
 
 Created: 2026-11-09. [Implementation](110926-system-app-cgroup-impl.md).
 
-Each experiment owns a system-app cgroup. Dora and system apps launch directly
-beneath it; nested app groups retain their native accounting. Compose selects the
-parent with `cgroup_parent`; systemd selects it with `Slice=`. Existing system/user
-app inputs select placement.
+Each experiment has a system-app accounting boundary, including Dora and the
+shared-memory holder. Nested cgroups contribute to its CPU and memory accounting.
+Existing system/user app inputs select placement.
 
-Both workflows need the host system service manager. Compose uses a local rootful
-Docker daemon with cgroup v2 and the systemd driver. User-app placement follows its
-native launch input.
+`workload-lifecycle::cgroup::SystemAppsCgroups` owns kernel identity, accounting
+availability, membership checks, artifact persistence and cleanup verification.
+Its contract contains a host cgroup path and kernel ID. Backend mechanics establish
+the group and report whether cleanup removed it or retained an empty runtime parent.
 
-The launchers create the slice before system apps start and verify placement before
-user startup. A creation or placement failure aborts startup through existing
-shutdown and cleanup. A typed artifact records the host cgroup path and kernel ID.
+Compose supplies `cgroup_parent` using Docker's configured cgroupfs or systemd driver.
+Docker creates that parent before container execution. After system apps start, the
+shared step records the group and verifies host PIDs before user startup. Each run
+uses a distinct parent. Compose uses Docker APIs and requires cgroup v2 CPU/memory
+accounting; its workflow has no host D-Bus dependency.
 
-Both workflows invoke one `SystemAppsCgroups` step type: `Create` follows preparation
-and the review check; `Remove` follows app shutdown and evidence finalization.
-Compose recovery reuses `Remove` before creation. The launcher retains ownership
-across failed or cancelled invocations.
+The native systemd backend creates slices through its existing service manager.
+Supervisor uses its existing filesystem allocation and durable ownership ledger.
+Both reuse the shared step and membership checks.
 
-Systemd owns the slice hierarchy. Backend launchers stop their apps and preserve
-evidence before the empty slices are removed. Compose retains automatic recovery;
-native runs retain explicit cleanup. Their ownership names are separate.
-
-Monitor collectors and telemetry extensions remain separate work. Native tests
-read kernel counters to validate aggregation.
+After writers stop and evidence is finalized, directly owned groups are removed.
+Empty parents owned by Docker's runtime may remain; cleanup verifies their emptiness.
+Startup failures use existing shutdown/recovery paths. Identity artifacts remain
+with run evidence. Monitor collectors remain separate work.

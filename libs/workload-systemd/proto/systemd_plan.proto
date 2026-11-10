@@ -74,16 +74,3 @@ message PreparedRun {
 
 // Successful removal of a rejected preparation's owned artifacts.
 message DiscardedRun {}
-
-// One observed change to the launcher's owned accounting boundary.
-message SystemAppsCgroupsInput {
-  enum Action {
-    ACTION_UNSPECIFIED = 0;
-    CREATE = 1;
-    REMOVE = 2;
-  }
-  Action action = 1;
-  // Create requires an existing absolute artifact directory and a positive budget.
-  string artifacts = 2;
-  uint64 readiness_seconds = 3;
-}

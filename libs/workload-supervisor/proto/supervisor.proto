@@ -10,6 +10,7 @@ message MonitorRun {
   string monitor_binary = 5;
   uint64 readiness_seconds = 6;
   uint64 stop_seconds = 7;
+  // Canonical delegated cgroup v2 parent with memory enabled for children.
   string cgroup_parent = 8;
 }
 

@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find_map(|line| line.strip_prefix("0::"))
         .ok_or("cgroup v2 missing")?;
     let parent =
-        Path::new(workload_systemd::cgroup::CGROUP_ROOT).join(relative.trim_start_matches('/'));
+        Path::new(workload_lifecycle::cgroup::CGROUP_ROOT).join(relative.trim_start_matches('/'));
     let child = parent.join("work");
     fs::create_dir(&child)?;
     fs::write(child.join("cgroup.procs"), std::process::id().to_string())?;
