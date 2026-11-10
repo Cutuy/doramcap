@@ -1,0 +1,159 @@
+{
+  "task_id": "i05-004",
+  "round": 2,
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "requested_model": "gpt-6.1-sol",
+  "requested_reasoning_effort": "high",
+  "provider_reported_model": null,
+  "cli_version": "codex-cli 0.164.0",
+  "command": [
+    "codex",
+    "exec",
+    "--ignore-user-config",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--cd",
+    "/tmp/doramcap-code-confirm-ZAdUvI",
+    "--model",
+    "gpt-6.1-sol",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "approval_policy=\"never\"",
+    "-c",
+    "model_reasoning_effort=\"high\"",
+    "-c",
+    "project_doc_max_bytes=0",
+    "--disable",
+    "shell_tool",
+    "--disable",
+    "unified_exec",
+    "--disable",
+    "apps",
+    "--disable",
+    "plugins",
+    "--disable",
+    "multi_agent",
+    "--disable",
+    "memories",
+    "--disable",
+    "skill_search",
+    "--disable",
+    "browser_use",
+    "--disable",
+    "computer_use",
+    "--disable",
+    "image_generation",
+    "--disable",
+    "view_image",
+    "--disable",
+    "goals",
+    "--disable",
+    "sleep_tool",
+    "--enable",
+    "skip_host_skill_discovery",
+    "--output-schema",
+    "/home/cutuy/doramcap/.git/agent-pool/worktrees/2/cd/code-scan/confirm.schema.json",
+    "--output-last-message",
+    "/home/cutuy/doramcap/.git/agent-pool/worktrees/2/cd/code-scan/confirmations/20261108-i05/raw/i05-004.r2.answer.json",
+    "--json",
+    "--color",
+    "never",
+    "-"
+  ],
+  "input_hash": "3219c20447ff3276709e6b576e5fb1524f193afa75919a98315edaebfd6daebe",
+  "started_at": "2026-11-08T22:12:19.019Z",
+  "completed_at": "2026-11-08T22:13:00.123Z",
+  "duration_seconds": 41.103967141,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 59864,
+    "cached_input_tokens": 0,
+    "cache_write_input_tokens": 0,
+    "output_tokens": 1915,
+    "reasoning_output_tokens": 601
+  },
+  "thread_id": "01a1bd38-321b-7a50-a9a1-5ec28d2363d6",
+  "tool_events": [],
+  "status": "confirmed_violation",
+  "result": {
+    "task_id": "i05-004",
+    "status": "confirmed_violation",
+    "summary": "For the MCAP sink, repeated maintenance timeouts drive nonblocking I/O completion polling independently of flush deadlines.",
+    "applicability": "The production worker repeatedly calls recv_timeout(interval), then invokes Recording::tick after each timeout. That tick unconditionally drives asynchronous I/O completion processing.",
+    "exception_analysis": "Configured flushing and aged-batch flushing are permitted deadline work. However, McapCore::poll calls writer.progress(false) before checking the batch deadline and again afterward. Those calls submit without waiting and inspect the completion queue regardless of whether a deadline is due. This is completion processing, not observational sampling or pacing. The API's description of polling as optional does not establish an exception to the rule.",
+    "counterevidence": "Packet arrival is channel-signaled, and disconnection exits the worker. Dora and OTEL inherit a no-op tick. MCAP ticking also performs legitimate timed flushing, and explicit flush barriers block on kernel completion. These narrow the violation to the independent completion polling performed by maintenance ticks.",
+    "finding": {
+      "trigger": "An MCAP sink remains connected while the packet channel is idle, including while accepted I/O awaits completion.",
+      "expected": "Use explicit completion notifications for asynchronous I/O progress; reserve timed wakeups for the operations' actual deadlines.",
+      "observed": "Each maintenance timeout invokes tick, which calls writer.poll and unconditionally performs nonblocking submission and completion-queue inspection.",
+      "impact": "Idle workers repeatedly wake and inspect I/O state even when no flush deadline is due. Between submissions or barriers, completion retirement and failure observation depend on subsequent maintenance ticks rather than completion notifications."
+    },
+    "evidence": [
+      {
+        "artifact_id": "apps/fault-watchdog/src/sinks/mod.rs",
+        "line": 71,
+        "quote": "        let interval = ms(config.maintenance_ms.unwrap());"
+      },
+      {
+        "artifact_id": "apps/fault-watchdog/src/sinks/mod.rs",
+        "line": 77,
+        "quote": "                    loop {\n                        match receiver.recv_timeout(interval) {"
+      },
+      {
+        "artifact_id": "apps/fault-watchdog/src/sinks/mod.rs",
+        "line": 104,
+        "quote": "                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}\n                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,\n                        }\n                        if let Err(e) = sink.tick() {\n                            record_error(&shared, &e);\n                        }"
+      },
+      {
+        "artifact_id": "apps/fault-watchdog/src/sinks/mcap.rs",
+        "line": 85,
+        "quote": "        let result = (|| -> Result<()> {\n            writer.poll(Instant::now())?;\n            if self.last_flush.elapsed() >= Duration::from_millis(self.config.flush_ms.into()) {\n                writer.flush_written()?;\n                self.last_flush = Instant::now();\n            }"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/mcap.rs",
+        "line": 253,
+        "quote": "    pub fn poll(&mut self, now: Instant) -> io::Result<()> {\n        self.update(|c| c.poll(now))\n    }"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/mcap/core.rs",
+        "line": 438,
+        "quote": "    pub(super) fn poll(&mut self, now: Instant) -> io::Result<()> {\n        self.writer.progress(false)?;\n        if self\n            .next_flush_deadline()\n            .is_some_and(|deadline| now >= deadline)"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/mcap/core.rs",
+        "line": 452,
+        "quote": "        self.writer.progress(false)\n    }"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/writer.rs",
+        "line": 1052,
+        "quote": "    pub fn progress(&mut self, wait: bool) -> io::Result<()> {\n        self.drain_progress(wait)?;\n        self.error.map_or(Ok(()), |e| Err(e.into()))\n    }"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/writer.rs",
+        "line": 1065,
+        "quote": "    fn drain_progress(&mut self, mut wait: bool) -> io::Result<()> {\n        loop {\n            self.submit_and_reap(wait)?;"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/writer.rs",
+        "line": 1096,
+        "quote": "        self.schedule()?;\n        loop {\n            let active = self.slots.iter().flatten().any(|p| p.request.is_some());\n            match self\n                .ring\n                .submit_and_wait(usize::from(wait && (active || self.cancellations > 0)))"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/writer.rs",
+        "line": 1131,
+        "quote": "        loop {\n            let completion = self\n                .ring\n                .completion()\n                .next()\n                .map(|c| (c.user_data(), c.result()));\n            let Some((id, result)) = completion else {\n                break;\n            };\n            self.retire_completion(id, result);\n        }"
+      },
+      {
+        "artifact_id": "libs/storage-persistence/src/writer.rs",
+        "line": 1228,
+        "quote": "    pub fn flush_written(&mut self) -> io::Result<()> {\n        while self.outstanding + self.cancellations > 0 {\n            self.drain_progress(true)?;\n        }\n        self.error.map_or(Ok(()), |e| Err(e.into()))\n    }"
+      }
+    ],
+    "context_requests": [],
+    "validation_gaps": []
+  },
+  "rejected_response": null,
+  "error": null
+}

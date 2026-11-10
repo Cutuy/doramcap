@@ -1,2 +1,4 @@
 runs/*/inputs/
 runs/*/raw/
+confirmations/*/inputs/
+confirmations/*/raw/

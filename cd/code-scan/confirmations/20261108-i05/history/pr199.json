@@ -1,0 +1,15 @@
+{
+  "url": "https://github.com/Cutuy/doramcap/pull/199",
+  "title": "Run Dora as systemd units with its CLI as oneshot units",
+  "merged": true,
+  "merge_commit_sha": "14b4dd1688da231f118796cc5c80167e4b281166",
+  "body": "Under systemd, Dora's coordinator and daemon now run as units of the run, and its commands (status, start graph, list, down) run as short-lived units too.\nValidation: all 5 native systemd tests pass twice as root (systemd 255, x86_64, dora-cli 1.1.0); unit tests, Clippy, fmt. ARM64 and full CI not run.\n\nFirst slice of Milestone 4 in the [launch forms plan](https://github.com/Cutuy/doramcap/blob/feature/launch-forms-systemd-dora/libs/workload-lifecycle/docs/110726-launch-forms.md), stacked on #198.\n\n- A plan may include Dora: an executable, two loopback ports, an optional graph and a private runtime directory.\n- The coordinator and daemon start before every app group. Readiness asks `dora status` until the daemon reports running, as Compose does.\n- Each Dora command runs as a oneshot unit in the run's slice and writes its output to a file in the runtime directory, so nothing runs outside systemd.\n- On stop, `dora down` stops the dataflow before the coordinator and daemon stop.\n\nStill to come in Milestone 4: on-demand app binaries from release assets, Console resolving and running systemd plans, and shared-memory ownership.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+  "comments": [
+    {
+      "url": "https://github.com/Cutuy/doramcap/pull/199#discussion_r4504479638",
+      "author": "Cutuy",
+      "created_at": "2026-11-08T01:19:20Z",
+      "body": "Confirmed. A hung Dora CLI can still block shutdown. The timeout implementation was reverted in 608ea1b because its added complexity was disproportionate for the temporary CLI integration.\n\nPR #210 contains the plan to replace CLI control commands with direct async API calls across Compose and systemd, including explicit deadlines and cancellation handling. It is a plan only; this issue remains open until that behavior is implemented and validated."
+    }
+  ]
+}

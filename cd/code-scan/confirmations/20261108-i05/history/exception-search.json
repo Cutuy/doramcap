@@ -1,0 +1,36 @@
+{
+  "source_commit": "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+  "scope": "Bounded search for corroborating approval of the systemd Dora readiness polling exception.",
+  "checks": [
+    {
+      "source": "PR #199 description and returned discussion",
+      "url": "https://github.com/Cutuy/doramcap/pull/199",
+      "result": "The description records readiness polling; the author comment concerns deferred CLI timeouts. Neither provides explicit readiness-polling approval."
+    },
+    {
+      "command": [
+        "git",
+        "grep",
+        "-n",
+        "-i",
+        "-E",
+        "approved.{0,60}poll|poll.{0,60}exception|exception.{0,60}poll",
+        "65fe14329cc16ce534cc07d1bf55c6a7a2b83272",
+        "--",
+        "*.md"
+      ],
+      "exit_code": 1,
+      "output": ""
+    },
+    {
+      "source": "AGENTS.md before guide consolidation at 6c2e965da221be6f875435238f0f5031ee70202f^",
+      "result": "Concurrency rules prohibit timed state polling and permit sampling, pacing, simulated work and real deadlines; no Dora-specific approval is stated."
+    },
+    {
+      "source": "git log -S Approved polling exception for libs/workload-systemd/src/dora.rs",
+      "result": "The comment was introduced by 14b4dd1688da231f118796cc5c80167e4b281166 (#199). Its presence and merge are not independent approval evidence."
+    }
+  ],
+  "availability": "No explicit approval record was located in these sources. This is not evidence that approval never occurred. Historical user conversations were not searched.",
+  "remaining_information": "User approval record and scope for the exception, if available."
+}

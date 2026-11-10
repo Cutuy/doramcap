@@ -1,0 +1,44 @@
+{
+  "task_id": "i05-020",
+  "round": 2,
+  "responds_to": [
+    {
+      "kind": "approval",
+      "target": "libs/workload-systemd/src/dora.rs:9 and the governing I-05 exception process",
+      "question": "Provide the approval record and governing exception authority for the claimed Dora readiness polling exception, including whether it covers repeated status CLI calls with 100 ms sleeps at commit 65fe14329cc16ce534cc07d1bf55c6a7a2b83272."
+    }
+  ],
+  "resolution": {
+    "status": "approval_record_unavailable",
+    "request_round": 1,
+    "evidence": "history/exception-search.json",
+    "remaining_gap": "The claimed exception cannot be established from the available sources; retain uncertainty rather than assuming approval or nonapproval."
+  },
+  "artifacts": [
+    {
+      "artifact_id": "libs/workload-systemd/src/dora.rs",
+      "sha256": "c6e05fd69257d894f94508854c5c551b8abacad91c91ffe0467f80d0d956d458",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/workload-systemd/src/dora.rs"
+    },
+    {
+      "artifact_id": "libs/workload-systemd/src/running.rs",
+      "sha256": "0385cde9d3e3eb0e68357e892d5808818f2bccd1bf3cb9a2d4ca324e9e787bf4",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/workload-systemd/src/running.rs"
+    },
+    {
+      "artifact_id": "history/pr199.json",
+      "sha256": "4ae2dbdaf163a4f967658a3c658ba0fe2dd28b23d0c9eac7cb3846bf46f048b8",
+      "origin": "history/pr199.json"
+    },
+    {
+      "artifact_id": "history/exception-search.json",
+      "sha256": "224958119bb65f4653ebf66f0fa7e93a8ae8ce1de4faf90372ecf4c944323b11",
+      "origin": "history/exception-search.json"
+    },
+    {
+      "artifact_id": "history/AGENTS-before-guide-consolidation.txt",
+      "sha256": "5cbfc81cc0f710bc738a760aba665a0bbffe61aa82c8b7e4887a80a67be8ace2",
+      "origin": "history/AGENTS-before-guide-consolidation.txt"
+    }
+  ]
+}

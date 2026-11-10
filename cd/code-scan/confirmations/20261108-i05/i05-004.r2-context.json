@@ -1,0 +1,68 @@
+{
+  "task_id": "i05-004",
+  "round": 2,
+  "responds_to": [
+    {
+      "kind": "source",
+      "target": "storage_persistence::mcap::McapWriter::poll",
+      "question": "Provide the implementation and relevant helpers at the supplied commit. Does poll inspect asynchronous completion/work state, process scheduled deadlines, or both?"
+    },
+    {
+      "kind": "contract",
+      "target": "Recording::tick and maintenance_ms",
+      "question": "What operations require maintenance wakeups independently of the flush deadline, and what timing or notification contract governs those operations?"
+    }
+  ],
+  "resolution": {
+    "status": "provided",
+    "request_round": 1,
+    "sources": [
+      "McapWriter::poll",
+      "McapCore::poll",
+      "Writer::progress and its completion helpers"
+    ],
+    "contract": "The supplied MCAP API docs and source define the available contract; no separate maintenance contract was located."
+  },
+  "artifacts": [
+    {
+      "artifact_id": "apps/fault-watchdog/src/sinks/mod.rs",
+      "sha256": "0fcf6d80aedc3e28c08a52496a66d92acf171c780bcf3a5eb9cbfae73f612133",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/mod.rs"
+    },
+    {
+      "artifact_id": "apps/fault-watchdog/src/sinks/mcap.rs",
+      "sha256": "20657fe2bf7adf62d8303bd782e8bef34cd020aa61e2a0c80cbc3e9dcb7f523d",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/mcap.rs"
+    },
+    {
+      "artifact_id": "apps/fault-watchdog/src/sinks/otel.rs",
+      "sha256": "a42717cae3b76f635d523ff0e344d18fc431cb24cf85081cd944857aa671caed",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/sinks/otel.rs"
+    },
+    {
+      "artifact_id": "apps/fault-watchdog/src/config.rs",
+      "sha256": "863b1863a9e3ec17b5d5740b67b5b260d378c17fc14b5649167ca871f85d69ed",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/src/config.rs"
+    },
+    {
+      "artifact_id": "apps/fault-watchdog/proto/watchdog.proto",
+      "sha256": "cc2d5da61fb0b59476f6bc2010950822f4b258240a1a3fb2bbfc6384f19b66dc",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:apps/fault-watchdog/proto/watchdog.proto"
+    },
+    {
+      "artifact_id": "libs/storage-persistence/src/mcap.rs",
+      "sha256": "de1aec9ac20302b8beb80a4d7ebcb00300695cc1943ad15e8fcc4434c09ddb6b",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/storage-persistence/src/mcap.rs"
+    },
+    {
+      "artifact_id": "libs/storage-persistence/src/mcap/core.rs",
+      "sha256": "55bd3c8c1c949fcc8bbfada12e2442fb81f212b446ee1f5ca8907383bb9504fd",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/storage-persistence/src/mcap/core.rs"
+    },
+    {
+      "artifact_id": "libs/storage-persistence/src/writer.rs",
+      "sha256": "f7865b40e02f8fa838ba1e8c51c99b3507078eaefe218ee2f7798e31718c0643",
+      "origin": "git:65fe14329cc16ce534cc07d1bf55c6a7a2b83272:libs/storage-persistence/src/writer.rs"
+    }
+  ]
+}
