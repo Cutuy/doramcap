@@ -188,6 +188,7 @@ main.shell{padding-top:28px}
   overflow-wrap: anywhere;
 }
 .stack-block, .orchestration-layer { justify-content: center; text-align: center; }
+.orchestration-layer { border: 2px solid var(--accent); }
 .lifecycle-grid .stack-block, .capability { background: var(--bg); }
 .stack-block svg, .capability svg, .orchestration-layer svg {
   flex-shrink: 0;
