@@ -8,7 +8,7 @@ and steps to linked timelines.
 
 ## Run
 
-Requires Rust, Node.js 22+, and Dora CLI 1.1.0. From the repository root:
+Requires Rust, the [project's Node.js version](../../.node-version), and Dora CLI 1.1.0. From the repository root:
 
 ```sh
 cargo build --locked -p dataflow-tracing-demo

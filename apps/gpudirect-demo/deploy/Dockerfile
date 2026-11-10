@@ -1,6 +1,6 @@
-FROM node:22-bookworm-slim AS node_runtime
+FROM node:26.13.0-bookworm-slim AS node_runtime
 FROM nvidia/cuda:12.9.1-runtime-ubuntu24.04
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates cuda-nvrtc-12-9 \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates cuda-nvrtc-12-9 libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=node_runtime /usr/local/bin/node /usr/local/bin/node
 COPY gpudirect-demo /usr/local/bin/gpudirect-demo
