@@ -7,6 +7,7 @@ members = [
     "libs/memory/cuda-host-memory",
     "libs/memory/cuda-dora-shm",
     "apps/cuda-shm-demo",
+    "apps/gpudirect-demo",
     "libs/resources/monitor-core",
     "libs/resources/resource-policy",
     "libs/step-provenance",

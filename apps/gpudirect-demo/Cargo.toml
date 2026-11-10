@@ -1,0 +1,16 @@
+[package]
+name = "gpudirect-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CUDA-produced MCAP files through pinned, registered host slabs"
+
+[dependencies]
+cudarc = { version = "0.19.10", default-features = false, features = ["std", "driver", "runtime", "nvrtc", "dynamic-loading", "cuda-12090"] }
+libc = "0.2"
+mcap = { version = "=0.26.0", default-features = false }
+memmap2 = "0.9"
+storage-persistence = { path = "../../libs/storage-persistence" }
+
+[lints]
+workspace = true

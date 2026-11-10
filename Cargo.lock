@@ -2108,6 +2108,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpudirect-demo"
+version = "0.1.0"
+dependencies = [
+ "cudarc",
+ "libc",
+ "mcap",
+ "memmap2",
+ "storage-persistence",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5182,7 +5193,6 @@ dependencies = [
  "activity-tracing",
  "bytes",
  "crossbeam-channel",
- "cudarc",
  "fault-protocol",
  "io-uring",
  "libc",

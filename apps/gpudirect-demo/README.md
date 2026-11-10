@@ -1,4 +1,4 @@
-# GPU-produced MCAP files
+# GPU storage demo
 
 ![Pinned slab recording and reuse](architecture.svg)
 
@@ -9,8 +9,7 @@ Requires NVIDIA CUDA driver/runtime/NVRTC and Linux direct I/O/io_uring.
 Run from the repository root with a new output path:
 
 ```sh
-cargo build --release --locked -p storage-persistence --example cuda_mcap
-target/release/examples/cuda_mcap /absolute/path/output.mcap mapped 8388608 128 4
+cargo run --release --locked -p gpudirect-demo -- /absolute/path/output.mcap mapped 8388608 128 4
 ```
 
 Arguments: path, mode (`mapped`, `staged`, `io-only`), payload bytes, messages, slabs.

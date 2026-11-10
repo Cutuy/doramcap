@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();
     if !(5..=6).contains(&args.len()) {
         return Err(
-            "usage: cuda_mcap OUTPUT.mcap mapped|staged|io-only PAYLOAD_BYTES MESSAGES [SLABS=4]"
+            "usage: gpudirect-demo OUTPUT.mcap mapped|staged|io-only PAYLOAD_BYTES MESSAGES [SLABS=4]"
                 .into(),
         );
     }

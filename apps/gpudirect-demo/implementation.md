@@ -1,6 +1,6 @@
 # Results and test
 
-Created 2026-11-09. [Flow diagram](README.md) · [Source](support.rs) · [Tests](tests.rs).
+Created 2026-11-09. [Flow diagram](README.md) · [Source](src/support.rs) · [Tests](tests/cuda_mcap.rs).
 
 | Mode | Payload path |
 |---|---|
@@ -12,7 +12,7 @@ Payload, messages and slabs must be nonzero; payload must fit `u32`.
 `prepare_slabs` reports registration-budget exhaustion.
 
 ```sh
-cargo test --release --locked -p storage-persistence --test cuda_mcap -- --ignored --nocapture --test-threads=1
+cargo test --release --locked -p gpudirect-demo --test cuda_mcap -- --ignored --nocapture --test-threads=1
 ```
 
 **Verified:** 14 RTX 5070 Ti cases, including 64-MiB payloads, slab reuse and
