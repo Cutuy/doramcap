@@ -9,7 +9,7 @@ case "$(uname -m)" in
   aarch64|arm64) arch=arm64; checksum='@@ARM64@@' ;;
   *) echo 'Supported architectures: x86_64 and ARM64.' >&2; exit 1 ;;
 esac
-for command in curl tar sha256sum sudo; do
+for command in curl tar sha256sum sudo dpkg-query; do
   command -v "$command" >/dev/null || { echo "Required command: $command" >&2; exit 1; }
 done
 if [ "$(id -u)" = 0 ]; then
@@ -24,5 +24,10 @@ curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry
   '@@BASE@@/'"$archive" -o "$work/release.tar.gz"
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum -c -
 tar -xzf "$work/release.tar.gz" -C "$work" --no-same-owner --no-same-permissions
+if [ "$(dpkg-query -W -f='${db:Status-Status}' "libatomic1:$arch" 2>/dev/null)" != installed ]; then
+  echo 'Installing libatomic1 for the bundled Node.js runtime (sudo required)...'
+  sudo -- apt-get update
+  sudo -- apt-get install -y --no-install-recommends "libatomic1:$arch"
+fi
 echo 'Verified. Installing under /opt/doramcap-console (sudo required)...'
 sudo -- "$work/package/runtime/node" "$work/package/server/dist/cli.js" install

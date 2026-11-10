@@ -111,7 +111,7 @@ test('versioned installation preserves old releases and refuses replacement of u
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('generated installer selects both architectures and rejects corruption before sudo', async () => {
+test('generated installer selects both architectures, installs missing libatomic and rejects corruption before sudo', async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-bootstrap-'));
   const commands = join(directory, 'commands'), payload = join(directory, 'payload');
@@ -124,7 +124,7 @@ test('generated installer selects both architectures and rejects corruption befo
   const executable = async (name: string, code: string) => writeFile(join(commands, name), `#!${process.execPath}\n${code}`, { mode: 0o755 });
   await executable('id', 'console.log(1000)');
   await executable('curl', `require('node:fs').copyFileSync(${JSON.stringify(archive)},process.argv[process.argv.indexOf('-o')+1]);`);
-  await executable('sudo', `require('node:fs').writeFileSync(${JSON.stringify(marker)},process.argv.slice(2).join(' '));`);
+  await executable('sudo', `require('node:fs').appendFileSync(${JSON.stringify(marker)},process.argv.slice(2).join(' ')+'\\n');`);
   const generated = spawnSync(process.execPath, [join(repository, 'console/scripts/installer.mts'),
     '--base-url', 'https://downloads.example.com/0.1.0', '--version', '0.1.0',
     '--amd64-sha256', hash, '--arm64-sha256', hash, '--output', installer], { encoding: 'utf8' });
@@ -132,12 +132,20 @@ test('generated installer selects both architectures and rejects corruption befo
   try {
     for (const architecture of ['x86_64', 'aarch64']) {
       await executable('uname', `console.log(process.argv[2]==='-s'?'Linux':${JSON.stringify(architecture)})`);
+      const arch = architecture === 'x86_64' ? 'amd64' : 'arm64';
+      await executable('dpkg-query', `if (process.argv.at(-1) !== 'libatomic1:${arch}') process.exit(2); ${
+        arch === 'amd64' ? "console.log('installed')" : 'process.exit(1)'
+      };`);
       // Act
       const result = spawnSync('sh', [installer], { env: { ...process.env, PATH: `${commands}:${process.env.PATH}` }, encoding: 'utf8' });
       // Assert
       assert.equal(result.status, 0, result.stderr);
-      assert.ok(result.stdout.includes(`for linux-${architecture === 'x86_64' ? 'amd64' : 'arm64'}`));
-      assert.match(await readFile(marker, 'utf8'), /package\/runtime\/node .*cli.js install/);
+      assert.ok(result.stdout.includes(`for linux-${arch}`));
+      const sudoCalls = (await readFile(marker, 'utf8')).trim().split('\n');
+      assert.match(sudoCalls.pop()!, /package\/runtime\/node .*cli.js install/);
+      assert.deepEqual(sudoCalls, arch === 'amd64' ? [] : [
+        '-- apt-get update', '-- apt-get install -y --no-install-recommends libatomic1:arm64',
+      ]);
       await rm(marker);
     }
     // Act
