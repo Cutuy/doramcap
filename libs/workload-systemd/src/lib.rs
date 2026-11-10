@@ -31,31 +31,6 @@ const RUNTIME_ROOT: &str = "/run/doramcap";
 /// Directory where the service manager reads runtime units and drop-ins.
 const SYSTEMD_RUNTIME_UNITS: &str = "/run/systemd/system";
 
-/// Decode strict protobuf text into message `name` of this crate's descriptor pool.
-fn parse_text<M: prost::Message + Default>(name: &str, text: &str) -> Result<M> {
-    use prost::Message as _;
-    let pool = prost_reflect::DescriptorPool::decode(
-        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
-    )
-    .map_err(error)?;
-    let descriptor = pool
-        .get_message_by_name(name)
-        .ok_or_else(|| format!("{name} descriptor absent"))?;
-    let message =
-        prost_reflect::DynamicMessage::parse_text_format(descriptor, text).map_err(error)?;
-    M::decode(message.encode_to_vec().as_slice()).map_err(error)
-}
-
-/// Decode a strict protobuf text-format `SystemdPlan`.
-pub fn parse_plan(text: &str) -> Result<SystemdPlan> {
-    parse_text("doramcap.systemd_plan.v1.SystemdPlan", text)
-}
-
-/// Decode a strict protobuf text-format `RunPlan`.
-pub fn parse_run(text: &str) -> Result<RunPlan> {
-    parse_text("doramcap.launch.v1.RunPlan", text)
-}
-
 /// Names owned by one repository: its slice, unit prefix and runtime directory.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Scope {
@@ -302,8 +277,6 @@ mod tests {
         // Assert
         assert_eq!(app_ids(&systems).unwrap(), ["monitor", "capture"]);
         assert_eq!(app_ids(&users).unwrap(), ["perception"]);
-        // Act / Assert: old configurable phases are rejected by the text parser.
-        assert!(parse_plan("groups { await_recordings: true }").is_err());
     }
 
     #[test]
@@ -378,18 +351,5 @@ mod tests {
         let mut run = run();
         run.stop_seconds = 0;
         assert!(validate(&run, &plan()).is_err());
-    }
-
-    #[test]
-    fn text_plans_decode_strictly() {
-        // Arrange
-        let text = r#"programs { id: "a" argv: "/bin/true" }"#;
-        // Act
-        let plan = parse_plan(text).unwrap();
-        let run = parse_run(r#"id: "r1" stop_seconds: 5"#).unwrap();
-        // Assert
-        assert_eq!(plan.programs[0].argv, ["/bin/true"]);
-        assert_eq!((run.id.as_str(), run.stop_seconds), ("r1", 5));
-        assert!(parse_plan("unknown_field: 1").is_err());
     }
 }

@@ -1,6 +1,18 @@
 //! Run one native monitor from pbtxt; stop cooperatively after readiness or Ctrl-C.
 use std::time::Duration;
-use workload_supervisor::{SupervisorRunner, parse_run};
+use workload_supervisor::{MonitorRun, SupervisorRunner};
+
+/// Decode a strict protobuf text-format `MonitorRun`.
+fn parse_run(text: &str) -> Result<MonitorRun, Box<dyn std::error::Error>> {
+    let pool = prost_reflect::DescriptorPool::decode(
+        include_bytes!(concat!(env!("OUT_DIR"), "/supervisor.bin")).as_slice(),
+    )?;
+    let descriptor = pool
+        .get_message_by_name("doramcap.supervisor.v1.MonitorRun")
+        .ok_or("MonitorRun descriptor absent")?;
+    Ok(prost_reflect::DynamicMessage::parse_text_format(descriptor, text)?.transcode_to()?)
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();

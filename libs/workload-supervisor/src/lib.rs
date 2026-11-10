@@ -4,7 +4,6 @@ mod ownership;
 pub mod steps;
 
 use orchestrator::{Input, LocalExecutor, Observer, Output};
-use prost::Message;
 use std::{
     cell::RefCell,
     future::Future,
@@ -23,20 +22,6 @@ include!(concat!(env!("OUT_DIR"), "/doramcap.supervisor.v1.rs"));
 pub type Result<T> = std::result::Result<T, String>;
 pub(crate) fn error(e: impl std::fmt::Display) -> String {
     e.to_string()
-}
-
-/// Decode a strict protobuf text-format MonitorRun using its generated descriptor.
-pub fn parse_run(text: &str) -> Result<MonitorRun> {
-    let pool = prost_reflect::DescriptorPool::decode(
-        include_bytes!(concat!(env!("OUT_DIR"), "/supervisor.bin")).as_slice(),
-    )
-    .map_err(error)?;
-    let descriptor = pool
-        .get_message_by_name("doramcap.supervisor.v1.MonitorRun")
-        .ok_or("MonitorRun descriptor absent")?;
-    let message =
-        prost_reflect::DynamicMessage::parse_text_format(descriptor, text).map_err(error)?;
-    MonitorRun::decode(message.encode_to_vec().as_slice()).map_err(error)
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -371,12 +356,18 @@ mod tests {
     }
 
     #[test]
-    fn strict_pbtxt_and_unsafe_paths_reject_before_launch() {
-        // Arrange / Act
-        let mut run = parse_run("id:'monitor' output_directory:'/tmp/new' supervisord:'/usr/bin/supervisord' supervisorctl:'/usr/bin/supervisorctl' monitor_binary:'/tmp/monitor' readiness_seconds:10 stop_seconds:2 cgroup_parent:'/sys/fs/cgroup/delegated'").unwrap();
-        // Assert
-        assert_eq!(run.id, "monitor");
-        assert!(parse_run("unexpected_field:1").is_err());
+    fn unsafe_paths_reject_before_launch() {
+        // Arrange
+        let mut run = MonitorRun {
+            id: "monitor".into(),
+            output_directory: "/tmp/new".into(),
+            supervisord: "/usr/bin/supervisord".into(),
+            supervisorctl: "/usr/bin/supervisorctl".into(),
+            monitor_binary: "/tmp/monitor".into(),
+            readiness_seconds: 10,
+            stop_seconds: 2,
+            cgroup_parent: "/sys/fs/cgroup/delegated".into(),
+        };
         for path in [
             "/tmp/percent%path",
             "/tmp/quote\"path",
