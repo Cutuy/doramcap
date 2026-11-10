@@ -11,8 +11,11 @@ docker build -t doramcap/gpudirect-demo:local -f apps/gpudirect-demo/deploy/Dock
 rm -r "$stage"
 ```
 
-Enable the gallery server with `--enable-app gpudirect-demo`. The existing gallery
+Enable the gallery server with `--enable-app gpudirect-demo`; it uses the
+gallery’s standard shared runtime. The existing gallery
 supplies `GPUDIRECT_RESULTS_DIR`, `GPUDIRECT_UID` and `GPUDIRECT_GID` for each run.
 The container requests one GPU, a 256-MiB memlock budget and io_uring access.
 Readiness follows full readback; shutdown waits for active CUDA work and marks
 completed outputs for the gallery's result publisher.
+
+Native wrapper checks: `node apps/gpudirect-demo/tests/hosting.mts /absolute/path/gpudirect-demo`.

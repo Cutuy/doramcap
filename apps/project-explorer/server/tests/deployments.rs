@@ -177,6 +177,17 @@ async fn check_deployment(app: &str) {
     assert_eq!(state, Status::Stopped { error: None }, "{root:?}");
     let (complete, result, _) = service.recording_paths(app, launch.generation).unwrap();
     assert!(complete.is_file() && result.is_file(), "{root:?}");
+    if app == "gpudirect-demo" {
+        let files = service.additional_files(app, launch.generation).unwrap();
+        assert_eq!(files.len(), 3);
+        for name in ["staged.mcap", "io-only.mcap", "stats.txt"] {
+            assert!(
+                files
+                    .iter()
+                    .any(|(actual, path)| actual == name && path.is_file())
+            );
+        }
+    }
     for resource in [
         vec!["ps", "-aq"],
         vec!["network", "ls", "-q"],
