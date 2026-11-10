@@ -6,8 +6,9 @@ Approved migration: [PR #210](https://github.com/Cutuy/doramcap/pull/210).
 Use locked Dora 1.1.0 message types and tokio-tungstenite 0.29.0 on the caller's
 Tokio runtime. A request temporarily owns the socket; cancellation drops it while
 client-owned graph state remains. No receive task or executor context registry is
-needed for the pinned control endpoint. Backend migration remains pending the
-CLI session-preparation parity decision.
+needed for the pinned control endpoint. Backend migration prepares the supported
+dynamic-node descriptor and sends Start directly; CLI reuse and upstream changes
+are optional approaches if a demonstrated parity gap requires them.
 
 ## Milestone 1: Shared protocol client
 
@@ -34,16 +35,20 @@ Backend migration, full CI and ARM64 qualification remain pending.
 
 ## Milestone 2: Backend migration and CLI parity
 
-The parity review found that Dora CLI startup also owns descriptor/session and
-cached-build preparation. `dora_cli::session::DataflowSession` is public; complete
-startup preparation is private. General systemd graphs can depend on those facts.
-The client accepts Dora's typed Start request so preparation can retain its owner
-without a parallel configuration model. User decision requested: extract a lean
-upstream preparation API or reuse the larger CLI dependency's session helpers.
+The [systemd architecture](../../workload-lifecycle/docs/110726-launch-forms.md#systemd-mode)
+supports dynamic nodes launched by the backend. Console expands and merges those
+descriptors before execution. The migration must preserve that input, runtime-visible
+paths, session identity and required artifacts. General CLI cached-build/Hub
+preparation has not been established as a dependency of this supported path.
+
+Dora's Start request accepts an optional build ID and an explicit session ID. The
+real-coordinator test already starts a dynamic graph with a new session and no
+build ID, using direct requests. Keep CLI behavior as a parity reference; no new
+CLI dependency or upstream extraction is required merely to send Start.
 
 **Work items**
 
-- [ ] Resolve session preparation, existing native execution contexts and supported descriptor behavior before replacing registration.
+- [ ] Preserve supported dynamic-node descriptor preparation, native execution contexts, session identity and required artifacts before replacing registration.
 - [ ] Replace Compose and systemd control calls; inject shared references and retain backend cleanup ownership.
 - [ ] Pass one absolute startup control deadline and a fresh shutdown control deadline after cancellation.
 - [ ] Continue native teardown and evidence reporting after control errors.
