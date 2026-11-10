@@ -20,9 +20,10 @@ project root.
 
 ## Shared Docker crate
 
-A new crate holds the Docker operations both backends need. `workload-docker`
-keeps the Compose parts and depends on the new crate, as `workload-holoscan` does.
-The crate name is open.
+A new crate, `docker-engine`, holds the Docker operations both backends need.
+`workload-docker` keeps the Compose parts and depends on it, as
+`workload-holoscan` does. The [implementation plan](111026-docker-engine-crate-impl.md)
+lists the milestones.
 
 Current filesystem steps accept Compose project inputs, so the work has two stages:
 
@@ -42,11 +43,12 @@ Current filesystem steps accept Compose project inputs, so the work has two stag
 rewriting. A failed Compose validation discards the new views, as today, and the
 step keeps its current identity.
 
-Open details for the implementation plan:
+Details settled in the implementation plan:
 
+- The new step inputs are protobuf messages.
 - Mount records name a Compose project and service today. They become a plain consumer name.
 - Reset removes the container holding the shared-memory reservation last. The shared operation takes that as an input.
-- The saved view record includes Compose projects. Its readers need tracing before its shape changes.
+- The saved view record drops its Compose projects. Only tests read it.
 
 ## Run sequence
 

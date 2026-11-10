@@ -134,8 +134,8 @@ commands. No real container ran and no OverlayFS view was mounted.
 ## Work still needed
 
 - Implement the Holoscan runner in the Console backend.
-- Move the shared Docker operations to their own crate, as the
-  [filesystem capture document](110926-holoscan-outputs.md) describes.
+- Move the shared Docker operations to the `docker-engine` crate, following its
+  [implementation plan](111026-docker-engine-crate-impl.md).
 - Connect review settings, run events and results to Console's existing contracts.
 - Test a real Docker application with OverlayFS, then GPU and sensor workloads.
 - Test controller failure and verify that the next run cleans up leftovers.
