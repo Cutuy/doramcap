@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="500" viewBox="0 0 1080 500" role="img" aria-labelledby="title desc">
+  <title id="title">Dora control integration</title>
+  <desc id="desc">Each backend retains its coordinator client through cleanup. Typed control uses one WebSocket while native backend ownership covers coordinator and daemon launch, exit verification and evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M1 1L7 4L1 7" fill="none" stroke="#475569" stroke-width="1.6"/></marker>
+  </defs>
+  <rect width="1080" height="500" rx="16" fill="#f8fafc"/>
+  <g font-family="sans-serif" fill="#0f172a" text-anchor="middle">
+    <text x="540" y="35" font-size="22" font-weight="600">One client per experiment · retained through cleanup</text>
+    <rect x="30" y="75" width="260" height="100" rx="10" fill="#dbeafe"/>
+    <text x="160" y="106" font-size="19">Compose</text>
+    <text x="160" y="133" font-size="16">ExperimentOwner</text>
+    <text x="160" y="158" font-size="14">LocalExecutor factories + run state</text>
+    <rect x="30" y="220" width="260" height="90" rx="10" fill="#dbeafe"/>
+    <text x="160" y="250" font-size="19">systemd</text>
+    <text x="160" y="278" font-size="16">SystemdRunning → Dora</text>
+    <rect x="390" y="130" width="300" height="135" rx="10" fill="#ccfbf1"/>
+    <text x="540" y="161" font-size="21">DoraCoordinatorClient</text>
+    <text x="540" y="191" font-size="16">Start intent · graph UUID</text>
+    <text x="540" y="216" font-size="16">Reused connection · deadlines</text>
+    <text x="540" y="244" font-size="14">Readiness · Start · Inspect · Stop</text>
+    <rect x="810" y="130" width="240" height="100" rx="10" fill="#e0e7ff"/>
+    <text x="930" y="166" font-size="20">Dora coordinator</text>
+    <text x="930" y="198" font-size="16">Owned graph</text>
+    <rect x="810" y="275" width="240" height="70" rx="10" fill="#e0e7ff"/>
+    <text x="930" y="316" font-size="20">Dora daemon</text>
+    <rect x="30" y="390" width="660" height="80" rx="10" fill="#fef3c7"/>
+    <text x="360" y="421" font-size="19">Native backend lifecycle</text>
+    <text x="360" y="448" font-size="16">Launch · drain apps · verify exit · finalize evidence</text>
+    <text x="338" y="137" font-size="14">Typed calls</text>
+    <text x="337" y="282" font-size="14">Typed calls</text>
+    <text x="750" y="173" font-size="14">WebSocket</text>
+    <text x="971" y="256" font-size="14">Graph</text>
+    <text x="810" y="412" font-size="14">Processes / units</text>
+  </g>
+  <g fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)">
+    <path d="M290 125H335V160H390"/>
+    <path d="M290 265H335V235H390"/>
+    <path d="M690 190H810"/>
+    <path d="M810 211H690"/>
+    <path d="M930 230V275"/>
+    <path d="M30 125H15V430H30"/>
+    <path d="M160 310V390"/>
+    <path d="M690 430H740V310H810"/>
+    <path d="M740 310V95H930V130"/>
+  </g>
+</svg>
