@@ -1,5 +1,4 @@
 //! CUDA-produced MCAP slabs: mapped output, staged device output, and storage-only baseline.
-#[path = "support/cuda_mcap.rs"]
 mod support;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

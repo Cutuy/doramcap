@@ -26,5 +26,13 @@ prost = "0.14"
 telemetry-protocol = { path = "../telemetry/protocol" }
 fault-protocol = { path = "../fault/protocol" }
 
+[[example]]
+name = "cuda_mcap"
+path = "examples/gpudirect/example.rs"
+
+[[test]]
+name = "cuda_mcap"
+path = "examples/gpudirect/tests.rs"
+
 [lints]
 workspace = true

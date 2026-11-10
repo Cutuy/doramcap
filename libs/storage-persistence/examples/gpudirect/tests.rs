@@ -1,4 +1,3 @@
-#[path = "../examples/support/cuda_mcap.rs"]
 mod support;
 
 #[test]

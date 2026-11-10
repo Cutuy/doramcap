@@ -1,6 +1,6 @@
 # CUDA slab example implementation
 
-Created 2026-11-09. [Architecture](110926-cuda-mcap-slabs.md).
+Created 2026-11-09. [Architecture](README.md).
 
 ## M1 — Hardware example and test
 
@@ -53,7 +53,7 @@ Benchmark: four slabs; three repetitions per mode; rotate mode order each
 repetition. Each 64-KiB run records 4,096 messages (256 MiB); each 1-MiB run
 records 1,024 messages (1 GiB); each 8-MiB run records 128 messages (1 GiB).
 All 27 recordings passed independent full-payload readback. Temporary benchmark
-files were removed after validation. [All samples](benchmarks/20261109-cuda-mcap.csv).
+files were removed after validation.
 
 8-MiB messages, median of three repetitions:
 
@@ -92,3 +92,18 @@ target/release/examples/cuda_mcap /absolute/path/mapped.mcap mapped 8388608 128 
 target/release/examples/cuda_mcap /absolute/path/staged.mcap staged 8388608 128 4
 target/release/examples/cuda_mcap /absolute/path/io.mcap io-only 8388608 128 4
 ```
+
+## M2 — Example directory consolidation · 2026-11-10
+
+**Work items**
+
+- [x] Group source, hardware tests, design, SVG and evidence in this directory.
+- [x] Preserve the `cuda_mcap` example/test commands with explicit Cargo paths.
+- [x] Remove the raw CSV and its links; retain the benchmark summary above.
+
+**Validation**
+
+- [x] Cargo metadata resolves both relocated targets; release compilation check passes.
+- [x] Shared CUDA source remains byte-for-byte unchanged; local documentation links resolve.
+- [x] Formatting and diff checks pass.
+- [ ] Execute the relocated CUDA hardware test.

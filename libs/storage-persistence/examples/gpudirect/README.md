@@ -1,8 +1,8 @@
 # CUDA-produced MCAP slabs
 
-![CUDA slab recording](110926-cuda-mcap-slabs.svg)
+![CUDA slab recording](architecture.svg)
 
-Created 2026-11-09. [Implementation and evidence](110926-cuda-mcap-slabs-impl.md).
+Created 2026-11-09. [Implementation and evidence](implementation.md).
 
 The hardware example registers existing `SlabPool` allocations with
 `cudaHostRegisterMapped`. A CUDA kernel produces payload bytes in the mapped
