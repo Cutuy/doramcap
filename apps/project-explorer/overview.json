@@ -1,8 +1,8 @@
 {
   "$schema": "./overview.schema.json",
   "version": 1,
-  "title": "Your runtime foundation for Physical AI.",
-  "summary": "Zero code changes for your existing Docker Compose apps.",
+  "title": "Your runtime foundation for Physical AI, with zero code changes.",
+  "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
   "workloads": [
     "Perception",
     "Learned policies",
