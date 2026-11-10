@@ -97,7 +97,7 @@ async fn serial_overlay_isolation_and_harvest() {
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
             artifacts,
-            bind_mounts: binds(&[original.clone()]),
+            bind_mounts: binds(std::slice::from_ref(&original)),
             policy: OverlayPolicy {
                 disposition: disposition.clone(),
             },
