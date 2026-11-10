@@ -124,11 +124,18 @@ ARM64 worker results above remain the earlier behavior qualification.
 **Validation**
 
 - [x] New regression failed before the fix.
-- [ ] Release compilation and focused Clippy/format checks.
-- [ ] Existing 12 hardware cases and both new 64-MiB cases pass.
+- [x] Locked release compilation and focused Clippy/format/diff checks pass.
+- [x] All 14 hardware cases pass on the RTX 5070 Ti: the existing 12 cases and both new 64-MiB cases.
 
 The old estimate confused the 4-KiB alignment with registration units. Each
 64-MiB payload needs a 64-MiB-plus-padding slab, so four slabs requested 65,544
 entries and exceeded the writer's 65,535-entry limit. Production registration
 uses ranges up to 1 GiB. The writer remains responsible for this internal
 segmentation and reports its actual budget exhaustion.
+
+Validated code revision: `188a04133cf548f5ce210e04506559705dbb8814`. The
+serial release hardware test passed both test functions; each new mode recorded
+five messages through four slabs and verified all payload bytes and slab return.
+Focused Clippy covered the example and hardware test with warnings denied.
+The benchmark and ARM64 worker results above remain historical; neither was
+rerun for this capacity fix.
