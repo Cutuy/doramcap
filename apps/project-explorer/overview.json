@@ -1,7 +1,7 @@
 {
   "$schema": "./overview.schema.json",
   "version": 1,
-  "title": "Your runtime foundation for Physical AI running on the edge",
+  "title": "Your runtime foundation for Physical AI on the edge",
   "summary": "Run perception, learned policies, and control on a shared SoC\u2014with execution policy, data movement, recording, and diagnosis in the platform beneath them.",
   "workloads": [
     "Perception",
