@@ -279,19 +279,20 @@ impl DoraCoordinatorClient {
         }
     }
 
-    /// Stop the owned graph before Destroy; return errors so native teardown can continue.
-    /// An unresolved identity or unconfirmed stop prevents protocol-level destruction.
-    pub async fn shutdown(&mut self, grace: Duration, deadline: Instant) -> Result<()> {
-        let result = self.shutdown_inner(grace, deadline).await;
+    /// Force-stop the owned graph, then destroy the exclusively owned coordinator and daemons.
+    /// The caller must drain apps first and own the whole runtime; uncertain stop prevents Destroy.
+    /// Errors retain graph identity so the caller can complete native teardown.
+    pub async fn shutdown(&mut self, deadline: Instant) -> Result<()> {
+        let result = self.shutdown_inner(deadline).await;
         self.disconnect();
         result
     }
 
-    async fn shutdown_inner(&mut self, grace: Duration, deadline: Instant) -> Result<()> {
+    async fn shutdown_inner(&mut self, deadline: Instant) -> Result<()> {
         if let Some(uuid) = self.reconcile_graph(deadline).await? {
             let request = ControlRequest::Stop {
                 dataflow_uuid: uuid,
-                grace_duration: Some(grace),
+                grace_duration: None,
                 force: true,
             };
             match self.request(request, deadline).await? {

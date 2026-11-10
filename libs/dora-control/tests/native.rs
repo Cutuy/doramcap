@@ -108,7 +108,7 @@ async fn real_coordinator_registers_inspects_and_stops_a_dynamic_graph() {
     client.inspect_graph(startup).await.unwrap();
     // Act
     client
-        .shutdown(STOP_BUDGET, Instant::now() + STOP_BUDGET)
+        .shutdown(Instant::now() + STOP_BUDGET)
         .await
         .unwrap_or_else(|error| panic!("{error}; logs: {}", runtime.directory.display()));
     // Assert: protocol shutdown completes before native children are reaped.

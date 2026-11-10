@@ -24,6 +24,8 @@ type Peer = WebSocketStream<TcpStream>;
 const TEST_BUDGET: Duration = Duration::from_secs(5);
 const SILENT_PEER_BUDGET: Duration = Duration::from_millis(100);
 const RUN_NAME: &str = "owned-experiment";
+const SYSTEM_NODE: &str = "system-recorder";
+const NODE_STOP_GRACE: Duration = Duration::from_secs(2);
 fn deadline() -> Instant {
     Instant::now() + TEST_BUDGET
 }
@@ -103,7 +105,9 @@ fn entry(name: &str, uuid: DataflowId) -> DataflowListEntry {
 }
 async fn stop_graph(peer: &mut Peer, uuid: DataflowId) {
     let (request, control) = receive(peer).await;
-    assert!(matches!(control, ControlRequest::Stop { dataflow_uuid, .. } if dataflow_uuid == uuid));
+    assert!(
+        matches!(control, ControlRequest::Stop { dataflow_uuid, grace_duration: None, force: true } if dataflow_uuid == uuid)
+    );
     reply(
         peer,
         request,
@@ -138,6 +142,20 @@ async fn one_connection_serves_readiness_registration_inspection_and_shutdown() 
         }
         spawn_graph(&mut peer, uuid).await;
         let (request, control) = receive(&mut peer).await;
+        assert!(
+            matches!(control, ControlRequest::StopNode { dataflow_id, node_id, grace_duration: Some(grace) }
+            if dataflow_id == uuid && node_id.as_ref() == SYSTEM_NODE && grace == NODE_STOP_GRACE)
+        );
+        reply(
+            &mut peer,
+            request,
+            ControlRequestReply::NodeStopped {
+                dataflow_id: uuid,
+                node_id: SYSTEM_NODE.to_owned().into(),
+            },
+        )
+        .await;
+        let (request, control) = receive(&mut peer).await;
         assert!(matches!(control, ControlRequest::List));
         reply(
             &mut peer,
@@ -152,14 +170,18 @@ async fn one_connection_serves_readiness_registration_inspection_and_shutdown() 
     assert!(!client.daemon_connected(deadline()).await.unwrap());
     assert!(client.daemon_connected(deadline()).await.unwrap());
     assert_eq!(client.start_graph(start(), deadline()).await.unwrap(), uuid);
+    client
+        .stop_node(SYSTEM_NODE.to_owned().into(), NODE_STOP_GRACE, deadline())
+        .await
+        .unwrap();
     client.inspect_graph(deadline()).await.unwrap();
-    client.shutdown(TEST_BUDGET, deadline()).await.unwrap();
+    client.shutdown(deadline()).await.unwrap();
     assert_eq!(client.graph().unwrap().uuid, Some(uuid));
     peer.await.unwrap();
 }
 
 #[tokio::test]
-async fn cancelled_start_reconciles_without_repeating_start_or_stopping_foreign_graphs() {
+async fn cancelled_start_reconciles_the_owned_graph_without_repeating_start() {
     // Arrange
     let (listener, address) = listener().await;
     let uuid = DataflowId::new_v4();
@@ -210,7 +232,7 @@ async fn cancelled_start_reconciles_without_repeating_start_or_stopping_foreign_
         Err(Error::Identity(_))
     ));
     // Act / Assert: cleanup reconnects and stops only the matching UUID.
-    client.shutdown(TEST_BUDGET, deadline()).await.unwrap();
+    client.shutdown(deadline()).await.unwrap();
     assert_eq!(client.graph().unwrap().uuid, Some(uuid));
     peer.await.unwrap();
 }
@@ -255,7 +277,7 @@ async fn cancellation_after_uuid_reply_keeps_identity_while_waiting_for_spawn() 
     // Assert
     assert_eq!(client.graph().unwrap().uuid, Some(uuid));
     // Act / Assert
-    client.shutdown(TEST_BUDGET, deadline()).await.unwrap();
+    client.shutdown(deadline()).await.unwrap();
     peer.await.unwrap();
 }
 
@@ -297,7 +319,7 @@ async fn ambiguous_registration_does_not_stop_or_destroy_anything() {
         Err(Error::Remote(_))
     ));
     assert!(matches!(
-        client.shutdown(TEST_BUDGET, deadline()).await,
+        client.shutdown(deadline()).await,
         Err(Error::Identity(_))
     ));
     assert!(client.graph().unwrap().uuid.is_none());
@@ -315,7 +337,7 @@ async fn silent_stop_expires_without_losing_graph_or_sending_destroy() {
         spawn_graph(&mut peer, uuid).await;
         let (_, control) = receive(&mut peer).await;
         assert!(
-            matches!(control, ControlRequest::Stop { dataflow_uuid, .. } if dataflow_uuid == uuid)
+            matches!(control, ControlRequest::Stop { dataflow_uuid, grace_duration: None, force: true } if dataflow_uuid == uuid)
         );
         // Remain silent; deadline expiry must close this socket without Destroy.
         assert!(
@@ -327,9 +349,7 @@ async fn silent_stop_expires_without_losing_graph_or_sending_destroy() {
     let mut client = DoraCoordinatorClient::new(address, None);
     client.start_graph(start(), deadline()).await.unwrap();
     // Act
-    let result = client
-        .shutdown(TEST_BUDGET, Instant::now() + SILENT_PEER_BUDGET)
-        .await;
+    let result = client.shutdown(Instant::now() + SILENT_PEER_BUDGET).await;
     // Assert
     assert!(matches!(result, Err(Error::Deadline)));
     assert_eq!(client.graph().unwrap().uuid, Some(uuid));
@@ -541,5 +561,180 @@ async fn readiness_sampling_waits_for_registration_on_one_connection() {
     // Act
     client.wait_for_daemon(deadline()).await.unwrap();
     // Assert: the peer observed repeated queries on its one accepted connection.
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn missing_registration_remains_unknown_and_prevents_destroy() {
+    // Arrange
+    let (listener, address) = listener().await;
+    let peer = tokio::spawn(async move {
+        let mut first = accept(&listener).await;
+        hello(&mut first).await;
+        let (request, _) = receive(&mut first).await;
+        reply(
+            &mut first,
+            request,
+            ControlRequestReply::Error("start reply lost".into()),
+        )
+        .await;
+        let _ = first.next().await;
+        let mut second = accept(&listener).await;
+        hello(&mut second).await;
+        let (request, control) = receive(&mut second).await;
+        assert!(matches!(control, ControlRequest::List));
+        reply(
+            &mut second,
+            request,
+            ControlRequestReply::DataflowList(DataflowList(vec![])),
+        )
+        .await;
+        assert!(
+            second
+                .next()
+                .await
+                .is_none_or(|frame| frame.is_err() || matches!(frame, Ok(Message::Close(_))))
+        );
+    });
+    let mut client = DoraCoordinatorClient::new(address, None);
+    // Act / Assert: absence from List cannot resolve an accepted or delayed Start.
+    assert!(client.start_graph(start(), deadline()).await.is_err());
+    assert!(matches!(
+        client.shutdown(deadline()).await,
+        Err(Error::Identity(_))
+    ));
+    assert!(client.graph().unwrap().uuid.is_none());
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_stop_keeps_identity_and_closes_the_inflight_connection() {
+    // Arrange
+    let (listener, address) = listener().await;
+    let uuid = DataflowId::new_v4();
+    let (stopping_tx, stopping_rx) = oneshot::channel();
+    let peer = tokio::spawn(async move {
+        let mut peer = accept(&listener).await;
+        hello(&mut peer).await;
+        spawn_graph(&mut peer, uuid).await;
+        let (_, control) = receive(&mut peer).await;
+        assert!(
+            matches!(control, ControlRequest::Stop { dataflow_uuid, .. } if dataflow_uuid == uuid)
+        );
+        stopping_tx.send(()).unwrap();
+        assert!(
+            peer.next()
+                .await
+                .is_none_or(|frame| frame.is_err() || matches!(frame, Ok(Message::Close(_))))
+        );
+    });
+    let mut client = DoraCoordinatorClient::new(address, None);
+    client.start_graph(start(), deadline()).await.unwrap();
+    // Act
+    {
+        let shutdown = client.shutdown(deadline());
+        tokio::pin!(shutdown);
+        tokio::select! {
+            _ = stopping_rx => (),
+            result = &mut shutdown => panic!("Stop unexpectedly completed: {result:?}"),
+        }
+    }
+    // Assert: the retained client remains usable after its waiting future is dropped.
+    assert_eq!(client.graph().unwrap().uuid, Some(uuid));
+    assert_eq!(
+        client.reconcile_graph(deadline()).await.unwrap(),
+        Some(uuid)
+    );
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn node_stop_rejects_a_reply_for_another_node_and_retains_graph_identity() {
+    // Arrange
+    let (listener, address) = listener().await;
+    let uuid = DataflowId::new_v4();
+    let peer = tokio::spawn(async move {
+        let mut peer = accept(&listener).await;
+        hello(&mut peer).await;
+        spawn_graph(&mut peer, uuid).await;
+        let (request, control) = receive(&mut peer).await;
+        assert!(
+            matches!(control, ControlRequest::StopNode { dataflow_id, node_id, .. }
+            if dataflow_id == uuid && node_id.as_ref() == SYSTEM_NODE)
+        );
+        reply(
+            &mut peer,
+            request,
+            ControlRequestReply::NodeStopped {
+                dataflow_id: uuid,
+                node_id: "different-node".to_owned().into(),
+            },
+        )
+        .await;
+        let _ = peer.next().await;
+    });
+    let mut client = DoraCoordinatorClient::new(address, None);
+    client.start_graph(start(), deadline()).await.unwrap();
+    // Act
+    let result = client
+        .stop_node(SYSTEM_NODE.to_owned().into(), NODE_STOP_GRACE, deadline())
+        .await;
+    // Assert
+    assert!(matches!(result, Err(Error::Protocol(_))));
+    assert_eq!(client.graph().unwrap().uuid, Some(uuid));
+    peer.await.unwrap();
+}
+
+#[tokio::test]
+async fn start_requires_a_nonempty_explicit_name_before_any_attempt() {
+    // Arrange
+    let mut unnamed = start();
+    if let ControlRequest::Start { name, .. } = &mut unnamed {
+        *name = None;
+    }
+    let mut empty = start();
+    if let ControlRequest::Start { name, .. } = &mut empty {
+        *name = Some(String::new());
+    }
+    for request in [ControlRequest::List, unnamed, empty] {
+        let mut client =
+            DoraCoordinatorClient::new((std::net::Ipv4Addr::LOCALHOST, 0).into(), None);
+        // Act
+        let result = client.start_graph(request, deadline()).await;
+        // Assert
+        assert!(matches!(result, Err(Error::Identity(_))));
+        assert!(client.graph().is_none());
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn readiness_deadline_expires_when_the_daemon_never_registers() {
+    // Arrange
+    let (listener, address) = listener().await;
+    let peer = tokio::spawn(async move {
+        let mut peer = accept(&listener).await;
+        hello(&mut peer).await;
+        while let Some(Ok(Message::Text(text))) = peer.next().await {
+            let request: WsRequest = serde_json::from_str(&text).unwrap();
+            assert!(matches!(
+                serde_json::from_value::<ControlRequest>(request.params.clone()).unwrap(),
+                ControlRequest::DaemonConnected
+            ));
+            reply(
+                &mut peer,
+                request,
+                ControlRequestReply::DaemonConnected(false),
+            )
+            .await;
+        }
+    });
+    let mut client = DoraCoordinatorClient::new(address, None);
+    // Act
+    let result = client
+        .wait_for_daemon(Instant::now() + SILENT_PEER_BUDGET)
+        .await;
+    // Assert
+    assert!(matches!(result, Err(Error::Deadline)));
+    client.disconnect();
     peer.await.unwrap();
 }

@@ -1,8 +1,9 @@
 # Dora coordinator control
 
 `DoraCoordinatorClient` owns one experiment's reusable async WebSocket connection
-and retained graph identity. Lifecycle steps share it through typed factory
-injection; the backend owns native teardown.
+and retained graph identity. Callers can share it through typed factory injection
+and retain ownership of native teardown. `shutdown` force-stops the graph and
+destroys the exclusively owned coordinator and daemons; callers drain apps first.
 
 ```rust,ignore
 let mut client = DoraCoordinatorClient::new(coordinator_endpoint, explicit_token);

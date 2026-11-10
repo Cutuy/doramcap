@@ -18,4 +18,5 @@ stops the owned graph, then requests coordinator destruction.
 
 The startup daemon-registration query uses the approved 100 ms sampling exception.
 [Its replacement TODO and implementation milestones](110926-coordinator-client-impl.md)
-track event-driven readiness and backend qualification.
+track event-driven readiness and the separate Compose/systemd adoption PRs.
+The standalone library is qualified independently in PR #251.
