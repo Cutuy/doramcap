@@ -13,3 +13,4 @@ shutdown_marker: "shutdown.complete"
 env_prefix: "GPUDIRECT"
 requires_explicit_enable: true
 mcap_services: "demo"
+apps { key: "doramcap-shm" directory: "." files: "../../../libs/workload-docker/deploy/shm/compose.yaml" manifest: "../../../libs/workload-docker/deploy/shm/shm.pbtxt" }

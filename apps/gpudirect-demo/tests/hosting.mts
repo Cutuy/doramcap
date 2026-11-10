@@ -29,7 +29,7 @@ try {
     assert.match(await readFile(join(results, 'stats.txt'), 'utf8'), /verified=true/);
     assert.equal(await (await fetch(`${base}/architecture.svg`)).text(), await readFile(new URL('../architecture.svg', import.meta.url), 'utf8'));
   } finally { await app.stop(); }
-  assert.equal(await readFile(join(results, 'shutdown.complete'), 'utf8'), 'verified\n');
+  assert.equal(await readFile(join(results, 'shutdown.complete'), 'utf8'), 'complete\n');
   console.log('Verified GPU outputs, HTTP downloads and graceful shutdown: pass');
 
   // Act / Assert: a failed recording cannot advertise readiness or completion.

@@ -73,6 +73,12 @@ async fn check_deployment(app: &str) {
         &source.join("apps/fault-watchdog/config"),
         &workspace.join("apps/fault-watchdog/config"),
     );
+    if app == "gpudirect-demo" {
+        copy_tree(
+            &source.join("libs/workload-docker/deploy/shm"),
+            &workspace.join("libs/workload-docker/deploy/shm"),
+        );
+    }
     let data = root.join("data");
     std::fs::create_dir(&data).unwrap();
     let registry = Registry::load(&workspace, &[app.into()]).unwrap();

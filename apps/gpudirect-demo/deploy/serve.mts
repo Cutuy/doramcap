@@ -84,7 +84,7 @@ export async function start(binary: string, directory: string, port = 8080) {
         server.closeAllConnections();
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       }
-      if (measurements.length === MODES.length) await writeNew('shutdown.complete', 'verified\n');
+      if (measurements.length === MODES.length) await writeNew('shutdown.complete', 'complete\n');
     })();
   }
   return { server, completion, stop };
