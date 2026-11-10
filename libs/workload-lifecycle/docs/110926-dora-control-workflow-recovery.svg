@@ -11,8 +11,8 @@
 <rect x="780" y="90" width="740" height="82" rx="10" fill="#dbeafe"/>
 <text x="794" y="119" font-family="DejaVu Sans, sans-serif" font-size="19" fill="#0f172a" font-weight="600" text-anchor="start">systemd: SystemdRunning.dora</text>
 <text x="794" y="143" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Dora retains the client; the running handle retains native unit ownership</text>
-<path d="M385 172V190H650V207" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
-<path d="M1150 172V190H850V207" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M385 172V190H650V197" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+<path d="M1150 172V190H850V197" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
 <text x="44" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Workflow entry</text>
 <text x="514" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Retained client / same connection</text>
 <text x="1014" y="220" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Coordinator messages + native effects</text>
@@ -190,8 +190,8 @@
 <text x="1079" y="1523" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Derive the existing RemovalPermit</text>
 <path d="M1280 1560V1580H1155V1610" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
 <path d="M1280 1580H1405V1610" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
-<text x="1155" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="middle">Yes</text>
-<text x="1405" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="middle">No</text>
+<text x="1143" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="end">Yes</text>
+<text x="1417" y="1598" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569" font-weight="normal" text-anchor="start">No</text>
 <rect x="1040" y="1610" width="230" height="125" rx="10" fill="#dcfce7"/>
 <text x="1054" y="1639" font-family="DejaVu Sans, sans-serif" font-size="18" fill="#0f172a" font-weight="600" text-anchor="start">Permit removal</text>
 <text x="1054" y="1663" font-family="DejaVu Sans, sans-serif" font-size="16" fill="#0f172a" font-weight="normal" text-anchor="start">Remove permitted</text>
