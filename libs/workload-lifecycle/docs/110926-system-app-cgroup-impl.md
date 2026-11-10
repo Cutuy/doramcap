@@ -16,7 +16,7 @@ the mechanics; no new third-party package is introduced.
 
 **Validation**
 - [x] Verify accounting, PID membership, failed identity writes, cancellation and foreign/live preservation.
-- [ ] Review lifecycle inputs/outputs, ownership and dependency boundaries against both guides.
+- [x] Review lifecycle inputs/outputs, ownership and dependency boundaries against both guides.
 
 ## Milestone 2: Native backend mechanics
 
@@ -38,8 +38,8 @@ the mechanics; no new third-party package is introduced.
 - [x] Retain the owner's acceptance of local native workflow qualification for this PR.
 
 **Validation**
-- [ ] Focused locked release tests, all-target Clippy, formatting and library boundaries.
-- [ ] Cloud Rust/Node/MCAP checks on x86_64 and ARM64.
+- [x] Focused locked release tests, all-target Clippy, formatting and library boundaries.
+- [x] Cloud Rust/Node/MCAP checks on x86_64 and ARM64 for code revision `3fd9abd5`.
 
 Local native checks pass: accounting/ownership cases, both Docker drivers, native
 systemd startup/restart/cancellation/recovery and real Supervisor fault scenarios.
@@ -47,7 +47,7 @@ The per-run identity check reuses the caller ID across fresh artifact directorie
 Focused locked release libraries and boundary checks pass. Logs:
 `/tmp/system-app-cgroup-validation`.
 
-Cloud checks pass for the first neutral revision; final-source checks and the guide
-review are in progress. Live results: [PR checks](https://github.com/Cutuy/doramcap/pull/252/checks).
+The guide review has no unresolved code findings. Cloud Rust, Node and MCAP checks
+pass on both architectures for code revision `3fd9abd5`. Live results: [PR checks](https://github.com/Cutuy/doramcap/pull/252/checks).
 The owner requested "just do local native tests for now"; native ARM64 workflow
 execution remains deferred. Prior worker 630 results apply to the earlier source.
