@@ -33,6 +33,7 @@ Run the simulated cleanup example: `cargo run -p orchestrator --example experime
 Use a current-thread Tokio runtime. External Python/Node steps use the JSON stdio
 adapter in `orchestrator::process`; they require their interpreter on the host.
 
+[Choosing workflow steps](docs/102626-function-steps.md#choosing-workflow-steps) ·
 [Design and validation](docs/102626-function-steps.md) ·
 [Experiment lifecycle](../workload-lifecycle/docs/102626-experiment-workflow.svg) ·
 [Input lifetime](docs/102926-refactor-engineer.svg).

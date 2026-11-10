@@ -14,5 +14,5 @@ Inputs: [`SystemdPlan`](proto/systemd_plan.proto). Requires root and the system
 service manager. [Architecture](../workload-lifecycle/docs/110726-launch-forms.md) ·
 [Native tests](tests/native.rs) · API: `cargo doc -p workload-systemd --no-deps`.
 
-[Workflow-step design](../workload-docker/src/workflows/README.md) ·
+[Workflow-step design](../orchestrator/docs/102626-function-steps.md#choosing-workflow-steps) ·
 [Runtime step implementation](docs/110826-runtime-steps-impl.md).

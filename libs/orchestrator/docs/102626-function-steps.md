@@ -4,6 +4,33 @@
 
 Created: 2026-10-26. Status: factory injection revision. Target: 4 GB machines.
 
+## Choosing workflow steps
+
+A workflow chooses order, branches, waits and cleanup. Use a step for a coherent,
+substantial unit of machine work whose effects and possible failure are worth
+observing; see [D-14](../../../docs/design-guide.md). Helpers share their enclosing
+step's boundary.
+
+Reuse a step when an operation shares its purpose, inputs, result and failure
+boundary. Introduce a step when a separately meaningful operation would otherwise
+run between observed steps. Typical boundaries cover preparation, resource
+creation/start/stop/removal, and evidence capture/finalization. Parsing and workflow
+decisions stay inside their existing operation or coordination code.
+
+<details>
+<summary>Docker Compose and systemd examples</summary>
+
+Docker's shm container uses an additional `StartCompose` invocation. Validation
+belongs to `PrepareRun`; shutdown and removal use existing Compose steps.
+Systemd's native shm setup has its own runtime step because it loads units, writes
+drop-ins, reloads the manager and mounts a filesystem after input preparation.
+`systemd.runtime.remove` verifies shutdown and removes runtime files and memory.
+Existing direct systemd application start/stop calls remain an observation gap.
+
+See the [systemd implementation plan](../../workload-systemd/docs/110826-runtime-steps-impl.md).
+
+</details>
+
 ## Milestones and validation
 
 Update this checklist in place as work proceeds. Check an item only after its
@@ -99,6 +126,8 @@ Observer panics are counted and suppressed to avoid repeating side effects.
 `LocalExecutor::new(observer)` injects the event consumer. Payload capture is
 opt-in via `capture_payloads(true)`; redact at the application boundary. Typed
 inputs and outputs always round-trip through JSON, including local execution.
+Reuse protobuf domain models where available; generic step inputs and outputs use
+the orchestrator's Serde/JSON boundary without requiring a protobuf schema per step.
 There is no core payload-size limit. Transport queues, telemetry encoding and
 external-process streams retain their own bounds. Large recordings stay outside
 orchestration memory; steps pass paths or identifiers.
