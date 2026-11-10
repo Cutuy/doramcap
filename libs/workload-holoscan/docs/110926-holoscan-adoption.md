@@ -9,6 +9,9 @@ application and retains the results. `workload-holoscan` owns this adoption
 workflow. Holoscan remains responsible for the application's graph and sensor
 processing.
 
+The Console integration remains to be implemented. The CLI/helper tests used a
+fake Docker command. Our tests have not run a real Holoscan application through Console.
+
 ## Component ownership
 
 | Owner | Responsibility |
