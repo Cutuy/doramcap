@@ -12,7 +12,7 @@ page reuses the Result and timeline views and offers **Run again** through Revie
 
 | Topic | Decision |
 | --- | --- |
-| Engine | `node:sqlite` from the Node runtime each release pins, so schema, SQL and migrations all stay in TypeScript and users install nothing. It is experimental in Node 22, so the service disables that warning, and a Node bump is tested against the store. |
+| Engine | `node:sqlite` from the Node runtime each release pins, so schema, SQL and migrations all stay in TypeScript and users install nothing. Test the store when upgrading Node. |
 | Authority | `console.db` is the only store for the marker and run status. Recordings stay files under `runs/`. |
 | Failure | Console refuses to start without its database and refuses a run it cannot record. A failed progress save mid-run retries at the next change; a failed final save marks the run Blocked. |
 | Row | Run id, project, state and start time as indexed columns; `HistoryEntry` and `Status` as protobuf blobs, so old rows stay readable. Migrations are additive only, so older Consoles keep reading. |

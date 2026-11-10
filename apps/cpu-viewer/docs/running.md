@@ -2,7 +2,7 @@
 
 ![Live CPU dataflow](architecture.svg)
 
-Requires Linux 6.8+, cgroup v2, kernel BTF, Node.js 22.12+ and Dora CLI 1.1.0.
+Requires Linux 6.8+, cgroup v2, kernel BTF, the [project's Node.js version](../../../.node-version) and Dora CLI 1.1.0.
 See [BPF prerequisites](../../../libs/resources/cgroup-bpf/README.md).
 Build unprivileged; the native collector wrapper uses the checkout's sudo setup.
 

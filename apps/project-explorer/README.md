@@ -8,7 +8,7 @@ checkout’s manifests and READMEs.
 
 ## Run
 
-Requires Node.js 22+, npm, and the repository’s Rust toolchain. From the repository root:
+Requires the [project's Node.js version](../../.node-version), npm, and the repository’s Rust toolchain. From the repository root:
 
 ```sh
 npm --prefix apps/project-explorer/frontend ci

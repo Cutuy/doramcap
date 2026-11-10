@@ -9,7 +9,7 @@ Protobuf batches to MCAP.
 
 ## Run
 
-From the repository root, with the project's Rust toolchain and Node 22:
+From the repository root, with the project's Rust toolchain and [Node.js version](../../.node-version):
 
 ```sh
 npm ci --prefix apps/activity-demo/frontend
