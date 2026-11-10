@@ -141,7 +141,7 @@ purpose, inputs, results and failure behavior.
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
 Stage 5 adopts the existing automatic filesystem capture workflow.
 
-**Next: finish stage 5's launch and mount contract.** Establish how Holoscan
+**Current discussion: [stage 5's launch and mount contract](111026-holoscan-launch-handoff.md).** Establish how Holoscan
 supplies its resolved container mounts and receives the prepared filesystem views,
 and where the shared filesystem operations belong. The mechanism remains open.
 

@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Holoscan launch handoff choices</title>
+  <desc id="desc">The required order is to resolve mounts, prepare filesystem views and start the prepared launch. Option one keeps the native CLI launch with a Console adapter. Option two exports a launch plan for Console to execute.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
+    <style>
+      text {font-family:Arial,Helvetica,sans-serif;fill:#203143}
+      .heading {font-size:25px;font-weight:600}
+      .name {font-size:22px;font-weight:600}
+      .detail {font-size:18px;fill:#4a5e72}
+      .label {font-size:17px;fill:#4a5e72}
+      .box {fill:#f6f8fb;stroke:#a8b6c5;stroke-width:1.6}
+      .console {fill:#eaf3ff;stroke:#3979b9;stroke-width:2}
+      .flow {fill:none;stroke:#526579;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="630" fill="white"/>
+  <text class="heading" x="40" y="40">Required run order</text>
+  <rect class="box" x="40" y="65" width="300" height="70" rx="10"/>
+  <text class="name" x="190" y="107" text-anchor="middle">Resolve final mounts</text>
+  <rect class="console" x="450" y="65" width="300" height="70" rx="10"/>
+  <text class="name" x="600" y="107" text-anchor="middle">Prepare filesystem views</text>
+  <rect class="console" x="860" y="65" width="300" height="70" rx="10"/>
+  <text class="name" x="1010" y="107" text-anchor="middle">Start prepared launch</text>
+  <path class="flow" d="M340 100 H450"/>
+  <text class="label" x="395" y="87" text-anchor="middle">mounts</text>
+  <path class="flow" d="M750 100 H860"/>
+  <text class="label" x="805" y="87" text-anchor="middle">prepared plan</text>
+
+  <text class="heading" x="40" y="215">1. Native CLI with a Console handoff</text>
+  <rect class="box" x="40" y="250" width="210" height="100" rx="10"/>
+  <text class="name" x="145" y="289" text-anchor="middle">Project + mode</text>
+  <text class="detail" x="145" y="319" text-anchor="middle">Native settings</text>
+  <rect class="box" x="330" y="250" width="230" height="100" rx="10"/>
+  <text class="name" x="445" y="289" text-anchor="middle">Holoscan CLI</text>
+  <text class="detail" x="445" y="319" text-anchor="middle">Resolve and launch</text>
+  <rect class="console" x="640" y="250" width="230" height="100" rx="10"/>
+  <text class="name" x="755" y="289" text-anchor="middle">Console adapter</text>
+  <text class="detail" x="755" y="319" text-anchor="middle">Mounts and ownership</text>
+  <rect class="box" x="950" y="250" width="210" height="100" rx="10"/>
+  <text class="name" x="1055" y="289" text-anchor="middle">Docker</text>
+  <text class="detail" x="1055" y="319" text-anchor="middle">Application container</text>
+  <path class="flow" d="M250 300 H330"/>
+  <text class="label" x="290" y="284" text-anchor="middle">selection</text>
+  <path class="flow" d="M560 300 H640"/>
+  <text class="label" x="600" y="284" text-anchor="middle">arguments</text>
+  <path class="flow" d="M870 300 H950"/>
+  <text class="label" x="910" y="284" text-anchor="middle">launch</text>
+
+  <text class="heading" x="40" y="440">2. Export a launch plan for Console</text>
+  <rect class="box" x="40" y="475" width="210" height="100" rx="10"/>
+  <text class="name" x="145" y="514" text-anchor="middle">Project + mode</text>
+  <text class="detail" x="145" y="544" text-anchor="middle">Native settings</text>
+  <rect class="box" x="330" y="475" width="230" height="100" rx="10"/>
+  <text class="name" x="445" y="514" text-anchor="middle">Holoscan resolver</text>
+  <text class="detail" x="445" y="544" text-anchor="middle">Export launch plan</text>
+  <rect class="console" x="640" y="475" width="230" height="100" rx="10"/>
+  <text class="name" x="755" y="514" text-anchor="middle">Console launcher</text>
+  <text class="detail" x="755" y="544" text-anchor="middle">Mounts and ownership</text>
+  <rect class="box" x="950" y="475" width="210" height="100" rx="10"/>
+  <text class="name" x="1055" y="514" text-anchor="middle">Docker</text>
+  <text class="detail" x="1055" y="544" text-anchor="middle">Application container</text>
+  <path class="flow" d="M250 525 H330"/>
+  <text class="label" x="290" y="509" text-anchor="middle">selection</text>
+  <path class="flow" d="M560 525 H640"/>
+  <text class="label" x="600" y="509" text-anchor="middle">plan</text>
+  <path class="flow" d="M870 525 H950"/>
+  <text class="label" x="910" y="509" text-anchor="middle">launch</text>
+</svg>

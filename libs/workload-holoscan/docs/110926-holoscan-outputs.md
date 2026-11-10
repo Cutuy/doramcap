@@ -52,6 +52,9 @@ its writers and discards temporary views after any best-effort salvage.
 
 ## Holoscan integration work
 
+The [launch handoff discussion](111026-holoscan-launch-handoff.md) compares the
+two ownership choices and the required Prepare/Start behavior.
+
 The adapter must obtain the actual mount set and apply the prepared source paths
 to the CLI's container launch. Catalog and mode responses cover discovery; mount
 integration needs its own implementation design and qualification.
