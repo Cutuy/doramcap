@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
-import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, Terminal } from 'lucide-react';
+import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, Terminal, Workflow } from 'lucide-react';
 import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
-/** Side-by-side groups on the SoC: doramcap Console next to example user workloads. */
+/** Console sits above peer application runtimes on the SoC. */
 const SOC_GROUPS = [
   { label: 'doramcap', Icon: Activity, items: ['Console'], className: 'console-soc-doramcap' },
-  { label: 'Containers', Icon: Box, items: ['Holoscan', 'camera', 'planner'], className: '' },
+  { label: 'Holoscan SDK', Icon: Workflow, items: ['Runtime & graph', 'Modules'], className: '' },
+  { label: 'Containers', Icon: Box, items: ['camera', 'planner'], className: '' },
   { label: 'supervisord', Icon: Cog, items: ['can-bus', 'gps'], className: '' },
 ];
 
@@ -48,14 +49,14 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     <div className="console-install-intro">
       <div className="eyebrow"><Terminal size={14} aria-hidden="true" />Console</div>
       <h2 id="console-install-heading">Bring your existing apps to life.</h2>
-      <p>Run experiments with your Docker Compose apps, including Holoscan pipelines. Watch live metrics and capture MCAP recordings from your browser over an SSH tunnel.</p>
+      <p>Bring Holoscan, containers, and supervisord apps into one view. Run experiments, watch live metrics, and capture MCAP recordings from your browser over an SSH tunnel.</p>
       <div className="console-install-actions">
         <a className="launch-link" href={releaseUrl} target="_blank" rel="noreferrer">Download Console <ArrowUpRight size={14} aria-hidden="true" /></a>
         <a className="console-try" href={`#${CONSOLE_PATH}`}>Try Console</a>
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel; Console runs beside Docker containers, including Holoscan apps, and supervisord units on your SoC or workstation, over an optional doramcap runtime">
+    <div className="console-topology" role="img" aria-label="A browser on your computer reaches doramcap Console through an SSH tunnel. Console sits above three peer groups on your SoC or workstation: Holoscan SDK with Runtime and graph and Modules, Docker containers, and supervisord units. An optional doramcap runtime sits below them.">
       <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
       <div className="console-soc">

@@ -153,7 +153,6 @@
         "crates/workload-supervisor"
       ],
       "integrations": [
-        "holoscan",
         "linux"
       ],
       "evidence": [
@@ -169,16 +168,12 @@
       "id": "holoscan",
       "title": "Holoscan",
       "group": "execution",
-      "summary": "Run containerized Holoscan sensor-processing apps through your existing Docker Compose project.",
+      "summary": "Application runtime, graph execution, and reusable modules for GPU-accelerated sensor processing.",
       "url": "https://nvidia-holoscan.github.io/",
       "status": "platform-dependent",
-      "components": [
-        "apps/console",
-        "crates/workload-docker"
-      ],
+      "components": [],
       "evidence": [
-        "console/README.md",
-        "libs/workload-docker/README.md"
+        "apps/project-explorer/docs/overview-mappings.md"
       ]
     },
     {
@@ -281,7 +276,7 @@
     {
       "id": "repeat",
       "title": "Run and repeat an experiment",
-      "summary": "Run your existing Docker Compose workloads, including containerized Holoscan apps, with zero code changes. Inspect the results and run again: doramcap records each run, collects filesystem changes and verifies cleanup before the next.",
+      "summary": "Run your existing Docker Compose workloads unchanged, side by side with doramcap. Inspect the results and run again: doramcap records each run, collects filesystem changes and verifies cleanup before the next.",
       "outcome": "Repeat experiments on existing containers with recording and cleanup handled by doramcap.",
       "status": "illustrative",
       "capabilities": [
@@ -290,7 +285,6 @@
         "recording"
       ],
       "integrations": [
-        "holoscan",
         "linux",
         "mcap"
       ],

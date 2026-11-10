@@ -49,3 +49,8 @@ Unknown IDs produce a recoverable message.
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is
 optional. The selected mapping detail precedes the compact architecture stack.
+
+[Holoscan SDK](https://nvidia-holoscan.github.io/) supplies application graph
+execution and reusable modules. The Console diagram places it alongside containers
+and supervisord, with Console above all three. Its platform entry describes the
+upstream SDK; it has no Docker-specific component or use-case mapping.
