@@ -41,17 +41,6 @@ the mechanics; no new third-party package is introduced.
 - [x] Focused locked release tests, all-target Clippy, formatting and library boundaries.
 - [x] Cloud Rust/Node/MCAP checks on x86_64 and ARM64 for code revision `3fd9abd5`.
 
-Local native checks pass: accounting/ownership cases, both Docker drivers, native
-systemd startup/restart/cancellation/recovery and real Supervisor fault scenarios.
-The per-run identity check reuses the caller ID across fresh artifact directories.
-Focused locked release libraries and boundary checks pass. Logs:
-`/tmp/system-app-cgroup-validation`.
-
-The guide review has no unresolved code findings. Cloud Rust, Node and MCAP checks
-pass on both architectures for code revision `3fd9abd5`. Live results: [PR checks](https://github.com/Cutuy/doramcap/pull/252/checks).
-The owner requested "just do local native tests for now"; native ARM64 workflow
-execution remains deferred. Prior worker 630 results apply to the earlier source.
-
 ## Milestone 4: Review clarifications
 
 **Work items**
@@ -62,9 +51,14 @@ execution remains deferred. Prior worker 630 results apply to the earlier source
 
 **Validation**
 - [x] Focused locked release library tests, formatting and dependency boundaries.
-- [ ] Native binary-artifact accounting/restart/recovery and Supervisor cleanup checks.
-- [ ] Focused all-target Clippy and current cloud checks.
+- [x] Native binary-artifact accounting/restart/recovery and Supervisor cleanup checks.
+- [x] Focused all-target release Clippy.
+- [ ] Current cloud checks.
 
-Review evidence: 128 library tests pass. Native builds and follow-up validation
-are in progress. Supervisor's legacy driver remains in use; its forced-shutdown,
-readiness and ownership behavior is preserved for the separate migration plan.
+Latest review evidence for code revision `4a1296f4`:
+- Focused locked release libraries, all-target Clippy, formatting and boundaries pass.
+- Local native accounting/ownership, both Docker drivers, systemd restart and Supervisor failure/cleanup checks pass with binary identity artifacts. Logs: `/tmp/system-app-cgroup-validation`.
+- [Current cloud checks](https://github.com/Cutuy/doramcap/pull/252/checks) are pending. The owner requested local native qualification; native ARM64 workflow execution remains deferred.
+
+Supervisor's legacy driver remains in use; its forced-shutdown, readiness and
+ownership behavior is preserved for the separate migration plan.
