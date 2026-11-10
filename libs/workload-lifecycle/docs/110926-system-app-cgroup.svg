@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="250" viewBox="0 0 720 250" role="img" aria-label="Both launchers place system apps beneath one experiment slice">
+  <style>text{font:16px sans-serif;fill:#18212b}rect{fill:#edf3f8;stroke:#718394}path{fill:none;stroke:#718394;stroke-width:2}</style>
+  <rect x="245" y="12" width="230" height="42" rx="5"/><text x="360" y="39" text-anchor="middle">Experiment lifecycle</text>
+  <path d="M360 54v20H190v20m170-20h170v20"/>
+  <rect x="75" y="94" width="230" height="42" rx="5"/><text x="190" y="121" text-anchor="middle">System-app slice</text>
+  <rect x="415" y="94" width="230" height="42" rx="5"/><text x="530" y="121" text-anchor="middle">User apps</text>
+  <path d="M190 136v25H105v20m85-20h105v20"/>
+  <rect x="15" y="181" width="180" height="42" rx="5"/><text x="105" y="208" text-anchor="middle">Dora</text>
+  <rect x="215" y="181" width="250" height="42" rx="5"/><text x="340" y="208" text-anchor="middle">Monitor · recorder · watchdog</text>
+</svg>

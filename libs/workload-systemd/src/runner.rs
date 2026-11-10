@@ -201,7 +201,9 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
+        let system_apps = crate::cgroup::SystemAppSlice::native(manager.clone(), &scope);
         let running = SystemdRunning {
+            system_apps,
             manager,
             executor: executor.clone(),
             scope,

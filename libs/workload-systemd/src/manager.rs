@@ -45,7 +45,7 @@ pub(crate) struct Unit {
     states: PropertyStream<'static, String>,
     _watcher: UnitProxy<'static>,
     /// Uncached reads, so a value from before the start never looks current.
-    unit: UnitProxy<'static>,
+    pub(crate) unit: UnitProxy<'static>,
 }
 impl Unit {
     /// Wait until the unit runs no processes.
@@ -72,7 +72,7 @@ pub(crate) struct StartJob {
 
 /// The system service manager, subscribed to unit signals.
 pub(crate) struct Manager {
-    connection: zbus::Connection,
+    pub(crate) connection: zbus::Connection,
     pub(crate) manager: ManagerProxy<'static>,
 }
 impl Manager {
@@ -186,7 +186,7 @@ impl Manager {
                 "Description".into(),
                 value(format!("Doramcap command {name}"))?,
             ),
-            ("Slice".into(), value(scope.slice.clone())?),
+            ("Slice".into(), value(crate::cgroup::native_name(scope))?),
             ("Type".into(), value("oneshot")?),
             (
                 "ExecStart".into(),
@@ -440,7 +440,7 @@ fn stop_budget(micros: u64) -> Result<Duration> {
         .ok_or_else(|| "stop observation budget overflow".into())
 }
 
-fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
+pub(crate) fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
     value.into().try_into().map_err(error)
 }
 

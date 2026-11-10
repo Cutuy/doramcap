@@ -2,6 +2,7 @@
 //!
 //! Requires the system service manager and root privileges. The repository root
 //! scopes admission, unit names, the slice and reset.
+pub mod cgroup;
 mod dora;
 mod manager;
 mod preparation;

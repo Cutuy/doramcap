@@ -12,6 +12,8 @@ use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
 /// Prepared Compose resources, from the first start attempt until removal.
 pub(super) struct ComposeRunning {
+    pub system_apps: workload_systemd::cgroup::SystemAppSlice,
+    pub adapter: Rc<DockerAdapter>,
     pub executor: Rc<LocalExecutor>,
     pub spec: ComposeRun,
     pub prepared: Output<PreparedRun>,
@@ -60,6 +62,12 @@ impl workload_lifecycle::run::Running for ComposeRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
+        self.system_apps
+            .create(
+                &self.prepared.value().artifacts,
+                std::time::Duration::from_secs(self.spec.readiness_seconds),
+            )
+            .await?;
         let failure = self.events.failure();
         let launch = execution::launch_apps(
             &self.executor,
@@ -68,6 +76,8 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             &self.plan,
             self.overlays.as_ref(),
             &mut self.last_launch,
+            &self.system_apps,
+            &self.adapter,
         );
         // A lost event stream ends startup as it ends observation.
         tokio::select! {
@@ -284,7 +294,23 @@ impl ComposeRunning {
             ..Default::default()
         });
         let finalized = stopped.finalized.into_value();
-        let boundary_clean = stopped.runtime_stopped
+        let cgroup_removed = if permit.remove && cleanup.verified {
+            match self.system_apps.remove().await {
+                Ok(()) => true,
+                Err(error) => {
+                    execution::record_failure(
+                        &self.diagnostics,
+                        "system-app cgroup removal",
+                        error,
+                    );
+                    false
+                }
+            }
+        } else {
+            false
+        };
+        let boundary_clean = cgroup_removed
+            && stopped.runtime_stopped
             && finalized.can_remove
             && cleanup.verified
             && cleanup.diagnostics.is_empty()

@@ -12,6 +12,7 @@ use workload_lifecycle::{
 };
 
 pub(crate) struct SystemdRunning {
+    pub system_apps: crate::cgroup::SystemAppSlice,
     pub manager: Rc<Manager>,
     pub executor: Rc<LocalExecutor>,
     pub scope: Scope,
@@ -37,6 +38,10 @@ impl workload_lifecycle::run::Running for SystemdRunning {
     type Removed = Removed;
 
     async fn start(&mut self) -> std::result::Result<(), String> {
+        let readiness = Duration::from_secs(self.run.readiness_seconds);
+        self.system_apps
+            .create(std::path::Path::new(&self.run.artifacts), readiness)
+            .await?;
         self.runtime = Some(
             self.executor
                 .run::<crate::runtime::PrepareRuntime>(
@@ -49,9 +54,17 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 .await
                 .map_err(crate::error)?,
         );
-        let readiness = Duration::from_secs(self.run.readiness_seconds);
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
+            if role == Phase::User {
+                for unit in self.phases.iter().flatten() {
+                    self.system_apps.verify_unit(unit).await?;
+                }
+            }
+            let mut placement = self.scope.clone();
+            if role != Phase::User {
+                placement.slice = self.system_apps.name();
+            }
             let mut phase = crate::phase(&self.run, &self.plan, role);
             if role != Phase::Dora {
                 crate::dora::attach(&self.run, &mut phase)?;
@@ -66,7 +79,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 let names = self
                     .manager
                     .adopt(
-                        &self.scope,
+                        &placement,
                         &phase.unit_files,
                         &phase.app_units,
                         &self.plan.binaries,
@@ -86,7 +99,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 for program in &phase.programs {
                     jobs.push(
                         self.manager
-                            .start_program(&self.scope, &self.run, program)
+                            .start_program(&placement, &self.run, program)
                             .await?,
                     );
                 }
@@ -97,6 +110,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                     jobs.into_iter().map(|job| self.manager.wait_started(job)),
                 )
                 .await?;
+                if role != Phase::User {
+                    for unit in self.phases.last().unwrap() {
+                        self.system_apps.verify_unit(unit).await?;
+                    }
+                }
                 Ok::<_, String>(())
             };
             tokio::time::timeout(readiness, start)

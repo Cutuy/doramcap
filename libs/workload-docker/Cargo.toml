@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 dora-app = { path = "../dora-app", default-features = false }
 workload-lifecycle = { path = "../workload-lifecycle" }
+workload-systemd = { path = "../workload-systemd" }
 orchestrator = { path = "../orchestrator" }
 system-config = { path = "../resources/system-config" }
 prost = "0.14"

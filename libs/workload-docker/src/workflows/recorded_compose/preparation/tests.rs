@@ -1,6 +1,36 @@
 use super::{model::*, *};
 
 #[test]
+fn system_app_cgroup_placement_preserves_native_user_placement() {
+    // Arrange
+    let mut model = json!({"services":{
+        "dora":{"image":"dora:local"},
+        "monitor":{"image":"monitor:local", "cgroup_parent":"previous.slice"},
+        "user":{"image":"user:local", "cgroup_parent":"application.slice"}
+    }});
+    let original_user = model["services"]["user"].clone();
+
+    // Act
+    configure_system_cgroup(
+        &mut model,
+        &["dora".into(), "monitor".into()],
+        "experiment-system.slice",
+    )
+    .unwrap();
+
+    // Assert
+    assert_eq!(
+        model["services"]["dora"]["cgroup_parent"],
+        "experiment-system.slice"
+    );
+    assert_eq!(
+        model["services"]["monitor"]["cgroup_parent"],
+        "experiment-system.slice"
+    );
+    assert_eq!(model["services"]["user"], original_user);
+}
+
+#[test]
 fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
     // Arrange
     let mut model = json!({"services":{}});

@@ -174,6 +174,12 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
     validate_external_volume_shm(adapter, &model, spec.host_shm_access).await?;
     validate_external_ipc(adapter, &model, spec.host_shm_access).await?;
     model::configure_shm(&mut model, &mut system_services, spec.host_shm_access)?;
+    model::configure_system_cgroup(
+        &mut model,
+        &[dora_services.clone(), system_services.clone()].concat(),
+        &workload_systemd::cgroup::SystemAppSlice::compose_name(&spec.repository_root)
+            .map_err(invalid)?,
+    )?;
     dora.services = dora_services
         .iter()
         .map(|name| (name.clone(), model["services"][name].clone()))

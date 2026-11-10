@@ -93,6 +93,14 @@ message CleanupRecord {
   bool verified = 1;
 }
 
+// Kernel identity of one experiment's system-app accounting boundary.
+message SystemAppCgroup {
+  string slice = 1;
+  // Absolute path in the host's cgroup v2 filesystem.
+  string path = 2;
+  uint64 id = 3;
+}
+
 // Launch facts of one app, shipped beside it. File sources resolve relative to
 // this file's directory and must stay beneath it.
 message AppManifest {

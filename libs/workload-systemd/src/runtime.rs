@@ -1,9 +1,7 @@
 //! Observed setup and verified removal of the run's native runtime resources.
 use crate::{
     PreparationInput, Result, RunPlan, Scope, SystemdPlan, error,
-    manager::{
-        DEFAULT_SEARCH_PATH, Manager, ROOTS, STOP_REPORT_MARGIN, remove_path, runtime_files,
-    },
+    manager::{DEFAULT_SEARCH_PATH, Manager, ROOTS, remove_path, runtime_files},
 };
 use orchestrator::{LocalExecutor, Step};
 use rustix::mount::{MountFlags, UnmountFlags};
@@ -163,30 +161,9 @@ impl RemoveRuntime {
         for result in results {
             result?;
         }
-        // Slice teardown has no service work remaining; wait for its stop job.
-        if loaded
-            .iter()
-            .any(|(name, load, _)| name == &scope.slice && load != "not-found")
-        {
-            let mut jobs = self
-                .manager
-                .manager
-                .receive_job_removed()
-                .await
-                .map_err(error)?;
-            let job = self
-                .manager
-                .manager
-                .stop_unit(scope.slice.clone(), "replace".into())
-                .await
-                .map_err(error)?;
-            tokio::time::timeout(
-                STOP_REPORT_MARGIN,
-                self.manager.started(&scope.slice, &mut jobs, job),
-            )
-            .await
-            .map_err(|_| format!("{}: slice stop not confirmed", scope.slice))??;
-        }
+        crate::cgroup::SystemAppSlice::native(self.manager.clone(), scope)
+            .remove_native()
+            .await?;
         for (name, ..) in loaded {
             self.manager.release(&name).await;
         }
