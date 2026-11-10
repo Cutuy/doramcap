@@ -78,7 +78,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 }
             }
             let mut placement = self.scope.clone();
-            if role != Phase::User {
+            if matches!(role, Phase::Dora | Phase::System) {
                 placement.slice = crate::cgroup::native_name(&self.scope);
             }
             let mut phase = crate::phase(&self.run, &self.plan, role);
@@ -126,7 +126,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                     jobs.into_iter().map(|job| self.manager.wait_started(job)),
                 )
                 .await?;
-                if role != Phase::User {
+                if matches!(role, Phase::Dora | Phase::System) {
                     for unit in self.phases.last().unwrap() {
                         crate::cgroup::verify_unit(
                             &self.system_apps,

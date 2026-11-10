@@ -1,5 +1,6 @@
 //! Native Compose cgroup placement. Build unprivileged; elevate only this test executable.
 use orchestrator::{Event, State, Step};
+use prost::Message;
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,
@@ -140,17 +141,11 @@ impl Fixture {
         }
     }
     fn identity(&self, index: usize) -> SystemAppCgroup {
-        let pool = prost_reflect::DescriptorPool::decode(
-            include_bytes!(concat!(env!("OUT_DIR"), "/workflow_config.bin")).as_slice(),
+        let identity = SystemAppCgroup::decode(
+            fs::read(self.spec(index).artifacts.join(IDENTITY_FILE))
+                .unwrap()
+                .as_slice(),
         )
-        .unwrap();
-        let identity: SystemAppCgroup = prost_reflect::DynamicMessage::parse_text_format(
-            pool.get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
-                .unwrap(),
-            &fs::read_to_string(self.spec(index).artifacts.join(IDENTITY_FILE)).unwrap(),
-        )
-        .unwrap()
-        .transcode_to()
         .unwrap();
         self.parents.borrow_mut().push(identity.clone());
         identity

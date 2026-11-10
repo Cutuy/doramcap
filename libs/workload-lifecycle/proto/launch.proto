@@ -95,10 +95,10 @@ message CleanupRecord {
 
 // Kernel identity of one experiment's system-app accounting boundary.
 message SystemAppCgroup {
-  reserved 1;
-  reserved "slice";
-  // Absolute path in the host's cgroup v2 filesystem.
+  // Absolute host cgroup v2 directory, e.g. /sys/fs/cgroup/apps/system.
   string path = 2;
+  // Kernel cgroup ID, read from the directory inode; identifies the live group
+  // so replacement at the same path is detected during verification and cleanup.
   uint64 id = 3;
 }
 
@@ -185,12 +185,19 @@ message RecordingOutput {
 message SystemAppsCgroupsInput {
   enum Action {
     ACTION_UNSPECIFIED = 0;
-    CREATE = 1;
-    REMOVE = 2;
+    // Establish/adopt the backend's group, persist identity and verify host PIDs.
+    ACTION_CREATE = 1;
+    // Remove the owned group, or verify an empty runtime-owned parent is retained.
+    ACTION_REMOVE = 2;
   }
+  // Required operation; ACTION_UNSPECIFIED is rejected.
   Action action = 1;
+  // Existing absolute artifact directory, e.g. /var/lib/doramcap/runs/run-42.
+  // ACTION_CREATE writes the identity here; ignored by ACTION_REMOVE.
   string artifacts = 2;
+  // Positive group creation timeout in seconds; ignored by ACTION_REMOVE.
   uint64 readiness_seconds = 3;
-  // Host PIDs obtained from the launcher; all must be descendants before admission.
+  // Live host PIDs reported by the backend; ACTION_CREATE verifies membership in
+  // the group or its descendants. Empty is valid before launch; ignored by ACTION_REMOVE.
   repeated uint32 pids = 4;
 }

@@ -51,3 +51,20 @@ The guide review has no unresolved code findings. Cloud Rust, Node and MCAP chec
 pass on both architectures for code revision `3fd9abd5`. Live results: [PR checks](https://github.com/Cutuy/doramcap/pull/252/checks).
 The owner requested "just do local native tests for now"; native ARM64 workflow
 execution remains deferred. Prior worker 630 results apply to the earlier source.
+
+## Milestone 4: Review clarifications
+
+**Work items**
+- [x] Document native parent formats, absolute host paths, kernel IDs and step inputs; remove obsolete reservations and prefix action names.
+- [x] Write `system-app-cgroup.pb` directly from the generated message; remove lifecycle reflection and descriptor output. Generated binaries remain outside source control.
+- [x] Match Dora/System roles explicitly; audit cgroup sequencing across all three launchers.
+- [x] Keep Supervisor driver consolidation in [planning PR #262](https://github.com/Cutuy/doramcap/pull/262), as requested.
+
+**Validation**
+- [x] Focused locked release library tests, formatting and dependency boundaries.
+- [ ] Native binary-artifact accounting/restart/recovery and Supervisor cleanup checks.
+- [ ] Focused all-target Clippy and current cloud checks.
+
+Review evidence: 128 library tests pass. Native builds and follow-up validation
+are in progress. Supervisor's legacy driver remains in use; its forced-shutdown,
+readiness and ownership behavior is preserved for the separate migration plan.

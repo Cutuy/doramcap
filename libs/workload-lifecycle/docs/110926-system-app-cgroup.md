@@ -27,4 +27,7 @@ Both reuse the shared step and membership checks.
 After writers stop and evidence is finalized, directly owned groups are removed.
 Empty parents owned by Docker's runtime may remain; cleanup verifies their emptiness.
 Startup failures use existing shutdown/recovery paths. Identity artifacts remain
-with run evidence. Monitor collectors remain separate work.
+with run evidence as `system-app-cgroup.pb`, encoded directly from the generated
+`SystemAppCgroup` message. Generated messages stay in Cargo's build directory;
+binary run artifacts stay in each experiment's artifact directory.
+Monitor collectors remain separate work.

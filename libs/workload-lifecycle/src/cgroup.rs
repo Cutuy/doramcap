@@ -4,7 +4,7 @@ pub use crate::launch::{
 };
 use futures_util::future::LocalBoxFuture;
 use orchestrator::{LocalExecutor, Step};
-use prost_reflect::{DescriptorPool, DynamicMessage};
+use prost::Message;
 use std::{
     cell::RefCell,
     os::unix::fs::MetadataExt,
@@ -17,7 +17,7 @@ type Result<T> = std::result::Result<T, String>;
 /// Host cgroup v2 mount used for identity and membership checks.
 pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";
 /// Typed accounting identity retained in experiment artifacts.
-pub const IDENTITY_FILE: &str = "system-app-cgroup.pbtxt";
+pub const IDENTITY_FILE: &str = "system-app-cgroup.pb";
 
 /// Whether the backend removed its group or retained an empty runtime-owned parent.
 pub enum Removal {
@@ -67,16 +67,7 @@ impl Group {
             let path = self.backend.create().await?;
             let identity = inspect(&path)?;
             *self.identity.borrow_mut() = Some(identity.clone());
-            let pool = DescriptorPool::decode(
-                include_bytes!(concat!(env!("OUT_DIR"), "/launch.bin")).as_slice(),
-            )
-            .map_err(error)?;
-            let descriptor = pool
-                .get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
-                .ok_or("system-app cgroup descriptor missing")?;
-            let mut message = DynamicMessage::new(descriptor);
-            message.transcode_from(&identity).map_err(error)?;
-            tokio::fs::write(artifacts.join(IDENTITY_FILE), message.to_text_format())
+            tokio::fs::write(artifacts.join(IDENTITY_FILE), identity.encode_to_vec())
                 .await
                 .map_err(error)
         })

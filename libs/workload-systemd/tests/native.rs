@@ -1994,6 +1994,7 @@ async fn review_launches_frozen_units_and_preserves_nonroot_config_access() {
 #[ignore = "requires root and the system service manager"]
 async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
     use orchestrator::{Event, State, Step};
+    use prost::Message;
     use std::os::unix::fs::MetadataExt;
     use std::{cell::RefCell, rc::Rc};
     use workload_lifecycle::cgroup::{Action, SystemAppsCgroups, SystemAppsCgroupsInput};
@@ -2028,20 +2029,11 @@ async fn system_app_restart_stays_beneath_the_run_accounting_boundary() {
         Some(ready),
     ));
     tokio::select! { ready = started => ready.unwrap(), report = &mut running => panic!("startup failed: {report:?}") };
-    let pool = prost_reflect::DescriptorPool::decode(
-        include_bytes!(concat!(env!("OUT_DIR"), "/systemd_plan.bin")).as_slice(),
+    let identity = SystemAppCgroup::decode(
+        std::fs::read(Path::new(&artifacts).join(workload_lifecycle::cgroup::IDENTITY_FILE))
+            .unwrap()
+            .as_slice(),
     )
-    .unwrap();
-    let identity: SystemAppCgroup = prost_reflect::DynamicMessage::parse_text_format(
-        pool.get_message_by_name("doramcap.launch.v1.SystemAppCgroup")
-            .unwrap(),
-        &std::fs::read_to_string(
-            Path::new(&artifacts).join(workload_lifecycle::cgroup::IDENTITY_FILE),
-        )
-        .unwrap(),
-    )
-    .unwrap()
-    .transcode_to()
     .unwrap();
     let name = format!(
         "{}-restart.service",

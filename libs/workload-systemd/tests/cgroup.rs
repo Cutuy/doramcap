@@ -1,5 +1,6 @@
 //! Native system-app accounting boundary checks. Build unprivileged and elevate this executable.
 use orchestrator::{Event, LocalExecutor, State};
+use prost::Message;
 use std::{
     cell::RefCell,
     fs,
@@ -121,10 +122,12 @@ async fn nested_apps_are_accounted_and_live_removal_is_refused() {
     );
     assert!(cpu(parent) > before);
     assert!(memory >= PAYLOAD_BYTES, "parent charged {memory} bytes");
-    assert!(
-        fs::read_to_string(directory.join(IDENTITY_FILE))
-            .unwrap()
-            .contains(&identity.id.to_string())
+    assert_eq!(
+        workload_lifecycle::launch::SystemAppCgroup::decode(
+            fs::read(directory.join(IDENTITY_FILE)).unwrap().as_slice()
+        )
+        .unwrap(),
+        identity
     );
     assert!(slice.verify_pid(std::process::id()).is_err());
     assert!(slice.remove().await.unwrap_err().contains("live processes"));
