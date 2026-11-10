@@ -16,7 +16,7 @@ The [execution policy](workflow-execution.json) proposes Luna/low screening,
 Sol/high confirmation, and Astra/xhigh fixes. The [design](workflow-design.json)
 and [contracts](workflow-contracts.schema.json) describe the complete pipeline.
 
-The executable pilot only screens I-05 polling patterns in Rust modules. Each
+The screening pilot checks I-05 polling patterns in Rust modules. Each
 Codex invocation receives one module and the rule as JSON, runs read-only with
 tools disabled, and returns [ScreenDecision](screen.schema.json) through the native
 `--output-schema` flag. `--output-last-message` saves the response; `--json`
@@ -62,4 +62,30 @@ edits the reviewed source or proceeds to fixes.
 [Confirmation results](confirmations/20261108-i05/results.md): one confirmed MCAP
 completion-polling violation, one refuted timer candidate, and one unresolved
 approval claim. All five Sol/high responses pass schema and source-span checks.
-No production fixes have run.
+The first repair session returned a behavior decision before editing production code.
+
+
+## Repair
+
+The controller acquires a lease and writes `fixes/RUN_NAME/FixTask.json`. The
+launcher verifies the active lease, branch, source revision, and clean production
+source before starting one Astra/xhigh CLI session in that checkout.
+
+```sh
+node cd/code-scan/fix.ts RUN_NAME
+```
+
+The CLI reads and edits within its workspace sandbox, with automatic approval
+review for escalations. Its native [output schema](fix.schema.json) returns
+`patch_ready`, `needs_decision`, or `blocked`. The controller checks actual changed
+paths and exact citations after the run. Scope is checked after execution; the
+workspace sandbox is broader than the task's allowed path list.
+
+The child does not acquire/release leases or publish changes. The controller holds
+the lease across a pending decision, patch verification, PR publication, and
+required validation. A future repair uses a new run name and current source HEAD.
+The pilot's human supervisor performs acquisition and publication; they are not
+yet automated by `fix.ts`.
+
+[First repair result](fixes/20261108-i05-004/results.md): a schema-valid MCAP behavior
+decision, with measured usage and exact evidence. No patch exists yet.

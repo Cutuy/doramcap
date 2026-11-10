@@ -1,0 +1,120 @@
+{
+  "task_id": "i05-004-fix-r1",
+  "status": "needs_decision",
+  "summary": "Approval is needed for the smallest sink-only repair’s blocking and error-observation changes. No files were edited.",
+  "rationale": "The confirmed polling remains present. McapWriter exposes batch deadlines and blocking flush barriers, but no completion notification interface. Using barriers at real deadlines removes maintenance polling and preserves aged-batch flushing, while changing when the worker blocks and observes idle failures. Preserving asynchronous completion handling requires changes outside the allowed paths.",
+  "changed_paths": [],
+  "preserved_behavior": [
+    "No runtime behavior was changed.",
+    "The controller lease, branch, HEAD, and pre-existing scan-artifact changes were left untouched.",
+    "The excluded Dora readiness candidate was not modified."
+  ],
+  "checks": [
+    {
+      "command": "git rev-parse HEAD",
+      "outcome": "passed",
+      "evidence": "HEAD matches aa6ada8d07739315c5af97e1103ec367faf9a400."
+    },
+    {
+      "command": "git diff --exit-code -- apps/fault-watchdog/src/sinks/",
+      "outcome": "passed",
+      "evidence": "No sink changes; no dependent implementation was started."
+    },
+    {
+      "command": "pwd (initial sandboxed invocation)",
+      "outcome": "failed",
+      "evidence": "Shell startup failed with bwrap RTM_NEWADDR: Operation not permitted. Subsequent narrowly scoped read-only operations succeeded through automatic approval."
+    },
+    {
+      "command": "cargo test --release --locked -p fault-watchdog --features mcap --test host",
+      "outcome": "not_run",
+      "evidence": "Implementation awaits the behavior decision; no code was changed."
+    }
+  ],
+  "evidence": [
+    {
+      "path": "AGENTS.md",
+      "line": 20,
+      "quote": "For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives."
+    },
+    {
+      "path": "apps/fault-watchdog/src/sinks/mod.rs",
+      "line": 104,
+      "quote": "                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}\n                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,\n                        }\n                        if let Err(e) = sink.tick() {\n                            record_error(&shared, &e);\n                        }"
+    },
+    {
+      "path": "apps/fault-watchdog/src/sinks/mcap.rs",
+      "line": 85,
+      "quote": "        let result = (|| -> Result<()> {\n            writer.poll(Instant::now())?;\n            if self.last_flush.elapsed() >= Duration::from_millis(self.config.flush_ms.into()) {\n                writer.flush_written()?;\n                self.last_flush = Instant::now();\n            }"
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap/core.rs",
+      "line": 18,
+      "quote": "/// Oldest a partial batch may get before it is padded and written; a crash can lose this much.\nconst MAX_BATCH_AGE: Duration = Duration::from_secs(1);"
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap/core.rs",
+      "line": 444,
+      "quote": "            // A full pending queue retains the batch. Still drive CQEs so a later\n            // poll can admit it; otherwise timer polling could never clear pressure.\n            if let Err(error) = self.flush_combining()\n                && error.kind() != io::ErrorKind::WouldBlock\n            {\n                return Err(error);\n            }"
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap.rs",
+      "line": 75,
+      "quote": "/// Submissions drive I/O on the calling thread; periodic polling is optional.\n/// Successful commits/appends mean acceptance. Failures discovered after acceptance\n/// are retained for the next submission or explicit flush/finish barrier.\n/// Idle batches remain buffered until another writer call. Rings require Linux 6.1+."
+    },
+    {
+      "path": "libs/storage-persistence/src/mcap.rs",
+      "line": 256,
+      "quote": "    /// Flush buffered messages and wait for accepted writes to complete.\n    /// Returns retained write/submission errors. File synchronization and terminal\n    /// MCAP records are performed by [`Self::finish`].\n    pub fn flush_written(&mut self) -> io::Result<()> {\n        self.update(McapCore::flush_written)\n    }"
+    },
+    {
+      "path": "apps/fault-watchdog/src/config.rs",
+      "line": 61,
+      "quote": "                        && m.flush_ms > 0\n                        && m.flush_ms <= 60000),"
+    },
+    {
+      "path": "libs/storage-persistence/src/writer.rs",
+      "line": 1228,
+      "quote": "    pub fn flush_written(&mut self) -> io::Result<()> {\n        while self.outstanding + self.cancellations > 0 {\n            self.drain_progress(true)?;\n        }\n        self.error.map_or(Ok(()), |e| Err(e.into()))\n    }"
+    }
+  ],
+  "decisions": [
+    {
+      "question": "Approve deadline-driven blocking flush barriers within the sink, or expand scope to add asynchronous storage completion notifications?",
+      "why_approval_required": "The FixTask requires approval for important behavior changes and edits outside allowed paths; AGENTS.md:20 independently requires approval. An aged-batch barrier can block the worker before the configured flush deadline, affecting queue pressure. Removing maintenance completion checks also changes idle failure-observation timing. Calling poll only at the batch deadline is insufficient under saturation: it can retain the overdue batch without exposing a notification to await.",
+      "recommended_option": "deadline_barriers",
+      "options": [
+        {
+          "id": "deadline_barriers",
+          "description": "Modify only sinks/mod.rs and sinks/mcap.rs: expose the next actual deadline, wait for packets/disconnect or that deadline, and call flush_written at the earlier of the storage batch deadline and configured flush deadline. Remove maintenance-driven writer.poll calls and retain poisoning, ordered writes, rotation, and finish barriers.",
+          "benefits": [
+            "Smallest repair using existing documented APIs, with no dependency or configuration additions.",
+            "Retains batching and the one-second batch-age trigger; completion waits use the existing kernel-backed barrier.",
+            "Keeps configured flush deadlines from being postponed by earlier batch flushes."
+          ],
+          "tradeoffs": [
+            "Aged-batch flushing becomes blocking and can increase queue pressure when storage is slow.",
+            "Idle completion failures are observed at the next submission or barrier rather than maintenance checks; outstanding writes without a buffered batch can await the configured deadline, which permits up to 60 seconds."
+          ]
+        },
+        {
+          "id": "storage_notifications",
+          "description": "Expand authorization to the storage writer, MCAP API, and relevant tests. Add a completion/capacity notification interface and let the sink wait on notifications, packets, disconnect, and real flush deadlines.",
+          "benefits": [
+            "Preserves asynchronous aged-batch submission and prompt completion/failure handling.",
+            "Allows an overdue batch to await capacity without repeated timer polling."
+          ],
+          "tradeoffs": [
+            "Requires out-of-scope storage API changes and substantially more lifecycle and concurrency work.",
+            "Requires validation of notification races, deferred kernel work, saturation, rotation, failure, and shutdown."
+          ]
+        }
+      ]
+    }
+  ],
+  "validation_gaps": [
+    "No compilation or tests were run; implementation is pending approval.",
+    "After implementation, run focused unprivileged release/locked sink scheduling and host tests.",
+    "Controller capability validation must cover MCAP aged/configured flushes, ordering/readback, saturation, poisoning, rotation, and disconnect/finalization. No privileged tests were attempted."
+  ]
+}

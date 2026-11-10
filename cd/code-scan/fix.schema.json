@@ -1,0 +1,163 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "patch_ready",
+        "needs_decision",
+        "blocked"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preserved_behavior": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "not_run"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "command",
+          "outcome",
+          "evidence"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "quote"
+        ]
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "why_approval_required": {
+            "type": "string"
+          },
+          "recommended_option": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "benefits": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "tradeoffs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "description",
+                "benefits",
+                "tradeoffs"
+              ]
+            },
+            "minItems": 2
+          }
+        },
+        "required": [
+          "question",
+          "why_approval_required",
+          "recommended_option",
+          "options"
+        ]
+      }
+    },
+    "validation_gaps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "task_id",
+    "status",
+    "summary",
+    "rationale",
+    "changed_paths",
+    "preserved_behavior",
+    "checks",
+    "evidence",
+    "decisions",
+    "validation_gaps"
+  ]
+}
