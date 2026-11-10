@@ -2,7 +2,7 @@
 
 # Running Holoscan through Console
 
-Created November 10, 2026. Status: launch design agreed; CLI probe and production implementation pending.
+Created November 10, 2026. Status: launch design agreed and probed with a fake Docker; production implementation pending.
 [Adoption overview](110926-holoscan-adoption.md).
 [Launch designs compared](111026-holoscan-launch-handoff.svg).
 
@@ -11,9 +11,8 @@ Created November 10, 2026. Status: launch design agreed; CLI probe and productio
 Console does not yet implement this Holoscan workflow. There is no production
 `workload-holoscan` runner.
 
-The agreed design below has not run. It depends on two CLI behaviors listed under
-[Pending probe](#pending-probe). An earlier isolated test covered the fallback
-design only.
+A [probe](#probe-result) with the real CLI and a fake Docker supports the agreed
+design below. No real container has run and no OverlayFS view has been mounted.
 
 ## How Console steers the CLI
 
@@ -30,6 +29,9 @@ the project mount points at the view.
 
 Console sets no environment variable for the CLI and places no program between
 the CLI and Docker.
+
+An extra data folder is passed through the CLI's `--add-volume` option. The CLI
+names its container path after the folder, so its view keeps the folder's name.
 
 Mounts that a project declares in its own Docker options keep their original
 source. Console reports them as outside capture coverage.
@@ -54,7 +56,7 @@ snapshot, as Compose and systemd do.
 
 The snapshot covers:
 
-- The Docker command from the CLI's dry run.
+- The Docker command from the CLI's dry run, without its timestamp.
 - The image ID read through the Engine API.
 - The project's configured Docker options, which the dry run hides.
 
@@ -92,21 +94,30 @@ required cleanup stops any lingering owned runs; output salvage is best effort.
 | Design | Outcome |
 | --- | --- |
 | Console steers the native CLI | Chosen. Fewest new parts and no environment setting. |
-| Docker stand-in between the CLI and Docker | Fallback if the probe fails. Sees the exact command before launch. Needs a parser for Docker arguments and approval for `HOLOSCAN_CLI_DOCKER_EXE`. |
+| Docker stand-in between the CLI and Docker | Fallback if real-container qualification fails. Sees the exact command before launch. Needs a parser for Docker arguments and approval for `HOLOSCAN_CLI_DOCKER_EXE`. |
 | Console launches from an exported plan | Set aside. Console would repeat the CLI's device, display and GPU setup and track it across releases. |
 
 A machine-readable launch plan from the CLI would make the third design cheap.
 CLI 5.0.0 offers none.
 
-## Pending probe
+## Probe result
 
-The probe uses the real CLI and a fake Docker. It answers:
+Run November 10, 2026 with CLI 5.0.0, NVIDIA's
+[Holoscan applications repository][applications] and its `bci_visualization`
+Python application. A fake Docker recorded each call and ran nothing. A copy of
+the project at another path stood in for the view.
 
-- Does the application see the same container path when the project root is a view?
-- Does the dry run give the same command on two calls for an unchanged host?
+| Question | Observed |
+| --- | --- |
+| Same container path with a view as project root? | Yes. The project mounts at `/workspace/holohub` for any host path. |
+| Same dry-run command on two calls? | Yes. Only the timestamp printed before the command differs. |
+| Does the dry run predict the real launch? | Yes. The command sent to Docker matched, apart from the hidden Docker options. |
+| Do labels and the identity file arrive? | Yes. Both reached `docker run` unchanged, and the CLI used the supplied identity file. |
+| Extra data folder through `--add-volume`? | Mounted at `/workspace/volumes/` plus the host folder's name. |
+| Docker calls during a dry run? | None. A launch makes two image inspections, then `docker run`. |
 
-A failed first check moves the design to the fallback. A failed second check
-reopens the Review rule.
+Not covered: a real container, a mounted OverlayFS view, display forwarding, an
+image that sets its own Python path, C++ applications and other modes.
 
 ## What the earlier test established
 
@@ -122,7 +133,6 @@ commands. No real container ran and no OverlayFS view was mounted.
 
 ## Work still needed
 
-- Run the probe and record its result here.
 - Implement the Holoscan runner in the Console backend.
 - Move the shared Docker operations to their own crate, as the
   [filesystem capture document](110926-holoscan-outputs.md) describes.
@@ -148,3 +158,4 @@ Applicable rules: D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-09, D-12, D-13 and
 [launcher]: https://github.com/nvidia-holoscan/holoscan-cli/blob/v5.0.0/src/holoscan_cli/container/core.py
 [run]: https://github.com/nvidia-holoscan/holoscan-cli/blob/v5.0.0/src/holoscan_cli/commands/run.py
 [mode]: https://github.com/nvidia-holoscan/holoscan-cli/blob/v5.0.0/src/holoscan_cli/utils/holohub.py
+[applications]: https://github.com/nvidia-holoscan/holoscan-applications

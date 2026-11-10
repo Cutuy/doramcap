@@ -122,7 +122,7 @@ the baseline. Later stages stay open until their discussion starts.
 | 2. [Build and preparation](110926-holoscan-preparation.md) | Separate Build from Prepare and preserve the selected native settings. | Build before Prepare; an isolated child Build operation is an accepted fallback. |
 | 3. [Conflicting controls](110926-holoscan-controls.md) | Preserve native placement/recording and compare practical declared settings. | Warn or fail clearly for supported comparisons; defer deeper application inspection. |
 | 4. [Execution and recovery](110926-holoscan-execution.md) | Owned run resources, repeatable pre-run cleanup and interruption recovery. | Stop lingering owned runs and verify cleanup before Build/Prepare; output retention is best effort. |
-| 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed, CLI probe pending. |
+| 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed and probed with a fake Docker. |
 | 6. Backend acceptance | Which existing projects and environments establish supported behavior. | Agree on comparison with upstream launches, failure scenarios and release evidence. |
 | 7. Console UI | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Agree on the complete web-app journey, saved selections, visible failure states and end-to-end checks. |
 
@@ -145,9 +145,10 @@ purpose, inputs, results and failure behavior.
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
 Stage 5 adopts the existing automatic filesystem capture workflow.
 
-**Current step: the [stage 5 CLI probe](111026-holoscan-launch-handoff.md#pending-probe).**
+**Current step: stage 5 implementation planning.**
 The launch design, container ownership, shared Docker crate and Review rule are
-agreed. The probe checks the two CLI behaviors the launch design depends on.
+agreed. A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
+supports the launch design. Real-container qualification remains.
 
 Backend acceptance follows in stage 6. Console UI is explicitly last in stage 7,
 including discovery presentation, saved selections, review, run controls and results.
