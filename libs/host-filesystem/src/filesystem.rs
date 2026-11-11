@@ -219,9 +219,8 @@ impl MetadataWalk {
     }
 }
 
-/// Sequential length-delimited protobuf change reader.
-///
-/// Each call reads one record. Paths and symlink targets retain Unix bytes.
+/// Sequential length-delimited protobuf change reader; each call reads one record.
+/// Paths and symlink targets retain Unix bytes.
 /// Malformed or truncated records return errors; dropping closes the file.
 pub struct FileChanges {
     input: BufReader<tokio::fs::File>,
@@ -372,21 +371,36 @@ impl ChangeWriter {
     /// Flush the complete category and return its metadata reference.
     pub async fn finish(mut self) -> Result<CategoryChanges> {
         self.0.1.flush().await?;
+        log_category(&self.0.0);
         Ok(self.0.0)
     }
 }
 impl FilesystemBaseline {
     /// Resolve only complete backend sources; failed baselines cannot establish changes.
-    pub async fn pending_volumes(&self) -> Result<Vec<String>> {
+    pub async fn pending_sources(&self, category: StorageCategory) -> Result<Vec<String>> {
         let mut names = Vec::new();
         for source in &self.sources {
-            if source.category == StorageCategory::NamedVolume
-                && wire::read_snapshot(&source.baseline).await?.complete
+            if source.category == category && wire::read_snapshot(&source.baseline).await?.complete
             {
                 names.push(source.identity.clone());
             }
         }
         Ok(names)
+    }
+}
+
+fn log_category(category: &CategoryChanges) {
+    let c = &category.counts;
+    if c.added + c.modified + c.deleted > 0 || !category.warnings.is_empty() {
+        eprintln!(
+            "warning: filesystem {:?}: added={} modified={} deleted={} coverage_notes={} manifest={}",
+            category.category,
+            c.added,
+            c.modified,
+            c.deleted,
+            category.warnings.len(),
+            category.manifest.display()
+        );
     }
 }
 
@@ -574,18 +588,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
     }
     for out in [&mut host, &mut volumes] {
         out.1.flush().await?;
-        let c = &out.0.counts;
-        if c.added + c.modified + c.deleted > 0 || !out.0.warnings.is_empty() {
-            eprintln!(
-                "warning: filesystem {:?}: added={} modified={} deleted={} coverage_notes={} manifest={}",
-                out.0.category,
-                c.added,
-                c.modified,
-                c.deleted,
-                out.0.warnings.len(),
-                out.0.manifest.display()
-            );
-        }
+        log_category(&out.0);
     }
     let result = FilesystemChanges {
         host_binds: host.0,

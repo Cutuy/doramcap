@@ -77,7 +77,10 @@ pub async fn volume_observations(
     baseline: &FilesystemBaseline,
 ) -> Result<Vec<SourceObservation>> {
     let mut observations = Vec::new();
-    for identity in baseline.pending_volumes().await? {
+    for identity in baseline
+        .pending_sources(StorageCategory::NamedVolume)
+        .await?
+    {
         let (path, reason) = match volume_path(adapter, &identity).await {
             Ok(Some(path)) if host_filesystem::is_host_shm_source(&path)? => {
                 (Some(path), Some(HOST_SHM_SOURCE.into()))
