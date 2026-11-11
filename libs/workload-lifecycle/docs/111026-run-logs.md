@@ -1,9 +1,11 @@
 # Application logs for a run
 
-Created November 10, 2026. Tracking note. Design has not started.
+Created November 10, 2026. Updated November 11, 2026. Tracking note; direction agreed.
 
-Console does not keep application output with a run today. This note tracks a
-shared route through the host journal and a planned collection step.
+Console does not keep application output with a run today. Every workflow sends
+output to the host journal, and Console dumps each run's output into the run's
+files. Keeping those files is then handled with the run's other files, in
+[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
 
 ## Today
 
@@ -30,16 +32,17 @@ shared route through the host journal and a planned collection step.
 | Item | Description |
 | --- | --- |
 | Compose through the journal | Set the journal log driver for services without their own logging. |
-| Log collection | At the end of a run, collect the run's journal entries for all its units and containers and save them with the run. |
-| Web app | Show the collected log with the run. |
+| Log dump | At the end of a run, write each program's full output from the journal into a run-owned output folder, one file per unit or container. |
+| Web app | Show the dumped logs with the run's other files. |
 
-Saving a copy with the run removes the dependence on how long the host keeps its
-journal.
+The dump is a set of ordinary run files. The file-change report lists it and the
+run folder keeps it, so a run's log no longer depends on how long the host keeps
+its journal. Console keeps the full output and selects no snippets.
 
 ## Open questions
 
 - How entries are matched to a run: unit names, container labels and the run's time window.
-- Size limits for the saved copy.
+- Whether the dump has a size limit per program.
 - The journal drops lines from very chatty services by default. Decide whether Console reports that.
 - How Console reads the journal. Candidate libraries need review before adoption.
 - Confirm on a real container that the journal driver works as expected, including
