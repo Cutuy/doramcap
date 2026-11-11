@@ -1,60 +1,35 @@
 //! Opt-in CAP_SYS_ADMIN tests; build normally, elevate only this executable.
-use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
-use workload_docker::compose::{overlay::*, *};
 use workload_docker::docker_proto::BindMount;
-fn plan(root: &Path, source: &Path) -> ResolvedComposeProject {
-    let manifest = root.join("original.json");
-    let model = serde_json::json!({"services":{"a":{"image":"unused","volumes":[{"type":"bind","source":source,"target":"/work"},{"type":"bind","source":source.join("child"),"target":"/child","read_only":true}]},"b":{"image":"unused","volumes":[{"type":"bind","source":source,"target":"/shared"}]}}});
-    let bytes = serde_json::to_vec(&model).unwrap();
-    std::fs::write(&manifest, &bytes).unwrap();
-    ResolvedComposeProject {
-        run: "overlay-test".into(),
-        key: "foreign".into(),
-        name: "dc-overlay-test".into(),
-        manifest: manifest.to_str().unwrap().into(),
-        sha256: hex::encode(Sha256::digest(&bytes)),
-        services: BTreeMap::new(),
-        diagnostics: vec![],
-        remove_volumes: false,
-    }
+use workload_docker::engine::overlay::*;
+fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
+    vec![
+        BindMount {
+            consumer: "project/a".into(),
+            source: source.to_string_lossy().into(),
+            target: "/work".into(),
+            ..Default::default()
+        },
+        BindMount {
+            consumer: "project/a".into(),
+            source: source.join("child").to_string_lossy().into(),
+            target: "/child".into(),
+            read_only: true,
+            ..Default::default()
+        },
+        BindMount {
+            consumer: "project/b".into(),
+            source: source.to_string_lossy().into(),
+            target: "/shared".into(),
+            ..Default::default()
+        },
+    ]
 }
-fn binds(projects: &[ResolvedComposeProject]) -> Vec<BindMount> {
-    projects
-        .iter()
-        .flat_map(|project| {
-            let model: serde_json::Value =
-                serde_json::from_slice(&std::fs::read(&project.manifest).unwrap()).unwrap();
-            model["services"]
-                .as_object()
-                .unwrap()
-                .iter()
-                .flat_map(|(service, value)| {
-                    value["volumes"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter(|m| m["type"] == "bind")
-                        .map(|mount| BindMount {
-                            consumer: format!("{}/{}", project.name, service),
-                            source: mount["source"].as_str().unwrap().into(),
-                            target: mount["target"].as_str().unwrap_or_default().into(),
-                            read_only: mount["read_only"] == true,
-                            propagation: mount["bind"]["propagation"]
-                                .as_str()
-                                .unwrap_or_default()
-                                .into(),
-                            selinux: mount["bind"].get("selinux").is_some(),
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect()
+fn binds(projects: &[Vec<BindMount>]) -> Vec<BindMount> {
+    projects.iter().flatten().cloned().collect()
 }
 fn assert_unmounted(set: &OverlaySet) {
     let mounts = std::fs::read_to_string("/proc/self/mountinfo").unwrap();
@@ -92,7 +67,6 @@ async fn serial_overlay_isolation_and_harvest() {
         let artifacts = root.join(format!("run-{i}"));
         std::fs::create_dir(&artifacts).unwrap();
         let original = plan(&artifacts, &source);
-        let original_bytes = std::fs::read(&original.manifest).unwrap();
         // Act: prepare shared views; writes through the same source have one upper tree.
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
@@ -106,9 +80,8 @@ async fn serial_overlay_isolation_and_harvest() {
         .unwrap();
         assert_eq!(set.trees.len(), 1);
         let view = &set.trees[0].merged;
-        // Assert: no unchanged payload copied up; original manifest untouched.
+        // Assert: no unchanged payload copied up.
         assert!(!set.trees[0].upper.join("unchanged").exists());
-        assert_eq!(std::fs::read(&original.manifest).unwrap(), original_bytes);
         assert_eq!(set.mappings[0].effective, set.mappings[2].effective);
         assert!(set.mappings[1].read_only);
         let prior = std::fs::read(source.join("edit")).unwrap();
@@ -282,8 +255,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
     let first = plan(&artifacts, &source);
     let other = root.join("other");
     std::fs::create_dir(&other).unwrap();
-    let mut second = plan(&other, &invalid_source);
-    second.key = "second".into();
+    let second = plan(&other, &invalid_source);
     let _cleanup = MountCleanup(root.clone());
     // Act
     let error = prepare(PrepareInput {
@@ -314,13 +286,21 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     let source = root.join("source");
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
-    let mut project = plan(&artifacts, &source);
-    let model = serde_json::json!({"services":{"writer":{"image":"unused","volumes":[
-        {"type":"bind","source":source.join("child"),"target":"/child"},
-        {"type":"bind","source":source,"target":"/parent","read_only":true}]}}});
-    let bytes = serde_json::to_vec(&model).unwrap();
-    std::fs::write(&project.manifest, &bytes).unwrap();
-    project.sha256 = hex::encode(Sha256::digest(&bytes));
+    let project = vec![
+        BindMount {
+            consumer: "project/writer".into(),
+            source: source.join("child").to_string_lossy().into(),
+            target: "/child".into(),
+            ..Default::default()
+        },
+        BindMount {
+            consumer: "project/writer".into(),
+            source: source.to_string_lossy().into(),
+            target: "/parent".into(),
+            read_only: true,
+            ..Default::default()
+        },
+    ];
     // Act
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
@@ -623,8 +603,7 @@ async fn unsupported_upper_entries_reject_before_any_writeback() {
         std::fs::create_dir(&artifacts).unwrap();
         std::fs::create_dir(&other).unwrap();
         let first = plan(&artifacts, &root.join("a"));
-        let mut second = plan(&other, &root.join("b"));
-        second.key = "second".into();
+        let second = plan(&other, &root.join("b"));
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
             bind_mounts: binds(&[first, second]),
@@ -997,8 +976,7 @@ async fn interrupted_copyback_child() {
         std::fs::write(source.join("file"), b"before").unwrap();
         let input = root.join(format!("input-{name}"));
         std::fs::create_dir(&input).unwrap();
-        let mut project = plan(&input, &source);
-        project.key = name.into();
+        let project = plan(&input, &source);
         projects.push(project);
     }
     let set = prepare(PrepareInput {

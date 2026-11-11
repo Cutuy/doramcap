@@ -546,13 +546,13 @@ async fn private_root(
     let blocked = workload_lifecycle::plan::validate_host_shm_access(host_shm_access)?
         == workload_lifecycle::launch::HostShmAccess::Blocked;
     if blocked
-        && !binds.iter().any(|bind| {
-            std::path::Path::new(workload_lifecycle::files::SHM_PATH).starts_with(&bind.target)
-        })
+        && !binds
+            .iter()
+            .any(|bind| std::path::Path::new(host_filesystem::SHM_PATH).starts_with(&bind.target))
     {
         writable.push(mount(
             &crate::runtime::shm_directory(scope).to_string_lossy(),
-            workload_lifecycle::files::SHM_PATH,
+            host_filesystem::SHM_PATH,
             false,
         ));
     }

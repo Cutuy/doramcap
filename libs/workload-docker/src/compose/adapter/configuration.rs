@@ -48,7 +48,7 @@ impl ComposeConfiguration<'_> {
         args.extend(["config".into(), "--format".into(), "json".into()]);
         args.extend(project.services.clone());
         let (stdout, stderr) = compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             &directory,
             &project.environment,
             &args,
@@ -60,7 +60,7 @@ impl ComposeConfiguration<'_> {
         }
         let model: Value = serde_json::from_str(&stdout)?;
         let (version, _) = compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             &directory,
             &BTreeMap::new(),
             &["version".into(), "--short".into()],
@@ -90,7 +90,7 @@ impl ComposeConfiguration<'_> {
         let (directory, mut args, _) = config_arguments(&project, name).await?;
         args.extend(["config".into(), "--profiles".into()]);
         let (output, _) = compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             &directory,
             &project.environment,
             &args,
@@ -229,7 +229,8 @@ impl ComposeConfiguration<'_> {
             })?;
             let image = self
                 .adapter
-                .docker
+                .engine
+                .client()
                 .inspect_image(image)
                 .await
                 .map_err(|e| engine(format!("inspect image for {service_name}"), e))?;
@@ -262,7 +263,13 @@ impl ComposeConfiguration<'_> {
                 )));
             }
             if let Some(fixed) = service["container_name"].as_str() {
-                match self.adapter.docker.inspect_container(fixed, None).await {
+                match self
+                    .adapter
+                    .engine
+                    .client()
+                    .inspect_container(fixed, None)
+                    .await
+                {
                     Ok(container) => {
                         let labels = container
                             .config
@@ -396,7 +403,7 @@ impl ComposeConfiguration<'_> {
         let mut check = self.adapter.project(&plan).args();
         check.extend(["config".into(), "--quiet".into()]);
         compose(
-            &self.adapter.socket,
+            self.adapter.engine.socket_path().to_str().unwrap(),
             &artifacts,
             &BTreeMap::new(),
             &check,

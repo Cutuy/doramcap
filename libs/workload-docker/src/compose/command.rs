@@ -13,17 +13,7 @@ use tokio::{
     process::Command,
 };
 
-// Compose may launch its CLI plugin as a child. Kill the owned process group on
-// timeout, I/O failure or cancellation; Engine cleanup remains a separate action.
-pub(crate) struct ProcessGroup(pub(crate) u32);
-impl Drop for ProcessGroup {
-    fn drop(&mut self) {
-        // SAFETY: this PGID was assigned to our child at spawn, never the caller's.
-        unsafe {
-            libc::kill(-(self.0 as i32), libc::SIGKILL);
-        }
-    }
-}
+use crate::engine::ProcessGroup;
 /// Largest Compose stdout or stderr stream retained from one command.
 const MAX_COMPOSE_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Largest `/proc/net/tcp*` table parsed while verifying a Dora listener.

@@ -4,13 +4,11 @@
 //! CAP_SYS_ADMIN. Caller must stop all writers before finalization. Explicit
 //! preparation/finalization own mounts; dropping serialized values does no cleanup.
 mod direct;
-mod preparation;
-pub use preparation::{ComposePrepareInput, PrepareOverlays, PreparedOverlays};
 
 use super::{
     Result,
-    adapter::private_write,
     error::invalid,
+    files::private_write,
     filesystem::{MetadataWalk, Snapshot, read_snapshot, write_record, write_snapshot},
 };
 use crate::docker_proto::BindMount;
@@ -30,7 +28,7 @@ use tokio::io::AsyncWriteExt;
 
 /// Require the local Docker socket peer to share this process's mount namespace.
 /// Overlay binds must resolve there; proxies require separate namespace guarantees.
-pub(crate) async fn verify_namespace(socket: &Path) -> Result<()> {
+pub async fn verify_namespace(socket: &Path) -> Result<()> {
     use std::os::fd::AsRawFd;
     let stream = tokio::net::UnixStream::connect(socket).await?;
     let mut cred = libc::ucred {
@@ -156,6 +154,7 @@ pub struct OverlayResults {
 /// Pre-run reset never replays writes.
 pub struct FinalizeOverlays;
 impl Step for FinalizeOverlays {
+    const ID: Option<&'static str> = Some("workload_docker::compose::overlay::FinalizeOverlays");
     type Input = OverlaySet;
     type Output = OverlayResults;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
@@ -211,7 +210,8 @@ async fn mount(tree: &OverlayTree) -> Result<()> {
     .await
     .map_err(|e| invalid(e.to_string()))?
 }
-pub(super) async fn unmount(path: &Path) -> Result<()> {
+/// Strictly unmount a view owned by the caller; a busy mount returns its OS error.
+pub async fn unmount(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
         let target = cstr(&path)?;
@@ -291,7 +291,7 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         }
         let meta = tokio::fs::symlink_metadata(&source).await?;
         let owned = source.starts_with(&artifacts);
-        let host_shm = workload_lifecycle::files::is_host_shm_source(&source)?;
+        let host_shm = host_filesystem::is_host_shm_source(&source)?;
         if !bind.read_only && !owned && !host_shm {
             if !meta.is_dir()
                 || ["/proc", "/sys", "/dev"]
@@ -395,8 +395,8 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             )));
         }
     }
-    crate::evidence::create_private_dir(&directory).await?;
-    crate::evidence::create_private_dir(&workspace).await?;
+    super::files::create_private_dir(&directory).await?;
+    super::files::create_private_dir(&workspace).await?;
     let mut set = OverlaySet {
         directory: directory.clone(),
         workspace: workspace.clone(),
@@ -530,8 +530,7 @@ async fn rsync(
         .kill_on_drop(true);
     command.as_std_mut().process_group(0);
     let mut child = command.spawn()?;
-    let group =
-        super::command::ProcessGroup(child.id().ok_or_else(|| invalid("rsync PID missing"))?);
+    let group = super::ProcessGroup(child.id().ok_or_else(|| invalid("rsync PID missing"))?);
     let status = child.wait().await?;
     drop(group);
     if !status.success() {

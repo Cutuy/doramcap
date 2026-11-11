@@ -6,10 +6,11 @@
 pub(crate) mod adapter;
 pub(crate) mod command;
 pub(crate) mod error;
-pub mod filesystem;
+pub mod filesystem_preparation;
+pub use crate::engine::{filesystem, overlay};
+pub use filesystem_preparation::{ComposePrepareInput, PrepareOverlays, PreparedOverlays};
 mod model;
 pub(crate) mod mounts;
-pub mod overlay;
 mod state;
 mod steps;
 /// Diagnostic operation for a service killed by SIGKILL or the OOM killer during stop.

@@ -29,12 +29,13 @@ pub fn register(
     step!(InspectCompose);
     step!(QuiesceCompose);
     step!(RemoveCompose);
-    let dependency = adapter.clone();
+    let engine = Rc::new(adapter.engine.clone());
+    let dependency = engine.clone();
     executor.register::<CaptureFilesystemBaseline>(move || CaptureFilesystemBaseline {
-        adapter: dependency.clone(),
+        engine: dependency.clone(),
     });
     executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
-        adapter: adapter.clone(),
+        engine: engine.clone(),
     });
 }
 
@@ -93,7 +94,7 @@ pub(super) fn attach(
     diagnostics: Diagnostics,
 ) -> Rc<LocalExecutor> {
     use super::recorded_compose::{finalization::*, preparation::PrepareRun};
-    use crate::compose::overlay::{FinalizeOverlays, PrepareOverlays};
+    use crate::compose::{PrepareOverlays, overlay::FinalizeOverlays};
     Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());
         let dependency = adapter.clone();

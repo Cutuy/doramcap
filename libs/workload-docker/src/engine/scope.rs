@@ -1,27 +1,22 @@
 //! Idempotent cleanup of a controller's Docker ownership scope.
-use super::{CONTROLLER_LABEL, DockerAdapter, EXPERIMENT_OWNER_LABEL};
-use crate::compose::{
-    Result,
+use super::{
+    CONTROLLER_LABEL, Engine, Result,
     error::{absent, engine, invalid},
 };
 use bollard::query_parameters::*;
 use std::collections::HashMap;
 
 /// Resets the resources labeled for one controller, preserving volumes.
-pub(crate) struct ExperimentResources<'a> {
-    pub(super) adapter: &'a DockerAdapter,
+pub struct OwnedResources<'a> {
+    pub(super) engine: &'a Engine,
     pub(super) scope: &'a str,
     pub(super) owner: &'a str,
 }
-impl ExperimentResources<'_> {
-    /// Stop and verify every writer; foreign reservations or Engine failures abort reset.
-    pub(crate) async fn quiesce(&self, seconds: u64) -> Result<()> {
-        match self
-            .adapter
-            .docker
-            .inspect_container(self.owner, None)
-            .await
-        {
+impl OwnedResources<'_> {
+    /// Stop every writer and return summaries from the stopped-state check.
+    /// Foreign reservations or Engine failures abort; callers hold exclusive scope ownership.
+    pub async fn quiesce(&self, seconds: u64) -> Result<Vec<bollard::models::ContainerSummary>> {
+        match self.engine.docker.inspect_container(self.owner, None).await {
             Ok(ref container)
                 if container
                     .config
@@ -41,7 +36,7 @@ impl ExperimentResources<'_> {
         }
         for container in self.containers().await? {
             match self
-                .adapter
+                .engine
                 .docker
                 .stop_container(
                     container.id.as_deref().unwrap(),
@@ -69,7 +64,7 @@ impl ExperimentResources<'_> {
     }
     async fn containers(&self) -> Result<Vec<bollard::models::ContainerSummary>> {
         let containers = self
-            .adapter
+            .engine
             .docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
@@ -92,7 +87,7 @@ impl ExperimentResources<'_> {
     }
     async fn networks(&self) -> Result<Vec<bollard::models::Network>> {
         let networks = self
-            .adapter
+            .engine
             .docker
             .list_networks(Some(ListNetworksOptions {
                 filters: scope_filters(self.scope),
@@ -111,10 +106,13 @@ impl ExperimentResources<'_> {
         }
         Ok(networks)
     }
-    pub(super) async fn verify_stopped(&self) -> Result<()> {
-        for container in self.containers().await? {
+    /// Verify zero PIDs and stopped state for every owned container.
+    /// Returns the inspected ownership snapshot; missing containers are tolerated.
+    pub async fn verify_stopped(&self) -> Result<Vec<bollard::models::ContainerSummary>> {
+        let containers = self.containers().await?;
+        for container in &containers {
             match self
-                .adapter
+                .engine
                 .docker
                 .inspect_container(container.id.as_deref().unwrap(), None)
                 .await
@@ -131,29 +129,24 @@ impl ExperimentResources<'_> {
                 Err(e) => return Err(engine("inspect experiment writer", e)),
             }
         }
-        Ok(())
+        Ok(containers)
     }
-    /// Remove stopped containers and networks, releasing the IPC owner last.
-    pub(crate) async fn remove(&self) -> Result<()> {
+    /// Remove stopped containers and networks, keeping the supplied container until last.
+    /// The backend supplies the final container ID; it is honored only within this scope.
+    pub async fn remove(&self, last: Option<&str>) -> Result<()> {
         self.verify_stopped().await?;
         let mut owner = None;
-        // Keep the daemon reservation until all other disposable resources are gone.
         for container in self.containers().await? {
             let id = container.id.unwrap();
-            if container
-                .labels
-                .is_some_and(|l| l.contains_key(EXPERIMENT_OWNER_LABEL))
-            {
-                if owner.replace(id).is_some() {
-                    return Err(invalid("multiple experiment IPC owners"));
-                }
+            if Some(id.as_str()) == last {
+                owner = Some(id);
             } else {
                 self.remove_container(&id).await?;
             }
         }
         for network in self.networks().await? {
             if let Err(e) = self
-                .adapter
+                .engine
                 .docker
                 .remove_network(network.id.as_deref().unwrap())
                 .await
@@ -177,7 +170,7 @@ impl ExperimentResources<'_> {
     }
     async fn remove_container(&self, id: &str) -> Result<()> {
         match self
-            .adapter
+            .engine
             .docker
             .remove_container(id, None::<RemoveContainerOptions>)
             .await

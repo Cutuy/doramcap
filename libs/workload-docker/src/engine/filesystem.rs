@@ -7,9 +7,9 @@ mod wire;
 pub(crate) use wire::{read_snapshot, write_record, write_snapshot};
 
 use super::{
-    DockerAdapter, Result,
-    adapter::{digest, private_write},
+    Engine, Result,
     error::{absent, engine, invalid},
+    files::{digest, private_write},
 };
 use crate::docker_proto::{BindMount, HostView, OwnedContainer, VolumeMount};
 use orchestrator::Step;
@@ -144,13 +144,15 @@ pub struct FilesystemChanges {
 
 /// Injected adapter for metadata baseline capture. No mount or content mutation.
 pub struct CaptureFilesystemBaseline {
-    pub adapter: Rc<DockerAdapter>,
+    pub engine: Rc<Engine>,
 }
 impl Step for CaptureFilesystemBaseline {
+    const ID: Option<&'static str> =
+        Some("workload_docker::compose::filesystem::CaptureFilesystemBaseline");
     type Input = BaselineInput;
     type Output = FilesystemBaseline;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        capture(&self.adapter, input)
+        capture(&self.engine, input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
@@ -159,13 +161,15 @@ impl Step for CaptureFilesystemBaseline {
 /// Returns category manifests and warnings based on the caller's inventory.
 /// Retain resources on Engine errors, live containers, or artifact failures.
 pub struct CollectFilesystemChanges {
-    pub adapter: Rc<DockerAdapter>,
+    pub engine: Rc<Engine>,
 }
 impl Step for CollectFilesystemChanges {
+    const ID: Option<&'static str> =
+        Some("workload_docker::compose::filesystem::CollectFilesystemChanges");
     type Input = CollectInput;
     type Output = FilesystemChanges;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        collect(&self.adapter, input)
+        collect(&self.engine, input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
@@ -306,7 +310,7 @@ fn excluded(path: &Path, artifacts: &Path) -> bool {
         || path.starts_with(artifacts)
         || artifacts.starts_with(path)
 }
-async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathBuf>> {
+async fn volume_path(adapter: &Engine, name: &str) -> Result<Option<PathBuf>> {
     match adapter.docker.inspect_volume(name).await {
         Ok(v)
             if v.driver == "local"
@@ -321,7 +325,7 @@ async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathB
                     .split(',')
                     .any(|option| matches!(option, "bind" | "rbind"))
             }) && let Some(source) = v.options.get("device")
-                && workload_lifecycle::files::is_host_shm_source(Path::new(source))?
+                && host_filesystem::is_host_shm_source(Path::new(source))?
             {
                 return Ok(Some(PathBuf::from(source)));
             }
@@ -336,9 +340,9 @@ async fn volume_path(adapter: &DockerAdapter, name: &str) -> Result<Option<PathB
         Err(e) => Err(engine("inspect volume metadata", e)),
     }
 }
-async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<FilesystemBaseline> {
+async fn capture(adapter: &Engine, input: BaselineInput) -> Result<FilesystemBaseline> {
     let directory = input.artifacts.join("filesystem");
-    crate::evidence::create_private_dir(&directory).await?;
+    super::files::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
     let mut record = |category: StorageCategory,
                       identity: String,
@@ -384,7 +388,7 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
     }
     for mount in input.volume_mounts {
         let (path, reason) = match volume_path(adapter, &mount.name).await {
-            Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+            Ok(Some(path)) if host_filesystem::is_host_shm_source(&path)? => {
                 (Some(path), Some(HOST_SHM_SOURCE.into()))
             }
             Ok(path) => (path, None),
@@ -468,7 +472,7 @@ async fn emit(
     }
     Ok(())
 }
-async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<FilesystemChanges> {
+async fn collect(adapter: &Engine, input: CollectInput) -> Result<FilesystemChanges> {
     let mut host = writer(
         &input.baseline.directory,
         StorageCategory::HostBind,
@@ -572,7 +576,7 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         }
         let path = if source.category == StorageCategory::NamedVolume {
             match volume_path(adapter, &source.identity).await {
-                Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+                Ok(Some(path)) if host_filesystem::is_host_shm_source(&path)? => {
                     out.0
                         .warnings
                         .push(format!("{}: {HOST_SHM_SOURCE}", source.identity));
@@ -684,7 +688,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn mount_inputs_preserve_change_record_consumers() {
-        use crate::compose::adapter::tests::test_engine;
+        use crate::engine::tests::test_engine;
         use serde_json::json;
         // Arrange: read-only and writable aliases share the same baseline.
         let root = tempfile::tempdir().unwrap();
@@ -770,7 +774,7 @@ mod tests {
 
     #[tokio::test]
     async fn live_container_rejects_collection_before_requesting_diff() {
-        use crate::compose::adapter::tests::test_engine;
+        use crate::engine::tests::test_engine;
         use serde_json::json;
         // Arrange
         let root = tempfile::tempdir().unwrap();

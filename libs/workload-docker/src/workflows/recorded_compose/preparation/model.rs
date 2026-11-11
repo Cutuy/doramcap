@@ -100,9 +100,9 @@ pub(super) fn configure_shm(
             .into_iter()
             .flatten()
             .any(|mount| {
-                mount["target"].as_str().is_some_and(|target| {
-                    Path::new(workload_lifecycle::files::SHM_PATH).starts_with(target)
-                })
+                mount["target"]
+                    .as_str()
+                    .is_some_and(|target| Path::new(host_filesystem::SHM_PATH).starts_with(target))
             })
             || service["tmpfs"]
                 .as_array()
@@ -110,7 +110,7 @@ pub(super) fn configure_shm(
                 .flatten()
                 .any(|mount| {
                     mount.as_str().is_some_and(|target| {
-                        Path::new(workload_lifecycle::files::SHM_PATH)
+                        Path::new(host_filesystem::SHM_PATH)
                             .starts_with(target.split(':').next().unwrap())
                     })
                 });
@@ -262,7 +262,7 @@ pub(super) fn local_volume_source<'a>(driver: Option<&str>, options: &'a Value) 
 
 /// Reject a host-shm root or ancestor source, including mount and symlink aliases.
 pub(super) fn validate_host_shm_source(service: &str, source: &str) -> Result<()> {
-    let exposes_host = match workload_lifecycle::files::exposes_host_shm_tree(Path::new(source)) {
+    let exposes_host = match host_filesystem::exposes_host_shm_tree(Path::new(source)) {
         Ok(exposes) => exposes,
         // Missing native sources are checked by execution preparation.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),

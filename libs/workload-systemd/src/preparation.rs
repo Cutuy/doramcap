@@ -339,9 +339,7 @@ fn capture(
     {
         let source = Path::new(&bind.source);
         let metadata = std::fs::metadata(source);
-        if metadata.is_ok()
-            && workload_lifecycle::files::is_host_shm_source(source).map_err(error)?
-        {
+        if metadata.is_ok() && host_filesystem::is_host_shm_source(source).map_err(error)? {
             bind.source = std::fs::canonicalize(source)
                 .map_err(error)?
                 .to_string_lossy()

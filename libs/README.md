@@ -20,3 +20,5 @@ provide an index; Cargo package names stay independent of directory names.
 
 See [repository conventions](../docs/repository-layout.md). Run a crate's tests
 from the workspace root, for example `cargo test -p telemetry-protocol`.
+
+- [`host-filesystem`](host-filesystem): native shared-memory and directory identity checks.

@@ -13,6 +13,7 @@ members = [
     "libs/step-provenance",
     "libs/session",
     "libs/workload-lifecycle",
+    "libs/host-filesystem",
     "libs/dora-app",
     "libs/dora-control",
     "libs/workload-supervisor",

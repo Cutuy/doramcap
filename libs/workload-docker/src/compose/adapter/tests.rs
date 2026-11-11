@@ -5,6 +5,7 @@ use crate::compose::{
 };
 use serde_json::{Value, json};
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 
 fn input_project(directory: &Path) -> ComposeProject {
     ComposeProject {
@@ -51,13 +52,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
     let socket = root.path().join("engine.sock");
     let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let adapter = DockerAdapter {
-        docker: Docker::connect_with_unix(
-            socket.to_str().unwrap(),
-            120,
-            bollard::API_DEFAULT_VERSION,
-        )
-        .unwrap(),
-        socket: socket.to_string_lossy().into_owned(),
+        engine: Engine::new(socket.to_str().unwrap(), 120).unwrap(),
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
@@ -305,13 +300,7 @@ pub(crate) fn test_engine_status(
     let socket = root.join("engine.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
     let adapter = DockerAdapter {
-        docker: Docker::connect_with_unix(
-            socket.to_str().unwrap(),
-            1,
-            bollard::API_DEFAULT_VERSION,
-        )
-        .unwrap(),
-        socket: socket.to_string_lossy().into_owned(),
+        engine: Engine::new(socket.to_str().unwrap(), 1).unwrap(),
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {
@@ -593,7 +582,8 @@ async fn dead_container_with_no_process_is_quiescent() {
     );
     // Act
     let result = adapter
-        .experiment_resources("scope", "owner")
+        .engine
+        .resources("scope", "owner")
         .verify_stopped()
         .await;
     // Assert: process absence allows reset to continue, regardless of the failure status.

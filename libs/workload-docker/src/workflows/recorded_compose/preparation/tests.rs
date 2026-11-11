@@ -909,7 +909,8 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
     ] {
         let name = format!("codex-shm-{identity}-{suffix}");
         adapter
-            .docker
+            .engine
+            .client()
             .create_volume(bollard::models::VolumeCreateRequest {
                 name: Some(name.clone()),
                 driver: Some("local".into()),
@@ -934,7 +935,8 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
         let passthrough =
             validate_external_volume_shm(&adapter, &model, HostShmAccess::Passthrough as i32).await;
         adapter
-            .docker
+            .engine
+            .client()
             .remove_volume(
                 &name,
                 None::<bollard::query_parameters::RemoveVolumeOptions>,
@@ -942,7 +944,7 @@ async fn blocked_inspects_external_local_volume_sources_on_the_real_engine() {
             .await
             .unwrap();
 
-        let removed = adapter.docker.inspect_volume(&name).await;
+        let removed = adapter.engine.client().inspect_volume(&name).await;
 
         // Assert
         assert_eq!(result.is_err(), blocked);

@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+host-filesystem = { path = "../host-filesystem" }
 dora-app = { path = "../dora-app", default-features = false }
 futures-util = "0.3"
 orchestrator = { path = "../orchestrator" }

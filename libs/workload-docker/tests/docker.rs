@@ -820,7 +820,7 @@ async fn multi_project_lifecycle() {
             request,
             tokio::time::sleep(Duration::from_secs(5)),
             move |event: &orchestrator::Event| {
-                if event.invocation.step == overlay::PrepareOverlays::ID.unwrap()
+                if event.invocation.step == PrepareOverlays::ID.unwrap()
                     && matches!(event.state, orchestrator::State::Succeeded)
                 {
                     let set: overlay::OverlaySet = serde_json::from_slice(

@@ -1,23 +1,15 @@
 mod configuration;
 mod project;
-mod scope;
 use configuration::ComposeConfiguration;
 pub use project::ComposeExecution;
 pub(crate) use project::stop_timeout;
-use scope::ExperimentResources;
 
-use super::{
-    ResolvedComposeProject, Result,
-    error::{engine, invalid},
-};
-use bollard::Docker;
-use sha2::{Digest, Sha256};
+use super::{ResolvedComposeProject, Result, error::invalid};
+use crate::engine::Engine;
+pub(crate) use crate::engine::files::{digest, private_write};
+pub(crate) use crate::engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
-use tokio::io::AsyncWriteExt;
 
-pub(crate) const RUN_LABEL: &str = "io.doramcap.run";
-pub(crate) const ARTIFACTS_LABEL: &str = "io.doramcap.artifacts";
-pub(crate) const CONTROLLER_LABEL: &str = "io.doramcap.controller";
 pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 enum StartupOutcome {
     Running(tokio::task::JoinHandle<Result<(String, String)>>),
@@ -30,33 +22,23 @@ type StartupCommand = tokio::sync::Mutex<Option<StartupOutcome>>;
 /// Project views borrow a frozen plan; resources survive cancellation and adapter destruction.
 #[derive(Clone)]
 pub struct DockerAdapter {
-    pub(crate) docker: Docker,
-    socket: String,
+    pub(crate) engine: Engine,
     starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
     /// Return the configured Unix socket path for trusted deployment wiring.
     pub fn socket_path(&self) -> &Path {
-        Path::new(&self.socket)
+        self.engine.socket_path()
     }
     /// Connect to an absolute Unix socket and negotiate the Engine API version.
     /// Engine and Compose share this socket; connection errors retain Engine diagnostics.
     pub async fn connect(socket: impl Into<String>) -> Result<Self> {
-        let socket = socket.into();
-        if !Path::new(&socket).is_absolute() {
-            return Err(invalid("Docker socket must be absolute"));
-        }
-        let docker = Docker::connect_with_unix(&socket, 120, bollard::API_DEFAULT_VERSION)
-            .map_err(|e| engine("connect", e))?
-            .negotiate_version()
-            .await
-            .map_err(|e| engine("negotiate", e))?;
         Ok(Self {
-            docker,
-            socket,
+            engine: Engine::connect(socket).await?,
             starting: Default::default(),
         })
     }
+
     /// Borrow the runtime view for a frozen project; no Docker resources are created.
     pub fn project<'a>(&'a self, plan: &'a ResolvedComposeProject) -> ComposeExecution<'a> {
         ComposeExecution {
@@ -68,19 +50,8 @@ impl DockerAdapter {
     pub(crate) fn configuration(&self) -> ComposeConfiguration<'_> {
         ComposeConfiguration { adapter: self }
     }
-
-    pub(crate) fn experiment_resources<'a>(
-        &'a self,
-        scope: &'a str,
-        owner: &'a str,
-    ) -> ExperimentResources<'a> {
-        ExperimentResources {
-            adapter: self,
-            scope,
-            owner,
-        }
-    }
 }
+
 pub(crate) fn validate_name(name: &str) -> Result<()> {
     if name.is_empty()
         || name.len() > 40
@@ -110,20 +81,6 @@ pub(crate) fn repository_scope(repository: &Path) -> std::path::PathBuf {
         project_name("experiment", repository)
     ))
 }
-pub(crate) fn digest(bytes: &[u8]) -> String {
-    hex::encode(Sha256::digest(bytes))
-}
-pub(crate) async fn private_write(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut file = tokio::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)
-        .await?;
-    file.write_all(bytes).await?;
-    file.flush().await?;
-    Ok(())
-}
 
 #[cfg(test)]
 pub(crate) mod tests;
@@ -143,9 +100,7 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
                 drop(std::os::unix::net::UnixListener::bind(&socket_path).unwrap());
                 let socket = socket_path.to_str().unwrap();
                 let adapter = DockerAdapter {
-                    docker: Docker::connect_with_unix(socket, 120, bollard::API_DEFAULT_VERSION)
-                        .unwrap(),
-                    socket: socket.into(),
+                    engine: Engine::new(socket, 120).unwrap(),
                     starting: Default::default(),
                 };
                 adapter
