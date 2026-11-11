@@ -150,6 +150,9 @@ extracted capture steps for its run milestone.
 - [ ] Add one Console configuration field selecting write back or keep with the run,
   default write back. Pass it to Compose and systemd runs.
 - [ ] Show the policy at Review and the kept location with the result. Add no file browser.
+- [ ] Add a download action for each listed file inside the run folder: kept files and log
+  dumps. Reuse the authenticated artifact route and the safe open beneath the run root.
+  Send every file as an attachment.
 
 **Validation**
 
@@ -159,6 +162,8 @@ extracted capture steps for its run milestone.
 - [ ] A second run starts from the original source and keeps its own separate files.
 - [ ] Full disk and an interrupted copy preserve the upper data and block verified cleanup.
 - [ ] The view folder and the run folder on different filesystems.
+- [ ] A kept file and a log dump download intact. Paths outside the run folder, traversal
+  and symlink escapes are refused. A kept HTML file downloads and never renders in Console.
 - [ ] Projects with no setting behave as before.
 
 ## Integration and qualification

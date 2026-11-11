@@ -189,6 +189,26 @@ before/after maps for one source, so memory grows with that tree. This extractio
 preserves that cost. The report describes observed final changes rather than a
 complete history of writes.
 
+### Files in the run folder
+
+The run folder is the one place Console owns: `runs/<run id>/` in its data
+folder. It holds Console's records, declared recordings, log dumps and, under
+keep with the run, the files the run wrote. Console controls this folder, so it
+is where size and file-count limits will apply. Those limits are later work;
+nothing bounds the folder today.
+
+Each file in the run folder that the change list names has a download action,
+through the existing authenticated artifact route and the existing safe open
+beneath the run root. Files are always sent as downloads and never shown inline.
+
+| Policy | Downloadable through Console |
+| --- | --- |
+| Write back | Log dumps, recordings and the report. Written files sit in their source folders and appear as text. |
+| Keep with the run | Log dumps, recordings, the report and every file the run wrote. |
+
+Paths outside the run folder stay text. The location of the run folder is shown
+for bulk transfer by other means.
+
 Use the current run retention and private-file permissions. Do not add a filesystem
 search API, pagination, run-comparison fields or new history-list columns in this work.
 The original tracking PR is [#312](https://github.com/Cutuy/doramcap/pull/312).
