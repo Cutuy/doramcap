@@ -73,13 +73,13 @@ A container whose project sets its own log driver has no dump. The run records
 that its log is set by the project.
 
 Confirmed on one host with systemd 255: entries carry the invocation ID and the
-service manager reports a unit's current one. The container half follows
-Docker's documentation and is untested.
+service manager reports a unit's current one. The real Compose test also confirms
+that `journald` captures stdout and stderr, Docker's failure-output reader works,
+and entries remain queryable by full container ID after container removal.
+Explicit `json-file` logging and its options remain intact.
 
 ## Open questions
 
 - A process that exits almost at once can lose its identity in the journal, so
   its last lines may be missing from the dump. Measure how often this occurs.
 - The journal drops lines from very chatty services by default. Decide whether Console reports that.
-- Confirm on a real container that the journal driver works as expected, including
-  reading back the last lines for the failure message.
