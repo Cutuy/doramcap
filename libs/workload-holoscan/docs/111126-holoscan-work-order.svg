@@ -1,34 +1,50 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
 <title id="title">Order of work</title>
-<desc id="desc">Shared foundations run in sequence: admission lock, move capture, shared apps crate, show changes, keep files. systemd capture follows move capture and the log dump follows keep files. The Holoscan runner runs in parallel: probes, Prepare, Build and run, system apps. Build and run waits for the lock and for move capture. System apps wait for the shared apps crate.</desc>
+<desc id="desc">Six pieces can start now in parallel: the journal log driver for Compose, show file changes, move capture, the apps crate pieces, the admission lock, and the Holoscan probes with discovery and Prepare. Move capture comes before systemd capture, keep files and the apps crate's system apps sequences. Keep files also needs show file changes. The log dump needs the journal log driver and keep files. Holoscan Build and run needs the admission lock. Holoscan system apps need the apps crate's system apps sequences. Web app screens come last.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
-<rect width="960" height="430" fill="#f7fafc"/>
+<rect width="960" height="540" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
 <text x="480" y="34" font-size="22" font-weight="600">Order of work</text>
-<text x="40" y="68" font-size="13" text-anchor="start">Shared foundations, one at a time</text>
+<g font-size="13"><text x="170" y="66">Can start now</text><text x="480" y="66">Next</text><text x="790" y="66">Later</text></g>
 <g fill="#dbeaf2" stroke="#8ca6b8">
-<rect x="40" y="80" width="160" height="62" rx="8"/><rect x="220" y="80" width="160" height="62" rx="8"/><rect x="400" y="80" width="160" height="62" rx="8"/><rect x="580" y="80" width="160" height="62" rx="8"/><rect x="760" y="80" width="160" height="62" rx="8"/>
-<rect x="220" y="190" width="136" height="62" rx="8"/><rect x="760" y="190" width="160" height="62" rx="8"/>
+<rect x="40" y="80" width="260" height="50" rx="8"/><rect x="660" y="80" width="260" height="50" rx="8"/>
+<rect x="40" y="144" width="260" height="50" rx="8"/><rect x="350" y="144" width="260" height="50" rx="8"/>
+<rect x="40" y="208" width="260" height="50" rx="8"/><rect x="350" y="208" width="260" height="50" rx="8"/>
+<rect x="40" y="272" width="260" height="50" rx="8"/><rect x="350" y="272" width="260" height="50" rx="8"/>
+<rect x="40" y="336" width="260" height="50" rx="8"/>
 </g>
-<text x="120" y="106" font-size="16" font-weight="600">Admission lock</text><text x="120" y="128" font-size="13">#315</text>
-<text x="300" y="106" font-size="16" font-weight="600">Move capture</text><text x="300" y="128" font-size="13">#316 milestone 1</text>
-<text x="480" y="106" font-size="16" font-weight="600">Shared apps crate</text><text x="480" y="128" font-size="13">#317</text>
-<text x="660" y="106" font-size="16" font-weight="600">Show changes</text><text x="660" y="128" font-size="13">#316 milestone 3</text>
-<text x="840" y="106" font-size="16" font-weight="600">Keep files</text><text x="840" y="128" font-size="13">#316 milestone 4</text>
-<text x="288" y="216" font-size="15" font-weight="600">systemd capture</text><text x="288" y="238" font-size="13">#316 milestone 2</text>
-<text x="840" y="216" font-size="16" font-weight="600">Log dump</text><text x="840" y="238" font-size="13">#314</text>
-<text x="40" y="318" font-size="13" text-anchor="start">Holoscan runner, in parallel</text>
 <g fill="#fcebdc" stroke="#bc906b">
-<rect x="40" y="330" width="190" height="62" rx="8"/><rect x="260" y="330" width="190" height="62" rx="8"/><rect x="480" y="330" width="190" height="62" rx="8"/><rect x="700" y="330" width="190" height="62" rx="8"/>
+<rect x="40" y="400" width="260" height="50" rx="8"/><rect x="350" y="400" width="260" height="50" rx="8"/><rect x="660" y="400" width="260" height="50" rx="8"/>
+<rect x="660" y="464" width="260" height="50" rx="8"/>
 </g>
-<text x="135" y="356" font-size="16" font-weight="600">Probes</text><text x="135" y="378" font-size="13">runner milestone 1</text>
-<text x="355" y="356" font-size="16" font-weight="600">Prepare</text><text x="355" y="378" font-size="13">runner milestones 2–3</text>
-<text x="575" y="356" font-size="16" font-weight="600">Build and run</text><text x="575" y="378" font-size="13">runner milestones 4–5</text>
-<text x="795" y="356" font-size="16" font-weight="600">System apps</text><text x="795" y="378" font-size="13">runner milestones 6–7</text>
+<g font-size="15" font-weight="600">
+<text x="170" y="102">Journal log driver for Compose</text><text x="790" y="102">Log dump</text>
+<text x="170" y="166">Show file changes</text><text x="480" y="166">Keep files with the run</text>
+<text x="170" y="230">Move capture</text><text x="480" y="230">systemd capture</text>
+<text x="170" y="294">Apps crate: pieces</text><text x="480" y="294">Apps crate: system apps</text>
+<text x="170" y="358">Admission lock</text>
+<text x="170" y="422">Probes, discovery, Prepare</text><text x="480" y="422">Build and run</text><text x="790" y="422">System apps, acceptance</text>
+<text x="790" y="486">Web app screens</text>
+</g>
+<g font-size="12" fill="#4a5d6e">
+<text x="170" y="120">#314</text><text x="790" y="120">#314</text>
+<text x="170" y="184">#316 milestone 3</text><text x="480" y="184">#316 milestone 4</text>
+<text x="170" y="248">#316 milestone 1</text><text x="480" y="248">#316 milestone 2</text>
+<text x="170" y="312">#317 milestones 1–3</text><text x="480" y="312">#317 milestone 4</text>
+<text x="170" y="376">#315</text>
+<text x="170" y="440">Holoscan milestones 1–3</text><text x="480" y="440">Holoscan milestones 4–5</text><text x="790" y="440">Holoscan milestones 6–7</text>
+<text x="790" y="504">Holoscan, plan to write</text>
+</g>
 <g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
-<path d="M200 111 H216"/><path d="M380 111 H396"/><path d="M560 111 H576"/><path d="M740 111 H756"/>
-<path d="M288 142 V186"/><path d="M840 142 V186"/>
-<path d="M120 142 V296 H540 V326"/><path d="M368 142 V280 H580 V326"/><path d="M480 142 V268 H795 V326"/>
-<path d="M230 361 H256"/><path d="M450 361 H476"/><path d="M670 361 H696"/>
+<path d="M300 105 H656"/>
+<path d="M300 169 H346"/><path d="M300 233 H346"/><path d="M300 297 H346"/>
+<path d="M300 425 H346"/><path d="M610 425 H656"/>
+<path d="M790 450 V460"/>
+</g>
+<g fill="none" stroke="#536779" stroke-width="1.5">
+<path d="M325 169 V297"/>
+<path d="M610 169 H635 V105"/>
+<path d="M610 297 H635 V425"/>
+<path d="M300 361 H325 V425"/>
 </g>
 </g></svg>
