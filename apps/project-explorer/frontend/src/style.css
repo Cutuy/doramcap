@@ -240,6 +240,8 @@ main.shell{padding-top:28px}
   gap: 6px 12px;
   margin-bottom: 8px;
 }
+.runtime-layer, .console-soc-runtime { border: 1px dashed var(--accent); }
+.runtime-layer > .layer-heading { justify-content: flex-start; column-gap: 6px; }
 .layer-heading h3 { font-size: 16px; margin: 0; }
 .layer-heading > span { font-size: 12px; color: var(--muted); }
 .stack-block, .capability, .orchestration-layer {
@@ -346,7 +348,7 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .console-soc-body svg,.console-project-chip svg{flex-shrink:0;color:var(--muted)}
 .console-soc-body>.console-soc-console>div{flex:1;justify-content:center;border-color:var(--accent)}
 .console-soc-console svg{color:var(--accent)}
-.console-soc-runtime{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px dashed var(--accent);border-radius:4px;font-size:12px}
+.console-soc-runtime{display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;font-size:12px}
 .console-soc-runtime svg{flex-shrink:0;color:var(--accent)}
 .console-soc-runtime strong{font-size:12px}
 .console-soc-runtime span{color:var(--muted)}

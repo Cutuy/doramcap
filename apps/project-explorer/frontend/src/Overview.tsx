@@ -111,7 +111,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
       <section className="runtime-layer" aria-labelledby="runtime-heading">
         <div className="layer-heading">
           <h3 id="runtime-heading">doramcap runtime</h3>
-          <span>Optional to adopt</span>
+          <span>optional</span>
         </div>
         <div className="capability-grid">
           {overview.capabilities.map(c => {
