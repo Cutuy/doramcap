@@ -8,7 +8,9 @@ use compose_apps::{compose::*, preparation};
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
-use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
+use workload_docker::workflows::recorded_compose::finalization::{
+    FinalizeRun, ObserveDockerFilesystem,
+};
 use workload_docker::workflows::recorded_compose::*;
 use workload_lifecycle::recording::Recording;
 
@@ -3338,6 +3340,13 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
         );
         support::assert_no_run_resources(&adapter, &id).await;
         let events = events.borrow();
+        let observed = events
+            .iter()
+            .find(|e| {
+                e.invocation.step == ObserveDockerFilesystem::ID.unwrap()
+                    && e.state == orchestrator::State::Succeeded
+            })
+            .unwrap();
         let collected = events
             .iter()
             .find(|e| {
@@ -3353,6 +3362,14 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
             })
             .unwrap();
         assert_eq!(collected.invocation.parent, finalized.invocation.parent);
+        assert_eq!(observed.invocation.parent, collected.invocation.parent);
+        assert!(
+            collected
+                .invocation
+                .dependencies
+                .contains(&observed.invocation.id)
+        );
+        assert!(collected.elapsed_ns >= observed.elapsed_ns);
         assert!(
             finalized
                 .invocation

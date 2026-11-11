@@ -24,6 +24,59 @@ pub struct FinalizeInput {
     pub shutdown: compose_apps::compose::Shutdown,
     pub project: compose_apps::compose::ResolvedComposeProject,
 }
+/// Frozen Docker identity, baseline and host views after writer quiescence.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObserveDockerFilesystemInput {
+    pub project: compose_apps::compose::ResolvedComposeProject,
+    pub baseline: FilesystemBaseline,
+    pub host_views: Vec<HostView>,
+}
+
+/// Verify stopped owned containers, save their layer changes, and re-resolve volumes.
+/// Errors retain resources and are recorded before shared collection starts.
+pub struct ObserveDockerFilesystem {
+    pub adapter: Rc<compose_apps::compose::DockerAdapter>,
+}
+impl Step for ObserveDockerFilesystem {
+    const ID: Option<&'static str> = Some("compose.filesystem.observe");
+    const DISPLAY_NAME: Option<&'static str> = Some("Observe Docker file changes");
+    type Input = ObserveDockerFilesystemInput;
+    type Output = CollectInput;
+    async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
+        let state = self
+            .adapter
+            .project(&input.project)
+            .inspect()
+            .await
+            .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let containers: Vec<_> = state
+            .containers
+            .into_iter()
+            .map(|container| OwnedContainer {
+                consumer: format!("{}/{}", input.project.name, container.service),
+                id: container.id,
+            })
+            .collect();
+        let container_layers = docker_engine::filesystem::container_changes(
+            &self.adapter.engine,
+            &containers,
+            &input.baseline.directory,
+        )
+        .await
+        .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let observations =
+            docker_engine::filesystem::volume_observations(&self.adapter.engine, &input.baseline)
+                .await
+                .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        Ok(CollectInput {
+            baseline: input.baseline,
+            host_views: input.host_views,
+            observations,
+            container_layers: Some(container_layers),
+        })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizedRun {
     pub filesystem_changes: Option<FilesystemChanges>,
@@ -39,7 +92,6 @@ pub struct FinalizedRun {
 /// Failure retains resources and diagnostics in the output.
 pub struct FinalizeRun {
     pub executor: Weak<LocalExecutor>,
-    pub adapter: Rc<compose_apps::compose::DockerAdapter>,
     pub diagnostics: Diagnostics,
 }
 impl Step for FinalizeRun {
@@ -54,47 +106,22 @@ impl Step for FinalizeRun {
             .ok_or_else(|| orchestrator::Error::message("run executor dropped"))?;
         let finalized = if input.shutdown.stopped {
             let result = async {
-                let state = self
-                    .adapter
-                    .project(&input.project)
-                    .inspect()
-                    .await
-                    .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-                let containers: Vec<_> = state
-                    .containers
-                    .into_iter()
-                    .map(|container| OwnedContainer {
-                        consumer: format!("{}/{}", input.project.name, container.service),
-                        id: container.id,
+                let collect = executor
+                    .run::<ObserveDockerFilesystem>(ObserveDockerFilesystemInput {
+                        project: input.project.clone(),
+                        baseline: input.baseline.clone(),
+                        host_views: input
+                            .overlays
+                            .as_ref()
+                            .into_iter()
+                            .flat_map(|o| &o.trees)
+                            .map(|tree| HostView {
+                                source: tree.source.to_string_lossy().into(),
+                                view: tree.merged.to_string_lossy().into(),
+                            })
+                            .collect(),
                     })
-                    .collect();
-                let container_layers = docker_engine::filesystem::container_changes(
-                    &self.adapter.engine,
-                    &containers,
-                    &input.baseline.directory,
-                )
-                .await
-                .map_err(|e| orchestrator::Error::message(e.to_string()))?;
-                let collect = CollectInput {
-                    baseline: input.baseline.clone(),
-                    host_views: input
-                        .overlays
-                        .as_ref()
-                        .into_iter()
-                        .flat_map(|o| &o.trees)
-                        .map(|tree| HostView {
-                            source: tree.source.to_string_lossy().into(),
-                            view: tree.merged.to_string_lossy().into(),
-                        })
-                        .collect(),
-                    observations: docker_engine::filesystem::volume_observations(
-                        &self.adapter.engine,
-                        &input.baseline,
-                    )
-                    .await
-                    .map_err(|e| orchestrator::Error::message(e.to_string()))?,
-                    container_layers: Some(container_layers),
-                };
+                    .await?;
                 Ok::<_, orchestrator::Error>(
                     capture::finalize(&executor, collect, input.overlays.clone()).await,
                 )
@@ -187,3 +214,6 @@ impl Step for WriteRunReport {
         Ok(input.report)
     }
 }
+
+#[cfg(test)]
+mod tests;

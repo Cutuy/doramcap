@@ -64,10 +64,12 @@ pub(super) fn attach(
         });
         let child = weak.clone();
         let sink = diagnostics.clone();
-        let finalization_adapter = adapter.clone();
+        let observation_adapter = adapter.clone();
+        executor.register::<ObserveDockerFilesystem>(move || ObserveDockerFilesystem {
+            adapter: observation_adapter.clone(),
+        });
         executor.register::<FinalizeRun>(move || FinalizeRun {
             executor: child.clone(),
-            adapter: finalization_adapter.clone(),
             diagnostics: sink.clone(),
         });
         executor.register::<WriteRunReport>(move || WriteRunReport {

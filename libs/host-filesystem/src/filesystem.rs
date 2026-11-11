@@ -324,8 +324,8 @@ pub async fn capture(input: BaselineInput) -> Result<FilesystemBaseline> {
         record(
             category,
             source.identity,
-            source.path.map(PathBuf::from),
-            source.reason,
+            (!source.path.is_empty()).then(|| PathBuf::from(source.path)),
+            (!source.reason.is_empty()).then_some(source.reason),
             source.read_only,
             source.consumer,
         );
@@ -510,7 +510,8 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 .iter()
                 .find(|o| o.identity == source.identity)
                 .ok_or_else(|| invalid("backend metadata observation missing"))?;
-            if let Some(reason) = &observation.reason {
+            if !observation.reason.is_empty() {
+                let reason = &observation.reason;
                 if reason != HOST_SHM_SOURCE {
                     out.0.coverage_complete = false;
                 }
@@ -519,7 +520,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                     .push(format!("{}: {reason}", source.identity));
                 continue;
             }
-            observation.path.as_ref().map(PathBuf::from)
+            (!observation.path.is_empty()).then(|| PathBuf::from(&observation.path))
         } else {
             source.path.as_ref().map(|path| {
                 input
@@ -606,6 +607,62 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn empty_backend_paths_and_exclusion_reasons_preserve_coverage() {
+        for reason in ["", "unsupported volume driver", HOST_SHM_SOURCE] {
+            // Arrange: an absent pre-launch volume has empty path and reason fields.
+            let root = tempfile::tempdir().unwrap();
+            let baseline = capture(BaselineInput {
+                artifacts: root.path().into(),
+                bind_mounts: vec![],
+                metadata_sources: vec![MetadataSource {
+                    category: crate::filesystem_proto::StorageCategory::NamedVolume as i32,
+                    identity: "data".into(),
+                    consumer: "app:/data".into(),
+                    ..Default::default()
+                }],
+            })
+            .await
+            .unwrap();
+
+            // Act: the backend still has no path, with or without an exclusion reason.
+            let changes = collect(CollectInput {
+                baseline,
+                host_views: vec![],
+                observations: vec![SourceObservation {
+                    identity: "data".into(),
+                    reason: reason.into(),
+                    ..Default::default()
+                }],
+                container_layers: None,
+            })
+            .await
+            .unwrap();
+
+            // Assert: absence cannot produce a deletion or a scan of the working directory.
+            assert_eq!(
+                changes.named_volumes.coverage_complete,
+                reason == HOST_SHM_SOURCE
+            );
+            let expected = if reason.is_empty() {
+                "volume absent after launch"
+            } else {
+                reason
+            };
+            assert!(
+                changes
+                    .named_volumes
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains(expected))
+            );
+            let mut records = FileChanges::open(changes.named_volumes.manifest)
+                .await
+                .unwrap();
+            assert!(records.next_change().await.unwrap().is_none());
+        }
+    }
+
     #[test]
     fn older_category_reports_do_not_claim_complete_coverage() {
         // Arrange

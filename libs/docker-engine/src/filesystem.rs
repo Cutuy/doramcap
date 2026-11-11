@@ -62,8 +62,10 @@ pub async fn volume_sources(
         sources.push(MetadataSource {
             category: host_filesystem::filesystem_proto::StorageCategory::NamedVolume as i32,
             identity: mount.name,
-            path: path.map(|p| p.to_string_lossy().into_owned()),
-            reason,
+            path: path
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            reason: reason.unwrap_or_default(),
             read_only: mount.read_only,
             consumer: format!("{}:{}", mount.consumer, mount.target),
         });
@@ -90,8 +92,10 @@ pub async fn volume_observations(
         };
         observations.push(SourceObservation {
             identity,
-            path: path.map(|p| p.to_string_lossy().into_owned()),
-            reason,
+            path: path
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            reason: reason.unwrap_or_default(),
         });
     }
     Ok(observations)

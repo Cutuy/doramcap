@@ -38,20 +38,22 @@ message DirectoryMount {
   string target = 3;
   bool read_only = 4;
 }
-// A backend-resolved metadata source; an absent path denotes a newly created source.
+// A backend-resolved metadata source; an empty path denotes a newly created source.
 message MetadataSource {
   StorageCategory category = 1;
   string identity = 2;
-  optional string path = 3;
+  string path = 3;
   string consumer = 4;
   bool read_only = 5;
-  optional string reason = 6;
+  // Empty when the source is available for metadata capture.
+  string reason = 6;
 }
-// A post-run source resolution. Reasons describe unavailable or excluded observations.
+// A post-run source resolution; an empty path means the source is absent.
 message SourceObservation {
   string identity = 1;
-  optional string path = 2;
-  optional string reason = 3;
+  string path = 2;
+  // Empty when available; otherwise describes an unavailable or excluded observation.
+  string reason = 3;
 }
 // Original host directory and its active per-run filesystem view.
 message HostView {

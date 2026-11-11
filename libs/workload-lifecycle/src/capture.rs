@@ -53,10 +53,10 @@ pub struct CaptureFinalization {
     pub failures: Vec<(&'static str, String)>,
 }
 /// Collect stopped sources before destructive finalization, retaining their step dependency.
-/// Backends supply observations and handle direct-source checkpoints and resource removal.
+/// Backend step outputs retain their dependency on collection; callers own checkpoints and removal.
 pub async fn finalize(
     executor: &orchestrator::LocalExecutor,
-    input: CollectInput,
+    input: impl Into<orchestrator::Input<CollectInput>>,
     overlays: Option<OverlaySet>,
 ) -> CaptureFinalization {
     let changes = match executor.run::<CollectFilesystemChanges>(input).await {
