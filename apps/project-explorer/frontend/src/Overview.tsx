@@ -1,4 +1,4 @@
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows } from 'lucide-react';
 import data from './.generated/overview.json';
 import ConsoleInstall from './ConsoleInstall';
 import { componentHref, displayName, routeHref, type Catalog, type Route } from './model';
@@ -28,7 +28,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
     {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}
     <section className="platform-stack" aria-labelledby="architecture-heading">
-      <h2 id="architecture-heading" className="stack-heading eyebrow">System architecture</h2>
+      <h2 id="architecture-heading" className="stack-heading eyebrow">Edge device</h2>
 
       <a
         className={highlights.includes('orchestration') ? 'orchestration-layer highlighted' : 'orchestration-layer'}
@@ -79,9 +79,14 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
             </div>
           </section>
         </div>
-        <section className="history-layer" aria-labelledby="history-heading">
-          <div className="layer-heading"><h3 id="history-heading">Run history</h3></div>
-          <p>Past runs, recordings, and comparisons.</p>
+        <section className="console-tools-layer" aria-labelledby="console-tools-heading">
+          <div className="layer-heading"><h3 id="console-tools-heading">Console tools</h3></div>
+          <ul className="console-tools-list">
+            <li className="stack-block"><History size={16} aria-hidden="true" />Run history</li>
+            <li className="stack-block"><ScanLine size={16} aria-hidden="true" />System snapshots</li>
+            <li className="stack-block"><GitCompareArrows size={16} aria-hidden="true" />A/B comparison</li>
+            <li className="stack-block"><Activity size={16} aria-hidden="true" />Performance analysis</li>
+          </ul>
         </section>
       </div>
 
