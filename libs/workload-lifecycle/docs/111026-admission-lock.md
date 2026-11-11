@@ -49,6 +49,16 @@ not covered.
 The lock is held in the kernel on the open folder. It writes nothing to disk, so
 Git sees no change and Git commands work while it is held.
 
+The lock is advisory. It refuses a second run, build or cleanup and blocks no
+reads or writes of the repository. It is held only while that work is in
+progress, so a finished run needs no lock.
+
+Accepted consequence: any local user able to open the repository folder can take
+this lock and so block runs on that repository until they release it. The
+earlier lock files sat in a private per-user folder and a root-only folder,
+where other users could not reach them. This is accepted for dedicated machines
+in exchange for exclusion across users.
+
 ## Outside this change
 
 - Leftovers from one workflow blocking or confusing another. The lock is free
