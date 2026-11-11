@@ -30,7 +30,7 @@ its results. The web app journey is a later stage.
 | Results | No recording check. Changed files and mounts outside capture are reported. | [Outputs](110926-holoscan-outputs.md) |
 | Limits | Selected limits as launch options; conflicts found at Prepare. | [Controls](110926-holoscan-controls.md) |
 | Logs | Host journal; a project's own log driver wins. | [Outputs](110926-holoscan-outputs.md#logs) |
-| Support apps | Dora and Console's system apps follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [Support apps](#support-apps) |
+| System apps | Console's system apps, which include the Dora apps, follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [System apps](#system-apps) |
 
 ## Configuration
 
@@ -122,26 +122,33 @@ The runner implements `Running` and calls `workload_lifecycle::run`.
 
 The run passes an empty recording list.
 
-## Support apps
+## System apps
 
-Dora apps and Console's system apps (monitors and recorders) run in the form
-that matches the Holoscan project's environment.
+Console's system apps, which include the Dora apps, run in the form that matches
+the Holoscan project's environment.
 
-| Holoscan project runs | Dora and system apps run as |
+| Holoscan project runs | System apps run as |
 | --- | --- |
 | In Docker | Docker containers, through the existing Compose form |
 | On the host | systemd units, when host execution is supported |
 
-The Holoscan workflow owns the sequence and reuses the existing support-app
-phases. One admission lock covers the whole run.
+Pairing system apps with a Holoscan application is specific to Holoscan. Compose
+and systemd start their system apps as part of their own workflow. The pairing
+therefore lives in `workload-holoscan`: its workflow starts the system apps, then
+the application, under one admission lock.
 
 | Order | Start | Stop |
 | --- | --- | --- |
 | 1 | Dora apps | Holoscan application |
-| 2 | System apps | System apps |
+| 2 | Other system apps | Other system apps |
 | 3 | Holoscan application | Dora apps |
 
-Review shows the support apps and the Holoscan launch together.
+The Compose start sequence already skips its user-app step when there are no
+user apps, so a run of system apps alone is a path the code anticipates. The
+Holoscan application takes the place of the user apps, after the system apps
+are up and stable.
+
+Review shows the system apps and the Holoscan launch together.
 
 This is built in milestone 6, after the application-only run works. Until then
 a Holoscan run has machine state capture, workflow events, file changes and its
@@ -237,23 +244,27 @@ Depends on the admission lock.
 - [ ] Files the application writes appear in the change report; the source tree is unchanged under the discard policy.
 - [ ] Mounts outside capture appear in the result.
 
-## Milestone 6: support apps
+## Milestone 6: system apps
 
 Docker projects only. The systemd form follows with host execution.
 
 **Work items**
 
-- [ ] Confirm the Compose workflow runs Dora and system apps with no user app, and fix it where it does not.
-- [ ] Decide where the two parts are joined: in `workload-holoscan` with a relaxed boundary rule, or in Console's backend.
-- [ ] Settle who owns reset, the view workspace and the artifact folder when both parts share one run.
-- [ ] Start and stop the parts in the agreed order under one admission lock.
-- [ ] Include the support apps in Prepare and the Review snapshot.
+- [ ] Run Dora and the other system apps through the Compose form with no user app,
+  and fix the path where it does not work.
+- [ ] Implement the pairing in `workload-holoscan`: start system apps, then the
+  application; stop in reverse; end the run when either part ends.
+- [ ] Take the admission lock once for the whole run and run file capture once over
+  both parts' folders.
+- [ ] Each part cleans up its own containers. Both use the repository's ownership
+  label, so a reset clears leftovers from either.
+- [ ] Include the system apps in Prepare and the Review snapshot.
 
 **Validation**
 
 - [ ] A Holoscan run records monitor telemetry as a Compose run does.
-- [ ] Stop ends the application first, then system apps, then Dora.
-- [ ] A failed support-app start stops the run before the application launches.
+- [ ] Stop ends the application first, then the other system apps, then Dora.
+- [ ] A failed system-app start stops the run before the application launches.
 - [ ] Compose runs without Holoscan behave as before.
 
 ## Milestone 7: recovery and acceptance
@@ -275,7 +286,7 @@ Docker projects only. The systemd form follows with host execution.
 
 | # | Question | Needed by | Proposal |
 | --- | --- | --- | --- |
-| 1 | Where the support-app part and the Holoscan part are joined, and who owns reset and shared folders. | 6 | Decide when milestone 6 starts, after reading the Compose workflow in detail. |
+| 1 | How `workload-holoscan` launches system apps: by reusing the Compose crate's existing launch, or through a backend-neutral interface that it backs itself. | 6 | To confirm. |
 
 ## Settled details
 
