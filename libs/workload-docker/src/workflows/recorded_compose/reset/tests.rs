@@ -41,6 +41,10 @@ fn controllers_exclude_the_same_canonical_repository_and_allow_other_repositorie
 
     // Act / Assert: aliases share admission; independent repositories have separate workspaces.
     assert!(Controller::acquire(&a.join(".")).is_err());
+    assert!(matches!(
+        Admission::acquire(&a),
+        Err(workload_lifecycle::admission::Refusal::Busy)
+    ));
     let other = Controller::acquire(&b).unwrap();
     let other_directory = other.directory.clone();
     assert_ne!(first.workspace(), other.workspace());
@@ -52,9 +56,24 @@ fn controllers_exclude_the_same_canonical_repository_and_allow_other_repositorie
     drop(next);
     drop(other);
     for path in [directory, other_directory] {
-        std::fs::remove_file(path.join("controller.lock")).unwrap();
+        assert!(!path.join("controller.lock").exists());
         std::fs::remove_dir(path).unwrap();
     }
+}
+
+#[test]
+fn shared_admission_refuses_controller_before_creating_its_state_directory() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let admission = Admission::acquire(root.path()).unwrap();
+    let directory = directory(admission.repository());
+
+    // Act
+    let error = Controller::acquire(root.path()).err().unwrap();
+
+    // Assert
+    assert_eq!(error.to_string(), "another run owns this repository");
+    assert!(!directory.exists());
 }
 
 fn empty_scope() -> Vec<(&'static str, u16, serde_json::Value)> {
@@ -79,8 +98,11 @@ async fn reset_is_the_same_operation_for_absent_dirty_partial_and_clean_workspac
         // Arrange
         let root = tempfile::tempdir().unwrap();
         let controller = Rc::new(
-            Controller::in_directory(root.path().to_owned(), root.path().join("controller"))
-                .unwrap(),
+            Controller::in_directory(
+                Admission::acquire(root.path()).unwrap(),
+                root.path().join("controller"),
+            )
+            .unwrap(),
         );
         let workspace = controller.workspace();
         let output = root.path().join("recording.mcap");
@@ -121,7 +143,11 @@ async fn engine_inspection_failure_preserves_upper_data() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
-        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+        Controller::in_directory(
+            Admission::acquire(root.path()).unwrap(),
+            root.path().join("controller"),
+        )
+        .unwrap(),
     );
     let upper = controller.workspace().join("0/upper");
     std::fs::create_dir_all(&upper).unwrap();
@@ -161,7 +187,11 @@ async fn duplicate_ipc_owners_preserve_overlay_upper_data() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
-        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+        Controller::in_directory(
+            Admission::acquire(root.path()).unwrap(),
+            root.path().join("controller"),
+        )
+        .unwrap(),
     );
     let upper = controller.workspace().join("0/upper");
     std::fs::create_dir_all(&upper).unwrap();
@@ -205,7 +235,11 @@ async fn a_foreign_reservation_for_this_repository_blocks_reset() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
-        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+        Controller::in_directory(
+            Admission::acquire(root.path()).unwrap(),
+            root.path().join("controller"),
+        )
+        .unwrap(),
     );
     let workspace = controller.workspace();
     std::fs::create_dir(&workspace).unwrap();
@@ -237,7 +271,11 @@ async fn an_unverified_writer_blocks_workspace_deletion() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let controller = Rc::new(
-        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+        Controller::in_directory(
+            Admission::acquire(root.path()).unwrap(),
+            root.path().join("controller"),
+        )
+        .unwrap(),
     );
     let upper = controller.workspace().join("0/upper");
     std::fs::create_dir_all(&upper).unwrap();
@@ -320,7 +358,9 @@ fn in_flight_child_keeps_admission_after_controller_is_dropped() {
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let directory = root.path().join("controller");
-    let controller = Controller::in_directory(root.path().to_owned(), directory.clone()).unwrap();
+    let controller =
+        Controller::in_directory(Admission::acquire(root.path()).unwrap(), directory.clone())
+            .unwrap();
     let mut child = std::process::Command::new("/bin/cat")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
@@ -328,11 +368,14 @@ fn in_flight_child_keeps_admission_after_controller_is_dropped() {
         .unwrap();
     // Act / Assert: the original launcher is gone, but its child can still make changes.
     drop(controller);
-    assert!(Controller::in_directory(root.path().to_owned(), directory.clone()).is_err());
+    assert!(matches!(
+        Admission::acquire(root.path()),
+        Err(workload_lifecycle::admission::Refusal::Busy)
+    ));
     // Act / Assert: admission releases when the child exits.
     drop(child.stdin.take());
     assert!(child.wait().unwrap().success());
-    assert!(Controller::in_directory(root.path().to_owned(), directory).is_ok());
+    assert!(Controller::in_directory(Admission::acquire(root.path()).unwrap(), directory).is_ok());
 }
 
 #[tokio::test]

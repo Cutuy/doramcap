@@ -3,7 +3,10 @@ use crate::{Result, Scope, SystemdPlan, error, manager::Manager, running::System
 use orchestrator::{LocalExecutor, Observer};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, os::unix::fs::DirBuilderExt, path::Path, rc::Rc};
-use workload_lifecycle::recording::{FinalizeRecordings, Recording, WaitForRecordings};
+use workload_lifecycle::{
+    admission::Admission,
+    recording::{FinalizeRecordings, Recording, WaitForRecordings},
+};
 
 /// How one unit ended, read while this run still referenced it.
 /// Accounting fields are `None` when systemd did not report them.
@@ -82,8 +85,9 @@ impl SystemdRunner {
     /// Stop and remove a repository's abandoned resources under its admission lock.
     /// Leaves artifacts untouched; errors preserve resources whose shutdown is unconfirmed.
     pub async fn cleanup(&mut self, repository: &Path) -> Result<()> {
-        let scope = Scope::of(repository)?;
-        let _lock = lock_scope(&scope)?;
+        let admission = Admission::acquire(repository).map_err(error)?;
+        let scope = Scope::of(admission.repository())?;
+        remove_obsolete_lock(&scope)?;
         self.blocked = true;
         let manager = Rc::new(Manager::connect().await?);
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
@@ -144,8 +148,14 @@ impl SystemdRunner {
         preflight: impl FnOnce(&crate::ConfigurationSnapshot) -> Result<()>,
     ) -> Result<SystemdRunReport> {
         crate::validate(&run, &plan)?;
-        let scope = Scope::of(Path::new(&run.repository_root))?;
-        let _lock = lock_scope(&scope)?;
+        let admission = Admission::acquire(Path::new(&run.repository_root)).map_err(error)?;
+        let scope = Scope::of(admission.repository())?;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&scope.directory)
+            .map_err(error)?;
+        remove_obsolete_lock(&scope)?;
         let manager = Rc::new(Manager::connect().await?);
         let remaining = manager.remaining(&scope).await?;
         if !remaining.is_empty() {
@@ -256,22 +266,42 @@ impl SystemdRunner {
     }
 }
 
-/// The same admission lock serializes runs and operator cleanup.
-fn lock_scope(scope: &Scope) -> Result<std::fs::File> {
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&scope.directory)
-        .map_err(error)?;
-    let lock = std::fs::File::create(scope.directory.join("lock")).map_err(error)?;
-    lock.try_lock()
-        .map_err(|e| format!("another run owns this repository: {e}"))?;
-    Ok(lock)
+/// Lock file written before shared admission; `/run` keeps it until reboot.
+const OBSOLETE_LOCK: &str = "lock";
+
+/// Remove the obsolete lock file so it cannot read as a leftover run; absence succeeds.
+/// Call while holding admission for the scope's repository.
+fn remove_obsolete_lock(scope: &Scope) -> Result<()> {
+    match std::fs::remove_file(scope.directory.join(OBSOLETE_LOCK)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(error(e)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn obsolete_lock_is_removed_and_absence_is_accepted() {
+        // Arrange
+        let directory =
+            std::env::temp_dir().join(format!("doramcap-obsolete-lock-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join(OBSOLETE_LOCK), b"").unwrap();
+        let scope = Scope {
+            prefix: String::new(),
+            slice: String::new(),
+            directory: directory.clone(),
+        };
+
+        // Act / Assert
+        remove_obsolete_lock(&scope).unwrap();
+        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 0);
+        remove_obsolete_lock(&scope).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+    }
 
     #[test]
     fn missing_exit_evidence_prevents_success_but_accounting_is_optional() {

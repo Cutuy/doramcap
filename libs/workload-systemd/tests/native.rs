@@ -88,6 +88,42 @@ fn program(id: &str, script: &str) -> Program {
     }
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn compose_style_admission_refuses_run_and_cleanup_before_side_effects() {
+    // Arrange: this is the admission and inheritance policy used by Compose.
+    let fixture = Fixture::new("shared-admission");
+    let admission = workload_lifecycle::admission::Admission::acquire(&fixture.repo()).unwrap();
+    admission.keep_across_exec().unwrap();
+    let (run, plan) = fixture.plan(
+        "busy",
+        vec![SystemdPlan {
+            programs: vec![program("app", "exec sleep 300")],
+            ..Default::default()
+        }],
+    );
+    let artifacts = PathBuf::from(&run.artifacts);
+    let mut runner = SystemdRunner::new();
+
+    // Act
+    let run_error = runner
+        .run(
+            run,
+            plan,
+            std::future::pending(),
+            |_: &orchestrator::Event| {},
+            None,
+        )
+        .await
+        .unwrap_err();
+    let cleanup_error = runner.cleanup(&fixture.repo()).await.unwrap_err();
+
+    // Assert: refusal requires no system-manager connection or root privileges.
+    assert_eq!(run_error, "another run owns this repository");
+    assert_eq!(cleanup_error, run_error);
+    assert!(!artifacts.exists());
+    assert!(!runner.blocked());
+}
+
 /// Prebuilt Rust worker used by the host and by units with private roots.
 fn shm_fixture() -> PathBuf {
     let executable = std::env::current_exe().unwrap();

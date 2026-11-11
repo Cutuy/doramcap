@@ -1,0 +1,70 @@
+![Shared admission lock](111026-admission-lock.svg)
+
+# Shared admission lock
+
+Created November 10, 2026. Status: Compose and systemd implemented November 11, 2026; see the validation record.
+[Implementation plan](111026-admission-lock-impl.md).
+
+One repository hosts one run, build or cleanup at a time. Every workflow asks the
+same lock, so a second caller is refused whichever workflow it uses.
+
+## Before shared admission
+
+| Workflow | Lock | Location |
+| --- | --- | --- |
+| Compose | Its own, in `workload-docker` | A lock file in a per-user folder under `/tmp` |
+| systemd | Its own, in `workload-systemd` | A lock file under `/run/doramcap` |
+
+Both key on the repository root. They use different files, so a Compose run and a
+systemd run on one repository do not see each other. Console's server allows one
+run at a time, which hides this in the app. Other callers of the libraries are
+not covered.
+
+## Expected behavior
+
+- A run, a Holoscan build and systemd's operator cleanup each take the lock for
+  their repository before any side effect.
+- A second caller for the same repository is refused at once with a clear message.
+  It never waits.
+- Two repositories never block each other.
+- The lock is released when its last holder finishes or dies, including helpers
+  that inherit it.
+- Two paths that name the same folder share one lock.
+
+## Components
+
+| Owner | Responsibility |
+| --- | --- |
+| `workload-lifecycle` | The lock: acquire for a repository, refuse when busy, release on drop. |
+| Compose, systemd, Holoscan | Take the lock first. Keep their own cleanup and their own behavior after a crash. |
+
+## Key choices
+
+| Choice | Decision | Reason |
+| --- | --- | --- |
+| Where the lock lives | On the repository folder itself | No lock file, no path naming and no per-user folder. Works for any user who can read the repository, and excludes across users. |
+| Passing the lock to child processes | Off by default; Compose turns it on | Compose keeps its lock while its short helper commands finish after a crash. A Holoscan CLI lives as long as the run, so inheriting would block recovery. |
+| Behavior after a crash | Unchanged per workflow | Compose resets leftovers before the next run. systemd refuses until an operator cleans up. |
+
+The lock is held in the kernel on the open folder. It writes nothing to disk, so
+Git sees no change and Git commands work while it is held.
+
+The lock is advisory. It refuses a second run, build or cleanup and blocks no
+reads or writes of the repository. It is held only while that work is in
+progress, so a finished run needs no lock.
+
+Accepted consequence: any local user able to open the repository folder can take
+this lock and so block runs on that repository until they release it. The
+earlier lock files sat in a private per-user folder and a root-only folder,
+where other users could not reach them. This is accepted for dedicated machines
+in exchange for exclusion across users.
+
+## Outside this change
+
+- Leftovers from one workflow blocking or confusing another. The lock is free
+  after a crash, and each workflow cleans only its own resources.
+- Console's own one-run rule.
+- `workload-supervisor`. It takes no repository and has no callers outside its tests.
+
+Applicable rules: D-01, D-02, D-03, D-06, D-12 and D-13 in the
+[design guide](../../../docs/design-guide.md).
