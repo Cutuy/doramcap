@@ -27,6 +27,8 @@ Ownership is one lock per repository root. It lives in `workload-lifecycle` and
 is shared by Compose, systemd and Holoscan runs and by Holoscan Build. The second
 caller is refused. Each workflow keeps its own cleanup and its own behavior after
 a crash. The lock lands as a separate change before the Holoscan runner.
+`workload-supervisor` takes no repository and has no callers outside its own
+tests today, so it does not take the lock.
 
 The interrupted run remains recorded as interrupted. A new run receives its own
 identity. Cleanup runs as part of the next-run workflow. Normal finalization owns
