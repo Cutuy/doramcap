@@ -41,6 +41,24 @@ the Holoscan workflow both use it. Each keeps only its own run order.
 - Watching takes the list of services to check.
 - The start and stop order of the system part exists once, in the shared crate.
 
+## Points checked against the code
+
+Three places looked unclear when the boundary was drawn. Each already has the
+shape the boundary needs.
+
+| Point | What the code shows | Result |
+| --- | --- | --- |
+| Compose puts user services in the same project and checks across groups. | Preparation takes Dora apps, system apps and user projects as three lists. The cross-group check takes two lists and does nothing when the user list is empty. | The optional extra group matches how preparation is written. |
+| Monitoring checks the whole project's health in one call. | The start path already checks system apps alone: it inspects the project, narrows the result to the system services and asks whether those are ready. | Watching a chosen list of services is an existing pattern. |
+| Reset decides which container is removed last. | Reset does three things: stop and remove by ownership label, discard leftover views, and pick the shared-memory holder to remove last. The first is two calls in `docker-engine`. The second moves with the capture work. | Only the third belongs here. |
+
+Reset keeps a fixed order: stop the containers, discard the views, then remove
+the containers. The shared crate therefore offers the rule for picking the last
+container, and each workflow runs the three steps in order.
+
+These were checked by reading the code. Nothing has been built or run. The
+snapshot comparison in milestone 3 of the plan is where a hidden coupling would show.
+
 ## Expected behavior
 
 This is a restructuring. A Compose run behaves exactly as before: the same steps

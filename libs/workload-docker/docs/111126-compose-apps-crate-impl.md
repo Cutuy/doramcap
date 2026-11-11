@@ -74,9 +74,11 @@ depend on any `workload-*` crate or on `console-native`.
 
 - [ ] Extract the start sequence: shared memory, Dora runtime, graph, system apps,
   wait for recordings.
-- [ ] Extract watching, taking the services to check.
+- [ ] Extract watching, taking the services to check. Reuse the existing narrowing of an
+  inspected project to a list of services.
 - [ ] Extract the stop sequence: system apps, then the Dora runtime.
-- [ ] Move the rule for which container is removed last.
+- [ ] Move the rule for which container is removed last. Each workflow keeps the reset
+  order: stop the containers, discard the views, then remove the containers.
 - [ ] The Compose workflow calls these, then starts and stops its user services around them.
 
 **Validation**
