@@ -17,9 +17,18 @@ Created: 2026-11-10. [Architecture](111026-matched-runtime-versions.md).
 
 - [x] Reproduce minor/patch and reconnect mismatch failures before the handshake change; all 20 protocol tests pass afterward.
 - [x] Test upgraded resolution, mixed versions, wrong/missing release assets/digests, corrupt archives and wrong executable versions; existing output survives failure.
-- [ ] Download and qualify the exact current artifact on x86 and ARM separately.
-- [ ] Run focused locked checks, complete local integration CI, hosted checks and the ARM64 worker on the final source revision.
-- [ ] Review rule coverage with Scanner and record remaining qualification.
+- [x] Download and qualify the exact current artifact on x86 and ARM separately.
+- [x] Run focused locked checks, complete local integration CI, hosted checks and the ARM64 worker; final revision receipts are recorded in [PR #313](https://github.com/Cutuy/doramcap/pull/313).
+- [x] Review rule coverage with Scanner and record remaining qualification.
+
+The initial implementation (`eca7941f`) passed complete local and hosted x86/ARM
+CI, ARM64 integration job 656 and native artifact qualification job 658. The same
+downloader selected official Dora 1.1.0 on each architecture; both native fixtures
+passed authentication, session/CLI compatibility, registration and shutdown.
+The PR records subsequent checks after rebasing onto the merged backend changes.
+Tag-triggered image publication is verified by workflow inspection and remains
+unexecuted locally. Exact version matching establishes reported protocol-version
+agreement; schema fingerprints and broader GPU/IPC qualification are outside scope.
 
 Packaging supports published `major.minor.patch` releases on Linux amd64 and arm64.
 Downloads use the official GitHub release asset's SHA-256 digest and a 120-second
