@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="330" viewBox="0 0 960 330" role="img" aria-labelledby="title desc">
+<title id="title">Holoscan backend acceptance</title>
+<desc id="desc">Three levels of evidence. Automated checks with the real CLI and a fake Docker run on every pull request. Two real applications run on an x86 GPU machine at integration and before release. ARM64 GPU devices follow later.</desc>
+<rect width="960" height="330" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">What proves the Holoscan backend works</text>
+<g fill="#dbeaf2" stroke="#8ca6b8"><rect x="40" y="64" width="280" height="200" rx="8"/><rect x="340" y="64" width="280" height="200" rx="8"/></g>
+<rect x="640" y="64" width="280" height="200" rx="8" fill="#f7fafc" stroke="#a9b4bf" stroke-dasharray="6 4"/>
+<text x="180" y="96" font-size="16" font-weight="600">Automated checks</text>
+<text x="180" y="120" font-size="13">every pull request</text>
+<text x="480" y="96" font-size="16" font-weight="600">Real applications</text>
+<text x="480" y="120" font-size="13">integration and release</text>
+<text x="780" y="96" font-size="16" font-weight="600">ARM64 GPU devices</text>
+<text x="780" y="120" font-size="13">later</text>
+<g fill="#f7fafc" stroke="#a9b4bf">
+<rect x="60" y="140" width="240" height="38" rx="6"/><rect x="60" y="188" width="240" height="38" rx="6"/>
+<rect x="360" y="140" width="240" height="38" rx="6"/><rect x="360" y="188" width="240" height="38" rx="6"/>
+</g>
+<g font-size="14">
+<text x="180" y="164">real CLI · fake Docker</text><text x="180" y="212">discovery · Review snapshot</text>
+<text x="480" y="164">one C++ app · one Python app</text><text x="480" y="212">x86 machine with NVIDIA GPU</text>
+<text x="780" y="183">same two applications</text>
+</g>
+<text x="480" y="300" font-size="15">Supported on x86 once the first two pass</text>
+</g></svg>
