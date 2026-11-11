@@ -1,72 +1,67 @@
-![Dora control integration](110926-dora-control-integration.svg)
+![Dora control architecture](110926-dora-control-integration.svg)
 
 # Dora control integration
 
 Created: 2026-11-09. Updated: 2026-11-10. [Implementation plan](110926-dora-control-integration-impl.md).
 
-[PR #251](https://github.com/Cutuy/doramcap/pull/251) provides the qualified
-`DoraCoordinatorClient`. Two adoption PRs will replace transient Dora control
-processes in Compose and systemd. Coordinator and daemon services keep their
-native launch definitions, ownership and shutdown verification.
+The executor controls each experiment's Dora coordinator directly through the
+client from [PR #251](https://github.com/Cutuy/doramcap/pull/251). Compose and
+systemd continue to launch, stop and verify native services. Their transient CLI
+control processes disappear. Adoption ships in separate backend PRs.
 
-## Ownership and interaction
+## Responsibilities
 
-Each experiment owns one client from before its first graph-start attempt through
-verified cleanup. Compose retains it in `ExperimentOwner`, already shared with
-`LocalExecutor` step factories and `ComposeRunning`. systemd retains it in the
-Dora state owned by `SystemdRunning`. Steps borrow that retained state; the existing
-typed factories provide injection.
+Shared Dora preparation owns the mapping from the reviewed dynamic graph to a
+start request. Both backends use that mapping. Each backend supplies its resolved
+filesystem paths and native launch context, and preserves the frozen graph,
+session artifacts and shared-memory attachment.
 
-The executor connects directly to the owned coordinator's explicit endpoint.
-Successive calls reuse its WebSocket. Backend preparation supplies the frozen
-dynamic descriptor, unique run name, Dora session identity and runtime-visible
-working directory. The client owns live transport, start intent and graph UUID;
-the backend owns native processes, persisted evidence and removal permission.
+The backend run owner retains one client from before the first start attempt
+through cleanup. The client alone owns live graph identity and the connection;
+the backend owns native resources, evidence and removal permission. Workflow
+steps borrow the retained client. Reports capture observations without becoming
+another source of live identity.
 
-| Existing control invocation | Direct client operation |
-| --- | --- |
-| `status --format json` during startup | `wait_for_daemon(startup_deadline)` |
-| `start --detach`, then `list --name` | `start_graph(Start, startup_deadline)`, then validate the owned graph |
-| `list --name` during observation | `inspect_graph(observation_deadline)` |
-| `node stop --dataflow --grace` | `stop_node(node, grace, stop_deadline)` |
-| `down --force` | `shutdown(stop_deadline)` after application drain |
+## Deployment and access
 
-Compose removes its control `exec` calls. systemd removes its `dora-cli-*`
-oneshots and their `cli-*.out` files. Existing backend observation policies and
-application drain order continue to apply.
+The executor connects to the resolved coordinator port in the host network.
+Compose's Dora services already use host networking. systemd programs and supplied
+units must expose their coordinator in that same network; isolated namespaces
+fail access validation before graph start.
 
-## Workflow, cleanup and recovery
+When authentication is enabled, the backend reads the coordinator's run-local
+credential through its resolved runtime directory and passes it explicitly to the
+client. Missing, unreadable or mismatched credentials fail before graph start.
+Users, binds and permissions stay native. This adoption adds no environment
+settings, credential store or privilege changes. The supported access contract
+and its acceptance checks are detailed in the implementation plan.
 
-![Client calls by workflow phase and recovery path](110926-dora-control-workflow-recovery.svg)
+## Failure and restart
 
-## Failure and cleanup
+![Dora cleanup and removal](110926-dora-control-workflow-recovery.svg)
 
-Connect, daemon readiness and graph registration share one absolute startup
-deadline derived from the existing budget. Cancellation discards the in-flight
-socket while the retained client keeps start intent and any UUID already received.
-Cleanup receives a fresh stop budget after cancelled startup. Node stops and
-runtime shutdown share that stop deadline; native teardown follows existing
-backend stop rules even when control fails.
+Startup and cleanup each have a bounded budget. Cancellation drops the connection
+while the retained client keeps the attempted run name and any confirmed graph
+identity. Live cleanup can reconnect and reconcile an uncertain start using one
+exact name match. Missing or ambiguous identity remains unknown; mutations are
+never replayed automatically.
 
-Cleanup can reconnect and reconcile an uncertain Start by exact run name. Missing
-or ambiguous identity stays unknown. Preserve that diagnostic, continue native
-teardown and verify actual exit before removal. Mutations are never replayed
-automatically. A matching stopped reply permits Destroy even when nodes failed;
-report node and destruction errors together. Force shutdown requires exclusive
-coordinator/daemon ownership.
-After controller exit, the existing persisted run ownership and reset path recover
-native resources. Socket closure alone never establishes graph or process exit.
+Application drain precedes graph and runtime shutdown. Control failures preserve
+diagnostics and still lead to native teardown. Removal requires independently
+verified native exit and the backend's existing evidence policy. Protocol replies
+and socket closure alone cannot authorize removal.
 
-## Adoption boundaries
+After controller exit, live client identity is lost. Recovery resets the owned
+native runtime under repository admission before admitting another run. Compose
+uses its repository reset; systemd uses explicit cleanup. An uncertain old graph
+is stopped with its owned coordinator and daemon, and its execution outcome stays
+unknown. Artifacts survive reset; unverified exit keeps recovery blocked. The plan
+adds no graph resumption or recovery journal.
 
-Both backends support externally launched dynamic nodes. Preserve descriptor
-validation, source/target paths, session artifacts and shared-memory attachment.
-Map CLI preparation to typed Start fields explicitly; arbitrary graph builds are
-outside this migration. Endpoint reachability and authentication must work from
-the executor's context before enabling direct control. Introduce no environment
-inputs or new dependencies.
+## Scope and tradeoffs
 
-The approved, bounded 100 ms daemon-registration polling remains inside the
-client. Its [event-driven replacement TODO](../../dora-control/docs/110926-coordinator-client-impl.md#todo-replace-startup-readiness-polling)
-continues separately. The [migration roadmap](https://github.com/Cutuy/doramcap/pull/210)
-records the approved lifetime and deadline decisions.
+Both backends retain the supported externally launched dynamic-node workflow,
+native service semantics and application drain order. Arbitrary graph builds and
+new access mechanisms need separate design decisions. Shared preparation removes
+duplicate CLI mapping; native teardown supplies crash recovery without persisting
+transport state. Runtime qualification remains pending in the adoption PRs.
