@@ -1,4 +1,5 @@
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows, ListTree, ClipboardCheck, Play, Download } from 'lucide-react';
+import { useEffect, useRef, type MouseEvent } from 'react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows, ListTree, ClipboardCheck, Play, Download, X } from 'lucide-react';
 import data from './.generated/overview.json';
 import ConsoleInstall from './ConsoleInstall';
 import { componentHref, displayName, routeHref, type Catalog, type Route } from './model';
@@ -7,7 +8,18 @@ const overview = data as OverviewData;
 const icons: Record<string, typeof Activity> = { Resources: Cpu, Memory: MemoryStick, Observability: Activity, Storage: Database, Faults: ShieldAlert, Configuration: SlidersHorizontal, Telemetry: Radio, Runtime: Workflow };
 const statusLabels: Record<string, string> = { 'building-blocks': '', planned: 'Planned', integrated: '', optional: 'Optional', 'platform-dependent': 'Platform-dependent', illustrative: '', validated: 'Validated use case' };
 function link(values: Record<string, string>) { return routeHref('/overview', new URLSearchParams(values)); }
+function showDetails(panel: HTMLElement | null, source?: HTMLAnchorElement) {
+  if (!panel?.showPopover) return;
+  if (panel.matches(':popover-open')) panel.hidePopover();
+  panel.toggleAttribute('data-anchored', Boolean(source));
+  panel.showPopover({ source });
+  panel.querySelector('button')?.focus({ preventScroll: true });
+}
+
 export default function Overview({ catalog, route }: { catalog: Catalog; route: Route }) {
+  const details = useRef<HTMLElement>(null);
+  const clicked = useRef<HTMLAnchorElement | null>(null);
+  const hasDetail = ['useCase', 'capability', 'integration'].some(key => route.params.has(key));
   const useCaseId = route.params.get('useCase') ?? overview.useCases[0].id;
   const capabilityId = route.params.get('capability');
   const integrationId = route.params.get('integration');
@@ -18,15 +30,51 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
   const context: Record<string, string> = useCase ? { useCase: useCase.id } : {};
   const invalid = (useCaseId && !useCase) || (capabilityId && !capability) || (integrationId && !integration);
   const highlights = integration ? overview.capabilities.filter(c => c.integrations.includes(integration.id)).map(c => c.id) : useCase?.capabilities ?? [];
+  useEffect(() => {
+    const source = clicked.current ?? undefined;
+    clicked.current = null;
+    if (hasDetail && !invalid && selected) showDetails(details.current, source);
+    else if (details.current?.hidePopover && details.current.matches(':popover-open')) details.current.hidePopover();
+  }, [route, hasDetail, invalid, selected]);
+
+  function openDetails(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const source = event.currentTarget;
+    if (source.hash === window.location.hash) showDetails(details.current, source);
+    else clicked.current = source;
+  }
+
+  const detailLink = { onClick: openDetails, 'aria-haspopup': 'dialog' as const, 'aria-controls': 'overview-details' };
+
   function components(item: Mapping, kind: 'apps' | 'crates') {
     const entries = item.components.map(id => catalog.components.find(c => c.id === id)!).filter(c => c.kind === kind);
     return entries.length ? <section><h3>{kind === 'apps' ? 'Apps' : 'Crates'}</h3><div className="mapping-links">{entries.map(c => <a key={c.id} href={componentHref(c)}>{displayName(c.name)} <span aria-hidden="true">→</span></a>)}</div></section> : null;
   }
   return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
     <ConsoleInstall repository={catalog.repository} />
-    <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
+    <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} {...detailLink} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
-    {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}
+    {selected && <section
+      ref={details}
+      id="overview-details"
+      className="mapping-detail"
+      popover="auto"
+      role="dialog"
+      aria-labelledby="overview-detail-title"
+    >
+      <div className="mapping-header">
+        <div>
+          {statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}
+          <h2 id="overview-detail-title">{selected.title}</h2>
+        </div>
+        <button className="mapping-close" type="button" aria-label="Close details" onClick={() => details.current?.hidePopover()}>
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <p>{selected.summary}</p>
+      {integration && <a className="mapping-upstream" href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}
+      <div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div>
+    </section>}
     <section className="user-device-layer" aria-labelledby="user-device-heading">
       <h2 id="user-device-heading" className="stack-heading">Your device</h2>
       <ul className="user-device-grid">
@@ -46,6 +94,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
 
       <a
         className={highlights.includes('orchestration') ? 'orchestration-layer highlighted' : 'orchestration-layer'}
+        {...detailLink}
         href={link({ ...context, capability: 'orchestration' })}
         aria-current={capability?.id === 'orchestration' && !integration ? 'true' : undefined}
       >
@@ -69,6 +118,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
             const Icon = icons[c.category] ?? Layers;
             return <a
               key={c.id}
+              {...detailLink}
               href={link({ ...context, capability: c.id })}
               className={highlights.includes(c.id) ? 'capability highlighted' : 'capability'}
               aria-current={capability?.id === c.id && !integration ? 'true' : undefined}
@@ -84,7 +134,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
         <div className="layer-heading"><h3 id="lifecycle-heading">Lifecycle</h3></div>
         <div className="lifecycle-grid">
           <div className="stack-block"><Box size={16} aria-hidden="true" />Docker containers</div>
-          <a className="stack-block" href={link({ ...context, integration: 'holoscan' })} aria-current={integration?.id === 'holoscan' ? 'true' : undefined}>
+          <a className="stack-block" {...detailLink} href={link({ ...context, integration: 'holoscan' })} aria-current={integration?.id === 'holoscan' ? 'true' : undefined}>
             <Workflow size={16} aria-hidden="true" />Holoscan containers
           </a>
           <div className="stack-block"><Cog size={16} aria-hidden="true" />systemd units</div>
@@ -100,6 +150,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
           <div className="software-links">
             {overview.integrations.filter(i => (i.group ?? 'communication') === group).map(i => <a
               key={i.id}
+              {...detailLink}
               href={link({ ...context, integration: i.id })}
               aria-current={integration?.id === i.id ? 'true' : undefined}
               className={useCase?.integrations.includes(i.id) || capability?.integrations.includes(i.id) ? 'highlighted' : ''}
