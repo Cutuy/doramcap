@@ -1,10 +1,10 @@
 //! Opt-in host qualification: build unprivileged, then elevate only this executable.
 use bollard::{Docker, query_parameters::WaitContainerOptions};
+use compose_apps::compose::*;
 use futures_util::StreamExt;
 use orchestrator::Step;
 use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc, time::Duration};
-use workload_docker::compose::*;
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires local Docker, journald, a shell image and journal sync permission"]

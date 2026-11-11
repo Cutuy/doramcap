@@ -1,10 +1,14 @@
+![Application output through the host journal](111026-run-logs.svg)
+
 # Application logs for a run
 
 Created November 10, 2026. Updated November 11, 2026. Compose journal driver implemented in #314; log dump deferred until #316 milestone 4.
 
-[Architecture options](111126-run-log-capture-options.md) reopen the capture
-decision after load qualification. The agreement below is the previous direction;
-no replacement has been selected.
+**Selected: option A, keep the host journal as configured.** Capture is best
+effort under the host's existing rate limits and retention. Console leaves those
+settings unchanged. The [options record](111126-run-log-capture-options.md)
+records the choice; the [implementation plan](111026-run-logs-impl.md) tracks
+completed work and the deferred dump.
 
 Console does not keep application output with a run today. This PR sends Compose
 output to the host journal by default. A later change will dump each run's output
@@ -23,6 +27,10 @@ keep-with-the-run storage.
 ## Agreed direction
 
 - Application output from every workflow goes to the host journal.
+- Capture uses the host's existing journal policy. Rate limiting can drop entries,
+  including quiet-container output when another container shares Docker's limit.
+  Retention can remove entries before export. A saved dump contains the entries
+  still available and does not establish complete application output.
 - Containers use Docker's journal log driver. Holoscan sets it as a launch option.
   Compose sets it in the frozen manifest shared by inspection and launch.
 - The user's choice wins. An explicit `logging` block stays intact, including its
@@ -38,43 +46,26 @@ keep-with-the-run storage.
 | Item | Description |
 | --- | --- |
 | Compose through the journal | Implemented in #314: set `journald` for services without a `logging` block; record the default in resolution policy changes. |
-| Log dump | Deferred until #316 milestone 4: write each program's journal output into a run-owned output folder at the end of a run, one file per unit or container. |
+| Log dump | Deferred until #316 milestone 4: export each program's available journal entries into a run-owned output folder after the run. |
 | Web app | Show the dumped logs with the run's other files. |
 
 The planned dump will be a set of ordinary run files. The file-change report will
-list it and the run folder will keep it, so a run's log will no longer depend on
-host journal retention. Console will keep the full output and select no snippets.
+list it and the run folder will keep it. Once saved, the dump follows run-file
+retention. Console will export all matching entries still available from the
+journal and select no snippets. It cannot recover entries already dropped or
+removed by the host.
 
 ## Later log dump
 
 Implementation depends on #316 milestone 4. The decisions below describe the
 agreed follow-up.
 
-At the end of a run, after every program has stopped, Console writes each
-program's output from the journal into the run folder.
-
-| Detail | Decision |
-| --- | --- |
-| Reader | Console runs `journalctl`, systemd's own journal tool. It reads every journal format and is present wherever the journal is. No library is added. |
-| Scope | Each program's own identity, with no time window. |
-| Files | One plain text file per unit or container, each line with its timestamp. |
-| Size | No limit per program. Limits come with the run folder's limits. |
-| Before reading | Console asks the journal to finish writing. |
-
-Scoping by identity:
-
-| Program | Identity | Source |
-| --- | --- | --- |
-| systemd unit | Its invocation ID | systemd assigns a new one at every start and records it on each entry. Console reads it from the service manager after starting the unit. |
-| Container | Its full container ID | Docker's journal driver records it on each entry. Console tracks the containers it owns. |
-
-A unit name is reused by every run, so a name with a time window cannot separate
-runs exactly. The service manager's own messages about a unit carry the
-invocation ID under a second field. The dump matches both, so each file shows
-the unit's start and end.
-
-A container whose project sets its own log driver has no dump. The run records
-that its log is set by the project.
+At the end of a run, after every program has stopped, Console exports each
+program's available journal entries into ordinary run files. Workflows identify
+their programs and order finalization; the host journal owns capture and its
+limits. Run storage owns the saved files and their retention. Project-managed
+logging remains excluded. The [implementation plan](111026-run-logs-impl.md)
+records identity scoping, file format and deferred validation.
 
 Confirmed on one host with systemd 255: entries carry the invocation ID and the
 service manager reports a unit's current one. The real Compose test also confirms
@@ -126,8 +117,8 @@ That setting changes the host-wide default; explicit per-unit overrides can
 still apply their own limits.
 
 The test reports saturation loss explicitly; a passing measurement test does not
-establish complete log capture. PR #314 remains draft pending the capture
-architecture decision. The per-unit zero override did not remove
+establish complete log capture. Option A accepts the host's existing policy and
+the measured shared-loss limitation. The per-unit zero override did not remove
 throttling on the supported systemd version. The later dump cannot recover
 entries that the journal already dropped, and host retention still bounds what
 survives until that dump.
@@ -136,5 +127,3 @@ survives until that dump.
 
 - A process that exits almost at once can lose its identity in the journal, so
   its last lines may be missing from the dump. Measure how often this occurs.
-- Decide the Docker journal rate-limit requirement before enabling the default;
-  the load qualification confirms loss across containers on the current host.

@@ -18,11 +18,8 @@ The shm app starts first and stops last. Explicit private settings remain native
 
 Inspection and launch preparation share resolution; the caller compares their
 configuration snapshots before reservation and startup.
-Services without a `logging` block use Docker’s `journald` driver. Explicit logging
-settings stay intact. The Docker daemon needs a working systemd journal for the
-default; recent failure output is still read through Docker’s logs API.
-Journal rate limits can drop output across containers sharing the Docker daemon.
-See the [load qualification](../workload-lifecycle/docs/111026-run-logs.md#journal-load-qualification).
+Application output uses the [Compose app logging policy](../compose-apps);
+recent failure output is read through Docker's logs API.
 
 ![Compose resolution and launch](docs/103126-compose-resolution.svg)
 
