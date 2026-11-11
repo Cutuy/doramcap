@@ -16,7 +16,7 @@ use std::{
 /// Pinned Compose projects whose bind sources will use per-run views.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ComposePrepareInput {
-    /// Existing fresh run directory outside all lower trees.
+    /// Existing fresh run directory outside all lower trees. Relative paths are accepted.
     pub artifacts: PathBuf,
     /// Fresh temporary view root with an existing canonical parent.
     pub workspace: PathBuf,
@@ -35,6 +35,7 @@ pub struct PreparedOverlays {
 }
 /// Prepare filesystem views and validate immutable execution manifests.
 /// Errors unwind mounted views and retain any rollback failure in the diagnostic.
+/// Cancellation may leave views in the workspace for later cleanup.
 pub struct PrepareOverlays {
     pub adapter: Rc<DockerAdapter>,
 }
@@ -59,7 +60,7 @@ impl PrepareOverlays {
             models.push(model);
         }
         let views = prepare(PrepareInput {
-            artifacts: input.artifacts.clone(),
+            artifacts: input.artifacts,
             workspace: input.workspace,
             bind_mounts,
             policy: input.policy,
@@ -89,9 +90,9 @@ impl PrepareOverlays {
                     }
                 }
                 let bytes = serde_json::to_vec_pretty(model)?;
-                project.manifest = input
-                    .artifacts
-                    .join(format!("{}.execution.json", project.key))
+                project.manifest = views
+                    .directory
+                    .with_file_name(format!("{}.execution.json", project.key))
                     .to_str()
                     .ok_or_else(|| invalid("manifest path is not UTF-8"))?
                     .into();
@@ -135,9 +136,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execution_manifest_preserves_live_shm_and_source_manifest() {
+    async fn execution_manifest_with_relative_artifacts_preserves_live_shm_and_source_manifest() {
         // Arrange
-        let root = tempfile::tempdir().unwrap();
+        let cwd = std::env::current_dir().unwrap();
+        let root = tempfile::tempdir_in(&cwd).unwrap();
         let artifacts = root.path().join("artifacts");
         std::fs::create_dir(&artifacts).unwrap();
         let shared = tempfile::tempdir_in("/dev/shm").unwrap();
@@ -154,7 +156,7 @@ mod tests {
         // Act
         let prepared = step
             .run(ComposePrepareInput {
-                artifacts,
+                artifacts: artifacts.strip_prefix(&cwd).unwrap().into(),
                 workspace: root.path().join("views"),
                 projects: vec![original.clone()],
                 policy: OverlayPolicy::default(),
@@ -166,9 +168,13 @@ mod tests {
         assert!(prepared.views.trees.is_empty());
         assert_eq!(prepared.views.mappings[0].consumer, "project/app");
         assert_eq!(std::fs::read(&original.manifest).unwrap(), original_bytes);
+        let manifest = Path::new(&prepared.projects[0].manifest);
+        assert_eq!(
+            manifest.parent().unwrap(),
+            artifacts.canonicalize().unwrap()
+        );
         let execution: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&prepared.projects[0].manifest).unwrap())
-                .unwrap();
+            serde_json::from_slice(&std::fs::read(manifest).unwrap()).unwrap();
         assert_eq!(
             execution["services"]["app"]["volumes"],
             model["services"]["app"]["volumes"]

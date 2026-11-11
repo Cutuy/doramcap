@@ -105,11 +105,13 @@ pub struct BaselineInput {
 /// Input to collection after all container writers have stopped.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectInput {
-    /// Original host roots mapped to active isolated views for post-run observation.
+    /// Every active isolated view for this run, keyed by canonical, non-overlapping host roots.
+    /// Collection scans the original host path when no root matches.
     #[serde(default)]
     pub host_views: Vec<HostView>,
+    /// Pre-launch baseline for all in-scope mounts in this run.
     pub baseline: FilesystemBaseline,
-    /// Container identities whose ownership the caller has verified.
+    /// All in-scope containers, including partial starts, with ownership verified by the caller.
     pub containers: Vec<OwnedContainer>,
 }
 /// Counts refer to metadata transitions, not captured file contents.
@@ -125,8 +127,8 @@ pub struct CategoryChanges {
     pub category: StorageCategory,
     pub manifest: PathBuf,
     pub counts: ChangeCounts,
-    /// Whether every in-scope source was scanned completely. Missing in older
-    /// reports defaults to false, so callers cannot infer complete coverage.
+    /// Whether observation of the supplied sources was complete within the scan scope.
+    /// Missing in older reports defaults to false.
     #[serde(default)]
     pub coverage_complete: bool,
     /// Source exceptions and incomplete scans, distinct from file changes.
@@ -154,12 +156,8 @@ impl Step for CaptureFilesystemBaseline {
     }
 }
 /// Collect filesystem metadata after quiescence, before resource removal.
-///
-/// Returns category-specific manifest references and bounded warning summaries.
-/// Expected changes and unsupported scan sources are warnings. Engine diff errors,
-/// live containers or artifact failures return errors: retain resources.
-/// The backend verifies container ownership before calling this step.
-/// Adapter ownership stays with the caller; no callbacks or handles are serialized.
+/// Returns category manifests and warnings based on the caller's inventory.
+/// Retain resources on Engine errors, live containers, or artifact failures.
 pub struct CollectFilesystemChanges {
     pub adapter: Rc<DockerAdapter>,
 }

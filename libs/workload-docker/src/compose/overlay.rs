@@ -309,12 +309,6 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                     source.display()
                 )));
             }
-            if !["", "rprivate", "private"].contains(&bind.propagation.as_str()) || bind.selinux {
-                return Err(invalid(format!(
-                    "unqualified bind propagation/SELinux option: {}",
-                    source.display()
-                )));
-            }
             writable.insert(source.clone());
         }
         mappings.push(MountMapping {
@@ -356,6 +350,21 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         .filter(|p| !writable.iter().any(|q| q != *p && p.starts_with(q)))
         .cloned()
         .collect();
+    // Validate all binds that will use a shared view before creating it.
+    for (mapping, bind) in mappings.iter().zip(&input.bind_mounts) {
+        if (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private") || bind.selinux)
+            && roots.iter().any(|root| mapping.original.starts_with(root))
+        {
+            return Err(invalid(format!(
+                "{}: unsupported OverlayFS bind options for {} -> {} (propagation {:?}, SELinux relabeling: {})",
+                bind.consumer,
+                mapping.original.display(),
+                bind.target,
+                bind.propagation,
+                bind.selinux,
+            )));
+        }
+    }
     let mountpoints = mounts().await?;
     for root in &roots {
         let mut links: BTreeMap<(u64, u64), (u64, u64)> = BTreeMap::new();
@@ -457,17 +466,6 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                     .merged
                     .join(mapping.original.strip_prefix(&tree.source).unwrap());
                 mapping.reason = "shared OverlayFS view".into();
-            }
-        }
-        for (mapping, bind) in set.mappings.iter().zip(&input.bind_mounts) {
-            if mapping.reason == "shared OverlayFS view"
-                && (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private")
-                    || bind.selinux)
-            {
-                return Err(invalid(format!(
-                    "unqualified bind propagation/SELinux option: {}",
-                    mapping.original.display()
-                )));
             }
         }
         private_write(
@@ -789,6 +787,50 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn unsupported_options_on_read_only_alias_fail_before_view_creation() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let workspace = root.path().join("workspace");
+        let source = root.path().join("source");
+        let child = source.join("child");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+
+        // Act
+        let error = prepare(PrepareInput {
+            artifacts: artifacts.clone(),
+            workspace: workspace.clone(),
+            bind_mounts: vec![
+                BindMount {
+                    consumer: "project/writer".into(),
+                    source: child.to_str().unwrap().into(),
+                    target: "/out".into(),
+                    ..Default::default()
+                },
+                BindMount {
+                    consumer: "project/reader".into(),
+                    source: source.to_str().unwrap().into(),
+                    target: "/in".into(),
+                    read_only: true,
+                    propagation: "rshared".into(),
+                    ..Default::default()
+                },
+            ],
+            policy: OverlayPolicy::default(),
+        })
+        .await
+        .unwrap_err();
+
+        // Assert
+        let message = error.to_string();
+        assert!(message.contains("project/reader"), "{message}");
+        assert!(message.contains("rshared"), "{message}");
+        assert!(!workspace.exists());
+        assert!(!artifacts.join("overlays").exists());
+    }
 
     #[tokio::test]
     async fn host_shm_binds_bypass_overlay_copy_and_writeback() {
