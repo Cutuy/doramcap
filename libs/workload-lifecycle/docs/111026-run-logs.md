@@ -2,6 +2,10 @@
 
 Created November 10, 2026. Updated November 11, 2026. Compose journal driver implemented in #314; log dump deferred until #316 milestone 4.
 
+[Architecture options](111126-run-log-capture-options.md) reopen the capture
+decision after load qualification. The agreement below is the previous direction;
+no replacement has been selected.
+
 Console does not keep application output with a run today. This PR sends Compose
 output to the host journal by default. A later change will dump each run's output
 into the run's files after
@@ -122,8 +126,8 @@ That setting changes the host-wide default; explicit per-unit overrides can
 still apply their own limits.
 
 The test reports saturation loss explicitly; a passing measurement test does not
-establish complete log capture. PR #314 remains draft pending the deployment
-decision about a host-wide default. The per-unit zero override did not remove
+establish complete log capture. PR #314 remains draft pending the capture
+architecture decision. The per-unit zero override did not remove
 throttling on the supported systemd version. The later dump cannot recover
 entries that the journal already dropped, and host retention still bounds what
 survives until that dump.

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="490" viewBox="0 0 1000 490" role="img" aria-labelledby="title desc">
+  <title id="title">Run log capture options</title>
+  <desc id="desc">Three paths from application output to run files: the host journal with existing settings, the host journal with its default rate limit disabled, and capture owned by each workflow.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#64748b"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #172554; }
+      .heading { font-size: 19px; font-weight: 700; }
+      .label { font-size: 17px; text-anchor: middle; }
+      .edge { font-size: 13px; text-anchor: middle; fill: #475569; }
+      .box { fill: #fff; stroke: #94a3b8; stroke-width: 1.5; rx: 10; }
+      .flow { fill: none; stroke: #64748b; stroke-width: 2; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1000" height="490" rx="16" fill="#f8fafc"/>
+  <rect x="18" y="18" width="964" height="142" rx="12" fill="#eff6ff"/>
+  <rect x="18" y="174" width="964" height="142" rx="12" fill="#fff7ed"/>
+  <rect x="18" y="330" width="964" height="142" rx="12" fill="#f0fdf4"/>
+  <text class="heading" x="38" y="49">A · Journal with existing host policy</text>
+  <text class="heading" x="38" y="205">B · Journal with default rate limiting disabled</text>
+  <text class="heading" x="38" y="361">C · Capture owned by each workflow</text>
+  <g>
+    <rect class="box" x="38" y="77" width="156" height="58"/><text class="label" x="116" y="112">Services</text>
+    <rect class="box" x="300" y="77" width="174" height="58"/><text class="label" x="387" y="112">Host journal</text>
+    <rect class="box" x="580" y="77" width="162" height="58"/><text class="label" x="661" y="112">Log export</text>
+    <rect class="box" x="836" y="77" width="126" height="58"/><text class="label" x="899" y="112">Run files</text>
+    <path class="flow" d="M194 106H290"/><text class="edge" x="244" y="92">stdout / stderr</text>
+    <path class="flow" d="M474 106H570"/><text class="edge" x="524" y="92">entries</text>
+    <path class="flow" d="M742 106H826"/><text class="edge" x="784" y="92">files</text>
+  </g>
+  <g>
+    <rect class="box" x="38" y="233" width="156" height="58"/><text class="label" x="116" y="268">Services</text>
+    <rect class="box" x="300" y="233" width="174" height="58"/><text class="label" x="387" y="268">Host journal</text>
+    <rect class="box" x="580" y="233" width="162" height="58"/><text class="label" x="661" y="268">Log export</text>
+    <rect class="box" x="836" y="233" width="126" height="58"/><text class="label" x="899" y="268">Run files</text>
+    <path class="flow" d="M194 262H290"/><text class="edge" x="244" y="248">stdout / stderr</text>
+    <path class="flow" d="M474 262H570"/><text class="edge" x="524" y="248">entries</text>
+    <path class="flow" d="M742 262H826"/><text class="edge" x="784" y="248">files</text>
+  </g>
+  <g>
+    <rect class="box" x="38" y="389" width="156" height="58"/><text class="label" x="116" y="424">Services</text>
+    <rect class="box" x="300" y="389" width="442" height="58"/><text class="label" x="521" y="414">Workflow capture</text><text class="edge" x="521" y="436">Compose · systemd · Holoscan</text>
+    <rect class="box" x="836" y="389" width="126" height="58"/><text class="label" x="899" y="424">Run files</text>
+    <path class="flow" d="M194 418H290"/><text class="edge" x="244" y="404">stdout / stderr</text>
+    <path class="flow" d="M742 418H826"/><text class="edge" x="784" y="404">files</text>
+  </g>
+</svg>
