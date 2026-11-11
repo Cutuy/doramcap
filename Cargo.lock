@@ -6475,6 +6475,7 @@ dependencies = [
 name = "workload-docker"
 version = "0.1.0"
 dependencies = [
+ "dora-control",
  "bollard",
  "docker-engine",
  "dora-app",
@@ -6506,6 +6507,9 @@ dependencies = [
 name = "workload-lifecycle"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "dora-core",
+ "dora-control",
  "futures-util",
  "libc",
  "notify",

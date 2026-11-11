@@ -135,12 +135,12 @@ backend qualification are deferred to the adoption PRs below.
 
 **Work items**
 
-- [ ] Implement shared preparation in `workload-lifecycle::dora`, using the existing Dora dependency versions; preserve native graph/session semantics.
-- [ ] Add the existing `dora-control` dependency to `workload-docker`; retain one client in [`ExperimentOwner`](../../workload-docker/src/workflows/experiment.rs), with cleanup access through `ComposeRunning.resources` and [`register_experiment`](../../workload-docker/src/workflows/steps.rs).
-- [ ] Preserve [`shared_dora::prepare`](../../workload-docker/src/workflows/shared_dora.rs) hashes and binds; use shared graph/Start preparation. Resolve the run-local credential and direct endpoint before Start.
-- [ ] Replace readiness/shutdown in [`workflows/dora.rs`](../../workload-docker/src/workflows/dora.rs) and registration/inspection/node stops in `experiment.rs`; remove `attempted`/`identity` with those callers.
-- [ ] Apply shared deadlines and cancellation ownership; preserve application drain, grace, native quiescence and exit/removal verification.
-- [ ] Delete `ExperimentOwner::cli`, CLI list/status parsing and backend readiness polling after direct-path coverage. Keep native launch and endpoint inspection.
+- [x] Implement shared preparation in `workload-lifecycle::dora`, using the existing Dora dependency versions; preserve native graph/session semantics.
+- [x] Add the existing `dora-control` dependency to `workload-docker`; retain one client in [`ExperimentOwner`](../../workload-docker/src/workflows/experiment.rs), with cleanup access through `ComposeRunning.resources` and [`register_experiment`](../../workload-docker/src/workflows/steps.rs).
+- [x] Preserve [`shared_dora::prepare`](../../workload-docker/src/workflows/shared_dora.rs) hashes and binds; use shared graph/Start preparation. Resolve the run-local credential and direct endpoint before Start.
+- [x] Replace readiness/shutdown in [`workflows/dora.rs`](../../workload-docker/src/workflows/dora.rs) and registration/inspection/node stops in `experiment.rs`; remove `attempted`/`identity` with those callers.
+- [x] Apply shared deadlines and cancellation ownership; preserve application drain, grace, native quiescence and exit/removal verification.
+- [x] Delete `ExperimentOwner::cli`, CLI list/status parsing and backend readiness polling after direct-path coverage. Keep native launch and endpoint inspection.
 
 **Validation**
 
@@ -153,6 +153,8 @@ backend qualification are deferred to the adoption PRs below.
 - [ ] Run concurrent repositories and a subsequent run; verify independent endpoints, credentials/UUIDs and cleanup scope.
 - [ ] Capture Docker exec events for the full run and assert zero Dora control exec launches (`status`, `start`, `list`, `node stop`, `down`).
 - [ ] Run focused locked release-profile checks, then required workspace/hosted CI and ARM64 qualification on the adoption revision; record native Dora results separately.
+
+Compose implementation: focused shared preparation/access tests (5) and locked release compilation pass. Real Docker/Dora, cancellation/crash, full CI and ARM64 qualification are in progress.
 
 ## Follow-up PR 2: systemd adoption
 

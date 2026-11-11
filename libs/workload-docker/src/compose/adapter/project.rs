@@ -350,29 +350,7 @@ impl ComposeExecution<'_> {
             Some(super::StartupOutcome::Running(_)) => unreachable!(),
         }
     }
-    /// Execute a command in one owned service; cancellation terminates the CLI client.
-    pub(crate) async fn exec(
-        &self,
-        service: &str,
-        command: &[String],
-        timeout: Duration,
-    ) -> Result<String> {
-        self.verify_manifest().await?;
-        Self::running_service(self.inspect().await?, service)?;
-        let mut args = self.args();
-        args.extend(["exec".into(), "--no-TTY".into(), service.into()]);
-        args.extend_from_slice(command);
-        compose(
-            self.adapter.engine.socket_path().to_str().unwrap(),
-            Path::new(&self.plan.manifest).parent().unwrap(),
-            &BTreeMap::new(),
-            &args,
-            timeout,
-        )
-        .await
-        .map(|(out, _)| out)
-    }
-    // Share image, health and replica checks between endpoint routing and command execution.
+    // Verify the owned service before resolving its endpoint.
     fn running_service(mut state: ComposeProjectState, service: &str) -> Result<Container> {
         let plan = state
             .plan

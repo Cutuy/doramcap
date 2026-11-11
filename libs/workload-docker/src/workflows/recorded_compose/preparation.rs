@@ -218,10 +218,11 @@ pub async fn resolve(adapter: &DockerAdapter, spec: ComposeRun) -> Result<Resolv
         .as_ref()
         .and_then(|runtime| runtime.dataflow.as_ref())
     {
-        let graph = super::super::shared_dora::graph(
+        let graph = workload_lifecycle::dora::graph(
             &dataflow.source,
             &crate::evidence::read_regular(Path::new(&dataflow.source), MAX_GRAPH_BYTES).await?,
-        )?;
+        )
+        .map_err(invalid)?;
         model::validate_graph(&model, &graph)?;
     }
     model::validate_dependencies(

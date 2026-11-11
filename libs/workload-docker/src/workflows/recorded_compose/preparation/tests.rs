@@ -345,7 +345,7 @@ fn dora_wiring_rejects_reserved_mounts_labels_and_service_names() {
 #[test]
 fn graph_bindings_require_matching_services_and_host_networking() {
     // Arrange
-    let graph = crate::workflows::shared_dora::graph(
+    let graph = workload_lifecycle::dora::graph(
         "/flow.yml",
         b"nodes:\n  - id: monitor\n    path: dynamic\n",
     )
