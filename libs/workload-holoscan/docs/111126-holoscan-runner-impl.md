@@ -283,7 +283,7 @@ Docker projects only. The systemd form follows with host execution.
 
 ## Outside this plan
 
-- The web app journey (stage 7).
+- The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
 - Showing file changes in the web app ([Cutuy/doramcap#312](https://github.com/Cutuy/doramcap/pull/312)).
 - Collecting a run's log from the journal ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)).
 - Host-native execution without Docker.

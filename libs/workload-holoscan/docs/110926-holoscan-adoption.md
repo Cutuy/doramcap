@@ -2,7 +2,7 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 11, 2026. Status: draft architecture; adoption scope, launch design and workflow decisions agreed.
+Created November 9, 2026. Updated November 11, 2026. Status: architecture agreed across all seven stages; implementation not started.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
@@ -124,7 +124,7 @@ the baseline. Later stages stay open until their discussion starts.
 | 4. [Execution and recovery](110926-holoscan-execution.md) | Owned run resources, repeatable pre-run cleanup and interruption recovery. | Stop lingering owned runs and verify cleanup before Build/Prepare; output retention is best effort. One admission lock per repository; the container signals ready and ended. |
 | 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed and probed with a fake Docker. |
 | 6. [Backend acceptance](111126-holoscan-acceptance.md) | Which existing projects and environments establish supported behavior. | Automated checks on every pull request, plus two real applications on an x86 GPU machine. ARM64 GPU devices later. |
-| 7. Console UI | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Agree on the complete web-app journey, saved selections, visible failure states and end-to-end checks. |
+| 7. [Console UI](111126-holoscan-web-app.md) | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Today's journey with Build as an added step: searchable application list, build state, Review with notes, Result with the exit code. |
 
 ### Discussion process
 
@@ -160,8 +160,8 @@ supports the launch design. Real-container qualification remains.
 Resource limits and application logs are agreed as well. The workflow-level
 decisions are complete.
 
-Backend acceptance is agreed in stage 6. Console UI is explicitly last in stage 7,
-including discovery presentation, saved selections, review, run controls and results.
+Backend acceptance is agreed in stage 6 and the web app journey in stage 7. All
+seven stages are agreed.
 
 ## Agreed scope
 
