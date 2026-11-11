@@ -26,11 +26,16 @@ function open(runRoot: string, path: string, signal?: AbortSignal): ReadStream {
   return createReadStream('', { fd: descriptor(runRoot, path), autoClose: true, signal });
 }
 
+/** Read one generated checkpoint through the same run-confined opener as manifests. */
+async function checkpoint(runRoot: string, path: string, signal?: AbortSignal) {
+  const chunks: Buffer[] = [];
+  for await (const chunk of open(runRoot, path, signal)) chunks.push(Buffer.from(chunk));
+  return filesystem.FileChangeReport.decode(Buffer.concat(chunks));
+}
+
 /** Read the published checkpoint and verify its bounded reference; missing publication is unavailable. */
 async function report(runRoot: string, reference: Reference, signal?: AbortSignal) {
-  const chunks: Buffer[] = [];
-  for await (const chunk of open(runRoot, reference.checkpoint!, signal)) chunks.push(Buffer.from(chunk));
-  const saved = filesystem.FileChangeReport.decode(Buffer.concat(chunks));
+  const saved = await checkpoint(runRoot, reference.checkpoint!, signal);
   if (saved.state !== filesystem.ReportState.REPORT_COMPLETE || !saved.categories.length || saved.categories.length !== reference.categories?.length)
     throw new Error('File-change category mismatch');
   const seen = new Set<number>();
@@ -93,7 +98,16 @@ async function* categoryChanges(runRoot: string, summary: Summary, signal?: Abor
 
 /** Derive one saved preview, validating every manifest. Errors retain the summary as failed evidence. */
 export async function fileChangePreview(runRoot: string, reference?: Reference | null, error = ''): Promise<View | null> {
-  if (!reference) return error ? wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: browserError(error) }) : null;
+  if (!reference && error) {
+    // Later native report writes can fail after capture has already been published.
+    try {
+      const saved = await checkpoint(runRoot, 'filesystem/report.pb');
+      reference = { checkpoint: 'filesystem/report.pb', categories: saved.categories.map(category => category.summary!) };
+    } catch {
+      return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: browserError(error) });
+    }
+  }
+  if (!reference) return null;
   const view = wire.FileChanges.create({ state: filesystem.ReportState.REPORT_COMPLETE, report: reference });
   try {
     const saved = await report(runRoot, reference);

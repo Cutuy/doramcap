@@ -348,6 +348,8 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             Err(error) => ExecutionResult {
                 blocked,
                 error: Some(error.to_string()),
+                file_changes_error:
+                    "File changes could not be returned; checking the saved checkpoint.".into(),
                 ..Default::default()
             },
         };

@@ -45,10 +45,10 @@ test('absence, failed capture, complete zero and an oversized preview record rem
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
   try {
-    const { reference } = await fileChangeFixture(root, 0, []);
     // Act / Assert
     assert.equal(await fileChangePreview(root), null);
     assert.match((await fileChangePreview(root, null, 'Writers are active'))!.error, /Writers/);
+    const { reference } = await fileChangeFixture(root, 0, []);
     const zero = await fileChangePreview(root, reference);
     assert.ok(zero?.downloadable && !zero.previewIncomplete);
     assert.equal((await jsonLines(root, reference)).at(-1).changes, '0');
@@ -130,4 +130,20 @@ test('aborting a slow export closes its active manifest descriptor', async () =>
     // Assert
     for (const fd of opened) assert.throws(() => fstatSync(fd));
   } finally { capabilities.openFile = original; await rm(root, { recursive: true, force: true }); }
+});
+
+
+test('a published file report survives a later native report failure', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
+  try {
+    await fileChangeFixture(root, 3, []);
+    // Act
+    const recovered = await fileChangePreview(root, null, 'Native report write failed');
+    // Assert
+    assert.ok(recovered?.downloadable);
+    assert.equal(recovered.state, filesystem.ReportState.REPORT_COMPLETE);
+    assert.equal(recovered.preview.length, 3);
+    assert.equal(recovered.error, '');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

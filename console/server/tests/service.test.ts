@@ -706,3 +706,35 @@ test('Compose always includes configured run shared memory independently of opti
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('preparation waits for the current file report and result transaction to finish saving', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { capabilities } = await import('../src/native.js');
+  const { root, config, engine, backend, review } = await fixture();
+  const original = capabilities.openFile;
+  try {
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'report-save' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!(); await starting;
+    const { reference } = await fileChangeFixture(join(config.dataRoot, 'runs', review.runId), 3000);
+    let opened!: () => void;
+    const observed = new Promise<void>(resolve => { opened = resolve; });
+    capabilities.openFile = (runRoot, path) => {
+      const fd = original(runRoot, path);
+      if (path === reference.checkpoint) opened();
+      return fd;
+    };
+    engine.update.result = execution.ExecutionResult.create({ fileChanges: reference, boundaryClean: true });
+    // Act: attempt a new review while the previous result is reading its manifest.
+    const finishing = backend.status();
+    await observed;
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), /Conflict/);
+    const status = wire.Status.decode(await finishing);
+    // Assert
+    assert.equal(status.runId, review.runId);
+    assert.equal(status.fileChanges?.previewIncomplete, true);
+    assert.ok(status.fileChanges?.downloadable);
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+  } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
+});

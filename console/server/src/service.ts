@@ -166,7 +166,7 @@ export class ConsoleService implements ConsoleBackend {
     }
   }
   prepare(input: Buffer): Promise<Buffer> {
-    if (this.closing || this.preparing || active(this.snapshot.phase) || this.admissionPending)
+    if (this.closing || this.preparing || !this.completed || active(this.snapshot.phase) || this.admissionPending)
       return Promise.reject(new Error('Conflict'));
     const request = wire.PrepareRequest.decode(input);
     this.preparing = this.prepareRequest(request).finally(() => {
@@ -558,7 +558,6 @@ export class ConsoleService implements ConsoleBackend {
     if (this.snapshot.metrics.length > MAX_METRICS) this.snapshot.metrics.shift();
   }
   private async finish(result: ExecutionResult) {
-    this.completed = true;
     this.snapshot.stoppingServices = [];
     const clean = result.boundaryClean ?? !result.blocked;
     this.snapshot.phase =
@@ -626,6 +625,7 @@ export class ConsoleService implements ConsoleBackend {
       }
     }
     this.recorded = this.snapshot.phase;
+    this.completed = true;
   }
   private enriched(): Snapshot {
     const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
