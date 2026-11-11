@@ -76,24 +76,9 @@ launch and cleanup remain in `workload-docker`. The browser never owns cleanup.
 - [ ] File lists load incrementally; preview size never limits collection completeness.
 - [ ] Verify production build, schema validation and desktop/mobile browser behavior.
 
-## M4 — Qualify robotics adoption
+## M4 — Qualify adoption
 
-### Work items
-
-- [ ] Pin vEDGAR and AnywhereVLA revisions; inventory their actual Compose launch paths.
-- [ ] Qualify vEDGAR profiles, GPU/port ownership, simulator readiness and reset.
-- [ ] Qualify AnywhereVLA multiple files, interactive execution and nested ROS launches.
-- [ ] Record zero-edit success, prerequisites and unsupported cases per project.
-- [ ] Use Event-Orin and OpenTeach to scope later staged-launch/process adapters.
-
-### Validation
-
-- [ ] Run each qualified Compose fixture twice; prove lower directories stay unchanged
-  during execution, then verify the selected result disposition after shutdown.
-- [ ] Exercise interrupted startup, manual stop and an added upstream service.
-- [ ] Compare declared resources with observed containers/processes and recordings.
-- [ ] Separate fixture-only, simulator and physical-hardware evidence; never imply
-  hardware qualification from a synthetic fixture.
+Moved to the [Console adoption plan](../../../../console/docs/110326-adoption-qualification.md).
 
 ## Integration boundary
 
