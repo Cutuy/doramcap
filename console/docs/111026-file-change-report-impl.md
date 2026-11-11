@@ -115,6 +115,30 @@ Created November 11, 2026. Status: planned; application code unchanged.
   navigation and Console restart, including failed runs with usable file reports.
 - [ ] Check the result on desktop and narrow screens; preserve recording downloads and byte totals.
 
+## Milestone 4: Keep a run's files with the run
+
+**Work items**
+
+- [ ] Add a keep-with-the-run disposition beside write back and discard in `host-filesystem`.
+- [ ] In finalization, reuse the unmount and upper-layer inspection. Copy the transfer
+  list into a folder inside the run and record the removal list. Leave the source untouched.
+- [ ] Remove the temporary view folder only after the copy is verified. A failed copy
+  preserves the upper data, as a failed write back does.
+- [ ] Record the disposition and the kept location in the file-change report.
+- [ ] Add one Console configuration field selecting write back or keep with the run,
+  default write back. Pass it to Compose and systemd runs.
+- [ ] Show the policy at Review and the kept location with the result. Add no file browser.
+
+**Validation**
+
+- [ ] The kept files match the report's added and modified entries exactly.
+- [ ] The source folder is byte-identical before and after a keep run.
+- [ ] Deletions appear in the report and remove nothing.
+- [ ] A second run starts from the original source and keeps its own separate files.
+- [ ] Full disk and an interrupted copy preserve the upper data and block verified cleanup.
+- [ ] The view folder and the run folder on different filesystems.
+- [ ] Projects with no setting behave as before.
+
 ## Integration and qualification
 
 **Work items**

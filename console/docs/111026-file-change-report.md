@@ -2,7 +2,7 @@
 
 # File changes in Console
 
-Created November 10, 2026. Updated November 11, 2026. Architecture agreed; implementation pending.
+Created November 10, 2026. Updated November 11, 2026. Architecture agreed, including the keep-with-the-run policy; implementation pending.
 [Implementation plan](111026-file-change-report-impl.md).
 
 Docker runs already create private filesystem views, collect file changes and finalize
@@ -14,11 +14,50 @@ Reuse the existing filesystem mechanism for both and expose one report in Consol
 - Capture supported resolved writable directory binds and declared output directories.
 - Show counts, coverage and a bounded file preview on current and past run results.
 - Download the complete collected list as JSON Lines.
+- Offer a choice of where written files end up: written back to their source, or kept with the run.
 - Keep host `/dev/shm` observation separate. Preserve native device and shared-memory access.
 - Keep launch fingerprints and machine observations in their existing roles.
 
 This extends the [Compose/Holoscan capture design][outputs]. Holoscan keeps its own
 CLI launch integration. This change does not implement the Holoscan runner.
+
+## Keeping a run's files
+
+The file-change report is a list. It records that a file changed and leaves the
+file's contents to the write policy. Today Console always writes back, so a
+later run can overwrite an earlier run's output.
+
+A third policy keeps each run's written files with that run.
+
+| Policy | Written files go to | Source folder | Run keeps |
+| --- | --- | --- | --- |
+| Write back (default) | The source folder | Modified | The list |
+| Keep with the run | A folder inside the run | Untouched | The list and the files |
+| Discard | Nowhere | Untouched | The list |
+
+Keep with the run reuses write back's steps: unmount the view, read the upper
+layer into a list of removals and transfers, then copy the transfers. Only the
+destination differs. Removals are recorded and applied nowhere. The views are
+mounted so that every file in the upper layer is complete, so kept files stand
+on their own.
+
+One Console setting selects the policy for the whole project. Write back stays
+the default, so existing projects behave as before. This setting is approved.
+
+Limits:
+
+- It covers host folders. Docker writable layers and named volumes keep their
+  existing behavior.
+- With keep, the next run starts from the unchanged source. State an application
+  carries between runs resets.
+- Run folders grow, and Console has no pruning of old runs. That is separate
+  follow-up work.
+- A per-folder policy is left out.
+
+Program logs follow the same route. Console dumps each program's full output
+from the host journal into a run-owned output folder at the end of the run, as
+tracked in [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
+The dump is then one more set of run files.
 
 ## Shared mechanism
 
@@ -57,7 +96,7 @@ Machine-observation timing remains unchanged.
 
 | Source | Behavior |
 | --- | --- |
-| Supported persistent directory binds | Reuse shared OverlayFS views; preserve destinations, shared aliases and access flags. Systemd uses the existing write-back default, with no new setting. |
+| Supported persistent directory binds | Reuse shared OverlayFS views; preserve destinations, shared aliases and access flags. Both backends follow the project's write policy, which defaults to write back. |
 | Fresh run-owned output directories | Retain their existing private paths; collect through the common file mechanism. Exclude controller-owned records. A shared run root without separable application output has explicit partial coverage. |
 | Docker writable layers / named volumes | Preserve existing Engine diff, metadata and volume-retention behavior. |
 | Read-only aliases into a tracked tree | Preserve the alias relationship and read-only access using the same view mapping. |
