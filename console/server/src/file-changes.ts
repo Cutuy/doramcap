@@ -105,6 +105,8 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
     // Later native report writes can fail after capture has already been published.
     try {
       const saved = await checkpoint(runRoot, CHECKPOINT);
+      if (!saved.categories.length || saved.categories.some(category => !category.summary?.counts))
+        throw new Error('File-change checkpoint has no category summary');
       reference = { checkpoint: CHECKPOINT, categories: saved.categories.map(category => category.summary!) };
     } catch {
       return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: browserError(error) });

@@ -145,5 +145,14 @@ test('a published file report survives a later native report failure', async () 
     assert.equal(recovered.state, filesystem.ReportState.REPORT_COMPLETE);
     assert.equal(recovered.preview.length, 3);
     assert.equal(recovered.error, '');
+    // Act: a decodable checkpoint with a missing summary is failed evidence.
+    await writeFile(join(root, 'filesystem/report.pb'), filesystem.FileChangeReport.encode({
+      state: filesystem.ReportState.REPORT_COMPLETE, categories: [{ coverageNotes: ['incomplete checkpoint'] }],
+    }).finish());
+    const malformed = await fileChangePreview(root, null, 'Native report write failed');
+    // Assert
+    assert.equal(malformed?.state, filesystem.ReportState.REPORT_FAILED);
+    assert.equal(malformed?.report, null);
+    assert.equal(malformed?.downloadable, false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
