@@ -182,7 +182,8 @@ from the measured lifecycle results. GPU/IPC qualification is outside this chang
 - [x] Preserve an explicit host `NetworkNamespacePath`; reject a live isolated coordinator namespace before Start/session mutation and verify native cleanup.
 - [x] Capture transient-unit creation throughout native execution; assert zero `dora-cli-*` control units and no `cli-*.out` files.
 - [x] Preserve older serialized `PreparedRun` JSON while retaining the captured graph checksum in new preparations.
-- [ ] Run final workspace/hosted CI and ARM64 qualification after the namespace refinement. Focused locked release/CI checks and native tests already pass; build unprivileged and elevate only test executables.
+- [x] Run full local CI and ARM64 worker job 653 on the final runtime revision (`f0bf7393`), after the namespace refinement. Focused locked release/CI and native tests pass; builds run unprivileged and only native test executables are elevated.
+- [ ] Confirm hosted checks after publishing this validation record; preceding runtime revisions passed Rust/Node/MCAP on x86 and ARM.
 - [ ] Inject credential/native-user failures through systemd services; shared access tests cover token validation and native Dora rejects a wrong bearer token.
 - [ ] Inject cancellation specifically at registration acceptance/UUID boundaries and hang/disconnect control in the systemd adapter. Shared client tests cover these protocol outcomes and deadlines.
 - [ ] Kill the controller before UUID receipt, exercise new-run refusal/explicit scope cleanup and inject failed exit verification. Existing native ownership/admission cleanup paths remain in use; this exact crash window is unqualified.
@@ -193,8 +194,8 @@ documentation. GPU/IPC qualification requires its own capable host.
 
 Results: 22 unit/preparation tests and both real systemd/Dora cases pass, including
 frozen-input and namespace rejection. One capability-only library test remains
-ignored by the unprivileged workspace run. Complete local CI, hosted Rust/Node/MCAP
-on x86/ARM, and ARM64 worker job 651 passed before the final namespace refinement;
-its final workspace run is pending. ARM64 job 652 separately passed real Dora
+ignored by the unprivileged workspace run. Complete local CI and ARM64 worker job
+653 pass after the namespace refinement. Hosted Rust/Node/MCAP passed on x86/ARM
+before the final refinement; final hosted checks are pending. ARM64 job 652 separately passed real Dora
 authentication/session/concurrency qualification. Native systemd is qualified on
 the local x86 host; the worker does not qualify these systemd/Dora fixtures.
