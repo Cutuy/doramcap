@@ -53,7 +53,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
   return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
     <ConsoleInstall repository={catalog.repository} />
     <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} {...detailLink} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
-    {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
+    {invalid && <p role="alert">This selection is not in the current overview. <a href={link({ useCase: overview.useCases[0].id })}>Show the first use case</a>.</p>}
     {selected && <section
       ref={details}
       id="overview-details"
