@@ -171,60 +171,6 @@ impl Manager {
         })
     }
 
-    /// Run `argv` to completion as a oneshot unit in the scope's slice, writing its
-    /// standard output to `output`. Errors: a start or exit other than success.
-    pub async fn run_oneshot(
-        &self,
-        scope: &Scope,
-        name: &str,
-        program: &Program,
-        output: &std::path::Path,
-        host_shm_access: i32,
-    ) -> Result<()> {
-        let mut properties = vec![
-            (
-                "Description".into(),
-                value(format!("Doramcap command {name}"))?,
-            ),
-            ("Slice".into(), value(crate::cgroup::native_name(scope))?),
-            ("Type".into(), value("oneshot")?),
-            (
-                "ExecStart".into(),
-                value(vec![(program.argv[0].clone(), program.argv.clone(), false)])?,
-            ),
-            (
-                "StandardOutputFileToTruncate".into(),
-                value(output.to_string_lossy().into_owned())?,
-            ),
-        ];
-        if !program.user.is_empty() {
-            properties.push(("User".into(), value(program.user.clone())?));
-        }
-        properties.extend(
-            private_root(
-                scope,
-                name,
-                &program.argv[0],
-                "",
-                &program.binds,
-                host_shm_access,
-            )
-            .await?,
-        );
-        let mut jobs = self.manager.receive_job_removed().await.map_err(error)?;
-        let job = self
-            .manager
-            .start_transient_unit(name.into(), "fail".into(), properties, vec![])
-            .await
-            .map_err(error)?;
-        // A oneshot start job ends when its process exits.
-        let result = self.started(name, &mut jobs, job).await;
-        if result.is_err() {
-            self.release(name).await;
-        }
-        result
-    }
-
     /// Link copies of repository unit files into the runtime unit directory and
     /// place each in the scope's slice. Call [`Self::start_adopted`] after this.
     pub async fn adopt(

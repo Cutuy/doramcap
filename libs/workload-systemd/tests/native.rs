@@ -729,6 +729,29 @@ async fn stop_at_runtime_preparation_keeps_cleanup_observable() {
 }
 
 /// Run `plan`, stop it `OBSERVATION` after readiness, and return its report.
+/// Observe transient unit creation throughout Dora execution and teardown.
+async fn run_without_control_units(plan: (RunPlan, SystemdPlan)) -> SystemdRunReport {
+    use futures_util::StreamExt;
+    let connection = zbus::Connection::system().await.unwrap();
+    let manager = zbus_systemd::systemd1::ManagerProxy::new(&connection)
+        .await
+        .unwrap();
+    manager.subscribe().await.unwrap();
+    let mut created = manager.receive_unit_new().await.unwrap();
+    let run = run_for_a_while(plan);
+    tokio::pin!(run);
+    loop {
+        tokio::select! {
+            report = &mut run => return report,
+            event = created.next() => {
+                let event = event.expect("systemd unit event stream ended");
+                let arguments = event.args().unwrap();
+                assert!(!arguments.id.contains("-dora-cli-"), "transient control unit created: {}", arguments.id);
+            }
+        }
+    }
+}
+
 async fn run_for_a_while((run, plan): (RunPlan, SystemdPlan)) -> SystemdRunReport {
     observe_run_for_a_while((run, plan)).await.0
 }
@@ -1414,7 +1437,7 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         .to_string_lossy()
         .into_owned();
     // Act
-    let report = run_for_a_while(plan).await;
+    let report = run_without_control_units(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
     let names: Vec<_> = report.units.iter().map(|unit| unit.unit.as_str()).collect();
@@ -1450,6 +1473,18 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         }
     }
     assert!(runtime.join("dataflow.yml").is_file());
+    assert!(
+        runtime
+            .join(workload_lifecycle::dora::SESSION_FILE)
+            .is_file()
+    );
+    assert!(std::fs::read_dir(&runtime).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("cli-")
+    }));
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]
@@ -1532,7 +1567,7 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
     plan.1.programs.push(participant);
     drop(ports);
     // Act
-    let report = run_for_a_while(plan).await;
+    let report = run_without_control_units(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
     let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();

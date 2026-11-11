@@ -207,8 +207,23 @@ fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) ->
             writer.hash.update((access.len() as u64).to_le_bytes());
             writer.hash.update(access);
             // Stream the observed size so growing inputs cannot cause unbounded capture.
-            let copied =
-                std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?;
+            let copied = if name == "dataflow" {
+                let mut bytes = Vec::new();
+                (&mut file)
+                    .take(metadata.len())
+                    .read_to_end(&mut bytes)
+                    .map_err(error)?;
+                let graph = workload_lifecycle::dora::graph(
+                    source.to_str().ok_or("graph path is not UTF-8")?,
+                    &bytes,
+                )?;
+                writer
+                    .write_all(&serde_json::to_vec(&graph).map_err(error)?)
+                    .map_err(error)?;
+                bytes.len() as u64
+            } else {
+                std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?
+            };
             let after = file.metadata().map_err(error)?;
             if copied != metadata.len()
                 || metadata.len() != after.len()
@@ -672,7 +687,11 @@ mod tests {
         assert!(!Path::new(&review.artifacts).exists());
         assert!(!Path::new(&execution.artifacts).exists());
         // Act / Assert: generated names do not hide changed graph/config contents.
-        std::fs::write(&execution.dataflow_file, "{\"nodes\":[{\"id\":\"new\"}]}").unwrap();
+        std::fs::write(
+            &execution.dataflow_file,
+            "{\"nodes\":[{\"id\":\"new\",\"path\":\"dynamic\"}]}",
+        )
+        .unwrap();
         assert_ne!(expected, inspect(&execution, &fresh).await.unwrap());
         std::fs::write(&execution.dataflow_file, "{\"nodes\":[]}").unwrap();
         std::fs::write(

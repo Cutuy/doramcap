@@ -6,6 +6,7 @@ use crate::{
 };
 use orchestrator::{Input, LocalExecutor, Output};
 use std::{rc::Rc, time::Duration};
+use tokio::time::Instant;
 use workload_lifecycle::{
     launch::{CleanupRecord, RemovalPermit, StopRecord},
     recording::{ReadinessInput, Recording, WaitForRecordings},
@@ -67,6 +68,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         );
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
+            let deadline = Instant::now() + readiness;
             if role == Phase::User {
                 for unit in self.phases.iter().flatten() {
                     crate::cgroup::verify_unit(
@@ -138,24 +140,30 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 }
                 Ok::<_, String>(())
             };
-            tokio::time::timeout(readiness, start)
+            tokio::time::timeout_at(deadline, start)
                 .await
                 .map_err(|_| format!("apps not active within {readiness:?}"))??;
             if role == Phase::Dora && !self.run.dora_apps.is_empty() {
                 self.dora = Some(
-                    crate::dora::Dora::from_units(
-                        self.phases.last().unwrap(),
-                        &mut self.run,
-                        &self.plan,
+                    tokio::time::timeout_at(
+                        deadline,
+                        crate::dora::Dora::from_units(
+                            self.phases.last().unwrap(),
+                            &mut self.run,
+                            &self.plan,
+                            deadline,
+                        ),
                     )
-                    .await?,
+                    .await
+                    .map_err(|_| "Dora access deadline exceeded".to_owned())??,
                 );
                 let dora = self.dora.as_mut().unwrap();
-                tokio::time::timeout(readiness, async {
-                    dora.await_daemon(&self.manager, &self.scope, &self.run)
-                        .await?;
-                    dora.register(&self.manager, &self.scope, &mut self.run)
+                tokio::time::timeout_at(deadline, async {
+                    dora.client
+                        .wait_for_daemon(deadline)
                         .await
+                        .map_err(crate::error)?;
+                    dora.register(&mut self.run, deadline).await
                 })
                 .await
                 .map_err(|_| "Dora readiness deadline exceeded".to_string())??;
@@ -190,7 +198,10 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             // Dataflows stop before the coordinator and daemon they run on.
             if index == 0
                 && let Some(dora) = &mut self.dora
-                && let Err(error) = dora.down(&self.manager, &self.scope, &self.run).await
+                && let Err(error) = dora
+                    .client
+                    .shutdown(Instant::now() + Duration::from_secs(self.run.stop_seconds))
+                    .await
             {
                 self.diagnostics.push(format!("Dora down: {error}"));
             }

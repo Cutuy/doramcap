@@ -168,12 +168,12 @@ from the measured lifecycle results. GPU/IPC qualification is outside this chang
 
 **Work items**
 
-- [ ] Add the existing `dora-control` dependency to `workload-systemd`; retain the client in [`dora::Dora`](../../workload-systemd/src/dora.rs), owned by [`SystemdRunning.dora`](../../workload-systemd/src/running.rs), before the first Start await. Retain native unit handles through partial startup.
-- [ ] Reuse shared descriptor/Start preparation; preserve graph copy/hash, binds, session artifacts and runtime-visible paths. Remove `Dora::registered` when adopting client identity.
-- [ ] Resolve generated-program/supplied-unit endpoints and run-local credentials. Validate host network and executor access; preserve native users/binds/roots. Remove CLI-only executable discovery when unused.
-- [ ] Replace `await_daemon`, `register` and `down` with client calls and shared deadlines. Preserve stop-request monitoring and reverse-phase teardown.
-- [ ] Continue native unit stops after timeout, disconnect or unresolved graph identity; retain diagnostics and independently verify exit before removal.
-- [ ] Delete `Dora::cli`, counters, `cli-*.out`, `CLI_PREFIX` and unused CLI-only name reservations/tests. Retain `Manager::run_oneshot` for independent consumers.
+- [x] Add the existing `dora-control` dependency to `workload-systemd`; retain the client in [`dora::Dora`](../../workload-systemd/src/dora.rs), owned by [`SystemdRunning.dora`](../../workload-systemd/src/running.rs), before the first Start await. Retain native unit handles through partial startup.
+- [x] Reuse shared descriptor/Start preparation; preserve graph copy/hash, binds, session artifacts and runtime-visible paths. Remove `Dora::registered` when adopting client identity.
+- [x] Resolve generated-program/supplied-unit endpoints and run-local credentials. Validate host network and executor access; preserve native users/binds/roots. Remove CLI-only executable discovery when unused.
+- [x] Replace `await_daemon`, `register` and `down` with client calls and shared deadlines. Preserve stop-request monitoring and reverse-phase teardown.
+- [x] Continue native unit stops after timeout, disconnect or unresolved graph identity; retain diagnostics and independently verify exit before removal.
+- [x] Delete `Dora::cli`, counters, `cli-*.out`, `CLI_PREFIX` and unused CLI-only name reservations/tests. Remove the private `Manager::run_oneshot` helper; its only caller was Dora control.
 
 **Validation**
 
@@ -188,3 +188,5 @@ from the measured lifecycle results. GPU/IPC qualification is outside this chang
 
 Each adoption PR records completed/deferred checks here and updates its backend
 documentation. GPU/IPC qualification requires its own capable host.
+
+Systemd implementation: 21 unit/preparation tests and locked release compilation (including test sources) pass. Native D-Bus/Dora, full CI and ARM64 qualification are in progress.

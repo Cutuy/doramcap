@@ -100,9 +100,8 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
     }
     workload_lifecycle::plan::validate_apps(run, app_ids(plan)?.iter().map(String::as_str))?;
     let mut ids = std::collections::BTreeSet::new();
-    let reserved = |id: &str| !run.dora_apps.is_empty() && id.starts_with(dora::CLI_PREFIX);
     for program in &plan.programs {
-        if !valid_id(&program.id) || reserved(&program.id) || !ids.insert(program.id.clone()) {
+        if !valid_id(&program.id) || !ids.insert(program.id.clone()) {
             return Err(format!("invalid or duplicate program id {:?}", program.id));
         }
         if !program
@@ -136,15 +135,12 @@ pub fn validate(run: &RunPlan, plan: &SystemdPlan) -> Result<()> {
         }
     }
     for file in &plan.unit_files {
-        if !Path::new(file).is_absolute()
-            || reserved(unit_stem(file)?)
-            || !ids.insert(unit_stem(file)?.to_owned())
-        {
+        if !Path::new(file).is_absolute() || !ids.insert(unit_stem(file)?.to_owned()) {
             return Err(format!("invalid or duplicate unit file {file:?}"));
         }
     }
     for app in &plan.app_units {
-        if !valid_id(&app.id) || reserved(&app.id) || !ids.insert(app.id.clone()) {
+        if !valid_id(&app.id) || !ids.insert(app.id.clone()) {
             return Err(format!("invalid or duplicate app id {:?}", app.id));
         }
         if !Path::new(&app.file).is_absolute()
@@ -253,10 +249,10 @@ mod tests {
             app_ids(&phase(&run, &plan, workload_lifecycle::plan::Phase::Dora)).unwrap(),
             ["dora-coordinator"]
         );
-        // Act / Assert: control units remain owned by the workflow.
+        // Act / Assert: the former control-unit prefix is available to ordinary apps.
         plan.programs[0].id = "dora-cli-1".into();
         run.dora_apps = vec!["dora-cli-1".into()];
-        assert!(validate(&run, &plan).is_err());
+        assert!(validate(&run, &plan).is_ok());
     }
 
     #[test]
@@ -318,11 +314,6 @@ mod tests {
                 "{id:?}"
             );
         }
-        // Act / Assert: workflow-owned control names remain reserved.
-        plan.app_units[0].id = "dora-cli-1".into();
-        run.system_apps.clear();
-        run.dora_apps = vec!["observer".into()];
-        assert!(validate(&run, &plan).is_err());
     }
 
     #[test]
