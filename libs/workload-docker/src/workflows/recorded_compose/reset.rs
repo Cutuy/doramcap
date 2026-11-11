@@ -1,6 +1,6 @@
 //! Repository-scoped admission and strict, repeatable pre-run cleanup.
 use compose_apps::compose::{DockerAdapter, Result, error::invalid};
-use docker_engine::overlay;
+use host_filesystem::overlay;
 use orchestrator::Step;
 use std::{
     os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt},

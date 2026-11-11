@@ -106,3 +106,13 @@ impl From<docker_engine::Error> for Error {
         }
     }
 }
+
+impl From<host_filesystem::Error> for Error {
+    fn from(error: host_filesystem::Error) -> Self {
+        match error {
+            host_filesystem::Error::Invalid(message) => Self::Invalid(message),
+            host_filesystem::Error::Io(error) => Self::Io(error),
+            host_filesystem::Error::Json(error) => Self::Json(error),
+        }
+    }
+}

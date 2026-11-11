@@ -1,6 +1,6 @@
 //! Authorized fixed-workflow worker. HTTP remains in a separate unprivileged process.
 use compose_apps::compose::{ComposeProject, DockerAdapter};
-use docker_engine::filesystem::{FileChanges, FileMetadata};
+use host_filesystem::filesystem::{FileChanges, FileMetadata};
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use serde_json::json;
 use std::{collections::BTreeMap, rc::Rc, time::Duration};

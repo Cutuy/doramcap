@@ -45,7 +45,7 @@ pub(super) fn attach(
     use super::recorded_compose::finalization::*;
     use compose_apps::compose::PrepareOverlays;
     use compose_apps::preparation::PrepareRun;
-    use docker_engine::overlay::FinalizeOverlays;
+    use workload_lifecycle::capture::FinalizeOverlays;
     Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());
         let dependency = adapter.clone();

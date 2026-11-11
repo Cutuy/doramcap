@@ -22,8 +22,3 @@ message OwnedContainer {
   string consumer = 1;
   string id = 2;
 }
-// Original host directory and its active per-run filesystem view.
-message HostView {
-  string source = 1;
-  string view = 2;
-}

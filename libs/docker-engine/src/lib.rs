@@ -1,15 +1,13 @@
-//! Docker connection, ownership cleanup and filesystem operations shared by backends.
+//! Docker connection, ownership cleanup and native storage observations.
 pub mod error;
-pub mod files;
 pub mod filesystem;
-pub mod overlay;
+pub mod namespace;
 mod scope;
 use bollard::Docker;
 pub use error::{Error, Result};
 use error::{engine, invalid};
 pub use scope::OwnedResources;
-use std::{io, os::unix::process::CommandExt, path::Path};
-use tokio::process::{Child, Command};
+use std::path::Path;
 
 const ENGINE_REQUEST_TIMEOUT_SECONDS: u64 = 120;
 
@@ -66,40 +64,10 @@ impl Engine {
     }
 }
 
-/// Kill an owned child process group when this guard is dropped.
-pub struct ProcessGroup(i32);
-impl ProcessGroup {
-    /// Spawn a child in a fresh process group and return the child and its cleanup guard.
-    /// Spawn and PID lookup errors are returned as I/O errors.
-    pub fn spawn(command: &mut Command) -> io::Result<(Child, Self)> {
-        command.kill_on_drop(true);
-        command.as_std_mut().process_group(0);
-        let child = command.spawn()?;
-        let group = child
-            .id()
-            .and_then(|id| i32::try_from(id).ok())
-            .filter(|&id| id > 1)
-            .ok_or_else(|| io::Error::other("spawned child has no valid process group ID"))?;
-        Ok((child, Self(group)))
-    }
-}
-impl Drop for ProcessGroup {
-    fn drop(&mut self) {
-        // SAFETY: spawn created this group and excluded special kill targets.
-        unsafe {
-            libc::kill(-self.0, libc::SIGKILL);
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests;
 
-/// Resolved Docker mounts, owned container identities and filesystem views.
+/// Resolved Docker mounts and owned container identities.
 pub mod docker_proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.docker.v1.rs"));
-}
-/// Binary filesystem record schema; files contain length-delimited messages.
-pub mod filesystem_proto {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
 }

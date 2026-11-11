@@ -12,6 +12,15 @@ pub enum Error {
     #[error("{0}")]
     Json(#[from] serde_json::Error),
 }
+impl From<host_filesystem::Error> for Error {
+    fn from(error: host_filesystem::Error) -> Self {
+        match error {
+            host_filesystem::Error::Invalid(message) => Self::Invalid(message),
+            host_filesystem::Error::Io(error) => Self::Io(error),
+            host_filesystem::Error::Json(error) => Self::Json(error),
+        }
+    }
+}
 pub type Result<T> = std::result::Result<T, Error>;
 pub(crate) fn engine(operation: impl Into<String>, source: bollard::errors::Error) -> Error {
     Error::Engine {

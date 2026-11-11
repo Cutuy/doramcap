@@ -30,3 +30,31 @@ message FileChange {
 }
 enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }
 message FileAction { ActionKind kind = 1; bytes path = 2; }
+
+// A backend-resolved directory mount, with native access preserved by the backend.
+message DirectoryMount {
+  string consumer = 1;
+  string source = 2;
+  string target = 3;
+  bool read_only = 4;
+}
+// A backend-resolved metadata source; an absent path denotes a newly created source.
+message MetadataSource {
+  StorageCategory category = 1;
+  string identity = 2;
+  optional string path = 3;
+  string consumer = 4;
+  bool read_only = 5;
+  optional string reason = 6;
+}
+// A post-run source resolution. Reasons describe unavailable or excluded observations.
+message SourceObservation {
+  string identity = 1;
+  optional string path = 2;
+  optional string reason = 3;
+}
+// Original host directory and its active per-run filesystem view.
+message HostView {
+  string source = 1;
+  string view = 2;
+}

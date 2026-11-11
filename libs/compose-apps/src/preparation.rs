@@ -1,5 +1,6 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
-use docker_engine::filesystem::{BaselineInput, CaptureFilesystemBaseline, FilesystemBaseline};
+use host_filesystem::filesystem::{BaselineInput, FilesystemBaseline};
+use workload_lifecycle::capture::CaptureFilesystemBaseline;
 mod model;
 mod snapshot;
 pub use model::SHM_SERVICE;
@@ -38,7 +39,7 @@ pub struct PrepareInput {
     /// Additional app inputs; empty prepares the system part alone.
     pub extra_apps: Vec<ComposeProject>,
     /// Filesystem policy included in Review identity; resolution mounts nothing.
-    pub filesystem: Option<docker_engine::overlay::OverlayPolicy>,
+    pub filesystem: Option<host_filesystem::overlay::OverlayPolicy>,
     /// Writer selection, host capability checks and output filesystem locations.
     pub mcap_writers: McapWriters,
 }
@@ -158,7 +159,7 @@ pub struct ResolvedRun {
 pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<ResolvedRun> {
     // Validate the request before creating run artifacts.
     model::validate(&spec)?;
-    docker_engine::files::create_private_dir(Path::new(&spec.run_plan.artifacts)).await?;
+    host_filesystem::files::create_private_dir(Path::new(&spec.run_plan.artifacts)).await?;
     let artifacts = tokio::fs::canonicalize(Path::new(&spec.run_plan.artifacts)).await?;
     if !spec.mcap_writers.services.is_empty() || !spec.mcap_writers.apps.is_empty() {
         validate_recording_host(&spec.mcap_writers.directories, &spec.run_plan.id).await?;
@@ -587,8 +588,12 @@ impl PrepareRun {
             .ok_or_else(|| invalid("executor dropped"))?;
         let baseline = executor
             .run::<CaptureFilesystemBaseline>(BaselineInput {
-                bind_mounts: mounts::binds(&resolved.plan.name, &model)?,
-                volume_mounts: mounts::volumes(&resolved.plan, &model)?,
+                bind_mounts: mounts::directories(&mounts::binds(&resolved.plan.name, &model)?),
+                metadata_sources: docker_engine::filesystem::volume_sources(
+                    &self.adapter.engine,
+                    mounts::volumes(&resolved.plan, &model)?,
+                )
+                .await?,
                 artifacts: resolved.artifacts.clone(),
             })
             .await
@@ -661,7 +666,7 @@ fn failed(failures: &[String]) -> Result<()> {
 /// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
     let directory = artifacts.join("inputs");
-    docker_engine::files::create_private_dir(&directory).await?;
+    host_filesystem::files::create_private_dir(&directory).await?;
     let mut failures = Vec::new();
     for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {
         if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {

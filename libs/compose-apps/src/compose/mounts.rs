@@ -107,3 +107,89 @@ mod tests {
         assert_eq!(error.to_string(), "filesystem baseline manifest changed");
     }
 }
+
+/// Convert native mounts after retaining Docker-only options at the adapter boundary.
+pub(crate) fn directories(
+    binds: &[BindMount],
+) -> Vec<host_filesystem::filesystem_proto::DirectoryMount> {
+    binds
+        .iter()
+        .map(|b| host_filesystem::filesystem_proto::DirectoryMount {
+            consumer: b.consumer.clone(),
+            source: b.source.clone(),
+            target: b.target.clone(),
+            read_only: b.read_only,
+        })
+        .collect()
+}
+/// Reject unsupported Docker bind semantics for every alias into an isolated view.
+pub(crate) fn validate_views(
+    binds: &[BindMount],
+    views: &host_filesystem::overlay::OverlayPlan,
+) -> Result<()> {
+    let roots = views.roots();
+    for (mapping, bind) in views.mappings().iter().zip(binds) {
+        if (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private") || bind.selinux)
+            && roots.iter().any(|root| mapping.original.starts_with(root))
+        {
+            return Err(invalid(format!(
+                "{}: unsupported OverlayFS bind options for {} -> {} (propagation {:?}, SELinux relabeling: {})",
+                bind.consumer,
+                mapping.original.display(),
+                bind.target,
+                bind.propagation,
+                bind.selinux
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod view_tests {
+    use super::*;
+    use host_filesystem::overlay::{self, OverlayPolicy, PrepareInput};
+    #[tokio::test]
+    async fn unsupported_options_on_read_only_alias_fail_before_view_creation() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let workspace = root.path().join("workspace");
+        let source = root.path().join("source");
+        let child = source.join("child");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+        for (propagation, selinux) in [("rshared", false), ("", true)] {
+            let binds = vec![
+                BindMount {
+                    consumer: "project/writer".into(),
+                    source: child.to_str().unwrap().into(),
+                    target: "/out".into(),
+                    ..Default::default()
+                },
+                BindMount {
+                    consumer: "project/reader".into(),
+                    source: source.to_str().unwrap().into(),
+                    target: "/in".into(),
+                    read_only: true,
+                    propagation: propagation.into(),
+                    selinux,
+                },
+            ];
+            let plan = overlay::resolve(PrepareInput {
+                artifacts: artifacts.clone(),
+                workspace: workspace.clone(),
+                bind_mounts: directories(&binds),
+                policy: OverlayPolicy::default(),
+            })
+            .await
+            .unwrap();
+            // Act
+            let error = validate_views(&binds, &plan).unwrap_err();
+            // Assert
+            assert!(error.to_string().contains("project/reader"), "{error}");
+            assert!(!workspace.exists());
+            assert!(!artifacts.join("overlays").exists());
+        }
+    }
+}

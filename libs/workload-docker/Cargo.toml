@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+host-filesystem = { path = "../host-filesystem" }
 compose-apps = { path = "../compose-apps" }
 docker-engine = { path = "../docker-engine" }
 workload-lifecycle = { path = "../workload-lifecycle" }
@@ -27,7 +28,6 @@ prost-build = "0.14"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
-host-filesystem = { path = "../host-filesystem" }
 mcap = { version = "=0.26.0", default-features = false }
 telemetry-protocol = { path = "../telemetry/protocol" }
 

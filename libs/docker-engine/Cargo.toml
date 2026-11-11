@@ -1,20 +1,17 @@
 [package]
 name = "docker-engine"
-description = "Shared Docker ownership cleanup and filesystem capture"
+description = "Docker ownership cleanup and storage observations"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 bollard = { version = "=0.21.1", default-features = false, features = ["http", "pipe"] }
-hex = "0.4"
 host-filesystem = { path = "../host-filesystem" }
 libc = "0.2"
-orchestrator = { path = "../orchestrator" }
 prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.11"
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process", "rt", "time"] }
 

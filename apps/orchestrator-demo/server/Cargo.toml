@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 compose-apps = { path = "../../../libs/compose-apps" }
+host-filesystem = { path = "../../../libs/host-filesystem" }
 docker-engine = { path = "../../../libs/docker-engine" }
 workload-docker = { path = "../../../libs/workload-docker" }
 workload-lifecycle = { path = "../../../libs/workload-lifecycle" }

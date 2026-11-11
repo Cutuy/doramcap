@@ -1,17 +1,19 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
 use super::ComposeRunReport;
 use compose_apps::compose::{Diagnostics, adapter::private_write, error::invalid};
-use docker_engine::docker_proto::{HostView, OwnedContainer};
-use docker_engine::{
-    filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
-    overlay::{FinalizeOverlays, OverlayResults, OverlaySet},
+use docker_engine::docker_proto::OwnedContainer;
+use host_filesystem::filesystem_proto::HostView;
+use host_filesystem::{
+    filesystem::{CollectInput, FilesystemBaseline, FilesystemChanges},
+    overlay::{OverlayResults, OverlaySet},
 };
-use orchestrator::{Input, LocalExecutor, Step};
+use orchestrator::{LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{
     path::PathBuf,
     rc::{Rc, Weak},
 };
+use workload_lifecycle::capture::{self, CaptureFinalization};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeInput {
@@ -50,7 +52,7 @@ impl Step for FinalizeRun {
             .executor
             .upgrade()
             .ok_or_else(|| orchestrator::Error::message("run executor dropped"))?;
-        let changes = if input.shutdown.stopped {
+        let finalized = if input.shutdown.stopped {
             let result = async {
                 let state = self
                     .adapter
@@ -58,8 +60,23 @@ impl Step for FinalizeRun {
                     .inspect()
                     .await
                     .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+                let containers: Vec<_> = state
+                    .containers
+                    .into_iter()
+                    .map(|container| OwnedContainer {
+                        consumer: format!("{}/{}", input.project.name, container.service),
+                        id: container.id,
+                    })
+                    .collect();
+                let container_layers = docker_engine::filesystem::container_changes(
+                    &self.adapter.engine,
+                    &containers,
+                    &input.baseline.directory,
+                )
+                .await
+                .map_err(|e| orchestrator::Error::message(e.to_string()))?;
                 let collect = CollectInput {
-                    baseline: input.baseline,
+                    baseline: input.baseline.clone(),
                     host_views: input
                         .overlays
                         .as_ref()
@@ -70,56 +87,55 @@ impl Step for FinalizeRun {
                             view: tree.merged.to_string_lossy().into(),
                         })
                         .collect(),
-                    containers: state
-                        .containers
-                        .into_iter()
-                        .map(|container| OwnedContainer {
-                            consumer: format!("{}/{}", input.project.name, container.service),
-                            id: container.id,
-                        })
-                        .collect(),
+                    observations: docker_engine::filesystem::volume_observations(
+                        &self.adapter.engine,
+                        &input.baseline,
+                    )
+                    .await
+                    .map_err(|e| orchestrator::Error::message(e.to_string()))?,
+                    container_layers: Some(container_layers),
                 };
-                executor.run::<CollectFilesystemChanges>(collect).await
+                Ok::<_, orchestrator::Error>(
+                    capture::finalize(&executor, collect, input.overlays.clone()).await,
+                )
             }
             .await;
             match result {
-                Ok(changes) => Some(changes),
+                Ok(finalized) => finalized,
                 Err(error) => {
                     self.failure("filesystem changes", error);
-                    None
+                    CaptureFinalization {
+                        changes: None,
+                        results: None,
+                        failures: vec![],
+                    }
                 }
             }
         } else {
-            None
+            CaptureFinalization {
+                changes: None,
+                results: None,
+                failures: vec![],
+            }
         };
+        for (operation, error) in finalized.failures {
+            self.failure(operation, error);
+        }
+        let changes = finalized.changes;
+        let filesystem_results = finalized.results;
         let mut evidence_durable = input.shutdown.stopped && changes.is_some();
         if input.overlays.is_none()
             && let Some(changes) = &changes
             && let Err(error) = super::super::compose_lifecycle::save_outer_evidence(
                 &input.artifacts,
                 &input.id,
-                changes.value(),
+                changes,
             )
         {
             self.failure("filesystem checkpoint", error);
             evidence_durable = false;
         }
-        let filesystem_results =
-            if let (Some(changes), Some(overlays)) = (&changes, &input.overlays) {
-                match executor
-                    .run::<FinalizeOverlays>(Input::new(overlays.clone()).after(changes))
-                    .await
-                {
-                    Ok(finalized) => Some(finalized.into_value()),
-                    Err(error) => {
-                        self.failure("finalize overlays", error);
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-        let filesystem_changes = changes.map(|c| c.into_value());
+        let filesystem_changes = changes;
         let preserve_volumes = filesystem_changes
             .as_ref()
             .is_none_or(|c| !c.named_volumes.coverage_complete);
