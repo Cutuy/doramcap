@@ -27,10 +27,10 @@ the implementation leaves installer and host settings unchanged.
   post-removal journal lookup after the rebase.
 - [x] Recheck low-rate, burst and saturation output with a quiet container after
   the rebase; record loss as a measurement.
-- [ ] ARM64 job 670 is queued/running for this integration. Worker snapshot:
+- [x] ARM64 job 670 passed for this integration. Worker snapshot:
   `/home/doramcap-ci/jobs/5e6b1204a695424284a84713f441fb43`.
 
-Validated runtime/test source: `02ad06d3`, rebased onto main `3eb0381f`.
+Validated Rust runtime/test source: `02ad06d3`, rebased onto main `3eb0381f`.
 Release results: `compose-apps` 65 passed / 3 ignored; `workload-docker` 18 passed;
 focused Clippy, formatting and library boundaries passed. Console typecheck and
 server tests passed with pinned Node 26.13.0: 119 passed / 1 skipped. Both opt-in
@@ -38,8 +38,11 @@ Docker/journal tests passed as measurements; the latest saturation run retained
 22/60 quiet lines per stream and lost all quiet markers after the noisy exit.
 Architecture SVGs were rendered and local document links checked.
 
-Earlier ARM64 job 667 passed on pre-rebase implementation `788f296f`; it does not
-qualify this integration. Full local workspace CI was not run. The remaining
+ARM64 job 670 passed default/all-feature workspace Clippy and tests, storage
+without default features, native resource/supervisor checks and the worker's
+other checks. The later Review-only filter in `34cfa1a3` passed the Console
+typecheck and 119 server tests on pinned Node 26.13.0. Rust source is unchanged
+by that follow-up. Full local workspace CI was not run. The remaining
 journal-export and run-file checks belong to deferred milestone 2.
 
 Earlier validation and counts are in the
