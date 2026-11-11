@@ -154,7 +154,7 @@ backend qualification are deferred to the adoption PRs below.
 - [ ] Capture Docker exec events for the full run and assert zero Dora control exec launches (`status`, `start`, `list`, `node stop`, `down`).
 - [ ] Run focused locked release-profile checks, then required workspace/hosted CI and ARM64 qualification on the adoption revision; record native Dora results separately.
 
-Compose implementation: focused shared preparation/access tests (5) and locked release compilation pass. Real Docker/Dora, cancellation/crash, full CI and ARM64 qualification are in progress.
+Compose implementation: focused shared preparation/access tests (5) and locked release compilation pass. Real Dora 1.1.0 passed shared Start/session parity with the native CLI in authenticated and unauthenticated modes. Docker backend, cancellation/crash, full CI and ARM64 qualification are in progress.
 
 ## Follow-up PR 2: systemd adoption
 

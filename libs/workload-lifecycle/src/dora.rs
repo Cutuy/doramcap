@@ -130,9 +130,11 @@ pub async fn token(
             if !metadata.is_file()
                 || metadata.uid() != unsafe { libc::geteuid() }
                 || metadata.mode() & 0o077 != 0
-                || metadata.len() > (TOKEN_HEX_BYTES + 1) as u64
             {
                 return Err("Dora run-local token requires current-user ownership and private file permissions".into());
+            }
+            if metadata.len() > (TOKEN_HEX_BYTES + 1) as u64 {
+                return Err("invalid Dora run-local token length".into());
             }
             let mut bytes = Vec::new();
             file.take((TOKEN_HEX_BYTES + 2) as u64)
@@ -370,6 +372,31 @@ mod tests {
         };
         let (result, ()) = tokio::join!(token(&directory, true, deadline()), create);
         assert_eq!(result.unwrap(), Some(secret));
+        // Act / Assert: malformed, oversized and symlinked credentials never authenticate.
+        std::fs::write(&path, "z".repeat(TOKEN_HEX_BYTES)).unwrap();
+        assert!(
+            token(&directory, true, deadline())
+                .await
+                .unwrap_err()
+                .contains("invalid")
+        );
+        std::fs::write(&path, "a".repeat(TOKEN_HEX_BYTES + 2)).unwrap();
+        assert!(
+            token(&directory, true, deadline())
+                .await
+                .unwrap_err()
+                .contains("length")
+        );
+        std::fs::remove_file(&path).unwrap();
+        let sibling = directory.join("other");
+        std::fs::write(&sibling, "a".repeat(TOKEN_HEX_BYTES)).unwrap();
+        std::os::unix::fs::symlink(&sibling, &path).unwrap();
+        assert!(
+            token(&directory, true, deadline())
+                .await
+                .unwrap_err()
+                .contains("unreadable")
+        );
         // Act / Assert: missing credentials exhaust the caller's deadline, never establish no-auth.
         std::fs::remove_file(&path).unwrap();
         assert!(
