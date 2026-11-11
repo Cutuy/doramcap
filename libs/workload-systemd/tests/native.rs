@@ -729,6 +729,37 @@ async fn stop_at_runtime_preparation_keeps_cleanup_observable() {
 }
 
 /// Run `plan`, stop it `OBSERVATION` after readiness, and return its report.
+/// Observe transient unit creation throughout Dora execution and teardown.
+async fn run_without_control_units(plan: (RunPlan, SystemdPlan)) -> SystemdRunReport {
+    use futures_util::{FutureExt, StreamExt};
+    let connection = zbus::Connection::system().await.unwrap();
+    let manager = zbus_systemd::systemd1::ManagerProxy::new(&connection)
+        .await
+        .unwrap();
+    manager.subscribe().await.unwrap();
+    let mut created = manager.receive_unit_new().await.unwrap();
+    let mut observed = Vec::new();
+    let run = run_for_a_while(plan);
+    tokio::pin!(run);
+    loop {
+        tokio::select! {
+            report = &mut run => {
+                // A manager reply orders already-emitted unit signals before the final check.
+                manager.list_units().await.unwrap();
+                while let Some(Some(event)) = created.next().now_or_never() { observed.push(event.args().unwrap().id.to_owned()); }
+                let prefix = report.units.iter().find_map(|unit| unit.unit.strip_suffix("-dora-coordinator.service")).expect("coordinator exit evidence");
+                assert!(!observed.iter().any(|name| name.starts_with(&format!("{prefix}-dora-cli-"))), "transient control units: {observed:?}");
+                return report;
+            },
+            event = created.next() => {
+                let event = event.expect("systemd unit event stream ended");
+                let arguments = event.args().unwrap();
+                observed.push(arguments.id.to_owned());
+            }
+        }
+    }
+}
+
 async fn run_for_a_while((run, plan): (RunPlan, SystemdPlan)) -> SystemdRunReport {
     observe_run_for_a_while((run, plan)).await.0
 }
@@ -1413,8 +1444,9 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         .join("artifacts space%quote\"slash\\")
         .to_string_lossy()
         .into_owned();
+    let mut changed_plan = plan.clone();
     // Act
-    let report = run_for_a_while(plan).await;
+    let report = run_without_control_units(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
     let names: Vec<_> = report.units.iter().map(|unit| unit.unit.as_str()).collect();
@@ -1450,6 +1482,78 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         }
     }
     assert!(runtime.join("dataflow.yml").is_file());
+    assert!(
+        runtime
+            .join(workload_lifecycle::dora::SESSION_FILE)
+            .is_file()
+    );
+    assert!(std::fs::read_dir(&runtime).unwrap().all(|entry| {
+        !entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .starts_with("cli-")
+    }));
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+    // Arrange: edit the captured graph after preparation has reported success.
+    let session_before =
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap();
+    changed_plan.0.id = "changed".into();
+    changed_plan.0.artifacts = fixture
+        .root
+        .join("changed-artifacts")
+        .to_string_lossy()
+        .into_owned();
+    let artifacts = PathBuf::from(&changed_plan.0.artifacts);
+    let (ready, readiness) = oneshot::channel();
+    let stop = async {
+        if readiness.await.is_ok() {
+            tokio::time::sleep(OBSERVATION).await;
+        }
+    };
+    // Act
+    let rejected = SystemdRunner::new()
+        .run(
+            changed_plan.0,
+            changed_plan.1,
+            stop,
+            move |event: &orchestrator::Event| {
+                if event.invocation.step == "systemd.prepare"
+                    && event.state == orchestrator::State::Succeeded
+                {
+                    let captured: Vec<_> = std::fs::read_dir(artifacts.join("inputs"))
+                        .unwrap()
+                        .map(|entry| entry.unwrap().path().join("dataflow"))
+                        .filter(|path| path.is_file())
+                        .collect();
+                    assert_eq!(captured.len(), 1);
+                    std::fs::write(
+                        &captured[0],
+                        r#"{"nodes":[{"id":"user","path":"dynamic","outputs":["changed"]}]}"#,
+                    )
+                    .unwrap();
+                }
+            },
+            Some(ready),
+        )
+        .await
+        .unwrap();
+    // Assert: no graph/session mutation precedes rejection; native resources still exit.
+    assert!(
+        rejected
+            .execution_error
+            .as_deref()
+            .is_some_and(|message| message.contains("frozen Dora graph changed")),
+        "{rejected:#?}"
+    );
+    assert!(
+        rejected.writers_stopped && rejected.cleanup_verified,
+        "{rejected:#?}"
+    );
+    assert_eq!(
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap(),
+        session_before
+    );
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]
@@ -1493,7 +1597,8 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
             &file,
             contents
                 .replace("6013", &coordinator)
-                .replace("6014", &daemon),
+                .replace("6014", &daemon)
+                + "\nNetworkNamespacePath=/proc/1/ns/net\n",
         )
         .unwrap();
         let mut binds = vec![Bind {
@@ -1532,7 +1637,8 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
     plan.1.programs.push(participant);
     drop(ports);
     // Act
-    let report = run_for_a_while(plan).await;
+    let mut isolated_plan = plan.clone();
+    let report = run_without_control_units(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
     let environment = std::fs::read_to_string(runtime.join("environment")).unwrap();
@@ -1541,6 +1647,39 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
         [daemon.as_str(), "/config/zenoh.json5"]
     );
     assert!(runtime.join("dataflow.yml").is_file());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+    // Arrange: the same native unit explicitly requests an isolated network.
+    let session_before =
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap();
+    let coordinator_file = fixture.root.join("dora-coordinator.service");
+    let isolated = std::fs::read_to_string(&coordinator_file)
+        .unwrap()
+        .replace("NetworkNamespacePath=/proc/1/ns/net", "PrivateNetwork=yes");
+    std::fs::write(coordinator_file, isolated).unwrap();
+    isolated_plan.0.id = "isolated".into();
+    isolated_plan.0.artifacts = fixture
+        .root
+        .join("isolated-artifacts")
+        .to_string_lossy()
+        .into_owned();
+    // Act
+    let rejected = run_for_a_while(isolated_plan).await;
+    // Assert: rejection precedes Start/session mutation, and every owned unit is stopped.
+    assert!(
+        rejected
+            .execution_error
+            .as_deref()
+            .is_some_and(|message| message.contains("host network")),
+        "{rejected:#?}"
+    );
+    assert!(
+        rejected.writers_stopped && rejected.cleanup_verified,
+        "{rejected:#?}"
+    );
+    assert_eq!(
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap(),
+        session_before
+    );
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 

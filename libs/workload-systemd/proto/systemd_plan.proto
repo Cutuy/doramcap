@@ -70,6 +70,8 @@ message PreparedRun {
   doramcap.launch.v1.RunPlan run = 1;
   SystemdPlan plan = 2;
   ConfigurationSnapshot snapshot = 3;
+  // SHA-256 of captured expanded graph bytes; empty when no graph was supplied.
+  string dataflow_sha256 = 4;
 }
 
 // Successful removal of a rejected preparation's owned artifacts.

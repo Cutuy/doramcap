@@ -168,23 +168,34 @@ from the measured lifecycle results. GPU/IPC qualification is outside this chang
 
 **Work items**
 
-- [ ] Add the existing `dora-control` dependency to `workload-systemd`; retain the client in [`dora::Dora`](../../workload-systemd/src/dora.rs), owned by [`SystemdRunning.dora`](../../workload-systemd/src/running.rs), before the first Start await. Retain native unit handles through partial startup.
-- [ ] Reuse shared descriptor/Start preparation; preserve graph copy/hash, binds, session artifacts and runtime-visible paths. Remove `Dora::registered` when adopting client identity.
-- [ ] Resolve generated-program/supplied-unit endpoints and run-local credentials. Validate host network and executor access; preserve native users/binds/roots. Remove CLI-only executable discovery when unused.
-- [ ] Replace `await_daemon`, `register` and `down` with client calls and shared deadlines. Preserve stop-request monitoring and reverse-phase teardown.
-- [ ] Continue native unit stops after timeout, disconnect or unresolved graph identity; retain diagnostics and independently verify exit before removal.
-- [ ] Delete `Dora::cli`, counters, `cli-*.out`, `CLI_PREFIX` and unused CLI-only name reservations/tests. Retain `Manager::run_oneshot` for independent consumers.
+- [x] Add the existing `dora-control` dependency to `workload-systemd`; retain the client in [`dora::Dora`](../../workload-systemd/src/dora.rs), owned by [`SystemdRunning.dora`](../../workload-systemd/src/running.rs), before the first Start await. Retain native unit handles through partial startup.
+- [x] Reuse shared descriptor/Start preparation; preserve graph copy/hash, binds, session artifacts and runtime-visible paths. Remove `Dora::registered` when adopting client identity.
+- [x] Resolve generated-program/supplied-unit endpoints and run-local credentials. Validate host network and executor access; preserve native users/binds/roots. Remove CLI-only executable discovery when unused.
+- [x] Replace `await_daemon`, `register` and `down` with client calls and shared deadlines. Preserve stop-request monitoring and reverse-phase teardown.
+- [x] Continue native unit stops after timeout, disconnect or unresolved graph identity; retain diagnostics and independently verify exit before removal.
+- [x] Delete `Dora::cli`, counters, `cli-*.out`, `CLI_PREFIX` and unused CLI-only name reservations/tests. Remove the private `Manager::run_oneshot` helper; its only caller was Dora control.
 
 **Validation**
 
-- [ ] Extend [`tests/native.rs`](../../workload-systemd/tests/native.rs): `dora_runs_as_units_and_registers_the_graph` and `dora_app_units_resolve_their_native_executable_and_register_the_graph`.
-- [ ] Qualify generated programs and supplied units with real Dora; compare shared Start fields, graph/session artifacts, paths, shared-memory access and reports.
-- [ ] Exercise credential and endpoint failures, including incompatible native users/network namespaces. Assert no Start, no permission changes and verified native cleanup.
-- [ ] Cancel at registration boundaries and hang/disconnect control; verify bounded cleanup, exit, evidence and removal outcomes.
-- [ ] Kill the controller after graph acceptance and before UUID receipt. Assert new-run refusal, explicit scope cleanup, preserved artifacts and a subsequent clean run; unverified exit must keep admission blocked.
-- [ ] Run concurrent repository scopes; verify independent endpoints, credentials/UUIDs and native cleanup ownership.
-- [ ] Capture transient-unit creation and assert zero `dora-cli-*` control units and no generated `cli-*.out` files.
-- [ ] Run focused locked release-profile checks and required workspace/hosted CI/ARM64 qualification; build unprivileged and elevate only native test executables as documented in AGENTS.md.
+- [x] Extend [`tests/native.rs`](../../workload-systemd/tests/native.rs) and qualify generated programs and supplied units with real Dora 1.1.0, shared-memory attachment, graph/session artifacts, reports and verified native exit.
+- [x] Reject a mutated captured graph before Start/session mutation; preserve the prior session artifact and verify native cleanup. The regression failed before the checksum fix and passes afterward.
+- [x] Preserve an explicit host `NetworkNamespacePath`; reject a live isolated coordinator namespace before Start/session mutation and verify native cleanup.
+- [x] Capture transient-unit creation throughout native execution; assert zero `dora-cli-*` control units and no `cli-*.out` files.
+- [x] Preserve older serialized `PreparedRun` JSON while retaining the captured graph checksum in new preparations.
+- [x] Run full local CI and ARM64 worker job 653 on the final runtime revision (`f0bf7393`), after the namespace refinement. Focused locked release/CI and native tests pass; builds run unprivileged and only native test executables are elevated.
+- [x] Confirm hosted Rust/Node/MCAP checks on x86 and ARM after the namespace refinement (`643b83e7`); the subsequent change only records these results.
+- [ ] Inject credential/native-user failures through systemd services; shared access tests cover token validation and native Dora rejects a wrong bearer token.
+- [ ] Inject cancellation specifically at registration acceptance/UUID boundaries and hang/disconnect control in the systemd adapter. Shared client tests cover these protocol outcomes and deadlines.
+- [ ] Kill the controller before UUID receipt, exercise new-run refusal/explicit scope cleanup and inject failed exit verification. Existing native ownership/admission cleanup paths remain in use; this exact crash window is unqualified.
+- [ ] Run concurrent systemd repository scopes; shared native-runtime concurrency does not establish backend scope isolation.
 
 Each adoption PR records completed/deferred checks here and updates its backend
 documentation. GPU/IPC qualification requires its own capable host.
+
+Results: 22 unit/preparation tests and both real systemd/Dora cases pass, including
+frozen-input and namespace rejection. One capability-only library test remains
+ignored by the unprivileged workspace run. Complete local CI and ARM64 worker job
+653 pass after the namespace refinement. Hosted Rust/Node/MCAP pass on x86/ARM
+at `643b83e7`. ARM64 job 652 separately passed real Dora
+authentication/session/concurrency qualification. Native systemd is qualified on
+the local x86 host; the worker does not qualify these systemd/Dora fixtures.

@@ -10,6 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.systemd_plan.v1",
             "#[derive(serde::Serialize, serde::Deserialize)]",
         )
+        .field_attribute(
+            ".doramcap.systemd_plan.v1.PreparedRun.dataflow_sha256",
+            "#[serde(default)]",
+        )
         .compile_protos(
             &[
                 "proto/systemd_plan.proto",

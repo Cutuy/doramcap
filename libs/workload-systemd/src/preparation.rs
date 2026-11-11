@@ -119,6 +119,7 @@ fn inputs(input: PreparationInput) -> Result<(RunPlan, SystemdPlan)> {
 
 struct InputWriter {
     hash: Sha256,
+    content_hash: Option<Sha256>,
     file: Option<File>,
 }
 impl Write for InputWriter {
@@ -127,6 +128,9 @@ impl Write for InputWriter {
             file.write_all(bytes)?;
         }
         self.hash.update(bytes);
+        if let Some(hash) = &mut self.content_hash {
+            hash.update(bytes);
+        }
         Ok(bytes.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
@@ -135,7 +139,7 @@ impl Write for InputWriter {
 }
 
 fn input(source: &str, name: &str, destination: Option<&Path>) -> Result<String> {
-    capture_files(&[PathBuf::from(source)], name, destination)
+    capture_files(&[PathBuf::from(source)], name, destination).map(|(path, _)| path)
 }
 
 /// Capture the unit and its adjacent native drop-ins into one ordered unit file.
@@ -165,10 +169,14 @@ fn unit_input(source: &str, name: &str, destination: Option<&Path>) -> Result<St
             sources.push(path);
         }
     }
-    capture_files(&sources, name, destination)
+    capture_files(&sources, name, destination).map(|(path, _)| path)
 }
 
-fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) -> Result<String> {
+fn capture_files(
+    sources: &[PathBuf],
+    name: &str,
+    destination: Option<&Path>,
+) -> Result<(String, Option<String>)> {
     let copy = destination
         .map(|directory| {
             OpenOptions::new()
@@ -181,6 +189,7 @@ fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) ->
         .transpose()?;
     let mut writer = InputWriter {
         hash: Sha256::new(),
+        content_hash: (name == "dataflow").then(Sha256::new),
         file: copy,
     };
     let mut access = None;
@@ -207,8 +216,23 @@ fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) ->
             writer.hash.update((access.len() as u64).to_le_bytes());
             writer.hash.update(access);
             // Stream the observed size so growing inputs cannot cause unbounded capture.
-            let copied =
-                std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?;
+            let copied = if name == "dataflow" {
+                let mut bytes = Vec::new();
+                (&mut file)
+                    .take(metadata.len())
+                    .read_to_end(&mut bytes)
+                    .map_err(error)?;
+                let graph = workload_lifecycle::dora::graph(
+                    source.to_str().ok_or("graph path is not UTF-8")?,
+                    &bytes,
+                )?;
+                writer
+                    .write_all(&serde_json::to_vec(&graph).map_err(error)?)
+                    .map_err(error)?;
+                bytes.len() as u64
+            } else {
+                std::io::copy(&mut (&mut file).take(metadata.len()), &mut writer).map_err(error)?
+            };
             let after = file.metadata().map_err(error)?;
             if copied != metadata.len()
                 || metadata.len() != after.len()
@@ -226,6 +250,7 @@ fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) ->
             access = Some(observed);
         }
     }
+    let content_hash = writer.content_hash.map(|hash| hex::encode(hash.finalize()));
     let key = format!("{}/{name}", hex::encode(writer.hash.finalize()));
     if let (Some(directory), Some(copy), Some((metadata, acl))) = (destination, writer.file, access)
     {
@@ -238,7 +263,7 @@ fn capture_files(sources: &[PathBuf], name: &str, destination: Option<&Path>) ->
             .map_err(error)?;
         std::fs::rename(directory.join(CAPTURE_FILE), target).map_err(error)?;
     }
-    Ok(format!("{ARTIFACTS}/{INPUTS}/{key}"))
+    Ok((format!("{ARTIFACTS}/{INPUTS}/{key}"), content_hash))
 }
 
 fn restore_access(file: &File, metadata: &Metadata, acl: Option<&[u8]>) -> Result<()> {
@@ -362,8 +387,15 @@ fn capture(
             Err(e) => return Err(format!("{}: {e}", bind.source)),
         }
     }
+    let mut dataflow_sha256 = String::new();
     if !run.dataflow_file.is_empty() {
-        run.dataflow_file = input(&run.dataflow_file, "dataflow", destination)?;
+        let (path, hash) = capture_files(
+            &[PathBuf::from(&run.dataflow_file)],
+            "dataflow",
+            destination,
+        )?;
+        run.dataflow_file = path;
+        dataflow_sha256 = hash.expect("dataflow capture checksum");
     }
     let mut normalized_run = run.clone();
     let mut normalized_plan = plan.clone();
@@ -380,6 +412,7 @@ fn capture(
         run: Some(run),
         plan: Some(plan),
         snapshot: Some(snapshot),
+        dataflow_sha256,
     })
 }
 
@@ -459,6 +492,15 @@ fn normalize(run: &mut RunPlan, plan: &mut SystemdPlan, root: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn older_preparation_json_remains_readable() {
+        // Arrange / Act
+        let prepared: crate::PreparedRun =
+            serde_json::from_str(r#"{"run":null,"plan":null,"snapshot":null}"#).unwrap();
+        // Assert
+        assert!(prepared.dataflow_sha256.is_empty());
+    }
+
     use super::*;
     use crate::{Bind, Program};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -672,7 +714,11 @@ mod tests {
         assert!(!Path::new(&review.artifacts).exists());
         assert!(!Path::new(&execution.artifacts).exists());
         // Act / Assert: generated names do not hide changed graph/config contents.
-        std::fs::write(&execution.dataflow_file, "{\"nodes\":[{\"id\":\"new\"}]}").unwrap();
+        std::fs::write(
+            &execution.dataflow_file,
+            "{\"nodes\":[{\"id\":\"new\",\"path\":\"dynamic\"}]}",
+        )
+        .unwrap();
         assert_ne!(expected, inspect(&execution, &fresh).await.unwrap());
         std::fs::write(&execution.dataflow_file, "{\"nodes\":[]}").unwrap();
         std::fs::write(
