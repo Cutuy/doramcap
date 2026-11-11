@@ -165,6 +165,8 @@ seven stages are agreed.
 
 ## Order of work
 
+![Order of work](111126-holoscan-work-order.svg)
+
 Shared foundation work runs one piece at a time, because the pieces change the
 same Compose and lifecycle code. The Holoscan runner starts in parallel and
 joins at Build and run.
