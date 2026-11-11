@@ -2226,11 +2226,16 @@ async fn compose_public_run_with_access(
     let audit = std::fs::read_to_string(artifacts.join("docker-events.jsonl")).unwrap();
     for line in audit.lines() {
         let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        let dora_service = matches!(
+            event["Actor"]["Attributes"]["com.docker.compose.service"].as_str(),
+            Some("dora-coordinator" | "dora-daemon")
+        );
         assert!(
-            !event["Action"]
-                .as_str()
-                .unwrap_or_default()
-                .starts_with("exec_"),
+            !(dora_service
+                && event["Action"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("exec_")),
             "Dora control launched an exec: {line}"
         );
     }

@@ -107,9 +107,6 @@ impl ExperimentOwner {
         )
         .await
         .map_err(|_| invalid("Dora native startup deadline expired"))??;
-        tokio::time::timeout_at(deadline, self.inspect_runtime())
-            .await
-            .map_err(|_| invalid("Dora native inspection deadline expired"))??;
         let token = workload_lifecycle::dora::token(Path::new(&source), authenticated, deadline)
             .await
             .map_err(invalid)?;
