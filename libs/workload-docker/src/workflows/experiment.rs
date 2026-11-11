@@ -110,19 +110,6 @@ impl ExperimentOwner {
                 &serde_json::to_vec_pretty(&workload_lifecycle::dora::session_artifact(session))?,
             )
             .await?;
-            let ignore = out.join(".gitignore");
-            let mut entries = match tokio::fs::read_to_string(&ignore).await {
-                Ok(entries) => entries,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-                Err(e) => return Err(e.into()),
-            };
-            if !entries
-                .lines()
-                .any(|line| line == "/dataflow.dora-session.yaml")
-            {
-                entries.push_str("\n/dataflow.dora-session.yaml\n");
-                crate::compose::adapter::private_write(&ignore, entries.as_bytes()).await?;
-            }
             let deadline = self
                 .startup_deadline
                 .ok_or_else(|| invalid("Dora runtime has not started"))?;
