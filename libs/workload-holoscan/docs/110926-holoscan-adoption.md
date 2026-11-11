@@ -167,26 +167,38 @@ seven stages are agreed.
 
 ![Order of work](111126-holoscan-work-order.svg)
 
-Shared foundation work runs one piece at a time, because the pieces change the
-same Compose and lifecycle code. The Holoscan runner starts in parallel and
-joins at Build and run.
+Work runs in parallel wherever the pieces only risk ordinary code conflicts. It
+is serial only where one piece decides the shape another builds on.
 
-| Order | Shared foundations | Needs first |
-| --- | --- | --- |
-| 1 | Admission lock ([#315](https://github.com/Cutuy/doramcap/pull/315)) | Nothing |
-| 2 | Extract capture ([#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1) | Follows the lock |
-| 3 | Shared apps crate ([#317](https://github.com/Cutuy/doramcap/pull/317)) | Follows the lock and extract capture |
-| 4 | Show file changes in Console (#316 milestone 3) | Extract capture |
-| 5 | Keep files with the run (#316 milestone 4) | Extract capture |
-| 6 | systemd capture (#316 milestone 2) | Extract capture |
-| 7 | Log dump ([#314](https://github.com/Cutuy/doramcap/pull/314)) | Most useful after 4 and 5 |
+Six pieces can start now:
 
-| Order | Holoscan runner | Needs first |
+| Piece | Where |
+| --- | --- |
+| Admission lock | [#315](https://github.com/Cutuy/doramcap/pull/315) |
+| Move capture | [#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1 |
+| Show file changes in Console | #316 milestone 3 |
+| Apps crate pieces: project steps, Dora in containers, app preparation | [#317](https://github.com/Cutuy/doramcap/pull/317) milestones 1 to 3 |
+| Journal log driver for Compose | [#314](https://github.com/Cutuy/doramcap/pull/314) |
+| Holoscan probes, discovery, Prepare and Review | Runner milestones 1 to 3 |
+
+These wait for another piece:
+
+| Piece | Waits for | Reason |
 | --- | --- | --- |
-| 1 | Real-container probes (milestone 1) | Nothing |
-| 2 | Crate, discovery, Prepare and Review (milestones 2 and 3) | Nothing |
-| 3 | Build and run (milestones 4 and 5) | Admission lock and extracted capture |
-| 4 | System apps, recovery and acceptance (milestones 6 and 7) | Build and run, and the shared apps crate |
+| systemd capture (#316 milestone 2) | Move capture | systemd cannot use the capture code until it leaves the Docker crate. |
+| Keep files with the run (#316 milestone 4) | Move capture, show file changes | It changes the finalization that the move relocates, and it uses the download route. |
+| Apps crate: system apps sequences (#317 milestone 4) | Move capture, apps crate pieces | Both reshape the Compose run sequence and reset. The capture move decides that shape first. |
+| Log dump (#314) | Journal log driver, keep files | The dumped files are listed and downloaded through the run-file route. |
+| Holoscan Build and run (runner milestones 4 and 5) | Admission lock, Prepare | Build takes the lock. |
+| Holoscan system apps and acceptance (runner milestones 6 and 7) | Build and run, apps crate system apps sequences | They start system apps with the shared pieces. |
+| Holoscan web app screens | Build and run | Their plan is written once the backend runs. |
+
+Expected code conflicts, to be handled as they come:
+
+- The lock, the capture move and the apps crate all move code out of the Compose crate.
+- Show file changes builds on report types that the capture move relocates.
+- Holoscan's run uses the capture steps from wherever they live when it starts.
+- Holoscan's Prepare and the file-change report both extend Console's execution contract.
 
 ## Agreed scope
 
