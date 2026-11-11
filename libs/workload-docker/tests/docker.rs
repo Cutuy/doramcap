@@ -2753,8 +2753,8 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
     // Arrange: another workflow supplies Dora and system apps without user services.
     let mut systems_only = preparation::PrepareInput::try_from(spec.clone()).unwrap();
     systems_only.extra_apps.clear();
-    systems_only.run.id.push_str("-system");
-    systems_only.run.artifacts = root.join("system-only").to_string_lossy().into_owned();
+    systems_only.run_plan.id.push_str("-system");
+    systems_only.run_plan.artifacts = root.join("system-only").to_string_lossy().into_owned();
 
     // Act
     let resolved = preparation::resolve(&adapter, systems_only).await.unwrap();

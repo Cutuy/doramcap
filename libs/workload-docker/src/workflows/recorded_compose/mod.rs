@@ -490,7 +490,7 @@ impl TryFrom<ComposeRun> for PrepareInput {
     /// Build shared preparation inputs, rejecting paths that cannot cross the launch contract.
     fn try_from(spec: ComposeRun) -> Result<Self> {
         Ok(Self {
-            run: spec.run_plan()?,
+            run_plan: spec.run_plan()?,
             dora_apps: spec.dora_apps,
             system_apps: spec.system_apps,
             extra_apps: spec.projects,

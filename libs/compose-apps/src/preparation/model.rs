@@ -406,20 +406,20 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
 }
 /// Validate run identity, paths, app keys and budgets before creating artifacts.
 pub(super) fn validate(spec: &PrepareInput) -> Result<()> {
-    workload_lifecycle::plan::validate_host_shm_access(spec.run.host_shm_access)
+    workload_lifecycle::plan::validate_host_shm_access(spec.run_plan.host_shm_access)
         .map_err(invalid)?;
-    validate_name(&spec.run.id)?;
-    if !Path::new(&spec.run.repository_root).is_absolute() {
+    validate_name(&spec.run_plan.id)?;
+    if !Path::new(&spec.run_plan.repository_root).is_absolute() {
         return Err(invalid("repository root must be absolute"));
     }
-    validate_budgets(spec.run.readiness_seconds, spec.run.stop_seconds)?;
+    validate_budgets(spec.run_plan.readiness_seconds, spec.run_plan.stop_seconds)?;
     if (spec.extra_apps.is_empty() && spec.system_apps.is_empty() && spec.dora_apps.is_empty())
-        || std::iter::once(&spec.run.artifacts).any(|path| !Path::new(path).is_absolute())
+        || std::iter::once(&spec.run_plan.artifacts).any(|path| !Path::new(path).is_absolute())
     {
         return Err(invalid("require absolute artifact paths and app inputs"));
     }
-    if !spec.run.dataflow_file.is_empty()
-        && (spec.dora_apps.is_empty() || !Path::new(&spec.run.dataflow_file).is_absolute())
+    if !spec.run_plan.dataflow_file.is_empty()
+        && (spec.dora_apps.is_empty() || !Path::new(&spec.run_plan.dataflow_file).is_absolute())
     {
         return Err(invalid(
             "dataflow_file needs Dora apps and an absolute path",

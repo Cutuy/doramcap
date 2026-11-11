@@ -1,5 +1,6 @@
 //! Docker-owned accounting parents, expressed using the daemon's configured driver.
 use crate::preparation::PrepareInput;
+// build.rs generates these protobuf types in Cargo's build output directory.
 include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
 use crate::compose::{DockerAdapter, Result, error::invalid};
 use futures_util::future::LocalBoxFuture;
@@ -17,10 +18,10 @@ const PARENT_HASH_CHARS: usize = 12;
 /// Resolve a unique per-run parent without creating containers or requiring host D-Bus access.
 pub(crate) async fn placement(
     adapter: &DockerAdapter,
-    run: &PrepareInput,
+    input: &PrepareInput,
 ) -> Result<CgroupPlacement> {
     let info = tokio::time::timeout(
-        Duration::from_secs(run.run.readiness_seconds),
+        Duration::from_secs(input.run_plan.readiness_seconds),
         adapter.engine.client().info(),
     )
     .await
@@ -31,12 +32,12 @@ pub(crate) async fn placement(
             "system-app accounting requires Docker cgroup v2 CPU and memory accounting",
         ));
     }
-    let repository = std::fs::canonicalize(&run.run.repository_root)?;
-    let artifacts = std::fs::canonicalize(&run.run.artifacts)?;
+    let repository = std::fs::canonicalize(&input.run_plan.repository_root)?;
+    let artifacts = std::fs::canonicalize(&input.run_plan.artifacts)?;
     let digest = Sha256::new()
         .chain_update(repository.as_os_str().as_encoded_bytes())
         .chain_update([0])
-        .chain_update(run.run.id.as_bytes())
+        .chain_update(input.run_plan.id.as_bytes())
         .chain_update([0])
         .chain_update(artifacts.as_os_str().as_encoded_bytes())
         .finalize();

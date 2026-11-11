@@ -137,7 +137,7 @@ fn app(key: &str) -> ComposeProject {
 
 fn request() -> PrepareInput {
     PrepareInput {
-        run: workload_lifecycle::launch::RunPlan {
+        run_plan: workload_lifecycle::launch::RunPlan {
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: "run".into(),
             artifacts: "/runs/run".into(),
@@ -396,17 +396,17 @@ fn startup_dependencies_follow_system_apps_then_adopted_order() {
 fn request_validation_rejects_invalid_paths_keys_and_budgets() {
     // Arrange
     let cases: [fn(&mut PrepareInput); 8] = [
-        |s| s.run.id = "bad/id".into(),
-        |s| s.run.artifacts = "relative".into(),
-        |s| s.run.repository_root = "relative".into(),
+        |s| s.run_plan.id = "bad/id".into(),
+        |s| s.run_plan.artifacts = "relative".into(),
+        |s| s.run_plan.repository_root = "relative".into(),
         |s| {
             s.system_apps.clear();
             s.extra_apps.clear();
         },
         |s| s.extra_apps[0].key = s.system_apps[0].key.clone(),
         |s| s.extra_apps[0].directory = "relative".into(),
-        |s| s.run.readiness_seconds = 0,
-        |s| s.run.stop_seconds = 301,
+        |s| s.run_plan.readiness_seconds = 0,
+        |s| s.run_plan.stop_seconds = 301,
     ];
     assert!(validate(&request()).is_ok());
     for change in cases {
@@ -682,7 +682,7 @@ fn host_shm_access_requires_an_explicit_supported_mode() {
     let mut spec = request();
     for mode in [0, -1, i32::MAX] {
         // Arrange
-        spec.run.host_shm_access = mode;
+        spec.run_plan.host_shm_access = mode;
         // Act
         let error = validate(&spec).unwrap_err().to_string();
         // Assert
@@ -693,10 +693,10 @@ fn host_shm_access_requires_an_explicit_supported_mode() {
         workload_lifecycle::launch::HostShmAccess::Passthrough,
     ] {
         // Arrange
-        spec.run.host_shm_access = mode as i32;
+        spec.run_plan.host_shm_access = mode as i32;
         // Act
         let result = validate(&spec);
-        let plan = spec.run.clone();
+        let plan = spec.run_plan.clone();
         // Assert
         assert!(result.is_ok());
         assert_eq!(plan.host_shm_access, mode as i32);

@@ -188,7 +188,7 @@ pub(super) async fn capture(
         runtime,
     );
     let recordings: Vec<_> = spec
-        .run
+        .run_plan
         .recordings
         .iter()
         .map(|recording| {
@@ -200,9 +200,9 @@ pub(super) async fn capture(
         .collect();
     let settings = serde_json::to_vec(&(
         &spec.filesystem,
-        spec.run.host_shm_access,
-        spec.run.readiness_seconds,
-        spec.run.stop_seconds,
+        spec.run_plan.host_shm_access,
+        spec.run_plan.readiness_seconds,
+        spec.run_plan.stop_seconds,
         recordings,
         dora.services.keys().collect::<Vec<_>>(),
     ))?;
@@ -311,7 +311,7 @@ mod tests {
         let bytes = serde_json::to_vec(&model(root.path().to_str().unwrap())).unwrap();
         tokio::fs::write(&path, &bytes).await.unwrap();
         let mut spec = PrepareInput {
-            run: workload_lifecycle::launch::RunPlan {
+            run_plan: workload_lifecycle::launch::RunPlan {
                 host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 id: "compare".into(),
                 artifacts: root.path().to_string_lossy().into_owned(),
@@ -355,7 +355,7 @@ mod tests {
             "084a4357a51e35bf319c39e8e6a7691e1810bf09522274a448fe51f13d5b2d17"
         );
         // Act / Assert: policy, stages and graph contents are compared independently.
-        spec.run.stop_seconds += 1;
+        spec.run_plan.stop_seconds += 1;
         assert_ne!(
             original,
             capture(
@@ -370,7 +370,7 @@ mod tests {
             .await
             .unwrap()
         );
-        spec.run.stop_seconds -= 1;
+        spec.run_plan.stop_seconds -= 1;
         assert_ne!(
             original,
             capture(

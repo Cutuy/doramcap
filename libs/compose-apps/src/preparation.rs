@@ -29,7 +29,8 @@ const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 #[serde(deny_unknown_fields)]
 pub struct PrepareInput {
     /// Identity, paths, shared-memory policy, recordings, graph and startup/stop budgets.
-    pub run: workload_lifecycle::launch::RunPlan,
+    #[serde(rename = "run")]
+    pub run_plan: workload_lifecycle::launch::RunPlan,
     /// Runtime containers launched before system apps.
     pub dora_apps: Vec<ComposeProject>,
     /// Supporting containers stabilized before the optional extra group.
@@ -152,21 +153,21 @@ pub struct ResolvedRun {
 }
 
 /// Resolve inputs using the execution path, without reset, reservation, mounts or containers.
-/// `spec.run.artifacts` must name a new private directory beneath an existing parent.
+/// `spec.run_plan.artifacts` must name a new private directory beneath an existing parent.
 /// Callers compare the snapshot with fresh preparation in the runner's preflight callback.
 pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<ResolvedRun> {
     // Validate the request before creating run artifacts.
     model::validate(&spec)?;
-    docker_engine::files::create_private_dir(Path::new(&spec.run.artifacts)).await?;
-    let artifacts = tokio::fs::canonicalize(Path::new(&spec.run.artifacts)).await?;
+    docker_engine::files::create_private_dir(Path::new(&spec.run_plan.artifacts)).await?;
+    let artifacts = tokio::fs::canonicalize(Path::new(&spec.run_plan.artifacts)).await?;
     if !spec.mcap_writers.services.is_empty() || !spec.mcap_writers.apps.is_empty() {
-        validate_recording_host(&spec.mcap_writers.directories, &spec.run.id).await?;
+        validate_recording_host(&spec.mcap_writers.directories, &spec.run_plan.id).await?;
     }
     // Freeze Dora inputs and merge apps while recording their startup stages.
     let runtime_directory = artifacts.join("dora/runtime");
     tokio::fs::create_dir_all(&runtime_directory).await?;
     let runtime_directory = runtime_directory.to_string_lossy().into_owned();
-    let mut run = spec.run.clone();
+    let mut run = spec.run_plan.clone();
     let mut dora = crate::dora::DoraApps::default();
     let mut model = json!({"services":{}});
     let mut dora_services = Vec::new();
@@ -183,11 +184,11 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
             let mut normalized = adapter
                 .configuration()
                 .normalize(
-                    &spec.run.id,
+                    &spec.run_plan.id,
                     &model::app_input(app, &runtime_directory)?,
                     &crate::compose::adapter::project_name(
                         "experiment",
-                        Path::new(&spec.run.repository_root),
+                        Path::new(&spec.run_plan.repository_root),
                     ),
                 )
                 .await?;
@@ -222,10 +223,14 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
             diagnostics.extend(warnings);
         }
     }
-    model::validate_host_shm(&model, spec.run.host_shm_access)?;
-    validate_external_volume_shm(adapter, &model, spec.run.host_shm_access).await?;
-    validate_external_ipc(adapter, &model, spec.run.host_shm_access).await?;
-    model::configure_shm(&mut model, &mut system_services, spec.run.host_shm_access)?;
+    model::validate_host_shm(&model, spec.run_plan.host_shm_access)?;
+    validate_external_volume_shm(adapter, &model, spec.run_plan.host_shm_access).await?;
+    validate_external_ipc(adapter, &model, spec.run_plan.host_shm_access).await?;
+    model::configure_shm(
+        &mut model,
+        &mut system_services,
+        spec.run_plan.host_shm_access,
+    )?;
     let system_cgroup = if !dora_services.is_empty()
         || !system_services.is_empty()
         || model["services"].get(SHM_SERVICE).is_some()
@@ -248,7 +253,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
     crate::shared_dora::prepare(
         &mut dora,
         run.dora_runtime.as_mut(),
-        &spec.run.dataflow_file,
+        &spec.run_plan.dataflow_file,
         &artifacts,
     )
     .await?;
@@ -260,9 +265,9 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         &mut model,
         &dora,
         run.dora_runtime.as_ref(),
-        crate::shared_dora::owner(Path::new(&spec.run.repository_root)),
+        crate::shared_dora::owner(Path::new(&spec.run_plan.repository_root)),
     )?);
-    model::configure_stop_grace(&mut model, spec.run.stop_seconds)?;
+    model::configure_stop_grace(&mut model, spec.run_plan.stop_seconds)?;
     if let Some(dataflow) = run
         .dora_runtime
         .as_ref()
@@ -323,19 +328,19 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         .configuration()
         .resolve(ResolveInput {
             repository_root: Some(
-                Path::new(&spec.run.repository_root)
+                Path::new(&spec.run_plan.repository_root)
                     .to_str()
                     .ok_or_else(|| invalid("repository path is not UTF-8"))?
                     .into(),
             ),
-            run: spec.run.id.clone(),
+            run: spec.run_plan.id.clone(),
             artifacts: artifacts
                 .to_str()
                 .ok_or_else(|| invalid("artifact path is not UTF-8"))?
                 .into(),
             project: Some(ComposeProject {
                 key: "experiment".into(),
-                directory: spec.run.repository_root.clone(),
+                directory: spec.run_plan.repository_root.clone(),
                 files: vec![
                     manifest
                         .to_str()
