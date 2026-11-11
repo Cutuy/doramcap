@@ -4,6 +4,7 @@ package doramcap.console.v1;
 import "console-config.proto";
 import "workflow.proto";
 import "live.proto";
+import "filesystem.proto";
 
 // Omitted selection preserves host defaults; an explicit empty list selects no apps.
 message SystemAppSelection {
@@ -75,6 +76,17 @@ message StoppingService {
 message LiveStream { string id = 1; string app_id = 2; doramcap.console.live.v1.Kind kind = 3; }
 // One `/api/live` message: an encoded Status, or a live.v1.Frame relayed unmodified.
 message LiveMessage { oneof body { bytes status = 1; bytes frame = 2; } }
+// Saved bounded view of the immutable report; absent on runs without capture.
+message FileChanges {
+  doramcap.filesystem.v1.FileChangeReference report = 1;
+  repeated doramcap.filesystem.v1.FileChange preview = 2;
+  repeated string coverage_notes = 3;
+  bool preview_incomplete = 4;
+  bool notes_incomplete = 5;
+  bool downloadable = 6;
+  string error = 7;
+  doramcap.filesystem.v1.ReportState state = 8;
+}
 message Status {
   Phase phase = 1;
   string run_id = 2;
@@ -96,6 +108,7 @@ message Status {
   repeated RecordingOutput recordings = 21;
   repeated LiveStream live_streams = 23; // Empty when the live bridge is not selected.
   repeated StoppingService stopping_services = 24; // Empty once the run finishes.
+  FileChanges file_changes = 26;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
 }
 message ConsoleError { string code = 1; string message = 2; }
@@ -107,6 +120,7 @@ message Marker {
   string artifact_reference = 5;
   Outcome outcome = 6;
   bool start_accepted = 7;
+  doramcap.filesystem.v1.FileChangeReference file_changes = 12;
   repeated RecordingOutput recordings = 11;
   repeated string profiles = 9;
   SystemAppSelection system_apps = 10;
@@ -133,10 +147,12 @@ enum HistoryState {
   HISTORY_INTERRUPTED = 6; // Console stopped before the run reported a result.
 }
 // One declared output; an absent size means no file exists on the host.
+enum ArtifactKind { RECORDING = 0; REPORT = 1; FILE_CHANGES = 2; }
 message HistoryArtifact {
   string id = 1;
   optional uint64 size_bytes = 2;
   bool downloadable = 3;
+  ArtifactKind kind = 4;
 }
 message HistoryEntry {
   string run_id = 1;

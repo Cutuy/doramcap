@@ -98,6 +98,55 @@ pub struct FilesystemChanges {
     pub named_volumes: CategoryChanges,
 }
 
+/// Run-relative folder holding baselines, manifests and the report checkpoint.
+const FILESYSTEM_DIRECTORY: &str = "filesystem";
+/// Completion checkpoint, published atomically after every manifest is synced.
+const REPORT_FILE: &str = "report.pb";
+/// Unpublished checkpoint; linked to `REPORT_FILE` only once fully synced.
+const PENDING_REPORT_FILE: &str = "report.pending.pb";
+
+impl FilesystemChanges {
+    /// Run-relative completion reference; valid only after successful collection.
+    /// Full notes live in the atomically published checkpoint.
+    pub fn reference(&self) -> crate::filesystem_proto::FileChangeReference {
+        crate::filesystem_proto::FileChangeReference {
+            checkpoint: format!("{FILESYSTEM_DIRECTORY}/{REPORT_FILE}"),
+            categories: self.categories().into_iter().map(|c| c.summary()).collect(),
+        }
+    }
+    fn categories(&self) -> [&CategoryChanges; 3] {
+        [
+            &self.host_binds,
+            &self.container_layers,
+            &self.named_volumes,
+        ]
+    }
+}
+impl CategoryChanges {
+    fn summary(&self) -> crate::filesystem_proto::CategorySummary {
+        use crate::filesystem_proto::StorageCategory as Wire;
+        crate::filesystem_proto::CategorySummary {
+            category: match self.category {
+                StorageCategory::HostBind => Wire::HostBind,
+                StorageCategory::ContainerLayer => Wire::ContainerLayer,
+                StorageCategory::NamedVolume => Wire::NamedVolume,
+            } as i32,
+            counts: Some(crate::filesystem_proto::ChangeCounts {
+                added: self.counts.added,
+                modified: self.counts.modified,
+                deleted: self.counts.deleted,
+            }),
+            // A nameless manifest yields a reference that export refuses to open.
+            manifest: format!(
+                "{FILESYSTEM_DIRECTORY}/{}",
+                self.manifest.file_name().unwrap_or_default().to_string_lossy()
+            ),
+            coverage_complete: self.coverage_complete,
+            coverage_note_count: self.warnings.len() as u64,
+        }
+    }
+}
+
 fn incomplete(reason: impl Into<String>) -> Snapshot {
     Snapshot {
         entries: BTreeMap::new(),
@@ -249,7 +298,7 @@ fn excluded(path: &Path, artifacts: &Path) -> bool {
 }
 /// Save complete baselines or explicit exclusions before writers start; existing records fail.
 pub async fn capture(input: BaselineInput) -> Result<FilesystemBaseline> {
-    let directory = input.artifacts.join("filesystem");
+    let directory = input.artifacts.join(FILESYSTEM_DIRECTORY);
     super::files::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
     let mut record = |category: StorageCategory,
@@ -587,7 +636,44 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         &serde_json::to_vec_pretty(&result)?,
     )
     .await?;
+    publish_report(&input.baseline.directory, &result).await?;
     Ok(result)
+}
+
+/// Sync every manifest and its folder, then atomically publish the completion checkpoint.
+/// Refuses to replace an existing checkpoint; a crash before linking leaves no report.
+async fn publish_report(directory: &Path, result: &FilesystemChanges) -> Result<()> {
+    use prost::Message;
+    for category in result.categories() {
+        tokio::fs::File::open(&category.manifest)
+            .await?
+            .sync_all()
+            .await?;
+    }
+    let folder = tokio::fs::File::open(directory).await?;
+    folder.sync_all().await?;
+    let report = crate::filesystem_proto::FileChangeReport {
+        state: crate::filesystem_proto::ReportState::ReportComplete as i32,
+        categories: result
+            .categories()
+            .into_iter()
+            .map(|c| crate::filesystem_proto::CategoryReport {
+                summary: Some(c.summary()),
+                coverage_notes: c.warnings.clone(),
+            })
+            .collect(),
+    };
+    let pending = directory.join(PENDING_REPORT_FILE);
+    private_write(&pending, &report.encode_to_vec()).await?;
+    tokio::fs::File::open(&pending).await?.sync_all().await?;
+    tokio::fs::hard_link(&pending, directory.join(REPORT_FILE)).await?;
+    tokio::fs::remove_file(pending).await?;
+    folder.sync_all().await?;
+    let parent = directory
+        .parent()
+        .ok_or_else(|| invalid("filesystem record folder has no parent"))?;
+    tokio::fs::File::open(parent).await?.sync_all().await?;
+    Ok(())
 }
 
 #[cfg(test)]

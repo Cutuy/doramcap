@@ -1,6 +1,7 @@
 syntax = "proto3";
 package doramcap.console.execution.v1;
 import "compose.proto";
+import "filesystem.proto";
 import "compose_plan.proto";
 import "launch.proto";
 import "systemd_plan.proto";
@@ -54,6 +55,8 @@ message ExecutionResult {
   optional bool boundary_clean = 5;
   optional bool event_stream_healthy = 6;
   repeated doramcap.compose.v1.ServiceExit service_exits = 7;
+  doramcap.filesystem.v1.FileChangeReference file_changes = 8;
+  string file_changes_error = 9;
 }
 // The local image one service ran.
 message ServiceImage {

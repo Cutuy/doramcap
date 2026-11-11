@@ -50,4 +50,10 @@ input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}.checkbox:has(input:
 .cpu-ranking meter::-webkit-meter-optimum-value{border-radius:5px;background:var(--console-step-running)}
 .cpu-ranking meter::-moz-meter-bar{border-radius:5px;background:var(--console-step-running)}
 @media(forced-colors:active){input[type=checkbox]:checked{background:Highlight;border-color:Highlight;forced-color-adjust:none;color:HighlightText}input[type=checkbox]:disabled{border-color:GrayText;color:GrayText;opacity:1}.select-option[aria-selected=true]{outline-color:Highlight}.select-trigger:disabled{color:GrayText;opacity:1}.timeline-position input[type=range]{forced-color-adjust:none;--console-field-line:GrayText;--console-accent:Highlight;--console-panel:Canvas}.cpu-ranking meter{forced-color-adjust:none;--console-soft:Canvas;--console-step-running:Highlight}}
+
+.file-changes { margin-top: 20px; }
+.file-change-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
+.file-change-list article { border-top: 1px solid var(--console-line); padding: .8rem 0; }
+.file-change-list p { margin: .35rem 0; }
+.file-changes .panel-heading { flex-wrap: wrap; gap: .8rem; }
 }

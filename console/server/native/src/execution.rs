@@ -329,6 +329,15 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let result = match result {
             Ok(report) => ExecutionResult {
                 blocked,
+                file_changes: report
+                    .filesystem_changes
+                    .as_ref()
+                    .map(|changes| changes.reference()),
+                file_changes_error: if report.filesystem_changes.is_none() {
+                    "File changes were not collected; inspect the run diagnostics.".into()
+                } else {
+                    String::new()
+                },
                 error: report.execution_error,
                 writers_stopped: Some(report.writers_stopped),
                 recording_finalized: Some(report.recording_finalized),
@@ -492,6 +501,7 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
         boundary_clean: Some(report.cleanup_verified),
         // systemd runs have no Docker event stream to lose.
         event_stream_healthy: Some(true),
+        ..Default::default()
     }
 }
 

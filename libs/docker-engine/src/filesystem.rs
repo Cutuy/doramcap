@@ -248,7 +248,30 @@ mod tests {
         .await
         .unwrap();
 
-        // Assert
+        // Assert: successful collection publishes the same summaries before finalization.
+        use prost::Message;
+        let reference = changes.reference();
+        let checkpoint = host_filesystem::filesystem_proto::FileChangeReport::decode(
+            tokio::fs::read(root.path().join("artifacts").join(&reference.checkpoint))
+                .await
+                .unwrap()
+                .as_slice(),
+        )
+        .unwrap();
+        assert_eq!(
+            checkpoint
+                .categories
+                .iter()
+                .map(|c| c.summary.clone().unwrap())
+                .collect::<Vec<_>>(),
+            reference.categories
+        );
+        assert!(
+            !root
+                .path()
+                .join("artifacts/filesystem/report.pending.pb")
+                .exists()
+        );
         let mut host = FileChanges::open(changes.host_binds.manifest)
             .await
             .unwrap();

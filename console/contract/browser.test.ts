@@ -49,6 +49,7 @@ test(
         data: Buffer.from(wire.Status.encode(snapshot).finish()),
         cursor: Buffer.alloc(0),
       }),
+      fileChanges: async function* () { throw new Error('Missing'); },
       openArtifact: async () => {
         throw new Error('Missing');
       },

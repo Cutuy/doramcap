@@ -58,7 +58,7 @@ export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 /** The name a downloaded artifact is saved under. */
-export const artifactFilename = (kind: string) => kind === 'report' ? 'console-report.json' : `${kind}.mcap`;
+export const artifactFilename = (kind: string) => kind === 'report' ? 'console-report.json' : kind === 'file-changes' ? 'file-changes.jsonl' : `${kind}.mcap`;
 export const artifactRoute = /^\/api\/artifacts\/([a-f0-9]{32})\/([A-Za-z0-9-]+)$/;
 
 /** Prefix one bounded protobuf payload with its four-byte little-endian length. */
@@ -88,5 +88,16 @@ export class FramedMessages<T> {
       offset += 4 + length;
     }
     this.pending = bytes.slice(offset);
+  }
+}
+
+/** Display Unix bytes without treating paths as URLs or losing invalid UTF-8. */
+export function displayPath(bytes: Uint8Array): string {
+  const escape = (value: number) => `\\x${value.toString(16).padStart(2, '0')}`;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/[\\\x00-\x1f\x7f]/g,
+      char => char === '\\' ? '\\\\' : escape(char.charCodeAt(0)));
+  } catch {
+    return Array.from(bytes, byte => byte >= 32 && byte < 127 && byte !== 92 ? String.fromCharCode(byte) : escape(byte)).join('');
   }
 }

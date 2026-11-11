@@ -1,3 +1,5 @@
+import { join } from 'node:path';
+import { fileChangeAvailability } from './file-changes.js';
 import { LIMITS } from './generated/transport.js';
 import { browserError, execution, wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
@@ -71,6 +73,7 @@ export class History {
       status = wire.Status.decode(row.detail);
     entry.artifacts = this.artifacts(status);
     status.reportAvailable = this.store.available(id, 'console-report.json');
+    fileChangeAvailability(join(this.store.root, 'runs', id), status.fileChanges);
     return wire.HistoryDetail.create({ entry, status });
   }
   /** The newest completed run with a machine capture, or null when none has one. */
@@ -131,6 +134,10 @@ export class History {
       return wire.HistoryArtifact.create({ id: output.id!, ...(size === null ? {} : { sizeBytes: size }), downloadable: finalized && size !== null });
     });
     const report = this.store.size(status.runId, 'console-report.json');
-    return report === null ? declared : [...declared, wire.HistoryArtifact.create({ id: 'report', sizeBytes: report, downloadable: done })];
+    if (status.fileChanges?.report) declared.push(wire.HistoryArtifact.create({
+      id: 'file-changes', kind: wire.ArtifactKind.FILE_CHANGES,
+      downloadable: fileChangeAvailability(join(this.store.root, 'runs', status.runId), status.fileChanges)?.downloadable === true,
+    }));
+    return report === null ? declared : [...declared, wire.HistoryArtifact.create({ id: 'report', kind: wire.ArtifactKind.REPORT, sizeBytes: report, downloadable: done })];
   }
 }

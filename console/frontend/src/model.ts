@@ -86,7 +86,7 @@ export function durationLabel(entry: Pick<HistoryEntry, 'state' | 'startedAtMs' 
 }
 /** Total size of recording files on disk; the report does not count. */
 export function entryRecordingBytes(entry: Pick<HistoryEntry, 'artifacts'>): number | null {
-  const sizes = entry.artifacts.filter(artifact => artifact.id !== 'report' && artifact.sizeBytes != null);
+  const sizes = entry.artifacts.filter(artifact => artifact.id !== 'report' && artifact.kind === wire.ArtifactKind.RECORDING && artifact.sizeBytes != null);
   return sizes.length ? sizes.reduce((total, artifact) => total + Number(artifact.sizeBytes), 0) : null;
 }
 

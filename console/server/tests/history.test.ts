@@ -615,3 +615,64 @@ test('a review compares with the latest completed captured run, or with the run 
   assert.equal(again.comparison?.baseline?.runId, old);
   await run.backend.close();
 });
+
+test('file-change facts survive failed execution, navigation and service restart with a complete authenticated download', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const root = await temporary();
+  const run = await service(root);
+  let restored: Service | undefined;
+  let server: ReturnType<typeof createConsoleServer> | undefined;
+  try {
+    const runId = await startRun(run);
+    const runRoot = join(run.config.dataRoot, 'runs', runId);
+    const { reference } = await fileChangeFixture(runRoot, 3000);
+    // Act: recording validation fails after useful file metadata has been saved.
+    const status = await finishRun(run, runId, { fileChanges: reference, error: 'Recording invalid', recordingFinalized: false });
+    const saved = await detail(run, runId);
+    const report = JSON.parse(readFileSync(join(runRoot, 'console-report.json'), 'utf8'));
+    // Assert
+    assert.deepEqual(status.fileChanges, saved.status?.fileChanges);
+    assert.equal(status.fileChanges?.report?.categories?.[0].counts?.added?.toString(), '3000');
+    assert.ok(status.fileChanges?.downloadable);
+    assert.equal(report.file_changes.report.categories[0].counts.added, '3000');
+    assert.equal(report.file_changes_artifact, 'file-changes');
+    assert.equal(saved.entry?.artifacts?.find(a => a.id === 'file-changes')?.kind, wire.ArtifactKind.FILE_CHANGES);
+    // Act: close and reopen the real service/database, then navigate through a later review.
+    await run.backend.close();
+    restored = await service(root);
+    await (restored.backend as any).restore();
+    const current = wire.Status.decode(await restored.backend.status());
+    assert.deepEqual(current.fileChanges, saved.status?.fileChanges);
+    await restored.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    assert.deepEqual((await detail(restored, runId)).status?.fileChanges, saved.status?.fileChanges);
+    server = createConsoleServer({ backend: restored.backend, secret: 'secret', origin: 'http://console.test', assets: root });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const base = `http://127.0.0.1:${address.port}`;
+    const path = `/api/artifacts/${runId}/file-changes`;
+    // Assert: existing session authorization protects the new artifact.
+    assert.equal((await fetch(base + path)).status, 401);
+    const cookie = await sessionCookie(base);
+    const response = await fetch(base + path, { headers: { cookie } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/x-ndjson');
+    assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.jsonl"/);
+    const rows = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(rows.filter(row => row.type === 'change').length, 3000);
+    assert.equal(rows.at(-1).type, 'complete');
+    assert.equal((await fetch(`${base}/api/artifacts/${id(999)}/file-changes`, { headers: { cookie } })).status, 404);
+    // Act / Assert: failed traversal terminates the HTTP transfer without a completion line.
+    await writeFile(join(runRoot, 'filesystem/host.pb'), Buffer.from([0x80]));
+    const broken = await fetch(base + path, { headers: { cookie } });
+    await assert.rejects(broken.text());
+    await rm(join(runRoot, 'filesystem/report.pb'));
+    const unavailable = await detail(restored, runId);
+    assert.equal(unavailable.status?.fileChanges?.downloadable, false);
+    assert.match(unavailable.status?.fileChanges?.error ?? '', /unavailable/);
+  } finally {
+    if (server) { server.closeAllConnections(); server.close(); await once(server, 'close'); }
+    await (restored?.backend ?? run.backend).close();
+    await rm(root, { recursive: true, force: true });
+  }
+});

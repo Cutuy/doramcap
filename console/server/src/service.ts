@@ -32,6 +32,7 @@ import { Store } from './store.js';
 import { History } from './history.js';
 import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
+import { fileChangePreview, fileChangeAvailability, exportFileChanges } from './file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
@@ -575,6 +576,10 @@ export class ConsoleService implements ConsoleBackend {
       serviceExits: result.serviceExits ?? [],
       eventStreamHealthy: this.accepted ? result.eventStreamHealthy : null,
     });
+    this.snapshot.fileChanges = await fileChangePreview(
+      join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesError ?? '',
+    );
+    this.marker!.fileChanges = this.snapshot.fileChanges?.report ?? null;
     this.marker!.phase = this.snapshot.phase;
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
@@ -605,6 +610,8 @@ export class ConsoleService implements ConsoleBackend {
               boundary_clean: this.snapshot.outcome.boundaryClean,
               event_stream_healthy: this.snapshot.outcome.eventStreamHealthy,
               system_apps: this.snapshot.systemApps?.ids ?? [],
+              file_changes: this.snapshot.fileChanges ? wire.FileChanges.toObject(wire.FileChanges.create(this.snapshot.fileChanges), { ...objectOptions, bytes: String }) : null,
+              file_changes_artifact: this.snapshot.fileChanges?.downloadable ? 'file-changes' : null,
             }),
           ),
         );
@@ -630,6 +637,7 @@ export class ConsoleService implements ConsoleBackend {
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
     status.reportAvailable = terminal && this.store.available(status.runId, 'console-report.json');
+    if (terminal) fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
     return status;
   }
   async status() {
@@ -663,6 +671,18 @@ export class ConsoleService implements ConsoleBackend {
   /** Replay the latest frame per stream, then forward bridge frames until unsubscribed. */
   frames(consume: (frame: Buffer) => void): () => void {
     return this.relay?.subscribe(consume) ?? (() => {});
+  }
+  async *fileChanges(id: string, signal: AbortSignal) {
+    const run = this.artifactRun(id);
+    const reference = run.fileChanges?.report;
+    if (!reference || !run.fileChanges?.downloadable) throw new Error('Missing');
+    yield* exportFileChanges(join(this.config.dataRoot, 'runs', id), reference, signal);
+  }
+  private artifactRun(id: string) {
+    if (!/^[a-f0-9]{32}$/.test(id) || this.marker?.runId === id && active(this.snapshot.phase)) throw new Error('Missing');
+    const run = this.store.activity(id);
+    if (!run || run.runId !== id) throw new Error('Missing');
+    return run;
   }
   async openArtifact(id: string, kind: string) {
     if (!/^[a-f0-9]{32}$/.test(id)) throw new Error('Missing');

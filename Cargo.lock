@@ -973,6 +973,7 @@ name = "console-native"
 version = "0.1.0"
 dependencies = [
  "compose-apps",
+ "host-filesystem",
  "napi",
  "napi-derive",
  "orchestrator",
