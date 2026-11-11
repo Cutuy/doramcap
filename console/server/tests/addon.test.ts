@@ -216,7 +216,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
   const root = await mkdtemp(join(tmpdir(),'console-consistency-'));
   const socket=join(root,'docker.sock'), project=join(root,'project'), bin=join(root,'bin');
   await mkdir(project); await mkdir(bin);
-  await writeFile(join(project,'compose.yaml'),'services:\n  worker:\n    image: app:local\n');
+  await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{worker:{image:'app:local',command:['original'],logging:{}}},networks:{default:{}}}));
   const mutations: string[]=[];
   const engine=createServer((request,response)=>{
     const path=request.url??'';response.setHeader('content-type','application/json');
@@ -241,6 +241,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     // Assert
     assert.ok(review.services.some((service:any)=>service.name==='worker'&&service.imageId==='sha256:approved'));
+    assert.ok(review.warnings.includes('worker: logging configured by project; Console will not collect its logs'));
     assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,0);
     assert.deepEqual(mutations,[]);
     // Act / Assert: changing a command must reject before reservation or launch.

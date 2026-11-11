@@ -709,11 +709,8 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         assert_eq!(plan.sha256, digest(&bytes));
         if logging.is_some() {
             assert!(changes.is_empty());
-            assert!(
-                plan.diagnostics
-                    .iter()
-                    .any(|message| message == "worker: logging configured by project; preserved")
-            );
+            assert!(plan.diagnostics.iter().any(|message| message
+                == "worker: logging configured by project; Console will not collect its logs"));
         } else {
             assert_eq!(changes.len(), 1);
             assert_eq!(changes[0]["original"], Value::Null);

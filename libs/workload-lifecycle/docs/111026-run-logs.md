@@ -23,8 +23,8 @@ keep-with-the-run storage.
   Compose sets it in the frozen manifest shared by inspection and launch.
 - The user's choice wins. An explicit `logging` block stays intact, including its
   options, an options-only block or an empty block. Those services retain Docker’s
-  native behavior. Resolution diagnostics identify project-configured logging.
-  The later log dump will skip containers using another driver.
+  native behavior. Review shows that logging is configured by the project and
+  Console will not collect its logs. The later log dump will skip these containers.
 - Console's per-container setting takes precedence over a host-wide Docker default.
 - An application that writes its own log files is unaffected. Those files appear
   in the file-change report when they land in a captured folder.

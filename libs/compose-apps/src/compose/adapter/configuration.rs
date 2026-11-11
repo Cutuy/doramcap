@@ -308,7 +308,7 @@ impl ComposeConfiguration<'_> {
                 .ok_or_else(|| invalid("invalid resolved service"))?;
             if object.contains_key("logging") {
                 diagnostics.push(format!(
-                    "{service_name}: logging configured by project; preserved"
+                    "{service_name}: logging configured by project; Console will not collect its logs"
                 ));
             } else {
                 let logging = json!({"driver": DEFAULT_LOG_DRIVER});
