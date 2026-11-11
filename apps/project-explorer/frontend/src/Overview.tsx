@@ -92,18 +92,16 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     <section className="platform-stack" aria-labelledby="architecture-heading">
       <h2 id="architecture-heading" className="stack-heading">SoC or workstation</h2>
 
-      <a
-        className={highlights.includes('orchestration') ? 'orchestration-layer highlighted' : 'orchestration-layer'}
-        {...detailLink}
-        href={link({ ...context, capability: 'orchestration' })}
-        aria-current={capability?.id === 'orchestration' && !integration ? 'true' : undefined}
-      >
-        <Workflow size={16} aria-hidden="true" />Console
-      </a>
-
-      <div className="layer-connector" aria-hidden="true" />
       <section className="stack-apps" aria-label="Applications">
         <div className="stack-block"><Layers size={16} aria-hidden="true" />Your apps</div>
+        <a
+          className={highlights.includes('orchestration') ? 'stack-block highlighted' : 'stack-block'}
+          {...detailLink}
+          href={link({ ...context, capability: 'orchestration' })}
+          aria-current={capability?.id === 'orchestration' && !integration ? 'true' : undefined}
+        >
+          <Workflow size={16} aria-hidden="true" />Console
+        </a>
         <div className="stack-block"><Cog size={16} aria-hidden="true" />System apps</div>
       </section>
 

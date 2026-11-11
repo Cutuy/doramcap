@@ -222,7 +222,7 @@ main.shell{padding-top:28px}
   pointer-events: none;
 }
 .stack-apps, .lifecycle-grid, .capability-grid, .user-device-grid { display: grid; gap: 8px; }
-.stack-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stack-apps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .lifecycle-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .capability-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .layer-connector { display: grid; place-items: center; height: 18px; }
@@ -244,7 +244,7 @@ main.shell{padding-top:28px}
 .runtime-layer > .layer-heading { justify-content: flex-start; column-gap: 6px; }
 .layer-heading h3 { font-size: 16px; margin: 0; }
 .layer-heading > span { font-size: 12px; color: var(--muted); }
-.stack-block, .capability, .orchestration-layer {
+.stack-block, .capability {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -260,7 +260,7 @@ main.shell{padding-top:28px}
   text-decoration: none;
   overflow-wrap: anywhere;
 }
-.stack-block, .orchestration-layer { justify-content: center; text-align: center; }
+.stack-block { justify-content: center; text-align: center; }
 .user-device-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
@@ -268,17 +268,16 @@ main.shell{padding-top:28px}
   list-style: none;
 }
 .user-device-grid .stack-block { justify-content: flex-start; text-align: left; }
-.orchestration-layer { border: 2px solid var(--accent); }
 .lifecycle-grid .stack-block, .capability { background: var(--bg); }
-.stack-block svg, .capability svg, .orchestration-layer svg {
+.stack-block svg, .capability svg {
   flex-shrink: 0;
   color: var(--accent);
 }
-.capability.highlighted, .orchestration-layer.highlighted {
+.capability.highlighted, .stack-apps .highlighted {
   background: light-dark(#edf5f1, #23352e);
 }
-a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
-.stack-block[aria-current=true], .capability[aria-current=true], .orchestration-layer[aria-current=true] {
+a.stack-block:hover, .capability:hover,
+.stack-block[aria-current=true], .capability[aria-current=true] {
   border-color: var(--accent);
 }
 .software-group { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
@@ -302,6 +301,7 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 }
 @media (max-width: 600px) {
   .user-device-layer, .platform-stack { --stack-inset: 10px; }
+  .stack-apps .stack-block { flex-direction: column; gap: 4px; padding: 8px 4px; }
   .runtime-layer, .lifecycle-layer, .platform-layer, .software-layer { padding: 12px; }
   .lifecycle-grid, .user-device-grid { grid-template-columns: minmax(0, 1fr); }
   .software-group { flex-direction: column; align-items: flex-start; gap: 4px; }
