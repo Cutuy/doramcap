@@ -304,12 +304,17 @@ pub(crate) fn test_engine_status(
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {
-        for (path, status, response) in responses {
+        let mut responses = responses.into_iter().peekable();
+        while let Some((path, status, response)) = responses.peek() {
             let (stream, _) = listener.accept().await.unwrap();
             let mut stream = BufReader::new(stream);
             let mut line = String::new();
             stream.read_line(&mut line).await.unwrap();
-            assert!(line.contains(path), "unexpected Engine request: {line}");
+            let negotiation = line.starts_with("HEAD /_ping ");
+            assert!(
+                negotiation || line.contains(*path),
+                "unexpected Engine request: {line}"
+            );
             loop {
                 line.clear();
                 assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
@@ -317,7 +322,15 @@ pub(crate) fn test_engine_status(
                     break;
                 }
             }
-            let body = if status == 204 {
+            // Compose may negotiate before rendering; this is independent of Engine facts.
+            if negotiation {
+                stream.get_mut().write_all(format!(
+                    "HTTP/1.1 200 OK\r\nAPI-Version: {}\r\nOSType: linux\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    bollard::API_DEFAULT_VERSION
+                ).as_bytes()).await.unwrap();
+                continue;
+            }
+            let body = if *status == 204 {
                 String::new()
             } else {
                 response.to_string()
@@ -325,9 +338,45 @@ pub(crate) fn test_engine_status(
             stream.get_mut().write_all(format!(
                 "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
             ).as_bytes()).await.unwrap();
+            let _ = responses.next();
         }
     });
     (adapter, server)
+}
+
+#[tokio::test]
+async fn engine_fixture_negotiation_preserves_expected_requests() {
+    use tokio::io::AsyncReadExt;
+
+    // Arrange: the image response must remain available after Compose's API probe.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(
+        root.path(),
+        vec![("/images/example:local/json", json!({"Id":"sha256:pinned"}))],
+    );
+    let mut probe = tokio::net::UnixStream::connect(root.path().join("engine.sock"))
+        .await
+        .unwrap();
+
+    // Act: reproduce the negotiation request made by Compose on hosted runners.
+    probe
+        .write_all(b"HEAD /_ping HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = String::new();
+    probe.read_to_string(&mut response).await.unwrap();
+
+    // Assert: negotiation succeeds without consuming the expected image request.
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains(&format!("API-Version: {}", bollard::API_DEFAULT_VERSION)));
+    let image = adapter
+        .engine
+        .client()
+        .inspect_image("example:local")
+        .await
+        .unwrap();
+    assert_eq!(image.id.as_deref(), Some("sha256:pinned"));
+    server.await.unwrap();
 }
 
 #[tokio::test]
