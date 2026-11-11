@@ -1,6 +1,6 @@
 # Application logs for a run
 
-Created November 10, 2026. Updated November 11, 2026. Tracking note; direction agreed.
+Created November 10, 2026. Updated November 11, 2026. Log dump design agreed; implementation not started.
 
 Console does not keep application output with a run today. Every workflow sends
 output to the host journal, and Console dumps each run's output into the run's
@@ -39,11 +39,42 @@ The dump is a set of ordinary run files. The file-change report lists it and the
 run folder keeps it, so a run's log no longer depends on how long the host keeps
 its journal. Console keeps the full output and selects no snippets.
 
+## Log dump
+
+At the end of a run, after every program has stopped, Console writes each
+program's output from the journal into the run folder.
+
+| Detail | Decision |
+| --- | --- |
+| Reader | Console runs `journalctl`, systemd's own journal tool. It reads every journal format and is present wherever the journal is. No library is added. |
+| Scope | Each program's own identity, with no time window. |
+| Files | One plain text file per unit or container, each line with its timestamp. |
+| Size | No limit per program. Limits come with the run folder's limits. |
+| Before reading | Console asks the journal to finish writing. |
+
+Scoping by identity:
+
+| Program | Identity | Source |
+| --- | --- | --- |
+| systemd unit | Its invocation ID | systemd assigns a new one at every start and records it on each entry. Console reads it from the service manager after starting the unit. |
+| Container | Its full container ID | Docker's journal driver records it on each entry. Console tracks the containers it owns. |
+
+A unit name is reused by every run, so a name with a time window cannot separate
+runs exactly. The service manager's own messages about a unit carry the
+invocation ID under a second field. The dump matches both, so each file shows
+the unit's start and end.
+
+A container whose project sets its own log driver has no dump. The run records
+that its log is set by the project.
+
+Confirmed on one host with systemd 255: entries carry the invocation ID and the
+service manager reports a unit's current one. The container half follows
+Docker's documentation and is untested.
+
 ## Open questions
 
-- How entries are matched to a run: unit names, container labels and the run's time window.
-- Whether the dump has a size limit per program.
+- A process that exits almost at once can lose its identity in the journal, so
+  its last lines may be missing from the dump. Measure how often this occurs.
 - The journal drops lines from very chatty services by default. Decide whether Console reports that.
-- How Console reads the journal. Candidate libraries need review before adoption.
 - Confirm on a real container that the journal driver works as expected, including
   reading back the last lines for the failure message.
