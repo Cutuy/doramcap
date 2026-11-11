@@ -2,7 +2,7 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 10, 2026. Status: draft architecture; adoption scope, launch design and workflow decisions agreed.
+Created November 9, 2026. Updated November 11, 2026. Status: draft architecture; adoption scope, launch design and workflow decisions agreed.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
@@ -149,7 +149,10 @@ Stage 5 adopts the existing automatic filesystem capture workflow.
 [`docker-engine` crate](111026-docker-engine-crate-impl.md) has landed on `main`.
 Build placement, run admission, run supervision, recording checks and mounts
 outside capture are agreed and recorded in their stage documents. Two
-implementation plans follow: the shared admission lock, then the Holoscan runner.
+implementation plans are drafted: the
+[shared admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
+[Holoscan runner](111126-holoscan-runner-impl.md). The runner plan starts by
+proving the launch on a real container and lists five open items.
 A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
 supports the launch design. Real-container qualification remains.
 
