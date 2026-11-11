@@ -680,7 +680,8 @@ export class ConsoleService implements ConsoleBackend {
   }
   private artifactRun(id: string) {
     if (!/^[a-f0-9]{32}$/.test(id) || this.marker?.runId === id && active(this.snapshot.phase)) throw new Error('Missing');
-    const run = this.store.activity(id);
+    const run = this.marker?.runId === id && [Phase.FINISHED, Phase.BLOCKED].includes(this.snapshot.phase)
+      ? this.snapshot : this.store.activity(id);
     if (!run || run.runId !== id) throw new Error('Missing');
     return run;
   }

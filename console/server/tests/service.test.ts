@@ -738,3 +738,26 @@ test('preparation waits for the current file report and result transaction to fi
     await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
   } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('a failed History transaction preserves the current saved file-change download', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { root, config, store, engine, backend, review } = await fixture();
+  try {
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'history-failure' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!(); await starting;
+    const { reference } = await fileChangeFixture(join(config.dataRoot, 'runs', review.runId), 3);
+    store.db.exec("CREATE TRIGGER refuse_result BEFORE UPDATE ON runs WHEN NEW.state != 1 BEGIN SELECT RAISE(FAIL, 'result storage failed'); END");
+    engine.update.result = execution.ExecutionResult.create({ fileChanges: reference, boundaryClean: true });
+    // Act
+    const status = wire.Status.decode(await backend.status());
+    const rows = [];
+    for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) rows.push(JSON.parse(bytes.toString()));
+    // Assert: a current run uses its own terminal facts, as existing artifact downloads do.
+    assert.equal(status.phase, wire.Phase.BLOCKED);
+    assert.ok(status.fileChanges?.downloadable);
+    assert.equal(rows.filter(row => row.type === 'change').length, 3);
+    assert.equal(rows.at(-1).type, 'complete');
+  } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
+});
