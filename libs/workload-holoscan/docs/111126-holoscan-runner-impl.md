@@ -30,6 +30,7 @@ its results. The web app journey is a later stage.
 | Results | No recording check. Changed files and mounts outside capture are reported. | [Outputs](110926-holoscan-outputs.md) |
 | Limits | Selected limits as launch options; conflicts found at Prepare. | [Controls](110926-holoscan-controls.md) |
 | Logs | Host journal; a project's own log driver wins. | [Outputs](110926-holoscan-outputs.md#logs) |
+| Support apps | Dora and Console's system apps follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [Support apps](#support-apps) |
 
 ## Crate
 
@@ -92,6 +93,31 @@ The runner implements `Running` and calls `workload_lifecycle::run`.
 | `remove` | Finalize views by the filesystem policy. Remove the container when permitted. |
 
 The run passes an empty recording list.
+
+## Support apps
+
+Dora apps and Console's system apps (monitors and recorders) run in the form
+that matches the Holoscan project's environment.
+
+| Holoscan project runs | Dora and system apps run as |
+| --- | --- |
+| In Docker | Docker containers, through the existing Compose form |
+| On the host | systemd units, when host execution is supported |
+
+The Holoscan workflow owns the sequence and reuses the existing support-app
+phases. One admission lock covers the whole run.
+
+| Order | Start | Stop |
+| --- | --- | --- |
+| 1 | Dora apps | Holoscan application |
+| 2 | System apps | System apps |
+| 3 | Holoscan application | Dora apps |
+
+Review shows the support apps and the Holoscan launch together.
+
+This is built in milestone 6, after the application-only run works. Until then
+a Holoscan run has machine state capture, workflow events, file changes and its
+log, and no monitor telemetry.
 
 ## Milestone 1: prove the assumptions on a real container
 
@@ -182,7 +208,26 @@ Depends on the admission lock.
 - [ ] Files the application writes appear in the change report; the source tree is unchanged under the discard policy.
 - [ ] Mounts outside capture appear in the result.
 
-## Milestone 6: recovery and acceptance
+## Milestone 6: support apps
+
+Docker projects only. The systemd form follows with host execution.
+
+**Work items**
+
+- [ ] Confirm the Compose workflow runs Dora and system apps with no user app, and fix it where it does not.
+- [ ] Decide where the two parts are joined: in `workload-holoscan` with a relaxed boundary rule, or in Console's backend.
+- [ ] Settle who owns reset, the view workspace and the artifact folder when both parts share one run.
+- [ ] Start and stop the parts in the agreed order under one admission lock.
+- [ ] Include the support apps in Prepare and the Review snapshot.
+
+**Validation**
+
+- [ ] A Holoscan run records monitor telemetry as a Compose run does.
+- [ ] Stop ends the application first, then system apps, then Dora.
+- [ ] A failed support-app start stops the run before the application launches.
+- [ ] Compose runs without Holoscan behave as before.
+
+## Milestone 7: recovery and acceptance
 
 **Work items**
 
@@ -204,7 +249,7 @@ These need an answer before the milestone that uses them.
 | # | Question | Needed by | Proposal |
 | --- | --- | --- | --- |
 | 1 | How Console learns where the Holoscan CLI is. This is a new configuration input and needs explicit approval. | 2 | A field in the project's Console configuration naming the CLI executable. |
-| 2 | Whether Console's own system apps (monitors, recorders) run alongside a Holoscan application. Compose and systemd start them inside their own workflow. | 5 | First version runs none and keeps the machine state capture, workflow events and file changes. |
+| 2 | Where the support-app part and the Holoscan part are joined, and who owns reset and shared folders. | 6 | Decide when milestone 6 starts, after reading the Compose workflow in detail. |
 | 3 | Where the build record is kept, since a build belongs to no run. | 4 | In Console's data folder, keyed by project and selection. |
 | 4 | Which limits the first version offers. | 3 | The CPU set, matching what Compose offers per application. |
 | 5 | How a tree with uncommitted changes at Build is treated. | 4 | Allowed and shown at Review as unverifiable. |
