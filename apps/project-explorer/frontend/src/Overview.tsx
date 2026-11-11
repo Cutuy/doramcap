@@ -19,23 +19,22 @@ function showDetails(panel: HTMLElement | null, source?: HTMLAnchorElement) {
 export default function Overview({ catalog, route }: { catalog: Catalog; route: Route }) {
   const details = useRef<HTMLElement>(null);
   const clicked = useRef<HTMLAnchorElement | null>(null);
-  const hasDetail = ['useCase', 'capability', 'integration'].some(key => route.params.has(key));
   const useCaseId = route.params.get('useCase') ?? overview.useCases[0].id;
   const capabilityId = route.params.get('capability');
   const integrationId = route.params.get('integration');
   const useCase = overview.useCases.find(u => u.id === useCaseId);
   const capability = overview.capabilities.find(c => c.id === capabilityId);
   const integration = overview.integrations.find(i => i.id === integrationId);
-  const selected = integration ?? capability ?? useCase;
+  const selected = integration ?? capability;
   const context: Record<string, string> = useCase ? { useCase: useCase.id } : {};
   const invalid = (useCaseId && !useCase) || (capabilityId && !capability) || (integrationId && !integration);
   const highlights = integration ? overview.capabilities.filter(c => c.integrations.includes(integration.id)).map(c => c.id) : useCase?.capabilities ?? [];
   useEffect(() => {
     const source = clicked.current ?? undefined;
     clicked.current = null;
-    if (hasDetail && !invalid && selected) showDetails(details.current, source);
+    if (!invalid && selected) showDetails(details.current, source);
     else if (details.current?.hidePopover && details.current.matches(':popover-open')) details.current.hidePopover();
-  }, [route, hasDetail, invalid, selected]);
+  }, [route, invalid, selected]);
 
   function openDetails(event: MouseEvent<HTMLAnchorElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -52,7 +51,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
   }
   return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
     <ConsoleInstall repository={catalog.repository} />
-    <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} {...detailLink} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
+    <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href={link({ useCase: overview.useCases[0].id })}>Show the first use case</a>.</p>}
     {selected && <section
       ref={details}
