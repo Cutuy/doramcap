@@ -93,8 +93,9 @@ is non-atomic and keeps its existing metadata-fidelity limitations.
 ## Console and persistence
 
 Run-private manifests are the authoritative file list. A completed checkpoint names
-only synced manifests inside that run and is published atomically. Console saves its reference and summary with the run
-transaction, and includes the section in `console-report.json`. The preview is derived
+only synced manifests inside that run and is published atomically. Console saves its
+reference and summary with the run transaction, and includes the section in
+`console-report.json`. The preview is derived
 from those records; refresh, History and restart use the same report.
 
 Show storage category, source, consumers, path, change kind and available before/after
@@ -108,6 +109,11 @@ budgets, label it as a preview, and retain access to every collected record thro
 authenticated artifact route. Preserve raw Unix path bytes in the download and show a
 readable escaped form in the browser. Stream JSON Lines with backpressure and explicit
 export completion; malformed or missing manifests cannot produce a complete export.
+
+Traversal and export stream records. The existing metadata comparison retains
+before/after maps for one source, so memory grows with that tree. This extraction
+preserves that cost. The report describes observed final changes rather than a
+complete history of writes.
 
 Use the current run retention and private-file permissions. Do not add a filesystem
 search API, pagination, run-comparison fields or new history-list columns in this work.

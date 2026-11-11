@@ -18,7 +18,7 @@ Created November 11, 2026. Status: planned; application code unchanged.
   source/consumer/access records. Keep propagation and SELinux validation in the Docker adapter.
 - [ ] Preserve `doramcap.filesystem.v1` record tags, path bytes, existing category values,
   view/checkpoint layouts, reset behavior, write-back/discard and Compose step lineage.
-  Update owners, public names, callers and boundary rules together; add no forwarding aliases.
+  Update owners, public names, callers, API doc comments and boundary rules together; add no forwarding aliases.
 - [ ] Reuse the repository's existing dependencies and implementations. No new external
   crate or custom capture algorithm is selected by this plan.
 
@@ -133,5 +133,6 @@ Created November 11, 2026. Status: planned; application code unchanged.
   a real target. Unit tests alone do not establish this deployment contract.
 - [ ] Keep Holoscan, CUDA/GPU/IPC and sensor qualification explicit separate work.
 
-Design validation: local links, SVG XML/rendering and whitespace checks pass. Final guide review pending.
+Design validation: source/guide review, local links, SVG XML/rendering and whitespace checks pass.
+Runtime behavior remains unverified; the unchecked milestone checks above define acceptance.
 Runtime checks above are deferred until implementation; this design PR changes documentation only.
