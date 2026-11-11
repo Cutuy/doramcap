@@ -1,10 +1,10 @@
 //! Trusted, declarative application registrations and Compose launch settings.
+use compose_apps::compose::ComposeProject;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path, PathBuf},
 };
-use workload_docker::compose::ComposeProject;
 
 mod proto {
     include!(concat!(env!("OUT_DIR"), "/doramcap.hosting.v1.rs"));

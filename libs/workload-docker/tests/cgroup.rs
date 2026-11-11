@@ -1,4 +1,6 @@
 //! Native Compose cgroup placement. Build unprivileged; elevate only this test executable.
+use compose_apps::compose::{ComposeProject, DockerAdapter, RemoveCompose, StartCompose};
+use compose_apps::preparation::PrepareRun;
 use orchestrator::{Event, State, Step};
 use prost::Message;
 use std::{
@@ -11,10 +13,7 @@ use std::{
     rc::Rc,
     time::Duration,
 };
-use workload_docker::{
-    compose::{ComposeProject, DockerAdapter, RemoveCompose, StartCompose},
-    workflows::recorded_compose::{ComposeRun, ComposeRunner, preparation::PrepareRun},
-};
+use workload_docker::workflows::recorded_compose::{ComposeRun, ComposeRunner};
 use workload_lifecycle::cgroup::{
     self, Action, CGROUP_ROOT, IDENTITY_FILE, SystemAppsCgroups, SystemAppsCgroupsInput,
 };

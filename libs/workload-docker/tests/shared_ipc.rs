@@ -1,9 +1,9 @@
 //! Native Compose qualification before migrating the recorded workflow.
 mod support;
+use compose_apps::compose::*;
 use orchestrator::Step;
 use prost::Message;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt, path::Path, rc::Rc, time::Duration};
-use workload_docker::compose::*;
 
 async fn cli(executable: &str, port: u16, args: &[&str]) -> std::result::Result<String, String> {
     let output = tokio::time::timeout(

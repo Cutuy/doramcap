@@ -1,6 +1,7 @@
 //! Application startup, monitoring and cooperative cancellation for one prepared run.
 use super::*;
-use crate::compose::FORCED_STOP_OPERATION;
+use compose_apps::compose::FORCED_STOP_OPERATION;
+use compose_apps::preparation;
 use orchestrator::{LocalExecutor, Output};
 use std::time::Duration;
 
@@ -34,10 +35,10 @@ pub(super) async fn launch_apps(
     }
     // Start communication and register the graph before any application containers.
     let daemon = executor
-        .run::<super::super::experiment::StartDoraRuntime>(Input::new(()).after(prepared))
+        .run::<compose_apps::experiment::StartDoraRuntime>(Input::new(()).after(prepared))
         .await?;
     let graph = executor
-        .run::<super::super::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
+        .run::<compose_apps::experiment::RegisterDoraGraph>(Input::new(()).after(&daemon))
         .await?;
     let start_input = |services| StartInput {
         plan: Some(plan.clone()),
@@ -197,7 +198,7 @@ async fn start_services(
 pub(super) async fn monitor(
     executor: &LocalExecutor,
     plan: &ResolvedComposeProject,
-    resources: &super::super::experiment::SharedExperiment,
+    resources: &compose_apps::experiment::SharedExperiment,
     mut changes: tokio::sync::watch::Receiver<()>,
 ) -> orchestrator::Result<()> {
     let containers = async {
@@ -237,7 +238,7 @@ pub(super) struct QuiescedServices {
     /// Every service stopped with no failure other than forced termination.
     pub stopped: bool,
     /// How each stopped service ended.
-    pub exits: Vec<crate::compose::ServiceExit>,
+    pub exits: Vec<compose_apps::compose::ServiceExit>,
 }
 
 pub(super) async fn quiesce_services(

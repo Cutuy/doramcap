@@ -5,7 +5,7 @@ mkdirSync('src/generated', { recursive: true });
 cpSync('../contract/transport.ts', 'src/generated/transport.ts');
 execFileSync('node_modules/.bin/pbjs', [
   '-t', 'static-module', '-w', 'es6',
-  '-p', '../proto', '-p', '../../libs/workload-docker/proto', '-p', '../../libs/workload-lifecycle/proto', '-p', '../../libs/workload-systemd/proto',
+  '-p', '../proto', '-p', '../../libs/workload-docker/proto', '-p', '../../libs/compose-apps/proto', '-p', '../../libs/workload-lifecycle/proto', '-p', '../../libs/workload-systemd/proto',
   '-p', '../../libs/telemetry/workflow-protocol/proto',
   '-p', '../../libs/telemetry/protocol/proto',
   '-p', '../../libs/resources/system-config/proto',

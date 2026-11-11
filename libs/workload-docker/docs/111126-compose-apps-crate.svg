@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="470" viewBox="0 0 960 470" role="img" aria-labelledby="title desc">
+<title id="title">Shared crate for apps as containers</title>
+<desc id="desc">The Compose workflow and the Holoscan workflow each keep their own run order and depend on a new shared crate, compose-apps. The shared crate holds app preparation, project steps, Dora in containers, and system apps start, watch and stop. It depends on docker-engine and workload-lifecycle.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="960" height="470" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">One home for apps as containers</text>
+<g fill="#fcebdc" stroke="#bc906b"><rect x="80" y="60" width="370" height="70" rx="8"/><rect x="510" y="60" width="370" height="70" rx="8"/></g>
+<text x="265" y="90" font-size="16" font-weight="600">Compose workflow</text><text x="265" y="114" font-size="13">run order · user services · report</text>
+<text x="695" y="90" font-size="16" font-weight="600">Holoscan workflow</text><text x="695" y="114" font-size="13">run order · CLI launch · report</text>
+<rect x="80" y="176" width="800" height="176" rx="12" fill="#eef4f8" stroke="#8ca6b8"/>
+<text x="100" y="202" font-size="16" font-weight="600" text-anchor="start">compose-apps</text>
+<g fill="#dbeaf2" stroke="#8ca6b8">
+<rect x="100" y="218" width="370" height="52" rx="8"/><rect x="490" y="218" width="370" height="52" rx="8"/>
+<rect x="100" y="282" width="370" height="52" rx="8"/><rect x="490" y="282" width="370" height="52" rx="8"/>
+</g>
+<text x="285" y="249" font-size="15">App preparation</text><text x="675" y="249" font-size="15">Project steps</text>
+<text x="285" y="313" font-size="15">Dora in containers</text><text x="675" y="313" font-size="15">System apps: start · watch · stop</text>
+<g fill="#f7fafc" stroke="#a9b4bf"><rect x="80" y="398" width="370" height="46" rx="8"/><rect x="510" y="398" width="370" height="46" rx="8"/></g>
+<text x="265" y="426" font-size="15">docker-engine</text><text x="695" y="426" font-size="15">workload-lifecycle</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
+<path d="M265 130 V172"/><path d="M695 130 V172"/><path d="M265 352 V394"/><path d="M695 352 V394"/>
+</g>
+</g></svg>

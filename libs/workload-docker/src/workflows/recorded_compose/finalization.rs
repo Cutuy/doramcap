@@ -1,6 +1,6 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
 use super::ComposeRunReport;
-use crate::compose::{Diagnostics, adapter::private_write, error::invalid};
+use compose_apps::compose::{Diagnostics, adapter::private_write, error::invalid};
 use docker_engine::docker_proto::{HostView, OwnedContainer};
 use docker_engine::{
     filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
@@ -19,8 +19,8 @@ pub struct FinalizeInput {
     pub artifacts: PathBuf,
     pub baseline: FilesystemBaseline,
     pub overlays: Option<OverlaySet>,
-    pub shutdown: crate::compose::Shutdown,
-    pub project: crate::compose::ResolvedComposeProject,
+    pub shutdown: compose_apps::compose::Shutdown,
+    pub project: compose_apps::compose::ResolvedComposeProject,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizedRun {
@@ -37,7 +37,7 @@ pub struct FinalizedRun {
 /// Failure retains resources and diagnostics in the output.
 pub struct FinalizeRun {
     pub executor: Weak<LocalExecutor>,
-    pub adapter: Rc<crate::compose::DockerAdapter>,
+    pub adapter: Rc<compose_apps::compose::DockerAdapter>,
     pub diagnostics: Diagnostics,
 }
 impl Step for FinalizeRun {

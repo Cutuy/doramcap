@@ -5,9 +5,9 @@ use crate::{
     registry::Registration,
     workflow,
 };
+use compose_apps::compose::DockerAdapter;
 use std::{cell::RefCell, collections::HashMap, path::PathBuf, rc::Rc, sync::Arc, time::Instant};
 use tokio::sync::{RwLock, mpsc, oneshot, watch};
-use workload_docker::compose::DockerAdapter;
 
 enum Command {
     Start {

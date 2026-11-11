@@ -1,3 +1,4 @@
+//! Bounded native Compose invocation and process-group cancellation.
 use super::{Error, Result, error::invalid};
 use std::{
     collections::BTreeMap,
@@ -40,7 +41,7 @@ pub(crate) async fn capture(
 /// Execute Compose with explicit environment, bounded output and a deadline.
 /// Logs argv, cwd and outcome to stderr; environment maps and captured output are omitted.
 /// Errors retain diagnostics; cancellation kills the CLI group and leaves Engine cleanup to callers.
-pub(crate) async fn compose(
+pub async fn compose(
     socket: &str,
     directory: &Path,
     environment: &BTreeMap<String, String>,

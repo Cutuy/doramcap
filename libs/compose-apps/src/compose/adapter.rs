@@ -1,16 +1,18 @@
+//! Shared Docker connection, borrowed project execution and repository identities.
 mod configuration;
 mod project;
 use configuration::ComposeConfiguration;
 pub use project::ComposeExecution;
-pub(crate) use project::stop_timeout;
+pub use project::stop_timeout;
 
 use super::{ResolvedComposeProject, Result, error::invalid};
 use docker_engine::Engine;
-pub(crate) use docker_engine::files::{digest, private_write};
-pub(crate) use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
+pub use docker_engine::files::{digest, private_write};
+pub use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
-pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
+/// Reserved marker for the Dora runtime whose removal completes an experiment.
+pub const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
 enum StartupOutcome {
     Running(tokio::task::JoinHandle<Result<(String, String)>>),
     Finished(Result<(String, String)>),
@@ -22,7 +24,8 @@ type StartupCommand = tokio::sync::Mutex<Option<StartupOutcome>>;
 /// Project views borrow a frozen plan; resources survive cancellation and adapter destruction.
 #[derive(Clone)]
 pub struct DockerAdapter {
-    pub(crate) engine: Engine,
+    /// Shared Engine connection for observation and explicit owned-resource cleanup.
+    pub engine: Engine,
     starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
@@ -74,7 +77,9 @@ pub(crate) fn project_name(key: &str, repository: &Path) -> String {
         &digest(repository.as_os_str().as_bytes())[..16]
     )
 }
-pub(crate) fn repository_scope(repository: &Path) -> std::path::PathBuf {
+/// Return the per-user controller directory for this canonical repository identity.
+/// Callers validate and protect this path before creating or removing resources.
+pub fn repository_scope(repository: &Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!(
         "/tmp/doramcap-experiments-{}-{}",
         unsafe { libc::geteuid() },

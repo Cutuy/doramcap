@@ -98,7 +98,7 @@ fn parse_text(message: &str, text: &str) -> Result<Buffer> {
 /// Expand native Dora modules; the server supplies an approved graph path.
 #[napi]
 pub async fn expand_graph(path: String) -> Result<Buffer> {
-    workload_docker::workflows::recorded_compose::preparation::expand_graph(Path::new(&path))
+    compose_apps::preparation::expand_graph(Path::new(&path))
         .await
         .map(Buffer::from)
         .map_err(failure)
@@ -195,15 +195,14 @@ impl Execution {
                 let result = async {
                     let project = request.project.ok_or("project missing".to_string())?;
                     let resources = compose.get().await?;
-                    let names =
-                        workload_docker::workflows::recorded_compose::preparation::profiles(
-                            &resources.adapter,
-                            &request.run_id,
-                            Path::new(&request.repository_root),
-                            &project,
-                        )
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let names = compose_apps::preparation::profiles(
+                        &resources.adapter,
+                        &request.run_id,
+                        Path::new(&request.repository_root),
+                        &project,
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
                     Ok(protocol::ComposeProfiles { names }.encode_to_vec())
                 }
                 .await;
@@ -253,19 +252,19 @@ impl Execution {
                         }
                     };
                     let resources = compose.get().await?;
-                    let resolved =
-                        workload_docker::workflows::recorded_compose::preparation::resolve(
-                            &resources.adapter,
-                            spec,
-                        )
-                        .await
-                        .map_err(|e| {
-                            if matches!(e, workload_docker::compose::Error::EmptySelection) {
-                                "EmptySelection".to_owned()
-                            } else {
-                                e.to_string()
-                            }
-                        })?;
+                    let resolved = compose_apps::preparation::resolve(
+                        &resources.adapter,
+                        spec.try_into()
+                            .map_err(|e: compose_apps::compose::Error| e.to_string())?,
+                    )
+                    .await
+                    .map_err(|e| {
+                        if matches!(e, compose_apps::compose::Error::EmptySelection) {
+                            "EmptySelection".to_owned()
+                        } else {
+                            e.to_string()
+                        }
+                    })?;
                     let machine =
                         workload_docker::workflows::recorded_compose::observation::machine_state(
                             &resources.adapter,

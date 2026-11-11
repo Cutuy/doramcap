@@ -20,6 +20,7 @@ members = [
     "libs/workload-supervisor",
     "libs/workload-systemd",
     "libs/workload-docker",
+    "libs/compose-apps",
     "libs/orchestrator",
     "libs/storage-persistence",
     "libs/resources/system-config",

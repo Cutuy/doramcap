@@ -3,11 +3,9 @@ use docker_engine::{
     filesystem::FilesystemChanges,
     overlay::{self, OverlayPolicy, OverlayResults},
 };
-mod cgroup;
 mod execution;
 pub mod finalization;
 pub mod observation;
-pub mod preparation;
 pub mod reset;
 mod running;
 mod plan {
@@ -18,9 +16,12 @@ pub use plan::ComposePlan;
 use self::{
     finalization::{ReportInput, WriteRunReport},
     observation::EventCapture,
-    preparation::PrepareRun,
 };
-use crate::compose::{ComposePrepareInput, PrepareOverlays, error::invalid, *};
+use compose_apps::compose::{ComposePrepareInput, PrepareOverlays, error::invalid, *};
+use compose_apps::{
+    cgroup,
+    preparation::{self, McapWriters, PrepareInput, PrepareRun, validate_budgets},
+};
 use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
@@ -200,7 +201,7 @@ impl ComposeRunner {
             .map_err(step_error)?;
         self.blocked = false;
         let prepared = executor
-            .run::<PrepareRun>(spec.clone())
+            .run::<PrepareRun>(PrepareInput::try_from(spec.clone())?)
             .await
             .map_err(step_error)?;
         let before = observation::machine_state(&self.adapter, &prepared.value().artifacts).await;
@@ -255,7 +256,7 @@ impl ComposeRunner {
             .value()
             .execution_plan(overlays.as_ref().map(|o| o.value()));
         let resources = Rc::new(tokio::sync::Mutex::new(
-            super::experiment::ExperimentOwner::new(
+            compose_apps::experiment::ExperimentOwner::new(
                 prepared.value().dora.clone(),
                 prepared.value().run.clone(),
                 self.adapter.clone(),
@@ -352,19 +353,6 @@ fn step_error(error: impl std::fmt::Display) -> Error {
     invalid(error.to_string())
 }
 
-/// Inputs to the Compose workflow: workloads and supporting apps sharing one
-/// run lifetime. Images must exist locally.
-/// Artifact directory must be new and have an existing parent.
-/// Services writing MCAP through io_uring, and the existing directories they write into.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct McapWriters {
-    pub services: Vec<String>,
-    /// App IDs whose selected services all write MCAP.
-    #[serde(default)]
-    pub apps: Vec<String>,
-    pub directories: Vec<PathBuf>,
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComposeRun {
@@ -403,16 +391,24 @@ pub struct ComposeRun {
     #[serde(default = "readiness_default")]
     pub readiness_seconds: u64,
     /// Stop grace period in seconds for services declaring no `stop_grace_period`,
-    /// from `MIN_STOP_SECONDS` through `MAX_STOP_SECONDS`; default 15. Declared periods apply as written.
+    /// from 1 through 300; default 15. Declared periods apply as written.
     #[serde(default = "stop_default")]
     pub stop_seconds: u64,
 }
 impl ComposeRun {
-    pub(super) fn run_plan(&self) -> workload_lifecycle::launch::RunPlan {
-        workload_lifecycle::launch::RunPlan {
+    fn run_plan(&self) -> Result<workload_lifecycle::launch::RunPlan> {
+        Ok(workload_lifecycle::launch::RunPlan {
             id: self.id.clone(),
-            repository_root: self.repository_root.to_string_lossy().into_owned(),
-            artifacts: self.artifacts.to_string_lossy().into_owned(),
+            repository_root: self
+                .repository_root
+                .to_str()
+                .ok_or_else(|| invalid("repository path is not UTF-8"))?
+                .into(),
+            artifacts: self
+                .artifacts
+                .to_str()
+                .ok_or_else(|| invalid("artifact path is not UTF-8"))?
+                .into(),
             recordings: self
                 .recordings
                 .iter()
@@ -429,7 +425,7 @@ impl ComposeRun {
             dataflow_file: self.dataflow_file.clone(),
             dora_runtime: None,
             host_shm_access: self.host_shm_access,
-        }
+        })
     }
 
     /// Build launch settings from the shared run inputs and the Compose plan, with
@@ -478,24 +474,6 @@ impl ComposeRun {
     }
 }
 
-/// Shortest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
-pub const MIN_STOP_SECONDS: u64 = 1;
-/// Longest stop grace period a run accepts, for `stop_seconds` and `stop_grace_period`.
-pub const MAX_STOP_SECONDS: u64 = 300;
-
-/// Validate the shared startup and per-project shutdown budgets before side effects.
-pub fn validate_budgets(readiness_seconds: u64, stop_seconds: u64) -> Result<()> {
-    if readiness_seconds == 0 {
-        return Err(invalid("readiness_seconds must be positive"));
-    }
-    if !(MIN_STOP_SECONDS..=MAX_STOP_SECONDS).contains(&stop_seconds) {
-        return Err(invalid(format!(
-            "stop_seconds must be in {MIN_STOP_SECONDS}..={MAX_STOP_SECONDS}"
-        )));
-    }
-    Ok(())
-}
-
 fn default_filesystem() -> Option<OverlayPolicy> {
     Some(OverlayPolicy::default())
 }
@@ -504,6 +482,22 @@ fn readiness_default() -> u64 {
 }
 fn stop_default() -> u64 {
     15
+}
+
+impl TryFrom<ComposeRun> for PrepareInput {
+    type Error = Error;
+
+    /// Build shared preparation inputs, rejecting paths that cannot cross the launch contract.
+    fn try_from(spec: ComposeRun) -> Result<Self> {
+        Ok(Self {
+            run_plan: spec.run_plan()?,
+            dora_apps: spec.dora_apps,
+            system_apps: spec.system_apps,
+            extra_apps: spec.projects,
+            filesystem: spec.filesystem,
+            mcap_writers: spec.mcap_writers,
+        })
+    }
 }
 
 /// Outcome and cleanup are separate. Inspect `successful()` and `boundary_clean`
@@ -530,7 +524,7 @@ pub struct ComposeRunReport {
     pub recording_finalized: bool,
     /// How each workload, system app and Dora service ended at stop.
     #[serde(default)]
-    pub service_exits: Vec<crate::compose::ServiceExit>,
+    pub service_exits: Vec<compose_apps::compose::ServiceExit>,
     /// Whether event capture completed without a detected error; not a losslessness guarantee.
     pub event_stream_healthy: bool,
     /// Category-specific metadata manifests. Expected changes/coverage warnings

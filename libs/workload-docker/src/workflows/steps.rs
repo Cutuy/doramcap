@@ -1,62 +1,10 @@
-//! Shared registration of Docker workflow steps on an orchestrator executor.
-use crate::compose::{
-    Diagnostics, DockerAdapter, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose,
-    StartCompose,
+//! Registration of the Compose workflow and its finalization steps.
+use compose_apps::{
+    compose::{Diagnostics, DockerAdapter},
+    steps::{register, register_experiment},
 };
-use docker_engine::filesystem::{CaptureFilesystemBaseline, CollectFilesystemChanges};
 use orchestrator::{LocalExecutor, Observer};
 use std::rc::{Rc, Weak};
-
-/// Register lifecycle and filesystem steps with shared adapter and diagnostics.
-/// The caller retains its executor's observer, label and payload policy.
-pub fn register(
-    executor: &mut LocalExecutor,
-    adapter: Rc<DockerAdapter>,
-    diagnostics: Diagnostics,
-) {
-    macro_rules! step {
-        ($kind:ident) => {{
-            let adapter = adapter.clone();
-            let diagnostics = diagnostics.clone();
-            executor.register::<$kind>(move || $kind {
-                adapter: adapter.clone(),
-                diagnostics: diagnostics.clone(),
-            });
-        }};
-    }
-    step!(ResolveCompose);
-    step!(StartCompose);
-    step!(InspectCompose);
-    step!(QuiesceCompose);
-    step!(RemoveCompose);
-    let engine = Rc::new(adapter.engine.clone());
-    let dependency = engine.clone();
-    executor.register::<CaptureFilesystemBaseline>(move || CaptureFilesystemBaseline {
-        engine: dependency.clone(),
-    });
-    executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
-        engine: engine.clone(),
-    });
-}
-
-/// Register communication, graph and workload operations on the experiment executor.
-pub fn register_experiment(
-    executor: &mut LocalExecutor,
-    owner: super::experiment::SharedExperiment,
-) {
-    use super::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
-    macro_rules! step {
-        ($kind:ident, $dependency:ident) => {{
-            let owner = $dependency.clone();
-            executor.register::<$kind>(move || $kind {
-                owner: owner.clone(),
-            });
-        }};
-    }
-    step!(StartDoraRuntime, owner);
-    step!(StopDoraRuntime, owner);
-    step!(RegisterDoraGraph, owner);
-}
 
 /// Build the recorded-run executor with shared mechanics and session steps.
 /// Weak child-call references keep factories from retaining their own executor.
@@ -80,10 +28,11 @@ pub(super) fn bind_experiment(
     executor: Rc<LocalExecutor>,
     adapter: Rc<DockerAdapter>,
     diagnostics: Diagnostics,
-    owner: super::experiment::SharedExperiment,
-) -> crate::compose::Result<Rc<LocalExecutor>> {
-    let mut executor = Rc::try_unwrap(executor)
-        .map_err(|_| crate::compose::error::invalid("executor still running during binding"))?;
+    owner: compose_apps::experiment::SharedExperiment,
+) -> compose_apps::compose::Result<Rc<LocalExecutor>> {
+    let mut executor = Rc::try_unwrap(executor).map_err(|_| {
+        compose_apps::compose::error::invalid("executor still running during binding")
+    })?;
     register_experiment(&mut executor, owner);
     Ok(attach(executor, adapter, diagnostics))
 }
@@ -93,8 +42,9 @@ pub(super) fn attach(
     adapter: Rc<DockerAdapter>,
     diagnostics: Diagnostics,
 ) -> Rc<LocalExecutor> {
-    use super::recorded_compose::{finalization::*, preparation::PrepareRun};
-    use crate::compose::PrepareOverlays;
+    use super::recorded_compose::finalization::*;
+    use compose_apps::compose::PrepareOverlays;
+    use compose_apps::preparation::PrepareRun;
     use docker_engine::overlay::FinalizeOverlays;
     Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());

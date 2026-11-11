@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+compose-apps = { path = "../../../libs/compose-apps" }
 prost = "0.14"
 prost-reflect = { version = "0.16", features = ["text-format"] }
 tokio = { version = "1", features = ["sync", "time", "rt", "macros", "net", "signal", "fs", "io-util"] }

@@ -20,7 +20,9 @@ pub struct ExperimentOwner {
     pub(crate) plan: ResolvedComposeProject,
 }
 impl ExperimentOwner {
-    pub(crate) fn new(
+    /// Own prepared Dora services and their graph; construction starts no resources.
+    /// Startup and cleanup use the supplied positive budgets in seconds.
+    pub fn new(
         apps: DoraApps,
         run: workload_lifecycle::launch::RunPlan,
         adapter: Rc<DockerAdapter>,
@@ -147,7 +149,8 @@ impl ExperimentOwner {
             .await
             .map_err(|_| invalid("Dora observation deadline expired"))?
     }
-    pub(super) fn cleanup_deadline(&mut self) -> Instant {
+    /// Start or reuse the deadline shared by this run's Dora cleanup operations.
+    pub fn cleanup_deadline(&mut self) -> Instant {
         *self
             .stop_deadline
             .get_or_insert_with(|| Instant::now() + Duration::from_secs(self.stop_seconds))
@@ -208,6 +211,10 @@ macro_rules! step {
             pub owner: SharedExperiment,
         }
         impl Step for $name {
+            const ID: Option<&'static str> = Some(concat!(
+                "workload_docker::workflows::experiment::",
+                stringify!($name)
+            ));
             type Input = ();
             type Output = $output;
             async fn run(&mut self, (): ()) -> orchestrator::Result<$output> {

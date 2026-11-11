@@ -1,10 +1,10 @@
 //! Local gallery hosting server.
+use compose_apps::compose::DockerAdapter;
 use project_explorer_server::{
     api, lease::ManagerLease, lifecycle::Status, manager::Manager, registry::Registry,
     runtime::Service,
 };
 use std::{net::SocketAddr, path::PathBuf, rc::Rc, time::Duration};
-use workload_docker::compose::DockerAdapter;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

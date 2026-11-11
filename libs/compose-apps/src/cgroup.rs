@@ -1,5 +1,7 @@
 //! Docker-owned accounting parents, expressed using the daemon's configured driver.
-use super::{ComposeRun, plan::CgroupPlacement};
+use crate::preparation::PrepareInput;
+// build.rs generates these protobuf types in Cargo's build output directory.
+include!(concat!(env!("OUT_DIR"), "/doramcap.compose_plan.v1.rs"));
 use crate::compose::{DockerAdapter, Result, error::invalid};
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -14,12 +16,12 @@ const PARENT_PREFIX: &str = "doramcap-compose";
 const PARENT_HASH_CHARS: usize = 12;
 
 /// Resolve a unique per-run parent without creating containers or requiring host D-Bus access.
-pub(super) async fn placement(
+pub(crate) async fn placement(
     adapter: &DockerAdapter,
-    run: &ComposeRun,
+    input: &PrepareInput,
 ) -> Result<CgroupPlacement> {
     let info = tokio::time::timeout(
-        Duration::from_secs(run.readiness_seconds),
+        Duration::from_secs(input.run_plan.readiness_seconds),
         adapter.engine.client().info(),
     )
     .await
@@ -30,12 +32,12 @@ pub(super) async fn placement(
             "system-app accounting requires Docker cgroup v2 CPU and memory accounting",
         ));
     }
-    let repository = std::fs::canonicalize(&run.repository_root)?;
-    let artifacts = std::fs::canonicalize(&run.artifacts)?;
+    let repository = std::fs::canonicalize(&input.run_plan.repository_root)?;
+    let artifacts = std::fs::canonicalize(&input.run_plan.artifacts)?;
     let digest = Sha256::new()
         .chain_update(repository.as_os_str().as_encoded_bytes())
         .chain_update([0])
-        .chain_update(run.id.as_bytes())
+        .chain_update(input.run_plan.id.as_bytes())
         .chain_update([0])
         .chain_update(artifacts.as_os_str().as_encoded_bytes())
         .finalize();
@@ -75,10 +77,12 @@ fn slice_path(slice: &str) -> PathBuf {
     path.join(slice)
 }
 
-pub(super) struct DockerCgroup {
+/// Adopt Docker's resolved accounting parent and verify it is empty at cleanup.
+pub struct DockerCgroup {
     placement: CgroupPlacement,
 }
 impl DockerCgroup {
+    /// Bind lifecycle accounting to the exact prepared parent; Docker creates its directory.
     pub fn group(placement: CgroupPlacement) -> Rc<cgroup::Group> {
         Rc::new(cgroup::Group::new(Rc::new(Self { placement })))
     }
