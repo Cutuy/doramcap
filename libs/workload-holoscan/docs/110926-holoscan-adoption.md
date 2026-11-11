@@ -123,7 +123,7 @@ the baseline. Later stages stay open until their discussion starts.
 | 3. [Conflicting controls](110926-holoscan-controls.md) | Preserve native placement/recording and compare practical declared settings. | Warn or fail clearly for supported comparisons; defer deeper application inspection. |
 | 4. [Execution and recovery](110926-holoscan-execution.md) | Owned run resources, repeatable pre-run cleanup and interruption recovery. | Stop lingering owned runs and verify cleanup before Build/Prepare; output retention is best effort. One admission lock per repository; the container signals ready and ended. |
 | 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed and probed with a fake Docker. |
-| 6. Backend acceptance | Which existing projects and environments establish supported behavior. | Agree on comparison with upstream launches, failure scenarios and release evidence. |
+| 6. [Backend acceptance](111126-holoscan-acceptance.md) | Which existing projects and environments establish supported behavior. | Automated checks on every pull request, plus two real applications on an x86 GPU machine. ARM64 GPU devices later. |
 | 7. Console UI | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Agree on the complete web-app journey, saved selections, visible failure states and end-to-end checks. |
 
 ### Discussion process
@@ -160,7 +160,7 @@ supports the launch design. Real-container qualification remains.
 Resource limits and application logs are agreed as well. The workflow-level
 decisions are complete.
 
-Backend acceptance follows in stage 6. Console UI is explicitly last in stage 7,
+Backend acceptance is agreed in stage 6. Console UI is explicitly last in stage 7,
 including discovery presentation, saved selections, review, run controls and results.
 
 ## Agreed scope

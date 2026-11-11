@@ -150,7 +150,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 
 **Work items**
 
-- [ ] Build one Python and one C++ application from the Holoscan applications repository with the real CLI.
+- [ ] Build `bci_visualization` (Python) and `endoscopy_tool_tracking` (C++) from the Holoscan applications repository with the real CLI.
 - [ ] Launch each with a real OverlayFS view as the project root.
 - [ ] Launch with a label, a container-identity file, one CPU limit and the journal log driver as Docker options. The limit proves the mechanism for later use.
 - [ ] Record the Engine events seen for the labelled container from create to stop.
@@ -158,7 +158,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 **Validation**
 
 - [ ] Build output is visible through the view at run time.
-- [ ] The application runs correctly from a view, including display forwarding where the application needs it.
+- [ ] The application runs correctly from a view. Settle whether acceptance uses headless mode or a virtual display.
 - [ ] Labels, the limit and the log driver are present on the created container.
 - [ ] Container output appears in the host journal, and the Engine still returns the last lines.
 - [ ] The Engine reports the application's own exit code.
@@ -258,7 +258,7 @@ Docker projects only. The systemd form follows with host execution.
 
 - [ ] Cover controller loss during Build, during start and mid-run. The next run cleans up.
 - [ ] Cover cancellation during start, failed stop and failed removal.
-- [ ] Agree the acceptance projects and machines in stage 6 and run them.
+- [ ] Run every scenario in the [acceptance document](111126-holoscan-acceptance.md) for both applications.
 
 **Validation**
 
