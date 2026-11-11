@@ -1,14 +1,15 @@
-import { useRef, useState } from 'react';
-import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, Terminal, Workflow } from 'lucide-react';
+import { Fragment, useRef, useState } from 'react';
+import { Activity, ArrowUpRight, Box, Cog, Copy, Cpu, Laptop, Layers, ListTree, Terminal, Workflow } from 'lucide-react';
 import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
 const SOC_GROUPS = [
-  { label: 'Holoscan apps', Icon: Workflow, items: ['Pose', 'Camera'] },
-  { label: 'Containers', Icon: Box, items: ['camera', 'planner'] },
-  { label: 'systemd services', Icon: Cog, items: ['can-bus', 'gps'] },
+  { label: 'Holoscan apps', project: 'Holoscan', Icon: Workflow, items: ['Pose', 'Camera'] },
+  { label: 'Containers', project: 'Docker', Icon: Box, items: ['camera', 'planner'] },
+  { label: 'systemd services', project: 'systemd', Icon: Cog, items: ['can-bus', 'gps'] },
 ];
+const PROJECT_CHIPS = [...SOC_GROUPS, { project: 'Supervisor', Icon: ListTree }];
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
 function Command({ text, label }: { text: string; label: string }) {
@@ -71,7 +72,16 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
     </div>
     <ol className="console-install-steps">
       <li><h3>Install on your SoC or workstation</h3><Command text={installCommand} label="Copy Console installation command" /></li>
-      <li><h3>Start it there, from your Compose project</h3><Command text={START_COMMAND} label="Copy Console start command" /></li>
+      <li>
+        <h3>
+          Start it there, from your
+          {PROJECT_CHIPS.map(({ project, Icon }) => <Fragment key={project}>
+            {' '}<span className="console-project-chip"><Icon size={13} aria-hidden="true" />{project}</span>
+          </Fragment>)}
+          {' '}project
+        </h3>
+        <Command text={START_COMMAND} label="Copy Console start command" />
+      </li>
     </ol>
   </section>;
 }

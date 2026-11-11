@@ -288,8 +288,8 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .console-soc-body{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .console-soc-body>div{display:flex;flex-direction:column;gap:4px;min-width:0}
 .console-soc-body span{font:10px ui-monospace,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-.console-soc-body>div>div{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border:1px solid transparent;border-radius:4px;overflow-wrap:anywhere}
-.console-soc-body svg{flex-shrink:0;color:var(--muted)}
+.console-soc-body>div>div,.console-project-chip{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border:1px solid transparent;border-radius:4px;overflow-wrap:anywhere}
+.console-soc-body svg,.console-project-chip svg{flex-shrink:0;color:var(--muted)}
 .console-soc-body>.console-soc-console>div{flex:1;justify-content:center;border-color:var(--accent)}
 .console-soc-console svg{color:var(--accent)}
 .console-soc-runtime{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px dashed var(--accent);border-radius:4px;font-size:12px}
@@ -301,6 +301,7 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .console-install-steps li{position:relative;min-width:0;padding-left:26px;counter-increment:step}
 .console-install-steps li::before{content:counter(step);position:absolute;left:0;top:0;font:12px/20px ui-monospace,monospace;color:var(--accent)}
 .console-install-steps h3{font-size:13px;line-height:20px;margin:0 0 6px}
+.console-project-chip{display:inline-flex;vertical-align:middle;white-space:nowrap}
 .console-install-steps p{font-size:13px;margin:6px 0 0}
 .console-command-row{display:flex;align-items:center;gap:16px;padding:10px 12px;background:var(--soft);border-radius:5px}
 .console-command-row code{flex:1;min-width:0;overflow-wrap:anywhere;font:12px/1.7 ui-monospace,monospace;user-select:all}
