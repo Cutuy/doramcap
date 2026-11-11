@@ -1597,7 +1597,8 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
             &file,
             contents
                 .replace("6013", &coordinator)
-                .replace("6014", &daemon),
+                .replace("6014", &daemon)
+                + "\nNetworkNamespacePath=/proc/1/ns/net\n",
         )
         .unwrap();
         let mut binds = vec![Bind {
@@ -1636,6 +1637,7 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
     plan.1.programs.push(participant);
     drop(ports);
     // Act
+    let mut isolated_plan = plan.clone();
     let report = run_without_control_units(plan).await;
     // Assert
     assert!(report.successful(), "{report:#?}");
@@ -1645,6 +1647,39 @@ async fn dora_app_units_resolve_their_native_executable_and_register_the_graph()
         [daemon.as_str(), "/config/zenoh.json5"]
     );
     assert!(runtime.join("dataflow.yml").is_file());
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+    // Arrange: the same native unit explicitly requests an isolated network.
+    let session_before =
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap();
+    let coordinator_file = fixture.root.join("dora-coordinator.service");
+    let isolated = std::fs::read_to_string(&coordinator_file)
+        .unwrap()
+        .replace("NetworkNamespacePath=/proc/1/ns/net", "PrivateNetwork=yes");
+    std::fs::write(coordinator_file, isolated).unwrap();
+    isolated_plan.0.id = "isolated".into();
+    isolated_plan.0.artifacts = fixture
+        .root
+        .join("isolated-artifacts")
+        .to_string_lossy()
+        .into_owned();
+    // Act
+    let rejected = run_for_a_while(isolated_plan).await;
+    // Assert: rejection precedes Start/session mutation, and every owned unit is stopped.
+    assert!(
+        rejected
+            .execution_error
+            .as_deref()
+            .is_some_and(|message| message.contains("host network")),
+        "{rejected:#?}"
+    );
+    assert!(
+        rejected.writers_stopped && rejected.cleanup_verified,
+        "{rejected:#?}"
+    );
+    assert_eq!(
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap(),
+        session_before
+    );
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 

@@ -238,17 +238,21 @@ impl Dora {
         if !Path::new(&runtime(run)?.runtime_directory).is_dir() {
             return Err("Dora coordinator working directory is unavailable".into());
         }
-        if coordinator.main_pid().await.map_err(error)? == 0 {
-            return Err("Dora coordinator is not running".into());
-        }
-        if coordinator.private_network().await.map_err(error)?
-            || !coordinator
-                .network_namespace_path()
+        use std::os::unix::fs::MetadataExt;
+        let network = tokio::fs::metadata("/proc/self/ns/net")
+            .await
+            .map_err(error)?;
+        for (role, service) in [("coordinator", &coordinator), ("daemon", &daemon)] {
+            let pid = service.main_pid().await.map_err(error)?;
+            if pid == 0 {
+                return Err(format!("Dora {role} is not running"));
+            }
+            let actual = tokio::fs::metadata(format!("/proc/{pid}/ns/net"))
                 .await
-                .map_err(error)?
-                .is_empty()
-        {
-            return Err("Dora coordinator must share the executor host network".into());
+                .map_err(|e| format!("Dora {role} network namespace is unavailable: {e}"))?;
+            if (actual.dev(), actual.ino()) != (network.dev(), network.ino()) {
+                return Err(format!("Dora {role} must share the executor host network"));
+            }
         }
         let environment = coordinator.environment().await.map_err(error)?;
         let native_value = |name: &str| {
