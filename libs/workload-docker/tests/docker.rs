@@ -3293,8 +3293,12 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
             .await
             .unwrap();
         // Assert: existing protobuf tags and byte paths remain independently readable.
-        assert!(report.successful(), "{report:#?}");
-        assert!(report.boundary_clean);
+        assert!(report.execution_error.is_none(), "{report:#?}");
+        assert!(
+            report.writers_stopped && report.boundary_clean,
+            "{report:#?}"
+        );
+        assert!(report.filesystem_results.as_ref().unwrap().unmounted);
         let changes = report.filesystem_changes.as_ref().unwrap();
         let decode = |path: &Path| {
             let bytes = std::fs::read(path).unwrap();
