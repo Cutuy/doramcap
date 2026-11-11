@@ -158,6 +158,7 @@ main.shell{padding-top:28px}
 .mapping-header .eyebrow { margin: 0 0 6px; }
 .mapping-detail p { font-size: 14px; margin: 10px 0 14px; }
 .mapping-upstream { display: inline-block; margin-bottom: 14px; font-size: 13px; }
+.mapping-links a.highlighted { box-shadow: inset 0 0 0 1px var(--accent); }
 .mapping-close {
   display: none;
   flex-shrink: 0;
@@ -273,7 +274,7 @@ main.shell{padding-top:28px}
   flex-shrink: 0;
   color: var(--accent);
 }
-.capability.highlighted, .stack-apps .highlighted {
+.capability.highlighted, .stack-apps .highlighted, .user-device-grid .highlighted {
   background: light-dark(#edf5f1, #23352e);
 }
 a.stack-block:hover, .capability:hover,

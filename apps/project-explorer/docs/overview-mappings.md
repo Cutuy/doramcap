@@ -48,9 +48,11 @@ Unknown IDs produce a recoverable message.
 
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is
-optional. Use cases, runtime capabilities, and platform integrations open the
-selected detail beside the clicked link on wide screens and in a centered popup
-on smaller screens. Opening a shared detail link shows the centered popup.
+optional. Selecting a use case highlights its related device actions, runtime
+capabilities, platform integrations, and matching links within their popovers. Runtime
+capabilities and platform integrations open their details beside the clicked
+link on wide screens and in a centered popup on smaller screens. Opening a
+shared capability or integration link shows the centered popup.
 
 The application platform places Your apps and System apps above the optional
 doramcap foundation. Docker containers, Holoscan containers, and systemd units
