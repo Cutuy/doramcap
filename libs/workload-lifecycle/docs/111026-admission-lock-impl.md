@@ -1,20 +1,20 @@
 # Shared admission lock: implementation plan
 
-Created November 10, 2026. Status: design agreed; not started.
+Created November 10, 2026. Status: implemented November 11, 2026; validation in progress.
 [Architecture](111026-admission-lock.md).
 
 Move repository admission into `workload-lifecycle` and make Compose and systemd
 use it. One pull request, three milestones. The Holoscan runner takes the same
 lock when it is built.
 
-## Current code
+## Previous code
 
 | Workflow | Code | Behavior |
 | --- | --- | --- |
 | Compose | `Controller::acquire` in [`reset.rs`](../../workload-docker/src/workflows/recorded_compose/reset.rs) | Locks `controller.lock` in a private per-user folder under `/tmp`. Clears close-on-exec so helper commands keep the lock. Error: "another experiment controller is active". |
 | systemd | `lock_scope` in [`runner.rs`](../../workload-systemd/src/runner.rs) | Locks `lock` under `/run/doramcap/<repository hash>`. Taken by runs and operator cleanup. Error: "another run owns this repository". |
 
-Both use `std::fs::File::try_lock`. Both folders also hold other run state, which
+Both used `std::fs::File::try_lock`. Both folders also hold other run state, which
 stays where it is.
 
 ## API
@@ -23,7 +23,7 @@ A new module, `workload_lifecycle::admission`.
 
 ```rust
 /// Exclusive ownership of one repository for a run, build or cleanup.
-/// Released on drop or when the holding process exits.
+/// Released after this holder and any inheriting children exit.
 pub struct Admission { /* canonical root and the open folder */ }
 
 impl Admission {
@@ -38,7 +38,7 @@ impl Admission {
 pub enum Refusal {
     /// Another run, build or cleanup holds this repository.
     Busy,
-    /// The path is relative, missing, or names something other than a folder.
+    /// Invalid, inaccessible or unsupported repository; includes the input and cause.
     Invalid(String),
 }
 ```
@@ -72,46 +72,53 @@ systemd uses today.
 
 **Work items**
 
-- [ ] Add `workload_lifecycle::admission` with `Admission` and `Refusal`.
-- [ ] Document the contract in doc comments: scope, refusal, release, inheritance.
+- [x] Add `workload_lifecycle::admission` with `Admission` and `Refusal`.
+- [x] Document the contract in doc comments: scope, refusal, release, inheritance.
 
 **Validation**
 
-- [ ] A second `acquire` for the same folder is refused with `Busy`, including through `.` and a symlink.
-- [ ] Two different folders are both admitted.
-- [ ] Dropping the admission lets the next caller in.
-- [ ] A relative path, a missing path and a file each return `Invalid`.
-- [ ] A child process does not hold the lock by default and does after `keep_across_exec`.
-- [ ] `cargo test --release --locked -p workload-lifecycle admission`
+- [x] A second `acquire` for the same folder is refused with `Busy`, including through `.` and a symlink.
+- [x] Two different folders are both admitted.
+- [x] Dropping the admission lets the next caller in.
+- [x] A relative path, a missing path and a file each return `Invalid`.
+- [x] A child process does not hold the lock by default and does after `keep_across_exec`.
+- [x] `cargo test --release --locked -p workload-lifecycle admission`
 
 ## Milestone 2: Compose
 
 **Work items**
 
-- [ ] `Controller::acquire` takes an `Admission` and calls `keep_across_exec`.
-- [ ] Remove `controller.lock`. Keep the private folder checks and the view workspace.
-- [ ] Keep reset running under the admission.
+- [x] `Controller::acquire` takes an `Admission` and calls `keep_across_exec`.
+- [x] Remove `controller.lock`. Keep the private folder checks and the view workspace.
+- [x] Keep reset running under the admission.
 
 **Validation**
 
-- [ ] Existing reset tests pass with the lock-file assertions updated.
-- [ ] A helper command started by Compose keeps the repository busy after the launcher is gone.
-- [ ] `cargo test --release --locked -p workload-docker reset`
+- [x] Existing reset tests pass with the lock-file assertions updated.
+- [x] A helper command started by Compose keeps the repository busy after the launcher is gone.
+- [x] `cargo test --release --locked -p workload-docker reset`
 
 ## Milestone 3: systemd
 
 **Work items**
 
-- [ ] Replace `lock_scope` with `Admission::acquire` in runs and operator cleanup.
-- [ ] Keep creating the runtime folder where it is still needed.
+- [x] Replace `lock_scope` with `Admission::acquire` in runs and operator cleanup.
+- [x] Keep creating the runtime folder where it is still needed.
 
 **Validation**
 
 - [ ] The existing native test for a busy repository passes unchanged.
-- [ ] A systemd run is refused while a Compose-style admission is held on the same repository.
+- [x] A systemd run is refused while a Compose-style admission is held on the same repository.
 - [ ] Native systemd tests, with the test executable elevated.
 - [ ] Library boundary check, formatting and Clippy for the three crates.
 - [ ] ARM64 worker run at pull request integration.
+
+## Validation record
+
+November 11, 2026: shared admission (3), Compose reset (11), and shared-admission
+systemd run/cleanup refusal (1) passed on x86_64. Dependency boundaries passed;
+the architecture SVG was rendered and visually checked. Native systemd tests,
+Clippy and ARM64 remain pending.
 
 ## Outside this plan
 

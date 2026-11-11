@@ -2,13 +2,13 @@
 
 # Shared admission lock
 
-Created November 10, 2026. Status: architecture agreed.
+Created November 10, 2026. Status: Compose and systemd implemented November 11, 2026; validation in progress.
 [Implementation plan](111026-admission-lock-impl.md).
 
 One repository hosts one run, build or cleanup at a time. Every workflow asks the
 same lock, so a second caller is refused whichever workflow it uses.
 
-## Today
+## Before shared admission
 
 | Workflow | Lock | Location |
 | --- | --- | --- |
@@ -27,7 +27,8 @@ not covered.
 - A second caller for the same repository is refused at once with a clear message.
   It never waits.
 - Two repositories never block each other.
-- The lock is released when its holder finishes or dies.
+- The lock is released when its last holder finishes or dies, including helpers
+  that inherit it.
 - Two paths that name the same folder share one lock.
 
 ## Components

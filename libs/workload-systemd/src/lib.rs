@@ -25,7 +25,7 @@ pub(crate) fn error(e: impl std::fmt::Display) -> String {
 const MAX_ID_CHARS: usize = 40;
 /// Hex characters of the repository hash naming its slice and units.
 const SCOPE_CHARS: usize = 12;
-/// Runtime directory holding adopted unit copies and the admission lock.
+/// File naming the active run in the runtime directory holding adopted unit copies.
 pub(crate) const ACTIVE_RUN: &str = "active-run";
 /// Runtime root.
 const RUNTIME_ROOT: &str = "/run/doramcap";
