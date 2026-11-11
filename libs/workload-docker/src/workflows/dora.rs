@@ -107,6 +107,9 @@ impl ExperimentOwner {
         )
         .await
         .map_err(|_| invalid("Dora native startup deadline expired"))??;
+        tokio::time::timeout_at(deadline, self.inspect_runtime())
+            .await
+            .map_err(|_| invalid("Dora native inspection deadline expired"))??;
         let token = workload_lifecycle::dora::token(Path::new(&source), authenticated, deadline)
             .await
             .map_err(invalid)?;
@@ -161,9 +164,27 @@ impl ExperimentOwner {
             });
         }
         let deadline = self.cleanup_deadline();
-        let control_error = if let Some(client) = &mut self.client {
-            client.shutdown(deadline).await.err()
+        let attempted = self
+            .client
+            .as_ref()
+            .is_some_and(|client| client.graph().is_some());
+        let control_error = if attempted {
+            match tokio::time::timeout_at(deadline, self.inspect_runtime()).await {
+                Ok(Ok(())) => self
+                    .client
+                    .as_mut()
+                    .unwrap()
+                    .shutdown(deadline)
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+                    .err(),
+                Ok(Err(error)) => Some(error),
+                Err(_) => Some(invalid("Dora control cleanup deadline expired")),
+            }
         } else {
+            if let Some(client) = &mut self.client {
+                client.disconnect();
+            }
             None
         };
         let mut stopped = self

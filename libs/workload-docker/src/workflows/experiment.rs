@@ -47,94 +47,118 @@ impl ExperimentOwner {
             .ok_or_else(|| invalid("prepared Dora runtime missing"))
     }
     pub async fn register_graph(&mut self) -> Result<()> {
-        let Some(dataflow) = self
+        if self
             .run
             .dora_runtime
             .as_ref()
             .and_then(|runtime| runtime.dataflow.as_ref())
-        else {
+            .is_none()
+        {
             return Ok(());
-        };
-        if self
-            .client
-            .as_ref()
-            .is_some_and(|client| client.graph().is_some())
-        {
-            return Err(invalid("Dora graph start already attempted"));
-        }
-        let bytes = crate::evidence::read_regular(
-            std::path::Path::new(&dataflow.source),
-            super::shared_dora::MAX_GRAPH_BYTES,
-        )
-        .await?;
-        if crate::compose::adapter::digest(&bytes) != self.dora_runtime()?.dataflow_sha256 {
-            return Err(invalid("frozen Dora graph changed"));
-        }
-        let graph = workload_lifecycle::dora::graph(&dataflow.source, &bytes).map_err(invalid)?;
-        let app = self.apps.coordinator()?.1;
-        let directory = app["working_dir"]
-            .as_str()
-            .ok_or_else(|| invalid("Dora working_dir missing"))?;
-        let source_directory = DoraApps::host_path(app, directory)?;
-        let session = dora_control::protocol::SessionId::generate();
-        let events = app["environment"]["DORA_WRITE_EVENTS_TO"]
-            .as_str()
-            .map(Into::into);
-        let start = workload_lifecycle::dora::start(
-            graph,
-            self.plan.run.clone(),
-            directory.into(),
-            session,
-            events,
-        )
-        .map_err(invalid)?;
-        let out = Path::new(&source_directory).join("out");
-        tokio::fs::create_dir_all(&out).await?;
-        crate::compose::adapter::private_write(
-            &Path::new(&source_directory).join(workload_lifecycle::dora::SESSION_FILE),
-            &serde_json::to_vec_pretty(&workload_lifecycle::dora::session_artifact(session))?,
-        )
-        .await?;
-        let ignore = out.join(".gitignore");
-        let mut entries = match tokio::fs::read_to_string(&ignore).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => return Err(e.into()),
-        };
-        if !entries
-            .lines()
-            .any(|line| line == "/dataflow.dora-session.yaml")
-        {
-            entries.push_str("\n/dataflow.dora-session.yaml\n");
-            crate::compose::adapter::private_write(&ignore, entries.as_bytes()).await?;
         }
         let deadline = self
             .startup_deadline
             .ok_or_else(|| invalid("Dora runtime has not started"))?;
-        let client = self
-            .client
-            .as_mut()
-            .ok_or_else(|| invalid("Dora client missing"))?;
-        client
-            .start_graph(start, deadline)
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
-        client
-            .inspect_graph(deadline)
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
-        Ok(())
-    }
-    pub async fn inspect(&mut self) -> Result<()> {
-        self.inspect_runtime().await?;
-        if let Some(client) = &mut self.client {
-            let deadline = Instant::now() + Duration::from_secs(self.startup_seconds);
+        let registration = async {
+            let Some(dataflow) = self
+                .run
+                .dora_runtime
+                .as_ref()
+                .and_then(|runtime| runtime.dataflow.as_ref())
+            else {
+                return Ok(());
+            };
+            if self
+                .client
+                .as_ref()
+                .is_some_and(|client| client.graph().is_some())
+            {
+                return Err(invalid("Dora graph start already attempted"));
+            }
+            let bytes = crate::evidence::read_regular(
+                std::path::Path::new(&dataflow.source),
+                super::shared_dora::MAX_GRAPH_BYTES,
+            )
+            .await?;
+            if crate::compose::adapter::digest(&bytes) != self.dora_runtime()?.dataflow_sha256 {
+                return Err(invalid("frozen Dora graph changed"));
+            }
+            self.inspect_runtime().await?;
+            let graph =
+                workload_lifecycle::dora::graph(&dataflow.source, &bytes).map_err(invalid)?;
+            let app = self.apps.coordinator()?.1;
+            let directory = app["working_dir"]
+                .as_str()
+                .ok_or_else(|| invalid("Dora working_dir missing"))?;
+            let source_directory = DoraApps::host_path(app, directory)?;
+            let session = dora_control::protocol::SessionId::generate();
+            let events = app["environment"]["DORA_WRITE_EVENTS_TO"]
+                .as_str()
+                .map(Into::into);
+            let start = workload_lifecycle::dora::start(
+                graph,
+                self.plan.run.clone(),
+                directory.into(),
+                session,
+                events,
+            )
+            .map_err(invalid)?;
+            let out = Path::new(&source_directory).join("out");
+            tokio::fs::create_dir_all(&out).await?;
+            crate::compose::adapter::private_write(
+                &Path::new(&source_directory).join(workload_lifecycle::dora::SESSION_FILE),
+                &serde_json::to_vec_pretty(&workload_lifecycle::dora::session_artifact(session))?,
+            )
+            .await?;
+            let ignore = out.join(".gitignore");
+            let mut entries = match tokio::fs::read_to_string(&ignore).await {
+                Ok(entries) => entries,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(e.into()),
+            };
+            if !entries
+                .lines()
+                .any(|line| line == "/dataflow.dora-session.yaml")
+            {
+                entries.push_str("\n/dataflow.dora-session.yaml\n");
+                crate::compose::adapter::private_write(&ignore, entries.as_bytes()).await?;
+            }
+            let deadline = self
+                .startup_deadline
+                .ok_or_else(|| invalid("Dora runtime has not started"))?;
+            let client = self
+                .client
+                .as_mut()
+                .ok_or_else(|| invalid("Dora client missing"))?;
+            client
+                .start_graph(start, deadline)
+                .await
+                .map_err(|e| invalid(e.to_string()))?;
             client
                 .inspect_graph(deadline)
                 .await
                 .map_err(|e| invalid(e.to_string()))?;
-        }
-        Ok(())
+            Ok(())
+        };
+        tokio::time::timeout_at(deadline, registration)
+            .await
+            .map_err(|_| invalid("Dora registration deadline expired"))?
+    }
+    pub async fn inspect(&mut self) -> Result<()> {
+        let deadline = Instant::now() + Duration::from_secs(self.startup_seconds);
+        let inspection = async {
+            self.inspect_runtime().await?;
+            if let Some(client) = &mut self.client {
+                client
+                    .inspect_graph(deadline)
+                    .await
+                    .map_err(|e| invalid(e.to_string()))?;
+            }
+            Ok(())
+        };
+        tokio::time::timeout_at(deadline, inspection)
+            .await
+            .map_err(|_| invalid("Dora observation deadline expired"))?
     }
     pub(super) fn cleanup_deadline(&mut self) -> Instant {
         *self

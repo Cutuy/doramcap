@@ -628,10 +628,7 @@ mod tests {
             }
             // Act
             let dataflow = app.dataflow().unwrap();
-            let graph = workload_docker::workflows::shared_dora::graph(
-                &dataflow,
-                &fs::read(&dataflow).unwrap(),
-            );
+            let graph = workload_lifecycle::dora::graph(&dataflow, &fs::read(&dataflow).unwrap());
             // Assert
             assert!(graph.is_ok(), "{}: {graph:?}", path.display());
             checked += 1;

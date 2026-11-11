@@ -480,7 +480,7 @@ async fn cancelled_completed_startup_retains_outcome_until_entry_removal() {
 }
 
 #[tokio::test]
-async fn exec_rejects_a_replaced_image_before_launching_a_command() {
+async fn endpoint_rejects_a_replaced_image_before_routing_control() {
     // Arrange: Engine reports an owned, running replica with a different image.
     let root = tempfile::tempdir().unwrap();
     let manifest = root.path().join("manifest.json");
@@ -510,7 +510,7 @@ async fn exec_rejects_a_replaced_image_before_launching_a_command() {
     // Act
     let error = adapter
         .project(&plan)
-        .exec("worker", &["should-not-run".into()], Duration::from_secs(1))
+        .endpoint("worker", "host", 6013)
         .await
         .unwrap_err();
 
