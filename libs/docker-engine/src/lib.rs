@@ -8,7 +8,8 @@ use bollard::Docker;
 pub use error::{Error, Result};
 use error::{engine, invalid};
 pub use scope::OwnedResources;
-use std::path::Path;
+use std::{io, os::unix::process::CommandExt, path::Path};
+use tokio::process::{Child, Command};
 
 const ENGINE_REQUEST_TIMEOUT_SECONDS: u64 = 120;
 
@@ -65,14 +66,28 @@ impl Engine {
     }
 }
 
-/// Kill an owned child process group when its command finishes or is cancelled.
-/// The caller creates this PGID at spawn and ensures it is never its own group.
-pub struct ProcessGroup(pub u32);
+/// Kill an owned child process group when this guard is dropped.
+pub struct ProcessGroup(i32);
+impl ProcessGroup {
+    /// Spawn a child in a fresh process group and return the child and its cleanup guard.
+    /// Spawn and PID lookup errors are returned as I/O errors.
+    pub fn spawn(command: &mut Command) -> io::Result<(Child, Self)> {
+        command.kill_on_drop(true);
+        command.as_std_mut().process_group(0);
+        let child = command.spawn()?;
+        let group = child
+            .id()
+            .and_then(|id| i32::try_from(id).ok())
+            .filter(|&id| id > 1)
+            .ok_or_else(|| io::Error::other("spawned child has no valid process group ID"))?;
+        Ok((child, Self(group)))
+    }
+}
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
-        // SAFETY: the caller assigned this PGID to its owned child at spawn.
+        // SAFETY: spawn created this group and excluded special kill targets.
         unsafe {
-            libc::kill(-(self.0 as i32), libc::SIGKILL);
+            libc::kill(-self.0, libc::SIGKILL);
         }
     }
 }

@@ -14,8 +14,15 @@ pub struct OwnedResources<'a> {
 }
 impl OwnedResources<'_> {
     /// Stop every writer and return summaries from the stopped-state check.
-    /// Foreign reservations or Engine failures abort; callers hold exclusive scope ownership.
+    /// Requires exclusive scope ownership and a timeout of 0 through `i32::MAX` seconds.
+    /// Foreign reservations or Engine failures abort. Failure or cancellation can leave some writers stopped.
     pub async fn quiesce(&self, seconds: u64) -> Result<Vec<bollard::models::ContainerSummary>> {
+        let seconds = i32::try_from(seconds).map_err(|_| {
+            invalid(format!(
+                "Docker stop timeout {seconds}s exceeds {}s",
+                i32::MAX
+            ))
+        })?;
         match self.engine.docker.inspect_container(self.owner, None).await {
             Ok(ref container)
                 if container
@@ -41,7 +48,7 @@ impl OwnedResources<'_> {
                 .stop_container(
                     container.id.as_deref().unwrap(),
                     Some(StopContainerOptions {
-                        t: Some(seconds as i32),
+                        t: Some(seconds),
                         ..Default::default()
                     }),
                 )
@@ -132,7 +139,8 @@ impl OwnedResources<'_> {
         Ok(containers)
     }
     /// Remove stopped containers and networks, keeping the supplied container until last.
-    /// The backend supplies the final container ID; it is honored only within this scope.
+    /// Requires exclusive scope ownership. Only an in-scope final container ID is honored.
+    /// Failure or cancellation can leave partial cleanup. Retry with the same scope and final ID.
     pub async fn remove(&self, last: Option<&str>) -> Result<()> {
         self.verify_stopped().await?;
         let mut owner = None;

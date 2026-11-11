@@ -107,7 +107,6 @@ impl ResetExperiment {
         // Stop and verify this repository's writers before touching its overlay workspace.
         let resources = self.adapter.engine.resources(scope, &owner);
         let stopped = resources.quiesce(self.stop_seconds).await?;
-        overlay::discard(&self.controller.workspace()).await?;
         let mut last = None;
         for container in stopped {
             if container.labels.is_some_and(|labels| {
@@ -117,6 +116,7 @@ impl ResetExperiment {
                 return Err(invalid("multiple experiment IPC owners"));
             }
         }
+        overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.
         resources.remove(last.as_deref()).await?;
         Ok(())

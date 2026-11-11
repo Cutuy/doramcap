@@ -2,7 +2,7 @@ use super::{Error, Result, error::invalid};
 use std::{
     collections::BTreeMap,
     io::Write,
-    os::unix::process::{CommandExt, ExitStatusExt},
+    os::unix::process::ExitStatusExt,
     path::Path,
     process::{ExitStatus, Stdio},
     sync::atomic::{AtomicU64, Ordering},
@@ -74,12 +74,9 @@ async fn execute(
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    command.as_std_mut().process_group(0);
+        .stderr(Stdio::piped());
     let mut record = CommandLog::start(command.as_std(), timeout, writer);
-    let mut child = command.spawn()?;
-    let group = ProcessGroup(child.id().ok_or_else(|| invalid("missing Compose PID"))?);
+    let (mut child, group) = ProcessGroup::spawn(&mut command)?;
     record.outcome = "cancelled";
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
