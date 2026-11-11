@@ -27,6 +27,16 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
     {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}
+    <section className="console-tools-layer" aria-labelledby="console-tools-heading">
+      <div className="layer-heading"><h2 id="console-tools-heading">Console tools</h2></div>
+      <ul className="console-tools-list">
+        <li className="stack-block"><History size={16} aria-hidden="true" />Run history</li>
+        <li className="stack-block"><ScanLine size={16} aria-hidden="true" />System snapshots</li>
+        <li className="stack-block"><GitCompareArrows size={16} aria-hidden="true" />A/B comparison</li>
+        <li className="stack-block"><Activity size={16} aria-hidden="true" />Performance analysis</li>
+      </ul>
+    </section>
+
     <section className="platform-stack" aria-labelledby="architecture-heading">
       <h2 id="architecture-heading" className="stack-heading eyebrow">Edge device</h2>
 
@@ -39,56 +49,43 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
       </a>
 
       <div className="layer-connector" aria-hidden="true" />
-      <div className="stack-services">
-        <div>
-          <section className="stack-apps" aria-label="Applications">
-            <div className="stack-block"><Layers size={16} aria-hidden="true" />Your apps</div>
-            <div className="stack-block"><Cog size={16} aria-hidden="true" />System apps</div>
-          </section>
+      <section className="stack-apps" aria-label="Applications">
+        <div className="stack-block"><Layers size={16} aria-hidden="true" />Your apps</div>
+        <div className="stack-block"><Cog size={16} aria-hidden="true" />System apps</div>
+      </section>
 
-          <div className="layer-connector" aria-hidden="true" />
-          <section className="runtime-layer" aria-labelledby="runtime-heading">
-            <div className="layer-heading">
-              <h3 id="runtime-heading">doramcap runtime</h3>
-              <span>Optional to adopt</span>
-            </div>
-            <div className="capability-grid">
-              {overview.capabilities.map(c => {
-                const Icon = icons[c.category] ?? Layers;
-                return <a
-                  key={c.id}
-                  href={link({ ...context, capability: c.id })}
-                  className={highlights.includes(c.id) ? 'capability highlighted' : 'capability'}
-                  aria-current={capability?.id === c.id && !integration ? 'true' : undefined}
-                >
-                  <Icon size={14} strokeWidth={1.6} aria-hidden="true" />{c.title}
-                </a>;
-              })}
-            </div>
-          </section>
-
-          <div className="layer-connector" aria-hidden="true" />
-          <section className="lifecycle-layer" aria-labelledby="lifecycle-heading">
-            <div className="layer-heading"><h3 id="lifecycle-heading">Lifecycle</h3></div>
-            <div className="lifecycle-grid">
-              <div className="stack-block"><Box size={16} aria-hidden="true" />Docker containers</div>
-              <a className="stack-block" href={link({ ...context, integration: 'holoscan' })} aria-current={integration?.id === 'holoscan' ? 'true' : undefined}>
-                <Workflow size={16} aria-hidden="true" />Holoscan containers
-              </a>
-              <div className="stack-block"><Cog size={16} aria-hidden="true" />systemd units</div>
-            </div>
-          </section>
+      <div className="layer-connector" aria-hidden="true" />
+      <section className="runtime-layer" aria-labelledby="runtime-heading">
+        <div className="layer-heading">
+          <h3 id="runtime-heading">doramcap runtime</h3>
+          <span>Optional to adopt</span>
         </div>
-        <section className="console-tools-layer" aria-labelledby="console-tools-heading">
-          <div className="layer-heading"><h3 id="console-tools-heading">Console tools</h3></div>
-          <ul className="console-tools-list">
-            <li className="stack-block"><History size={16} aria-hidden="true" />Run history</li>
-            <li className="stack-block"><ScanLine size={16} aria-hidden="true" />System snapshots</li>
-            <li className="stack-block"><GitCompareArrows size={16} aria-hidden="true" />A/B comparison</li>
-            <li className="stack-block"><Activity size={16} aria-hidden="true" />Performance analysis</li>
-          </ul>
-        </section>
-      </div>
+        <div className="capability-grid">
+          {overview.capabilities.map(c => {
+            const Icon = icons[c.category] ?? Layers;
+            return <a
+              key={c.id}
+              href={link({ ...context, capability: c.id })}
+              className={highlights.includes(c.id) ? 'capability highlighted' : 'capability'}
+              aria-current={capability?.id === c.id && !integration ? 'true' : undefined}
+            >
+              <Icon size={14} strokeWidth={1.6} aria-hidden="true" />{c.title}
+            </a>;
+          })}
+        </div>
+      </section>
+
+      <div className="layer-connector" aria-hidden="true" />
+      <section className="lifecycle-layer" aria-labelledby="lifecycle-heading">
+        <div className="layer-heading"><h3 id="lifecycle-heading">Lifecycle</h3></div>
+        <div className="lifecycle-grid">
+          <div className="stack-block"><Box size={16} aria-hidden="true" />Docker containers</div>
+          <a className="stack-block" href={link({ ...context, integration: 'holoscan' })} aria-current={integration?.id === 'holoscan' ? 'true' : undefined}>
+            <Workflow size={16} aria-hidden="true" />Holoscan containers
+          </a>
+          <div className="stack-block"><Cog size={16} aria-hidden="true" />systemd units</div>
+        </div>
+      </section>
 
       <div className="layer-connector" aria-hidden="true" />
       <section className="software-layer" aria-labelledby="software-heading">

@@ -140,17 +140,16 @@ main.shell{padding-top:28px}
 /* Full dependency chains use static SVG and native scrolling. */
 .dag-legend{display:flex;flex-wrap:wrap;gap:8px 24px;font-size:11px;color:var(--muted);margin:0 0 14px}.dag-scroll{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.dependency-dag{display:block;max-width:none;margin:auto}.dag-edge{color:var(--muted);stroke-width:1.2}.dag-node rect{fill:var(--panel);stroke:var(--line);stroke-width:1}.dag-node text{fill:var(--ink);font:12px ui-monospace,monospace}.dag-node .dag-kind{fill:var(--muted);font:10px system-ui;letter-spacing:.6px}.dag-node.dag-root rect{fill:var(--soft);stroke:var(--accent)}.dag-node:hover rect,.dag-node:focus-visible rect{stroke:var(--accent);stroke-width:2}.dag-declarations{margin-top:18px;font-size:12px}.dag-declarations summary{cursor:pointer}.dag-declarations ul{padding-left:18px;overflow-wrap:anywhere}.dag-declarations li{padding:6px 0}.dag-declarations small{display:block;color:var(--muted)}.dependency-kind-controls{display:flex;gap:18px}.dependency-kind-controls label{display:flex;align-items:center;gap:5px}.dependency-notes:empty{display:none}.direct-deps li:first-child{margin-top:12px}.dag-scroll:focus-visible{outline:2px solid var(--accent)}
 
-/* Edge device stack. */
+/* Console tools and the edge device stack. */
 .platform-stack {
   padding: 16px;
-  margin-top: 8px;
+  margin-top: 16px;
   border: 1px solid light-dark(#aebbb4, #586962);
   border-radius: 9px;
   background: var(--soft);
 }
 .stack-heading { margin: 0 0 12px; color: var(--ink); font-weight: 500; }
-.stack-services, .stack-apps, .lifecycle-grid, .capability-grid, .console-tools-list { display: grid; gap: 8px; }
-.stack-services { grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); }
+.stack-apps, .lifecycle-grid, .capability-grid, .console-tools-list { display: grid; gap: 8px; }
 .stack-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lifecycle-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .capability-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -169,7 +168,7 @@ main.shell{padding-top:28px}
   gap: 6px 12px;
   margin-bottom: 8px;
 }
-.layer-heading h3 { font-size: 16px; margin: 0; }
+.layer-heading h2, .layer-heading h3 { font-size: 16px; margin: 0; }
 .layer-heading > span { font-size: 12px; color: var(--muted); }
 .stack-block, .capability, .orchestration-layer {
   display: flex;
@@ -188,7 +187,13 @@ main.shell{padding-top:28px}
   overflow-wrap: anywhere;
 }
 .stack-block, .orchestration-layer { justify-content: center; text-align: center; }
-.console-tools-list { margin: 0; padding: 0; list-style: none; }
+.console-tools-layer { border: 1px solid var(--line); }
+.console-tools-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .console-tools-list .stack-block { justify-content: flex-start; text-align: left; }
 .orchestration-layer { border: 2px solid var(--accent); }
 .lifecycle-grid .stack-block, .console-tools-list .stack-block, .capability { background: var(--bg); }
@@ -220,13 +225,12 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .platform-layer p { margin: 0; color: var(--ink); font-size: 13px; }
 
 @media (max-width: 800px) {
-  .stack-services { grid-template-columns: minmax(0, 1fr); }
-  .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .capability-grid, .console-tools-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .platform-stack { padding: 10px; }
   .runtime-layer, .lifecycle-layer, .console-tools-layer, .platform-layer, .software-layer { padding: 12px; }
-  .lifecycle-grid { grid-template-columns: minmax(0, 1fr); }
+  .lifecycle-grid, .console-tools-list { grid-template-columns: minmax(0, 1fr); }
   .software-group { flex-direction: column; align-items: flex-start; gap: 4px; }
   .software-links { gap: 7px 13px; }
 }
