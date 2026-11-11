@@ -20,7 +20,7 @@ project root.
 
 ## Shared Docker crate
 
-A new crate, `docker-engine`, holds the Docker operations both backends need.
+The `docker-engine` crate, now on `main`, holds the Docker operations both backends need.
 `workload-docker` keeps the Compose parts and depends on it, as
 `workload-holoscan` does. The [implementation plan](111026-docker-engine-crate-impl.md)
 lists the milestones.
@@ -33,7 +33,7 @@ Current filesystem steps accept Compose project inputs, so the work has two stag
 
 | Compose phase | Stays in `workload-docker` | Shared Docker crate |
 | --- | --- | --- |
-| Reset | Repository lock and the reset step. | Stop, verify and remove resources by ownership label; discard leftover views. |
+| Reset | The reset step. The repository lock moves to `workload-lifecycle`. | Stop, verify and remove resources by ownership label; discard leftover views. |
 | Prepare | Resolve and pin the manifest; read its binds and volumes. | Record the file baseline. |
 | Views | Rewrite manifest sources; Compose validation. | Create views; return each source and its view. |
 | Start, stop, remove | Compose project operations. | None. |
@@ -75,6 +75,18 @@ host observations, workflow logs and the filesystem results under the same run.
 Results identify storage categories, retained paths and capture coverage. Native
 recording validity and filesystem change reports keep separate outcomes.
 
+## Recordings and results
+
+The Holoscan runner passes an empty recording list to the shared run sequence.
+Console runs no validity check on the application's native recordings. The
+file-change report is the record of what the application wrote.
+
+A recording cut short is not detected. Checking MCAP files found among the
+changed files is a possible later addition.
+
+Console's web app does not show file changes yet. That work is tracked in
+[Cutuy/doramcap#312](https://github.com/Cutuy/doramcap/pull/312).
+
 Normal finalization owns write-back. Cleanup of an interrupted prior run stops
 its writers and discards temporary views after any best-effort salvage.
 
@@ -87,7 +99,8 @@ Captured folders reach the container through inputs Console controls: the
 project root and extra data folders. The view of an extra data folder keeps the
 folder's name, because the CLI derives the container path from it. Mounts declared
 in a project's own Docker options keep their original source and are reported as
-outside capture coverage.
+outside capture coverage. Review lists them under "Not captured" and Start is
+allowed. The run result repeats the list.
 
 The default launch also shares host networking, host IPC and `/dev`. These pass
 through to the host unchanged.
@@ -115,7 +128,8 @@ Shared-crate boundary reviewed against
 
 Carry the existing isolation, shared-alias, deletion, write-back, full-disk and
 interruption cases into acceptance for both consumers. Extraction must preserve
-Compose behavior. No implementation or runtime qualification has been performed.
+Compose behavior. The shared crate has landed. Holoscan runtime qualification has
+not been performed.
 
 Applicable rules: D-02, D-03, D-04, D-06, D-07, D-09, D-11, D-12, D-13 and D-14.
 

@@ -2,12 +2,12 @@
 
 # Holoscan build and preparation
 
-Created November 9, 2026. Stage 2 architecture: agreed build boundary.
+Created November 9, 2026. Updated November 10, 2026. Stage 2 architecture: agreed build boundary and Build request.
 [Adoption overview](110926-holoscan-adoption.md).
 
 Build is a separate, observable operation before Prepare. The Holoscan workflow
-orders these operations. If a caller requires one preparation workflow, Build
-remains an isolated child operation with its own outcome.
+orders these operations. Console starts Build through its own request, next to
+inspect and start.
 
 For a new run, the [cleanup gate](110926-holoscan-execution.md) precedes Build.
 Lingering owned resources must be stopped and cleaned before the workflow proceeds.
@@ -23,6 +23,22 @@ Lingering owned resources must be stopped and cleaned before the workflow procee
 The selected project, application, language, optional mode and native settings
 remain consistent across these operations. Holoscan owns its build rules and
 incremental build behavior. `workload-holoscan` owns ordering and operation outcomes.
+
+## Console Build request
+
+Console's backend gains a third operation beside inspect and start.
+
+- It runs the Holoscan CLI build for the selected application and reports
+  progress and its own result.
+- It holds the [repository admission lock](110926-holoscan-execution.md#admission-and-cleanup),
+  so a build and a run on one repository cannot overlap.
+- It records the source commit and whether the tree was clean.
+- Prepare reports "not built" when the image is missing and directs the user to Build.
+- Prepare and Start compare the current source commit and clean state with the
+  Build record. A difference requires Build again.
+
+Console needs no knowledge of how a project builds. The CLI reads the project's
+own metadata and build files.
 
 Prepare can identify missing configuration or artifacts and direct the caller to
 Build. Build work remains in the Build operation. Resource-control checks are
@@ -44,8 +60,9 @@ lists what the snapshot covers.
 
 A meaningful change invalidates the affected result. Build-input changes require
 Build again; launch-input changes require Prepare again. Start uses the prepared
-selection and artifacts. The implementation plan must define how build-input
-changes are detected.
+selection and artifacts. Build-input changes are detected through the source commit and clean
+state recorded at Build. The implementation plan defines how a tree with
+uncommitted changes at Build is handled.
 
 An application can be started repeatedly while the relevant prepared inputs and
 artifacts remain valid. The native build system continues to decide which build
@@ -70,7 +87,9 @@ Source inspection and CLI 5.0.0 dry runs establish the intended operation split:
 - The successful build dry run used an explicit fixture image reference.
 
 These checks cover command generation. Building a real image and launching its
-application with the same settings remain backend acceptance work.
+application with the same settings remain backend acceptance work. A real build
+has not been run, so it is unverified that build output stays visible through
+the filesystem view at run time.
 
 Applicable rules: D-01, D-02, D-03, D-04, D-06, D-07, D-09, D-13 and D-14.
 Individual steps, shared operations and artifact checks belong in the separate
