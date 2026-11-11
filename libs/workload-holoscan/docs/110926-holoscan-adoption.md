@@ -152,7 +152,8 @@ outside capture are agreed and recorded in their stage documents. Two
 implementation plans are drafted: the
 [shared admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
 [Holoscan runner](111126-holoscan-runner-impl.md). The runner plan starts by
-proving the launch on a real container and lists five open items.
+proving the launch on a real container and lists five open items. Support apps
+are agreed and built after the application-only run.
 A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
 supports the launch design. Real-container qualification remains.
 
@@ -181,6 +182,7 @@ including discovery presentation, saved selections, review, run controls and res
 | Review | One snapshot of the expected launch must match at Start, as for Compose and systemd. |
 | Resource limits | Limits the user selects travel as Docker options on the launch, inside the Review snapshot. Prepare checks them against the project's own options. |
 | Application logs | Container output goes to the host journal. A project that sets its own log driver keeps it. |
+| Support apps | Dora and Console's system apps follow the project's environment: Docker containers for a Docker project, systemd units for a host project. Built after the application-only run works. |
 | Placement and recording | Preserve Holoscan controls; Console manages runs, its own observations and retained outputs. |
 | Conflicts | Warn or fail clearly for supported checks of conflicting declared settings. Defer costly inspection of application internals. |
 
