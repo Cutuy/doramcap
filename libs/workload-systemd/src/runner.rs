@@ -87,6 +87,7 @@ impl SystemdRunner {
     pub async fn cleanup(&mut self, repository: &Path) -> Result<()> {
         let admission = Admission::acquire(repository).map_err(error)?;
         let scope = Scope::of(admission.repository())?;
+        remove_obsolete_lock(&scope)?;
         self.blocked = true;
         let manager = Rc::new(Manager::connect().await?);
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
@@ -154,6 +155,7 @@ impl SystemdRunner {
             .mode(0o700)
             .create(&scope.directory)
             .map_err(error)?;
+        remove_obsolete_lock(&scope)?;
         let manager = Rc::new(Manager::connect().await?);
         let remaining = manager.remaining(&scope).await?;
         if !remaining.is_empty() {
@@ -264,9 +266,42 @@ impl SystemdRunner {
     }
 }
 
+/// Lock file written before shared admission; `/run` keeps it until reboot.
+const OBSOLETE_LOCK: &str = "lock";
+
+/// Remove the obsolete lock file so it cannot read as a leftover run; absence succeeds.
+/// Call while holding admission for the scope's repository.
+fn remove_obsolete_lock(scope: &Scope) -> Result<()> {
+    match std::fs::remove_file(scope.directory.join(OBSOLETE_LOCK)) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(error(e)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn obsolete_lock_is_removed_and_absence_is_accepted() {
+        // Arrange
+        let directory =
+            std::env::temp_dir().join(format!("doramcap-obsolete-lock-{}", std::process::id()));
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join(OBSOLETE_LOCK), b"").unwrap();
+        let scope = Scope {
+            prefix: String::new(),
+            slice: String::new(),
+            directory: directory.clone(),
+        };
+
+        // Act / Assert
+        remove_obsolete_lock(&scope).unwrap();
+        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 0);
+        remove_obsolete_lock(&scope).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+    }
 
     #[test]
     fn missing_exit_evidence_prevents_success_but_accounting_is_optional() {

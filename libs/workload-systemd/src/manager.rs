@@ -309,11 +309,12 @@ impl Manager {
             .filter(|(_, load, active)| load != "not-found" || active != "inactive")
             .map(|(name, ..)| name)
             .collect();
-        for path in entries(&scope.directory).await? {
-            if path.file_name().is_some_and(|name| name != "lock") {
-                remaining.push(path.display().to_string());
-            }
-        }
+        remaining.extend(
+            entries(&scope.directory)
+                .await?
+                .iter()
+                .map(|p| p.display().to_string()),
+        );
         remaining.extend(
             runtime_files(scope)
                 .await?

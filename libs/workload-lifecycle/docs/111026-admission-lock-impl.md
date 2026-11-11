@@ -61,6 +61,7 @@ systemd uses today.
 | Area | Change |
 | --- | --- |
 | Lock location | Both workflows move from their lock files to the repository folder. The old files are no longer created. |
+| Old lock files | systemd's old lock file under `/run/doramcap` is removed at the next run or cleanup, under the new lock. The leftover check no longer exempts a file named `lock`. Compose's old lock file sits in its private folder and is left alone. |
 | Mixed versions | An old binary and a new one do not exclude each other on one repository. |
 | Compose across users | Two users can no longer run Compose on one repository at once. Today each user has a separate lock. |
 | Compose error text | Changes to "another run owns this repository". No caller matches on the old text. |
@@ -104,6 +105,7 @@ systemd uses today.
 
 - [x] Replace `lock_scope` with `Admission::acquire` in runs and operator cleanup.
 - [x] Keep creating the runtime folder where it is still needed.
+- [x] Remove the old lock file under the new lock and drop its exemption from the leftover check.
 
 **Validation**
 
@@ -134,6 +136,18 @@ preparation dependency but receives two;
 input. Initial Dora prerequisite failures passed after supplying the verified
 Dora 1.1.0 release. Full local workspace CI and Docker end-to-end scenarios were
 not run; these focused checks do not establish a full local CI pass.
+
+Follow-up after review, November 11, 2026: the old systemd lock file is removed
+under the new lock and its exemption is gone from the leftover check.
+
+| Check | Result |
+| --- | --- |
+| `workload-systemd` release unit tests, including the new removal test | 23 passed, 1 ignored on x86_64 |
+| Formatting and Clippy with warnings denied, `workload-systemd` | Passed |
+| Native systemd tests, hosted CI and ARM64 worker for this follow-up | Not run |
+
+The leftover check runs only against a live service manager, so the native
+systemd tests are the ones that exercise its change.
 
 ## Outside this plan
 
