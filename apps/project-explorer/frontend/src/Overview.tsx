@@ -28,7 +28,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
     {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}
     <section className="user-device-layer" aria-labelledby="user-device-heading">
-      <div className="layer-heading"><h2 id="user-device-heading">Your device</h2></div>
+      <h2 id="user-device-heading" className="stack-heading">Your device</h2>
       <ul className="user-device-grid">
         <li className="stack-block"><ClipboardCheck size={16} aria-hidden="true" />Review run setup</li>
         <li className="stack-block"><Play size={16} aria-hidden="true" />Launch experiments</li>
