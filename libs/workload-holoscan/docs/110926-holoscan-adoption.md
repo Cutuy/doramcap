@@ -153,9 +153,8 @@ implementation plans follow: the shared admission lock, then the Holoscan runner
 A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
 supports the launch design. Real-container qualification remains.
 
-Still open: resource limits for the application container, the source of the
-application log, and whether every Supervisor run starts inside a run that holds
-the admission lock.
+Resource limits and application logs are agreed as well. The workflow-level
+decisions are complete.
 
 Backend acceptance follows in stage 6. Console UI is explicitly last in stage 7,
 including discovery presentation, saved selections, review, run controls and results.
@@ -177,6 +176,8 @@ including discovery presentation, saved selections, review, run controls and res
 | Recordings | Console runs no recording check. The result is the list of files the run changed. |
 | Mounts outside capture | Listed at Review and in the result. Start is allowed. |
 | Review | One snapshot of the expected launch must match at Start, as for Compose and systemd. |
+| Resource limits | Limits the user selects travel as Docker options on the launch, inside the Review snapshot. Prepare checks them against the project's own options. |
+| Application logs | Container output goes to the host journal. A project that sets its own log driver keeps it. |
 | Placement and recording | Preserve Holoscan controls; Console manages runs, its own observations and retained outputs. |
 | Conflicts | Warn or fail clearly for supported checks of conflicting declared settings. Defer costly inspection of application internals. |
 

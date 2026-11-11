@@ -87,6 +87,29 @@ changed files is a possible later addition.
 Console's web app does not show file changes yet. That work is tracked in
 [Cutuy/doramcap#312](https://github.com/Cutuy/doramcap/pull/312).
 
+## Logs
+
+Container output goes to the host journal, where systemd applications already
+log. Console sets Docker's journal log driver as a launch option.
+
+| Case | Behavior |
+| --- | --- |
+| Project sets no log driver | Console sets the journal driver. |
+| Project sets its own log driver | The project's choice stays. Review shows that the log is set by the project. Console collects nothing for that container. |
+| Application writes its own log files | Unaffected. The files appear in the file-change report when they land in a captured folder. |
+
+Console's setting takes precedence over a host-wide Docker default. On failure,
+Console reads the container's last lines through the Engine for the error
+message, as Compose does. The CLI's own output is saved to a launch log file.
+
+Planned: at the end of a run, Console collects the run's journal entries for all
+its units and containers and saves them with the run. That work and the same
+change for Compose are tracked in
+[Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
+
+The journal driver has not been tested here. Real-container qualification must
+confirm it, including reading back the last lines.
+
 Normal finalization owns write-back. Cleanup of an interrupted prior run stops
 its writers and discards temporary views after any best-effort salvage.
 

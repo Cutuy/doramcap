@@ -2,7 +2,7 @@
 
 # Holoscan controls and conflicts
 
-Created November 9, 2026. Stage 3 architecture: agreed ownership and bounded checks.
+Created November 9, 2026. Updated November 10, 2026. Stage 3 architecture: agreed ownership, bounded checks and how limits are applied.
 [Adoption overview](110926-holoscan-adoption.md).
 
 Holoscan retains application placement and sensor recording. Console manages its
@@ -19,6 +19,22 @@ selected outer resource limits, host observations and retained files.
 
 Each control and output has an owner. Supporting an additional sensor recorder or
 overriding application placement requires a separate design decision.
+
+## Applying selected limits
+
+The Holoscan CLI creates the container, so Console passes each selected limit as
+a Docker option on the launch. Labels and the container-identity file already
+travel this way.
+
+- A limit holds from the moment the container starts.
+- Limits are part of the launch command, so they fall inside the Review snapshot
+  that Start requires.
+- A run with no selected limits uses the project's launch unchanged.
+- Prepare compares the selected limits with the project's own Docker options and
+  warns or fails as the table below describes.
+
+The implementation plan lists the limits offered. The first version can mirror
+what Compose offers.
 
 ## Conflict outcomes
 
