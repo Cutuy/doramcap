@@ -67,10 +67,16 @@ saved records and the same report.
 
 ## Order
 
-It follows the [admission lock](https://github.com/Cutuy/doramcap/pull/315) and
-the [capture move](https://github.com/Cutuy/doramcap/pull/316), since all three
-reshape `workload-docker`. It comes before the
-[Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) starts system apps.
+Milestones 1 to 3 can start now, in parallel with the
+[admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
+[capture move](https://github.com/Cutuy/doramcap/pull/316). All three move code
+out of `workload-docker`, which means ordinary code conflicts.
+
+Milestone 4 waits for the capture move. Both reshape the Compose run sequence
+and reset, and the capture move decides that shape first.
+
+The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) needs
+milestone 4 before it starts system apps.
 
 Applicable rules: D-01, D-02, D-03, D-06, D-09, D-12, D-13 and D-14 in the
 [design guide](../../../docs/design-guide.md).

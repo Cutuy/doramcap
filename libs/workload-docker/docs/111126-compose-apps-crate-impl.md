@@ -4,7 +4,8 @@ Created November 11, 2026. Status: design agreed; not started.
 [Architecture](111126-compose-apps-crate.md).
 
 Create `libs/compose-apps` and move four pieces into it from `workload-docker`,
-one milestone each. Every milestone is a move with no behavior change.
+one milestone each. Every milestone is a move with no behavior change. Milestones 1 to 3
+can start now.
 
 ## Current code
 
@@ -69,6 +70,8 @@ depend on any `workload-*` crate or on `console-native`.
 - [ ] Cross-group checks still reject a system app that depends on a user service.
 
 ## Milestone 4: system apps start, watch and stop
+
+Waits for the capture move in [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1.
 
 **Work items**
 
