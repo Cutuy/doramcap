@@ -29,10 +29,12 @@ the implementation leaves installer and host settings unchanged.
   the rebase; record loss as a measurement.
 - [x] ARM64 job 670 passed for this integration. Worker snapshot:
   `/home/doramcap-ci/jobs/5e6b1204a695424284a84713f441fb43`.
-- [x] Reproduce hosted Compose's `HEAD /_ping` negotiation in the fake Engine and
-  serve its API metadata without consuming expected image/resource responses.
-  The regression failed before the fixture fix; 66 Compose release tests passed
-  afterward, with 3 ignored. Focused release Clippy passed.
+- [x] Reproduce hosted Compose's `HEAD /_ping` and daemon-info requests in the fake
+  Engine without consuming expected image/resource responses. Both missing
+  metadata responses were reproduced before their fixes. All 66 Compose release
+  tests passed with 3 ignored under the
+  [runner's Compose 2.38.2](https://github.com/actions/runner-images/blob/ubuntu24/20261101.360/images/ubuntu/Ubuntu2404-Readme.md)
+  and local Compose 5.6.0. Focused release Clippy passed.
 
 Validated Rust runtime/test source: `02ad06d3`, rebased onto main `3eb0381f`.
 Release results: `compose-apps` 65 passed / 3 ignored; `workload-docker` 18 passed;

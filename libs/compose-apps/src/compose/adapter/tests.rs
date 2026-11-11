@@ -311,8 +311,13 @@ pub(crate) fn test_engine_status(
             let mut line = String::new();
             stream.read_line(&mut line).await.unwrap();
             let negotiation = line.starts_with("HEAD /_ping ");
+            let daemon_info = line.starts_with("GET ")
+                && line
+                    .split_whitespace()
+                    .nth(1)
+                    .is_some_and(|target| target.ends_with("/info"));
             assert!(
-                negotiation || line.contains(*path),
+                negotiation || daemon_info || line.contains(*path),
                 "unexpected Engine request: {line}"
             );
             loop {
@@ -330,7 +335,10 @@ pub(crate) fn test_engine_status(
                 ).as_bytes()).await.unwrap();
                 continue;
             }
-            let body = if *status == 204 {
+            let status = if daemon_info { 200 } else { *status };
+            let body = if daemon_info {
+                json!({"OSType":"linux","LoggingDriver":"json-file"}).to_string()
+            } else if status == 204 {
                 String::new()
             } else {
                 response.to_string()
@@ -338,7 +346,9 @@ pub(crate) fn test_engine_status(
             stream.get_mut().write_all(format!(
                 "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
             ).as_bytes()).await.unwrap();
-            let _ = responses.next();
+            if !daemon_info {
+                let _ = responses.next();
+            }
         }
     });
     (adapter, server)
@@ -358,7 +368,7 @@ async fn engine_fixture_negotiation_preserves_expected_requests() {
         .await
         .unwrap();
 
-    // Act: reproduce the negotiation request made by Compose on hosted runners.
+    // Act: reproduce the negotiation and daemon-info requests made on hosted runners.
     probe
         .write_all(b"HEAD /_ping HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n")
         .await
@@ -369,6 +379,8 @@ async fn engine_fixture_negotiation_preserves_expected_requests() {
     // Assert: negotiation succeeds without consuming the expected image request.
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains(&format!("API-Version: {}", bollard::API_DEFAULT_VERSION)));
+    let info = adapter.engine.client().info().await.unwrap();
+    assert_eq!(info.logging_driver.as_deref(), Some("json-file"));
     let image = adapter
         .engine
         .client()
