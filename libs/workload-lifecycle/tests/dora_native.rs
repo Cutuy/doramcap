@@ -50,7 +50,7 @@ async fn native_start_session_and_authentication_match_the_cli() {
             let deadline = Instant::now() + STARTUP_BUDGET;
             let coordinator_log =
                 std::fs::File::create(runtime.directory.join("coordinator.log")).unwrap();
-            let mut command = Command::new(&executable);
+            let mut command = Command::new(executable);
             command.args([
                 "coordinator",
                 "--interface",
@@ -83,7 +83,7 @@ async fn native_start_session_and_authentication_match_the_cli() {
             assert_eq!(token.is_some(), authenticated);
             let daemon_log = std::fs::File::create(runtime.directory.join("daemon.log")).unwrap();
             runtime.children.push(
-                Command::new(&executable)
+                Command::new(executable)
                     .kill_on_drop(true)
                     .args([
                         "daemon",
@@ -139,7 +139,7 @@ async fn native_start_session_and_authentication_match_the_cli() {
             assert_eq!(client.graph().unwrap().uuid, Some(uuid));
             client.inspect_graph(deadline).await.unwrap();
             // Act: an independent native CLI reads the generated artifact for a second named graph.
-            let mut cli = Command::new(&executable);
+            let mut cli = Command::new(executable);
             cli.args([
                 "start",
                 graph_path.to_str().unwrap(),
