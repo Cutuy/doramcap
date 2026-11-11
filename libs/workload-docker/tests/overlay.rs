@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use workload_docker::compose::{overlay::*, *};
+use workload_docker::docker_proto::BindMount;
 fn plan(root: &Path, source: &Path) -> ResolvedComposeProject {
     let manifest = root.join("original.json");
     let model = serde_json::json!({"services":{"a":{"image":"unused","volumes":[{"type":"bind","source":source,"target":"/work"},{"type":"bind","source":source.join("child"),"target":"/child","read_only":true}]},"b":{"image":"unused","volumes":[{"type":"bind","source":source,"target":"/shared"}]}}});
@@ -21,6 +22,39 @@ fn plan(root: &Path, source: &Path) -> ResolvedComposeProject {
         diagnostics: vec![],
         remove_volumes: false,
     }
+}
+fn binds(projects: &[ResolvedComposeProject]) -> Vec<BindMount> {
+    projects
+        .iter()
+        .flat_map(|project| {
+            let model: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&project.manifest).unwrap()).unwrap();
+            model["services"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .flat_map(|(service, value)| {
+                    value["volumes"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|m| m["type"] == "bind")
+                        .map(|mount| BindMount {
+                            consumer: format!("{}/{}", project.name, service),
+                            source: mount["source"].as_str().unwrap().into(),
+                            target: mount["target"].as_str().unwrap_or_default().into(),
+                            read_only: mount["read_only"] == true,
+                            propagation: mount["bind"]["propagation"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .into(),
+                            selinux: mount["bind"].get("selinux").is_some(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 fn assert_unmounted(set: &OverlaySet) {
     let mounts = std::fs::read_to_string("/proc/self/mountinfo").unwrap();
@@ -63,7 +97,7 @@ async fn serial_overlay_isolation_and_harvest() {
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
             artifacts,
-            projects: vec![original.clone()],
+            bind_mounts: binds(std::slice::from_ref(&original)),
             policy: OverlayPolicy {
                 disposition: disposition.clone(),
             },
@@ -200,7 +234,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
         let cleanup = MountCleanup(artifacts.clone());
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
-            projects: vec![plan(&artifacts, &source)],
+            bind_mounts: binds(&[plan(&artifacts, &source)]),
             artifacts,
             policy: Default::default(),
         })
@@ -254,7 +288,7 @@ async fn failures_preserve_lower_and_unwind_preparation() {
     // Act
     let error = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![first, second],
+        bind_mounts: binds(&[first, second]),
         artifacts: artifacts.clone(),
         policy: Default::default(),
     })
@@ -291,7 +325,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         artifacts,
-        projects: vec![project],
+        bind_mounts: binds(&[project]),
         policy: Default::default(),
     })
     .await
@@ -316,7 +350,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     // Act
     let error = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts: artifacts.clone(),
         policy: Default::default(),
     })
@@ -352,7 +386,7 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     // Act
     let error = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts: artifacts.clone(),
         policy: Default::default(),
     })
@@ -389,7 +423,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -519,7 +553,7 @@ async fn hardlinks_fail_before_any_source_is_modified() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -553,7 +587,7 @@ async fn newly_created_hardlink_is_rejected() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -593,7 +627,7 @@ async fn unsupported_upper_entries_reject_before_any_writeback() {
         second.key = "second".into();
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
-            projects: vec![first, second],
+            bind_mounts: binds(&[first, second]),
             artifacts,
             policy: Default::default(),
         })
@@ -660,7 +694,7 @@ async fn xattr_whiteout_deletes_and_opaque_x_preserves_other_children() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -746,7 +780,7 @@ async fn two_serial_writebacks_inherit_prior_results() {
         std::fs::create_dir(&artifacts).unwrap();
         let set = prepare(PrepareInput {
             workspace: artifacts.join("views"),
-            projects: vec![plan(&artifacts, &source)],
+            bind_mounts: binds(&[plan(&artifacts, &source)]),
             artifacts,
             policy: Default::default(),
         })
@@ -802,7 +836,7 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -851,7 +885,7 @@ async fn opaque_upper_root_hides_lower_children_without_copying_internal_xattrs(
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -912,7 +946,7 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
     std::fs::create_dir(&artifacts).unwrap();
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
-        projects: vec![plan(&artifacts, &source)],
+        bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
         policy: Default::default(),
     })
@@ -970,7 +1004,7 @@ async fn interrupted_copyback_child() {
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         artifacts,
-        projects,
+        bind_mounts: binds(&projects),
         policy: Default::default(),
     })
     .await
@@ -1022,8 +1056,14 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     child.wait().unwrap();
     assert!(marker.is_file(), "copy-back did not reach the pause");
     let wrapper_pid: i32 = std::fs::read_to_string(&marker).unwrap().parse().unwrap();
+    // The orphaned stopped group may already have exited after its parent died.
     // SAFETY: this PID is the paused wrapper created by this isolated test.
-    assert_eq!(unsafe { libc::kill(wrapper_pid, libc::SIGKILL) }, 0);
+    if unsafe { libc::kill(wrapper_pid, libc::SIGKILL) } != 0 {
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+    }
     let first = root.path().join("source-a/file");
     let second = root.path().join("source-b/file");
     assert_eq!(std::fs::read(&first).unwrap(), b"after");

@@ -1,19 +1,21 @@
-//! Per-run Linux OverlayFS views for Compose directory binds.
+//! Per-run Linux OverlayFS views for resolved directory binds.
 //!
 //! Requires a cooperative local daemon in the caller's mount namespace and
 //! CAP_SYS_ADMIN. Caller must stop all writers before finalization. Explicit
 //! preparation/finalization own mounts; dropping serialized values does no cleanup.
 mod direct;
+mod preparation;
+pub use preparation::{ComposePrepareInput, PrepareOverlays, PreparedOverlays};
 
 use super::{
-    ResolvedBind, ResolvedComposeProject, Result,
-    adapter::{digest, private_write},
+    Result,
+    adapter::private_write,
     error::invalid,
     filesystem::{MetadataWalk, Snapshot, read_snapshot, write_record, write_snapshot},
 };
+use crate::docker_proto::BindMount;
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::CString,
@@ -95,10 +97,8 @@ pub struct OverlayTree {
 /// Explicit original/effective bind mapping, including read-only aliases.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MountMapping {
-    /// Compose project key.
-    pub project: String,
-    /// Service consuming this bind.
-    pub service: String,
+    /// Backend-selected display name for the bind consumer.
+    pub consumer: String,
     /// Unchanged container destination.
     pub target: String,
     /// Canonical user-specified source.
@@ -120,14 +120,12 @@ pub struct OverlaySet {
     pub workspace: PathBuf,
     /// Non-overlapping shared directory views.
     pub trees: Vec<OverlayTree>,
-    /// Pinned Compose manifests, rewritten in the preparation result.
-    pub projects: Vec<ResolvedComposeProject>,
     /// Original and effective sources for every bind consumer.
     pub mappings: Vec<MountMapping>,
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
 }
-/// All projects in one serial run; inputs must already be resolved and pinned.
+/// Resolved bind mounts in one serial run; sources must already be prepared.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrepareInput {
     /// Existing fresh run directory, outside all lower trees.
@@ -135,8 +133,8 @@ pub struct PrepareInput {
     /// Temporary OverlayFS root for each tree's `upper`, `work` and `merged` directories.
     /// Must be fresh, outside source trees, and have an existing canonical parent.
     pub workspace: PathBuf,
-    /// Pinned Compose manifests, rewritten in the preparation result.
-    pub projects: Vec<ResolvedComposeProject>,
+    /// Bind sources, destinations and access settings supplied by the backend.
+    pub bind_mounts: Vec<BindMount>,
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
 }
@@ -152,36 +150,6 @@ pub struct OverlayResults {
     /// Coverage limitations for this disposition.
     #[serde(default)]
     pub warnings: Vec<String>,
-}
-/// Prepare all directory views and immutable execution manifests before launch.
-/// Errors unwind mounts already created; failed rollback is included in the error.
-/// No upstream Compose file is edited. Async operations are sequential.
-pub struct PrepareOverlays {
-    /// Local daemon used to validate all rewritten manifests before launch.
-    pub adapter: std::rc::Rc<super::DockerAdapter>,
-}
-impl Step for PrepareOverlays {
-    const ID: Option<&'static str> = Some("compose.filesystem.prepare");
-    const DISPLAY_NAME: Option<&'static str> = Some("Prepare filesystem");
-    type Input = PrepareInput;
-    type Output = OverlaySet;
-    async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        let set = prepare(input)
-            .await
-            .map_err(|e| orchestrator::Error::message(e.to_string()))?;
-        for project in &set.projects {
-            if let Err(error) = self.adapter.project(project).validate_execution().await {
-                let mut errors = vec![error.to_string()];
-                for tree in set.trees.iter().rev() {
-                    if let Err(e) = unmount(&tree.merged).await {
-                        errors.push(format!("rollback {}: {e}", tree.merged.display()));
-                    }
-                }
-                return Err(orchestrator::Error::message(errors.join("; ")));
-            }
-        }
-        Ok(set)
-    }
 }
 /// Strictly unmount, then apply upper changes or discard them; writers must stop first.
 /// Interrupted write-back leaves upper data for the user to salvage before reset.
@@ -243,7 +211,7 @@ async fn mount(tree: &OverlayTree) -> Result<()> {
     .await
     .map_err(|e| invalid(e.to_string()))?
 }
-async fn unmount(path: &Path) -> Result<()> {
+pub(super) async fn unmount(path: &Path) -> Result<()> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
         let target = cstr(&path)?;
@@ -307,76 +275,59 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
             "overlay workspace must be canonical and separate from records",
         ));
     }
-    let mut models = Vec::new();
     let mut writable = BTreeSet::new();
     let mut mappings = Vec::new();
-    for project in &input.projects {
-        let bytes = tokio::fs::read(&project.manifest).await?;
-        if digest(&bytes) != project.sha256 {
-            return Err(invalid("overlay input manifest changed"));
+    for bind in &input.bind_mounts {
+        let source = tokio::fs::canonicalize(&bind.source)
+            .await
+            .map_err(|error| {
+                invalid(format!(
+                    "{}: bind mount source {}: {error}",
+                    bind.consumer, bind.source
+                ))
+            })?;
+        if source.starts_with(&workspace) || workspace.starts_with(&source) {
+            return Err(invalid("overlay source overlaps the mutable workspace"));
         }
-        let model: Value = serde_json::from_slice(&bytes)?;
-        for bind in ResolvedBind::from_manifest(&model)? {
-            let source = tokio::fs::canonicalize(&bind.source)
-                .await
-                .map_err(|error| {
-                    invalid(format!(
-                        "{}: bind mount source {}: {error}",
-                        bind.service, bind.source
-                    ))
-                })?;
-            if source.starts_with(&workspace) || workspace.starts_with(&source) {
-                return Err(invalid("overlay source overlaps the mutable workspace"));
+        let meta = tokio::fs::symlink_metadata(&source).await?;
+        let owned = source.starts_with(&artifacts);
+        let host_shm = workload_lifecycle::files::is_host_shm_source(&source)?;
+        if !bind.read_only && !owned && !host_shm {
+            if !meta.is_dir()
+                || ["/proc", "/sys", "/dev"]
+                    .iter()
+                    .any(|p| source.starts_with(p))
+            {
+                return Err(invalid(format!(
+                    "writable bind requires explicit unsupported-source handling: {}",
+                    source.display()
+                )));
             }
-            let meta = tokio::fs::symlink_metadata(&source).await?;
-            let owned = source.starts_with(&artifacts);
-            let host_shm = workload_lifecycle::files::is_host_shm_source(&source)?;
-            if !bind.read_only && !owned && !host_shm {
-                if !meta.is_dir()
-                    || ["/proc", "/sys", "/dev"]
-                        .iter()
-                        .any(|p| source.starts_with(p))
-                {
-                    return Err(invalid(format!(
-                        "writable bind requires explicit unsupported-source handling: {}",
-                        source.display()
-                    )));
-                }
-                if artifacts.starts_with(&source) {
-                    return Err(invalid(format!(
-                        "artifact directory overlaps lower tree: {}",
-                        source.display()
-                    )));
-                }
-                if !["", "rprivate", "private"].contains(&bind.propagation.as_str()) || bind.selinux
-                {
-                    return Err(invalid(format!(
-                        "unqualified bind propagation/SELinux option: {}",
-                        source.display()
-                    )));
-                }
-                writable.insert(source.clone());
+            if artifacts.starts_with(&source) {
+                return Err(invalid(format!(
+                    "artifact directory overlaps lower tree: {}",
+                    source.display()
+                )));
             }
-            mappings.push(MountMapping {
-                project: project.key.clone(),
-                service: bind.service,
-                target: bind.target,
-                original: source.clone(),
-                effective: source,
-                read_only: bind.read_only,
-                reason: if host_shm {
-                    "live host shared memory"
-                } else if owned {
-                    "fresh run artifact"
-                } else if bind.read_only {
-                    "read-only input"
-                } else {
-                    "OverlayFS"
-                }
-                .into(),
-            });
+            writable.insert(source.clone());
         }
-        models.push(model);
+        mappings.push(MountMapping {
+            consumer: bind.consumer.clone(),
+            target: bind.target.clone(),
+            original: source.clone(),
+            effective: source,
+            read_only: bind.read_only,
+            reason: if host_shm {
+                "live host shared memory"
+            } else if owned {
+                "fresh run artifact"
+            } else if bind.read_only {
+                "read-only input"
+            } else {
+                "OverlayFS"
+            }
+            .into(),
+        });
     }
     // A read-only ancestor must see mutations through a writable child alias.
     // Include it in the shared tree while retaining read_only on its bind target.
@@ -399,6 +350,21 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         .filter(|p| !writable.iter().any(|q| q != *p && p.starts_with(q)))
         .cloned()
         .collect();
+    // Validate all binds that will use a shared view before creating it.
+    for (mapping, bind) in mappings.iter().zip(&input.bind_mounts) {
+        if (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private") || bind.selinux)
+            && roots.iter().any(|root| mapping.original.starts_with(root))
+        {
+            return Err(invalid(format!(
+                "{}: unsupported OverlayFS bind options for {} -> {} (propagation {:?}, SELinux relabeling: {})",
+                bind.consumer,
+                mapping.original.display(),
+                bind.target,
+                bind.propagation,
+                bind.selinux,
+            )));
+        }
+    }
     let mountpoints = mounts().await?;
     for root in &roots {
         let mut links: BTreeMap<(u64, u64), (u64, u64)> = BTreeMap::new();
@@ -435,7 +401,6 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         directory: directory.clone(),
         workspace: workspace.clone(),
         trees: vec![],
-        projects: input.projects,
         mappings,
         policy: input.policy,
     };
@@ -502,47 +467,6 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
                     .join(mapping.original.strip_prefix(&tree.source).unwrap());
                 mapping.reason = "shared OverlayFS view".into();
             }
-        }
-        for (project, model) in set.projects.iter_mut().zip(&mut models) {
-            for (service, v) in model["services"].as_object_mut().unwrap() {
-                for bind in v
-                    .get_mut("volumes")
-                    .and_then(Value::as_array_mut)
-                    .into_iter()
-                    .flatten()
-                    .filter(|v| v["type"] == "bind")
-                {
-                    let mapping = set
-                        .mappings
-                        .iter()
-                        .find(|m| {
-                            m.project == project.key
-                                && m.service == *service
-                                && m.target == bind["target"].as_str().unwrap_or("")
-                        })
-                        .unwrap();
-                    if mapping.reason == "shared OverlayFS view"
-                        && (bind["bind"]["propagation"]
-                            .as_str()
-                            .is_some_and(|p| p != "rprivate" && p != "private")
-                            || bind["bind"].get("selinux").is_some())
-                    {
-                        return Err(invalid(format!(
-                            "unqualified bind propagation/SELinux option: {}",
-                            mapping.original.display()
-                        )));
-                    }
-                    bind["source"] = serde_json::json!(mapping.effective);
-                }
-            }
-            let bytes = serde_json::to_vec_pretty(model)?;
-            project.manifest = artifacts
-                .join(format!("{}.execution.json", project.key))
-                .to_str()
-                .ok_or_else(|| invalid("manifest path is not UTF-8"))?
-                .into();
-            project.sha256 = digest(&bytes);
-            private_write(Path::new(&project.manifest), &bytes).await?;
         }
         private_write(
             &directory.join("prepared.json"),
@@ -865,6 +789,50 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn unsupported_options_on_read_only_alias_fail_before_view_creation() {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let workspace = root.path().join("workspace");
+        let source = root.path().join("source");
+        let child = source.join("child");
+        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+
+        // Act
+        let error = prepare(PrepareInput {
+            artifacts: artifacts.clone(),
+            workspace: workspace.clone(),
+            bind_mounts: vec![
+                BindMount {
+                    consumer: "project/writer".into(),
+                    source: child.to_str().unwrap().into(),
+                    target: "/out".into(),
+                    ..Default::default()
+                },
+                BindMount {
+                    consumer: "project/reader".into(),
+                    source: source.to_str().unwrap().into(),
+                    target: "/in".into(),
+                    read_only: true,
+                    propagation: "rshared".into(),
+                    ..Default::default()
+                },
+            ],
+            policy: OverlayPolicy::default(),
+        })
+        .await
+        .unwrap_err();
+
+        // Assert
+        let message = error.to_string();
+        assert!(message.contains("project/reader"), "{message}");
+        assert!(message.contains("rshared"), "{message}");
+        assert!(!workspace.exists());
+        assert!(!artifacts.join("overlays").exists());
+    }
+
+    #[tokio::test]
     async fn host_shm_binds_bypass_overlay_copy_and_writeback() {
         // Arrange
         let root = tempfile::tempdir().unwrap();
@@ -873,26 +841,33 @@ mod tests {
         let shared = tempfile::tempdir_in("/dev/shm").unwrap();
         let file = shared.path().join("segment");
         std::fs::write(&file, b"initial").unwrap();
-        let model = serde_json::json!({"services":{"app":{"volumes":[
-            {"type":"bind","source":shared.path(),"target":"/input/shm"},
-            {"type":"bind","source":file,"target":"/input/camera"},
-            {"type":"bind","source":file,"target":"/read-only","read_only":true}
-        ]}}});
-        let bytes = serde_json::to_vec(&model).unwrap();
-        let manifest = artifacts.join("input.json");
-        std::fs::write(&manifest, &bytes).unwrap();
-        let project = ResolvedComposeProject {
-            key: "project".into(),
-            manifest: manifest.to_string_lossy().into(),
-            sha256: digest(&bytes),
-            ..Default::default()
-        };
+        let bind_mounts = vec![
+            BindMount {
+                consumer: "project/app".into(),
+                source: shared.path().to_string_lossy().into(),
+                target: "/input/shm".into(),
+                ..Default::default()
+            },
+            BindMount {
+                consumer: "project/app".into(),
+                source: file.to_string_lossy().into(),
+                target: "/input/camera".into(),
+                ..Default::default()
+            },
+            BindMount {
+                consumer: "project/app".into(),
+                source: file.to_string_lossy().into(),
+                target: "/read-only".into(),
+                read_only: true,
+                ..Default::default()
+            },
+        ];
 
         // Act
         let set = prepare(PrepareInput {
             artifacts,
             workspace: root.path().join("workspace"),
-            projects: vec![project],
+            bind_mounts,
             policy: OverlayPolicy {
                 disposition: Disposition::Discard,
             },
@@ -909,9 +884,6 @@ mod tests {
                 .iter()
                 .all(|mapping| mapping.original == mapping.effective)
         );
-        let execution: Value =
-            serde_json::from_slice(&std::fs::read(&set.projects[0].manifest).unwrap()).unwrap();
-        assert_eq!(execution, model);
 
         // Act: discard the prepared run resources.
         finalize(set).await.unwrap();

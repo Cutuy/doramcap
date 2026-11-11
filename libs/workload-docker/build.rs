@@ -16,6 +16,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.field_attribute(format!(".doramcap.compose.v1.{field}"), "#[serde(default)]");
     }
     config
+        .type_attribute(
+            ".doramcap.docker.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .btree_map([".doramcap.compose.v1"])
         .type_attribute(
             ".doramcap.compose.v1",
@@ -30,6 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .compile_protos(
             &[
+                "proto/docker.proto",
                 "proto/filesystem.proto",
                 "proto/compose.proto",
                 "../workload-lifecycle/proto/launch.proto",
@@ -48,6 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../workload-lifecycle/proto/launch.proto");
     println!("cargo:rerun-if-changed=proto/compose.proto");
     println!("cargo:rerun-if-changed=proto/filesystem.proto");
+    println!("cargo:rerun-if-changed=proto/docker.proto");
     println!("cargo:rerun-if-changed=proto/compose_plan.proto");
     Ok(())
 }

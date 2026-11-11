@@ -19,7 +19,7 @@ use self::{
 use crate::compose::{
     error::invalid,
     filesystem::FilesystemChanges,
-    overlay::{OverlayPolicy, OverlayResults, PrepareInput, PrepareOverlays},
+    overlay::{ComposePrepareInput, OverlayPolicy, OverlayResults, PrepareOverlays},
     *,
 };
 use orchestrator::{Input, Observer};
@@ -238,7 +238,7 @@ impl ComposeRunner {
             Some(
                 executor
                     .run::<PrepareOverlays>(
-                        Input::new(PrepareInput {
+                        Input::new(ComposePrepareInput {
                             artifacts: artifacts.clone(),
                             workspace: controller.workspace(),
                             projects: vec![prepared.value().plan.clone()],

@@ -1,4 +1,4 @@
-//! Category-preserving metadata evidence for a local Compose run.
+//! Category-preserving metadata evidence for local Docker storage.
 //!
 //! Host binds and supported local volumes use complete metadata scans; container
 //! layers use the Engine changes API. No file contents are read or exported.
@@ -7,13 +7,13 @@ mod wire;
 pub(crate) use wire::{read_snapshot, write_record, write_snapshot};
 
 use super::{
-    DockerAdapter, ResolvedBind, ResolvedComposeProject, Result,
+    DockerAdapter, Result,
     adapter::{digest, private_write},
     error::{absent, engine, invalid},
 };
+use crate::docker_proto::{BindMount, HostView, OwnedContainer, VolumeMount};
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::{
     collections::BTreeMap,
     os::unix::fs::MetadataExt,
@@ -95,19 +95,24 @@ pub struct FilesystemBaseline {
 /// Explicit inputs to pre-launch metadata capture.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaselineInput {
-    pub projects: Vec<ResolvedComposeProject>,
+    /// Resolved binds, preserving each backend-provided consumer name.
+    pub bind_mounts: Vec<BindMount>,
+    /// Named volumes with their final Engine names.
+    pub volume_mounts: Vec<VolumeMount>,
     /// Existing private run artifact directory.
     pub artifacts: PathBuf,
 }
-/// Input to collection after all project writers have stopped.
+/// Input to collection after all container writers have stopped.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectInput {
-    /// Original host roots mapped to active isolated views for post-run observation.
+    /// Every active isolated view for this run, keyed by canonical, non-overlapping host roots.
+    /// Collection scans the original host path when no root matches.
     #[serde(default)]
-    pub host_views: BTreeMap<PathBuf, PathBuf>,
+    pub host_views: Vec<HostView>,
+    /// Pre-launch baseline for all in-scope mounts in this run.
     pub baseline: FilesystemBaseline,
-    /// Attempted projects, including partially started ones.
-    pub projects: Vec<ResolvedComposeProject>,
+    /// All in-scope containers, including partial starts, with ownership verified by the caller.
+    pub containers: Vec<OwnedContainer>,
 }
 /// Counts refer to metadata transitions, not captured file contents.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -122,8 +127,8 @@ pub struct CategoryChanges {
     pub category: StorageCategory,
     pub manifest: PathBuf,
     pub counts: ChangeCounts,
-    /// Whether every in-scope source was scanned completely. Missing in older
-    /// reports defaults to false, so callers cannot infer complete coverage.
+    /// Whether observation of the supplied sources was complete within the scan scope.
+    /// Missing in older reports defaults to false.
     #[serde(default)]
     pub coverage_complete: bool,
     /// Source exceptions and incomplete scans, distinct from file changes.
@@ -151,11 +156,8 @@ impl Step for CaptureFilesystemBaseline {
     }
 }
 /// Collect filesystem metadata after quiescence, before resource removal.
-///
-/// Returns category-specific manifest references and bounded warning summaries.
-/// Expected changes and unsupported scan sources are warnings. Engine diff errors,
-/// live/unowned containers or artifact failures return errors: retain resources.
-/// Adapter ownership stays with the caller; no callbacks or handles are serialized.
+/// Returns category manifests and warnings based on the caller's inventory.
+/// Retain resources on Engine errors, live containers, or artifact failures.
 pub struct CollectFilesystemChanges {
     pub adapter: Rc<DockerAdapter>,
 }
@@ -338,83 +340,64 @@ async fn capture(adapter: &DockerAdapter, input: BaselineInput) -> Result<Filesy
     let directory = input.artifacts.join("filesystem");
     crate::evidence::create_private_dir(&directory).await?;
     let mut sources: BTreeMap<String, Source> = BTreeMap::new();
-    for plan in input.projects {
-        let bytes = tokio::fs::read(&plan.manifest).await?;
-        if digest(&bytes) != plan.sha256 {
-            return Err(invalid("filesystem baseline manifest changed"));
+    let mut record = |category: StorageCategory,
+                      identity: String,
+                      path: Option<PathBuf>,
+                      reason: Option<String>,
+                      read_only: bool,
+                      consumer: String| {
+        let key = format!("{category:?}:{identity}");
+        let baseline = directory.join(format!("{}.baseline.pb", digest(key.as_bytes())));
+        let source = sources.entry(key).or_insert(Source {
+            category,
+            identity,
+            path,
+            consumers: vec![],
+            baseline,
+            reason: reason.clone(),
+        });
+        // A writable alias must be observed even if the first alias is read-only.
+        if source.reason.as_deref() == Some("read-only input; no scan") && !read_only {
+            source.reason = reason;
         }
-        let model: Value = serde_json::from_slice(&bytes)?;
-        let mut record = |category: StorageCategory,
-                          identity: String,
-                          path: Option<PathBuf>,
-                          reason: Option<String>,
-                          read_only: bool,
-                          consumer: String| {
-            let key = format!("{category:?}:{identity}");
-            let baseline = directory.join(format!("{}.baseline.pb", digest(key.as_bytes())));
-            let source = sources.entry(key).or_insert(Source {
-                category,
-                identity,
-                path,
-                consumers: vec![],
-                baseline,
-                reason: reason.clone(),
-            });
-            // A writable alias must be observed even if the first alias is read-only.
-            if source.reason.as_deref() == Some("read-only input; no scan") && !read_only {
-                source.reason = reason;
-            }
-            source.consumers.push(consumer);
+        source.consumers.push(consumer);
+    };
+    for bind in input.bind_mounts {
+        let path = tokio::fs::canonicalize(&bind.source)
+            .await
+            .unwrap_or_else(|_| PathBuf::from(&bind.source));
+        let reason = if bind.read_only {
+            Some("read-only input; no scan".into())
+        } else if excluded(&path, &input.artifacts) {
+            Some("pseudo-filesystem or managed artifact path; no scan".into())
+        } else {
+            None
         };
-        for bind in ResolvedBind::from_manifest(&model)? {
-            let path = tokio::fs::canonicalize(&bind.source)
-                .await
-                .unwrap_or_else(|_| PathBuf::from(&bind.source));
-            let reason = if bind.read_only {
-                Some("read-only input; no scan".into())
-            } else if excluded(&path, &input.artifacts) {
-                Some("pseudo-filesystem or managed artifact path; no scan".into())
-            } else {
-                None
-            };
-            record(
-                StorageCategory::HostBind,
-                path.to_string_lossy().into_owned(),
-                Some(path),
-                reason,
-                bind.read_only,
-                format!("{}/{}:{}", plan.name, bind.service, bind.target),
-            );
-        }
-        for (service, value) in model["services"].as_object().into_iter().flatten() {
-            let mounts = value["volumes"].as_array().into_iter().flatten();
-            for mount in mounts.filter(|mount| mount["type"] == "volume") {
-                let raw = mount["source"].as_str().unwrap_or("");
-                let name = model["volumes"][raw]["name"]
-                    .as_str()
-                    .ok_or_else(|| invalid("volume has no resolved name"))?
-                    .to_owned();
-                let (path, reason) = match volume_path(adapter, &name).await {
-                    Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
-                        (Some(path), Some(HOST_SHM_SOURCE.into()))
-                    }
-                    Ok(p) => (p, None),
-                    Err(e) => (None, Some(e.to_string())),
-                };
-                record(
-                    StorageCategory::NamedVolume,
-                    name,
-                    path,
-                    reason,
-                    mount["read_only"] == true,
-                    format!(
-                        "{}/{service}:{}",
-                        plan.name,
-                        mount["target"].as_str().unwrap_or("?")
-                    ),
-                );
+        record(
+            StorageCategory::HostBind,
+            path.to_string_lossy().into_owned(),
+            Some(path),
+            reason,
+            bind.read_only,
+            format!("{}:{}", bind.consumer, bind.target),
+        );
+    }
+    for mount in input.volume_mounts {
+        let (path, reason) = match volume_path(adapter, &mount.name).await {
+            Ok(Some(path)) if workload_lifecycle::files::is_host_shm_source(&path)? => {
+                (Some(path), Some(HOST_SHM_SOURCE.into()))
             }
-        }
+            Ok(path) => (path, None),
+            Err(error) => (None, Some(error.to_string())),
+        };
+        record(
+            StorageCategory::NamedVolume,
+            mount.name,
+            path,
+            reason,
+            mount.read_only,
+            format!("{}:{}", mount.consumer, mount.target),
+        );
     }
     for source in sources.values() {
         let snapshot = if let Some(reason) = &source.reason {
@@ -504,47 +487,55 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
         "container-layers.pb",
     )
     .await?;
-    // Verify every attempted project before scanning shared storage.
-    for plan in &input.projects {
-        let state = adapter.project(plan).inspect().await?;
-        if state
-            .containers
-            .iter()
-            .any(|c| c.pid != 0 || !matches!(c.status.as_str(), "exited" | "created"))
+    // The backend verifies ownership; collection verifies stopped writers before diffing.
+    for container in &input.containers {
+        let info = adapter
+            .docker
+            .inspect_container(&container.id, None)
+            .await
+            .map_err(|e| engine(format!("inspect {}", container.id), e))?;
+        let state = info
+            .state
+            .ok_or_else(|| invalid("Engine omitted container state"))?;
+        if state.pid.unwrap_or(0) != 0
+            || !matches!(
+                state.status.map(|s| s.to_string()).as_deref(),
+                Some("exited" | "created")
+            )
         {
             return Err(invalid("filesystem collection requires stopped writers"));
         }
-        for container in state.containers {
-            let changes = adapter
-                .docker
-                .container_changes(&container.id)
-                .await
-                .map_err(|e| engine("container filesystem diff", e))?
-                // Moby ChangesDirs returns a nil slice when no paths changed;
-                // the successful HTTP response encodes it as JSON null. Engine
-                // and decoding failures were propagated above, not converted.
-                // github.com/moby/moby/blob/v28.0.0/pkg/archive/changes.go
-                .unwrap_or_default();
-            for change in changes {
-                let kind = match change.kind {
-                    bollard::models::ChangeType::_0 => ChangeKind::Modified,
-                    bollard::models::ChangeType::_1 => ChangeKind::Added,
-                    bollard::models::ChangeType::_2 => ChangeKind::Deleted,
-                };
-                emit(
-                    &mut containers,
-                    FileChange {
-                        category: StorageCategory::ContainerLayer,
-                        source: container.id.clone(),
-                        consumers: vec![format!("{}/{}", plan.name, container.service)],
-                        path: PathBuf::from(change.path),
-                        kind,
-                        before: None,
-                        after: None,
-                    },
-                )
-                .await?;
-            }
+    }
+    for container in &input.containers {
+        let changes = adapter
+            .docker
+            .container_changes(&container.id)
+            .await
+            .map_err(|e| engine("container filesystem diff", e))?
+            // Moby ChangesDirs returns a nil slice when no paths changed;
+            // the successful HTTP response encodes it as JSON null. Engine
+            // and decoding failures were propagated above, not converted.
+            // github.com/moby/moby/blob/v28.0.0/pkg/archive/changes.go
+            .unwrap_or_default();
+        for change in changes {
+            let kind = match change.kind {
+                bollard::models::ChangeType::_0 => ChangeKind::Modified,
+                bollard::models::ChangeType::_1 => ChangeKind::Added,
+                bollard::models::ChangeType::_2 => ChangeKind::Deleted,
+            };
+            emit(
+                &mut containers,
+                FileChange {
+                    category: StorageCategory::ContainerLayer,
+                    source: container.id.clone(),
+                    consumers: vec![container.consumer.clone()],
+                    path: PathBuf::from(change.path),
+                    kind,
+                    before: None,
+                    after: None,
+                },
+            )
+            .await?;
         }
     }
     for source in input.baseline.sources {
@@ -599,8 +590,10 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
                 input
                     .host_views
                     .iter()
-                    .find(|(root, _)| path.starts_with(root))
-                    .map(|(root, view)| view.join(path.strip_prefix(root).unwrap()))
+                    .find(|view| path.starts_with(&view.source))
+                    .map(|view| {
+                        Path::new(&view.view).join(path.strip_prefix(&view.source).unwrap())
+                    })
                     .unwrap_or_else(|| path.clone())
             })
         };
@@ -689,6 +682,139 @@ async fn collect(adapter: &DockerAdapter, input: CollectInput) -> Result<Filesys
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn mount_inputs_preserve_change_record_consumers() {
+        use crate::compose::adapter::tests::test_engine;
+        use serde_json::json;
+        // Arrange: read-only and writable aliases share the same baseline.
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        let artifacts = root.path().join("artifacts");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&artifacts).unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                (
+                    "/containers/owned/json",
+                    json!({"State":{"Pid":0,"Status":"exited"}}),
+                ),
+                (
+                    "/containers/owned/changes",
+                    json!([{"Path":"/result","Kind":1}]),
+                ),
+            ],
+        );
+        let bind = |consumer: &str, target: &str, read_only| BindMount {
+            consumer: consumer.into(),
+            source: source.to_string_lossy().into(),
+            target: target.into(),
+            read_only,
+            ..Default::default()
+        };
+        let baseline = capture(
+            &adapter,
+            BaselineInput {
+                artifacts,
+                bind_mounts: vec![
+                    bind("dc-project/reader", "/in", true),
+                    bind("dc-project/writer", "/out", false),
+                ],
+                volume_mounts: vec![],
+            },
+        )
+        .await
+        .unwrap();
+        std::fs::write(source.join("result"), b"saved").unwrap();
+
+        // Act
+        let changes = collect(
+            &adapter,
+            CollectInput {
+                host_views: vec![],
+                baseline,
+                containers: vec![OwnedContainer {
+                    consumer: "dc-project/app".into(),
+                    id: "owned".into(),
+                }],
+            },
+        )
+        .await
+        .unwrap();
+
+        // Assert
+        let mut host = FileChanges::open(changes.host_binds.manifest)
+            .await
+            .unwrap();
+        let mut result = None;
+        while let Some(change) = host.next_change().await.unwrap() {
+            if change.path == Path::new("result") {
+                result = Some(change);
+            }
+        }
+        let result = result.unwrap();
+        assert_eq!(result.kind, ChangeKind::Added);
+        assert_eq!(
+            result.consumers,
+            ["dc-project/reader:/in", "dc-project/writer:/out"]
+        );
+        let mut layers = FileChanges::open(changes.container_layers.manifest)
+            .await
+            .unwrap();
+        let result = layers.next_change().await.unwrap().unwrap();
+        assert_eq!(result.consumers, ["dc-project/app"]);
+        assert_eq!(result.path, Path::new("/result"));
+        assert!(layers.next_change().await.unwrap().is_none());
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn live_container_rejects_collection_before_requesting_diff() {
+        use crate::compose::adapter::tests::test_engine;
+        use serde_json::json;
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![(
+                "/containers/owned/json",
+                json!({"State":{"Pid":123,"Status":"running"}}),
+            )],
+        );
+        let baseline = capture(
+            &adapter,
+            BaselineInput {
+                artifacts: root.path().into(),
+                bind_mounts: vec![],
+                volume_mounts: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+        // Act
+        let error = collect(
+            &adapter,
+            CollectInput {
+                host_views: vec![],
+                baseline,
+                containers: vec![OwnedContainer {
+                    consumer: "dc-project/app".into(),
+                    id: "owned".into(),
+                }],
+            },
+        )
+        .await
+        .unwrap_err();
+
+        // Assert
+        assert_eq!(
+            error.to_string(),
+            "filesystem collection requires stopped writers"
+        );
+        server.await.unwrap();
+    }
+
     #[test]
     fn older_category_reports_do_not_claim_complete_coverage() {
         // Arrange

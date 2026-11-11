@@ -1,0 +1,29 @@
+syntax = "proto3";
+package doramcap.docker.v1;
+
+// A resolved host bind and the backend's display name for its consumer.
+message BindMount {
+  string consumer = 1;
+  string source = 2;
+  string target = 3;
+  bool read_only = 4;
+  string propagation = 5;
+  bool selinux = 6;
+}
+// A resolved Docker volume name and its container destination.
+message VolumeMount {
+  string consumer = 1;
+  string name = 2;
+  string target = 3;
+  bool read_only = 4;
+}
+// A container whose ownership the calling backend has verified.
+message OwnedContainer {
+  string consumer = 1;
+  string id = 2;
+}
+// Original host directory and its active per-run filesystem view.
+message HostView {
+  string source = 1;
+  string view = 2;
+}
