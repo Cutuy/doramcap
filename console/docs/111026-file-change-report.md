@@ -11,7 +11,8 @@ Reuse the existing filesystem mechanism for both and expose one report in Consol
 
 ## Agreed behavior
 
-- Capture supported resolved writable directory binds and declared output directories.
+- Capture the host folders a launch declares it can write to: directory binds, declared
+  output directories and, for host launches, the declared working directory.
 - Show counts, coverage and a bounded file preview on current and past run results.
 - Download the complete collected list as JSON Lines.
 - Offer a choice of where written files end up: written back to their source, or kept with the run.
@@ -92,6 +93,39 @@ must precede destructive storage finalization. Systemd unit mount references mus
 released before strict unmount; a busy view remains owned and blocks verified cleanup.
 Machine-observation timing remains unchanged.
 
+## Capture scope
+
+Console captures the host folders a launch declares it can write to. The user
+declares them in the launcher's own format and Console reads them.
+
+| Launch kind | Declared writable host folders |
+| --- | --- |
+| Container: Compose, Holoscan in Docker | Host folder mounts. |
+| Host: systemd, Holoscan on the host | The working directory and declared binds. |
+
+A container's working directory is a path inside the container. It reaches the
+host only through a mount, which is already captured.
+
+| Launcher | Working directory declaration |
+| --- | --- |
+| systemd | `WorkingDirectory=` in the unit. |
+| Docker Compose | `working_dir:` on the service, or the image's `WORKDIR`. |
+| Holoscan | `workdir` in the application's `metadata.json`, per run mode. |
+
+For a host launch:
+
+- Capture only an explicitly declared working directory that names an ordinary
+  folder. A unit that declares none keeps its native behavior and is listed as
+  outside coverage.
+- A working directory that is the filesystem root or a home directory shorthand
+  is listed with the reason and left uncaptured.
+- Units that share or nest working directories follow the existing rules for
+  shared and overlapping trees.
+- State, log and cache directories a unit declares are listed at Review as
+  declared and uncaptured. Capturing them is later work.
+
+Console's project root is the scope for admission. It is no capture source by itself.
+
 ## Sources and native behavior
 
 | Source | Behavior |
@@ -101,6 +135,7 @@ Machine-observation timing remains unchanged.
 | Docker writable layers / named volumes | Preserve existing Engine diff, metadata and volume-retention behavior. |
 | Read-only aliases into a tracked tree | Preserve the alias relationship and read-only access using the same view mapping. |
 | Devices, live shared memory and unsupported private storage | Preserve native access and list the exclusion. No filesystem-content capture claim. |
+| Declared working directory of a native unit or typed program | Reuse shared OverlayFS views at the original path through an owned drop-in or property. |
 | Arbitrary native-unit writes outside resolved sources | Outside capture coverage; retain native unit semantics. |
 
 Systemd reads effective bind properties through the service manager and retains native

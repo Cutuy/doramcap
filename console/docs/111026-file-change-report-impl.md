@@ -37,6 +37,10 @@ Created November 11, 2026. Status: planned; application code unchanged.
 - [ ] Resolve typed binds and effective native-unit bind properties using the service
   manager. Reuse captured unit/drop-in inputs; do not build another unit-file parser.
   Record sources, targets, consumers, optional-source behavior, access flags and exclusions.
+- [ ] Resolve each unit's explicitly declared working directory through the service
+  manager and capture it as a source. Skip an undeclared one, the filesystem root and a
+  home directory shorthand, and list each with its reason. List declared state, log and
+  cache directories as declared and uncaptured.
 - [ ] Review shows known capture sources and unresolved native sources explicitly.
   At Start resolve the effective inventory before writers start; a changed launch
   configuration follows the existing stale-review check.
@@ -64,6 +68,10 @@ Created November 11, 2026. Status: planned; application code unchanged.
   Writes remain isolated during execution and reach the original directories after write-back.
 - [ ] One real Compose fixture and one real systemd fixture produce equivalent change
   records for equivalent writes, deletions, shared aliases and read-only aliases.
+- [ ] A unit that writes relative paths into its declared working directory has those
+  writes captured. A unit with no declared working directory runs unchanged.
+- [ ] A unit behaves correctly with a view over its working directory, including units
+  started under the Dora daemon.
 - [ ] Cover source resolution, optional missing sources, drop-ins, nested binds, private
   roots, nontrivial filenames, output/control-root separation and explicit exclusions.
 - [ ] Verify preparation rollback, cancellation before/during startup, active writers,
