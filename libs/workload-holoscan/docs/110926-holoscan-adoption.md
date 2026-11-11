@@ -163,6 +163,28 @@ decisions are complete.
 Backend acceptance is agreed in stage 6 and the web app journey in stage 7. All
 seven stages are agreed.
 
+## Order of work
+
+Shared foundation work runs one piece at a time, because the pieces change the
+same Compose and lifecycle code. The Holoscan runner starts in parallel and
+joins at Build and run.
+
+| Order | Shared foundations | Needs first |
+| --- | --- | --- |
+| 1 | Admission lock ([#315](https://github.com/Cutuy/doramcap/pull/315)) | Nothing |
+| 2 | Extract capture ([#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1) | Follows the lock |
+| 3 | Show file changes in Console (#316 milestone 3) | Extract capture |
+| 4 | Keep files with the run (#316 milestone 4) | Extract capture |
+| 5 | systemd capture (#316 milestone 2) | Extract capture |
+| 6 | Log dump ([#314](https://github.com/Cutuy/doramcap/pull/314)) | Most useful after 3 and 4 |
+
+| Order | Holoscan runner | Needs first |
+| --- | --- | --- |
+| 1 | Real-container probes (milestone 1) | Nothing |
+| 2 | Crate, discovery, Prepare and Review (milestones 2 and 3) | Nothing |
+| 3 | Build and run (milestones 4 and 5) | Admission lock and extracted capture |
+| 4 | Support apps, recovery and acceptance (milestones 6 and 7) | Build and run |
+
 ## Agreed scope
 
 | Decision | Initial scope |
