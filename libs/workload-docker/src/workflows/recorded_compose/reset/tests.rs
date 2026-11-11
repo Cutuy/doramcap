@@ -155,6 +155,52 @@ async fn engine_inspection_failure_preserves_upper_data() {
 }
 
 #[tokio::test]
+async fn duplicate_ipc_owners_preserve_overlay_upper_data() {
+    use crate::compose::adapter::{CONTROLLER_LABEL, EXPERIMENT_OWNER_LABEL};
+    use serde_json::json;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let controller = Rc::new(
+        Controller::in_directory(root.path().to_owned(), root.path().join("controller")).unwrap(),
+    );
+    let upper = controller.workspace().join("0/upper");
+    std::fs::create_dir_all(&upper).unwrap();
+    let data = upper.join("data");
+    std::fs::write(&data, b"unfinished").unwrap();
+    let labels = json!({CONTROLLER_LABEL: controller.directory, EXPERIMENT_OWNER_LABEL: "true"});
+    let containers = json!([
+        {"Id":"first-owner", "Labels":labels},
+        {"Id":"second-owner", "Labels":labels},
+    ]);
+    let stopped = json!({"State":{"Pid":0,"Running":false}});
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        vec![
+            ("/containers/dc-", 404, json!({"message":"absent"})),
+            ("/containers/json", 200, containers.clone()),
+            ("/containers/first-owner/stop", 204, json!(null)),
+            ("/containers/second-owner/stop", 204, json!(null)),
+            ("/containers/json", 200, containers),
+            ("/containers/first-owner/json", 200, stopped.clone()),
+            ("/containers/second-owner/json", 200, stopped),
+        ],
+    );
+    let mut reset = ResetExperiment {
+        adapter: Rc::new(adapter),
+        controller,
+        stop_seconds: 3,
+    };
+
+    // Act
+    let error = reset.run(()).await.unwrap_err();
+
+    // Assert
+    assert_eq!(error.to_string(), "multiple experiment IPC owners");
+    assert_eq!(std::fs::read(data).unwrap(), b"unfinished");
+    server.await.unwrap();
+}
+
+#[tokio::test]
 async fn a_foreign_reservation_for_this_repository_blocks_reset() {
     // Arrange
     let root = tempfile::tempdir().unwrap();

@@ -268,11 +268,11 @@ async fn failures_preserve_lower_and_unwind_preparation() {
     .unwrap_err();
     // Assert: partial preparation unwinds its earlier successful mount.
     assert!(error.to_string().contains("option characters"));
-    assert!(
-        !std::fs::read_to_string("/proc/self/mountinfo")
-            .unwrap()
-            .contains(&format!("{}/overlays/", artifacts.display()))
-    );
+    let plan: OverlaySet =
+        serde_json::from_slice(&std::fs::read(artifacts.join("overlays/plan.json")).unwrap())
+            .unwrap();
+    assert_eq!(plan.trees.len(), 2);
+    assert_unmounted(&plan);
     std::fs::remove_dir_all(&root).unwrap();
 }
 

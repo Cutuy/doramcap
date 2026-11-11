@@ -20,7 +20,6 @@ use std::{
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
         fs::{MetadataExt, OpenOptionsExt},
-        process::CommandExt,
     },
     path::{Path, PathBuf},
 };
@@ -526,11 +525,8 @@ async fn rsync(
         .arg(format!("{}/", source.display()))
         .arg(format!("{}/", target.display()))
         .stdout(stdout)
-        .stderr(stderr)
-        .kill_on_drop(true);
-    command.as_std_mut().process_group(0);
-    let mut child = command.spawn()?;
-    let group = super::ProcessGroup(child.id().ok_or_else(|| invalid("rsync PID missing"))?);
+        .stderr(stderr);
+    let (mut child, group) = super::ProcessGroup::spawn(&mut command)?;
     let status = child.wait().await?;
     drop(group);
     if !status.success() {

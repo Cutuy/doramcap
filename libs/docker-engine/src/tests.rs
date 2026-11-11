@@ -51,6 +51,87 @@ pub(crate) fn test_engine_status(
 }
 
 #[tokio::test]
+async fn process_group_guard_terminates_its_spawned_child() {
+    use std::{os::unix::process::ExitStatusExt, process::Stdio, time::Duration};
+    // Arrange
+    let mut command = Command::new("/bin/cat");
+    command.stdin(Stdio::piped()).stdout(Stdio::null());
+
+    // Act
+    let (mut child, group) = ProcessGroup::spawn(&mut command).unwrap();
+    let pid = i32::try_from(child.id().unwrap()).unwrap();
+    // SAFETY: getpgid only observes the process group of the spawned child.
+    assert_eq!(unsafe { libc::getpgid(pid) }, pid);
+    drop(group);
+
+    // Assert
+    let status = tokio::time::timeout(Duration::from_secs(2), child.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.signal(), Some(libc::SIGKILL));
+}
+
+#[tokio::test]
+async fn quiesce_sends_the_largest_representable_stop_timeout() {
+    use serde_json::json;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let containers = json!([{"Id":"writer","Labels":{CONTROLLER_LABEL:"scope"}}]);
+    let (engine, server) = test_engine_status(
+        root.path(),
+        vec![
+            (
+                "/containers/reservation/json",
+                404,
+                json!({"message":"absent"}),
+            ),
+            ("/containers/json", 200, containers.clone()),
+            ("/containers/writer/stop?t=2147483647 ", 204, json!(null)),
+            ("/containers/json", 200, containers),
+            (
+                "/containers/writer/json",
+                200,
+                json!({"State":{"Pid":0,"Running":false}}),
+            ),
+        ],
+    );
+
+    // Act
+    let stopped = engine
+        .resources("scope", "reservation")
+        .quiesce(i32::MAX as u64)
+        .await
+        .unwrap();
+
+    // Assert
+    assert_eq!(stopped.len(), 1);
+    assert_eq!(stopped[0].id.as_deref(), Some("writer"));
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn quiesce_rejects_unrepresentable_timeout_before_using_engine() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let (engine, server) = test_engine(root.path(), vec![]);
+    let seconds = u64::from(i32::MAX as u32) + 1;
+
+    // Act
+    let error = engine
+        .resources("scope", "reservation")
+        .quiesce(seconds)
+        .await
+        .unwrap_err();
+
+    // Assert
+    assert!(
+        matches!(error, Error::Invalid(message) if message.contains("Docker stop timeout") && message.contains(&seconds.to_string()))
+    );
+    server.await.unwrap();
+}
+
+#[tokio::test]
 async fn removal_never_deletes_a_final_container_outside_its_scope() {
     use serde_json::json;
     // Arrange: the supplied final-container ID belongs to another controller.
