@@ -2223,6 +2223,22 @@ async fn compose_public_run_with_access(
 
     // Assert
     let report = report.expect("public workflow report");
+    let audit = std::fs::read_to_string(artifacts.join("docker-events.jsonl")).unwrap();
+    for line in audit.lines() {
+        let event: serde_json::Value = serde_json::from_str(line).unwrap();
+        let dora_service = matches!(
+            event["Actor"]["Attributes"]["com.docker.compose.service"].as_str(),
+            Some("dora-coordinator" | "dora-daemon")
+        );
+        assert!(
+            !(dora_service
+                && event["Action"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("exec_")),
+            "Dora control launched an exec: {line}"
+        );
+    }
     let complete = matches!(outcome, "complete" | "timer-consumer");
     assert_eq!(report.successful(), complete, "{report:?}");
     // A killed workload keeps recordings; a killed MCAP writer invalidates them.

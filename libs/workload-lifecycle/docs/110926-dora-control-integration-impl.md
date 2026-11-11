@@ -3,8 +3,9 @@
 Created: 2026-11-09. Updated: 2026-11-10. [Architecture](110926-dora-control-integration.md).
 Parent: [standalone client PR #251](https://github.com/Cutuy/doramcap/pull/251).
 
-This PR records the design. Shared preparation ships with Compose adoption;
-systemd adoption reuses it. Runtime work and qualification checkboxes stay open.
+The design is recorded in [PR #260](https://github.com/Cutuy/doramcap/pull/260).
+Shared preparation and Compose adoption ship in [PR #309](https://github.com/Cutuy/doramcap/pull/309);
+[PR #310](https://github.com/Cutuy/doramcap/pull/310) adds systemd adoption.
 
 ## Shared preparation and identity
 
@@ -128,31 +129,40 @@ still retains its client.
 - [x] Recheck applicable implementation/design rules with Scanner and record coverage.
 
 Planning checks pass. The architecture has 49 visible words; cleanup has 20.
-Runtime behavior remains unimplemented here. Local full CI, ARM64 worker and real
-backend qualification are deferred to the adoption PRs below.
+Runtime qualification is recorded in the adoption milestones below.
 
 ## Follow-up PR 1: Compose adoption
 
 **Work items**
 
-- [ ] Implement shared preparation in `workload-lifecycle::dora`, using the existing Dora dependency versions; preserve native graph/session semantics.
-- [ ] Add the existing `dora-control` dependency to `workload-docker`; retain one client in [`ExperimentOwner`](../../workload-docker/src/workflows/experiment.rs), with cleanup access through `ComposeRunning.resources` and [`register_experiment`](../../workload-docker/src/workflows/steps.rs).
-- [ ] Preserve [`shared_dora::prepare`](../../workload-docker/src/workflows/shared_dora.rs) hashes and binds; use shared graph/Start preparation. Resolve the run-local credential and direct endpoint before Start.
-- [ ] Replace readiness/shutdown in [`workflows/dora.rs`](../../workload-docker/src/workflows/dora.rs) and registration/inspection/node stops in `experiment.rs`; remove `attempted`/`identity` with those callers.
-- [ ] Apply shared deadlines and cancellation ownership; preserve application drain, grace, native quiescence and exit/removal verification.
-- [ ] Delete `ExperimentOwner::cli`, CLI list/status parsing and backend readiness polling after direct-path coverage. Keep native launch and endpoint inspection.
+- [x] Implement shared preparation in `workload-lifecycle::dora`, using the existing Dora dependency versions; preserve native graph/session semantics.
+- [x] Add the existing `dora-control` dependency to `workload-docker`; retain one client in [`ExperimentOwner`](../../workload-docker/src/workflows/experiment.rs), with cleanup access through `ComposeRunning.resources` and [`register_experiment`](../../workload-docker/src/workflows/steps.rs).
+- [x] Preserve [`shared_dora::prepare`](../../workload-docker/src/workflows/shared_dora.rs) hashes and binds; use shared graph/Start preparation. Resolve the run-local credential and direct endpoint before Start.
+- [x] Replace readiness/shutdown in [`workflows/dora.rs`](../../workload-docker/src/workflows/dora.rs) and registration/inspection/node stops in `experiment.rs`; remove `attempted`/`identity` with those callers.
+- [x] Apply shared deadlines and cancellation ownership; preserve application drain, grace, native quiescence and exit/removal verification.
+- [x] Delete `ExperimentOwner::cli`, CLI list/status parsing and backend readiness polling after direct-path coverage. Keep native launch and endpoint inspection.
 
 **Validation**
 
-- [ ] Cover shared descriptor validation and every Start field with native graph/session inputs; verify the session ID/artifacts and CLI defaults agree across both backend fixtures.
-- [ ] Extend [`tests/docker.rs`](../../workload-docker/tests/docker.rs) for real Dora readiness, registration, observation, node-stop grace, recording completion and verified native exit.
-- [ ] Compare hashes, source/target paths, session artifacts and reports; reject changed frozen inputs before Start.
-- [ ] Exercise run-local authentication, supported unauthenticated mode, missing/wrong/unreadable tokens and unsupported listen/network settings; assert no Start on access failure, preserved permissions and native cleanup.
-- [ ] Cancel before Start, after remote acceptance and after UUID receipt; hang/disconnect control. Verify bounded cleanup, retained diagnostics and removal rules.
-- [ ] Kill the controller after remote acceptance but before UUID receipt. Run repository reset; verify owned runtime exit, artifacts retained, no graph resumption and a subsequent clean run. Inject exit-verification failure and assert admission stays blocked.
-- [ ] Run concurrent repositories and a subsequent run; verify independent endpoints, credentials/UUIDs and cleanup scope.
-- [ ] Capture Docker exec events for the full run and assert zero Dora control exec launches (`status`, `start`, `list`, `node stop`, `down`).
-- [ ] Run focused locked release-profile checks, then required workspace/hosted CI and ARM64 qualification on the adoption revision; record native Dora results separately.
+- [x] Cover shared descriptor validation and every Start field; verify native CLI session compatibility and explicit authenticated/unauthenticated access against Dora 1.1.0.
+- [x] Qualify real Docker readiness, registration, observation, drain/recording completion and verified native exit in [`tests/docker.rs`](../../workload-docker/tests/docker.rs).
+- [x] Check frozen inputs, binds, session artifacts and reports with preparation tests and native fixtures.
+- [x] Reject missing, malformed, oversized, symlinked or loosely permissioned credentials in shared tests; reject wrong bearer tokens with native Dora (401). Check native listen precedence and incompatible endpoint settings.
+- [x] Qualify partial-startup cancellation, startup failure, daemon loss, forced workload/writer shutdown and controller crash/reset with real Docker.
+- [x] Capture Docker events across each native run and assert zero Dora control exec launches.
+- [x] Run two concurrent native coordinator/daemon pairs with independent endpoints, auth modes and UUIDs; verify CLI artifacts and native shutdown. Qualify subsequent Docker runs.
+- [x] Run focused locked release checks, complete workspace CI, hosted x86/ARM checks and the ARM64 worker; record native qualification separately.
+- [ ] Inject access failures through authenticated Docker services; verify no Start and native cleanup for each failure.
+- [ ] Inject cancellation specifically after remote acceptance/before UUID receipt, hung control and failed exit verification in the Docker adapter. Shared client protocol tests cover uncertain identity, deadlines and Stop/Destroy ordering; native controller-crash/reset coverage uses a running graph.
+- [ ] Qualify two concurrent Compose repositories; shared native-runtime concurrency does not establish backend admission isolation.
+
+Results: 5 shared tests, 81 Compose library tests and 7 real Docker lifecycle cases pass.
+Three capability-only library cases remain ignored by the unprivileged workspace run.
+Locked release checks and complete local CI pass; hosted Rust/Node/MCAP checks pass
+on x86 and ARM. ARM64 worker job 648 passed the Compose revision; jobs 651/652
+passed the combined workspace and real-Dora shared fixture. The remaining boxes
+are native fault-injection/concurrent-backend qualification, recorded separately
+from the measured lifecycle results. GPU/IPC qualification is outside this change.
 
 ## Follow-up PR 2: systemd adoption
 

@@ -6,6 +6,9 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+dora-control = { path = "../dora-control" }
+dora-core = { version = "=1.1.0", default-features = false }
+serde_json = "1"
 libc = "0.2"
 notify = { version = "8.2.1", default-features = false }
 orchestrator = { path = "../orchestrator" }
@@ -13,6 +16,9 @@ prost = "0.14"
 serde = { version = "1", features = ["derive"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "time", "rt", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["process"] }
 
 [build-dependencies]
 prost-build = "0.14"

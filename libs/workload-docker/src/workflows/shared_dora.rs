@@ -5,7 +5,6 @@ use crate::compose::{
     adapter::{digest, private_write},
     error::invalid,
 };
-use dora_core::descriptor::{Descriptor, DescriptorExt, validate::check_dataflow_static};
 use serde_json::json;
 use std::path::Path;
 use workload_lifecycle::{
@@ -40,6 +39,11 @@ pub fn resolve(apps: &mut DoraApps, runtime_directory: String) -> Result<Option<
     let automatic =
         workload_lifecycle::dora::resolve_ports(&mut coordinator_args, &mut daemon_args)
             .map_err(invalid)?;
+    workload_lifecycle::dora::endpoint(
+        &coordinator_args,
+        apps.services[&coordinator]["environment"]["DORA_COORDINATOR_INTERFACE"].as_str(),
+    )
+    .map_err(invalid)?;
     let overlay = option(&daemon_args, "--zenoh-config-overlay").map_err(invalid)?;
     let runtime = DoraRuntime {
         coordinator_port: port(&coordinator_args, "--port").map_err(invalid)?.into(),
@@ -81,33 +85,6 @@ pub fn validate_endpoints(runtime: Option<&DoraRuntime>) -> Result<()> {
     Ok(())
 }
 
-/// Expand native modules and require externally launched nodes in the graph.
-pub fn graph(dataflow_file: &str, bytes: &[u8]) -> Result<Descriptor> {
-    let graph = Descriptor::parse(bytes.to_vec())
-        .map_err(|e| invalid(format!("invalid Dora graph: {e:#}")))?
-        .expand(
-            Path::new(dataflow_file)
-                .parent()
-                .ok_or_else(|| invalid("graph parent missing"))?,
-        )
-        .map_err(|e| invalid(format!("Dora module expansion: {e:#}")))?;
-    check_dataflow_static(&graph).map_err(|e| invalid(format!("invalid Dora graph: {e:#}")))?;
-    if graph.nodes.iter().any(|n| {
-        n.path.as_deref() != Some("dynamic")
-            || n.operators.is_some()
-            || n.operator.is_some()
-            || n.ros2.is_some()
-            || n.build.is_some()
-            || n.git.is_some()
-            || n.hub.is_some()
-    }) {
-        return Err(invalid(
-            "Dora graph must use externally launched dynamic nodes",
-        ));
-    }
-    Ok(graph)
-}
-
 /// Freeze the dataflow and mount it into the coordinator's existing working directory.
 pub(crate) async fn prepare(
     apps: &mut DoraApps,
@@ -119,7 +96,9 @@ pub(crate) async fn prepare(
         return Ok(());
     };
     let bytes = crate::evidence::read_regular(Path::new(dataflow_file), MAX_GRAPH_BYTES).await?;
-    let bytes = serde_json::to_vec(&graph(dataflow_file, &bytes)?)?;
+    let bytes = serde_json::to_vec(
+        &workload_lifecycle::dora::graph(dataflow_file, &bytes).map_err(invalid)?,
+    )?;
     let source = artifacts.join(GRAPH_FILE).to_string_lossy().into_owned();
     runtime.dataflow_sha256 = digest(&bytes);
     private_write(Path::new(&source), &bytes).await?;

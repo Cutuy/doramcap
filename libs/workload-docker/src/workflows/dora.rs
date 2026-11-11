@@ -1,12 +1,11 @@
 //! Dora control over ordinary, resolved Compose app definitions.
 use super::experiment::ExperimentOwner;
 use crate::compose::{error::invalid, *};
+use dora_control::DoraCoordinatorClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeMap, time::Duration};
-
-// Approved polling exception until Dora reports daemon readiness.
-const DORA_STARTUP_CHECK_INTERVAL: Duration = Duration::from_millis(100);
+use std::{collections::BTreeMap, path::Path, time::Duration};
+use tokio::time::Instant;
 
 /// Native Compose Dora service definitions used by the Docker adapter.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -77,52 +76,60 @@ impl DoraApps {
 }
 
 impl ExperimentOwner {
-    pub(crate) async fn cli(&self, args: &[&str]) -> Result<String> {
-        let argv = DoraApps::argv(self.apps.coordinator()?.1)?;
-        let mut command: Vec<_> = [argv[0].as_str()]
-            .into_iter()
-            .chain(args.iter().copied())
-            .map(str::to_owned)
-            .collect();
-        command.extend([
-            "--coordinator-port".into(),
-            self.dora_runtime()?.coordinator_port.to_string(),
-        ]);
-        self.adapter
-            .project(&self.plan)
-            .exec(
-                self.apps.coordinator()?.0,
-                &command,
-                Duration::from_secs(self.startup_seconds),
-            )
-            .await
-    }
-    pub(super) async fn start_runtime(&self) -> Result<()> {
+    pub(super) async fn start_runtime(&mut self) -> Result<()> {
         if !self.apps.enabled() {
             return Ok(());
         }
-        self.adapter
-            .project(&self.plan)
-            .start(
+        let deadline = Instant::now() + Duration::from_secs(self.startup_seconds);
+        self.startup_deadline = Some(deadline);
+        let app = self.apps.coordinator()?.1;
+        let argv = DoraApps::argv(app)?;
+        let endpoint = workload_lifecycle::dora::endpoint(
+            &argv,
+            app["environment"]["DORA_COORDINATOR_INTERFACE"].as_str(),
+        )
+        .map_err(invalid)?;
+        let authenticated = argv.iter().any(|arg| arg == "--auth");
+        let expected_token = app["environment"]["DORA_AUTH_TOKEN"]
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let directory = app["working_dir"]
+            .as_str()
+            .ok_or_else(|| invalid("Dora coordinator needs working_dir"))?;
+        let source = DoraApps::host_path(app, directory)?;
+        tokio::time::timeout_at(
+            deadline,
+            self.adapter.project(&self.plan).start(
                 &self.apps.services.keys().cloned().collect::<Vec<_>>(),
                 self.startup_seconds,
-            )
-            .await?;
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(self.startup_seconds);
-        loop {
-            if self.inspect_runtime().await.is_ok()
-                && let Ok(status) = self.cli(&["status", "--format", "json"]).await
-            {
-                let status: serde_json::Value = serde_json::from_str(&status)?;
-                if status["daemon"]["status"] == "running" {
-                    return Ok(());
-                }
-            }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(invalid("Dora daemon did not connect to coordinator"));
-            }
-            tokio::time::sleep(DORA_STARTUP_CHECK_INTERVAL).await;
+            ),
+        )
+        .await
+        .map_err(|_| invalid("Dora native startup deadline expired"))??;
+        let token = workload_lifecycle::dora::token(Path::new(&source), authenticated, deadline)
+            .await
+            .map_err(invalid)?;
+        if authenticated
+            && expected_token
+                .as_deref()
+                .is_some_and(|value| token.as_deref() != Some(value))
+        {
+            return Err(invalid(
+                "native Dora token override disagrees with the run-local credential",
+            ));
         }
+        // Retain identity before any graph mutation can be awaited or cancelled.
+        self.client = Some(DoraCoordinatorClient::new(endpoint, token));
+        self.client
+            .as_mut()
+            .unwrap()
+            .wait_for_daemon(deadline)
+            .await
+            .map_err(|e| invalid(e.to_string()))?;
+        tokio::time::timeout_at(deadline, self.inspect_runtime())
+            .await
+            .map_err(|_| invalid("Dora native inspection deadline expired"))?
     }
     pub(super) async fn inspect_runtime(&self) -> Result<()> {
         if !self.apps.enabled() {
@@ -146,30 +153,38 @@ impl ExperimentOwner {
         Ok(())
     }
     /// Workloads must have drained and stopped before native graph/runtime teardown.
-    pub(super) async fn stop_runtime(&self) -> Result<Shutdown> {
+    pub(super) async fn stop_runtime(&mut self) -> Result<Shutdown> {
         if !self.apps.enabled() {
             return Ok(Shutdown {
                 stopped: true,
                 ..Default::default()
             });
         }
-        if self
-            .adapter
-            .project(&self.plan)
-            .endpoint(
-                self.apps.coordinator()?.0,
-                "host",
-                self.dora_runtime()?.coordinator_port as u16,
-            )
-            .await
-            .is_ok()
-            && let Err(error) = self.cli(&["down", "--force"]).await
-        {
-            eprintln!(
-                "warning: Dora control shutdown failed; verifying container shutdown: {error}"
-            );
-        }
-        let stopped = self
+        let deadline = self.cleanup_deadline();
+        let attempted = self
+            .client
+            .as_ref()
+            .is_some_and(|client| client.graph().is_some());
+        let control_error = if attempted {
+            match tokio::time::timeout_at(deadline, self.inspect_runtime()).await {
+                Ok(Ok(())) => self
+                    .client
+                    .as_mut()
+                    .unwrap()
+                    .shutdown(deadline)
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+                    .err(),
+                Ok(Err(error)) => Some(error),
+                Err(_) => Some(invalid("Dora control cleanup deadline expired")),
+            }
+        } else {
+            if let Some(client) = &mut self.client {
+                client.disconnect();
+            }
+            None
+        };
+        let mut stopped = self
             .adapter
             .project(&self.plan)
             .quiesce(&self.apps.services.keys().cloned().collect::<Vec<_>>())
@@ -179,6 +194,11 @@ impl ExperimentOwner {
                 "Dora shutdown incomplete: {:?}",
                 stopped.diagnostics
             )));
+        }
+        if let Some(error) = control_error {
+            stopped
+                .diagnostics
+                .push(invalid(error.to_string()).diagnostic("Dora control shutdown"));
         }
         Ok(stopped)
     }
