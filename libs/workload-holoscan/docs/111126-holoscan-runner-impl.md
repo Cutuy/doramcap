@@ -1,6 +1,6 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Status: draft; one open item, due at milestone 6.
+Created November 11, 2026. Status: draft; no open items.
 [Adoption overview](110926-holoscan-adoption.md) ·
 [Launch design](111026-holoscan-launch-handoff.md).
 
@@ -65,6 +65,7 @@ A new crate, `libs/workload-holoscan`.
 | `workload-lifecycle` | Run sequence, admission lock, shared run plan. |
 | `docker-engine` | Engine client, cleanup by label, views, baseline, change collection, child process groups. |
 | `orchestrator` | Steps and progress events. |
+| `compose-apps` | Preparing, starting, watching and stopping Dora and system apps as containers. From milestone 6. |
 
 Boundary rule to add in `scripts/ci/boundaries.json`: `workload-holoscan` must
 not depend on `workload-docker`, `workload-systemd` or `workload-supervisor`.
@@ -132,10 +133,11 @@ the Holoscan project's environment.
 | In Docker | Docker containers, through the existing Compose form |
 | On the host | systemd units, when host execution is supported |
 
-Pairing system apps with a Holoscan application is specific to Holoscan. Compose
-and systemd start their system apps as part of their own workflow. The pairing
-therefore lives in `workload-holoscan`: its workflow starts the system apps, then
-the application, under one admission lock.
+The Holoscan workflow is its own sequence. It reuses the steps and structs that
+run Dora and system apps as containers, which move to a shared crate,
+`compose-apps`, in [Cutuy/doramcap#317](https://github.com/Cutuy/doramcap/pull/317).
+The Compose workflow uses the same crate. Each workflow keeps its own run order,
+and the Holoscan launch takes the place where Compose starts user services.
 
 | Order | Start | Stop |
 | --- | --- | --- |
@@ -248,16 +250,15 @@ Depends on the admission lock.
 
 Docker projects only. The systemd form follows with host execution.
 
+Depends on the shared apps crate.
+
 **Work items**
 
-- [ ] Run Dora and the other system apps through the Compose form with no user app,
-  and fix the path where it does not work.
-- [ ] Implement the pairing in `workload-holoscan`: start system apps, then the
-  application; stop in reverse; end the run when either part ends.
+- [ ] Prepare Dora and system apps as one project through `compose-apps`, with no extra group.
+- [ ] In the Holoscan workflow, start the system part, then launch the application.
+  Watch both. Stop the application, then the system part.
 - [ ] Take the admission lock once for the whole run and run file capture once over
   both parts' folders.
-- [ ] Each part cleans up its own containers. Both use the repository's ownership
-  label, so a reset clears leftovers from either.
 - [ ] Include the system apps in Prepare and the Review snapshot.
 
 **Validation**
@@ -286,7 +287,7 @@ Docker projects only. The systemd form follows with host execution.
 
 | # | Question | Needed by | Proposal |
 | --- | --- | --- | --- |
-| 1 | How `workload-holoscan` launches system apps: by reusing the Compose crate's existing launch, or through a backend-neutral interface that it backs itself. | 6 | To confirm. |
+| 1 | None open. System apps are launched with the shared `compose-apps` pieces. | | |
 
 ## Settled details
 
