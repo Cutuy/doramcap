@@ -85,7 +85,7 @@ A recording cut short is not detected. Checking MCAP files found among the
 changed files is a possible later addition.
 
 Console's web app does not show file changes yet. That work is tracked in
-[Cutuy/doramcap#312](https://github.com/Cutuy/doramcap/pull/312).
+[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
 
 ## Logs
 
@@ -102,8 +102,8 @@ Console's setting takes precedence over a host-wide Docker default. On failure,
 Console reads the container's last lines through the Engine for the error
 message, as Compose does. The CLI's own output is saved to a launch log file.
 
-Planned: at the end of a run, Console collects the run's journal entries for all
-its units and containers and saves them with the run. That work and the same
+Planned: at the end of a run, Console dumps each program's full output from the
+journal into a run-owned output folder, where it is kept with the run's other files. That work and the same
 change for Compose are tracked in
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
 
