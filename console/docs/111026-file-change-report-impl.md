@@ -5,21 +5,21 @@ Created November 11, 2026. Status: planned; application code unchanged.
 
 ## Order
 
-Milestones are numbered by topic and built in this order:
+Milestones are numbered by topic. Two can start at once and two wait:
 
-| Order | Milestone | Reason |
+| Milestone | Starts | Reason |
 | --- | --- | --- |
-| 1 | 1: extract capture | Everything else builds on the moved code. Follows the [admission lock](https://github.com/Cutuy/doramcap/pull/315), which changes the same part of the Compose workflow. |
-| 2 | 3: report in Console | Capture already works for Compose, so its runs show file changes first. |
-| 3 | 4: keep with the run | A small step on the moved code. |
-| 4 | 2: systemd capture | The largest and least certain piece. Until it lands, a systemd run reads as unavailable. |
+| 1: extract capture | Now | Everything that reuses capture builds on the moved code. |
+| 3: report in Console | Now, alongside milestone 1 | Capture already works for Compose. It builds on report types that milestone 1 relocates, which is an ordinary code conflict. |
+| 4: keep with the run | After milestones 1 and 3 | It changes the finalization that milestone 1 relocates and uses milestone 3's download route. |
+| 2: systemd capture | After milestone 1 | systemd cannot use the capture code until it leaves the Docker crate. Until it lands, a systemd run reads as unavailable. |
 
-The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) uses the
-extracted capture steps for its run milestone.
-
-The [shared apps crate](https://github.com/Cutuy/doramcap/pull/317) also reshapes
-`workload-docker`. It is built after milestone 1 and before milestone 3, so these
-changes land one at a time.
+The [admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
+[shared apps crate](https://github.com/Cutuy/doramcap/pull/317) also move code
+out of `workload-docker` and proceed in parallel. The apps crate's last milestone
+waits for milestone 1 here, since both reshape the Compose run sequence. The
+[Holoscan overview](https://github.com/Cutuy/doramcap/pull/264) holds the order
+across all of this work.
 
 ## Milestone 1: Extract Linux capture and preserve Docker behavior
 
