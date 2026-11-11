@@ -175,17 +175,18 @@ joins at Build and run.
 | --- | --- | --- |
 | 1 | Admission lock ([#315](https://github.com/Cutuy/doramcap/pull/315)) | Nothing |
 | 2 | Extract capture ([#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1) | Follows the lock |
-| 3 | Show file changes in Console (#316 milestone 3) | Extract capture |
-| 4 | Keep files with the run (#316 milestone 4) | Extract capture |
-| 5 | systemd capture (#316 milestone 2) | Extract capture |
-| 6 | Log dump ([#314](https://github.com/Cutuy/doramcap/pull/314)) | Most useful after 3 and 4 |
+| 3 | Shared apps crate ([#317](https://github.com/Cutuy/doramcap/pull/317)) | Follows the lock and extract capture |
+| 4 | Show file changes in Console (#316 milestone 3) | Extract capture |
+| 5 | Keep files with the run (#316 milestone 4) | Extract capture |
+| 6 | systemd capture (#316 milestone 2) | Extract capture |
+| 7 | Log dump ([#314](https://github.com/Cutuy/doramcap/pull/314)) | Most useful after 4 and 5 |
 
 | Order | Holoscan runner | Needs first |
 | --- | --- | --- |
 | 1 | Real-container probes (milestone 1) | Nothing |
 | 2 | Crate, discovery, Prepare and Review (milestones 2 and 3) | Nothing |
 | 3 | Build and run (milestones 4 and 5) | Admission lock and extracted capture |
-| 4 | System apps, recovery and acceptance (milestones 6 and 7) | Build and run |
+| 4 | System apps, recovery and acceptance (milestones 6 and 7) | Build and run, and the shared apps crate |
 
 ## Agreed scope
 
