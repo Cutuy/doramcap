@@ -33,8 +33,8 @@ travel this way.
 - Prepare compares the selected limits with the project's own Docker options and
   warns or fails as the table below describes.
 
-The implementation plan lists the limits offered. The first version can mirror
-what Compose offers.
+The first version offers no limits. Console has no user-selected limits for a
+user's project in any backend today. This mechanism applies when it gains them.
 
 ## Conflict outcomes
 

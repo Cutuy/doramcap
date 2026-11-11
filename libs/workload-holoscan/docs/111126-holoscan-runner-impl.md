@@ -1,6 +1,6 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Status: draft; open items listed below need answers before milestone 2.
+Created November 11, 2026. Status: draft; one open item, due at milestone 6.
 [Adoption overview](110926-holoscan-adoption.md) ·
 [Launch design](111026-holoscan-launch-handoff.md).
 
@@ -31,6 +31,30 @@ its results. The web app journey is a later stage.
 | Limits | Selected limits as launch options; conflicts found at Prepare. | [Controls](110926-holoscan-controls.md) |
 | Logs | Host journal; a project's own log driver wins. | [Outputs](110926-holoscan-outputs.md#logs) |
 | Support apps | Dora and Console's system apps follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [Support apps](#support-apps) |
+
+## Configuration
+
+Console reads its backend from the `form` field of its configuration. Today the
+values are `COMPOSE` and `SYSTEMD`. The TypeScript server reads the field in a
+few places: configuration and manifest checks, finding the user's apps and
+building the run plan. The native backend never sees it and acts on the plan it
+is given.
+
+Approved additions:
+
+| Input | Meaning |
+| --- | --- |
+| `form: HOLOSCAN` | The Holoscan backend runs this project. |
+| `holoscan { cli }` | Required with `HOLOSCAN` and rejected otherwise. `cli` is the absolute path of the Holoscan CLI executable. |
+
+| `form` | User's apps | Dora and system apps |
+| --- | --- | --- |
+| `COMPOSE` | Compose services | Compose services |
+| `SYSTEMD` | systemd units | systemd units |
+| `HOLOSCAN` | The Holoscan CLI | Chosen by the Holoscan workflow from the project's environment |
+
+The first version supports Docker projects only, so the block has no
+Docker-or-host setting yet. It is added with host execution.
 
 ## Crate
 
@@ -128,7 +152,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 
 - [ ] Build one Python and one C++ application from the Holoscan applications repository with the real CLI.
 - [ ] Launch each with a real OverlayFS view as the project root.
-- [ ] Launch with a label, a container-identity file, one CPU limit and the journal log driver as Docker options.
+- [ ] Launch with a label, a container-identity file, one CPU limit and the journal log driver as Docker options. The limit proves the mechanism for later use.
 - [ ] Record the Engine events seen for the labelled container from create to stop.
 
 **Validation**
@@ -147,6 +171,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 
 - [ ] Create the crate, its protobuf package and the boundary rule.
 - [ ] Implement `DiscoverApplications` with the five outcomes in the discovery document.
+- [ ] Add `form: HOLOSCAN` and the `holoscan` block to Console's configuration, with their checks.
 - [ ] Add the catalog operation to Console's backend.
 
 **Validation**
@@ -161,14 +186,14 @@ probes on a machine with an NVIDIA GPU and no production code.
 
 - [ ] Implement `PrepareLaunch`: dry run, normalization of run-specific values, image ID, project Docker options.
 - [ ] List mounts outside capture from the dry run and project options.
-- [ ] Detect conflicts between selected limits or the log setting and the project's own options.
+- [ ] Detect a project that sets its own log driver and report it at Review.
 - [ ] Report "not built" when the image or build record is missing, and "rebuild needed" when the source commit or clean state differs.
 - [ ] Add the Holoscan form to Console's inspect operation.
 
 **Validation**
 
 - [ ] Two Prepares with unchanged inputs give the same snapshot.
-- [ ] A changed mode, image, project option or limit changes the snapshot.
+- [ ] A changed mode, image or project option changes the snapshot.
 - [ ] Each conflict and each "not built" case is reported with its cause.
 
 ## Milestone 4: Build request
@@ -244,15 +269,17 @@ Docker projects only. The systemd form follows with host execution.
 
 ## Open items
 
-These need an answer before the milestone that uses them.
-
 | # | Question | Needed by | Proposal |
 | --- | --- | --- | --- |
-| 1 | How Console learns where the Holoscan CLI is. This is a new configuration input and needs explicit approval. | 2 | A field in the project's Console configuration naming the CLI executable. |
-| 2 | Where the support-app part and the Holoscan part are joined, and who owns reset and shared folders. | 6 | Decide when milestone 6 starts, after reading the Compose workflow in detail. |
-| 3 | Where the build record is kept, since a build belongs to no run. | 4 | In Console's data folder, keyed by project and selection. |
-| 4 | Which limits the first version offers. | 3 | The CPU set, matching what Compose offers per application. |
-| 5 | How a tree with uncommitted changes at Build is treated. | 4 | Allowed and shown at Review as unverifiable. |
+| 1 | Where the support-app part and the Holoscan part are joined, and who owns reset and shared folders. | 6 | Decide when milestone 6 starts, after reading the Compose workflow in detail. |
+
+## Settled details
+
+| Detail | Decision |
+| --- | --- |
+| Limits offered | None in the first version. Console offers no user-selected limits for a user's project today. The launch-option mechanism stays agreed for when it does. |
+| Build record | A new `builds/` folder in Console's data folder, one record per application, language and mode. |
+| Uncommitted changes at Build | Allowed. The record says Dirty, as runs do today, and Review shows that the build cannot be verified against the current source. |
 
 ## Outside this plan
 
