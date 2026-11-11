@@ -17,6 +17,10 @@ Milestones are numbered by topic and built in this order:
 The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) uses the
 extracted capture steps for its run milestone.
 
+The [shared apps crate](https://github.com/Cutuy/doramcap/pull/317) also reshapes
+`workload-docker`. It is built after milestone 1 and before milestone 3, so these
+changes land one at a time.
+
 ## Milestone 1: Extract Linux capture and preserve Docker behavior
 
 **Work items**
