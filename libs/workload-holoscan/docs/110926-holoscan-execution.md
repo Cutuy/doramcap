@@ -2,7 +2,7 @@
 
 # Holoscan execution and recovery
 
-Created November 9, 2026. Stage 4 architecture: agreed pre-run cleanup policy.
+Created November 9, 2026. Updated November 10, 2026. Stage 4 architecture: agreed pre-run cleanup, admission lock and run supervision.
 [Adoption overview](110926-holoscan-adoption.md).
 
 A new run must clear lingering owned resources before proceeding. The workflow is
@@ -23,13 +23,19 @@ Stopping lingering runs is mandatory. Output retention is best effort: a failed
 copy is recorded and resource cleanup continues. Failed or unverified stopping or
 removal blocks the new run.
 
+Ownership is one lock per repository root. It lives in `workload-lifecycle` and
+is shared by Compose, systemd and Holoscan runs and by Holoscan Build. The second
+caller is refused. Each workflow keeps its own cleanup and its own behavior after
+a crash. The lock lands as a separate change before the Holoscan runner.
+
 The interrupted run remains recorded as interrupted. A new run receives its own
 identity. Cleanup runs as part of the next-run workflow. Normal finalization owns
 write-back; pre-run cleanup discards old filesystem views after best-effort salvage.
 
 ## Resource ownership
 
-`workload-holoscan` owns admission, resource tracking and the cleanup policy.
+`workload-holoscan` takes the shared admission lock and owns resource tracking
+and the cleanup policy.
 Track resources from their first creation, including Build, partial preparation
 and partial startup. Apply cleanup only to resources with verified ownership.
 
@@ -43,6 +49,22 @@ The CLI process ends when the container ends. The runner follows the shared run
 sequence in [`workload-lifecycle`](../../workload-lifecycle/src/run.rs): start,
 observe, stop, check recordings, remove.
 
+## Ready and ended
+
+The container is the source of truth. Console subscribes to Docker Engine events
+for its run label and waits on them.
+
+| Step | Signal |
+| --- | --- |
+| Start | Console starts the CLI and waits for a labelled container to be created. If the CLI exits first, Start fails with the CLI's output. |
+| Check | Console compares the container's image ID, view mounts and labels with the Review snapshot. A mismatch stops the container and fails Start. |
+| Ready | The container is running and passed the check. |
+| Ended | The Engine reports the container stopped, with its exit code. |
+| CLI exits early | Recorded as a note. The run continues. |
+
+Ready means the container is running. Holoscan applications give no signal that
+their pipeline is processing data.
+
 Normal Stop, cancellation and failed startup also stop writers before finalizing
 outputs and removing temporary resources. Execution, recording recovery and
 cleanup keep separate outcomes. Detailed stop deadlines, evidence storage and
@@ -55,6 +77,9 @@ backend operations belong in the implementation plan.
 | Compose | Acquires project ownership, resets prior resources and then prepares. Reset stops and verifies writers, removes temporary resources and verifies removal. |
 | systemd | Acquires project ownership and blocks admission while prior resources remain. Explicit cleanup stops/removes owned runtime resources and leaves artifacts intact. |
 | Holoscan decision | Run repeatable cleanup as part of the new-run workflow before Build/Prepare; block progression until required cleanup succeeds. |
+
+Compose and systemd hold separate locks today, so their runs on one repository
+can overlap. The shared lock closes that.
 
 The common principle is verified cleanup before admission to a new execution.
 Holoscan owns its workflow. Cleanup of owned resources by label moves to the

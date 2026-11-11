@@ -47,7 +47,9 @@ Console stops the container itself with its own deadline, as the Compose backend
 does. The CLI process ends when the container ends. The runner follows the shared
 run sequence in `workload-lifecycle`: start, observe, stop, check recordings, remove.
 
-The Engine API client is the one `workload-docker` already uses.
+The Engine API client comes from the shared `docker-engine` crate. Ready and ended
+come from Engine events for the labelled container, as the
+[execution document](110926-holoscan-execution.md#ready-and-ended) describes.
 
 ## Review and Start
 
@@ -134,8 +136,8 @@ commands. No real container ran and no OverlayFS view was mounted.
 ## Work still needed
 
 - Implement the Holoscan runner in the Console backend.
-- Move the shared Docker operations to the `docker-engine` crate, following its
-  [implementation plan](111026-docker-engine-crate-impl.md).
+- Add the shared admission lock to `workload-lifecycle`.
+- Add the Console Build request.
 - Connect review settings, run events and results to Console's existing contracts.
 - Test a real Docker application with OverlayFS, then GPU and sensor workloads.
 - Test controller failure and verify that the next run cleans up leftovers.
