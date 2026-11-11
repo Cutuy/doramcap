@@ -158,6 +158,7 @@ main.shell{padding-top:28px}
 .mapping-header .eyebrow { margin: 0 0 6px; }
 .mapping-detail p { font-size: 14px; margin: 10px 0 14px; }
 .mapping-upstream { display: inline-block; margin-bottom: 14px; font-size: 13px; }
+.mapping-links a.highlighted { box-shadow: inset 0 0 0 1px var(--accent); }
 .mapping-close {
   display: none;
   flex-shrink: 0;
@@ -268,16 +269,35 @@ main.shell{padding-top:28px}
   list-style: none;
 }
 .user-device-grid .stack-block { justify-content: flex-start; text-align: left; }
+.user-device-grid .highlighted { align-items: flex-start; }
+.tile-caption {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
 .lifecycle-grid .stack-block, .capability { background: var(--bg); }
+.capability {
+  flex-direction: column;
+  align-items: stretch;
+}
+.capability-detail { color: inherit; text-decoration: none; }
+.capability-title { display: flex; align-items: center; gap: 8px; margin: 0; font: inherit; }
+.capability .mapping-components { gap: 8px; }
+.capability .mapping-components h5 { margin: 0 0 4px; color: var(--muted); font-size: 11px; }
+.capability .mapping-links { gap: 4px; }
+.capability .mapping-links a { padding: 3px 6px; background: var(--panel); font-size: 11px; }
+.capability .mapping-links a span { padding-left: 3px; }
 .stack-block svg, .capability svg {
   flex-shrink: 0;
   color: var(--accent);
 }
-.capability.highlighted, .stack-apps .highlighted {
+.capability.highlighted, .stack-apps .highlighted, .user-device-grid .highlighted {
   background: light-dark(#edf5f1, #23352e);
 }
-a.stack-block:hover, .capability:hover,
-.stack-block[aria-current=true], .capability[aria-current=true] {
+a.stack-block:hover, .capability:focus-within, .capability:has(.capability-detail:hover),
+.stack-block[aria-current=true], .capability:has([aria-current=true]) {
   border-color: var(--accent);
 }
 .software-group { display: flex; align-items: baseline; gap: 12px; margin-top: 8px; }
@@ -303,7 +323,7 @@ a.stack-block:hover, .capability:hover,
   .user-device-layer, .platform-stack { --stack-inset: 10px; }
   .stack-apps .stack-block { flex-direction: column; gap: 4px; padding: 8px 4px; }
   .runtime-layer, .lifecycle-layer, .platform-layer, .software-layer { padding: 12px; }
-  .lifecycle-grid, .user-device-grid { grid-template-columns: minmax(0, 1fr); }
+  .capability-grid, .lifecycle-grid, .user-device-grid { grid-template-columns: minmax(0, 1fr); }
   .software-group { flex-direction: column; align-items: flex-start; gap: 4px; }
   .software-links { gap: 7px 13px; }
 }

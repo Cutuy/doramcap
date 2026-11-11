@@ -7,6 +7,44 @@ import type { OverviewData, Mapping } from './overview-model';
 const overview = data as OverviewData;
 const icons: Record<string, typeof Activity> = { Resources: Cpu, Memory: MemoryStick, Observability: Activity, Storage: Database, Faults: ShieldAlert, Configuration: SlidersHorizontal, Telemetry: Radio, Runtime: Workflow };
 const statusLabels: Record<string, string> = { 'building-blocks': '', planned: 'Planned', integrated: '', optional: 'Optional', 'platform-dependent': 'Platform-dependent', illustrative: '', validated: 'Validated use case' };
+const deviceActions: { title: string; Icon: typeof Activity; descriptions: Partial<Record<string, string>> }[] = [
+  { title: 'Review run setup', Icon: ClipboardCheck, descriptions: {
+    repeat: 'Inspect the resolved Compose services.',
+    perception: 'Review the pipeline nodes and inputs.',
+  } },
+  { title: 'Launch experiments', Icon: Play, descriptions: {
+    repeat: 'Start your existing Compose project.',
+    perception: 'Run the selected dataflow.',
+  } },
+  { title: 'Monitor live runs', Icon: Radio, descriptions: {
+    perception: 'Watch activity as the pipeline processes inputs.',
+    latency: 'Watch CPU activity as the workload runs.',
+    fault: 'Watch for liveness changes and fault reports.',
+  } },
+  { title: 'Download recordings', Icon: Download, descriptions: {
+    repeat: 'Save the run’s recordings for inspection.',
+    perception: 'Keep pipeline evidence for later inspection.',
+    latency: 'Keep timing traces for the investigation.',
+    fault: 'Keep evidence from around the fault.',
+  } },
+  { title: 'Run history', Icon: History, descriptions: {
+    repeat: 'Find a previous run and run it again.',
+    fault: 'Open the run where the fault occurred.',
+  } },
+  { title: 'System snapshots', Icon: ScanLine, descriptions: {
+    latency: 'Check the machine configuration captured with the run.',
+  } },
+  { title: 'A/B comparison', Icon: GitCompareArrows, descriptions: {
+    repeat: 'Compare the setup and results of two runs.',
+    latency: 'Compare a baseline run with a run after the change.',
+  } },
+  { title: 'Performance analysis', Icon: Activity, descriptions: {
+    perception: 'Trace an output back to the inputs that produced it.',
+    latency: 'Relate a missed deadline to activity timing and CPU usage.',
+    fault: 'Inspect activity surrounding the fault.',
+  } },
+];
+
 function link(values: Record<string, string>) { return routeHref('/overview', new URLSearchParams(values)); }
 function showDetails(panel: HTMLElement | null, source?: HTMLAnchorElement) {
   if (!panel?.showPopover) return;
@@ -27,6 +65,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
   const integration = overview.integrations.find(i => i.id === integrationId);
   const selected = integration ?? capability;
   const context: Record<string, string> = useCase ? { useCase: useCase.id } : {};
+  const useCaseComponents = useCase?.components ?? [];
   const invalid = (useCaseId && !useCase) || (capabilityId && !capability) || (integrationId && !integration);
   const highlights = integration ? overview.capabilities.filter(c => c.integrations.includes(integration.id)).map(c => c.id) : useCase?.capabilities ?? [];
   useEffect(() => {
@@ -45,9 +84,16 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
 
   const detailLink = { onClick: openDetails, 'aria-haspopup': 'dialog' as const, 'aria-controls': 'overview-details' };
 
-  function components(item: Mapping, kind: 'apps' | 'crates') {
-    const entries = item.components.map(id => catalog.components.find(c => c.id === id)!).filter(c => c.kind === kind);
-    return entries.length ? <section><h3>{kind === 'apps' ? 'Apps' : 'Crates'}</h3><div className="mapping-links">{entries.map(c => <a key={c.id} href={componentHref(c)}>{displayName(c.name)} <span aria-hidden="true">→</span></a>)}</div></section> : null;
+  function components(ids: Mapping['components'], kind: 'apps' | 'crates', Heading: 'h3' | 'h5' = 'h3') {
+    const entries = ids.map(id => catalog.components.find(c => c.id === id)!).filter(c => c.kind === kind);
+    return entries.length ? <section>
+      <Heading>{kind === 'apps' ? 'Apps' : 'Crates'}</Heading>
+      <div className="mapping-links">{entries.map(c => <a
+        key={c.id}
+        className={useCaseComponents.includes(c.id) ? 'highlighted' : undefined}
+        href={componentHref(c)}
+      >{displayName(c.name)} <span aria-hidden="true">→</span></a>)}</div>
+    </section> : null;
   }
   return <div className="overview"><div className="intro"><h1>{overview.title}</h1></div>
     <ConsoleInstall repository={catalog.repository} />
@@ -72,19 +118,18 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
       </div>
       <p>{selected.summary}</p>
       {integration && <a className="mapping-upstream" href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}
-      <div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div>
+      <div className="mapping-components">{components(selected.components, 'apps')}{components(selected.components, 'crates')}</div>
     </section>}
     <section className="user-device-layer" aria-labelledby="user-device-heading">
       <h2 id="user-device-heading" className="stack-heading">Your device</h2>
       <ul className="user-device-grid">
-        <li className="stack-block"><ClipboardCheck size={16} aria-hidden="true" />Review run setup</li>
-        <li className="stack-block"><Play size={16} aria-hidden="true" />Launch experiments</li>
-        <li className="stack-block"><Radio size={16} aria-hidden="true" />Monitor live runs</li>
-        <li className="stack-block"><Download size={16} aria-hidden="true" />Download recordings</li>
-        <li className="stack-block"><History size={16} aria-hidden="true" />Run history</li>
-        <li className="stack-block"><ScanLine size={16} aria-hidden="true" />System snapshots</li>
-        <li className="stack-block"><GitCompareArrows size={16} aria-hidden="true" />A/B comparison</li>
-        <li className="stack-block"><Activity size={16} aria-hidden="true" />Performance analysis</li>
+        {deviceActions.map(({ title, Icon, descriptions }) => {
+          const description = useCase ? descriptions[useCase.id] : undefined;
+          return <li key={title} className={description ? 'stack-block highlighted' : 'stack-block'}>
+            <Icon size={16} aria-hidden="true" />
+            <span>{title}{description && <small className="tile-caption">{description}</small>}</span>
+          </li>;
+        })}
       </ul>
     </section>
 
@@ -113,15 +158,25 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
         <div className="capability-grid">
           {overview.capabilities.map(c => {
             const Icon = icons[c.category] ?? Layers;
-            return <a
-              key={c.id}
-              {...detailLink}
-              href={link({ ...context, capability: c.id })}
-              className={highlights.includes(c.id) ? 'capability highlighted' : 'capability'}
-              aria-current={capability?.id === c.id && !integration ? 'true' : undefined}
-            >
-              <Icon size={14} strokeWidth={1.6} aria-hidden="true" />{c.title}
-            </a>;
+            const highlighted = highlights.includes(c.id);
+            const related = c.components.filter(id => useCaseComponents.includes(id));
+            const titleId = `capability-title-${c.id}`;
+            return <article key={c.id} className={highlighted ? 'capability highlighted' : 'capability'}>
+              <a
+                {...detailLink}
+                href={link({ ...context, capability: c.id })}
+                className="capability-detail"
+                aria-labelledby={titleId}
+                aria-current={capability?.id === c.id && !integration ? 'true' : undefined}
+              >
+                <h4 id={titleId} className="capability-title"><Icon size={14} strokeWidth={1.6} aria-hidden="true" />{c.title}</h4>
+                {highlighted && <small className="tile-caption">{c.summary}</small>}
+              </a>
+              {highlighted && related.length > 0 && <div className="mapping-components">
+                {components(related, 'apps', 'h5')}
+                {components(related, 'crates', 'h5')}
+              </div>}
+            </article>;
           })}
         </div>
       </section>

@@ -48,8 +48,10 @@ Unknown IDs produce a recoverable message.
 
 Linux and CUDA appear in the execution substrate; Dora, MCAP and OpenTelemetry
 appear under communication and evidence. CUDA is platform-dependent, and OTel is
-optional. Selecting a use case highlights its related blocks. Runtime
-capabilities and platform integrations open their details beside the clicked
+optional. Selecting a use case highlights relevant device actions and adds
+short descriptions. Highlighted runtime blocks show their summaries and the
+apps and crates they share with the selected use case. Runtime capabilities
+and platform integrations open their details beside the clicked
 link on wide screens and in a centered popup on smaller screens. Opening a
 shared capability or integration link shows the centered popup.
 
