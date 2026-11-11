@@ -363,19 +363,6 @@ impl Dora {
         )
         .await
         .map_err(error)?;
-        let ignore = root.join("out/.gitignore");
-        let mut entries = match tokio::fs::read_to_string(&ignore).await {
-            Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => return Err(error(e)),
-        };
-        if !entries
-            .lines()
-            .any(|line| line == "/dataflow.dora-session.yaml")
-        {
-            entries.push_str("\n/dataflow.dora-session.yaml\n");
-            tokio::fs::write(ignore, entries).await.map_err(error)?;
-        }
         let prepared = run.dora_runtime.as_mut().expect("prepared Dora runtime");
         prepared.dataflow = Some(ResolvedFileBinding {
             source,
