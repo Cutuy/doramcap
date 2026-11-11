@@ -23,7 +23,7 @@
   <path class="edge" d="M218 77 H280"/>
   <text class="label" x="249" y="64">Name</text>
   <path class="edge" d="M470 77 H532"/>
-  <text class="label" x="501" y="31">Unique UUID</text>
+  <text class="label" x="501" y="64">Unique</text>
   <path class="edge" d="M692 77 H754"/>
   <text class="label" x="723" y="64">Stopped</text>
 

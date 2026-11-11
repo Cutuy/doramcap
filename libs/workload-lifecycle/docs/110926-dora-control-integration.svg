@@ -17,7 +17,7 @@
   <rect class="boundary" x="24" y="32" width="432" height="486" rx="16"/>
   <rect class="boundary" x="648" y="32" width="448" height="486" rx="16"/>
   <text class="heading" x="48" y="70">Executor process</text>
-  <text class="heading" x="672" y="70">Owned native runtime</text>
+  <text class="heading" x="672" y="70">Native runtime</text>
 
   <rect class="component" x="60" y="118" width="360" height="80" rx="10"/>
   <text x="240" y="151">Shared Dora preparation</text>
@@ -45,12 +45,14 @@
   <path class="edge" d="M832 319 H900"/>
   <text class="label" x="866" y="301">Graph</text>
   <path class="edge" d="M976 276 V186"/>
-  <text class="label" x="1008" y="236">Attach</text>
+  <text class="label" x="986" y="236" style="font-size:14px;text-anchor:start">Shared memory</text>
 
   <rect class="component" x="682" y="420" width="370" height="62" rx="10"/>
   <text x="867" y="458">Docker / systemd</text>
   <path class="edge" d="M134 362 V451 H682"/>
   <text class="label" x="536" y="438">Native launch / stop</text>
+  <path class="edge" d="M682 474 H96 V362"/>
+  <text class="label" x="536" y="500">Exit evidence</text>
   <path class="edge" d="M757 420 V362"/>
   <path class="edge" d="M976 420 V362"/>
   <text class="label" x="867" y="399">Containers / units</text>

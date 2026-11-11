@@ -123,10 +123,11 @@ still retains its client.
 
 **Validation**
 
-- [x] Rebase onto `origin/main` source `2f9da62c` and trace the client, both backends and native reset paths.
-- [ ] Check relative links/anchors, SVG XML/rendering and whitespace; visually inspect both diagrams.
-- [ ] Recheck applicable implementation/design rules with Scanner and record coverage.
+- [x] Rebase onto `origin/main` source `b11bc398` and trace the client, both backends and native reset paths.
+- [x] Check 21 relative links/anchors, SVG XML/rendering and whitespace; visually inspect both diagrams.
+- [x] Recheck applicable implementation/design rules with Scanner and record coverage.
 
+Planning checks pass. The architecture has 49 visible words; cleanup has 20.
 Runtime behavior remains unimplemented here. Local full CI, ARM64 worker and real
 backend qualification are deferred to the adoption PRs below.
 
