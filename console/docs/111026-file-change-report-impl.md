@@ -3,6 +3,20 @@
 Created November 11, 2026. Status: planned; application code unchanged.
 [Architecture](111026-file-change-report.md).
 
+## Order
+
+Milestones are numbered by topic and built in this order:
+
+| Order | Milestone | Reason |
+| --- | --- | --- |
+| 1 | 1: extract capture | Everything else builds on the moved code. Follows the [admission lock](https://github.com/Cutuy/doramcap/pull/315), which changes the same part of the Compose workflow. |
+| 2 | 3: report in Console | Capture already works for Compose, so its runs show file changes first. |
+| 3 | 4: keep with the run | A small step on the moved code. |
+| 4 | 2: systemd capture | The largest and least certain piece. Until it lands, a systemd run reads as unavailable. |
+
+The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) uses the
+extracted capture steps for its run milestone.
+
 ## Milestone 1: Extract Linux capture and preserve Docker behavior
 
 **Work items**
@@ -151,7 +165,7 @@ Created November 11, 2026. Status: planned; application code unchanged.
 
 **Work items**
 
-- [ ] Publish focused implementation PRs in milestone order. Keep the shared extraction
+- [ ] Publish focused implementation PRs in the order above. Keep the shared extraction
   behavior-preserving and finish systemd capture before claiming backend parity.
 - [ ] Record completed and deferred checks here as implementation lands.
 
