@@ -241,7 +241,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     // Assert
     assert.ok(review.services.some((service:any)=>service.name==='worker'&&service.imageId==='sha256:approved'));
-    assert.ok(review.warnings.includes('worker: logging configured by project; Console will not collect its logs'));
+    assert.deepEqual(review.warnings,['worker: logging configured by project; Console will not collect its logs']);
     assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,0);
     assert.deepEqual(mutations,[]);
     // Act / Assert: changing a command must reject before reservation or launch.

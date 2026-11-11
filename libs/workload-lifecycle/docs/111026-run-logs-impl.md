@@ -14,7 +14,8 @@ the implementation leaves installer and host settings unchanged.
   project omits `logging`; record the policy change.
 - [x] Preserve every explicit logging block, including empty and options-only
   blocks; diagnose project-managed logging and its exclusion from collection.
-- [x] Forward resolved diagnostics to Review's existing warning display.
+- [x] Forward project-managed logging diagnostics to Review's existing warning
+  display; preserve the existing handling of other Compose notes.
 - [x] Keep policy and qualification in `compose-apps` after its extraction on main.
 - [x] Document shared Docker rate limiting, host retention and measured loss.
 
