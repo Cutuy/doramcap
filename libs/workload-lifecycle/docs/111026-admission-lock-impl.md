@@ -1,6 +1,6 @@
 # Shared admission lock: implementation plan
 
-Created November 10, 2026. Status: draft; not started.
+Created November 10, 2026. Status: design agreed; not started.
 [Architecture](111026-admission-lock.md).
 
 Move repository admission into `workload-lifecycle` and make Compose and systemd
@@ -47,7 +47,8 @@ Mechanism:
 
 - Canonicalize the path, open the folder read-only and take a non-blocking
   exclusive `flock` on it through `File::try_lock`. Verified on this host: a
-  second open of the same folder through another path is refused.
+  second open of the same folder through another path is refused, `git status`
+  stays clean and `git commit` works while the lock is held.
 - The folder opens with close-on-exec, which is the standard library default.
   `keep_across_exec` clears it.
 - No new dependency. The standard library call is the one both workflows use today.

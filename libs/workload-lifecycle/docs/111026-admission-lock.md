@@ -2,7 +2,7 @@
 
 # Shared admission lock
 
-Created November 10, 2026. Status: draft architecture; direction agreed, two details to confirm.
+Created November 10, 2026. Status: architecture agreed.
 [Implementation plan](111026-admission-lock-impl.md).
 
 One repository hosts one run, build or cleanup at a time. Every workflow asks the
@@ -45,7 +45,8 @@ not covered.
 | Passing the lock to child processes | Off by default; Compose turns it on | Compose keeps its lock while its short helper commands finish after a crash. A Holoscan CLI lives as long as the run, so inheriting would block recovery. |
 | Behavior after a crash | Unchanged per workflow | Compose resets leftovers before the next run. systemd refuses until an operator cleans up. |
 
-The first two rows need confirmation before implementation.
+The lock is held in the kernel on the open folder. It writes nothing to disk, so
+Git sees no change and Git commands work while it is held.
 
 ## Outside this change
 
