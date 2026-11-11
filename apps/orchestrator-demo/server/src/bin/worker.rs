@@ -1,4 +1,5 @@
 //! Authorized fixed-workflow worker. HTTP remains in a separate unprivileged process.
+use docker_engine::filesystem::{FileChanges, FileMetadata};
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use serde_json::json;
 use std::{collections::BTreeMap, rc::Rc, time::Duration};
@@ -10,10 +11,7 @@ use tokio::{
 };
 use workload_docker::workflows::recorded_compose::Recording;
 use workload_docker::{
-    compose::{
-        ComposeProject, DockerAdapter,
-        filesystem::{FileChanges, FileMetadata},
-    },
+    compose::{ComposeProject, DockerAdapter},
     workflows::recorded_compose::{ComposeRun, ComposeRunReport, ComposeRunner},
 };
 

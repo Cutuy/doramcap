@@ -6,16 +6,5 @@
 //! through Rust or serialized requests; no particular UI or input producer is required.
 //! Generic step execution is supplied by the independent `orchestrator` crate.
 pub mod compose;
-pub mod engine;
 pub mod evidence;
 pub mod workflows;
-
-/// Binary filesystem record schema; files contain length-delimited messages.
-pub mod filesystem_proto {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
-}
-
-/// Resolved Docker mounts, owned container identities and filesystem views.
-pub mod docker_proto {
-    include!(concat!(env!("OUT_DIR"), "/doramcap.docker.v1.rs"));
-}

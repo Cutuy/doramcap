@@ -7,7 +7,6 @@ pub(crate) mod adapter;
 pub(crate) mod command;
 pub(crate) mod error;
 pub mod filesystem_preparation;
-pub use crate::engine::{filesystem, overlay};
 pub use filesystem_preparation::{ComposePrepareInput, PrepareOverlays, PreparedOverlays};
 mod model;
 pub(crate) mod mounts;

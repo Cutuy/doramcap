@@ -5,9 +5,9 @@ pub use project::ComposeExecution;
 pub(crate) use project::stop_timeout;
 
 use super::{ResolvedComposeProject, Result, error::invalid};
-use crate::engine::Engine;
-pub(crate) use crate::engine::files::{digest, private_write};
-pub(crate) use crate::engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
+use docker_engine::Engine;
+pub(crate) use docker_engine::files::{digest, private_write};
+pub(crate) use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 pub(crate) const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";

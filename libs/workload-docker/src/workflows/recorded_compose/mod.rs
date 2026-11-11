@@ -1,4 +1,8 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
+use docker_engine::{
+    filesystem::FilesystemChanges,
+    overlay::{self, OverlayPolicy, OverlayResults},
+};
 mod cgroup;
 mod execution;
 pub mod finalization;
@@ -16,13 +20,7 @@ use self::{
     observation::EventCapture,
     preparation::PrepareRun,
 };
-use crate::compose::{
-    ComposePrepareInput, PrepareOverlays,
-    error::invalid,
-    filesystem::FilesystemChanges,
-    overlay::{OverlayPolicy, OverlayResults},
-    *,
-};
+use crate::compose::{ComposePrepareInput, PrepareOverlays, error::invalid, *};
 use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};

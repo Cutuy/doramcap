@@ -1,5 +1,6 @@
 //! Repository-scoped admission and strict, repeatable pre-run cleanup.
-use crate::compose::{DockerAdapter, Result, error::invalid, overlay};
+use crate::compose::{DockerAdapter, Result, error::invalid};
+use docker_engine::overlay;
 use orchestrator::Step;
 use std::{
     fs::File,

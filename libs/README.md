@@ -6,6 +6,8 @@ provide an index; Cargo package names stay independent of directory names.
 
 | Group or crate | Scope |
 |---|---|
+| [docker-engine](docker-engine/) | Shared Docker cleanup and filesystem capture |
+| [host-filesystem](host-filesystem/) | Native shared-memory and directory identity checks |
 | [orchestrator](orchestrator/) | Observable local async Rust steps and external-script adapter |
 | [workload-lifecycle](workload-lifecycle/) | Foreign launch adoption and execution boundaries (design scaffold) |
 | [session](session/) | Session identity and experiment evidence contracts (concept scaffold) |
@@ -20,5 +22,3 @@ provide an index; Cargo package names stay independent of directory names.
 
 See [repository conventions](../docs/repository-layout.md). Run a crate's tests
 from the workspace root, for example `cargo test -p telemetry-protocol`.
-
-- [`host-filesystem`](host-filesystem): native shared-memory and directory identity checks.

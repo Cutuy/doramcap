@@ -79,3 +79,12 @@ impl Drop for ProcessGroup {
 
 #[cfg(test)]
 pub(crate) mod tests;
+
+/// Resolved Docker mounts, owned container identities and filesystem views.
+pub mod docker_proto {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.docker.v1.rs"));
+}
+/// Binary filesystem record schema; files contain length-delimited messages.
+pub mod filesystem_proto {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
+}

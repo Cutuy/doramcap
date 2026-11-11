@@ -5,7 +5,7 @@ use crate::compose::{
     error::invalid,
     mounts,
 };
-use crate::engine::overlay::{OverlayPolicy, OverlaySet, PrepareInput, prepare, unmount};
+use docker_engine::overlay::{OverlayPolicy, OverlaySet, PrepareInput, prepare, unmount};
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -183,7 +183,7 @@ mod tests {
             prepared.projects[0].sha256,
             digest(&std::fs::read(&prepared.projects[0].manifest).unwrap())
         );
-        crate::engine::overlay::finalize(prepared.views)
+        docker_engine::overlay::finalize(prepared.views)
             .await
             .unwrap();
         server.await.unwrap();

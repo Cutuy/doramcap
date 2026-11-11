@@ -1,13 +1,11 @@
 //! Output finalization and durable evidence gates for Compose resource removal.
 use super::ComposeRunReport;
-use crate::compose::{
-    Diagnostics,
-    adapter::private_write,
-    error::invalid,
+use crate::compose::{Diagnostics, adapter::private_write, error::invalid};
+use docker_engine::docker_proto::{HostView, OwnedContainer};
+use docker_engine::{
     filesystem::{CollectFilesystemChanges, CollectInput, FilesystemBaseline, FilesystemChanges},
     overlay::{FinalizeOverlays, OverlayResults, OverlaySet},
 };
-use crate::docker_proto::{HostView, OwnedContainer};
 use orchestrator::{Input, LocalExecutor, Step};
 use serde::{Deserialize, Serialize};
 use std::{

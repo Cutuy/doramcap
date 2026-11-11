@@ -219,6 +219,6 @@ SVG XML and phase labels, milestone structure and whitespace checks passed;
 ## References
 
 - [Existing isolation contract](102626-docker-experiment-isolation.md)
-- [Current finalization](../src/compose/overlay.rs)
+- [Current finalization](../../docker-engine/src/overlay.rs)
 - [Linux OverlayFS semantics](https://docs.kernel.org/filesystems/overlayfs.html)
 - [rsync options](https://download.samba.org/pub/rsync/rsync.1)

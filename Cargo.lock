@@ -1469,6 +1469,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "docker-engine"
+version = "0.1.0"
+dependencies = [
+ "bollard",
+ "hex",
+ "host-filesystem",
+ "libc",
+ "orchestrator",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "dora-app"
 version = "0.1.0"
 dependencies = [
@@ -3652,6 +3672,7 @@ name = "orchestrator-demo"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "docker-engine",
  "futures-util",
  "mcap",
  "orchestrator",
@@ -6455,6 +6476,7 @@ name = "workload-docker"
 version = "0.1.0"
 dependencies = [
  "bollard",
+ "docker-engine",
  "dora-app",
  "dora-core",
  "futures-util",

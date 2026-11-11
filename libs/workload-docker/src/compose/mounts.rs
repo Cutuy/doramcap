@@ -1,6 +1,6 @@
 //! Translate pinned Compose manifests to the Docker filesystem inputs.
 use super::{ResolvedBind, ResolvedComposeProject, Result, adapter::digest, error::invalid};
-use crate::docker_proto::{BindMount, VolumeMount};
+use docker_engine::docker_proto::{BindMount, VolumeMount};
 use serde_json::Value;
 
 /// Read a pinned manifest and reject changes with the operation's diagnostic.

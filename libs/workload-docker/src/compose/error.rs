@@ -91,15 +91,15 @@ pub(crate) fn absent(error: &bollard::errors::Error) -> bool {
     )
 }
 
-impl From<crate::engine::Error> for Error {
-    fn from(error: crate::engine::Error) -> Self {
+impl From<docker_engine::Error> for Error {
+    fn from(error: docker_engine::Error) -> Self {
         match error {
-            crate::engine::Error::Invalid(message) => Self::Invalid(message),
-            crate::engine::Error::Engine { operation, source } => {
+            docker_engine::Error::Invalid(message) => Self::Invalid(message),
+            docker_engine::Error::Engine { operation, source } => {
                 Self::Engine { operation, source }
             }
-            crate::engine::Error::Io(error) => Self::Io(error),
-            crate::engine::Error::Json(error) => Self::Json(error),
+            docker_engine::Error::Io(error) => Self::Io(error),
+            docker_engine::Error::Json(error) => Self::Json(error),
         }
     }
 }

@@ -1,10 +1,10 @@
 //! Opt-in CAP_SYS_ADMIN tests; build normally, elevate only this executable.
+use docker_engine::docker_proto::BindMount;
+use docker_engine::overlay::*;
 use std::{
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
-use workload_docker::docker_proto::BindMount;
-use workload_docker::engine::overlay::*;
 fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
     vec![
         BindMount {
@@ -491,7 +491,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
     let mut actions = Vec::new();
     while !action_stream.is_empty() {
         actions.push(
-            workload_docker::filesystem_proto::FileAction::decode_length_delimited(
+            docker_engine::filesystem_proto::FileAction::decode_length_delimited(
                 &mut action_stream,
             )
             .unwrap(),

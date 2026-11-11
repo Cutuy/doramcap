@@ -688,7 +688,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn mount_inputs_preserve_change_record_consumers() {
-        use crate::engine::tests::test_engine;
+        use crate::tests::test_engine;
         use serde_json::json;
         // Arrange: read-only and writable aliases share the same baseline.
         let root = tempfile::tempdir().unwrap();
@@ -774,7 +774,7 @@ mod tests {
 
     #[tokio::test]
     async fn live_container_rejects_collection_before_requesting_diff() {
-        use crate::engine::tests::test_engine;
+        use crate::tests::test_engine;
         use serde_json::json;
         // Arrange
         let root = tempfile::tempdir().unwrap();

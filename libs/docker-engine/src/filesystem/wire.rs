@@ -1,9 +1,6 @@
 //! Length-delimited protobuf records for filesystem metadata and actions.
 use super::{ChangeKind, FileChange, FileMetadata, Snapshot, StorageCategory};
-use crate::{
-    engine::{Result, error::invalid},
-    filesystem_proto as pb,
-};
+use crate::{Result, error::invalid, filesystem_proto as pb};
 use prost::Message;
 use std::{
     collections::BTreeMap,
