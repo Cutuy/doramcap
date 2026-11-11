@@ -20,13 +20,26 @@ the implementation leaves installer and host settings unchanged.
 
 **Validation**
 
-- [ ] Recheck the logging matrix, native Review regression and focused release
+- [x] Recheck the logging matrix, native Review regression and focused release
   checks after rebasing onto current main.
-- [ ] Recheck real Docker driver settings, both failure-output streams and
+- [x] Recheck real Docker driver settings, both failure-output streams and
   post-removal journal lookup after the rebase.
-- [ ] Recheck low-rate, burst and saturation output with a quiet container after
+- [x] Recheck low-rate, burst and saturation output with a quiet container after
   the rebase; record loss as a measurement.
-- [ ] Run ARM64 validation at this integration point and record it separately.
+- [ ] ARM64 job 670 is queued/running for this integration. Worker snapshot:
+  `/home/doramcap-ci/jobs/5e6b1204a695424284a84713f441fb43`.
+
+Validated runtime/test source: `02ad06d3`, rebased onto main `3eb0381f`.
+Release results: `compose-apps` 65 passed / 3 ignored; `workload-docker` 18 passed;
+focused Clippy, formatting and library boundaries passed. Console typecheck and
+server tests passed with pinned Node 26.13.0: 119 passed / 1 skipped. Both opt-in
+Docker/journal tests passed as measurements; the latest saturation run retained
+22/60 quiet lines per stream and lost all quiet markers after the noisy exit.
+Architecture SVGs were rendered and local document links checked.
+
+Earlier ARM64 job 667 passed on pre-rebase implementation `788f296f`; it does not
+qualify this integration. Full local workspace CI was not run. The remaining
+journal-export and run-file checks belong to deferred milestone 2.
 
 Earlier validation and counts are in the
 [qualification record](111026-run-logs.md#journal-load-qualification). A passing

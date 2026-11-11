@@ -107,6 +107,12 @@ output: 22,484 noisy stdout lines, 22,486 noisy stderr lines and 14 quiet lines
 per stream survived. Its temporary unit, socket and data directory were removed.
 The live Docker service and host configuration were unchanged.
 
+After rebasing onto main's Compose crate extraction, the relocated qualification
+passed low-rate and burst checks again. Saturation retained 14,976 noisy stdout
+lines, 14,978 noisy stderr lines and 22/60 quiet lines per stream; all quiet
+markers after the noisy exit were missing. Both Docker/journal tests passed as
+measurements. See the [current validation record](111026-run-logs-impl.md#milestone-1--compose-routing-and-review).
+
 On systemd 255, zero per-unit values are not exported to journald, which retains
 its global defaults. See the
 [systemd implementation](https://github.com/systemd/systemd/blob/v255/src/core/unit.c#L5258-L5306).
