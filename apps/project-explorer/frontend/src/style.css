@@ -140,22 +140,39 @@ main.shell{padding-top:28px}
 /* Full dependency chains use static SVG and native scrolling. */
 .dag-legend{display:flex;flex-wrap:wrap;gap:8px 24px;font-size:11px;color:var(--muted);margin:0 0 14px}.dag-scroll{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.dependency-dag{display:block;max-width:none;margin:auto}.dag-edge{color:var(--muted);stroke-width:1.2}.dag-node rect{fill:var(--panel);stroke:var(--line);stroke-width:1}.dag-node text{fill:var(--ink);font:12px ui-monospace,monospace}.dag-node .dag-kind{fill:var(--muted);font:10px system-ui;letter-spacing:.6px}.dag-node.dag-root rect{fill:var(--soft);stroke:var(--accent)}.dag-node:hover rect,.dag-node:focus-visible rect{stroke:var(--accent);stroke-width:2}.dag-declarations{margin-top:18px;font-size:12px}.dag-declarations summary{cursor:pointer}.dag-declarations ul{padding-left:18px;overflow-wrap:anywhere}.dag-declarations li{padding:6px 0}.dag-declarations small{display:block;color:var(--muted)}.dependency-kind-controls{display:flex;gap:18px}.dependency-kind-controls label{display:flex;align-items:center;gap:5px}.dependency-notes:empty{display:none}.direct-deps li:first-child{margin-top:12px}.dag-scroll:focus-visible{outline:2px solid var(--accent)}
 
-/* Console tools and the edge device stack. */
+/* Your device and the SoC or workstation. */
 .platform-stack {
-  padding: 16px;
-  margin-top: 16px;
+  --stack-inset: 16px;
+  --device-gap: 16px;
+  padding: var(--stack-inset);
+  margin-top: var(--device-gap);
   border: 1px solid light-dark(#aebbb4, #586962);
   border-radius: 9px;
   background: var(--soft);
 }
-.stack-heading { margin: 0 0 12px; color: var(--ink); font-weight: 500; }
-.stack-apps, .lifecycle-grid, .capability-grid, .console-tools-list { display: grid; gap: 8px; }
+.stack-heading {
+  position: relative;
+  margin: 0;
+  padding-bottom: 12px;
+  padding-inline-end: calc(50% + 8px);
+  font-size: 16px;
+  font-weight: 500;
+}
+.stack-heading::after {
+  content: '';
+  position: absolute;
+  inset-block: calc(0px - var(--device-gap) - var(--stack-inset) - 1px) 0;
+  inset-inline-start: 50%;
+  border-inline-start: 2px dashed var(--accent);
+  pointer-events: none;
+}
+.stack-apps, .lifecycle-grid, .capability-grid, .user-device-grid { display: grid; gap: 8px; }
 .stack-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lifecycle-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .capability-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .layer-connector { display: grid; place-items: center; height: 18px; }
 .layer-connector::before { content: ''; width: 1px; height: 12px; background: var(--line); }
-.runtime-layer, .lifecycle-layer, .console-tools-layer, .platform-layer, .software-layer {
+.runtime-layer, .lifecycle-layer, .user-device-layer, .platform-layer, .software-layer {
   padding: 13px 17px;
   border-radius: 6px;
   background: var(--panel);
@@ -187,16 +204,16 @@ main.shell{padding-top:28px}
   overflow-wrap: anywhere;
 }
 .stack-block, .orchestration-layer { justify-content: center; text-align: center; }
-.console-tools-layer { border: 1px solid var(--line); }
-.console-tools-list {
+.user-device-layer { border: 1px solid var(--line); }
+.user-device-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.console-tools-list .stack-block { justify-content: flex-start; text-align: left; }
+.user-device-grid .stack-block { justify-content: flex-start; text-align: left; }
 .orchestration-layer { border: 2px solid var(--accent); }
-.lifecycle-grid .stack-block, .console-tools-list .stack-block, .capability { background: var(--bg); }
+.lifecycle-grid .stack-block, .user-device-grid .stack-block, .capability { background: var(--bg); }
 .stack-block svg, .capability svg, .orchestration-layer svg {
   flex-shrink: 0;
   color: var(--accent);
@@ -225,12 +242,12 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .platform-layer p { margin: 0; color: var(--ink); font-size: 13px; }
 
 @media (max-width: 800px) {
-  .capability-grid, .lifecycle-grid, .console-tools-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .capability-grid, .lifecycle-grid, .user-device-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
-  .platform-stack { padding: 10px; }
-  .runtime-layer, .lifecycle-layer, .console-tools-layer, .platform-layer, .software-layer { padding: 12px; }
-  .lifecycle-grid, .console-tools-list { grid-template-columns: minmax(0, 1fr); }
+  .platform-stack { --stack-inset: 10px; }
+  .runtime-layer, .lifecycle-layer, .user-device-layer, .platform-layer, .software-layer { padding: 12px; }
+  .lifecycle-grid, .user-device-grid { grid-template-columns: minmax(0, 1fr); }
   .software-group { flex-direction: column; align-items: flex-start; gap: 4px; }
   .software-links { gap: 7px 13px; }
 }

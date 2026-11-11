@@ -1,4 +1,4 @@
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows, ListTree } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows, ListTree, ClipboardCheck, Play, Download } from 'lucide-react';
 import data from './.generated/overview.json';
 import ConsoleInstall from './ConsoleInstall';
 import { componentHref, displayName, routeHref, type Catalog, type Route } from './model';
@@ -27,9 +27,13 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     <section className="scenario-picker" aria-labelledby="scenario-heading"><h2 id="scenario-heading">Explore use cases</h2><nav className="scenario-tabs" aria-label="Use cases">{overview.useCases.map(u => <a key={u.id} href={link({ useCase: u.id })} aria-current={useCase?.id === u.id ? 'page' : undefined}>{u.title}</a>)}</nav></section>
     {invalid && <p role="alert">This selection is not in the current overview. <a href="#/overview">Show the first use case</a>.</p>}
     {selected ? <section className="mapping-detail" aria-live="polite"><div className="mapping-heading">{statusLabels[selected.status] && <div className="eyebrow">{statusLabels[selected.status]}</div>}<h2>{selected.title}</h2><p>{selected.summary}</p>{integration && <a href={integration.url} target="_blank" rel="noreferrer">Upstream project ↗</a>}</div><div className="mapping-components">{components(selected, 'apps')}{components(selected, 'crates')}</div></section> : null}
-    <section className="console-tools-layer" aria-labelledby="console-tools-heading">
-      <div className="layer-heading"><h2 id="console-tools-heading">Console tools</h2></div>
-      <ul className="console-tools-list">
+    <section className="user-device-layer" aria-labelledby="user-device-heading">
+      <div className="layer-heading"><h2 id="user-device-heading">Your device</h2></div>
+      <ul className="user-device-grid">
+        <li className="stack-block"><ClipboardCheck size={16} aria-hidden="true" />Review run setup</li>
+        <li className="stack-block"><Play size={16} aria-hidden="true" />Launch experiments</li>
+        <li className="stack-block"><Radio size={16} aria-hidden="true" />Monitor live runs</li>
+        <li className="stack-block"><Download size={16} aria-hidden="true" />Download recordings</li>
         <li className="stack-block"><History size={16} aria-hidden="true" />Run history</li>
         <li className="stack-block"><ScanLine size={16} aria-hidden="true" />System snapshots</li>
         <li className="stack-block"><GitCompareArrows size={16} aria-hidden="true" />A/B comparison</li>
@@ -38,7 +42,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
     </section>
 
     <section className="platform-stack" aria-labelledby="architecture-heading">
-      <h2 id="architecture-heading" className="stack-heading eyebrow">Edge device</h2>
+      <h2 id="architecture-heading" className="stack-heading">SoC or workstation</h2>
 
       <a
         className={highlights.includes('orchestration') ? 'orchestration-layer highlighted' : 'orchestration-layer'}

@@ -55,7 +55,7 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
     <div className="console-topology" role="img" aria-label="A browser connects to doramcap Console over an SSH tunnel. Console runs beside Holoscan apps, containers, and systemd services on your SoC or workstation, above the optional doramcap runtime.">
-      <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
+      <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your device</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
       <div className="console-soc">
         <div className="console-soc-title"><Cpu size={16} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong></div>
