@@ -7,7 +7,7 @@ The wrapper drains the pipeline and retains its summary; logs remain private.
 cargo build --release --locked -p dataflow-tracing-demo
 npm --prefix apps/dataflow-tracing-demo/frontend ci
 npm --prefix apps/dataflow-tracing-demo/frontend run build
-dora --version  # must report dora-cli 1.1.0
+dora --version  # must match the resolved dora-message version in Cargo.lock
 stage=$(mktemp -d)
 cp "$(command -v dora)" "$stage/dora"
 cp target/release/dataflow-tracing-demo "$stage/"

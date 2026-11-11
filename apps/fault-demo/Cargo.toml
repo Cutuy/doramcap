@@ -9,7 +9,7 @@ dora-app = { path = "../../libs/dora-app" }
 fault-reporter = { path = "../../libs/fault/reporter" }
 fault-aggregation = { path = "../../libs/fault/aggregation" }
 fault-protocol = { path = "../../libs/fault/protocol" }
-dora-node-api = { version = "=1.1.0", default-features = false }
+dora-node-api.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "signal"] }
 axum = "0.8"
 serde_json = "1"

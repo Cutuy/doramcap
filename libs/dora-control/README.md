@@ -13,3 +13,5 @@ client.wait_for_daemon(startup_deadline).await?;
 See the [architecture](docs/110926-coordinator-client.md),
 [implementation and readiness TODO](docs/110926-coordinator-client-impl.md), and
 Rust API documentation beside `DoraCoordinatorClient`.
+The [runtime version contract](docs/111026-matched-runtime-versions.md) covers
+upgradeable dependencies, binary selection and exact Hello matching.

@@ -18,12 +18,8 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-            dora: x86_64
-            dora_sha256: 2b1600f33187c552f98e52f7280318808e1e2ed491c6a8340dea104dbba0c85b
           - arch: arm64
             runner: ubuntu-24.04-arm
-            dora: aarch64
-            dora_sha256: 77fe85ff1eaf2cac2bf9e0d46d1efe00cad5076b5a0cf4e42b2cf2c646b4752f
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     permissions:
@@ -47,15 +43,10 @@ jobs:
           rustup show
           cargo build --release --locked -p mcap-recorder -p console-live-bridge -p system-monitor -p fault-watchdog \
             --features system-monitor/bpf,system-monitor/task-bpf,system-monitor/dora,fault-watchdog/mcap,fault-watchdog/otel
-      - name: Download Dora CLI
-        env:
-          NAME: dora-cli-${{ matrix.dora }}-unknown-linux-gnu
-          SHA256: ${{ matrix.dora_sha256 }}
-        run: |
-          curl --fail --location --proto '=https' --retry 3 -o dora.tar.gz \
-            "https://github.com/dora-rs/dora/releases/download/v1.1.0/$NAME.tar.gz"
-          echo "$SHA256  dora.tar.gz" | sha256sum -c -
-          tar -xzf dora.tar.gz --strip-components=1 -C "$RUNNER_TEMP" "$NAME/dora"
+      - name: Download the resolved Dora runtime
+        run: node scripts/ci/dora-release.mts --arch "${{ matrix.arch }}" --output "$RUNNER_TEMP/dora"
+      - name: Qualify the downloaded runtime with the compiled client
+        run: DORAMCAP_TEST_DORA="$RUNNER_TEMP/dora" cargo test --release --locked -p workload-lifecycle --test dora_native -- --ignored
       - name: Sign in to GHCR
         env:
           TOKEN: ${{ github.token }}

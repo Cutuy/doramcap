@@ -8,6 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { stageSystemAppInputs } from './system-app-inputs.mts';
+import { resolvedDoraVersion, verifyDoraBinary } from '../../scripts/ci/dora-release.mts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const { values, positionals: [command] } = parseArgs({ allowPositionals: true, options: {
@@ -29,6 +30,7 @@ const digest = (reference: string) => docker('buildx', 'imagetools', 'inspect', 
 
 if (command === 'build') {
   if (!values.arch || !values.dora) throw new Error('build requires --arch and --dora');
+  verifyDoraBinary(values.dora, resolvedDoraVersion(root));
   for (const [name, { dockerfile, binary }] of Object.entries(images)) {
     const stage = mkdtempSync(join(tmpdir(), 'console-image-')), tag = `${registry}/${name}:${version}-${values.arch}`;
     if (binary) cpSync(resolve(root, binary), join(stage, binary.split('/').at(-1)!));

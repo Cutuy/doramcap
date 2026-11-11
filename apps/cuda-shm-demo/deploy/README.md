@@ -8,7 +8,7 @@ cargo build --release --locked -p cuda-shm-demo
 npm ci --prefix apps/cuda-shm-demo/frontend
 npm run build --prefix apps/cuda-shm-demo/frontend
 npm run build:server --prefix apps/cuda-shm-demo/frontend
-dora --version  # dora-cli 1.1.0
+dora --version  # must match the resolved dora-message version in Cargo.lock
 stage=$(mktemp -d)
 cp "$(command -v dora)" "$stage/dora"
 cp target/release/cuda-shm-demo "$stage/"

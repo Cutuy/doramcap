@@ -28,7 +28,7 @@ impl Drop for Runtime {
     }
 }
 #[tokio::test]
-#[ignore = "requires DORAMCAP_TEST_DORA naming the qualified Dora 1.1.0 executable"]
+#[ignore = "requires DORAMCAP_TEST_DORA naming the matching Dora executable"]
 async fn native_start_session_and_authentication_match_the_cli() {
     let executable = std::env::var_os("DORAMCAP_TEST_DORA").expect("Dora executable required");
     let qualify = |authenticated| {
