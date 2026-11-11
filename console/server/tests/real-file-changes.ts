@@ -30,6 +30,7 @@ test('real Compose writes retain the same file report and complete export after 
   await writeFile(join(root, 'secret'), 'qualification-only', { mode: 0o600 });
   const config = join(root, 'console.pbtxt');
   await writeFile(config, `host_shm_access: HOST_SHM_ACCESS_BLOCKED
+    apps { manifest: "${join(import.meta.dirname, '../../release/system-apps/shm/shm.pbtxt')}" }
     listen_address: "127.0.0.1:8080" public_origin: "http://127.0.0.1:8080"
     project_root: "${project}" data_root: "${root}/data"
     docker_socket: "/var/run/docker.sock" access_secret_file: "${root}/secret"
