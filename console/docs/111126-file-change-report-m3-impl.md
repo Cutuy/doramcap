@@ -22,8 +22,13 @@ The schema stays beside the current collector in `docker-engine`; milestone 1 re
 - [x] Large manifest readback (3,000 changes), full notes, invalid UTF-8, 64-bit extremes, oversized display records, zero/absent/failed observations, malformed/truncated/missing manifests and per-kind count mismatch.
 - [x] Run confinement, traversal/cross-run/symlink escape refusal, session authorization, failed-run persistence, navigation, service restart, HTTP completion/failure and descriptor closure after abort.
 - [x] Shared Result/History rendering, path escaping and recording byte totals.
-- [ ] Desktop/narrow browser inspection and complete focused Console suite.
-- [ ] Final source Clippy/boundaries and ARM64 worker results.
-- [ ] Real Compose refresh/restart qualification; real systemd capture waits for milestone 2. Full local CI and packaged mount/GPU qualification remain integration checks.
+- [x] Console server build and tests: 128 passed, one skipped. Frontend build and all 90 tests passed; browser/server protocol test passed.
+- [ ] Desktop/narrow visual inspection: no browser surface was available in this session. Component rendering and responsive CSS were checked.
+- [x] Final source formatting, boundaries, snapshot synchronization and strict default/all-feature workspace Clippy.
+- [x] ARM64 worker job 668 passed the complete pipeline at `962fd384`: Rust default/all features, Node, MCAP and native capability tests. The final malformed-checkpoint guard (`cb98e0ba`) passed the complete local Node suite; Rust and protobuf inputs are unchanged.
+- [x] Real Compose/OverlayFS: isolated writes, additions/modifications/deletions, write-back, preview, full export and current/History results after Console restart.
+- [x] HTTP backpressure/disconnect: 996 JSON Lines emitted from a 30,000-change fixture before cancellation; both descriptors closed.
+- [x] Full local CI: formatting, boundaries, default/all-feature strict Clippy and workspace tests, storage without default features, and snapshot synchronization passed. Cargo used `--profile ci --locked`; build groups ran separately to fit available disk.
+- [ ] Real systemd capture waits for milestone 2; packaged mount and GPU qualification remain separate work.
 
 The preview budget measures the encoded FileChanges section, including summaries, notes and whole change records. The 3,000-record fixture exceeds it while the independent JSON Lines reader retains the full observation. Capture/export has no preview-derived record limit. A completion line confirms export traversal; `coverageComplete` separately describes capture scope.
