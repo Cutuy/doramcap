@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="550" viewBox="0 0 1120 550" role="img" aria-labelledby="title desc">
+  <title id="title">Direct Dora control across executor and native runtime boundaries</title>
+  <desc id="desc">Shared preparation supplies typed Start to the retained client. The run owner launches and stops native containers or units; the client exchanges control and identity with the coordinator. Transient CLI processes are removed.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+    <style>
+      text { font-family: system-ui, sans-serif; fill: #172033; font-size: 17px; text-anchor: middle; }
+      .boundary { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .component { fill: #fff; stroke: #64748b; stroke-width: 1.5; }
+      .client { fill: #e0f2fe; stroke: #0284c7; stroke-width: 1.5; }
+      .label { font-size: 15px; fill: #475569; }
+      .edge { fill: none; stroke: #475569; stroke-width: 2; marker-end: url(#arrow); }
+      .heading { font-size: 20px; font-weight: 650; text-anchor: start; }
+    </style>
+  </defs>
+  <rect width="1120" height="550" fill="#fff"/>
+  <rect class="boundary" x="24" y="32" width="432" height="486" rx="16"/>
+  <rect class="boundary" x="648" y="32" width="448" height="486" rx="16"/>
+  <text class="heading" x="48" y="70">Executor process</text>
+  <text class="heading" x="672" y="70">Native runtime</text>
+
+  <rect class="component" x="60" y="118" width="360" height="80" rx="10"/>
+  <text x="240" y="151">Shared Dora preparation</text>
+  <text class="label" x="240" y="177">Reviewed graph + resolved paths</text>
+  <rect class="component" x="60" y="276" width="148" height="86" rx="10"/>
+  <text x="134" y="311">Run owner</text>
+  <text class="label" x="134" y="337">Compose / systemd</text>
+  <rect class="client" x="272" y="276" width="148" height="86" rx="10"/>
+  <text x="346" y="325">Dora client</text>
+  <path class="edge" d="M346 198 V276"/>
+  <text class="label" x="389" y="241">Start</text>
+  <path class="edge" d="M208 319 H272"/>
+  <text class="label" x="240" y="303">Owns</text>
+
+  <rect class="component" x="682" y="276" width="150" height="86" rx="10"/>
+  <text x="757" y="325">Coordinator</text>
+  <rect class="component" x="900" y="276" width="152" height="86" rx="10"/>
+  <text x="976" y="325">Daemon</text>
+  <rect class="component" x="900" y="118" width="152" height="68" rx="10"/>
+  <text x="976" y="158">Dynamic apps</text>
+  <path class="edge" d="M420 301 H682"/>
+  <text class="label" x="550" y="288">WebSocket control</text>
+  <path class="edge" d="M682 346 H420"/>
+  <text class="label" x="550" y="373">UUID + status</text>
+  <path class="edge" d="M832 319 H900"/>
+  <text class="label" x="866" y="301">Graph</text>
+  <path class="edge" d="M976 276 V186"/>
+  <text class="label" x="986" y="236" style="font-size:14px;text-anchor:start">Shared memory</text>
+
+  <rect class="component" x="682" y="420" width="370" height="62" rx="10"/>
+  <text x="867" y="458">Docker / systemd</text>
+  <path class="edge" d="M134 362 V451 H682"/>
+  <text class="label" x="536" y="438">Native launch / stop</text>
+  <path class="edge" d="M682 474 H96 V362"/>
+  <text class="label" x="536" y="500">Exit evidence</text>
+  <path class="edge" d="M757 420 V362"/>
+  <path class="edge" d="M976 420 V362"/>
+  <text class="label" x="867" y="399">Containers / units</text>
+
+  <rect x="482" y="137" width="140" height="66" rx="8" fill="#fff1f2" stroke="#be123c" stroke-dasharray="5 4"/>
+  <text x="552" y="163" style="font-size:15px;fill:#9f1239">CLI exec</text>
+  <text x="552" y="186" style="font-size:15px;fill:#9f1239">/ oneshot</text>
+  <path d="M490 145 L614 195" stroke="#be123c" stroke-width="2"/>
+</svg>

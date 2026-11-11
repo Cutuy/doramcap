@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="410" viewBox="0 0 1000 410" role="img" aria-labelledby="title desc">
+  <title id="title">Uncertain start cleanup and native removal gate</title>
+  <desc id="desc">Reconcile an unknown start before Stop and Destroy. Unresolved identity or control failure still leads to native teardown. Verified native exit and the existing removal policy determine whether resources may be removed or must be retained.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker>
+    <style>
+      text { font-family: system-ui, sans-serif; fill: #172033; font-size: 17px; text-anchor: middle; }
+      .node { fill: #f8fafc; stroke: #64748b; stroke-width: 1.5; }
+      .label { font-size: 14px; fill: #475569; }
+      .edge { fill: none; stroke: #475569; stroke-width: 2; marker-end: url(#arrow); }
+      .join { fill: none; stroke: #475569; stroke-width: 2; }
+    </style>
+  </defs>
+  <rect width="1000" height="410" fill="#fff"/>
+  <rect class="node" x="28" y="44" width="190" height="66" rx="10"/>
+  <text x="123" y="84">Unknown Start</text>
+  <rect class="node" x="280" y="44" width="190" height="66" rx="10"/>
+  <text x="375" y="84">Reconcile</text>
+  <rect class="node" x="532" y="44" width="160" height="66" rx="10"/>
+  <text x="612" y="84">Stop</text>
+  <rect class="node" x="754" y="44" width="218" height="66" rx="10"/>
+  <text x="863" y="84">Destroy</text>
+  <path class="edge" d="M218 77 H280"/>
+  <text class="label" x="249" y="64">Name</text>
+  <path class="edge" d="M470 77 H532"/>
+  <text class="label" x="501" y="64">Unique</text>
+  <path class="edge" d="M692 77 H754"/>
+  <text class="label" x="723" y="64">Stopped</text>
+
+  <path class="join" d="M375 110 V196 M612 110 V196 M863 110 V196 H123"/>
+  <text class="label" x="421" y="153">Unresolved</text>
+  <text class="label" x="644" y="153">Failure</text>
+  <path class="edge" d="M123 196 V250"/>
+  <rect class="node" x="28" y="250" width="190" height="66" rx="10"/>
+  <text x="123" y="290">Native teardown</text>
+  <rect class="node" x="280" y="250" width="190" height="66" rx="10"/>
+  <text x="375" y="290">Verify exit</text>
+  <path class="edge" d="M218 283 H280"/>
+  <path class="edge" d="M470 283 H548"/>
+  <path d="M624 237 L700 283 L624 329 L548 283 Z" fill="#e0f2fe" stroke="#0284c7" stroke-width="1.5"/>
+  <text x="624" y="289" style="font-size:16px">Removal gate</text>
+  <rect x="810" y="230" width="162" height="54" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
+  <text x="891" y="264">Remove</text>
+  <rect x="810" y="322" width="162" height="54" rx="10" fill="#fff7ed" stroke="#c2410c" stroke-width="1.5"/>
+  <text x="891" y="356">Retain</text>
+  <path class="edge" d="M700 283 H752 V257 H810"/>
+  <text class="label" x="755" y="239">Allowed</text>
+  <path class="edge" d="M624 329 V349 H810"/>
+  <text class="label" x="721" y="371">Blocked</text>
+</svg>

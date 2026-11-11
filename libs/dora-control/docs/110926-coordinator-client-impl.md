@@ -78,33 +78,15 @@ Node/MCAP CI and Bugbot passed. ARM64 worker 640 passed from snapshot
 
 ## Follow-up PR: Compose adoption
 
-**Work items**
-
-- [ ] Inject the shared client through existing factories and retain cleanup ownership.
-- [ ] Preserve prepared dynamic descriptors, runtime-visible paths, session identity and artifacts.
-- [ ] Replace control exec calls, then remove their unused helpers and output parsing.
-- [ ] Share the startup deadline and give cancelled startup a fresh shutdown budget.
-
-**Validation**
-
-- [ ] Run registration, observation, node stop, graceful teardown and failed startup with real Dora.
-- [ ] Cancel during startup and hang/disconnect control; verify native exit and evidence retention.
-- [ ] Verify concurrent repositories stay isolated and control launches no transient Dora CLI processes.
+Work items and acceptance checks are tracked in the
+[Compose integration milestone](../../workload-lifecycle/docs/110926-dora-control-integration-impl.md#follow-up-pr-1-compose-adoption).
+The [integration architecture](../../workload-lifecycle/docs/110926-dora-control-integration.md)
+maps retained ownership and direct control calls.
 
 ## Follow-up PR: systemd adoption
 
-**Work items**
-
-- [ ] Inject and retain the client while preserving unit ownership and execution context.
-- [ ] Preserve prepared dynamic descriptors, runtime-visible paths, session identity and artifacts.
-- [ ] Replace control oneshots, then remove unused unit helpers and output files.
-- [ ] Enforce control deadlines while continuing native teardown after failures.
-
-**Validation**
-
-- [ ] Run startup, registration, inspection, stop and failed startup with real Dora units.
-- [ ] Cancel during startup and hang/disconnect control; verify units stop and reports preserve outcomes.
-- [ ] Compare descriptor/session artifacts and verify repository isolation and absence of control oneshots.
+Work items and acceptance checks are tracked in the
+[systemd integration milestone](../../workload-lifecycle/docs/110926-dora-control-integration-impl.md#follow-up-pr-2-systemd-adoption).
 
 ## TODO: Replace startup readiness polling
 
