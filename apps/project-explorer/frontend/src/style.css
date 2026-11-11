@@ -151,7 +151,7 @@ main.shell{padding-top:28px}
 .stack-heading { margin: 0 0 12px; color: var(--ink); font-weight: 500; }
 .stack-apps, .lifecycle-grid, .capability-grid, .console-tools-list { display: grid; gap: 8px; }
 .stack-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.lifecycle-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lifecycle-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .capability-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .layer-connector { display: grid; place-items: center; height: 18px; }
 .layer-connector::before { content: ''; width: 1px; height: 12px; background: var(--line); }
@@ -225,7 +225,7 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .platform-layer p { margin: 0; color: var(--ink); font-size: 13px; }
 
 @media (max-width: 800px) {
-  .capability-grid, .console-tools-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .capability-grid, .lifecycle-grid, .console-tools-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .platform-stack { padding: 10px; }

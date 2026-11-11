@@ -1,4 +1,4 @@
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Layers, Box, Cog, Workflow, History, ScanLine, GitCompareArrows, ListTree } from 'lucide-react';
 import data from './.generated/overview.json';
 import ConsoleInstall from './ConsoleInstall';
 import { componentHref, displayName, routeHref, type Catalog, type Route } from './model';
@@ -84,6 +84,7 @@ export default function Overview({ catalog, route }: { catalog: Catalog; route: 
             <Workflow size={16} aria-hidden="true" />Holoscan containers
           </a>
           <div className="stack-block"><Cog size={16} aria-hidden="true" />systemd units</div>
+          <div className="stack-block"><ListTree size={16} aria-hidden="true" />Supervisor units</div>
         </div>
       </section>
 
