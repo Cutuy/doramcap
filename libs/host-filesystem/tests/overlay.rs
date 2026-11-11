@@ -21,7 +21,6 @@ fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
             source: source.join("child").to_string_lossy().into(),
             target: "/child".into(),
             read_only: true,
-            ..Default::default()
         },
         BindMount {
             consumer: "project/b".into(),
@@ -301,7 +300,6 @@ async fn read_only_parent_alias_and_unsupported_sources() {
             source: source.to_string_lossy().into(),
             target: "/parent".into(),
             read_only: true,
-            ..Default::default()
         },
     ];
     // Act

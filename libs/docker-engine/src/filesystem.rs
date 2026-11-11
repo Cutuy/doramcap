@@ -209,7 +209,6 @@ mod tests {
             source: source.to_string_lossy().into(),
             target: target.into(),
             read_only,
-            ..Default::default()
         };
         let baseline = capture(
             &adapter,

@@ -778,7 +778,6 @@ mod tests {
                 source: file.to_string_lossy().into(),
                 target: "/read-only".into(),
                 read_only: true,
-                ..Default::default()
             },
         ];
 
