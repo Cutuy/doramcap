@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
+<title id="title">Order of work</title>
+<desc id="desc">Shared foundations run in sequence: admission lock, move capture, show changes, keep files. systemd capture follows move capture and the log dump follows keep files. The Holoscan runner runs in parallel: probes, Prepare, Build and run, support apps. Build and run waits for the lock and for move capture.</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
+<rect width="960" height="430" fill="#f7fafc"/>
+<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
+<text x="480" y="34" font-size="22" font-weight="600">Order of work</text>
+<text x="40" y="68" font-size="13" text-anchor="start">Shared foundations, one at a time</text>
+<g fill="#dbeaf2" stroke="#8ca6b8">
+<rect x="40" y="80" width="190" height="62" rx="8"/><rect x="260" y="80" width="190" height="62" rx="8"/><rect x="480" y="80" width="190" height="62" rx="8"/><rect x="700" y="80" width="190" height="62" rx="8"/>
+<rect x="480" y="190" width="190" height="62" rx="8"/><rect x="700" y="190" width="190" height="62" rx="8"/>
+</g>
+<text x="135" y="106" font-size="16" font-weight="600">Admission lock</text><text x="135" y="128" font-size="13">#315</text>
+<text x="355" y="106" font-size="16" font-weight="600">Move capture</text><text x="355" y="128" font-size="13">#316 milestone 1</text>
+<text x="575" y="106" font-size="16" font-weight="600">Show changes</text><text x="575" y="128" font-size="13">#316 milestone 3</text>
+<text x="795" y="106" font-size="16" font-weight="600">Keep files</text><text x="795" y="128" font-size="13">#316 milestone 4</text>
+<text x="575" y="216" font-size="16" font-weight="600">systemd capture</text><text x="575" y="238" font-size="13">#316 milestone 2</text>
+<text x="795" y="216" font-size="16" font-weight="600">Log dump</text><text x="795" y="238" font-size="13">#314</text>
+<text x="40" y="318" font-size="13" text-anchor="start">Holoscan runner, in parallel</text>
+<g fill="#fcebdc" stroke="#bc906b">
+<rect x="40" y="330" width="190" height="62" rx="8"/><rect x="260" y="330" width="190" height="62" rx="8"/><rect x="480" y="330" width="190" height="62" rx="8"/><rect x="700" y="330" width="190" height="62" rx="8"/>
+</g>
+<text x="135" y="356" font-size="16" font-weight="600">Probes</text><text x="135" y="378" font-size="13">runner milestone 1</text>
+<text x="355" y="356" font-size="16" font-weight="600">Prepare</text><text x="355" y="378" font-size="13">runner milestones 2–3</text>
+<text x="575" y="356" font-size="16" font-weight="600">Build and run</text><text x="575" y="378" font-size="13">runner milestones 4–5</text>
+<text x="795" y="356" font-size="16" font-weight="600">Support apps</text><text x="795" y="378" font-size="13">runner milestones 6–7</text>
+<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
+<path d="M230 111 H256"/><path d="M450 111 H476"/><path d="M670 111 H696"/>
+<path d="M355 142 V221 H476"/><path d="M795 142 V186"/>
+<path d="M135 142 V296 H555 V326"/><path d="M355 221 V280 H595 V326"/>
+<path d="M230 361 H256"/><path d="M450 361 H476"/><path d="M670 361 H696"/>
+</g>
+</g></svg>
