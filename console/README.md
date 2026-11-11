@@ -32,4 +32,4 @@ Use `--port PORT` for an exact server port. For a headless host, append
 command. `--browser-port PORT` selects its local port. [Tailscale SSH runbook](docs/hosting-over-tailscale.md).
 
 [HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Live bridge](bridge/README.md) · [Recovery](docs/recovery.md) ·
-[System app specification](docs/103026-system-apps-plan.md)
+[System app specification](docs/103026-system-apps-plan.md) · [Open source comparison](docs/111126-open-source-comparison.md)
