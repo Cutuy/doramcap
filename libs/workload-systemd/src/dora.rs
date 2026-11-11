@@ -306,7 +306,12 @@ impl Dora {
     }
 
     /// Register the captured merged graph and retain the actual shared source/target and content identity.
-    pub async fn register(&mut self, run: &mut RunPlan, deadline: Instant) -> Result<()> {
+    pub async fn register(
+        &mut self,
+        run: &mut RunPlan,
+        expected_sha256: &str,
+        deadline: Instant,
+    ) -> Result<()> {
         if run.dataflow_file.is_empty() {
             return Ok(());
         }
@@ -318,8 +323,11 @@ impl Dora {
         }
         let source = run.dataflow_file.clone();
         let bytes = tokio::fs::read(&source).await.map_err(error)?;
-        let graph = workload_lifecycle::dora::graph(&source, &bytes)?;
         let hash = hex::encode(Sha256::digest(&bytes));
+        if hash != expected_sha256 {
+            return Err("frozen Dora graph changed".into());
+        }
+        let graph = workload_lifecycle::dora::graph(&source, &bytes)?;
         let destination = Path::new(&runtime(run)?.runtime_directory).join(GRAPH_FILE);
         if Path::new(&source) != destination {
             tokio::fs::copy(&source, &destination)

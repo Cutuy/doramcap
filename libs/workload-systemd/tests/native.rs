@@ -1444,6 +1444,7 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
         .join("artifacts space%quote\"slash\\")
         .to_string_lossy()
         .into_owned();
+    let mut changed_plan = plan.clone();
     // Act
     let report = run_without_control_units(plan).await;
     // Assert
@@ -1493,6 +1494,66 @@ ExecStart=/bin/sh -c 'printf "%%s\\n" "$$DORA_NODE_ID" "$$DORA_DAEMON_LOCAL_LIST
             .to_string_lossy()
             .starts_with("cli-")
     }));
+    assert!(runtime_units().is_empty(), "{:?}", runtime_units());
+    // Arrange: edit the captured graph after preparation has reported success.
+    let session_before =
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap();
+    changed_plan.0.id = "changed".into();
+    changed_plan.0.artifacts = fixture
+        .root
+        .join("changed-artifacts")
+        .to_string_lossy()
+        .into_owned();
+    let artifacts = PathBuf::from(&changed_plan.0.artifacts);
+    let (ready, readiness) = oneshot::channel();
+    let stop = async {
+        if readiness.await.is_ok() {
+            tokio::time::sleep(OBSERVATION).await;
+        }
+    };
+    // Act
+    let rejected = SystemdRunner::new()
+        .run(
+            changed_plan.0,
+            changed_plan.1,
+            stop,
+            move |event: &orchestrator::Event| {
+                if event.invocation.step == "systemd.prepare"
+                    && event.state == orchestrator::State::Succeeded
+                {
+                    let captured: Vec<_> = std::fs::read_dir(artifacts.join("inputs"))
+                        .unwrap()
+                        .map(|entry| entry.unwrap().path().join("dataflow"))
+                        .filter(|path| path.is_file())
+                        .collect();
+                    assert_eq!(captured.len(), 1);
+                    std::fs::write(
+                        &captured[0],
+                        r#"{"nodes":[{"id":"user","path":"dynamic","outputs":["changed"]}]}"#,
+                    )
+                    .unwrap();
+                }
+            },
+            Some(ready),
+        )
+        .await
+        .unwrap();
+    // Assert: no graph/session mutation precedes rejection; native resources still exit.
+    assert!(
+        rejected
+            .execution_error
+            .as_deref()
+            .is_some_and(|message| message.contains("frozen Dora graph changed")),
+        "{rejected:#?}"
+    );
+    assert!(
+        rejected.writers_stopped && rejected.cleanup_verified,
+        "{rejected:#?}"
+    );
+    assert_eq!(
+        std::fs::read(runtime.join(workload_lifecycle::dora::SESSION_FILE)).unwrap(),
+        session_before
+    );
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
 }
 #[tokio::test(flavor = "current_thread")]

@@ -163,7 +163,12 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                         .wait_for_daemon(deadline)
                         .await
                         .map_err(crate::error)?;
-                    dora.register(&mut self.run, deadline).await
+                    dora.register(
+                        &mut self.run,
+                        &self.prepared.value().dataflow_sha256,
+                        deadline,
+                    )
+                    .await
                 })
                 .await
                 .map_err(|_| "Dora readiness deadline exceeded".to_string())??;
