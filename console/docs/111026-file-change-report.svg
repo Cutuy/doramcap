@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="530" viewBox="0 0 1240 530" role="img" aria-labelledby="title desc">
+<title id="title">Shared filesystem capture and Console results</title>
+<desc id="desc">Docker and systemd supply directory bindings to shared Linux capture. Shared views and file manifests feed backend launch and Console previews and downloads.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px}.box{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.shared{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1240" height="530" fill="white"/>
+<text x="620" y="36" class="title">Shared filesystem capture</text>
+<rect x="24" y="80" width="240" height="95" rx="10" class="box"/>
+<text x="144" y="110">Docker backends</text><text x="144" y="137" class="label">Binds · volumes · containers</text><text x="144" y="160" class="label">Native Docker launch</text>
+<rect x="24" y="213" width="240" height="95" rx="10" class="box"/>
+<text x="144" y="243">systemd backend</text><text x="144" y="270" class="label">Resolved directory binds</text><text x="144" y="293" class="label">Native unit launch</text>
+<rect x="360" y="110" width="340" height="170" rx="10" class="shared"/>
+<text x="530" y="143">Shared Linux capture</text><text x="530" y="175" class="label">Prepare views → collect changes</text><text x="530" y="202" class="label">Save report → finalize storage</text><text x="530" y="239" class="label">host-filesystem + workload-lifecycle</text>
+<path d="M264 119 H313 V151 H360" class="line"/><text x="315" y="100" class="label">Sources</text>
+<path d="M264 265 H313 V238 H360" class="line"/>
+<path d="M400 110 V64 H144 V80" class="line"/><text x="309" y="55" class="label">Prepared views</text>
+<path d="M400 280 V333 H144 V308" class="line"/>
+<rect x="802" y="110" width="210" height="75" rx="10" class="box"/>
+<text x="907" y="140">Private run files</text><text x="907" y="166" class="label">Manifests + coverage</text>
+<path d="M700 150 H802" class="line"/>
+<rect x="802" y="224" width="210" height="75" rx="10" class="box"/>
+<text x="907" y="254">Console result</text><text x="907" y="280" class="label">Saved summary + preview</text>
+<path d="M907 185 V224" class="line"/>
+<path d="M1012 148 H1110 V257 H1012" class="line"/><text x="1110" y="191" class="label">JSON Lines</text><text x="1110" y="214" class="label">download</text>
+<text x="620" y="387" class="title">One capture lifecycle</text>
+<rect x="24" y="417" width="205" height="72" rx="9" class="box"/><text x="126" y="446">Prepare views</text><text x="126" y="472" class="label">Before writers start</text>
+<rect x="268" y="417" width="205" height="72" rx="9" class="box"/><text x="370" y="446">Run → stop writers</text><text x="370" y="472" class="label">Backend owns processes</text>
+<rect x="512" y="417" width="205" height="72" rx="9" class="shared"/><text x="614" y="446">Collect → save</text><text x="614" y="472" class="label">Full file-change report</text>
+<rect x="756" y="417" width="205" height="72" rx="9" class="box"/><text x="858" y="446">Finalize storage</text><text x="858" y="472" class="label">Write-back or discard</text>
+<rect x="1000" y="417" width="216" height="72" rx="9" class="box"/><text x="1108" y="446">Verify cleanup</text><text x="1108" y="472" class="label">Owned resources released</text>
+<path d="M229 453 H268" class="line"/><path d="M473 453 H512" class="line"/><path d="M717 453 H756" class="line"/><path d="M961 453 H1000" class="line"/>
+</svg>
