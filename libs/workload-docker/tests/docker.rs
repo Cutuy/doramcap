@@ -2728,7 +2728,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         b"mode: original\n"
     );
     for name in ["monitor", "adopted"] {
-        assert_eq!(model["services"][name]["ipc"], "service:dora-daemon");
+        assert_eq!(model["services"][name]["ipc"], "host");
     }
     assert!(
         prepared
@@ -2737,9 +2737,10 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
             .values()
             .all(|service| service.image_id.starts_with("sha256:"))
     );
-    // Runtime apps retain their shipped native IPC settings.
-    assert!(model["services"]["dora-coordinator"].get("ipc").is_none());
-    assert_eq!(model["services"]["dora-daemon"]["ipc"], "shareable");
+    // Runtime apps use the same explicit PASSTHROUGH default as the other groups.
+    for name in ["dora-coordinator", "dora-daemon"] {
+        assert_eq!(model["services"][name]["ipc"], "host");
+    }
     assert!(
         prepared
             .plan
@@ -2748,6 +2749,23 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
             .any(|d| d.contains("adopted: Dora participants need host networking"))
     );
     support::assert_no_run_resources(&adapter, &spec.id).await;
+
+    // Arrange: another workflow supplies Dora and system apps without user services.
+    let mut systems_only = preparation::PrepareInput::try_from(spec.clone()).unwrap();
+    systems_only.extra_apps.clear();
+    systems_only.run.id.push_str("-system");
+    systems_only.run.artifacts = root.join("system-only").to_string_lossy().into_owned();
+
+    // Act
+    let resolved = preparation::resolve(&adapter, systems_only).await.unwrap();
+
+    // Assert
+    assert!(resolved.user_services.is_empty());
+    assert_eq!(resolved.system_services, ["monitor"]);
+    assert_eq!(resolved.dora.services.len(), 2);
+    assert_eq!(resolved.plan.services.len(), 3);
+    assert!(!resolved.plan.services.contains_key("adopted"));
+    support::assert_no_run_resources(&adapter, &resolved.run.id).await;
 
     // Act: conflicts must fail before containers or other runtime resources exist.
     let mut conflict = spec.clone();

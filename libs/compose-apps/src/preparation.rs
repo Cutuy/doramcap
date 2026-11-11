@@ -28,11 +28,17 @@ const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrepareInput {
+    /// Identity, paths, shared-memory policy, recordings, graph and startup/stop budgets.
     pub run: workload_lifecycle::launch::RunPlan,
+    /// Runtime containers launched before system apps.
     pub dora_apps: Vec<ComposeProject>,
+    /// Supporting containers stabilized before the optional extra group.
     pub system_apps: Vec<ComposeProject>,
+    /// Additional app inputs; empty prepares the system part alone.
     pub extra_apps: Vec<ComposeProject>,
+    /// Filesystem policy included in Review identity; resolution mounts nothing.
     pub filesystem: Option<docker_engine::overlay::OverlayPolicy>,
+    /// Writer selection, host capability checks and output filesystem locations.
     pub mcap_writers: McapWriters,
 }
 

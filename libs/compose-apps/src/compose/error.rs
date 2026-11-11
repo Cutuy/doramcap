@@ -1,3 +1,4 @@
+//! Compose configuration, execution and diagnostic failures.
 use super::Diagnostic;
 
 #[derive(Debug, thiserror::Error)]
@@ -72,12 +73,14 @@ impl Error {
     }
 }
 pub type Result<T> = std::result::Result<T, Error>;
+/// Retain an Engine API failure and the operation that produced it.
 pub fn engine(operation: impl Into<String>, source: bollard::errors::Error) -> Error {
     Error::Engine {
         operation: operation.into(),
         source,
     }
 }
+/// Describe a rejected app configuration or workflow precondition.
 pub fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }

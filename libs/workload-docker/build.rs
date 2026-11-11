@@ -9,8 +9,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("workflow_config.bin"),
         )
         .extern_path(".doramcap.compose.v1", "::compose_apps::compose")
+        .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
         .compile_protos(
-            &["proto/compose_plan.proto"],
+            &[
+                "proto/compose_plan.proto",
+                "../workload-lifecycle/proto/launch.proto",
+            ],
             &[
                 "proto",
                 "../compose-apps/proto",

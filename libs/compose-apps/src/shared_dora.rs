@@ -15,6 +15,7 @@ use workload_lifecycle::{
 pub(crate) const MAX_GRAPH_BYTES: u64 = 2 * 1024 * 1024;
 pub(crate) const GRAPH_FILE: &str = "dataflow.yml";
 
+/// Return the stable daemon ownership identity for one canonical repository.
 pub fn owner(repository: &Path) -> String {
     format!(
         "{}-dora",

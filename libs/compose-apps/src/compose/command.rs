@@ -1,3 +1,4 @@
+//! Bounded native Compose invocation and process-group cancellation.
 use super::{Error, Result, error::invalid};
 use std::{
     collections::BTreeMap,
@@ -19,7 +20,10 @@ const MAX_COMPOSE_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Largest `/proc/net/tcp*` table parsed while verifying a Dora listener.
 const MAX_LISTENER_TABLE_BYTES: usize = 4 * 1024 * 1024;
 
-pub async fn capture(reader: impl AsyncRead + Unpin, stream: &'static str) -> Result<String> {
+pub(crate) async fn capture(
+    reader: impl AsyncRead + Unpin,
+    stream: &'static str,
+) -> Result<String> {
     let mut bytes = Vec::new();
     reader
         .take(MAX_COMPOSE_OUTPUT_BYTES as u64 + 1)

@@ -76,10 +76,12 @@ fn slice_path(slice: &str) -> PathBuf {
     path.join(slice)
 }
 
+/// Adopt Docker's resolved accounting parent and verify it is empty at cleanup.
 pub struct DockerCgroup {
     placement: CgroupPlacement,
 }
 impl DockerCgroup {
+    /// Bind lifecycle accounting to the exact prepared parent; Docker creates its directory.
     pub fn group(placement: CgroupPlacement) -> Rc<cgroup::Group> {
         Rc::new(cgroup::Group::new(Rc::new(Self { placement })))
     }

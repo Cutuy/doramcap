@@ -6,4 +6,3 @@ import "compose.proto";
 message ComposePlan {
   repeated doramcap.compose.v1.ComposeProject projects = 1;
 }
-

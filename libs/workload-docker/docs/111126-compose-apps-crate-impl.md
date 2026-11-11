@@ -1,15 +1,15 @@
 # Shared crate for apps as containers: implementation plan
 
-Created November 11, 2026. Status: milestones 1–3 implemented; validation in progress.
+Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 not started.
 [Architecture](111126-compose-apps-crate.md).
 
 Create `libs/compose-apps` and move four pieces into it from `workload-docker`,
 one milestone each. Every milestone is a move with no behavior change. Milestones 1 to 3
 can start now.
 
-## Current code
+## Starting code
 
-| Piece | Location in `workload-docker` | Notes |
+| Piece | Original location in `workload-docker` | Notes |
 | --- | --- | --- |
 | Project steps | `src/compose/` | Public. No references into `src/workflows/`. |
 | Dora in containers | `src/workflows/dora.rs`, `shared_dora.rs`, `experiment.rs` | Public. One helper registers workflow steps alongside them. |
@@ -47,7 +47,7 @@ crate.
 **Validation**
 
 - [x] Existing project-step and adapter tests pass from the new crate.
-- [ ] Boundary check, formatting and Clippy.
+- [x] Boundary check, formatting and Clippy.
 
 ## Milestone 2: Dora in containers
 
@@ -59,7 +59,7 @@ crate.
 **Validation**
 
 - [x] Existing Dora wiring and runtime tests pass from the new crate.
-- [ ] A Compose run with Dora apps registers and removes its graph as before.
+- [x] A Compose run with Dora apps registers and removes its graph as before.
 
 ## Milestone 3: app preparation
 
@@ -73,7 +73,7 @@ crate.
 **Validation**
 
 - [x] Snapshot fingerprints for the existing fixtures are unchanged.
-- [ ] Preparation with no extra group yields a project of Dora and system apps only.
+- [x] Preparation with no extra group yields a project of Dora and system apps only.
 - [x] Cross-group checks still reject a system app that depends on a user service.
 
 ## Milestone 4: system apps start, watch and stop
@@ -108,8 +108,14 @@ Applicable rules: I-03, I-04, I-05, I-07 and I-09 in the
 
 ## Validation record
 
-- Local x86_64: 84 unit/protobuf contract tests passed; all targets compile for
-  `compose-apps`, `workload-docker`, Console, Project Explorer and Orchestrator Demo.
-- Snapshot reference hashes captured from `431d63bd` match after the move.
-- Clippy, dependency boundaries and native Docker validation are pending.
-- Full local CI and ARM64 remain scheduled for milestone 4's integration check.
+- Local x86_64: 84 unit/protobuf contract tests and four focused native Docker tests
+  passed. Native checks cover Dora registration/cleanup under both shared-memory
+  policies, cancellation, independent snapshots and preparation with no extra group.
+- All targets compile; default/all-feature Clippy passes for `compose-apps`,
+  `workload-docker`, Console, Project Explorer and Orchestrator Demo.
+- Formatting, dependency boundaries, five boundary-validator tests and Console
+  protobuf generation pass; generated Console output is unchanged.
+- Snapshot hashes captured from `431d63bd` match. Native validation corrected stale
+  IPC assertions and retained the launch descriptor used by Dora test fixtures.
+- Full workspace CI and ARM64 were not run; they remain milestone 4's integration
+  checks. Milestone 4 is outside this implementation.

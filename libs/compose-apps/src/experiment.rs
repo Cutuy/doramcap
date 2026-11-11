@@ -20,6 +20,8 @@ pub struct ExperimentOwner {
     pub(crate) plan: ResolvedComposeProject,
 }
 impl ExperimentOwner {
+    /// Own prepared Dora services and their graph; construction starts no resources.
+    /// Startup and cleanup use the supplied positive budgets in seconds.
     pub fn new(
         apps: DoraApps,
         run: workload_lifecycle::launch::RunPlan,
@@ -147,6 +149,7 @@ impl ExperimentOwner {
             .await
             .map_err(|_| invalid("Dora observation deadline expired"))?
     }
+    /// Start or reuse the deadline shared by this run's Dora cleanup operations.
     pub fn cleanup_deadline(&mut self) -> Instant {
         *self
             .stop_deadline

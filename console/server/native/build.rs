@@ -23,7 +23,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "../../../libs/workload-docker/proto",
                 "../../../libs/compose-apps/proto",
                 "../../../libs/workload-lifecycle/proto",
-                "../../../libs/workload-lifecycle/proto",
                 "../../../libs/workload-systemd/proto",
                 "../../../libs/telemetry/workflow-protocol/proto",
                 "../../../libs/telemetry/protocol/proto",
