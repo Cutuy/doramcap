@@ -140,7 +140,7 @@ main.shell{padding-top:28px}
 /* Full dependency chains use static SVG and native scrolling. */
 .dag-legend{display:flex;flex-wrap:wrap;gap:8px 24px;font-size:11px;color:var(--muted);margin:0 0 14px}.dag-scroll{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--panel)}.dependency-dag{display:block;max-width:none;margin:auto}.dag-edge{color:var(--muted);stroke-width:1.2}.dag-node rect{fill:var(--panel);stroke:var(--line);stroke-width:1}.dag-node text{fill:var(--ink);font:12px ui-monospace,monospace}.dag-node .dag-kind{fill:var(--muted);font:10px system-ui;letter-spacing:.6px}.dag-node.dag-root rect{fill:var(--soft);stroke:var(--accent)}.dag-node:hover rect,.dag-node:focus-visible rect{stroke:var(--accent);stroke-width:2}.dag-declarations{margin-top:18px;font-size:12px}.dag-declarations summary{cursor:pointer}.dag-declarations ul{padding-left:18px;overflow-wrap:anywhere}.dag-declarations li{padding:6px 0}.dag-declarations small{display:block;color:var(--muted)}.dependency-kind-controls{display:flex;gap:18px}.dependency-kind-controls label{display:flex;align-items:center;gap:5px}.dependency-notes:empty{display:none}.direct-deps li:first-child{margin-top:12px}.dag-scroll:focus-visible{outline:2px solid var(--accent)}
 
-/* Application platform layers share the same stack width. */
+/* System architecture stack. */
 .platform-stack {
   padding: 16px;
   margin-top: 8px;
@@ -149,13 +149,14 @@ main.shell{padding-top:28px}
   background: var(--soft);
 }
 .stack-heading { margin: 0 0 12px; color: var(--ink); font-weight: 500; }
-.stack-apps, .lifecycle-grid, .capability-grid { display: grid; gap: 8px; }
+.stack-services, .stack-apps, .lifecycle-grid, .capability-grid { display: grid; gap: 8px; }
+.stack-services { grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); }
 .stack-apps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lifecycle-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .capability-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .layer-connector { display: grid; place-items: center; height: 18px; }
 .layer-connector::before { content: ''; width: 1px; height: 12px; background: var(--line); }
-.foundation-layer, .lifecycle-layer, .platform-layer, .software-layer {
+.runtime-layer, .lifecycle-layer, .history-layer, .platform-layer, .software-layer {
   padding: 13px 17px;
   border-radius: 6px;
   background: var(--panel);
@@ -214,15 +215,15 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 }
 .software-links a.highlighted, .software-links a[aria-current=true] { color: var(--accent); }
 .software-links small { color: var(--muted); font-size: 10px; }
-.platform-layer p { margin: 0; color: var(--ink); font-size: 13px; }
+.history-layer p, .platform-layer p { margin: 0; color: var(--ink); font-size: 13px; }
 
 @media (max-width: 800px) {
   .capability-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
   .platform-stack { padding: 10px; }
-  .foundation-layer, .lifecycle-layer, .platform-layer, .software-layer { padding: 12px; }
-  .lifecycle-grid { grid-template-columns: minmax(0, 1fr); }
+  .runtime-layer, .lifecycle-layer, .history-layer, .platform-layer, .software-layer { padding: 12px; }
+  .stack-services, .lifecycle-grid { grid-template-columns: minmax(0, 1fr); }
   .software-group { flex-direction: column; align-items: flex-start; gap: 4px; }
   .software-links { gap: 7px 13px; }
 }
@@ -260,14 +261,13 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .console-node span{font-size:12px;color:var(--muted)}
 .console-soc{display:flex;flex-direction:column;gap:8px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:5px}
 .console-soc-title{display:flex;align-items:center;gap:8px}
-.console-soc-body{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.console-soc-body{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .console-soc-body>div{display:flex;flex-direction:column;gap:4px;min-width:0}
 .console-soc-body span{font:10px ui-monospace,monospace;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .console-soc-body>div>div{display:flex;align-items:center;gap:5px;padding:2px 7px;font:12px ui-monospace,monospace;background:var(--soft);border:1px solid transparent;border-radius:4px;overflow-wrap:anywhere}
 .console-soc-body svg{flex-shrink:0;color:var(--muted)}
-.console-soc-doramcap{grid-column:1/-1}
-.console-soc-body>.console-soc-doramcap>div{flex:1;border-color:var(--accent)}
-.console-soc-doramcap svg{color:var(--accent)}
+.console-soc-body>.console-soc-console>div{flex:1;justify-content:center;border-color:var(--accent)}
+.console-soc-console svg{color:var(--accent)}
 .console-soc-runtime{display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px dashed var(--accent);border-radius:4px;font-size:12px}
 .console-soc-runtime svg{flex-shrink:0;color:var(--accent)}
 .console-soc-runtime strong{font-size:12px}
@@ -284,7 +284,7 @@ a.stack-block:hover, .capability:hover, .orchestration-layer:hover,
 .console-copy-status{display:block;font-size:12px;color:var(--accent)}
 .console-copy-status:not(:empty){margin-top:8px}
 @media(max-width:950px){.console-install{grid-template-columns:1fr;gap:20px}}
-@media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-install-steps{display:none}.console-soc-body{grid-template-columns:1fr}}
+@media(max-width:600px){.console-install{padding:16px;gap:18px}.console-install h2{font-size:23px}.console-install-actions{gap:12px}.console-install-steps{display:none}.console-soc-body{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .console-tabs{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;border-bottom:1px solid var(--line)}
 .console-tabs nav{order:0;width:auto}
 .console-tabs nav a{display:block;padding:12px 0}

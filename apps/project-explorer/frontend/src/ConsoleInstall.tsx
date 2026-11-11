@@ -4,12 +4,10 @@ import { CONSOLE_PATH } from './model';
 
 const INSTALLER_NAME = 'install.sh';
 const START_COMMAND = 'cd your-compose-project && doramcap-console start';
-/** Console sits above peer application runtimes on the SoC. */
 const SOC_GROUPS = [
-  { label: 'doramcap', Icon: Activity, items: ['Console'], className: 'console-soc-doramcap' },
-  { label: 'Holoscan apps', Icon: Workflow, items: ['Body Pose Estimation', 'ROS2 IMX274 Camera'], className: '' },
-  { label: 'Containers', Icon: Box, items: ['camera', 'planner'], className: '' },
-  { label: 'systemd services', Icon: Cog, items: ['can-bus', 'gps'], className: '' },
+  { label: 'Holoscan apps', Icon: Workflow, items: ['Pose', 'Camera'] },
+  { label: 'Containers', Icon: Box, items: ['camera', 'planner'] },
+  { label: 'systemd services', Icon: Cog, items: ['can-bus', 'gps'] },
 ];
 
 /** One shell command with a copy button; falls back to selecting the text when the clipboard is blocked. */
@@ -56,13 +54,14 @@ export default function ConsoleInstall({ repository }: { repository: string }) {
       </div>
       <p className="console-requirements">Ubuntu 24.04+ · x86_64 / ARM64 · Docker Engine</p>
     </div>
-    <div className="console-topology" role="img" aria-label="A browser connects to doramcap Console over an SSH tunnel. Console sits above Holoscan apps, containers, and systemd services on your SoC or workstation. Body Pose Estimation and ROS2 IMX274 Camera are Holoscan examples. An optional doramcap runtime sits below the three groups.">
+    <div className="console-topology" role="img" aria-label="A browser connects to doramcap Console over an SSH tunnel. Console runs beside Holoscan apps, containers, and systemd services on your SoC or workstation, above the optional doramcap runtime.">
       <div className="console-node"><Laptop size={18} strokeWidth={1.6} aria-hidden="true" /><strong>Your computer</strong><span>Browser</span></div>
       <span className="console-tunnel">SSH tunnel</span>
       <div className="console-soc">
         <div className="console-soc-title"><Cpu size={16} strokeWidth={1.6} aria-hidden="true" /><strong>SoC or workstation</strong></div>
         <div className="console-soc-body">
-          {SOC_GROUPS.map(({ label, Icon, items, className }) => <div key={label} className={className}>
+          <div className="console-soc-console"><div><Activity size={13} aria-hidden="true" />Console</div></div>
+          {SOC_GROUPS.map(({ label, Icon, items }) => <div key={label}>
             <span>{label}</span>
             {items.map((name) => <div key={name}><Icon size={13} aria-hidden="true" />{name}</div>)}
           </div>)}
