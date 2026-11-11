@@ -78,7 +78,11 @@ crate.
 
 ## Milestone 4: system apps start, watch and stop
 
-Waits for the capture move in [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1.
+Status: placeholder for [PR #317](https://github.com/Cutuy/doramcap/pull/317)
+**milestone 4: App crates: system apps**; implementation has not started.
+Milestones 1–3 landed in PR #317. This follow-up waits for the capture move in
+[Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318),
+which implements [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1.
 
 **Work items**
 
