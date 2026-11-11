@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="430" viewBox="0 0 960 430" role="img" aria-labelledby="title desc">
 <title id="title">Order of work</title>
-<desc id="desc">Shared foundations run in sequence: admission lock, move capture, show changes, keep files. systemd capture follows move capture and the log dump follows keep files. The Holoscan runner runs in parallel: probes, Prepare, Build and run, support apps. Build and run waits for the lock and for move capture.</desc>
+<desc id="desc">Shared foundations run in sequence: admission lock, move capture, show changes, keep files. systemd capture follows move capture and the log dump follows keep files. The Holoscan runner runs in parallel: probes, Prepare, Build and run, system apps. Build and run waits for the lock and for move capture.</desc>
 <defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
 <rect width="960" height="430" fill="#f7fafc"/>
 <g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
@@ -23,7 +23,7 @@
 <text x="135" y="356" font-size="16" font-weight="600">Probes</text><text x="135" y="378" font-size="13">runner milestone 1</text>
 <text x="355" y="356" font-size="16" font-weight="600">Prepare</text><text x="355" y="378" font-size="13">runner milestones 2–3</text>
 <text x="575" y="356" font-size="16" font-weight="600">Build and run</text><text x="575" y="378" font-size="13">runner milestones 4–5</text>
-<text x="795" y="356" font-size="16" font-weight="600">Support apps</text><text x="795" y="378" font-size="13">runner milestones 6–7</text>
+<text x="795" y="356" font-size="16" font-weight="600">System apps</text><text x="795" y="378" font-size="13">runner milestones 6–7</text>
 <g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
 <path d="M230 111 H256"/><path d="M450 111 H476"/><path d="M670 111 H696"/>
 <path d="M355 142 V221 H476"/><path d="M795 142 V186"/>

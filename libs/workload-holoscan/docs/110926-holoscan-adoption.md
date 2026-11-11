@@ -152,7 +152,7 @@ outside capture are agreed and recorded in their stage documents. Two
 implementation plans are drafted: the
 [shared admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
 [Holoscan runner](111126-holoscan-runner-impl.md). The runner plan starts by
-proving the launch on a real container and has one open item. Support apps
+proving the launch on a real container and has one open item. System apps
 are agreed and built after the application-only run.
 A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
 supports the launch design. Real-container qualification remains.
@@ -185,7 +185,7 @@ joins at Build and run.
 | 1 | Real-container probes (milestone 1) | Nothing |
 | 2 | Crate, discovery, Prepare and Review (milestones 2 and 3) | Nothing |
 | 3 | Build and run (milestones 4 and 5) | Admission lock and extracted capture |
-| 4 | Support apps, recovery and acceptance (milestones 6 and 7) | Build and run |
+| 4 | System apps, recovery and acceptance (milestones 6 and 7) | Build and run |
 
 ## Agreed scope
 
@@ -207,7 +207,7 @@ joins at Build and run.
 | Resource limits | Limits the user selects travel as Docker options on the launch, inside the Review snapshot. Prepare checks them against the project's own options. |
 | Application logs | Container output goes to the host journal. A project that sets its own log driver keeps it. |
 | Configuration | `form: HOLOSCAN` selects the backend. A `holoscan` block names the CLI executable. |
-| Support apps | Dora and Console's system apps follow the project's environment: Docker containers for a Docker project, systemd units for a host project. Built after the application-only run works. |
+| System apps | Console's system apps, which include the Dora apps, follow the project's environment: Docker containers for a Docker project, systemd units for a host project. `workload-holoscan` owns pairing them with the application. Built after the application-only run works. |
 | Placement and recording | Preserve Holoscan controls; Console manages runs, its own observations and retained outputs. |
 | Conflicts | Warn or fail clearly for supported checks of conflicting declared settings. Defer costly inspection of application internals. |
 

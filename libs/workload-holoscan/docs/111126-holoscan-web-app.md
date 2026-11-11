@@ -51,7 +51,7 @@ Discovery outcomes appear in place of the list:
 | Summary rows | Application with language and mode, image ID, the build's commit and Clean or Dirty, and where the log goes. |
 | Notes | One list: a Dirty build, mounts not captured, a project-set log driver. Nothing in it blocks Start. |
 | Launch command | The normalized command the snapshot covers, collapsed behind a toggle. The project's own Docker options are listed with it. |
-| Kept from today | System apps, once support apps are built, and the comparison with an earlier run. |
+| Kept from today | System apps, once the runner starts them, and the comparison with an earlier run. |
 
 Review has no recordings section for Holoscan.
 
