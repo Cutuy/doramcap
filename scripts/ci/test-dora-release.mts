@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, w
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { doraAsset, doraVersion, downloadDora } from './dora-release.mts';
+import { doraArchive, doraVersion, downloadDora } from './dora-release.mts';
 
 function graph(version = '1.2.3') {
   return { workspace_members: ['client'], packages: [
@@ -13,11 +13,8 @@ function graph(version = '1.2.3') {
     { id: 'wire', name: 'dora-message', version },
   ], resolve: { nodes: [{ id: 'client', deps: [{ pkg: 'wire' }] }, { id: 'wire', deps: [] }] } };
 }
-function release(version = '1.2.3', arch = 'x86_64', digest = 'a'.repeat(64)) {
-  const name = `dora-cli-${arch}-unknown-linux-gnu.tar.gz`;
-  return { tag_name: `v${version}`, draft: false, assets: [{ name, state: 'uploaded', digest: `sha256:${digest}`,
-    browser_download_url: `https://github.com/dora-rs/dora/releases/download/v${version}/${name}` }] };
-}
+const assetURL = 'https://github.com/dora-rs/dora/releases/download/v1.2.3/dora-cli-x86_64-unknown-linux-gnu.tar.gz';
+const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 test('resolved protocol upgrades follow the client edge and reject mixed wire versions', () => {
   // Arrange / Act / Assert
@@ -34,23 +31,18 @@ test('resolved protocol upgrades follow the client edge and reject mixed wire ve
   assert.throws(() => doraVersion(graph('1.2.3-beta')), /stable Dora protocol release/);
 });
 
-test('release selection requires the exact architecture, version and published digest', () => {
-  // Arrange / Act / Assert
-  assert.equal(doraAsset(release(), '1.2.3', 'amd64').sha256, 'a'.repeat(64));
-  assert.match(doraAsset(release('1.2.3', 'aarch64'), '1.2.3', 'arm64').member, /aarch64/);
-  assert.throws(() => doraAsset(release(), '1.2.4', 'amd64'), /published Dora/);
-  assert.throws(() => doraAsset(release(), '1.2.3', 'arm64'), /Expected one Dora/);
-  assert.throws(() => doraAsset(release(), '1.2.3', 'unknown'), /Unsupported/);
-  const invalid = [
-    { ...release(), draft: true },
-    { ...release(), assets: [] },
-    { ...release(), assets: [...release().assets, ...release().assets] },
-    { ...release(), assets: [{ ...release().assets[0], digest: null }] },
-    { ...release(), assets: [{ ...release().assets[0], digest: 'sha256:bad' }] },
-    { ...release(), assets: [{ ...release().assets[0], state: 'new' }] },
-    { ...release(), assets: [{ ...release().assets[0], browser_download_url: 'https://example.com/dora' }] },
-  ];
-  for (const metadata of invalid) assert.throws(() => doraAsset(metadata, '1.2.3', 'amd64'));
+test('release selection requires a committed checksum for the exact version and architecture', () => {
+  // Arrange
+  const pins = { '1.2.3': { amd64: 'a'.repeat(64) }, '1.2.5': { amd64: 'bad' } };
+  // Act / Assert
+  assert.deepEqual(doraArchive('1.2.3', 'amd64', pins),
+    { url: assetURL, sha256: 'a'.repeat(64), member: 'dora-cli-x86_64-unknown-linux-gnu/dora' });
+  assert.throws(() => doraArchive('1.2.4', 'amd64', pins), /No reviewed checksum/);
+  assert.throws(() => doraArchive('1.2.3', 'arm64', pins), /No reviewed checksum/);
+  assert.throws(() => doraArchive('1.2.5', 'amd64', pins), /No reviewed checksum/);
+  assert.throws(() => doraArchive('1.2.3', 'unknown', pins), /Unsupported/);
+  assert.throws(() => doraArchive('latest', 'amd64', pins), /Invalid Dora release version/);
+  assert.match(doraArchive('1.1.0', 'arm64').member, /aarch64/);
 });
 
 test('download verifies bytes and executable version before replacing an existing artifact', async t => {
@@ -68,30 +60,29 @@ test('download verifies bytes and executable version before replacing an existin
     return readFileSync(archive);
   };
   let bytes = pack('1.2.3');
-  const metadata = release('1.2.3', 'x86_64', createHash('sha256').update(bytes).digest('hex'));
-  const assetURL = metadata.assets[0].browser_download_url;
+  const pins = { '1.2.3': { amd64: sha256(bytes) } };
   t.mock.method(globalThis, 'fetch', async (url: string) => {
-    assert([assetURL, 'https://api.github.com/repos/dora-rs/dora/releases/tags/v1.2.3'].includes(url));
-    return url === assetURL ? new Response(bytes) : Response.json(metadata);
+    assert.equal(url, assetURL);
+    return new Response(bytes);
   });
   // Act / Assert: a successful upgrade installs the matching executable.
-  await downloadDora('1.2.3', 'amd64', output);
+  await downloadDora('1.2.3', 'amd64', output, pins);
   assert.equal(execFileSync(output, ['--version'], { encoding: 'utf8' }).trim(), 'dora-cli 1.2.3');
   const previous = readFileSync(output);
-  // Act / Assert: a checksum failure preserves the previous binary and removes staging.
+  // Act / Assert: a replaced or corrupt archive preserves the previous binary and removes staging.
   bytes = Buffer.from('corrupt archive');
-  await assert.rejects(downloadDora('1.2.3', 'amd64', output), /checksum mismatch/);
+  await assert.rejects(downloadDora('1.2.3', 'amd64', output, pins), /checksum mismatch/);
   assert.deepEqual(readFileSync(output), previous);
   assert(!readdirSync(root).some(name => name.startsWith('.dora-')));
-  // Act / Assert: an archive with a valid digest but wrong executable also fails.
+  // Act / Assert: a pinned archive holding the wrong executable also fails.
   bytes = pack('1.2.4');
-  metadata.assets[0].digest = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-  await assert.rejects(downloadDora('1.2.3', 'amd64', output), /binary version differs/);
+  pins['1.2.3'].amd64 = sha256(bytes);
+  await assert.rejects(downloadDora('1.2.3', 'amd64', output, pins), /binary version differs/);
   assert.deepEqual(readFileSync(output), previous);
   assert(!readdirSync(root).some(name => name.startsWith('.dora-')));
 });
 
-test('an unavailable release fails without selecting a different version', async t => {
+test('an unpinned or unavailable release fails without selecting a different version', async t => {
   // Arrange
   const root = mkdtempSync(join(tmpdir(), 'dora-release-missing-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -102,8 +93,11 @@ test('an unavailable release fails without selecting a different version', async
     requests.push(url);
     return new Response('missing', { status: 404 });
   });
-  // Act / Assert
-  await assert.rejects(downloadDora('1.9.4', 'amd64', output), /HTTP 404/);
-  assert.deepEqual(requests, ['https://api.github.com/repos/dora-rs/dora/releases/tags/v1.9.4']);
+  // Act / Assert: an unpinned version is refused before any download.
+  await assert.rejects(downloadDora('1.9.4', 'amd64', output, {}), /No reviewed checksum/);
+  assert.deepEqual(requests, []);
+  // Act / Assert: a pinned but unpublished archive fails and keeps the previous output.
+  await assert.rejects(downloadDora('1.2.3', 'amd64', output, { '1.2.3': { amd64: 'a'.repeat(64) } }), /HTTP 404/);
+  assert.deepEqual(requests, [assetURL]);
   assert.equal(readFileSync(output, 'utf8'), 'previous');
 });

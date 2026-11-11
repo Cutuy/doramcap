@@ -12,6 +12,14 @@ import { hashFile } from './hash-file.mts';
 
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 const TARGETS: Record<string, string> = { amd64: 'x86_64', arm64: 'aarch64' };
+type ArchivePins = Record<string, Record<string, string>>;
+/** Reviewed SHA-256 of each official release archive, by Dora version and image architecture. */
+const ARCHIVE_SHA256: ArchivePins = {
+  '1.1.0': {
+    amd64: '2b1600f33187c552f98e52f7280318808e1e2ed491c6a8340dea104dbba0c85b',
+    arm64: '77fe85ff1eaf2cac2bf9e0d46d1efe00cad5076b5a0cf4e42b2cf2c646b4752f',
+  },
+};
 type CargoMetadata = {
   workspace_members: string[];
   packages: { id: string; name: string; version: string }[];
@@ -42,25 +50,14 @@ export function resolvedDoraVersion(repo: string): string {
     { cwd: repo, encoding: 'utf8', maxBuffer: Infinity })));
 }
 
-function archiveName(version: string, arch: string): string {
+/** Select the official release archive and its committed SHA-256; unpinned versions or architectures fail. */
+export function doraArchive(version: string, arch: string, pins: ArchivePins = ARCHIVE_SHA256): { url: string; sha256: string; member: string } {
   assert(/^\d+\.\d+\.\d+$/.test(version), `Invalid Dora release version: ${version}`);
   assert(Object.hasOwn(TARGETS, arch), `Unsupported Dora release architecture: ${arch}`);
-  return `dora-cli-${TARGETS[arch]}-unknown-linux-gnu.tar.gz`;
-}
-
-/** Require the exact official release asset and its GitHub-published SHA-256 digest. */
-export function doraAsset(release: any, version: string, arch: string): { url: string; sha256: string; member: string } {
-  const name = archiveName(version, arch);
-  assert(release && release.tag_name === `v${version}` && release.draft === false, `Expected published Dora v${version}`);
-  assert(Array.isArray(release.assets), 'Dora release asset list missing');
-  const matches = release.assets.filter((asset: any) => asset.name === name);
-  assert.equal(matches.length, 1, `Expected one Dora v${version} asset: ${name}`);
-  const asset = matches[0];
-  const url = `https://github.com/dora-rs/dora/releases/download/v${version}/${name}`;
-  assert.equal(asset.browser_download_url, url, 'Unexpected Dora release asset URL');
-  assert.equal(asset.state, 'uploaded', 'Dora release asset is incomplete');
-  assert(typeof asset.digest === 'string' && /^sha256:[a-f0-9]{64}$/.test(asset.digest), 'Dora release SHA-256 digest missing or invalid');
-  return { url, sha256: asset.digest.slice('sha256:'.length), member: `${name.slice(0, -'.tar.gz'.length)}/dora` };
+  const sha256 = Object.hasOwn(pins, version) ? pins[version][arch] : undefined;
+  assert(sha256 && /^[a-f0-9]{64}$/.test(sha256), `No reviewed checksum for Dora v${version} (${arch}); add it to ARCHIVE_SHA256`);
+  const name = `dora-cli-${TARGETS[arch]}-unknown-linux-gnu`;
+  return { url: `https://github.com/dora-rs/dora/releases/download/v${version}/${name}.tar.gz`, sha256, member: `${name}/dora` };
 }
 
 /** Check an executable against the resolved protocol release before packaging it. */
@@ -69,15 +66,11 @@ export function verifyDoraBinary(binary: string, version: string): void {
   assert.equal(actual, `dora-cli ${version}`, `Dora binary version differs from resolved protocol ${version}`);
 }
 
-/** Download, checksum and version-check the matching native executable, then replace output atomically.
- * Missing releases/assets/digests, corrupt archives and wrong versions fail; existing output survives failure.
+/** Download, check against the committed checksum, version-check, then replace output atomically.
+ * Unpinned releases, failed downloads, corrupt archives and wrong versions fail; existing output survives failure.
  */
-export async function downloadDora(version: string, arch: string, output: string): Promise<void> {
-  archiveName(version, arch);
-  const release = await fetch(`https://api.github.com/repos/dora-rs/dora/releases/tags/v${version}`,
-    { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
-  assert(release.ok, `Dora v${version} release lookup failed: HTTP ${release.status}`);
-  const asset = doraAsset(await release.json(), version, arch);
+export async function downloadDora(version: string, arch: string, output: string, pins: ArchivePins = ARCHIVE_SHA256): Promise<void> {
+  const asset = doraArchive(version, arch, pins);
   output = resolve(output);
   await mkdir(dirname(output), { recursive: true });
   const stage = await mkdtemp(join(dirname(output), '.dora-'));

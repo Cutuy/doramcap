@@ -6,7 +6,8 @@ Created: 2026-11-10. [Implementation](111026-matched-runtime-versions-impl.md).
 
 Cargo permits Dora 1.x upgrades. The committed lockfile records each build's exact
 dependencies. The client's resolved `dora-message` version selects the released
-runtime; packaging verifies the official archive digest and executable version.
+runtime; packaging checks the archive against a committed, reviewed checksum and
+verifies the executable version.
 The same artifact must pass native client qualification before image publication.
 
 Every WebSocket connection exchanges Hello before control traffic. The coordinator
@@ -16,7 +17,7 @@ native cleanup and graph-identity rules continue to apply.
 
 The lockfile owns the selected version. Release tooling owns binary selection and
 verification; the client owns the runtime check. Missing releases, architectures
-or digests fail packaging. There is no version override or mixed-version fallback.
+or committed checksums fail packaging. There is no version override or mixed-version fallback.
 
 This establishes reported protocol-version equality. Native tests exercise the
 control/session behavior of the selected artifact; they do not establish schema
