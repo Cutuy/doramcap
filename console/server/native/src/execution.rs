@@ -1,5 +1,6 @@
 //! Active workflow resources and bounded event transport; Console state lives in TypeScript.
 use crate::protocol::*;
+use compose_apps::compose::DockerAdapter;
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use prost::Message;
 use std::{
@@ -9,9 +10,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::{OnceCell, oneshot, watch};
-use workload_docker::{
-    compose::DockerAdapter,
-    workflows::recorded_compose::{ComposeRun, ComposeRunner, MachineCapture, RunSignals},
+use workload_docker::workflows::recorded_compose::{
+    ComposeRun, ComposeRunner, MachineCapture, RunSignals,
 };
 
 const EVENT_QUEUE_CAPACITY: usize = 512;
@@ -302,7 +302,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                         if let Some(reply) = check.borrow_mut().take() {
                             let _ = reply.send(Err(error.into()));
                         }
-                        return Err(workload_docker::compose::Error::Invalid(error.into()));
+                        return Err(compose_apps::compose::Error::Invalid(error.into()));
                     }
                     // Prepare declared recording directories before releasing execution.
                     use std::os::unix::fs::DirBuilderExt;
@@ -496,7 +496,7 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
 }
 
 /// How a unit ended, in the shape Console shows for every backend.
-fn unit_exit(unit: workload_systemd::UnitExit) -> Option<workload_docker::compose::ServiceExit> {
+fn unit_exit(unit: workload_systemd::UnitExit) -> Option<compose_apps::compose::ServiceExit> {
     // `CLD_EXITED` from waitid(2); other codes mean a signal ended the main process.
     const CLD_EXITED: i32 = 1;
     const SIGNAL_EXIT_BASE: i32 = 128;
@@ -506,7 +506,7 @@ fn unit_exit(unit: workload_systemd::UnitExit) -> Option<workload_docker::compos
     let result = unit.result.as_ref()?;
     let signalled = code != 0 && code != CLD_EXITED;
     let oom_killed = result == "oom-kill";
-    Some(workload_docker::compose::ServiceExit {
+    Some(compose_apps::compose::ServiceExit {
         service: unit.id().to_owned(),
         exit_code: if signalled {
             SIGNAL_EXIT_BASE + status

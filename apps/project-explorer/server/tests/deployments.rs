@@ -1,4 +1,5 @@
 //! Opt-in tests of app-owned Compose deployments through the gallery.
+use compose_apps::compose::DockerAdapter;
 use project_explorer_server::{
     lifecycle::Status, manager::Manager, registry::Registry, runtime::Service,
 };
@@ -7,7 +8,6 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
-use workload_docker::compose::DockerAdapter;
 
 #[test]
 #[ignore = "requires Docker access and unprivileged-prepared image contexts"]

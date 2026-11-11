@@ -44,7 +44,7 @@ fn manifest(
     mut model: Value,
     artifacts: &Path,
     systems: &[String],
-    dora: &crate::workflows::dora::DoraApps,
+    dora: &crate::dora::DoraApps,
     runtime: Option<&DoraRuntime>,
 ) -> Value {
     let automatic_ports = runtime.map_or([false; 2], |runtime| {
@@ -167,12 +167,12 @@ fn manifest(
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(super) async fn capture(
-    spec: &ComposeRun,
+    spec: &PrepareInput,
     artifacts: &Path,
     plan: &ResolvedComposeProject,
     system_services: &[String],
     user_services: &[String],
-    dora: &crate::workflows::dora::DoraApps,
+    dora: &crate::dora::DoraApps,
     runtime: Option<&DoraRuntime>,
 ) -> Result<ConfigurationSnapshot> {
     let bytes =
@@ -188,20 +188,21 @@ pub(super) async fn capture(
         runtime,
     );
     let recordings: Vec<_> = spec
+        .run
         .recordings
         .iter()
         .map(|recording| {
             (
-                relative(&recording.stream.to_string_lossy(), artifacts),
-                relative(&recording.recording.to_string_lossy(), artifacts),
+                relative(&recording.stream, artifacts),
+                relative(&recording.recording, artifacts),
             )
         })
         .collect();
     let settings = serde_json::to_vec(&(
         &spec.filesystem,
-        spec.host_shm_access,
-        spec.readiness_seconds,
-        spec.stop_seconds,
+        spec.run.host_shm_access,
+        spec.run.readiness_seconds,
+        spec.run.stop_seconds,
         recordings,
         dora.services.keys().collect::<Vec<_>>(),
     ))?;
@@ -309,22 +310,25 @@ mod tests {
         let path = root.path().join("experiment.json");
         let bytes = serde_json::to_vec(&model(root.path().to_str().unwrap())).unwrap();
         tokio::fs::write(&path, &bytes).await.unwrap();
-        let mut spec = ComposeRun {
-            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
-            filesystem: None,
-            id: "compare".into(),
-            artifacts: root.path().into(),
-            repository_root: root.path().into(),
-            projects: vec![],
+        let mut spec = PrepareInput {
+            run: workload_lifecycle::launch::RunPlan {
+                host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+                id: "compare".into(),
+                artifacts: root.path().to_string_lossy().into_owned(),
+                repository_root: root.path().to_string_lossy().into_owned(),
+                dataflow_file: String::new(),
+                recordings: vec![],
+                readiness_seconds: 60,
+                stop_seconds: 15,
+                ..Default::default()
+            },
+            extra_apps: vec![],
             system_apps: vec![],
             dora_apps: vec![],
-            dataflow_file: String::new(),
-            recordings: vec![],
+            filesystem: None,
             mcap_writers: Default::default(),
-            readiness_seconds: 60,
-            stop_seconds: 15,
         };
-        let dora = crate::workflows::dora::DoraApps::default();
+        let dora = crate::dora::DoraApps::default();
         let mut runtime = DoraRuntime::default();
         let mut plan = ResolvedComposeProject {
             manifest: path.to_string_lossy().into(),
@@ -342,8 +346,16 @@ mod tests {
         )
         .await
         .unwrap();
+        assert_eq!(
+            original.manifest_sha256,
+            "805c5fede8042298f328d2b0d1df0e402074f91db0a723c59b9d492b85fa1701"
+        );
+        assert_eq!(
+            original.settings_sha256,
+            "084a4357a51e35bf319c39e8e6a7691e1810bf09522274a448fe51f13d5b2d17"
+        );
         // Act / Assert: policy, stages and graph contents are compared independently.
-        spec.stop_seconds += 1;
+        spec.run.stop_seconds += 1;
         assert_ne!(
             original,
             capture(
@@ -358,7 +370,7 @@ mod tests {
             .await
             .unwrap()
         );
-        spec.stop_seconds -= 1;
+        spec.run.stop_seconds -= 1;
         assert_ne!(
             original,
             capture(
@@ -419,12 +431,8 @@ mod tests {
                 .is_err()
         );
     }
-    fn resolved_model(
-        root: &str,
-        ports: [u32; 2],
-    ) -> (Value, crate::workflows::dora::DoraApps, DoraRuntime) {
-        let (dora, runtime) =
-            crate::workflows::dora::fixture(root, [ports[0] as u16, ports[1] as u16]);
+    fn resolved_model(root: &str, ports: [u32; 2]) -> (Value, crate::dora::DoraApps, DoraRuntime) {
+        let (dora, runtime) = crate::dora::fixture(root, [ports[0] as u16, ports[1] as u16]);
         let directory = format!("{root}/dora/runtime");
         let ready = format!("{directory}/worker.ready");
         let mut model = json!({"services":{"worker":{
@@ -439,7 +447,7 @@ mod tests {
         for (name, service) in &dora.services {
             model["services"][name] = service.clone();
         }
-        crate::workflows::recorded_compose::preparation::model::configure_dora(
+        crate::preparation::model::configure_dora(
             &mut model,
             &dora,
             Some(&runtime),
@@ -457,21 +465,24 @@ mod tests {
             resolved_model("/execution", [7000, 7001]);
 
         // Act
-        let normalize =
-            |model, root: &str, dora: &crate::workflows::dora::DoraApps, runtime: &DoraRuntime| {
-                manifest(
-                    model,
-                    Path::new(root),
-                    &["worker".into()],
-                    dora,
-                    Some(&DoraRuntime {
-                        automatic_coordinator_port: true,
-                        automatic_daemon_port: true,
-                        ..runtime.clone()
-                    }),
-                )
-            };
+        let normalize = |model, root: &str, dora: &crate::dora::DoraApps, runtime: &DoraRuntime| {
+            manifest(
+                model,
+                Path::new(root),
+                &["worker".into()],
+                dora,
+                Some(&DoraRuntime {
+                    automatic_coordinator_port: true,
+                    automatic_daemon_port: true,
+                    ..runtime.clone()
+                }),
+            )
+        };
         let inspected = normalize(review, "/review", &review_dora, &review_runtime);
+        assert_eq!(
+            digest(&serde_json::to_vec(&inspected).unwrap()),
+            "84376c6ae73d93d22c9f79160fe011c54b6a5b42831d59cf0254ba4a1c8f9777"
+        );
         let prepared = normalize(
             execution.clone(),
             "/execution",
@@ -508,7 +519,7 @@ mod tests {
         let (initial, initial_dora, initial_runtime) = resolved_model("/review", [6000, 6001]);
         let normalize = |model,
                          root: &str,
-                         dora: &crate::workflows::dora::DoraApps,
+                         dora: &crate::dora::DoraApps,
                          runtime: &DoraRuntime,
                          automatic: [bool; 2]| {
             manifest(

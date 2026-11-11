@@ -26,7 +26,7 @@ const ENGINE_DEFAULT_STOP_SECONDS: u64 = 10;
 const STOP_REQUEST_MARGIN: Duration = Duration::from_secs(10);
 
 /// Return how long Docker waits between the stop signal and SIGKILL for this container.
-pub(crate) fn stop_timeout(info: &bollard::models::ContainerInspectResponse) -> Duration {
+pub fn stop_timeout(info: &bollard::models::ContainerInspectResponse) -> Duration {
     let seconds = info
         .config
         .as_ref()
@@ -262,7 +262,7 @@ impl ComposeExecution<'_> {
     /// Create the named IPC owner without starting it, before workload side effects.
     /// Native Compose creates its pinned configuration; Docker rejects another
     /// experiment claiming this repository's experiment container name.
-    pub(crate) async fn reserve(&self, service: &str, seconds: u64) -> Result<()> {
+    pub async fn reserve(&self, service: &str, seconds: u64) -> Result<()> {
         self.verify_manifest().await?;
         let mut args = self.args();
         args.extend(

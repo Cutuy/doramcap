@@ -1,5 +1,6 @@
 {
   "rules": [
+    {"from": "compose-apps", "forbid": ["workload-docker", "workload-systemd", "workload-supervisor", "workload-holoscan", "console-native", "mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "cgroup-bpf", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "monitor-core", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "task-accounting", "forbid": ["mcap", "storage-persistence", "mcap-recorder"]},

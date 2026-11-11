@@ -213,7 +213,7 @@ pub(crate) fn fixture(
     for role in ["coordinator", "daemon"] {
         let name = format!("dora-{role}");
         let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("deploy")
+            .join("../workload-docker/deploy")
             .join(&name);
         let mut model = crate::compose::adapter::fixture_model(ComposeProject {
             key: name.clone(),

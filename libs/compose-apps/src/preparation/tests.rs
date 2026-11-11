@@ -91,10 +91,10 @@ fn merge_warns_about_unhandled_fields_and_preserves_service_settings() {
 }
 
 fn runtime() -> (
-    crate::workflows::dora::DoraApps,
+    crate::dora::DoraApps,
     workload_lifecycle::launch::DoraRuntime,
 ) {
-    crate::workflows::dora::fixture("/run/experiment", [54001, 54002])
+    crate::dora::fixture("/run/experiment", [54001, 54002])
 }
 
 #[tokio::test]
@@ -108,7 +108,7 @@ async fn coordinator_mounts_the_frozen_graph_beside_writable_session_output() {
     let (mut apps, mut shared) = runtime();
     let original = apps.coordinator().unwrap().1.clone();
     // Act
-    crate::workflows::shared_dora::prepare(
+    crate::shared_dora::prepare(
         &mut apps,
         Some(&mut shared),
         source.to_str().unwrap(),
@@ -135,21 +135,22 @@ fn app(key: &str) -> ComposeProject {
         .unwrap()
 }
 
-fn request() -> ComposeRun {
-    ComposeRun {
-        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
-        id: "run".into(),
-        artifacts: "/runs/run".into(),
+fn request() -> PrepareInput {
+    PrepareInput {
+        run: workload_lifecycle::launch::RunPlan {
+            host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+            id: "run".into(),
+            artifacts: "/runs/run".into(),
+            repository_root: "/tmp".into(),
+            readiness_seconds: 60,
+            stop_seconds: 15,
+            ..Default::default()
+        },
         filesystem: None,
-        repository_root: "/tmp".into(),
         system_apps: vec![app("system")],
-        projects: vec![app("adopted")],
+        extra_apps: vec![app("adopted")],
         dora_apps: vec![],
-        dataflow_file: String::new(),
-        recordings: vec![],
         mcap_writers: Default::default(),
-        readiness_seconds: 60,
-        stop_seconds: 15,
     }
 }
 
@@ -394,18 +395,18 @@ fn startup_dependencies_follow_system_apps_then_adopted_order() {
 #[test]
 fn request_validation_rejects_invalid_paths_keys_and_budgets() {
     // Arrange
-    let cases: [fn(&mut ComposeRun); 8] = [
-        |s| s.id = "bad/id".into(),
-        |s| s.artifacts = "relative".into(),
-        |s| s.repository_root = "relative".into(),
+    let cases: [fn(&mut PrepareInput); 8] = [
+        |s| s.run.id = "bad/id".into(),
+        |s| s.run.artifacts = "relative".into(),
+        |s| s.run.repository_root = "relative".into(),
         |s| {
             s.system_apps.clear();
-            s.projects.clear();
+            s.extra_apps.clear();
         },
-        |s| s.projects[0].key = s.system_apps[0].key.clone(),
-        |s| s.projects[0].directory = "relative".into(),
-        |s| s.readiness_seconds = 0,
-        |s| s.stop_seconds = 301,
+        |s| s.extra_apps[0].key = s.system_apps[0].key.clone(),
+        |s| s.extra_apps[0].directory = "relative".into(),
+        |s| s.run.readiness_seconds = 0,
+        |s| s.run.stop_seconds = 301,
     ];
     assert!(validate(&request()).is_ok());
     for change in cases {
@@ -681,7 +682,7 @@ fn host_shm_access_requires_an_explicit_supported_mode() {
     let mut spec = request();
     for mode in [0, -1, i32::MAX] {
         // Arrange
-        spec.host_shm_access = mode;
+        spec.run.host_shm_access = mode;
         // Act
         let error = validate(&spec).unwrap_err().to_string();
         // Assert
@@ -692,10 +693,10 @@ fn host_shm_access_requires_an_explicit_supported_mode() {
         workload_lifecycle::launch::HostShmAccess::Passthrough,
     ] {
         // Arrange
-        spec.host_shm_access = mode as i32;
+        spec.run.host_shm_access = mode as i32;
         // Act
         let result = validate(&spec);
-        let plan = spec.run_plan();
+        let plan = spec.run.clone();
         // Assert
         assert!(result.is_ok());
         assert_eq!(plan.host_shm_access, mode as i32);

@@ -1,28 +1,21 @@
 [package]
 name = "workload-docker"
-description = "Docker Compose lifecycle steps and recorded-run workflow"
+description = "Recorded Compose workflow, observation and finalization"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-dora-control = { path = "../dora-control" }
+compose-apps = { path = "../compose-apps" }
 docker-engine = { path = "../docker-engine" }
-host-filesystem = { path = "../host-filesystem" }
-dora-app = { path = "../dora-app", default-features = false }
 workload-lifecycle = { path = "../workload-lifecycle" }
 orchestrator = { path = "../orchestrator" }
 system-config = { path = "../resources/system-config" }
 prost = "0.14"
 prost-reflect = { version = "0.16", features = ["text-format"] }
-dora-core.workspace = true
 bollard = { version = "=0.21.1", default-features = false, features = ["http", "pipe"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.11"
-hex = "0.4"
-thiserror = "2"
-humantime = "2"
 futures-util = "0.3"
 libc = "0.2"
 rustix = { version = "1.1.5", features = ["fs"] }
@@ -34,6 +27,7 @@ prost-build = "0.14"
 protoc-bin-vendored = "3"
 
 [dev-dependencies]
+host-filesystem = { path = "../host-filesystem" }
 mcap = { version = "=0.26.0", default-features = false }
 telemetry-protocol = { path = "../telemetry/protocol" }
 

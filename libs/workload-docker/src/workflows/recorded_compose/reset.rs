@@ -1,5 +1,5 @@
 //! Repository-scoped admission and strict, repeatable pre-run cleanup.
-use crate::compose::{DockerAdapter, Result, error::invalid};
+use compose_apps::compose::{DockerAdapter, Result, error::invalid};
 use docker_engine::overlay;
 use orchestrator::Step;
 use std::{
@@ -76,7 +76,7 @@ impl Controller {
 }
 
 pub(super) fn directory(repository: &Path) -> PathBuf {
-    crate::compose::adapter::repository_scope(repository)
+    compose_apps::compose::adapter::repository_scope(repository)
 }
 
 pub struct ResetExperiment {
@@ -103,14 +103,14 @@ impl ResetExperiment {
             .directory
             .to_str()
             .ok_or_else(|| invalid("controller path is not UTF-8"))?;
-        let owner = super::super::shared_dora::owner(&self.controller.repository);
+        let owner = compose_apps::shared_dora::owner(&self.controller.repository);
         // Stop and verify this repository's writers before touching its overlay workspace.
         let resources = self.adapter.engine.resources(scope, &owner);
         let stopped = resources.quiesce(self.stop_seconds).await?;
         let mut last = None;
         for container in stopped {
             if container.labels.is_some_and(|labels| {
-                labels.contains_key(crate::compose::adapter::EXPERIMENT_OWNER_LABEL)
+                labels.contains_key(compose_apps::compose::adapter::EXPERIMENT_OWNER_LABEL)
             }) && last.replace(container.id.unwrap()).is_some()
             {
                 return Err(invalid("multiple experiment IPC owners"));

@@ -1,6 +1,6 @@
 use bollard::{Docker, query_parameters::*};
+use compose_apps::compose::DockerAdapter;
 use std::collections::HashMap;
-use workload_docker::compose::DockerAdapter;
 
 pub async fn assert_no_run_resources(adapter: &DockerAdapter, prefix: &str) {
     let docker = Docker::connect_with_unix(

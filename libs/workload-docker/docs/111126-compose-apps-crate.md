@@ -2,7 +2,7 @@
 
 # Shared crate for apps as containers
 
-Created November 11, 2026. Status: boundary agreed; implementation not started.
+Created November 11, 2026. Status: milestones 1–3 implemented; validation in progress.
 [Implementation plan](111126-compose-apps-crate-impl.md).
 
 Running Dora apps and Console's system apps as containers moves from

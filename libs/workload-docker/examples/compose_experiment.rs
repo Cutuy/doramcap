@@ -1,9 +1,7 @@
 //! Run a caller-supplied JSON request until Ctrl-C or an optional duration.
+use compose_apps::compose::DockerAdapter;
 use std::{path::Path, rc::Rc, time::Duration};
-use workload_docker::{
-    compose::DockerAdapter,
-    workflows::recorded_compose::{ComposeRun, ComposeRunner},
-};
+use workload_docker::workflows::recorded_compose::{ComposeRun, ComposeRunner};
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().collect();

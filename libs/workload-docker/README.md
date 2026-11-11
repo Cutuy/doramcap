@@ -6,6 +6,7 @@ Pre-run reset stops old writers, unmounts overlays and discards old uppers befor
 preparation. Unexpected cleanup errors block launch. Per-run outputs and retained
 named volumes remain separate; reset never replays interrupted host writes.
 
+[compose-apps](../compose-apps) owns project steps, Dora runtime control and app preparation.
 Compose handles configuration and container launch; Bollard verifies ownership,
 readiness and cleanup. Dora starts before system apps, followed by adopted apps.
 Shutdown stops adopted apps, then system apps, then Dora.
@@ -23,9 +24,10 @@ configuration snapshots before reservation and startup.
 [Workflow modules](src/workflows/recorded_compose/workflow-modules.svg)
 
 ```rust,no_run
-# async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> workload_docker::compose::Result<()> {
+# async fn example(spec: workload_docker::workflows::recorded_compose::ComposeRun) -> compose_apps::compose::Result<()> {
 use std::rc::Rc;
-use workload_docker::{compose::DockerAdapter, workflows::recorded_compose::ComposeRunner};
+use compose_apps::compose::DockerAdapter;
+use workload_docker::workflows::recorded_compose::ComposeRunner;
 let docker = Rc::new(DockerAdapter::connect("/var/run/docker.sock").await?);
 let mut manager = ComposeRunner::new(docker);
 let report = manager.run(spec, async {

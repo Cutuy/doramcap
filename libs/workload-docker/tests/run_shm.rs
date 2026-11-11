@@ -1,8 +1,9 @@
 //! Complete recorded-workflow acceptance with real /dev/shm payloads.
 mod support;
+use compose_apps::compose::*;
 use serde_json::json;
 use std::{path::Path, rc::Rc};
-use workload_docker::{compose::*, workflows::recorded_compose::*};
+use workload_docker::workflows::recorded_compose::*;
 use workload_lifecycle::launch::HostShmAccess;
 
 async fn docker(args: &[&str]) -> std::process::Output {

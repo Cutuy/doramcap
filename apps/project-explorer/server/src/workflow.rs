@@ -3,6 +3,7 @@ use crate::{
     lifecycle::Token,
     registry::{ArtifactCollection, RecordingCount, Registration, ResultFormat},
 };
+use compose_apps::compose::DockerAdapter;
 use std::{
     fs::{self, DirBuilder},
     os::unix::fs::DirBuilderExt,
@@ -10,7 +11,6 @@ use std::{
     rc::Rc,
 };
 use tokio::sync::oneshot;
-use workload_docker::compose::DockerAdapter;
 use workload_docker::evidence::write_private_once;
 pub use workload_docker::workflows::compose_lifecycle::StopReport;
 use workload_docker::workflows::recorded_compose::{ComposeRun, ComposeRunner};
@@ -82,7 +82,7 @@ pub async fn run(
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Blocked as i32,
             id: format!("gal-{generation:032x}"), artifacts: metadata.join("docker"),
             filesystem: None, dora_apps, dataflow_file, recordings:vec![], repository_root: app.repository_root.clone(),
-            mcap_writers: workload_docker::workflows::recorded_compose::McapWriters {
+            mcap_writers: compose_apps::preparation::McapWriters {
                 services: app.mcap_services.clone(),
                 apps: Vec::new(),
                 directories: vec![results.clone()],

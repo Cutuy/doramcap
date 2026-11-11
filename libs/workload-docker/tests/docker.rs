@@ -1,15 +1,15 @@
 //! Explicitly opt-in real Engine validation. The harness builds unprivileged and
 //! elevates only this executable. Every scenario owns distinct named resources.
+use compose_apps::preparation::McapWriters;
 use docker_engine::overlay;
 mod support;
+use compose_apps::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
+use compose_apps::{compose::*, preparation};
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
-use workload_docker::workflows::experiment::{
-    RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime,
-};
 use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
-use workload_docker::{compose::*, workflows::recorded_compose::*};
+use workload_docker::workflows::recorded_compose::*;
 use workload_lifecycle::recording::Recording;
 
 fn step_id<S: Step>() -> &'static str {
@@ -1268,14 +1268,14 @@ async fn reset_probe(
             |_: &orchestrator::Event| {},
             None,
             |_| {
-                Err(workload_docker::compose::Error::Invalid(
+                Err(compose_apps::compose::Error::Invalid(
                     "reset-probe-complete".into(),
                 ))
             },
         )
         .await;
     match result {
-        Err(workload_docker::compose::Error::Invalid(message))
+        Err(compose_apps::compose::Error::Invalid(message))
             if message == "reset-probe-complete" =>
         {
             Ok(())
@@ -1459,7 +1459,9 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         // Act: inspect the same run while its retained volume still exists.
         let mut inspection = input;
         inspection.artifacts = root.join(format!("inspection-{index}"));
-        let inspected = preparation::resolve(&adapter, inspection).await.unwrap();
+        let inspected = preparation::resolve(&adapter, inspection.try_into().unwrap())
+            .await
+            .unwrap();
 
         // Assert
         assert_eq!(inspected.plan.name, projects[index]);
@@ -1524,7 +1526,7 @@ async fn selected_profile_starts_its_service() {
 
     // Act: inspect without selecting the profile.
     let id = format!("profile-off-{}", std::process::id());
-    let inspected = preparation::resolve(&adapter, input(id, vec![]))
+    let inspected = preparation::resolve(&adapter, input(id, vec![]).try_into().unwrap())
         .await
         .unwrap();
 
@@ -1534,9 +1536,12 @@ async fn selected_profile_starts_its_service() {
 
     // Act: review, then run the reviewed configuration with the profile selected.
     let id = format!("profile-review-{}", std::process::id());
-    let reviewed = preparation::resolve(&adapter, input(id, vec!["extra".into()]))
-        .await
-        .unwrap();
+    let reviewed = preparation::resolve(
+        &adapter,
+        input(id, vec!["extra".into()]).try_into().unwrap(),
+    )
+    .await
+    .unwrap();
     let id = format!("profile-on-{}", std::process::id());
     let mut runner = ComposeRunner::new(adapter.clone());
     let (ready, started) = tokio::sync::oneshot::channel();
@@ -2395,7 +2400,9 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
     );
 
     // Act
-    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+    let inspected = preparation::resolve(&adapter, spec.clone().try_into().unwrap())
+        .await
+        .unwrap();
 
     // Assert
     assert_eq!(
@@ -2484,11 +2491,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     );
     let executor = Rc::new_cyclic(|weak| {
         let mut executor = orchestrator::LocalExecutor::default();
-        workload_docker::workflows::steps::register(
-            &mut executor,
-            adapter.clone(),
-            Default::default(),
-        );
+        compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
         let backend = adapter.clone();
         let weak = weak.clone();
         executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
@@ -2499,13 +2502,17 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     });
 
     // Act
-    let inspected = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+    let inspected = preparation::resolve(&adapter, spec.clone().try_into().unwrap())
+        .await
+        .unwrap();
     let mut execution = spec.clone();
     execution.id = "prepared".into();
     execution.artifacts = root.path().join("execution");
     execution.system_apps = vec![app(&execution.artifacts)];
     let prepared = executor
-        .run::<preparation::PrepareRun>(execution)
+        .run::<preparation::PrepareRun>(
+            compose_apps::preparation::PrepareInput::try_from(execution).unwrap(),
+        )
         .await
         .unwrap()
         .into_value();
@@ -2530,7 +2537,9 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     changed.artifacts = root.path().join("changed");
     changed.system_apps = vec![app(&changed.artifacts)];
     changed.readiness_seconds += 1;
-    let changed = preparation::resolve(&adapter, changed).await.unwrap();
+    let changed = preparation::resolve(&adapter, changed.try_into().unwrap())
+        .await
+        .unwrap();
 
     // Assert
     assert_ne!(inspected.snapshot, changed.snapshot);
@@ -2543,7 +2552,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     missing.filesystem = Some(Default::default());
     missing.artifacts = root.path().join("missing-review");
     missing.system_apps = vec![app(&root.path().join("absent"))];
-    preparation::resolve(&adapter, missing.clone())
+    preparation::resolve(&adapter, missing.clone().try_into().unwrap())
         .await
         .unwrap();
 
@@ -2553,7 +2562,9 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
     // Act
     missing.artifacts = root.path().join("missing-preparation");
     executor
-        .run::<preparation::PrepareRun>(missing)
+        .run::<preparation::PrepareRun>(
+            compose_apps::preparation::PrepareInput::try_from(missing).unwrap(),
+        )
         .await
         .unwrap();
 
@@ -2615,11 +2626,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
     );
     let executor = Rc::new_cyclic(|weak| {
         let mut executor = orchestrator::LocalExecutor::default();
-        workload_docker::workflows::steps::register(
-            &mut executor,
-            adapter.clone(),
-            Default::default(),
-        );
+        compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
         let backend = adapter.clone();
         let weak = weak.clone();
         executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
@@ -2631,7 +2638,9 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
 
     // Act
     let prepared = executor
-        .run::<preparation::PrepareRun>(spec.clone())
+        .run::<preparation::PrepareRun>(
+            compose_apps::preparation::PrepareInput::try_from(spec.clone()).unwrap(),
+        )
         .await
         .unwrap()
         .into_value();
@@ -2750,7 +2759,9 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         .environment
         .insert("SETTING".into(), "conflict".into());
     let error = executor
-        .run::<preparation::PrepareRun>(conflict.clone())
+        .run::<preparation::PrepareRun>(
+            compose_apps::preparation::PrepareInput::try_from(conflict.clone()).unwrap(),
+        )
         .await
         .unwrap_err();
 
@@ -2776,7 +2787,9 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
 
         // Act
         let error = executor
-            .run::<preparation::PrepareRun>(reserved.clone())
+            .run::<preparation::PrepareRun>(
+                compose_apps::preparation::PrepareInput::try_from(reserved.clone()).unwrap(),
+            )
             .await
             .unwrap_err();
 
@@ -3092,7 +3105,9 @@ async fn shared_plan_resolves_writer_app_services() {
     let adapter = DockerAdapter::connect(socket).await.unwrap();
     // Act
     let spec = ComposeRun::from_plan(shared.clone(), input).unwrap();
-    let resolved = preparation::resolve(&adapter, spec.clone()).await.unwrap();
+    let resolved = preparation::resolve(&adapter, spec.clone().try_into().unwrap())
+        .await
+        .unwrap();
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&resolved.plan.manifest).unwrap()).unwrap();
     // Assert
@@ -3127,7 +3142,9 @@ async fn shared_plan_resolves_writer_app_services() {
     let mut execution = spec;
     execution.id = "shared-plan-execution".into();
     execution.artifacts = root.join("execution");
-    let prepared = preparation::resolve(&adapter, execution).await.unwrap();
+    let prepared = preparation::resolve(&adapter, execution.try_into().unwrap())
+        .await
+        .unwrap();
     assert_eq!(resolved.snapshot, prepared.snapshot);
     assert!(prepared.run.dora_runtime.is_none());
     std::fs::remove_dir_all(root).unwrap();

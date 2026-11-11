@@ -16,6 +16,10 @@ macro_rules! step {
             pub diagnostics: Diagnostics,
         }
         impl Step for $name {
+            const ID: Option<&'static str> = Some(concat!(
+                "workload_docker::compose::steps::",
+                stringify!($name)
+            ));
             type Input = $input;
             type Output = $output;
             async fn run(&mut self, $request: Self::Input) -> Result<Self::Output> {

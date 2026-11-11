@@ -15,7 +15,7 @@ use workload_lifecycle::{
 pub(crate) const MAX_GRAPH_BYTES: u64 = 2 * 1024 * 1024;
 pub(crate) const GRAPH_FILE: &str = "dataflow.yml";
 
-pub(crate) fn owner(repository: &Path) -> String {
+pub fn owner(repository: &Path) -> String {
     format!(
         "{}-dora",
         crate::compose::adapter::project_name("experiment", repository)

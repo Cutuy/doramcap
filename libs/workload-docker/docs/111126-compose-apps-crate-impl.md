@@ -1,6 +1,6 @@
 # Shared crate for apps as containers: implementation plan
 
-Created November 11, 2026. Status: design agreed; not started.
+Created November 11, 2026. Status: milestones 1–3 implemented; validation in progress.
 [Architecture](111126-compose-apps-crate.md).
 
 Create `libs/compose-apps` and move four pieces into it from `workload-docker`,
@@ -27,47 +27,54 @@ can start now.
 | Public names | Callers move to the new crate paths. No forwarding aliases. |
 | Dependencies | No new third-party crate. |
 
-Boundary rules to add in `scripts/ci/boundaries.json`: `compose-apps` must not
-depend on any `workload-*` crate or on `console-native`.
+Boundary rule to add in `scripts/ci/boundaries.json`. `compose-apps` depends on
+`workload-lifecycle`, which is shared code, so the rule names each forbidden
+crate.
+
+| `compose-apps` must not depend on | Reason |
+| --- | --- |
+| `workload-docker`, `workload-systemd`, `workload-supervisor`, `workload-holoscan` | The concrete workflow crates. |
+| `console-native` | Console's backend sits above it. |
+| `mcap`, `storage-persistence`, `mcap-recorder` | `workload-docker` is held to these today, and the moved code keeps that limit. |
 
 ## Milestone 1: project steps
 
 **Work items**
 
-- [ ] Create `libs/compose-apps` with its boundary rule.
-- [ ] Move `src/compose/` and its protobuf files. Update callers in `workload-docker` and Console's backend.
+- [x] Create `libs/compose-apps` with its boundary rule.
+- [x] Move `src/compose/` and its protobuf files. Update callers in `workload-docker` and Console's backend.
 
 **Validation**
 
-- [ ] Existing project-step and adapter tests pass from the new crate.
+- [x] Existing project-step and adapter tests pass from the new crate.
 - [ ] Boundary check, formatting and Clippy.
 
 ## Milestone 2: Dora in containers
 
 **Work items**
 
-- [ ] Move the Dora runtime, graph registration and wiring modules.
-- [ ] Split step registration so the workflow's own steps register in `workload-docker`.
+- [x] Move the Dora runtime, graph registration and wiring modules.
+- [x] Split step registration so the workflow's own steps register in `workload-docker`.
 
 **Validation**
 
-- [ ] Existing Dora wiring and runtime tests pass from the new crate.
+- [x] Existing Dora wiring and runtime tests pass from the new crate.
 - [ ] A Compose run with Dora apps registers and removes its graph as before.
 
 ## Milestone 3: app preparation
 
 **Work items**
 
-- [ ] Give preparation its own input: run identity, Dora apps, system apps, an
+- [x] Give preparation its own input: run identity, Dora apps, system apps, an
   optional extra group, shared-memory policy, recording writers and budgets.
-- [ ] Move `resolve`, the model and snapshot modules and cgroup placement.
-- [ ] The Compose workflow builds that input from `ComposeRun`.
+- [x] Move `resolve`, the model and snapshot modules and cgroup placement.
+- [x] The Compose workflow builds that input from `ComposeRun`.
 
 **Validation**
 
-- [ ] Snapshot fingerprints for the existing fixtures are unchanged.
+- [x] Snapshot fingerprints for the existing fixtures are unchanged.
 - [ ] Preparation with no extra group yields a project of Dora and system apps only.
-- [ ] Cross-group checks still reject a system app that depends on a user service.
+- [x] Cross-group checks still reject a system app that depends on a user service.
 
 ## Milestone 4: system apps start, watch and stop
 
@@ -98,3 +105,11 @@ Waits for the capture move in [Cutuy/doramcap#316](https://github.com/Cutuy/dora
 
 Applicable rules: I-03, I-04, I-05, I-07 and I-09 in the
 [implementation guide](../../../docs/impl-guide.md).
+
+## Validation record
+
+- Local x86_64: 84 unit/protobuf contract tests passed; all targets compile for
+  `compose-apps`, `workload-docker`, Console, Project Explorer and Orchestrator Demo.
+- Snapshot reference hashes captured from `431d63bd` match after the move.
+- Clippy, dependency boundaries and native Docker validation are pending.
+- Full local CI and ARM64 remain scheduled for milestone 4's integration check.

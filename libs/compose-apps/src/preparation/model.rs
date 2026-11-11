@@ -1,10 +1,7 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
 use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
-use crate::workflows::{
-    dora,
-    recorded_compose::{MAX_STOP_SECONDS, MIN_STOP_SECONDS},
-};
+use crate::dora;
 use dora_core::descriptor::Descriptor;
 use std::collections::HashSet;
 
@@ -71,7 +68,7 @@ pub(super) fn configure_system_cgroup(
 }
 
 /// Reserved system service keeping the run's /dev/shm available until final shutdown.
-pub(crate) const SHM_SERVICE: &str = "doramcap-shm";
+pub const SHM_SERVICE: &str = "doramcap-shm";
 
 /// Apply the run's IPC default, preserving explicit IPC and complete private shm mounts.
 /// BLOCKED requires the configured placeholder when a service uses the run default.
@@ -408,20 +405,21 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
         .collect())
 }
 /// Validate run identity, paths, app keys and budgets before creating artifacts.
-pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
-    workload_lifecycle::plan::validate_host_shm_access(spec.host_shm_access).map_err(invalid)?;
-    validate_name(&spec.id)?;
-    if !spec.repository_root.is_absolute() {
+pub(super) fn validate(spec: &PrepareInput) -> Result<()> {
+    workload_lifecycle::plan::validate_host_shm_access(spec.run.host_shm_access)
+        .map_err(invalid)?;
+    validate_name(&spec.run.id)?;
+    if !Path::new(&spec.run.repository_root).is_absolute() {
         return Err(invalid("repository root must be absolute"));
     }
-    super::super::validate_budgets(spec.readiness_seconds, spec.stop_seconds)?;
-    if (spec.projects.is_empty() && spec.system_apps.is_empty() && spec.dora_apps.is_empty())
-        || std::iter::once(&spec.artifacts).any(|path| !path.is_absolute())
+    validate_budgets(spec.run.readiness_seconds, spec.run.stop_seconds)?;
+    if (spec.extra_apps.is_empty() && spec.system_apps.is_empty() && spec.dora_apps.is_empty())
+        || std::iter::once(&spec.run.artifacts).any(|path| !Path::new(path).is_absolute())
     {
         return Err(invalid("require absolute artifact paths and app inputs"));
     }
-    if !spec.dataflow_file.is_empty()
-        && (spec.dora_apps.is_empty() || !Path::new(&spec.dataflow_file).is_absolute())
+    if !spec.run.dataflow_file.is_empty()
+        && (spec.dora_apps.is_empty() || !Path::new(&spec.run.dataflow_file).is_absolute())
     {
         return Err(invalid(
             "dataflow_file needs Dora apps and an absolute path",
@@ -432,7 +430,7 @@ pub(super) fn validate(spec: &ComposeRun) -> Result<()> {
         .dora_apps
         .iter()
         .chain(&spec.system_apps)
-        .chain(&spec.projects)
+        .chain(&spec.extra_apps)
     {
         validate_name(&p.key)?;
         if !Path::new(&p.directory).is_absolute() || !keys.insert(&p.key) {

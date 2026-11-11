@@ -19,10 +19,7 @@ const MAX_COMPOSE_OUTPUT_BYTES: usize = 16 * 1024 * 1024;
 /// Largest `/proc/net/tcp*` table parsed while verifying a Dora listener.
 const MAX_LISTENER_TABLE_BYTES: usize = 4 * 1024 * 1024;
 
-pub(crate) async fn capture(
-    reader: impl AsyncRead + Unpin,
-    stream: &'static str,
-) -> Result<String> {
+pub async fn capture(reader: impl AsyncRead + Unpin, stream: &'static str) -> Result<String> {
     let mut bytes = Vec::new();
     reader
         .take(MAX_COMPOSE_OUTPUT_BYTES as u64 + 1)
@@ -40,7 +37,7 @@ pub(crate) async fn capture(
 /// Execute Compose with explicit environment, bounded output and a deadline.
 /// Logs argv, cwd and outcome to stderr; environment maps and captured output are omitted.
 /// Errors retain diagnostics; cancellation kills the CLI group and leaves Engine cleanup to callers.
-pub(crate) async fn compose(
+pub async fn compose(
     socket: &str,
     directory: &Path,
     environment: &BTreeMap<String, String>,

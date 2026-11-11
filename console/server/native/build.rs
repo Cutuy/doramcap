@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .file_descriptor_set_path(
             std::path::PathBuf::from(std::env::var("OUT_DIR")?).join("console.bin"),
         )
-        .extern_path(".doramcap.compose.v1", "::workload_docker::compose")
+        .extern_path(".doramcap.compose.v1", "::compose_apps::compose")
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
         .extern_path(".doramcap.systemd_plan.v1", "::workload_systemd")
         .extern_path(
@@ -21,6 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &[
                 "../../proto",
                 "../../../libs/workload-docker/proto",
+                "../../../libs/compose-apps/proto",
+                "../../../libs/workload-lifecycle/proto",
                 "../../../libs/workload-lifecycle/proto",
                 "../../../libs/workload-systemd/proto",
                 "../../../libs/telemetry/workflow-protocol/proto",
@@ -33,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=../../proto/live.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-lifecycle/proto/launch.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-systemd/proto/systemd_plan.proto");
-    println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/compose.proto");
+    println!("cargo:rerun-if-changed=../../../libs/compose-apps/proto/compose.proto");
     println!("cargo:rerun-if-changed=../../../libs/workload-docker/proto/compose_plan.proto");
     println!(
         "cargo:rerun-if-changed=../../../libs/telemetry/workflow-protocol/proto/workflow.proto"

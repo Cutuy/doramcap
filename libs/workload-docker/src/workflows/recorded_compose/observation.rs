@@ -1,8 +1,8 @@
 //! Passive host snapshots and a bounded, cancellation-owned Docker event stream.
-use crate::compose::{
+use bollard::{models::EventMessage, query_parameters::ListContainersOptions};
+use compose_apps::compose::{
     DockerAdapter, Result, StoppingService, adapter::stop_timeout, command, error::invalid,
 };
-use bollard::{models::EventMessage, query_parameters::ListContainersOptions};
 use futures_util::StreamExt;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -269,7 +269,7 @@ async fn record_events(
                 }
             }
             event = stream.next() => {
-                let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| crate::compose::error::engine("Docker events", e))?;
+                let event = event.ok_or_else(|| invalid("Docker events stream ended unexpectedly"))?.map_err(|e| compose_apps::compose::error::engine("Docker events", e))?;
                 notify_state_change(&changed, &event);
                 track_stop(&docker, &mut waiting, &stopping, &event).await;
                 let mut bytes = serde_json::to_vec(&event)?; bytes.push(b'\n');

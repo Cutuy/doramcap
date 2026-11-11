@@ -1,8 +1,8 @@
 //! Shared Compose messages across protobuf transports and local step execution.
+use compose_apps::compose::*;
 use orchestrator::{LocalExecutor, Step};
 use prost::Message;
 use prost_reflect::{DescriptorPool, DynamicMessage};
-use workload_docker::compose::*;
 
 struct InspectFixture;
 impl Step for InspectFixture {

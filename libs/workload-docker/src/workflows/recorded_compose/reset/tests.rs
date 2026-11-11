@@ -1,5 +1,4 @@
 use super::*;
-use crate::compose::adapter::tests::test_engine_status;
 
 // Descriptor inheritance is process-wide; unrelated parallel tests may fork.
 fn run_in_separate_test_process() -> bool {
@@ -100,7 +99,7 @@ async fn reset_is_the_same_operation_for_absent_dirty_partial_and_clean_workspac
             }
         }
         let (adapter, server) =
-            test_engine_status(root.path(), [empty_scope(), empty_scope()].concat());
+            test_engine_status(root.path(), [empty_scope(), empty_scope()].concat()).await;
         let mut reset = ResetExperiment {
             adapter: Rc::new(adapter),
             controller,
@@ -140,7 +139,8 @@ async fn engine_inspection_failure_preserves_upper_data() {
                 serde_json::json!({"invalid":"container list"}),
             ),
         ],
-    );
+    )
+    .await;
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
         controller,
@@ -156,7 +156,7 @@ async fn engine_inspection_failure_preserves_upper_data() {
 
 #[tokio::test]
 async fn duplicate_ipc_owners_preserve_overlay_upper_data() {
-    use crate::compose::adapter::{CONTROLLER_LABEL, EXPERIMENT_OWNER_LABEL};
+    use compose_apps::compose::adapter::{CONTROLLER_LABEL, EXPERIMENT_OWNER_LABEL};
     use serde_json::json;
     // Arrange
     let root = tempfile::tempdir().unwrap();
@@ -184,7 +184,8 @@ async fn duplicate_ipc_owners_preserve_overlay_upper_data() {
             ("/containers/first-owner/json", 200, stopped.clone()),
             ("/containers/second-owner/json", 200, stopped),
         ],
-    );
+    )
+    .await;
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
         controller,
@@ -216,7 +217,8 @@ async fn a_foreign_reservation_for_this_repository_blocks_reset() {
             200,
             serde_json::json!({"Config":{"Labels":{}}}),
         )],
-    );
+    )
+    .await;
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
         controller,
@@ -232,7 +234,7 @@ async fn a_foreign_reservation_for_this_repository_blocks_reset() {
 
 #[tokio::test]
 async fn an_unverified_writer_blocks_workspace_deletion() {
-    use crate::compose::adapter::CONTROLLER_LABEL;
+    use compose_apps::compose::adapter::CONTROLLER_LABEL;
     use serde_json::json;
     // Arrange
     let root = tempfile::tempdir().unwrap();
@@ -255,7 +257,8 @@ async fn an_unverified_writer_blocks_workspace_deletion() {
                 json!({"State":{"Pid":123,"Running":true,"Status":"running"}}),
             ),
         ],
-    );
+    )
+    .await;
     let mut reset = ResetExperiment {
         adapter: Rc::new(adapter),
         controller,
@@ -350,4 +353,44 @@ async fn discard_rejects_linked_upper_without_deleting_the_link_target() {
     // Assert
     assert!(result.is_err());
     assert_eq!(std::fs::read(outside.join("data")).unwrap(), b"keep");
+}
+
+async fn test_engine_status(
+    root: &std::path::Path,
+    responses: Vec<(&'static str, u16, serde_json::Value)>,
+) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let socket = root.join("engine.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let server = tokio::spawn(async move {
+        for (path, status, response) in
+            std::iter::once(("/version", 200, serde_json::json!({"ApiVersion":"1.54"})))
+                .chain(responses)
+        {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut stream = BufReader::new(stream);
+            let mut line = String::new();
+            stream.read_line(&mut line).await.unwrap();
+            assert!(line.contains(path), "unexpected Engine request: {line}");
+            loop {
+                line.clear();
+                assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let body = if status == 204 {
+                String::new()
+            } else {
+                response.to_string()
+            };
+            stream.get_mut().write_all(format!(
+                "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
+            ).as_bytes()).await.unwrap();
+        }
+    });
+    let adapter = DockerAdapter::connect(socket.to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    (adapter, server)
 }

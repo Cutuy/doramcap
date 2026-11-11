@@ -3,10 +3,10 @@ use super::{
     execution,
     finalization::{FinalizeInput, FinalizeRun, FinalizedRun},
     observation::EventCapture,
-    preparation::PreparedRun,
     *,
 };
-use crate::compose::{ComposeProjectState, ServiceExit};
+use compose_apps::compose::{ComposeProjectState, ServiceExit};
+use compose_apps::preparation::{self, PreparedRun};
 use orchestrator::{LocalExecutor, Output};
 use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
@@ -19,7 +19,7 @@ pub(super) struct ComposeRunning {
     pub prepared: Output<PreparedRun>,
     pub plan: ResolvedComposeProject,
     pub overlays: Option<Output<PreparedOverlays>>,
-    pub resources: super::super::experiment::SharedExperiment,
+    pub resources: compose_apps::experiment::SharedExperiment,
     pub events: EventCapture,
     pub signals: RunSignals,
     pub diagnostics: Diagnostics,
@@ -186,7 +186,7 @@ impl ComposeRunning {
         service_exits.extend(systems.exits);
         let runtime_shutdown = self
             .executor
-            .run::<super::super::experiment::StopDoraRuntime>(())
+            .run::<compose_apps::experiment::StopDoraRuntime>(())
             .await;
         let runtime_stopped = runtime_shutdown
             .as_ref()
