@@ -53,6 +53,7 @@ input[type=checkbox]:disabled{opacity:.5;cursor:not-allowed}.checkbox:has(input:
 
 .file-changes { margin-top: 20px; }
 .file-change-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 1rem; }
+.file-change-list { max-height: 32rem; overflow: auto; }
 .file-change-list article { border-top: 1px solid var(--console-line); padding: .8rem 0; }
 .file-change-list p { margin: .35rem 0; }
 .file-changes .panel-heading { flex-wrap: wrap; gap: .8rem; }

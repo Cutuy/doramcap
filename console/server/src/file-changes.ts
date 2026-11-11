@@ -6,6 +6,9 @@ import { doramcap } from './generated/console.js';
 import { displayPath } from './generated/transport.js';
 
 export const filesystem = doramcap.filesystem.v1;
+const CATEGORIES = [filesystem.StorageCategory.HOST_BIND, filesystem.StorageCategory.CONTAINER_LAYER, filesystem.StorageCategory.NAMED_VOLUME];
+const CHANGE_KINDS = [filesystem.ChangeKind.ADDED, filesystem.ChangeKind.MODIFIED, filesystem.ChangeKind.DELETED];
+const CHECKPOINT = 'filesystem/report.pb';
 type Reference = doramcap.filesystem.v1.IFileChangeReference;
 type Summary = doramcap.filesystem.v1.ICategorySummary;
 type View = typeof wire.FileChanges.prototype;
@@ -41,7 +44,7 @@ async function report(runRoot: string, reference: Reference, signal?: AbortSigna
   const seen = new Set<number>();
   for (const [index, category] of saved.categories.entries()) {
     const summary = category.summary;
-    if (!summary || !summary.counts || ![1, 2, 3].includes(summary.category!) || seen.has(summary.category!))
+    if (!summary || !summary.counts || !CATEGORIES.includes(summary.category!) || seen.has(summary.category!))
       throw new Error('Invalid file-change category');
     seen.add(summary.category!);
     if (integer(summary.coverageNoteCount) !== BigInt((category.coverageNotes ?? []).length) || !Buffer.from(filesystem.CategorySummary.encode(summary).finish()).equals(
@@ -70,7 +73,7 @@ async function* changes(source: ReadStream) {
         if (offset + prefix === pending.length || pending.length - offset - prefix - 1 < length) break;
         const start = offset + prefix + 1;
         const row = filesystem.FileChange.decode(pending.subarray(start, start + length));
-        if (![1, 2, 3].includes(row.category) || ![1, 2, 3].includes(row.kind))
+        if (!CATEGORIES.includes(row.category) || !CHANGE_KINDS.includes(row.kind))
           throw new Error('Invalid file-change record');
         yield row;
         offset = start + length;
@@ -101,8 +104,8 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
   if (!reference && error) {
     // Later native report writes can fail after capture has already been published.
     try {
-      const saved = await checkpoint(runRoot, 'filesystem/report.pb');
-      reference = { checkpoint: 'filesystem/report.pb', categories: saved.categories.map(category => category.summary!) };
+      const saved = await checkpoint(runRoot, CHECKPOINT);
+      reference = { checkpoint: CHECKPOINT, categories: saved.categories.map(category => category.summary!) };
     } catch {
       return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: browserError(error) });
     }

@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { mkdtemp, readFile, rm, symlink, writeFile, mkdir } from 'node:fs/promises';
-import { closeSync, fstatSync } from 'node:fs';
+import { fstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
