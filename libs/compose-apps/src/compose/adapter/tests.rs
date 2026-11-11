@@ -644,3 +644,81 @@ files { source: "settings.pbtxt" target: "/config/settings.pbtxt" }"#;
     assert_ne!(first.input_hashes, second.input_hashes);
     server.await.unwrap();
 }
+
+#[tokio::test]
+async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
+    for logging in [
+        None,
+        Some(json!({"driver":"local", "options":{"max-size":"5m"}})),
+        Some(json!({"driver":"none"})),
+        Some(json!({"driver":"journald", "options":{"tag":"project-tag"}})),
+        Some(json!({"options":{"max-size":"10m"}})),
+        Some(json!({})),
+    ] {
+        // Arrange: Compose renders a real source file; Engine supplies only image/resource facts.
+        let root = tempfile::tempdir().unwrap();
+        let mut service = json!({"image":"example:local", "network_mode":"none"});
+        if let Some(logging) = &logging {
+            service["logging"] = logging.clone();
+        }
+        let source = serde_json::to_vec(&json!({"services":{"worker":service}})).unwrap();
+        let path = root.path().join("compose.yaml");
+        std::fs::write(&path, &source).unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+                ("/containers/json", json!([])),
+                ("/networks", json!([])),
+                ("/volumes", json!({"Volumes":[]})),
+            ],
+        );
+
+        // Act: freeze the same manifest used by inspection and launch.
+        let plan = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await
+            .unwrap();
+        let bytes = std::fs::read(&plan.manifest).unwrap();
+        let model: Value = serde_json::from_slice(&bytes).unwrap();
+        let resolution: Value = serde_json::from_slice(
+            &std::fs::read(root.path().join("workload.resolution.json")).unwrap(),
+        )
+        .unwrap();
+        let changes: Vec<_> = resolution["policy_changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|change| change["field"] == "logging")
+            .collect();
+
+        // Assert: native logging survives verbatim and only the absent setting gets a default.
+        assert_eq!(
+            model["services"]["worker"]["logging"],
+            logging
+                .clone()
+                .unwrap_or_else(|| json!({"driver":"journald"}))
+        );
+        assert_eq!(std::fs::read(path).unwrap(), source);
+        assert_eq!(plan.sha256, digest(&bytes));
+        if logging.is_some() {
+            assert!(changes.is_empty());
+            assert!(
+                plan.diagnostics
+                    .iter()
+                    .any(|message| message == "worker: logging configured by project; preserved")
+            );
+        } else {
+            assert_eq!(changes.len(), 1);
+            assert_eq!(changes[0]["original"], Value::Null);
+            assert_eq!(changes[0]["effective"], json!({"driver":"journald"}));
+        }
+        server.await.unwrap();
+    }
+}

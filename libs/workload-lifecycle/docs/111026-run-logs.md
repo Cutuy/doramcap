@@ -1,28 +1,30 @@
 # Application logs for a run
 
-Created November 10, 2026. Updated November 11, 2026. Log dump design agreed; implementation not started.
+Created November 10, 2026. Updated November 11, 2026. Compose journal driver implemented in #314; log dump deferred until #316 milestone 4.
 
-Console does not keep application output with a run today. Every workflow sends
-output to the host journal, and Console dumps each run's output into the run's
-files. Keeping those files is then handled with the run's other files, in
-[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
+Console does not keep application output with a run today. This PR sends Compose
+output to the host journal by default. A later change will dump each run's output
+into the run's files after
+[Cutuy/doramcap#316 milestone 4](https://github.com/Cutuy/doramcap/pull/316) provides
+keep-with-the-run storage.
 
 ## Today
 
 | Workflow | Where application output goes | After the run | What Console reads |
 | --- | --- | --- | --- |
 | systemd | The host journal, by systemd's default. | Stays in the journal under the unit's name while the host keeps it. | Nothing. A unit's exit reports result, exit code, CPU and memory. |
-| Compose | Docker's per-container log. | Deleted when Console removes the container. | The last 20 lines of a failed container, for the error message. |
+| Compose | The host journal by default; explicit project logging is preserved. | Journal entries survive container removal while the host keeps them. | The last 20 lines of a failed container through Docker’s logs API, for the error message. |
 | Holoscan (planned) | Agreed: the host journal. | Stays in the journal. | The last lines of a failed container. |
 
 ## Agreed direction
 
 - Application output from every workflow goes to the host journal.
 - Containers use Docker's journal log driver. Holoscan sets it as a launch option.
-  Compose would set it in the manifest Console already rewrites.
-- The user's choice wins. A service or project that configures its own log driver
-  keeps it. Review shows that the log is set by the project, and Console collects
-  nothing for that container.
+  Compose sets it in the frozen manifest shared by inspection and launch.
+- The user's choice wins. An explicit `logging` block stays intact, including its
+  options, an options-only block or an empty block. Those services retain Docker’s
+  native behavior. Resolution diagnostics identify project-configured logging.
+  The later log dump will skip containers using another driver.
 - Console's per-container setting takes precedence over a host-wide Docker default.
 - An application that writes its own log files is unaffected. Those files appear
   in the file-change report when they land in a captured folder.
@@ -31,15 +33,18 @@ files. Keeping those files is then handled with the run's other files, in
 
 | Item | Description |
 | --- | --- |
-| Compose through the journal | Set the journal log driver for services without their own logging. |
-| Log dump | At the end of a run, write each program's full output from the journal into a run-owned output folder, one file per unit or container. |
+| Compose through the journal | Implemented in #314: set `journald` for services without a `logging` block; record the default in resolution policy changes. |
+| Log dump | Deferred until #316 milestone 4: write each program's journal output into a run-owned output folder at the end of a run, one file per unit or container. |
 | Web app | Show the dumped logs with the run's other files. |
 
-The dump is a set of ordinary run files. The file-change report lists it and the
-run folder keeps it, so a run's log no longer depends on how long the host keeps
-its journal. Console keeps the full output and selects no snippets.
+The planned dump will be a set of ordinary run files. The file-change report will
+list it and the run folder will keep it, so a run's log will no longer depend on
+host journal retention. Console will keep the full output and select no snippets.
 
-## Log dump
+## Later log dump
+
+Implementation depends on #316 milestone 4. The decisions below describe the
+agreed follow-up.
 
 At the end of a run, after every program has stopped, Console writes each
 program's output from the journal into the run folder.

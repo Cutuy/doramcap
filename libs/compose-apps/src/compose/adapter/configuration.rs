@@ -11,6 +11,9 @@ use crate::compose::{
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
+/// Docker driver used when a service leaves logging unspecified.
+const DEFAULT_LOG_DRIVER: &str = "journald";
+
 /// Rendered Compose configuration and the inputs used to produce it.
 pub(crate) struct NormalizedCompose {
     pub(crate) model: Value,
@@ -303,6 +306,16 @@ impl ComposeConfiguration<'_> {
             let object = service
                 .as_object_mut()
                 .ok_or_else(|| invalid("invalid resolved service"))?;
+            if object.contains_key("logging") {
+                diagnostics.push(format!(
+                    "{service_name}: logging configured by project; preserved"
+                ));
+            } else {
+                let logging = json!({"driver": DEFAULT_LOG_DRIVER});
+                policy_changes.push(json!({"service":service_name,"field":"logging",
+                    "original":null,"effective":logging,"reason":"application output goes to the host journal"}));
+                object.insert("logging".into(), logging);
+            }
             object.remove("build");
             object.remove("profiles");
             object.remove("pull_policy");
