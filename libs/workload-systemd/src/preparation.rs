@@ -492,6 +492,15 @@ fn normalize(run: &mut RunPlan, plan: &mut SystemdPlan, root: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn older_preparation_json_remains_readable() {
+        // Arrange / Act
+        let prepared: crate::PreparedRun =
+            serde_json::from_str(r#"{"run":null,"plan":null,"snapshot":null}"#).unwrap();
+        // Assert
+        assert!(prepared.dataflow_sha256.is_empty());
+    }
+
     use super::*;
     use crate::{Bind, Program};
     use std::sync::atomic::{AtomicU64, Ordering};
