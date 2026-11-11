@@ -439,15 +439,71 @@ async fn silent_handshake_is_deadline_bounded() {
 }
 
 #[tokio::test]
-async fn incompatible_version_is_rejected_before_control_requests() {
+async fn different_versions_are_rejected_before_control_requests() {
+    let current = protocol::current_crate_version();
+    let mut major = current.clone();
+    major.major += 1;
+    let mut minor = current.clone();
+    minor.minor += 1;
+    let mut patch = current.clone();
+    patch.patch += 1;
+    let mut prerelease = current.clone();
+    prerelease.pre = "other".parse().unwrap();
+    let mut build = current.clone();
+    build.build = "other".parse().unwrap();
+    for version in [major, minor, patch, prerelease, build] {
+        // Arrange
+        let (listener, address) = listener().await;
+        let peer = tokio::spawn(async move {
+            let mut peer = accept(&listener).await;
+            let (request, control) = receive(&mut peer).await;
+            assert!(matches!(control, ControlRequest::Hello { dora_version }
+                if dora_version == protocol::current_crate_version()));
+            reply(
+                &mut peer,
+                request,
+                ControlRequestReply::HelloOk {
+                    dora_version: version,
+                },
+            )
+            .await;
+            assert!(matches!(
+                peer.next().await,
+                None | Some(Err(_)) | Some(Ok(Message::Close(_)))
+            ));
+        });
+        let mut client = DoraCoordinatorClient::new(address, None);
+        // Act
+        let result = client.daemon_connected(deadline()).await;
+        // Assert
+        assert!(
+            matches!(result, Err(Error::Protocol(message)) if message.contains("version mismatch"))
+        );
+        peer.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn reconnect_rejects_a_different_version_before_start() {
     // Arrange
     let (listener, address) = listener().await;
     let peer = tokio::spawn(async move {
+        let mut first = accept(&listener).await;
+        hello(&mut first).await;
+        let (request, control) = receive(&mut first).await;
+        assert!(matches!(control, ControlRequest::DaemonConnected));
+        reply(
+            &mut first,
+            request,
+            ControlRequestReply::DaemonConnected(true),
+        )
+        .await;
+        drop(first);
         let mut peer = accept(&listener).await;
         let (request, control) = receive(&mut peer).await;
         assert!(matches!(control, ControlRequest::Hello { .. }));
         let mut version = protocol::current_crate_version();
-        version.major += 1;
+        version.patch += 1;
         reply(
             &mut peer,
             request,
@@ -456,11 +512,16 @@ async fn incompatible_version_is_rejected_before_control_requests() {
             },
         )
         .await;
-        let _ = peer.next().await;
+        assert!(matches!(
+            peer.next().await,
+            None | Some(Err(_)) | Some(Ok(Message::Close(_)))
+        ));
     });
     let mut client = DoraCoordinatorClient::new(address, None);
     // Act
-    let result = client.daemon_connected(deadline()).await;
+    assert!(client.daemon_connected(deadline()).await.unwrap());
+    client.disconnect();
+    let result = client.start_graph(start(), deadline()).await;
     // Assert
     assert!(
         matches!(result, Err(Error::Protocol(message)) if message.contains("version mismatch"))

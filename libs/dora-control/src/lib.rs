@@ -79,7 +79,8 @@ impl DoraCoordinatorClient {
         self.connection = None;
     }
 
-    /// Connect and negotiate Hello before deadline; reuses an established connection.
+    /// Connect and exchange Hello before deadline; reuses an established connection.
+    /// Every new connection requires the compiled dora-message version, including reconnects.
     pub async fn connect(&mut self, deadline: Instant) -> Result<()> {
         if self.connection.is_some() {
             return Ok(());
@@ -96,8 +97,12 @@ impl DoraCoordinatorClient {
             let (mut socket, _) = tokio_tungstenite::connect_async(request).await?;
             match exchange(&mut socket, ControlRequest::hello()).await? {
                 ControlRequestReply::HelloOk { dora_version } => {
-                    dora_message::cli_to_coordinator::check_cli_version(&dora_version)
-                        .map_err(Error::Protocol)?;
+                    let expected = protocol::current_crate_version();
+                    if dora_version != expected {
+                        return Err(Error::Protocol(format!(
+                            "dora version mismatch: client v{expected}, coordinator v{dora_version}; use the matching Dora runtime"
+                        )));
+                    }
                 }
                 other => return Err(unexpected("Hello", other)),
             }

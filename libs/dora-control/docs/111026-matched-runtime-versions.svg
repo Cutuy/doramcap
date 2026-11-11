@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="280" viewBox="0 0 940 280" role="img" aria-labelledby="title">
+  <title id="title">Resolved Dora version shared by the client and released runtime</title>
+  <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M0 0L8 4L0 8" fill="#475569"/></marker></defs>
+  <rect width="940" height="280" fill="#fff"/>
+  <g fill="#f8fafc" stroke="#64748b" stroke-width="1.5">
+    <rect x="25" y="103" width="170" height="64" rx="8"/>
+    <rect x="340" y="25" width="180" height="64" rx="8"/>
+    <rect x="340" y="191" width="180" height="64" rx="8"/>
+    <rect x="735" y="25" width="180" height="64" rx="8"/>
+    <rect x="735" y="191" width="180" height="64" rx="8"/>
+  </g>
+  <g fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arrow)">
+    <path d="M195 120H245V57H340"/>
+    <path d="M195 150H245V223H340"/>
+    <path d="M520 57H735"/>
+    <path d="M520 223H735"/>
+    <path d="M825 89V191" marker-start="url(#arrow)"/>
+  </g>
+  <g font-family="sans-serif" font-size="17" text-anchor="middle" fill="#0f172a">
+    <text x="110" y="142">Cargo.lock</text>
+    <text x="430" y="64">Client build</text>
+    <text x="430" y="230">Release download</text>
+    <text x="825" y="64">Client</text>
+    <text x="825" y="230">Coordinator</text>
+  </g>
+  <g font-family="sans-serif" font-size="14" text-anchor="middle" fill="#334155">
+    <text x="265" y="43">Protocol version</text>
+    <text x="266" y="246">Release version</text>
+    <text x="626" y="46">Executable</text>
+    <text x="626" y="212">Verified binary</text>
+    <text x="754" y="135">Hello versions</text>
+    <text x="754" y="155">must match</text>
+  </g>
+</svg>

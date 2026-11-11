@@ -31,7 +31,7 @@ impl Drop for Runtime {
 }
 
 #[tokio::test]
-#[ignore = "requires DORAMCAP_TEST_DORA to name a Dora 1.1.0 executable"]
+#[ignore = "requires DORAMCAP_TEST_DORA to name the matching Dora executable"]
 async fn real_coordinator_registers_inspects_and_stops_a_dynamic_graph() {
     // Arrange
     let executable =

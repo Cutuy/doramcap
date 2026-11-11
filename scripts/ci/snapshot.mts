@@ -8,7 +8,7 @@ import { execaSync } from 'execa';
 import { minimatch } from 'minimatch';
 import { PREPARE_PATH, RUNNER_PATH, type SnapshotManifest } from './prepare-build.mts';
 const included = ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.node-version', 'libs/**', 'apps/**', 'console/**',
-  'scripts/ci/{check-boundaries,test-boundaries,test-node,test-mcap,prepare-build,test-prepare-build,snapshot,test-snapshot,hash-file,worker-process,worker-ssh,install-node,test-worker-runtime}.mts',
+  'scripts/ci/{check-boundaries,test-boundaries,dora-release,test-dora-release,test-node,test-mcap,prepare-build,test-prepare-build,snapshot,test-snapshot,hash-file,worker-process,worker-ssh,install-node,test-worker-runtime}.mts',
   'scripts/ci/{wsl2,macos-linux}/**/*.mts',
   'scripts/ci/{boundaries.json,package.json,package-lock.json,tsconfig.json,macos-linux/artifacts.txt}'];
 const hash = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');

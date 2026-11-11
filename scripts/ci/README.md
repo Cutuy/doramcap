@@ -36,3 +36,12 @@ npm --prefix scripts/ci run typecheck
 ```
 
 See [AGENTS.md](../../AGENTS.md#testing-and-ci) for validation policy.
+
+## Dora release artifact
+
+`node scripts/ci/dora-release.mts --arch amd64 --output /path/to/dora` downloads the
+runtime matching the client's locked protocol version. Use `arm64` on that native
+host. The tool verifies the official release digest and executable version; missing
+assets or mismatched versions fail. The Console release runs native client
+qualification against this artifact before publishing images. See the
+[version contract](../../libs/dora-control/docs/111026-matched-runtime-versions.md).

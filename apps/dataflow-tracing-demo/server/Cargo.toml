@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 step-provenance = { path = "../../../libs/step-provenance" }
 activity-tracing = { path = "../../../libs/activity-tracing" }
-dora-node-api = { version = "=1.1.0", default-features = false }
+dora-node-api.workspace = true
 prost = "0.14"
 prost-reflect = { version = "0.16", features = ["text-format"] }
 tracing = "0.1"
