@@ -155,7 +155,12 @@ async fn compose_journald_preserves_failure_output_and_logs_after_removal() {
 }
 
 /// Count numbered messages incrementally, retaining identities and detecting duplicates.
-fn load_messages(container: &str, prefix: &str, emitted: usize) -> Value {
+fn load_messages(
+    container: &str,
+    prefix: &str,
+    emitted: usize,
+    after_exit: Option<usize>,
+) -> Value {
     use std::{collections::BTreeSet, io::BufRead, process::Stdio};
     let mut child = std::process::Command::new("journalctl")
         .args([
@@ -196,14 +201,17 @@ fn load_messages(container: &str, prefix: &str, emitted: usize) -> Value {
         writers.insert(entry["_PID"].as_str().unwrap_or("unknown").to_owned());
     }
     assert!(child.wait().unwrap().success(), "journal traversal failed");
-    json!({
+    let mut report = json!({
         "emitted_per_stream": emitted,
         "stdout_received": stdout.len(), "stderr_received": stderr.len(),
         "stdout_missing": emitted - stdout.len(), "stderr_missing": emitted - stderr.len(),
-        "stdout_after_flood": stdout.range(QUIET_DURING + 1..).count(),
-        "stderr_after_flood": stderr.range(QUIET_DURING + 1..).count(),
         "journal_units": units, "journal_writers": writers,
-    })
+    });
+    if let Some(sequence) = after_exit {
+        report["stdout_after_noisy_exit"] = json!(stdout.range(sequence + 1..).count());
+        report["stderr_after_noisy_exit"] = json!(stderr.range(sequence + 1..).count());
+    }
+    report
 }
 
 const QUIET_DURING: usize = 40;
@@ -344,11 +352,12 @@ async fn compose_journald_qualifies_low_rate_bursts_and_saturation() {
                 .unwrap()
                 .success()
         );
-        let noisy_report = load_messages(&noisy.id, &format!("load-{case}-noisy "), count);
+        let noisy_report = load_messages(&noisy.id, &format!("load-{case}-noisy "), count, None);
         let quiet_report = load_messages(
             &quiet.id,
             &format!("load-{case}-quiet "),
             QUIET_DURING + QUIET_AFTER,
+            Some(QUIET_DURING),
         );
         let report = json!({"case":case,"noisy_elapsed_ms":elapsed.as_millis(),
             "noisy":noisy_report,"quiet":quiet_report});

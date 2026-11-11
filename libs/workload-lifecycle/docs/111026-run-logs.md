@@ -78,8 +78,59 @@ that `journald` captures stdout and stderr, Docker's failure-output reader works
 and entries remain queryable by full container ID after container removal.
 Explicit `json-file` logging and its options remain intact.
 
+## Journal load qualification
+
+Measured November 11, 2026 on x86_64, Docker 29.9.1, Compose 5.6.0 and systemd
+255, using the existing host journal settings: a 30-second rate interval and a
+10,000-message burst setting. No host settings were changed. Each case used new
+containers and started after the default rate window had elapsed.
+
+The opt-in `journald` test runs two Compose services through the frozen manifest.
+Both emit numbered stdout and stderr. The quiet service emits 40 lines per
+stream during the noisy workload and 20 more after the noisy container exits.
+After container removal and journal synchronization, the test counts distinct
+messages by full container ID and checks for duplicate or invalid sequences.
+The effective burst allowance also depends on the journal's available space;
+the configured 10,000-message setting is not a fixed throughput guarantee.
+
+| Case | Noisy lines sent per stream | Noisy stdout / stderr retained | Quiet stdout / stderr retained, out of 60 each |
+| --- | ---: | ---: | ---: |
+| Low rate, about 2.2 seconds | 200 | 200 / 200 | 60 / 60 |
+| Burst, about 0.18 seconds | 4,000 | 4,000 / 4,000 | 60 / 60 |
+| Saturation, about 2.1 seconds | 120,000 | 9,993 / 9,995 | 5 / 5 |
+
+Both containers' journal entries name `docker.service` and the same Docker daemon
+PID as their writer. At saturation, all 20 quiet markers per stream emitted
+after the noisy container exited were missing. The shared rate limit can discard
+one container's output because another container is noisy. These are measurements
+on one host, not a general supported throughput limit.
+
+A repeat retained 14 of 60 quiet lines per stream at saturation; again, all 20
+quiet markers per stream after the noisy exit were missing. An isolated Docker
+daemon with both `LogRateLimitIntervalSec=0` and `LogRateLimitBurst=0` also lost
+output: 22,484 noisy stdout lines, 22,486 noisy stderr lines and 14 quiet lines
+per stream survived. Its temporary unit, socket and data directory were removed.
+The live Docker service and host configuration were unchanged.
+
+On systemd 255, zero per-unit values are not exported to journald, which retains
+its global defaults. See the
+[systemd implementation](https://github.com/systemd/systemd/blob/v255/src/core/unit.c#L5258-L5306).
+Disabling the journal's default rate limit uses `RateLimitIntervalSec=0` in
+`journald.conf` or a drop-in, as described in the
+[journal configuration reference](https://www.freedesktop.org/software/systemd/man/255/journald.conf.html#RateLimitIntervalSec=).
+That setting changes the host-wide default; explicit per-unit overrides can
+still apply their own limits.
+
+The test reports saturation loss explicitly; a passing measurement test does not
+establish complete log capture. PR #314 remains draft pending the deployment
+decision about a host-wide default. The per-unit zero override did not remove
+throttling on the supported systemd version. The later dump cannot recover
+entries that the journal already dropped, and host retention still bounds what
+survives until that dump.
+
 ## Open questions
 
 - A process that exits almost at once can lose its identity in the journal, so
   its last lines may be missing from the dump. Measure how often this occurs.
-- The journal drops lines from very chatty services by default. Decide whether Console reports that.
+- Decide the Docker journal rate-limit requirement before enabling the default;
+  the load qualification confirms loss across containers on the current host.
