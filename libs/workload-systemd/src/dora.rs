@@ -175,6 +175,7 @@ pub(crate) fn attach(run: &RunPlan, phase: &mut SystemdPlan) -> Result<()> {
 /// Native coordinator context and graph control ownership; neutral runtime facts stay in RunPlan.
 pub(crate) struct Dora {
     pub client: DoraCoordinatorClient,
+    coordinator: ServiceProxy<'static>,
     directory: String,
 }
 
@@ -237,6 +238,9 @@ impl Dora {
         if !Path::new(&runtime(run)?.runtime_directory).is_dir() {
             return Err("Dora coordinator working directory is unavailable".into());
         }
+        if coordinator.main_pid().await.map_err(error)? == 0 {
+            return Err("Dora coordinator is not running".into());
+        }
         if coordinator.private_network().await.map_err(error)?
             || !coordinator
                 .network_namespace_path()
@@ -277,8 +281,28 @@ impl Dora {
         }
         Ok(Self {
             client: DoraCoordinatorClient::new(endpoint, token),
+            coordinator,
             directory,
         })
+    }
+
+    /// Shut down the attempted graph only while its native coordinator remains owned and running.
+    /// With no Start attempt, close transport and let native unit teardown stop the runtime.
+    pub async fn down(&mut self, deadline: Instant) -> Result<()> {
+        let shutdown = async {
+            if self.client.graph().is_none() {
+                self.client.disconnect();
+                return Ok(());
+            }
+            if self.coordinator.main_pid().await.map_err(error)? == 0 {
+                self.client.disconnect();
+                return Err("native Dora coordinator exited before control shutdown".into());
+            }
+            self.client.shutdown(deadline).await.map_err(error)
+        };
+        tokio::time::timeout_at(deadline, shutdown)
+            .await
+            .map_err(|_| "Dora control cleanup deadline expired".to_owned())?
     }
 
     /// Register the captured merged graph and retain the actual shared source/target and content identity.
@@ -288,6 +312,9 @@ impl Dora {
         }
         if self.client.graph().is_some() {
             return Err("Dora graph start already attempted".into());
+        }
+        if self.coordinator.main_pid().await.map_err(error)? == 0 {
+            return Err("Dora coordinator exited before Start".into());
         }
         let source = run.dataflow_file.clone();
         let bytes = tokio::fs::read(&source).await.map_err(error)?;

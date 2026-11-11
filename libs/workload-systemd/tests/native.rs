@@ -731,22 +731,30 @@ async fn stop_at_runtime_preparation_keeps_cleanup_observable() {
 /// Run `plan`, stop it `OBSERVATION` after readiness, and return its report.
 /// Observe transient unit creation throughout Dora execution and teardown.
 async fn run_without_control_units(plan: (RunPlan, SystemdPlan)) -> SystemdRunReport {
-    use futures_util::StreamExt;
+    use futures_util::{FutureExt, StreamExt};
     let connection = zbus::Connection::system().await.unwrap();
     let manager = zbus_systemd::systemd1::ManagerProxy::new(&connection)
         .await
         .unwrap();
     manager.subscribe().await.unwrap();
     let mut created = manager.receive_unit_new().await.unwrap();
+    let mut observed = Vec::new();
     let run = run_for_a_while(plan);
     tokio::pin!(run);
     loop {
         tokio::select! {
-            report = &mut run => return report,
+            report = &mut run => {
+                // A manager reply orders already-emitted unit signals before the final check.
+                manager.list_units().await.unwrap();
+                while let Some(Some(event)) = created.next().now_or_never() { observed.push(event.args().unwrap().id.to_owned()); }
+                let prefix = report.units.iter().find_map(|unit| unit.unit.strip_suffix("-dora-coordinator.service")).expect("coordinator exit evidence");
+                assert!(!observed.iter().any(|name| name.starts_with(&format!("{prefix}-dora-cli-"))), "transient control units: {observed:?}");
+                return report;
+            },
             event = created.next() => {
                 let event = event.expect("systemd unit event stream ended");
                 let arguments = event.args().unwrap();
-                assert!(!arguments.id.contains("-dora-cli-"), "transient control unit created: {}", arguments.id);
+                observed.push(arguments.id.to_owned());
             }
         }
     }

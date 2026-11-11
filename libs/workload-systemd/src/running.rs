@@ -199,8 +199,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             if index == 0
                 && let Some(dora) = &mut self.dora
                 && let Err(error) = dora
-                    .client
-                    .shutdown(Instant::now() + Duration::from_secs(self.run.stop_seconds))
+                    .down(Instant::now() + Duration::from_secs(self.run.stop_seconds))
                     .await
             {
                 self.diagnostics.push(format!("Dora down: {error}"));
