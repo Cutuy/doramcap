@@ -2,7 +2,7 @@
 
 # Shared admission lock
 
-Created November 10, 2026. Status: Compose and systemd implemented November 11, 2026; validation in progress.
+Created November 10, 2026. Status: Compose and systemd implemented November 11, 2026; see the validation record.
 [Implementation plan](111026-admission-lock-impl.md).
 
 One repository hosts one run, build or cleanup at a time. Every workflow asks the

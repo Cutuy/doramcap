@@ -1,6 +1,6 @@
 # Shared admission lock: implementation plan
 
-Created November 10, 2026. Status: implemented November 11, 2026; validation in progress.
+Created November 10, 2026. Status: implemented November 11, 2026; validation recorded below.
 [Architecture](111026-admission-lock.md).
 
 Move repository admission into `workload-lifecycle` and make Compose and systemd
@@ -107,18 +107,33 @@ systemd uses today.
 
 **Validation**
 
-- [ ] The existing native test for a busy repository passes unchanged.
+- [x] The existing native test for a busy repository passes unchanged.
 - [x] A systemd run is refused while a Compose-style admission is held on the same repository.
-- [ ] Native systemd tests, with the test executable elevated.
-- [ ] Library boundary check, formatting and Clippy for the three crates.
-- [ ] ARM64 worker run at pull request integration.
+- [x] Native systemd tests, with the test executable elevated.
+- [x] Library boundary check, formatting and Clippy for the three crates.
+- [x] ARM64 worker run at pull request integration.
 
 ## Validation record
 
-November 11, 2026: shared admission (3), Compose reset (11), and shared-admission
-systemd run/cleanup refusal (1) passed on x86_64. Dependency boundaries passed;
-the architecture SVG was rendered and visually checked. Native systemd tests,
-Clippy and ARM64 remain pending.
+November 11, 2026; implementation commit `ecaeb582`.
+
+| Check | Result |
+| --- | --- |
+| Shared admission / Compose reset / systemd cross-workflow refusal | 3 / 11 / 1 passed on x86_64 |
+| Three crates' release unit tests | 126 passed, 4 ignored |
+| Boundaries, formatting, default/all-feature Clippy | Passed |
+| Native systemd, elevated executable | 26 passed, 2 baseline failures; includes the unchanged busy-repository scenario and both Dora scenarios |
+| Hosted Rust x86_64 and Node x86_64/ARM64 | Passed |
+| ARM64 worker | Job 661 passed: workspace default/all-feature checks, native cgroup/accounting and recording validation |
+| Architecture SVG | Rendered and visually checked |
+
+The two native failures reproduce on unchanged main `51ead064`:
+`blocked_shm_survives_producer_exit_and_is_removed_after_the_run` expects one
+preparation dependency but receives two;
+`review_launches_frozen_units_and_preserves_nonroot_config_access` misses the ACL
+input. Initial Dora prerequisite failures passed after supplying the verified
+Dora 1.1.0 release. Full local workspace CI and Docker end-to-end scenarios were
+not run; these focused checks do not establish a full local CI pass.
 
 ## Outside this plan
 
