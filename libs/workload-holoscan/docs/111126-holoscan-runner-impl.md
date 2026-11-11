@@ -101,7 +101,11 @@ Each is an orchestrator step with its own progress and failure.
 | `LaunchApplication` | Starts the CLI against the views and waits on Engine events for the labelled container. Checks it against the snapshot. |
 
 Baseline capture, view preparation, change collection and view finalization are
-the existing `docker-engine` steps.
+the existing shared steps. They live in `docker-engine` today.
+[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316) moves the
+filesystem parts to `host-filesystem` and `workload-lifecycle`; the runner uses
+them from wherever they are when milestone 5 starts. The project's write policy,
+including keep with the run, applies to Holoscan runs as well.
 
 ## Run sequence
 
@@ -284,7 +288,7 @@ Docker projects only. The systemd form follows with host execution.
 ## Outside this plan
 
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
-- Showing file changes in the web app ([Cutuy/doramcap#312](https://github.com/Cutuy/doramcap/pull/312)).
+- Showing file changes in the web app ([Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316)).
 - Collecting a run's log from the journal ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)).
 - Host-native execution without Docker.
 - Launching the container through the Engine API in place of the CLI.
