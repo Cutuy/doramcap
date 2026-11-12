@@ -7,7 +7,9 @@ import { ApiError, Phase, StepState, wire, type Snapshot } from './api';
 import { generateRecording } from '../scripts/generate-demo-recording';
 import { BUILTIN_RECORDING_BYTES, BUILTIN_RUN_ID, BUILTIN_STARTED_AT_MS, createDemoClient } from './demo/client';
 import { RUN_SAMPLES, SAMPLE_MS } from './demo/telemetry';
-import { PREPARING_RUN } from './generated/transport';
+import { FILE_CHANGES_ARTIFACT, PREPARING_RUN, displayPath } from './generated/transport';
+import { doramcap } from './generated/console';
+import { entryRecordingBytes } from './model';
 import { LiveModel } from './streams';
 
 const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } = wire;
@@ -253,7 +255,7 @@ test('a live-only selection records nothing and still reports', async () => {
   assert.equal(prepared.recordings.length, 0);
   assert.equal(status!.recordings.length, 0);
   assert.equal(status!.outcome!.recordingFinalized, false);
-  assert.deepEqual(entry!.artifacts.map(artifact => artifact.id), ['report']);
+  assert.deepEqual(entry!.artifacts.map(artifact => artifact.id), ['report', FILE_CHANGES_ARTIFACT]);
 });
 
 test('only the built-in run offers a recording; every finished run offers a matching report', async () => {
@@ -269,10 +271,90 @@ test('only the built-in run offers a recording; every finished run offers a matc
   assert.match(recordingUrl, /^https:\/\/github\.com\/Cutuy\/doramcap\/releases\/download\/[^/]+\/cpu\.mcap$/);
   assert.equal(client.artifactUrl(runId, 'cpu'), undefined);
   assert.equal(client.artifactUrl('f'.repeat(32), 'report'), undefined);
-  assert.deepEqual(entry!.artifacts.map(artifact => artifact.id), ['report']);
+  assert.deepEqual(entry!.artifacts.map(artifact => artifact.id), ['report', FILE_CHANGES_ARTIFACT]);
   assert.deepEqual(Object.keys(report), SERVER_REPORT_FIELDS);
   assert.equal(report.execution, 'Completed');
   assert.equal(report.recording_finalized, true);
+});
+
+test('built-in and visitor results expose complete file previews and matching production-format downloads', async () => {
+  // Arrange
+  const client = createDemoClient();
+  const { CategorySummary, FileChange, StorageCategory, ChangeKind } = doramcap.filesystem.v1;
+  const jsonOptions = { longs: String, bytes: String, enums: String, defaults: true } as const;
+  const runId = await finishedRun(client);
+  // Act / Assert
+  for (const id of [BUILTIN_RUN_ID, runId]) {
+    const { entry, status } = await client.historyRun(id);
+    const view = status!.fileChanges!;
+    const url = client.artifactUrl(id, FILE_CHANGES_ARTIFACT)!;
+    assert.match(url, /^data:application\/x-ndjson;charset=utf-8,/);
+    const jsonl = decodeURIComponent(url.slice(url.indexOf(',') + 1));
+    const lines = jsonl.trimEnd().split('\n').map(line => JSON.parse(line));
+    const changes = lines.filter(line => line.type === 'change').map(line => FileChange.fromObject(line));
+    const categories = lines.filter(line => line.type === 'category').map(line => CategorySummary.fromObject(line));
+    assert.equal(view.preview.length, 19);
+    assert.equal(view.previewIncomplete, false);
+    assert.equal(view.notesIncomplete, false);
+    assert.deepEqual(changes.map(change => FileChange.toObject(change, jsonOptions)), view.preview.map(change => FileChange.toObject(FileChange.create(change), jsonOptions)));
+    assert.deepEqual(categories.map(category => CategorySummary.toObject(category, jsonOptions)), view.report!.categories!.map(category => CategorySummary.toObject(CategorySummary.create(category), jsonOptions)));
+    assert.deepEqual(lines.at(-1), { type: 'complete', changes: '19', coverageComplete: false });
+    const volume = categories.find(category => category.category === StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME)!;
+    assert.equal(volume.coverageComplete, false);
+    assert.equal(Number(volume.coverageNoteCount), 1);
+    assert.deepEqual(lines.filter(line => line.type === 'coverage').map(line => line.note), view.coverageNotes);
+    assert.equal(lines.find(line => line.type === 'coverage').category, 'STORAGE_CATEGORY_NAMED_VOLUME');
+    assert.equal(Number(entry!.artifacts.find(artifact => artifact.id === FILE_CHANGES_ARTIFACT)!.sizeBytes), new TextEncoder().encode(jsonl).length);
+    assert.equal(entry!.artifacts.find(artifact => artifact.id === FILE_CHANGES_ARTIFACT)!.kind, wire.ArtifactKind.FILE_CHANGES);
+    assert.equal(entryRecordingBytes(entry!), id === BUILTIN_RUN_ID ? BUILTIN_RECORDING_BYTES : null);
+    assert.equal(wire.FileChanges.encode(view).finish().length < 8 * 1024, true, 'the complete demo fits the server preview budget');
+    for (const category of categories) {
+      const inCategory = changes.filter(change => change.category === category.category);
+      assert.equal(Number(category.counts!.added), inCategory.filter(change => change.kind === ChangeKind.CHANGE_KIND_ADDED).length);
+      assert.equal(Number(category.counts!.modified), inCategory.filter(change => change.kind === ChangeKind.CHANGE_KIND_MODIFIED).length);
+      assert.equal(Number(category.counts!.deleted), inCategory.filter(change => change.kind === ChangeKind.CHANGE_KIND_DELETED).length);
+    }
+    const host = changes.filter(change => change.category === StorageCategory.STORAGE_CATEGORY_HOST_BIND);
+    assert.ok(host.filter(change => change.kind === ChangeKind.CHANGE_KIND_MODIFIED).every(change => change.before && change.after));
+    assert.ok(changes.filter(change => change.category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER).every(change => !change.before && !change.after));
+    const link = lines.find(line => line.pathDisplay === 'latest');
+    assert.equal(link.before.symlinkDisplay, 'frames/frame-000041.pcd');
+    assert.equal(link.after.symlinkDisplay, 'frames/frame-000042.pcd');
+  }
+});
+
+test('file evidence follows recording selections and stays available for live-only and early-stopped runs', async () => {
+  // Arrange
+  const client = createDemoClient();
+  const prepared = await review(client, [], ['live-bridge', 'cpu-monitor', 'data-recorder', 'fault-watchdog'], { 'fault-watchdog': 'mcap' });
+  // Act
+  const { runId } = await client.start(prepared.preparedId, 'all-recordings');
+  assert.equal(client.artifactUrl(runId, FILE_CHANGES_ARTIFACT), undefined);
+  assert.equal((await client.current()).fileChanges, null);
+  await advance(RUN_MS);
+  const full = (await client.historyRun(runId)).status!;
+  const outputSource = `${full.projectDirectory}/.console/runs/${runId}`;
+  const recordings = full.fileChanges!.preview.filter(change => change.source === outputSource && displayPath(change.path!).endsWith('.mcap'));
+  // Assert
+  assert.deepEqual(recordings.map(change => displayPath(change.path!)), ['cpu.mcap', 'messages.mcap', 'faults.mcap']);
+  assert.equal(recordings.reduce((bytes, change) => bytes + Number(change.after!.size), 0), Number(full.metrics.at(-1)!.recordingBytes));
+
+  // Act: stop a live-only run during startup.
+  const live = await review(client, [], undefined, LIVE_ONLY);
+  await client.start(live.preparedId, 'live-only');
+  await advance(SAMPLE_MS);
+  await client.stop(live.runId);
+  await advance(SECOND_MS);
+  const { entry, status } = await client.historyRun(live.runId);
+  const rows = status!.fileChanges!.preview;
+  // Assert
+  assert.equal(status!.phase, Phase.FINISHED);
+  assert.equal(rows.some(change => displayPath(change.path!).endsWith('.mcap')), false);
+  assert.equal(rows.length, 17);
+  assert.ok(client.artifactUrl(live.runId, FILE_CHANGES_ARTIFACT));
+  assert.ok(rows.filter(change => change.after).every(change => Number(change.after!.ctimeSeconds) * SECOND_MS + Number(change.after!.ctimeNanoseconds) / 1e6 <= Number(entry!.finishedAtMs)));
+  assert.equal(client.artifactUrl('f'.repeat(32), FILE_CHANGES_ARTIFACT), undefined);
+  assert.equal(createDemoClient().artifactUrl(live.runId, FILE_CHANGES_ARTIFACT), undefined);
 });
 
 test('history filters, pages and reports missing runs from the same stored facts', async () => {
