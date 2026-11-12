@@ -1,50 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
 <title id="title">Order of work</title>
-<desc id="desc">Six pieces can start now in parallel: the journal log driver for Compose, show file changes, move capture, the apps crate pieces, the admission lock, and the Holoscan probes with discovery and Prepare. Move capture comes before systemd capture, keep files and the apps crate's system apps sequences. Keep files also needs show file changes. The log dump needs the journal log driver and keep files. Holoscan Build and run needs the admission lock. Holoscan system apps need the apps crate's system apps sequences. Web app screens come last.</desc>
-<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#536779"/></marker></defs>
-<rect width="960" height="540" fill="#f7fafc"/>
-<g font-family="sans-serif" fill="#182b3a" text-anchor="middle">
-<text x="480" y="34" font-size="22" font-weight="600">Order of work</text>
-<g font-size="13"><text x="170" y="66">Can start now</text><text x="480" y="66">Next</text><text x="790" y="66">Later</text></g>
-<g fill="#dbeaf2" stroke="#8ca6b8">
-<rect x="40" y="80" width="260" height="50" rx="8"/><rect x="660" y="80" width="260" height="50" rx="8"/>
-<rect x="40" y="144" width="260" height="50" rx="8"/><rect x="350" y="144" width="260" height="50" rx="8"/>
-<rect x="40" y="208" width="260" height="50" rx="8"/><rect x="350" y="208" width="260" height="50" rx="8"/>
-<rect x="40" y="272" width="260" height="50" rx="8"/><rect x="350" y="272" width="260" height="50" rx="8"/>
-<rect x="40" y="336" width="260" height="50" rx="8"/>
-</g>
-<g fill="#fcebdc" stroke="#bc906b">
-<rect x="40" y="400" width="260" height="50" rx="8"/><rect x="350" y="400" width="260" height="50" rx="8"/><rect x="660" y="400" width="260" height="50" rx="8"/>
-<rect x="660" y="464" width="260" height="50" rx="8"/>
-</g>
-<g font-size="15" font-weight="600">
-<text x="170" y="102">Journal log driver for Compose</text><text x="790" y="102">Log dump</text>
-<text x="170" y="166">Show file changes</text><text x="480" y="166">Keep files with the run</text>
-<text x="170" y="230">Move capture</text><text x="480" y="230">systemd capture</text>
-<text x="170" y="294">Apps crate: pieces</text><text x="480" y="294">Apps crate: system apps</text>
-<text x="170" y="358">Admission lock</text>
-<text x="170" y="422">Probes, discovery, Prepare</text><text x="480" y="422">Build and run</text><text x="790" y="422">System apps, acceptance</text>
-<text x="790" y="486">Web app screens</text>
-</g>
-<g font-size="12" fill="#4a5d6e">
-<text x="170" y="120">#314</text><text x="790" y="120">#314</text>
-<text x="170" y="184">#316 milestone 3</text><text x="480" y="184">#316 milestone 4</text>
-<text x="170" y="248">#316 milestone 1</text><text x="480" y="248">#316 milestone 2</text>
-<text x="170" y="312">#317 milestones 1–3</text><text x="480" y="312">#317 milestone 4</text>
-<text x="170" y="376">#315</text>
-<text x="170" y="440">Holoscan milestones 1–3</text><text x="480" y="440">Holoscan milestones 4–5</text><text x="790" y="440">Holoscan milestones 6–7</text>
-<text x="790" y="504">Holoscan, plan to write</text>
-</g>
-<g fill="none" stroke="#536779" stroke-width="1.5" marker-end="url(#arrow)">
-<path d="M300 105 H656"/>
-<path d="M300 169 H346"/><path d="M300 233 H346"/><path d="M300 297 H346"/>
-<path d="M300 425 H346"/><path d="M610 425 H656"/>
-<path d="M790 450 V460"/>
-</g>
-<g fill="none" stroke="#536779" stroke-width="1.5">
-<path d="M325 169 V297"/>
-<path d="M610 169 H635 V105"/>
-<path d="M610 297 H635 V425"/>
-<path d="M300 361 H325 V425"/>
-</g>
-</g></svg>
+<desc id="desc">Merged: the admission lock and the apps crate pieces. In review: the journal log driver, the overlay code move, showing the change list and the apps crate system apps. The change list from the uppers follows the overlay code move and comes before systemd overlays, keeping files with the run and the Holoscan run. Keeping files also needs showing the change list. The log dump needs the journal log driver and keeping files. Holoscan probes, discovery and Prepare lead to Build, which also uses the admission lock, then to the run, then to system apps and acceptance, which also need the apps crate system apps, then to the web app screens.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}.join{fill:none;stroke:#52677c;stroke-width:2}</style>
+<rect width="1200" height="600" fill="white"/>
+<text x="600" y="40" class="title">Order of work</text>
+<rect x="40" y="70" width="250" height="56" rx="10" class="declare"/>
+<text x="165.0" y="94.0">Journal log driver</text>
+<text x="165.0" y="117.0" class="label">#314 · in review</text>
+<rect x="910" y="70" width="250" height="56" rx="10" class="base"/>
+<text x="1035.0" y="94.0">Log dump</text>
+<text x="1035.0" y="117.0" class="label">#314</text>
+<rect x="40" y="142" width="250" height="56" rx="10" class="declare"/>
+<text x="165.0" y="166.0">Move the overlay code</text>
+<text x="165.0" y="189.0" class="label">#318 · in review</text>
+<rect x="330" y="142" width="250" height="56" rx="10" class="base"/>
+<text x="455.0" y="166.0">Change list from the uppers</text>
+<text x="455.0" y="189.0" class="label">#316 milestone 2</text>
+<rect x="620" y="142" width="250" height="56" rx="10" class="base"/>
+<text x="745.0" y="166.0">systemd overlays</text>
+<text x="745.0" y="189.0" class="label">#316 milestone 4</text>
+<rect x="40" y="214" width="250" height="56" rx="10" class="declare"/>
+<text x="165.0" y="238.0">Show the change list</text>
+<text x="165.0" y="261.0" class="label">#320 · in review</text>
+<rect x="620" y="214" width="250" height="56" rx="10" class="base"/>
+<text x="745.0" y="238.0">Keep files with the run</text>
+<text x="745.0" y="261.0" class="label">#316 milestone 5</text>
+<rect x="40" y="286" width="250" height="56" rx="10" class="overlay"/>
+<text x="165.0" y="310.0">Apps crate: pieces</text>
+<text x="165.0" y="333.0" class="label">#317 · merged</text>
+<rect x="330" y="286" width="250" height="56" rx="10" class="declare"/>
+<text x="455.0" y="310.0">Apps crate: system apps</text>
+<text x="455.0" y="333.0" class="label">#324 · in review</text>
+<rect x="40" y="358" width="250" height="56" rx="10" class="overlay"/>
+<text x="165.0" y="382.0">Admission lock</text>
+<text x="165.0" y="405.0" class="label">#315 · merged</text>
+<rect x="40" y="430" width="250" height="56" rx="10" class="upper"/>
+<text x="165.0" y="454.0">Probes, discovery, Prepare</text>
+<text x="165.0" y="477.0" class="label">Holoscan milestones 1–3</text>
+<rect x="330" y="430" width="250" height="56" rx="10" class="upper"/>
+<text x="455.0" y="454.0">Build</text>
+<text x="455.0" y="477.0" class="label">Holoscan milestone 4</text>
+<rect x="620" y="430" width="250" height="56" rx="10" class="upper"/>
+<text x="745.0" y="454.0">Run</text>
+<text x="745.0" y="477.0" class="label">Holoscan milestone 5</text>
+<rect x="910" y="430" width="250" height="56" rx="10" class="upper"/>
+<text x="1035.0" y="454.0">System apps, acceptance</text>
+<text x="1035.0" y="477.0" class="label">Holoscan milestones 6–7</text>
+<rect x="910" y="502" width="250" height="56" rx="10" class="upper"/>
+<text x="1035.0" y="526.0">Web app screens</text>
+<text x="1035.0" y="549.0" class="label">Holoscan, plan to write</text>
+<path d="M290 98.0 H906" class="line"/>
+<path d="M290 170.0 H326" class="line"/>
+<path d="M580 170.0 H616" class="line"/>
+<path d="M600 170.0 V230.0 H616" class="line"/>
+<path d="M290 254.0 H616" class="line"/>
+<path d="M870 242.0 H890 V98.0" class="join"/>
+<path d="M290 314.0 H326" class="line"/>
+<path d="M290 386.0 H310 V446.0 H326" class="line"/>
+<path d="M290 470.0 H326" class="line"/>
+<path d="M580 470.0 H616" class="line"/>
+<path d="M600 230.0 V446.0 H616" class="line"/>
+<path d="M870 470.0 H906" class="line"/>
+<path d="M580 314.0 H890 V446.0 H906" class="line"/>
+<path d="M1035.0 486 V498" class="line"/>
+</svg>

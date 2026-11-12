@@ -2,7 +2,7 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 11, 2026. Status: architecture agreed across all seven stages; implementation not started.
+Created November 9, 2026. Updated November 11, 2026: order of work and terms aligned with the overlay plan. Status: architecture agreed across all seven stages; implementation not started.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
@@ -19,14 +19,14 @@ Docker command. Our tests have not run a real Holoscan application through Conso
 | Console | Project selection, review, run controls, results and comparisons. |
 | `workload-holoscan` | Holoscan discovery, build, preparation, execution, recovery and output collection. |
 | Holoscan project and tools | Application definitions, build rules, launch settings and graph execution. |
-| Shared Docker crate (`docker-engine`) | Docker client, cleanup of owned resources, filesystem views and file-change collection for both Docker backends. |
+| `docker-engine` | Docker client, cleanup of owned resources and the container filesystem diff for Compose and Holoscan. |
+| `host-filesystem` | Overlays, the change list and the write policy for Compose, systemd and Holoscan. |
 | Shared steps and subworkflows | Reusable host observation and other operations with matching contracts. |
 | `workload-docker` | The existing Compose adoption workflow. |
 
 `workload-holoscan` has its own domain model and lifecycle. It has no dependency
-on `workload-docker`. Both depend on the
-[shared Docker crate](110926-holoscan-outputs.md#shared-docker-crate) for the
-operations they have in common.
+on `workload-docker`. Both depend on `docker-engine` and `host-filesystem` for the
+[operations they have in common](110926-holoscan-outputs.md#owners).
 
 ## User workflow
 
@@ -36,7 +36,7 @@ operations they have in common.
 4. Clean up lingering owned runs and verify the cleanup result.
 5. Build through the existing Holoscan workflow as a separate operation.
 6. Save a snapshot of the built application's expected launch for Review.
-7. On Start, require the same snapshot, prepare filesystem views and launch the application.
+7. On Start, require the same snapshot, mount overlays and launch the application.
 8. Stop, collect results and inspect execution, recordings and cleanup outcomes.
 
 Review and execution use the same resolved inputs. A changed project or environment
@@ -122,7 +122,7 @@ the baseline. Later stages stay open until their discussion starts.
 | 2. [Build and preparation](110926-holoscan-preparation.md) | Separate Build from Prepare and preserve the selected native settings. | Build is its own Console request before Prepare. |
 | 3. [Conflicting controls](110926-holoscan-controls.md) | Preserve native placement/recording and compare practical declared settings. | Warn or fail clearly for supported comparisons; defer deeper application inspection. |
 | 4. [Execution and recovery](110926-holoscan-execution.md) | Owned run resources, repeatable pre-run cleanup and interruption recovery. | Stop lingering owned runs and verify cleanup before Build/Prepare; output retention is best effort. One admission lock per repository; the container signals ready and ended. |
-| 5. [Automatic filesystem capture](110926-holoscan-outputs.md) | Reuse the existing filesystem workflow, host observations and native recording outputs. | Automatic capture through a shared Docker crate; [launch design](111026-holoscan-launch-handoff.md) agreed and probed with a fake Docker. |
+| 5. [File changes and logs](110926-holoscan-outputs.md) | Reuse the shared overlays, change list and write policy, host observations and native recording outputs. | Overlays on the project folder and extra data folders; [launch design](111026-holoscan-launch-handoff.md) agreed and probed with a fake Docker. |
 | 6. [Backend acceptance](111126-holoscan-acceptance.md) | Which existing projects and environments establish supported behavior. | Automated checks on every pull request, plus two real applications on an x86 GPU machine. ARM64 GPU devices later. |
 | 7. [Console UI](111126-holoscan-web-app.md) | Present discovery, application selection, preparation, controls, diagnostics and results through the web app. | Today's journey with Build as an added step: searchable application list, build state, Review with notes, Result with the exit code. |
 
@@ -143,15 +143,14 @@ purpose, inputs, results and failure behavior.
 ### Current discussion
 
 Stages 1–4 record the agreed discovery, build, control and cleanup boundaries.
-Stage 5 adopts the existing automatic filesystem capture workflow.
+Stage 5 adopts the shared overlays, change list and write policy.
 
 **Current step: implementation planning.** The shared
 [`docker-engine` crate](111026-docker-engine-crate-impl.md) has landed on `main`.
 Build placement, run admission, run supervision, recording checks and mounts
-outside capture are agreed and recorded in their stage documents. Two
-implementation plans are drafted: the
-[shared admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
-[Holoscan runner](111126-holoscan-runner-impl.md). The runner plan starts by
+that are not tracked are agreed and recorded in their stage documents. The
+[shared admission lock](https://github.com/Cutuy/doramcap/pull/315) is merged. The
+[Holoscan runner](111126-holoscan-runner-impl.md) plan is drafted. The runner plan starts by
 proving the launch on a real container and has one open item. System apps
 are agreed and built after the application-only run.
 A [probe with a fake Docker](111026-holoscan-launch-handoff.md#probe-result)
@@ -170,35 +169,46 @@ seven stages are agreed.
 Work runs in parallel wherever the pieces only risk ordinary code conflicts. It
 is serial only where one piece decides the shape another builds on.
 
-Six pieces can start now:
+Merged:
 
 | Piece | Where |
 | --- | --- |
 | Admission lock | [#315](https://github.com/Cutuy/doramcap/pull/315) |
-| Move capture | [#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1 |
-| Show file changes in Console | #316 milestone 3 |
 | Apps crate pieces: project steps, Dora in containers, app preparation | [#317](https://github.com/Cutuy/doramcap/pull/317) milestones 1 to 3 |
+
+In review:
+
+| Piece | Where |
+| --- | --- |
+| Move the overlay code to `host-filesystem` | [#318](https://github.com/Cutuy/doramcap/pull/318), [#316](https://github.com/Cutuy/doramcap/pull/316) milestone 1 |
+| Show the change list in Console | [#320](https://github.com/Cutuy/doramcap/pull/320), #316 milestone 3 |
+| Apps crate: system apps sequences | [#324](https://github.com/Cutuy/doramcap/pull/324), #317 milestone 4 |
 | Journal log driver for Compose | [#314](https://github.com/Cutuy/doramcap/pull/314) |
+
+Can start now:
+
+| Piece | Where |
+| --- | --- |
 | Holoscan probes, discovery, Prepare and Review | Runner milestones 1 to 3 |
+| Holoscan Build | Runner milestone 4. The lock it needs is merged. |
 
 These wait for another piece:
 
 | Piece | Waits for | Reason |
 | --- | --- | --- |
-| systemd capture (#316 milestone 2) | Move capture | systemd cannot use the capture code until it leaves the Docker crate. |
-| Keep files with the run (#316 milestone 4) | Move capture, show file changes | It changes the finalization that the move relocates, and it uses the download route. |
-| Apps crate: system apps sequences (#317 milestone 4) | Move capture, apps crate pieces | Both reshape the Compose run sequence and reset. The capture move decides that shape first. |
+| Change list from the uppers (#316 milestone 2) | Move the overlay code | It replaces the before/after folder walks in the moved code. |
+| systemd overlays (#316 milestone 4) | Change list from the uppers | systemd starts on the final change list. |
+| Keep files with the run (#316 milestone 5) | Change list from the uppers, show the change list | It keeps the uppers and uses the download route. |
 | Log dump (#314) | Journal log driver, keep files | The dumped files are listed and downloaded through the run-file route. |
-| Holoscan Build and run (runner milestones 4 and 5) | Admission lock, Prepare | Build takes the lock. |
-| Holoscan system apps and acceptance (runner milestones 6 and 7) | Build and run, apps crate system apps sequences | They start system apps with the shared pieces. |
-| Holoscan web app screens | Build and run | Their plan is written once the backend runs. |
+| Holoscan run (runner milestone 5) | Holoscan Build, change list from the uppers | The run uses the final overlay code, and an extra data folder needs an overlay directory that carries its name. |
+| Holoscan system apps and acceptance (runner milestones 6 and 7) | Holoscan run, apps crate system apps sequences | They start system apps with the shared pieces. |
+| Holoscan web app screens | Holoscan run | Their plan is written once the run works. |
 
 Expected code conflicts, to be handled as they come:
 
-- The lock, the capture move and the apps crate all move code out of the Compose crate.
-- Show file changes builds on report types that the capture move relocates.
-- Holoscan's run uses the capture steps from wherever they live when it starts.
-- Holoscan's Prepare and the file-change report both extend Console's execution contract.
+- The overlay code move and the apps crate's system apps sequences both reshape the Compose run sequence.
+- The change list from the uppers edits the code that the overlay move relocates.
+- Holoscan's Prepare and the change-list report both extend Console's execution contract.
 
 ## Agreed scope
 
@@ -210,12 +220,12 @@ Expected code conflicts, to be handled as they come:
 | Build | A separate Console request that runs the Holoscan CLI build. Source commit and clean state are recorded at Build and compared at Prepare and Start. |
 | Admission | One lock per repository in `workload-lifecycle`, shared by Compose, systemd and Holoscan runs and by Holoscan Build. |
 | Recovery | Repeat cleanup before the new run proceeds; stop lingering owned runs and attempt output retention. |
-| Launch | Console prepares filesystem views and passes the view to the Holoscan CLI as its project root. A Docker stand-in is the fallback. |
+| Launch | Console mounts overlays and passes the project folder's overlay directory to the Holoscan CLI as its project root. A Docker stand-in is the fallback. |
 | Container ownership | The CLI discovers, builds and launches. Console manages the container through the Docker Engine API, including stop. |
-| Filesystem capture | Reuse automatic capture through a shared Docker crate; each backend keeps its own mount handling. |
+| File changes | Reuse the shared overlays, change list and write policy from `host-filesystem`. Each launch kind keeps its own mount handling. |
 | Run supervision | The container is the source of truth for ready and ended, read through Docker Engine events. |
-| Recordings | Console runs no recording check. The result is the list of files the run changed. |
-| Mounts outside capture | Listed at Review and in the result. Start is allowed. |
+| Recordings | Console runs no recording check. The result is the change list. |
+| Mounts not tracked | Listed at Review and in the result. Start is allowed. |
 | Review | One snapshot of the expected launch must match at Start, as for Compose and systemd. |
 | Resource limits | Limits the user selects travel as Docker options on the launch, inside the Review snapshot. Prepare checks them against the project's own options. |
 | Application logs | Container output goes to the host journal. A project that sets its own log driver keeps it. |

@@ -36,7 +36,7 @@ Each application goes through all of them.
 
 | Scenario | Checks |
 | --- | --- |
-| Same as upstream | The container Console launches matches a plain CLI launch, apart from views, labels and the log driver. |
+| Same as upstream | The container Console launches matches a plain CLI launch, apart from overlay directories, labels and the log driver. |
 | Normal run | Build, Review, Start, the application's own exit, its exit code, file changes and its log in the journal. |
 | Stop | Stop from Console ends the container within the deadline. |
 | Failures | Container differs from the snapshot. CLI exits before a container exists. Build fails. |

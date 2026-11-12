@@ -2,7 +2,7 @@
 
 # Running Holoscan through Console
 
-Created November 10, 2026. Status: launch design agreed and probed with a fake Docker; production implementation pending.
+Created November 10, 2026. Updated November 11, 2026: terms aligned with the overlay plan. Status: launch design agreed and probed with a fake Docker; production implementation pending.
 [Adoption overview](110926-holoscan-adoption.md).
 [Launch designs compared](111026-holoscan-launch-handoff.svg).
 
@@ -12,17 +12,17 @@ Console does not yet implement this Holoscan workflow. There is no production
 `workload-holoscan` runner.
 
 A [probe](#probe-result) with the real CLI and a fake Docker supports the agreed
-design below. No real container has run and no OverlayFS view has been mounted.
+design below. No real container has run and no overlay has been mounted.
 
 ## How Console steers the CLI
 
-Console prepares the filesystem views before it calls the CLI. It then passes the
-view to the CLI as the project root. The CLI builds its usual Docker command, and
-the project mount points at the view.
+Console mounts the overlays before it calls the CLI. It then passes the project
+folder's overlay directory to the CLI as the project root. The CLI builds its usual
+Docker command, and the project mount points at the overlay directory.
 
 | Need | How it is met |
 | --- | --- |
-| Captured project files | The CLI receives the OverlayFS view as its project root. |
+| Project files in the change list | The CLI receives the overlay directory as its project root. |
 | Ownership labels | Passed through the CLI's native Docker options. |
 | Container identity | A container-identity file, passed through the same options. |
 | Stopped container kept for collection | The CLI's native `--persistent` flag. |
@@ -31,10 +31,11 @@ Console sets no environment variable for the CLI and places no program between
 the CLI and Docker.
 
 An extra data folder is passed through the CLI's `--add-volume` option. The CLI
-names its container path after the folder, so its view keeps the folder's name.
+names its container path after the folder, so its overlay directory carries the
+folder's name.
 
-Mounts that a project declares in its own Docker options keep their original
-source. Console reports them as outside capture coverage.
+Mounts that a project declares in its own Docker options keep their host folder.
+Console reports them as not tracked.
 
 ## Who owns the container
 
@@ -62,11 +63,11 @@ The snapshot covers:
 - The image ID read through the Engine API.
 - The project's configured Docker options, which the dry run hides.
 
-Run-specific values are replaced with fixed names before hashing: view paths, the
-ownership label and the container-identity file.
+Run-specific values are replaced with fixed names before hashing: overlay directory
+paths, the ownership label and the container-identity file.
 
 After the CLI creates the container, Console checks the facts it owns: the image
-ID, the view mounts and its labels. A mismatch stops the container.
+ID, the overlay mounts and its labels. A mismatch stops the container.
 
 Known limits:
 
@@ -82,11 +83,11 @@ Build remains a separate step before Prepare. A build that changes the image mus
 finish before the Review snapshot is saved.
 
 The diagram shows the proposed additions inside those existing phases. `PROJECT`,
-`VIEW`, `APP`, `MODE`, `LANG`, `OWNER` and `RUN` stand for the selected project, its
-filesystem view, application, mode, language, ownership label and run directory.
+`OVERLAY`, `APP`, `MODE`, `LANG`, `OWNER` and `RUN` stand for the selected project, its
+overlay directory, application, mode, language, ownership label and run directory.
 
 Every call to `holoscan run` disables image and application builds. Prepare uses
-the dry run. Start launches with the view as the project root.
+the dry run. Start launches with the overlay directory as the project root.
 
 Console removes its owned resources after finalization. Before another run,
 required cleanup stops any lingering owned runs; output salvage is best effort.
@@ -107,25 +108,25 @@ CLI 5.0.0 offers none.
 Run November 10, 2026 with CLI 5.0.0, NVIDIA's
 [Holoscan applications repository][applications] and its `bci_visualization`
 Python application. A fake Docker recorded each call and ran nothing. A copy of
-the project at another path stood in for the view.
+the project at another path stood in for the overlay directory.
 
 | Question | Observed |
 | --- | --- |
-| Same container path with a view as project root? | Yes. The project mounts at `/workspace/holohub` for any host path. |
+| Same container path with another folder as project root? | Yes. The project mounts at `/workspace/holohub` for any host path. |
 | Same dry-run command on two calls? | Yes. Only the timestamp printed before the command differs. |
 | Does the dry run predict the real launch? | Yes. The command sent to Docker matched, apart from the hidden Docker options. |
 | Do labels and the identity file arrive? | Yes. Both reached `docker run` unchanged, and the CLI used the supplied identity file. |
 | Extra data folder through `--add-volume`? | Mounted at `/workspace/volumes/` plus the host folder's name. |
 | Docker calls during a dry run? | None. A launch makes two image inspections, then `docker run`. |
 
-Not covered: a real container, a mounted OverlayFS view, display forwarding, an
+Not covered: a real container, a mounted overlay, display forwarding, an
 image that sets its own Python path, C++ applications and other modes.
 
 ## What the earlier test established
 
 The earlier test covered the fallback. The real CLI called a temporary helper in
 place of Docker, with fake Docker, toolkit-version and display-authentication
-commands. No real container ran and no OverlayFS view was mounted.
+commands. No real container ran and no overlay was mounted.
 
 - The CLI supplied the complete Docker command to the helper.
 - The helper could wait, change project and data mount sources and add a label.
@@ -136,10 +137,9 @@ commands. No real container ran and no OverlayFS view was mounted.
 ## Work still needed
 
 - Implement the Holoscan runner in the Console backend.
-- Add the shared admission lock to `workload-lifecycle`.
 - Add the Console Build request.
 - Connect review settings, run events and results to Console's existing contracts.
-- Test a real Docker application with OverlayFS, then GPU and sensor workloads.
+- Test a real Docker application with overlays, then GPU and sensor workloads.
 - Test controller failure and verify that the next run cleans up leftovers.
 
 ## Evidence

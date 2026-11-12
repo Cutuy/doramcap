@@ -1,6 +1,7 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Status: draft; no open items.
+Created November 11, 2026. Updated November 11, 2026: aligned with the overlay plan in
+[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316). Status: draft; no open items.
 [Adoption overview](110926-holoscan-adoption.md) ·
 [Launch design](111026-holoscan-launch-handoff.md).
 
@@ -12,9 +13,11 @@ its results. The web app journey is a later stage.
 
 | Piece | State |
 | --- | --- |
-| Shared Docker crate, `docker-engine` | On `main`: Engine client, cleanup by label, filesystem views, baseline and change collection. |
+| `docker-engine` | On `main`: Engine client, cleanup by label and the container filesystem diff. |
+| Overlays, change list, write policy | Moving to `host-filesystem` in [Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318). The change list is then read from the uppers in #316 milestone 2. Milestone 5 depends on both. |
 | Shared run sequence | On `main`: `workload_lifecycle::run` with the `Running` trait. |
-| Admission lock | Planned in [Cutuy/doramcap#315](https://github.com/Cutuy/doramcap/pull/315). Milestone 4 depends on it. |
+| Admission lock | On `main`, from [Cutuy/doramcap#315](https://github.com/Cutuy/doramcap/pull/315). |
+| Shared apps crate, `compose-apps` | Pieces on `main`. System apps sequences in review in [Cutuy/doramcap#324](https://github.com/Cutuy/doramcap/pull/324). Milestone 6 depends on them. |
 | Console backend | Two operations today, inspect and start, each with a Compose and a systemd form. |
 | Holoscan | Design documents only. Probed with the real CLI 5.0.0 and a fake Docker. |
 
@@ -24,10 +27,10 @@ its results. The web app journey is a later stage.
 | --- | --- | --- |
 | Discovery | The CLI lists applications, languages and modes. | [Discovery](110926-holoscan-discovery.md) |
 | Build | Its own Console request. Source commit and clean state recorded and compared later. | [Preparation](110926-holoscan-preparation.md) |
-| Launch | Console prepares views and passes the view as the CLI's project root. Labels, limits and the log driver travel as Docker options. | [Launch](111026-holoscan-launch-handoff.md) |
+| Launch | Console mounts overlays and passes the project folder's overlay directory as the CLI's project root. Labels, limits and the log driver travel as Docker options. | [Launch](111026-holoscan-launch-handoff.md) |
 | Review | One snapshot of the expected launch must match at Start. | [Launch](111026-holoscan-launch-handoff.md#review-and-start) |
 | Supervision | The container is the source of truth, read through Engine events. | [Execution](110926-holoscan-execution.md#ready-and-ended) |
-| Results | No recording check. Changed files and mounts outside capture are reported. | [Outputs](110926-holoscan-outputs.md) |
+| Results | No recording check. The change list and the mounts that are not tracked are reported. | [Outputs](110926-holoscan-outputs.md) |
 | Limits | Selected limits as launch options; conflicts found at Prepare. | [Controls](110926-holoscan-controls.md) |
 | Logs | Host journal; a project's own log driver wins. | [Outputs](110926-holoscan-outputs.md#logs) |
 | System apps | Console's system apps, which include the Dora apps, follow the project's environment: Docker containers for a Docker project, systemd units for a host project. | [System apps](#system-apps) |
@@ -63,7 +66,8 @@ A new crate, `libs/workload-holoscan`.
 | Depends on | For |
 | --- | --- |
 | `workload-lifecycle` | Run sequence, admission lock, shared run plan. |
-| `docker-engine` | Engine client, cleanup by label, views, baseline, change collection, child process groups. |
+| `docker-engine` | Engine client, cleanup by label, container filesystem diff, child process groups. |
+| `host-filesystem` | Overlays, change list and write policy, through the shared steps in `workload-lifecycle`. |
 | `orchestrator` | Steps and progress events. |
 | `compose-apps` | Preparing, starting, watching and stopping Dora and system apps as containers. From milestone 6. |
 
@@ -80,11 +84,11 @@ Messages use plain fields and repeated messages.
 | Message | Carries |
 | --- | --- |
 | `Selection` | Application, language and mode. |
-| `HoloscanPlan` | Selection, extra data folders, selected limits and the filesystem policy. |
+| `HoloscanPlan` | Selection, extra data folders, selected limits and the write policy. |
 | `Catalog` | Applications with their languages and modes, plus diagnostics from the CLI. |
 | `BuildRecord` | Selection, image ID, source commit and whether the tree was clean. |
-| `ConfigurationSnapshot` | The reviewed launch: normalized command, image ID, project Docker options, mounts outside capture, limits and log setting. |
-| `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, file-change counts and coverage, mounts outside capture. |
+| `ConfigurationSnapshot` | The reviewed launch: normalized command, image ID, project Docker options, mounts not tracked, limits and log setting. |
+| `HoloscanRunReport` | Execution error, container exit, stop and cleanup facts, change-list counts and coverage, mounts not tracked. |
 
 Console's execution contract gains a Holoscan form beside Compose and systemd in
 `RunRequest`, `Inspection` and `StartRequest`, and two operations: catalog and build.
@@ -98,15 +102,14 @@ Each is an orchestrator step with its own progress and failure.
 | `DiscoverApplications` | Runs the CLI's list and modes queries in the project. Returns the catalog and diagnostics. |
 | `BuildApplication` | Runs the CLI build under the admission lock. Streams output. Writes the build record. |
 | `PrepareLaunch` | Checks the selection and the build record, runs the CLI dry run, reads the image ID and project Docker options, and produces the snapshot. |
-| `ResetProject` | Stops and removes leftover containers by label through `docker-engine` and discards old views. |
-| `LaunchApplication` | Starts the CLI against the views and waits on Engine events for the labelled container. Checks it against the snapshot. |
+| `ResetProject` | Stops and removes leftover containers by label through `docker-engine` and discards leftover overlays. |
+| `LaunchApplication` | Starts the CLI with the overlay directories and waits on Engine events for the labelled container. Checks it against the snapshot. |
 
-Baseline capture, view preparation, change collection and view finalization are
-the existing shared steps. They live in `docker-engine` today.
-[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316) moves the
-filesystem parts to `host-filesystem` and `workload-lifecycle`; the runner uses
-them from wherever they are when milestone 5 starts. The project's write policy,
-including keep with the run, applies to Holoscan runs as well.
+Mounting overlays, reading the change list and applying the write policy are the
+shared steps in `host-filesystem` and `workload-lifecycle`, as the
+[overlay plan](https://github.com/Cutuy/doramcap/pull/316) describes. The runner adds
+none of its own. The project's write policy (write back, keep with the run or
+discard) applies to Holoscan runs as well.
 
 ## Run sequence
 
@@ -114,12 +117,12 @@ The runner implements `Running` and calls `workload_lifecycle::run`.
 
 | Phase | Work |
 | --- | --- |
-| Before `run` | Take the admission lock. Reset. Prepare and compare with the reviewed snapshot. Capture the baseline. Create views. |
-| `start` | Subscribe to Engine events for the run label, then start the CLI. Wait for the container. Check image ID, view mounts and labels. |
+| Before `run` | Take the admission lock. Reset. Prepare and compare with the reviewed snapshot. Mount overlays on the project folder and each extra data folder. |
+| `start` | Subscribe to Engine events for the run label, then start the CLI. Wait for the container. Check image ID, overlay mounts and labels. |
 | `ready` | Publish readiness once the container is running and checked. |
 | `ended` | Resolve when the Engine reports the container stopped, with its exit code. |
-| `stop` | Stop the container through the Engine with the run's deadline. Verify it stopped. Collect file changes. |
-| `remove` | Finalize views by the filesystem policy. Remove the container when permitted. |
+| `stop` | Stop the container through the Engine with the run's deadline. Verify it stopped. Read the uppers into the change list. |
+| `remove` | Save the report, unmount the overlays and apply the write policy. Remove the container when permitted. |
 
 The run passes an empty recording list.
 
@@ -153,7 +156,7 @@ are up and stable.
 Review shows the system apps and the Holoscan launch together.
 
 This is built in milestone 6, after the application-only run works. Until then
-a Holoscan run has machine state capture, workflow events, file changes and its
+a Holoscan run has machine snapshots, workflow events, its change list and its
 log, and no monitor telemetry.
 
 ## Milestone 1: prove the assumptions on a real container
@@ -164,14 +167,16 @@ probes on a machine with an NVIDIA GPU and no production code.
 **Work items**
 
 - [ ] Build `bci_visualization` (Python) and `endoscopy_tool_tracking` (C++) from the Holoscan applications repository with the real CLI.
-- [ ] Launch each with a real OverlayFS view as the project root.
+- [ ] Launch each with a real overlay directory as the project root.
+- [ ] Launch one with an extra data folder whose overlay directory carries the folder's name.
 - [ ] Launch with a label, a container-identity file, one CPU limit and the journal log driver as Docker options. The limit proves the mechanism for later use.
 - [ ] Record the Engine events seen for the labelled container from create to stop.
 
 **Validation**
 
-- [ ] Build output is visible through the view at run time.
-- [ ] The application runs correctly from a view. Settle whether acceptance uses headless mode or a virtual display.
+- [ ] Build output is visible through the overlay directory at run time.
+- [ ] The extra data folder appears at the same container path as without Console.
+- [ ] The application runs correctly from an overlay directory. Settle whether acceptance uses headless mode or a virtual display.
 - [ ] Labels, the limit and the log driver are present on the created container.
 - [ ] Container output appears in the host journal, and the Engine still returns the last lines.
 - [ ] The Engine reports the application's own exit code.
@@ -198,7 +203,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 **Work items**
 
 - [ ] Implement `PrepareLaunch`: dry run, normalization of run-specific values, image ID, project Docker options.
-- [ ] List mounts outside capture from the dry run and project options.
+- [ ] List mounts that are not tracked from the dry run and project options.
 - [ ] Detect a project that sets its own log driver and report it at Review.
 - [ ] Report "not built" when the image or build record is missing, and "rebuild needed" when the source commit or clean state differs.
 - [ ] Add the Holoscan form to Console's inspect operation.
@@ -211,7 +216,7 @@ probes on a machine with an NVIDIA GPU and no production code.
 
 ## Milestone 4: Build request
 
-Depends on the admission lock.
+The admission lock it needs is merged.
 
 **Work items**
 
@@ -227,24 +232,28 @@ Depends on the admission lock.
 
 ## Milestone 5: run
 
-Depends on the admission lock.
+Depends on milestone 4 and on the overlay plan's milestones 1 and 2
+([Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316)): the moved overlay code, the change
+list read from the uppers, and an overlay directory that can carry its host folder's name.
 
 **Work items**
 
 - [ ] Implement `ResetProject`, `LaunchApplication` and the `Running` handle.
-- [ ] Wire baseline, views, change collection and finalization from `docker-engine`.
+- [ ] Use the shared overlay, change-list and write-policy steps. Name each extra data
+  folder's overlay directory after the folder.
 - [ ] Add the Holoscan form to Console's start operation, with the snapshot check before admission completes.
 - [ ] Write the run report into the run's folder and map it to Console's execution result.
 
 **Validation**
 
 - [ ] A real application runs to its own exit and reports its exit code.
-- [ ] Stop from Console ends the container within the deadline and collects file changes.
+- [ ] Stop from Console ends the container within the deadline and saves the change list.
 - [ ] A container that differs from the snapshot is stopped and Start fails.
 - [ ] The CLI exiting before a container exists fails Start with the CLI's output.
 - [ ] Killing the CLI mid-run leaves the run going and records a note.
-- [ ] Files the application writes appear in the change report; the source tree is unchanged under the discard policy.
-- [ ] Mounts outside capture appear in the result.
+- [ ] Files the application writes appear in the change list; the project folder is unchanged under discard and under keep with the run.
+- [ ] An extra data folder appears at the same container path as without Console.
+- [ ] Mounts that are not tracked appear in the result.
 
 ## Milestone 6: system apps
 
@@ -257,8 +266,8 @@ Depends on the shared apps crate.
 - [ ] Prepare Dora and system apps as one project through `compose-apps`, with no extra group.
 - [ ] In the Holoscan workflow, start the system part, then launch the application.
   Watch both. Stop the application, then the system part.
-- [ ] Take the admission lock once for the whole run and run file capture once over
-  both parts' folders.
+- [ ] Take the admission lock once for the whole run and mount overlays once for
+  both parts' writable host folders.
 - [ ] Include the system apps in Prepare and the Review snapshot.
 
 **Validation**
@@ -300,7 +309,7 @@ Depends on the shared apps crate.
 ## Outside this plan
 
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
-- Showing file changes in the web app ([Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316)).
+- Showing the change list in the web app ([Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320)).
 - Collecting a run's log from the journal ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)).
 - Host-native execution without Docker.
 - Launching the container through the Engine API in place of the CLI.
