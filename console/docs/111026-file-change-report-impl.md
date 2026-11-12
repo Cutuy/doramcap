@@ -1,8 +1,9 @@
 # Overlays for writable mounts: implementation plan
 
-Created November 11, 2026. Updated November 11, 2026: decisions from the plan review recorded.
-Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318)),
-milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
+Created November 11, 2026. Updated November 12, 2026: milestone 2 implemented.
+Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318));
+milestones 2 ([#326](https://github.com/Cutuy/doramcap/pull/326)) and
+3 ([#320](https://github.com/Cutuy/doramcap/pull/320)) implemented in review. Milestones 4 and 5 remain planned.
 [Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
 ## Order
@@ -11,7 +12,7 @@ milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull
 | --- | --- | --- |
 | 1: move the overlay code | Merged | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
 | 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
-| 2: change list from the uppers | After 1 | Replaces the before/after folder walks; every later milestone builds on it. |
+| 2: change list from the uppers | Done, in review | Replaces the before/after folder walks; every later milestone builds on it. |
 | 4: systemd overlays | After 2 | systemd starts on the final change list. |
 | 5: keep with the run | After 2 and 3 | Keeps the uppers and uses milestone 3's download route. |
 
@@ -58,55 +59,59 @@ across all of this work.
 
 **Work items**
 
-- [ ] In `host-filesystem`, read each upper into change records: added when absent from
+- [x] In `host-filesystem`, read each upper into change records: added when absent from
   the lower, deleted when the run removed it, and modified when its type, permissions,
   owner or modification time differs from the lower, or its size for a file or symlink.
   Ignore a folder's size. Leave out entries that match the lower. Read no file contents. Take "before"
   metadata from the lower and "after" from the upper. Use the one upper reader that
   write back already uses.
-- [ ] Record one deleted entry for each path under a deleted folder in the lower.
-- [ ] Record sockets, FIFOs, device files and hard links like any other entry. Remove the
+- [x] Record one deleted entry for each path under a deleted folder in the lower.
+- [x] Record sockets, FIFOs, device files and hard links like any other entry. Remove the
   reader's refusals for them.
-- [ ] List each output folder directly, every file as added. Keep it mounted directly.
+- [x] List each output folder directly, every file as added. Keep it mounted directly.
   Skip Console's own records; mark a mount of the whole run folder as partly listed.
-- [ ] Mount directly, and report as not tracked with a reason, each writable mount that is
+- [x] Mount directly, and report as not tracked with a reason, each writable mount that is
   a single file, sits under `/proc`, `/sys` or `/dev`, or contains another mount point.
-- [ ] Report Docker named volumes as not tracked.
-- [ ] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
+- [x] Report Docker named volumes as not tracked.
+- [x] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
   file; copy a modified file that has other names. Add one warning per such entry to the
   report's write-back result. Keep the run outcome and the change list unaffected.
-- [ ] Delete the before/after folder walks, their records and the metadata comparison,
+- [x] Delete the before/after folder walks, their records and the metadata comparison,
   for host folders and named volumes. Delete the check that the host folder stayed
   unchanged and the hard-link walk before launch. Keep Docker's container filesystem diff.
-- [ ] Let the caller name an overlay directory after its host folder.
-- [ ] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
+- [x] Let the caller name an overlay directory after its host folder.
+- [x] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
   save the report, unmount, apply the write policy, clean up.
-- [ ] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
+- [x] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
   checkpoint unchanged, so milestone 3 needs no change.
 
 **Validation**
 
-- [ ] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
+- [x] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
   contents, renames, symlinks, non-UTF-8 names and permission-only changes produce the
   expected records.
-- [ ] A file opened for writing with nothing written, and the folders above a changed
+- [x] A file opened for writing with nothing written, and the folders above a changed
   file, are absent from the change list on a filesystem where an upper folder's size
   differs from the lower folder's.
-- [ ] A socket, a FIFO, a new hard link and a modified file with two names each appear in
+- [x] A socket, a FIFO, a new hard link and a modified file with two names each appear in
   the change list. Write back finishes, the host folder holds the expected result and the
   report carries one warning per entry.
-- [ ] The same Compose writes to a host folder produce the same records as the walk-based
+- [x] The same Compose writes to a host folder produce the same records as the walk-based
   list did, apart from entries that match the lower.
-- [ ] An output folder's files are listed as added and remain in the run folder after an
+- [x] An output folder's files are listed as added and remain in the run folder after an
   interrupted run. Console's own records are absent from the list.
-- [ ] A single-file mount, a mount containing another mount point and a named volume start
+- [x] A single-file mount, a mount containing another mount point and a named volume start
   normally and appear as not tracked at Review and in the result.
-- [ ] Listing cost follows the size of the upper: a large unchanged host folder lists
+- [x] Listing cost follows the size of the upper: a large unchanged host folder lists
   quickly, and preparing it walks nothing.
-- [ ] A change made to the host folder during the run, on a path the run also wrote, ends
+- [x] A change made to the host folder during the run, on a path the run also wrote, ends
   with the run's version after write back.
-- [ ] Discard, busy overlays, full disk and interrupted runs behave as before.
-- [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
+- [x] Discard, busy overlays, full disk and interrupted runs behave as before.
+- [x] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
+
+- [x] ARM64 worker validation for the milestone 2 implementation.
+- [ ] Full local workspace validation without exclusions: four watcher-dependent tests
+  are blocked by the host's inotify quota. Details are in [#326](https://github.com/Cutuy/doramcap/pull/326).
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
 
@@ -147,16 +152,6 @@ across all of this work.
 - [ ] Failed Compose run after restart.
 - [ ] Real systemd runs.
 - [ ] Desktop and narrow-screen rendering.
-
-Before rebasing onto milestone 1: full local CI, 128 server and 90 frontend tests, and
-ARM64 worker job 668 passed. After rebasing, checkpoint publishing lives in
-`host-filesystem`. On the rebased source: formatting, boundaries, strict Clippy for the
-capture, Docker, lifecycle and Console native crates, their release tests, 128 server
-tests (one skipped) and 90 frontend tests pass. Real Compose, full CI and ARM64 were
-not rerun.
-
-Rebased again onto the plan review decisions (November 11, 2026). Only this document
-differs from that source; no check was rerun.
 
 ## Milestone 4: Give systemd services the same overlays
 
