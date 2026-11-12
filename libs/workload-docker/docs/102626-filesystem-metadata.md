@@ -1,62 +1,44 @@
-![Metadata collection](102626-filesystem-metadata.svg)
+![File changes by storage category](102626-filesystem-metadata.svg)
 
 # Filesystem metadata collection
 
 Created: 2026-10-26. Updated: 2026-11-12.
-Scope: observe changes while preserving their storage category.
+
+Records what a run changed in each storage category. Reads metadata only; file
+contents are never read or exported.
+
+## Components
+
+| Component | Owner | Role |
+| --- | --- | --- |
+| Source classification | `host_filesystem::changes` | Classifies every mount once for Review and the run |
+| Upper reader | `host_filesystem::overlay` | Reads stopped OverlayFS uppers; write-back uses the same reader |
+| Output lister | `host_filesystem::changes` | Lists fresh run output folders, minus owner-declared private records |
+| Container diff | `docker_engine::filesystem` | Engine diff of stopped containers |
+| Change writer | `host_filesystem::changes` | Writes three manifests and the synced `report.pb` checkpoint |
+| Console | `console/server` | Bounded preview of the report, with full download |
+
+## Storage categories
+
+| Mount | Evidence | Metadata per row |
+| --- | --- | --- |
+| Host directory behind an overlay | Upper entries | Type, mode, owner, mtime, size, symlink target |
+| Run output folder | Direct listing, all added | Same as above |
+| Container writable layer | Engine diff | Path and change kind only |
+| Named volume, single file, special or nested mount | Coverage note with reason | None |
+| Host shared memory, any path or alias | Excluded; shared-memory observation owns it | None |
 
 ## Contract
 
-`PrepareFilesystemSources` resolves mount identities and coverage without walking
-host folders. `CollectFilesystemChanges` runs after all writers stop and saves
-three manifests: host binds, container writable layers and named volumes. Rows
-retain their source, consumers, change kind and available stat metadata. No file
-contents are read or exported. Engine changes have no stat metadata.
+- Rows keep source, consumers, path, change kind and before/after metadata.
+- Copy-ups with unchanged metadata are omitted; equal metadata does not prove equal content.
+- Deleted folders expand into individual deleted paths.
+- The report is published before unmount, write-back and container removal.
+- Coverage gaps are informational. A collection failure keeps evidence and blocks removal.
+- Memory grows with the upper and deleted lower subtrees; there are no entry or depth cutoffs.
 
-Host changes come from stopped OverlayFS uppers, using the same interpreter as
-write-back. A copied-up entry matching the lower's documented metadata is omitted.
-Deleted folders expand into individual deleted paths. Fresh run output folders
-stay directly mounted and list their files as added. Each record owner supplies
-its private run-relative paths; a whole-run mount is reported as partly listed.
+## Related
 
-Host shared memory, including hugetlbfs and aliases of `/dev/shm` at other paths,
-stays live and uses its existing shared-memory observation contract. It is excluded
-from the file-change category without downgrading that category's coverage.
-Single-file and special mounts, pseudo-filesystems, sources containing mountpoints
-or the run folder, and Docker named volumes remain direct with coverage reasons.
-Unsafe overlaps with an overlay fail before mounting. Supported writable and
-read-only aliases share one view and retain their access flags.
-
-Review and preparation share source classification and alias resolution. Missing
-sources are explicitly unavailable at inspection time; Docker's permitted source
-creation occurs during preparation. Disabling overlays reports ordinary writable
-host folders as untracked in both Review and the result.
-
-The report is synced and published before strict unmount, write-back and removal.
-Expected changes and coverage gaps are informational. Required Engine observation
-or artifact-write failure preserves evidence and blocks automatic removal.
-
-## Resource usage and write-back
-
-Preparation reads source and mount metadata. Collection walks the upper and any
-lower subtrees hidden by deletions, allocating with their size. Output listing is
-incremental, with open directory handles proportional to depth. There are no
-entry, depth or time cutoffs. Docker's client materializes its Engine diff response.
-
-Metadata comparison uses type, permissions, owner, modification time and non-directory
-size; it does not prove content equality. Records retain symlink targets. Shared sources are
-deduplicated. Manifests stream length-delimited protobuf records; full downloads
-remain available beyond the bounded Console preview.
-
-Write-back replaces conflicting host edits on paths the run changed. It skips
-sockets, FIFOs and devices and copies hard links as separate files, with warnings.
-Basic rsync attributes are preserved; ACL, xattr, capability and hard-link topology
-fidelity remain unqualified. Failed write-back retains the upper and diagnostics.
-
-## Validation
-
-Current work and checks are recorded in the
-[file-change implementation plan](../../../console/docs/111026-file-change-report-impl.md#milestone-2-read-the-change-list-from-the-uppers).
-The [2026-10-26 validation record](102626-filesystem-validation.json) is historical
-evidence for the earlier before/after implementation; it does not qualify the
-current upper-based collector.
+- [Experiment isolation](102626-docker-experiment-isolation.md)
+- [Direct upper write-back](102726-direct-overlay-writeback.md)
+- [File-change implementation plan](../../../console/docs/111026-file-change-report-impl.md)
