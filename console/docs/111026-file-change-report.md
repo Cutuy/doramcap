@@ -56,7 +56,8 @@ Machine snapshots and input copies keep their current owners and are outside thi
 - **Output folder.** It starts empty and already lives in the run folder, so its files
   survive a Console crash and need no copy. Console lists the folder directly and skips
   its own records there. When an app mounts the whole run folder, Console's records are
-  skipped and the report marks that mount as partly listed. Giving output folders an
+  skipped and the report marks that mount as partly listed. Review states this scope
+  once; its warnings cover untracked storage. Giving output folders an
   overlay too, so one mechanism covers every write, remains an option to revisit.
 - **Named volume.** Docker creates and manages it. Replacing it with an overlay would
   stop Docker filling a new volume from the image and break volume drivers.
