@@ -148,6 +148,16 @@ across all of this work.
 - [ ] Real systemd runs.
 - [ ] Desktop and narrow-screen rendering.
 
+Before rebasing onto milestone 1: full local CI, 128 server and 90 frontend tests, and
+ARM64 worker job 668 passed. After rebasing, checkpoint publishing lives in
+`host-filesystem`. On the rebased source: formatting, boundaries, strict Clippy for the
+capture, Docker, lifecycle and Console native crates, their release tests, 128 server
+tests (one skipped) and 90 frontend tests pass. Real Compose, full CI and ARM64 were
+not rerun.
+
+Rebased again onto the plan review decisions (November 11, 2026). Only this document
+differs from that source; no check was rerun.
+
 ## Milestone 4: Give systemd services the same overlays
 
 **Work items**
