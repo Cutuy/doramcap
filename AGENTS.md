@@ -20,7 +20,7 @@ implementation/design guidance. Keep agent process instructions in this file.
 
 ## Important decisions
 
-For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives.
+**Before EVERY important decision, ask the user and wait for their answer.** Show the context, the problem and each option, with your recommendation, in rendered diagrams (Mermaid or SVG) with brief text. Raise one decision at a time and keep terms consistent.
 
 Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
@@ -44,7 +44,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 - Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
 - When full local CI is warranted, run these checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
-- Run ARM64 validation at PR integration points, when explicitly requested, or for high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
+- Run ARM64 validation at PR integration points, when explicitly requested, or for high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results to the user separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
 - ARM64 worker: `doramcap-ci@100.64.0.20` over Tailscale (WSL2, Linux 6.18). Submit trusted source to Pueue's serial default queue and verify completion. WSL must be running; Git pushes do not submit jobs. Native tests use passwordless sudo; never copy credentials.
 - ARM64 covers default/all-feature Rust tests and native cgroup accounting/allocations. Run Dora end-to-end tests separately and CUDA/GPU/IPC qualification on a CUDA-capable host. See [worker documentation](scripts/ci/README.md).
 
@@ -61,7 +61,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 
 - Use plain language, brief prose, short bullets and compact tables. State what things do directly; avoid contrastive “A, not B” phrasing.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
-- Do not add validation prose to documentation unless explicitly requested.
+- Keep validation to the one-line PR summary. Do not list checks, test counts or results in PR descriptions or plan documents. Exception: important, unique validation such as benchmarks or integration tests may record how to run it and its performance results.
 
 ### Visuals
 
@@ -74,11 +74,11 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - Architecture explains the high-level idea, expected behavior, major components, responsibilities and key tradeoffs. Lead with an embedded architecture SVG.
 - Implementation holds the code-level details: code/API changes, chosen mechanisms, milestones and checks.
 - Use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-impl.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
-- Give each implementation milestone a labeled section with **Work items** and **Validation** checklists.
+- Give each implementation milestone a labeled section with **Work items** and **Validation** checklists; name each check in a few words, without results.
 
 ## Pull request descriptions
 
-- Use the first two lines for a brief summary and a single-line validation summary. Put detailed explanations afterward.
+- Use the first two lines for a brief summary and a single-line validation summary. Put detailed explanations of the change afterward.
 - Favor small paragraphs and bullet points for detail. Favor architectural graphs.
 - For complex PRs, explain the idea without listing too many component names.
 - For targeted bug fixes, write the title and description in plain language: what went wrong, what happens now, and what stays the same. Leave out code terms. Add an SVG when the situation is hard to follow in words.
