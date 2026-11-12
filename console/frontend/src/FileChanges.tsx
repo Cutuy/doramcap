@@ -4,6 +4,7 @@ import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT } from './generate
 import type { Snapshot } from './api';
 import { doramcap } from './generated/console';
 import { bytesLabel } from './RunMetrics';
+import { ActionButton } from './ui/ActionButton';
 
 const { StorageCategory, ChangeKind } = doramcap.filesystem.v1;
 type Change = doramcap.filesystem.v1.IFileChange;
@@ -135,7 +136,7 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
               return count > 0 && <button type="button" className="button secondary" aria-pressed={filter === entry.kind} onClick={() => setFilter(entry.kind)} key={entry.kind}>{entry.label} {count}</button>;
             })}
           </div>
-          <button type="button" className="button secondary" aria-pressed={showMetadata} onClick={() => setShowMetadata(!showMetadata)}>{showMetadata ? 'Hide full metadata' : 'Show full metadata'}</button>
+          <ActionButton type="button" variant="secondary" onClick={() => setShowMetadata(!showMetadata)}>{showMetadata ? 'Hide full metadata' : 'Show full metadata'}</ActionButton>
         </div>
         <div className="file-change-list" tabIndex={0} aria-label="File change preview">
           <table>
