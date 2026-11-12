@@ -56,7 +56,9 @@ across all of this work.
 **Work items**
 
 - [ ] In `host-filesystem`, read each upper into change records: added when absent from
-  the lower, modified when present, deleted when the run removed it. Take "before"
+  the lower, deleted when the run removed it, and modified when its type, size,
+  permissions, owner or modification time differs from the lower. Leave out entries
+  that match the lower. Read no file contents. Take "before"
   metadata from the lower and "after" from the upper. Use the one upper reader that
   write back already uses.
 - [ ] Record one deleted entry for each path under a deleted folder in the lower.
@@ -78,18 +80,19 @@ across all of this work.
   save the report, unmount, apply the write policy, clean up.
 - [ ] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
   checkpoint unchanged, so milestone 3 needs no change.
-- [ ] Apply the copied-file decision.
 
 **Validation**
 
 - [ ] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
-  contents, renames, symlinks, non-UTF-8 names and metadata-only changes produce the
+  contents, renames, symlinks, non-UTF-8 names and permission-only changes produce the
   expected records.
+- [ ] A file opened for writing with nothing written, and the folders above a changed
+  file, are absent from the change list.
 - [ ] A socket, a FIFO, a new hard link and a modified file with two names each appear in
   the change list. Write back finishes, the host folder holds the expected result and the
   report carries one warning per entry.
 - [ ] The same Compose writes to a host folder produce the same records as the walk-based
-  list did, apart from the copied-file decision.
+  list did, apart from entries that match the lower.
 - [ ] An output folder's files are listed as added and remain in the run folder after an
   interrupted run. Console's own records are absent from the list.
 - [ ] A single-file mount, a mount containing another mount point and a named volume start
@@ -194,8 +197,8 @@ across all of this work.
 - [ ] Remove the upper only after the copy is verified. A failed copy keeps the upper, as
   a write back stopped by an I/O error does.
 - [ ] Record the policy and the kept location in the file-change report.
-- [ ] Add one Console setting selecting write back or keep with the run, default write back.
-  Pass it to Compose and systemd runs.
+- [ ] Add one Console setting selecting write back, keep with the run or discard, default
+  write back. Pass it to Compose and systemd runs.
 - [ ] Show the policy at Review and the kept location with the result. Add no file browser.
 - [ ] Add a download action for kept files and log dumps as one new kind on the
   authenticated artifact route. The request names a saved change-list entry or a program,
@@ -213,6 +216,9 @@ across all of this work.
 - [ ] A kept file, one with a non-UTF-8 name and a log dump download intact. Requests for
   Console's run records, another run's entries, traversal and symlink escapes are refused.
   A kept HTML file downloads and never renders in Console.
+- [ ] Under discard the host folder is byte-identical before and after, the run keeps the
+  change list and no kept files.
+- [ ] Output folder files stay in the run folder under all three policies.
 - [ ] Projects with no setting behave as before.
 
 ## Integration and qualification

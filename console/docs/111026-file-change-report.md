@@ -56,7 +56,8 @@ Machine snapshots and input copies keep their current owners and are outside thi
 - **Output folder.** It starts empty and already lives in the run folder, so its files
   survive a Console crash and need no copy. Console lists the folder directly and skips
   its own records there. When an app mounts the whole run folder, Console's records are
-  skipped and the report marks that mount as partly listed.
+  skipped and the report marks that mount as partly listed. Giving output folders an
+  overlay too, so one mechanism covers every write, remains an option to revisit.
 - **Named volume.** Docker creates and manages it. Replacing it with an overlay would
   stop Docker filling a new volume from the image and break volume drivers.
 - **Cannot be overlaid.** The mount is a single file, sits under `/proc`, `/sys` or
@@ -115,18 +116,22 @@ Console's Dora coordinator and daemon use `/runtime`, their declared output fold
 
 ## Write policy
 
+![The three write policies](111126-file-change-write-policy.svg)
+
 | Policy | Upper goes to | Host folder | Run keeps |
 | --- | --- | --- | --- |
 | Write back (default) | The host folder | Modified | The change list |
 | Keep with the run | A folder inside the run folder | Untouched | The change list and the files |
 | Discard | Nowhere | Untouched | The change list |
 
-One Console setting selects the policy for the project. Write back stays the default,
-so existing projects behave as before. This setting is approved.
+One Console setting selects one of the three policies for the project. Write back stays
+the default, so existing projects behave as before. This setting is approved.
 
 - With keep, the next run starts from the unchanged host folder; state an app carries
   between runs resets.
 - Run folders grow, and Console has no pruning yet. That is separate work.
+- A policy acts on an upper. An output folder has none, so its files stay in the run
+  folder under every policy.
 - A mount that is not tracked ignores the policy. Its writes land where the app put them.
 
 ### Write back
@@ -175,16 +180,20 @@ its saved change list, waits for its write policy and blocks verified cleanup.
 
 ## Change list
 
+![Which entries in the upper are listed as modified](111126-file-change-unchanged-entries.svg)
+
 - **Added:** in the upper, absent from the lower.
-- **Modified:** in both; "before" from the lower, "after" from the upper.
+- **Modified:** in both, and its type, size, permissions, owner or modification time
+  differs from the lower. "Before" comes from the lower, "after" from the upper.
 - **Deleted:** removed by the run. A deleted folder produces one record for each path
   under it in the lower.
 
+The kernel copies a file into the upper when an app opens it for writing, and creates
+every folder on the way to a changed file. Such entries match the lower and are left out
+of the list. The same rule applies to files and folders, and it reads no file contents.
+
 The list records metadata and paths with their raw Unix bytes. It holds the final state
 of each upper and no history of writes. Listing cost follows the size of the upper.
-
-Opening a file for writing or changing its metadata copies it into the upper even when
-its contents are unchanged. Whether such files read as modified is a pending decision.
 
 ## Report and downloads
 
@@ -234,14 +243,8 @@ the app sees stays with the launch that declares it.
   write back.
 - A change from outside the run to a path the run also wrote is overwritten at write back.
 - Named volumes and mounts that cannot be overlaid are not tracked.
-
-## Pending decisions
-
-| Decision | Options |
-| --- | --- |
-| Files copied into the upper without content changes | Report them as modified, or compare with the lower file and drop identical ones. |
-| Output folders under discard | Leave their files in the run folder as today, or delete them. |
-| Discard in the Console setting | Offer it beside write back and keep, or leave it out. |
+- A file rewritten to the same size with its modification time set back is left out of
+  the change list.
 
 ## Qualification
 
