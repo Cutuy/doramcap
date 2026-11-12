@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, beforeEach, mock, test } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { McapStreamReader } from '@mcap/core';
 import protobuf from 'protobufjs';
 import 'protobufjs/ext/descriptor/index.js';
@@ -10,6 +12,8 @@ import { RUN_SAMPLES, SAMPLE_MS } from './demo/telemetry';
 import { FILE_CHANGES_ARTIFACT, PREPARING_RUN, displayPath } from './generated/transport';
 import { doramcap } from './generated/console';
 import { entryRecordingBytes } from './model';
+import { ConsoleContext } from './context';
+import { FileChanges } from './FileChanges';
 import { LiveModel } from './streams';
 
 const { ComparisonGroup: Group, ComparisonResult: Result, HistoryState: State } = wire;
@@ -320,6 +324,18 @@ test('built-in and visitor results expose complete file previews and matching pr
     const link = lines.find(line => line.pathDisplay === 'latest');
     assert.equal(link.before.symlinkDisplay, 'frames/frame-000041.pcd');
     assert.equal(link.after.symlinkDisplay, 'frames/frame-000042.pcd');
+    const html = renderToStaticMarkup(createElement(ConsoleContext.Provider, { value: { client, basePath: '/console' } }, createElement(FileChanges, { snapshot: status! })));
+    assert.match(html, /aria-label="Host folders change preview"/);
+    assert.match(html, /All 14/);
+    assert.match(html, /Added 6/);
+    assert.match(html, /Modified 6/);
+    assert.match(html, /Deleted 2/);
+    assert.match(html, /mode 0644 → 0600/);
+    assert.match(html, /owner 1000:1000 → 0:0/);
+    assert.match(html, /target frames\/frame-000041.pcd → frames\/frame-000042.pcd/);
+    assert.match(html, /Showing 14 of 14 host folder changes/);
+    assert.match(html, /href="data:application\/x-ndjson/);
+    assert.match(html, /download="file-changes.jsonl"/);
   }
 });
 
