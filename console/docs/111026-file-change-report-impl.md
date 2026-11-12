@@ -258,4 +258,3 @@ was rerun at that point.
 - [ ] Keep Holoscan, CUDA/GPU/IPC and sensor qualification explicit separate work. The
   Holoscan runner checks that an extra data folder appears at the same path with an
   overlay directory as without one.
-
