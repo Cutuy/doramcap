@@ -13,7 +13,7 @@ The user approved report-owned recording policy on 2026-11-12. The migration add
 
 **Validation**
 - [x] Lifecycle and caller mapping.
-- [ ] Independent recording and cleanup outcomes.
+- [x] Independent recording and cleanup outcomes.
 
 ### Lifecycle mapping
 
@@ -40,10 +40,10 @@ The public `MonitorRun`, `Ownership` and `RunReport` formats stay unchanged.
 - [x] Migrate lifecycle coverage, then remove `recorded_run`, `Phases` and their obsolete references.
 
 **Validation**
-- [ ] Startup, readiness, stop and process exit.
-- [ ] Forced shutdown with a readable MCAP.
-- [ ] Dropped futures, descendants and admission.
-- [ ] Focused lifecycle, Supervisor, Compose and systemd checks.
-- [ ] Formatting, Clippy and library boundaries.
-- [ ] Native cgroup and Supervisor cleanup.
-- [ ] ARM64 integration qualification.
+- [x] Startup, readiness, stop and process exit.
+- [x] Forced shutdown with a readable MCAP.
+- [x] Dropped futures, descendants and admission.
+- [x] Focused lifecycle, Supervisor, Compose and systemd checks.
+- [x] Formatting, Clippy and library boundaries.
+- [x] Native cgroup and Supervisor cleanup.
+- [x] ARM64 integration qualification.
