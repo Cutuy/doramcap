@@ -128,7 +128,7 @@ pub struct FilesystemChanges {
     pub named_volumes: CategoryChanges,
 }
 
-/// Run-relative folder holding baselines, manifests and the report checkpoint.
+/// Run-relative folder holding manifests and the report checkpoint.
 const FILESYSTEM_DIRECTORY: &str = "filesystem";
 /// Completion checkpoint, published atomically after every manifest is synced.
 const REPORT_FILE: &str = "report.pb";
@@ -546,6 +546,20 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
             continue;
         }
         let path = source.path.as_ref().unwrap();
+        if source
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("not tracked"))
+        {
+            out.0.coverage_complete = false;
+            out.0.warnings.push(format!(
+                "{}: {} ({})",
+                source.identity,
+                source.reason.as_deref().unwrap(),
+                source.consumers.join(", ")
+            ));
+            continue;
+        }
         if path.starts_with(&sources.artifacts) && tokio::fs::symlink_metadata(path).await?.is_dir()
         {
             // Collapse nested output aliases; their consumers remain associated with each entry.
@@ -570,9 +584,11 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 if record.starts_with(path) {
                     walk.excluded
                         .push(record.strip_prefix(path).unwrap().into());
+                } else if path.starts_with(&record) {
+                    walk.excluded.push(PathBuf::new());
                 }
             }
-            if path == &sources.artifacts {
+            if !walk.excluded.is_empty() {
                 out.0.coverage_complete = false;
                 out.0.warnings.push(format!(
                     "{}: partly listed; Console records excluded",
@@ -610,14 +626,10 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 )
                 .await?;
             }
-        } else if source
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.starts_with("not tracked"))
-            || !input
-                .overlays
-                .as_ref()
-                .is_some_and(|set| set.trees.iter().any(|tree| path.starts_with(&tree.source)))
+        } else if !input
+            .overlays
+            .as_ref()
+            .is_some_and(|set| set.trees.iter().any(|tree| path.starts_with(&tree.source)))
         {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(

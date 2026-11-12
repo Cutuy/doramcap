@@ -23,7 +23,7 @@ pub struct FinalizeInput {
     pub shutdown: compose_apps::compose::Shutdown,
     pub project: compose_apps::compose::ResolvedComposeProject,
 }
-/// Frozen Docker identity, baseline and host views after writer quiescence.
+/// Frozen Docker identity, mount sources and uppers after writer quiescence.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObserveDockerFilesystemInput {
     pub project: compose_apps::compose::ResolvedComposeProject,
