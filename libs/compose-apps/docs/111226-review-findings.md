@@ -2,8 +2,7 @@
 
 # Review warnings and rejections
 
-Created November 12, 2026. Status: implementation in progress; addon rejection
-transport awaits a decision.
+Created November 12, 2026. Status: implemented.
 [Implementation plan](111226-review-findings-impl.md).
 
 Compose resolution gives the user two kinds of result at Review. A warning lets
@@ -64,6 +63,11 @@ stays for logs and the diagnostics file.
 The addon already turns `EmptySelection` into a code. It does the same for every
 variant: a reason and its subject. Console keeps HTTP status `InvalidInput` and
 adds the reason; the frontend picks the message for that reason.
+
+The addon carries designed rejections in its protobuf Review responses, including
+profile listing. TypeScript raises an error with the reason and subject while
+preserving the backend detail for diagnostics. Engine and I/O faults keep the
+existing error path.
 
 ## What stays the same
 

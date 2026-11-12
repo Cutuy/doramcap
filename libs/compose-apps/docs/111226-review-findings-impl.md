@@ -2,15 +2,14 @@
 
 Created November 12, 2026. [Architecture](111226-review-findings.md).
 
-Addon rejection transport awaits a decision. Warnings and the remaining rejection
-components are implemented.
+Both milestones are implemented.
 
 ## Code changes
 
 | Area | Change |
 | --- | --- |
 | `libs/compose-apps/proto/compose.proto` | Remove `warnings` from `ResolvedComposeProject`; reserve field 9 and its name. |
-| `console/proto/execution.proto` | Add `repeated string warnings` to `Inspection`. |
+| `console/proto/execution.proto` | Add `Inspection.warnings` and a typed rejection on Inspection and profile-listing responses. |
 | `compose-apps` configuration | Collect warnings beside the plan; `preparation::resolve` returns them on `ResolvedRun`. |
 | `compose-apps` error | Add the named rejection variants; replace the matching `invalid(...)` sites. Add `Error::reason()` returning the variant name and subject. |
 | Console addon (`console/server/native`) | Put warnings in `Inspection`. Pass any rejection's reason and subject; generalize the `EmptySelection` match. |
@@ -19,6 +18,11 @@ components are implemented.
 
 Saved JSON plans with `warnings` read without it. Warnings are shown only at
 Review, so no saved value is needed.
+
+`ComposeRejection` carries reason, subject and full diagnostic detail. A rejected
+Inspection contains no plan or snapshot; rejected profile listing contains no
+names. The TypeScript adapter raises these as structured errors. Faults retain
+the addon's existing error path.
 
 ## Milestone 1 — Warnings out of the plan
 
@@ -40,7 +44,7 @@ Review, so no saved value is needed.
 
 - [x] Add rejection variants and `Error::reason()`
 - [x] Replace user-fixable `invalid(...)` sites
-- [ ] Pass reason and subject through the addon and Console error body
+- [x] Pass reason and subject through the addon and Console error body
 - [x] Frontend message table with fallback
 
 **Validation**
@@ -48,4 +52,4 @@ Review, so no saved value is needed.
 - [x] Compose rejection tests by variant
 - [x] Console error body test
 - [x] Frontend message selection test
-- [ ] Native journal rejection regression
+- [x] Native journal rejection regression

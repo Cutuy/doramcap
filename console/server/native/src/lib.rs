@@ -35,6 +35,16 @@ fn capture_parts(
 fn failure(error: impl std::fmt::Display) -> Error {
     Error::new(Status::GenericFailure, error.to_string())
 }
+/// Preserve designed Compose causes in protobuf; execution faults keep the error path.
+fn compose_rejection(error: &compose_apps::compose::Error) -> Option<protocol::ComposeRejection> {
+    error
+        .reason()
+        .map(|(reason, subject)| protocol::ComposeRejection {
+            reason: reason.into(),
+            subject,
+            detail: error.to_string(),
+        })
+}
 fn dispatch_failure(error: runtime::DispatchError) -> Error {
     failure(match error {
         runtime::DispatchError::Busy => "Busy",
@@ -195,15 +205,26 @@ impl Execution {
                 let result = async {
                     let project = request.project.ok_or("project missing".to_string())?;
                     let resources = compose.get().await?;
-                    let names = compose_apps::preparation::profiles(
+                    let profiles = compose_apps::preparation::profiles(
                         &resources.adapter,
                         &request.run_id,
                         Path::new(&request.repository_root),
                         &project,
                     )
-                    .await
-                    .map_err(|e| e.to_string())?;
-                    Ok(protocol::ComposeProfiles { names }.encode_to_vec())
+                    .await;
+                    let response = match profiles {
+                        Ok(names) => protocol::ComposeProfiles {
+                            names,
+                            rejection: None,
+                        },
+                        Err(error) => protocol::ComposeProfiles {
+                            rejection: Some(
+                                compose_rejection(&error).ok_or_else(|| error.to_string())?,
+                            ),
+                            ..Default::default()
+                        },
+                    };
+                    Ok(response.encode_to_vec())
                 }
                 .await;
                 let _ = tx.send(result);
@@ -245,6 +266,7 @@ impl Execution {
                                     machine,
                                     machine_error,
                                     warnings: Vec::new(),
+                                    rejection: None,
                                 }
                                 .encode_to_vec())
                             })
@@ -253,19 +275,24 @@ impl Execution {
                         }
                     };
                     let resources = compose.get().await?;
-                    let resolved = compose_apps::preparation::resolve(
+                    let resolution = compose_apps::preparation::resolve(
                         &resources.adapter,
                         spec.try_into()
                             .map_err(|e: compose_apps::compose::Error| e.to_string())?,
                     )
-                    .await
-                    .map_err(|e| {
-                        if matches!(e, compose_apps::compose::Error::EmptySelection) {
-                            "EmptySelection".to_owned()
-                        } else {
-                            e.to_string()
+                    .await;
+                    let resolved = match resolution {
+                        Ok(resolved) => resolved,
+                        Err(error) => {
+                            let rejection =
+                                compose_rejection(&error).ok_or_else(|| error.to_string())?;
+                            return Ok(protocol::Inspection {
+                                rejection: Some(rejection),
+                                ..Default::default()
+                            }
+                            .encode_to_vec());
                         }
-                    })?;
+                    };
                     let machine =
                         workload_docker::workflows::recorded_compose::observation::machine_state(
                             &resources.adapter,
@@ -281,6 +308,7 @@ impl Execution {
                         machine,
                         machine_error,
                         warnings: resolved.warnings,
+                        rejection: None,
                     }
                     .encode_to_vec())
                 }

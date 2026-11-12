@@ -29,6 +29,15 @@ type RawCapabilities = Omit<NativeCapabilities, 'parseConfig' | 'parseManifest' 
 };
 const addon = require('../build/console.node') as RawCapabilities;
 
+/** Decode designed Review rejections as errors with structured cause facts. */
+function reviewResult<T extends { rejection?: doramcap.console.execution.v1.IComposeRejection | null }>(result: T): T {
+  if (result.rejection) {
+    const { reason, subject, detail } = result.rejection;
+    throw Object.assign(new Error(detail ?? ''), { reason: reason ?? '', subject: subject ?? '' });
+  }
+  return result;
+}
+
 export const capabilities: NativeCapabilities = {
   formatConfig: (config) => addon.formatConfig(Buffer.from(wire.ConsoleConfig.encode(config).finish())),
   parseConfig: (text) => wire.ConsoleConfig.decode(addon.parseConfig(text)),
@@ -40,13 +49,13 @@ export const capabilities: NativeCapabilities = {
     const owner = await addon.open(socket, version);
     return {
       composeProfiles: async (request) =>
-        execution.ComposeProfiles.decode(
+        reviewResult(execution.ComposeProfiles.decode(
           await owner.composeProfiles(Buffer.from(execution.ComposeProfilesRequest.encode(request).finish())),
-        ),
+        )),
       inspect: async (request) =>
-        execution.Inspection.decode(
+        reviewResult(execution.Inspection.decode(
           await owner.inspect(Buffer.from(execution.RunRequest.encode(request).finish())),
-        ),
+        )),
       start: (request) =>
         owner
           .start(Buffer.from(execution.StartRequest.encode(request).finish()))
