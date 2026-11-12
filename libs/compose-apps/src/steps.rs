@@ -3,9 +3,9 @@ use crate::compose::{
     Diagnostics, DockerAdapter, InspectCompose, QuiesceCompose, RemoveCompose, ResolveCompose,
     StartCompose,
 };
-use docker_engine::filesystem::{CaptureFilesystemBaseline, CollectFilesystemChanges};
 use orchestrator::LocalExecutor;
 use std::rc::Rc;
+use workload_lifecycle::capture::{CaptureFilesystemBaseline, CollectFilesystemChanges};
 
 /// Register lifecycle and filesystem steps with shared adapter and diagnostics.
 /// The caller retains its executor's observer, label and payload policy.
@@ -29,14 +29,8 @@ pub fn register(
     step!(InspectCompose);
     step!(QuiesceCompose);
     step!(RemoveCompose);
-    let engine = Rc::new(adapter.engine.clone());
-    let dependency = engine.clone();
-    executor.register::<CaptureFilesystemBaseline>(move || CaptureFilesystemBaseline {
-        engine: dependency.clone(),
-    });
-    executor.register::<CollectFilesystemChanges>(move || CollectFilesystemChanges {
-        engine: engine.clone(),
-    });
+    executor.register::<CaptureFilesystemBaseline>(|| CaptureFilesystemBaseline);
+    executor.register::<CollectFilesystemChanges>(|| CollectFilesystemChanges);
 }
 
 /// Register communication, graph and workload operations on the experiment executor.

@@ -1,10 +1,13 @@
 //! Opt-in CAP_SYS_ADMIN tests; build normally, elevate only this executable.
-use docker_engine::docker_proto::BindMount;
-use docker_engine::overlay::*;
+use host_filesystem::filesystem_proto::DirectoryMount as BindMount;
+use host_filesystem::overlay::*;
 use std::{
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
 };
+async fn prepare(input: PrepareInput) -> host_filesystem::Result<OverlaySet> {
+    host_filesystem::overlay::prepare(resolve(input).await?).await
+}
 fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
     vec![
         BindMount {
@@ -18,7 +21,6 @@ fn plan(_root: &Path, source: &Path) -> Vec<BindMount> {
             source: source.join("child").to_string_lossy().into(),
             target: "/child".into(),
             read_only: true,
-            ..Default::default()
         },
         BindMount {
             consumer: "project/b".into(),
@@ -298,7 +300,6 @@ async fn read_only_parent_alias_and_unsupported_sources() {
             source: source.to_string_lossy().into(),
             target: "/parent".into(),
             read_only: true,
-            ..Default::default()
         },
     ];
     // Act
@@ -491,7 +492,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
     let mut actions = Vec::new();
     while !action_stream.is_empty() {
         actions.push(
-            docker_engine::filesystem_proto::FileAction::decode_length_delimited(
+            host_filesystem::filesystem_proto::FileAction::decode_length_delimited(
                 &mut action_stream,
             )
             .unwrap(),

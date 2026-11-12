@@ -398,7 +398,7 @@ async fn discard_rejects_linked_upper_without_deleting_the_link_target() {
     assert_eq!(std::fs::read(outside.join("data")).unwrap(), b"keep");
 }
 
-async fn test_engine_status(
+pub(crate) async fn test_engine_status(
     root: &std::path::Path,
     responses: Vec<(&'static str, u16, serde_json::Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {

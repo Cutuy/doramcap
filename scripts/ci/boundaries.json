@@ -35,7 +35,7 @@
     {"from": "workload-supervisor", "forbid": ["compose-apps", "workload-docker", "bollard", "docker-engine"]},
     {"from": "console-live-bridge", "forbid": ["compose-apps", "cpu-viewer", "fault-*", "telemetry-protocol", "workload-*"]},
     {"from": "console-native", "forbid": ["project-explorer-server", "cpu-viewer", "fault-*", "storage-persistence", "telemetry-protocol"]},
-    {"from": "docker-engine", "forbid": ["workload-*", "mcap", "storage-persistence", "mcap-recorder"]},
+    {"from": "docker-engine", "forbid": ["orchestrator", "workload-*", "mcap", "storage-persistence", "mcap-recorder"]},
     {"from": "host-filesystem", "forbid": ["workload-*", "docker-engine", "bollard", "orchestrator"]}
   ]
 }

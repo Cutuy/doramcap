@@ -45,7 +45,7 @@ pub(super) fn attach(
     use super::recorded_compose::finalization::*;
     use compose_apps::compose::PrepareOverlays;
     use compose_apps::preparation::PrepareRun;
-    use docker_engine::overlay::FinalizeOverlays;
+    use workload_lifecycle::capture::FinalizeOverlays;
     Rc::new_cyclic(move |weak: &Weak<LocalExecutor>| {
         register(&mut executor, adapter.clone(), diagnostics.clone());
         let dependency = adapter.clone();
@@ -64,10 +64,12 @@ pub(super) fn attach(
         });
         let child = weak.clone();
         let sink = diagnostics.clone();
-        let finalization_adapter = adapter.clone();
+        let observation_adapter = adapter.clone();
+        executor.register::<ObserveDockerFilesystem>(move || ObserveDockerFilesystem {
+            adapter: observation_adapter.clone(),
+        });
         executor.register::<FinalizeRun>(move || FinalizeRun {
             executor: child.clone(),
-            adapter: finalization_adapter.clone(),
             diagnostics: sink.clone(),
         });
         executor.register::<WriteRunReport>(move || WriteRunReport {

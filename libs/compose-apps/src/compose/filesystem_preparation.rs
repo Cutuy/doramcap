@@ -5,7 +5,9 @@ use crate::compose::{
     error::invalid,
     mounts,
 };
-use docker_engine::overlay::{OverlayPolicy, OverlaySet, PrepareInput, prepare, unmount};
+use host_filesystem::overlay::{
+    OverlayPolicy, OverlaySet, PrepareInput, prepare, resolve, unmount,
+};
 use orchestrator::Step;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -59,13 +61,15 @@ impl PrepareOverlays {
             bind_mounts.extend(mounts::binds(&project.key, &model)?);
             models.push(model);
         }
-        let views = prepare(PrepareInput {
+        let views = resolve(PrepareInput {
             artifacts: input.artifacts,
             workspace: input.workspace,
-            bind_mounts,
+            bind_mounts: mounts::directories(&bind_mounts),
             policy: input.policy,
         })
         .await?;
+        mounts::validate_views(&bind_mounts, &views)?;
+        let views = prepare(views).await?;
         let mut projects = input.projects;
         let result = async {
             for (project, model) in projects.iter_mut().zip(&mut models) {
@@ -183,7 +187,7 @@ mod tests {
             prepared.projects[0].sha256,
             digest(&std::fs::read(&prepared.projects[0].manifest).unwrap())
         );
-        docker_engine::overlay::finalize(prepared.views)
+        host_filesystem::overlay::finalize(prepared.views)
             .await
             .unwrap();
         server.await.unwrap();

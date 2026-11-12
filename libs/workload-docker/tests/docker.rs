@@ -1,14 +1,16 @@
 //! Explicitly opt-in real Engine validation. The harness builds unprivileged and
 //! elevates only this executable. Every scenario owns distinct named resources.
 use compose_apps::preparation::McapWriters;
-use docker_engine::overlay;
+use host_filesystem::overlay;
 mod support;
 use compose_apps::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
 use compose_apps::{compose::*, preparation};
 use orchestrator::Step;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
-use workload_docker::workflows::recorded_compose::finalization::FinalizeRun;
+use workload_docker::workflows::recorded_compose::finalization::{
+    FinalizeRun, ObserveDockerFilesystem,
+};
 use workload_docker::workflows::recorded_compose::*;
 use workload_lifecycle::recording::Recording;
 
@@ -349,8 +351,8 @@ async fn multi_project_lifecycle() {
             .filesystem_changes
             .as_ref()
             .expect("filesystem collection");
-        async fn rows(path: &Path) -> Vec<docker_engine::filesystem::FileChange> {
-            let mut reader = docker_engine::filesystem::FileChanges::open(path)
+        async fn rows(path: &Path) -> Vec<host_filesystem::filesystem::FileChange> {
+            let mut reader = host_filesystem::filesystem::FileChanges::open(path)
                 .await
                 .unwrap();
             let mut records = Vec::new();
@@ -359,7 +361,7 @@ async fn multi_project_lifecycle() {
             }
             records
         }
-        use docker_engine::filesystem::{ChangeKind, StorageCategory};
+        use host_filesystem::filesystem::{ChangeKind, StorageCategory};
         let host_rows = rows(&evidence.host_binds.manifest).await;
         assert!(host_rows.iter().any(
             |r| r.path.as_os_str().as_bytes() == b"byte-\xff" && r.kind == ChangeKind::Modified
@@ -2932,7 +2934,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker and prebuilt images"]
 async fn incomplete_volume_scan_retains_volumes() {
-    use docker_engine::filesystem_proto as pb;
+    use host_filesystem::filesystem_proto as pb;
     use prost::Message;
 
     // Arrange: an ordinary run whose policy would otherwise delete its named volume.
@@ -3218,4 +3220,162 @@ fn dora_fixture(
             input
         })
         .collect()
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires Docker, OverlayFS capabilities and the prepared Dora image"]
+async fn shared_capture_preserves_compose_records_and_step_lineage() {
+    use host_filesystem::filesystem_proto as pb;
+    use prost::Message;
+    // Arrange: equivalent writes exercise shared aliases, host, layer and volume records.
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+    for disposition in [
+        overlay::Disposition::WriteBack,
+        overlay::Disposition::Discard,
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("modified"), b"original").unwrap();
+        std::fs::write(source.join("deleted"), b"original").unwrap();
+        let mut app = service(&image);
+        app["volumes"] = serde_json::json!([
+            {"type":"bind","source":source,"target":"/data"},
+            {"type":"bind","source":source,"target":"/alias","read_only":true},
+            "cache:/cache"
+        ]);
+        app["command"] = serde_json::json!([
+            "printf changed > /data/modified; /bin/rm /data/deleted; printf saved > /data/added; printf volume > /cache/added; printf layer > /capture-layer; read -r word < /alias/added; [ \"$$word\" = saved ] || exit 42; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"
+        ]);
+        app["healthcheck"] = serde_json::json!({"test":["CMD","test","-s","/capture-layer"],"interval":"100ms","timeout":"1s","retries":30});
+        write(
+            &root.path().join("app.json"),
+            serde_json::json!({"services":{"app":app},"volumes":{"cache":{}}}),
+        );
+        let id = format!("shared-capture-{}-{disposition:?}", std::process::id()).to_lowercase();
+        let artifacts = root.path().join("run");
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let mut runner = ComposeRunner::new(adapter.clone());
+        // Act: verify real writes remain isolated until shared finalization.
+        let report = runner
+            .run_with_ready(
+                ComposeRun {
+                    id: id.clone(),
+                    artifacts: artifacts.clone(),
+                    repository_root: root.path().into(),
+                    filesystem: Some(overlay::OverlayPolicy {
+                        disposition: disposition.clone(),
+                    }),
+                    host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+                    projects: vec![project(root.path(), "app")],
+                    system_apps: vec![],
+                    dora_apps: dora_apps(),
+                    dataflow_file: String::new(),
+                    recordings: vec![],
+                    mcap_writers: Default::default(),
+                    readiness_seconds: 15,
+                    stop_seconds: 3,
+                },
+                async {
+                    started.await.unwrap();
+                    assert_eq!(std::fs::read(source.join("modified")).unwrap(), b"original");
+                    assert!(source.join("deleted").exists());
+                    assert!(!source.join("added").exists());
+                },
+                move |e: &orchestrator::Event| sink.borrow_mut().push(e.clone()),
+                Some(ready),
+            )
+            .await
+            .unwrap();
+        // Assert: existing protobuf tags and byte paths remain independently readable.
+        assert!(report.execution_error.is_none(), "{report:#?}");
+        assert!(
+            report.writers_stopped && report.boundary_clean,
+            "{report:#?}"
+        );
+        assert!(report.filesystem_results.as_ref().unwrap().unmounted);
+        let changes = report.filesystem_changes.as_ref().unwrap();
+        let decode = |path: &Path| {
+            let bytes = std::fs::read(path).unwrap();
+            let mut input = bytes.as_slice();
+            let mut rows = Vec::new();
+            while !input.is_empty() {
+                rows.push(pb::FileChange::decode_length_delimited(&mut input).unwrap());
+            }
+            rows
+        };
+        let host = decode(&changes.host_binds.manifest);
+        for (path, kind) in [(b"added".as_slice(), 1), (b"modified", 2), (b"deleted", 3)] {
+            let row = host.iter().find(|r| r.path == path).unwrap();
+            assert_eq!((row.category, row.kind), (1, kind));
+            assert_eq!(row.consumers.len(), 2);
+        }
+        assert!(
+            decode(&changes.container_layers.manifest)
+                .iter()
+                .any(|r| r.category == 2 && r.path == b"/capture-layer" && r.kind == 1)
+        );
+        assert!(
+            decode(&changes.named_volumes.manifest)
+                .iter()
+                .any(|r| r.category == 3 && r.path == b"added" && r.kind == 1)
+        );
+        let kept = disposition == overlay::Disposition::WriteBack;
+        assert_eq!(source.join("added").exists(), kept);
+        assert_eq!(source.join("deleted").exists(), !kept);
+        assert_eq!(
+            std::fs::read(source.join("modified")).unwrap(),
+            if kept {
+                b"changed".as_slice()
+            } else {
+                b"original"
+            }
+        );
+        support::assert_no_run_resources(&adapter, &id).await;
+        let events = events.borrow();
+        let observed = events
+            .iter()
+            .find(|e| {
+                e.invocation.step == ObserveDockerFilesystem::ID.unwrap()
+                    && e.state == orchestrator::State::Succeeded
+            })
+            .unwrap();
+        let collected = events
+            .iter()
+            .find(|e| {
+                e.invocation.step.ends_with("CollectFilesystemChanges")
+                    && e.state == orchestrator::State::Succeeded
+            })
+            .unwrap();
+        let finalized = events
+            .iter()
+            .find(|e| {
+                e.invocation.step.ends_with("FinalizeOverlays")
+                    && e.state == orchestrator::State::Started
+            })
+            .unwrap();
+        assert_eq!(collected.invocation.parent, finalized.invocation.parent);
+        assert_eq!(observed.invocation.parent, collected.invocation.parent);
+        assert!(
+            collected
+                .invocation
+                .dependencies
+                .contains(&observed.invocation.id)
+        );
+        assert!(collected.elapsed_ns >= observed.elapsed_ns);
+        assert!(
+            finalized
+                .invocation
+                .dependencies
+                .contains(&collected.invocation.id)
+        );
+        assert!(finalized.elapsed_ns >= collected.elapsed_ns);
+    }
 }

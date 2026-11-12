@@ -1,6 +1,6 @@
 //! Per-run Linux OverlayFS views for resolved directory binds.
 //!
-//! Requires a cooperative local daemon in the caller's mount namespace and
+//! Requires backend-qualified mount visibility and
 //! CAP_SYS_ADMIN. Caller must stop all writers before finalization. Explicit
 //! preparation/finalization own mounts; dropping serialized values does no cleanup.
 mod direct;
@@ -11,8 +11,7 @@ use super::{
     files::private_write,
     filesystem::{MetadataWalk, Snapshot, read_snapshot, write_record, write_snapshot},
 };
-use crate::docker_proto::BindMount;
-use orchestrator::Step;
+use crate::filesystem_proto::DirectoryMount;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -24,40 +23,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::io::AsyncWriteExt;
-
-/// Require the local Docker socket peer to share this process's mount namespace.
-/// Overlay binds must resolve there; proxies require separate namespace guarantees.
-pub async fn verify_namespace(socket: &Path) -> Result<()> {
-    use std::os::fd::AsRawFd;
-    let stream = tokio::net::UnixStream::connect(socket).await?;
-    let mut cred = libc::ucred {
-        pid: 0,
-        uid: 0,
-        gid: 0,
-    };
-    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
-    // SAFETY: destination and length point to correctly sized live storage.
-    if unsafe {
-        libc::getsockopt(
-            stream.as_raw_fd(),
-            libc::SOL_SOCKET,
-            libc::SO_PEERCRED,
-            (&mut cred as *mut libc::ucred).cast(),
-            &mut len,
-        )
-    } != 0
-    {
-        return Err(std::io::Error::last_os_error().into());
-    }
-    let ours = tokio::fs::read_link("/proc/self/ns/mnt").await?;
-    let theirs = tokio::fs::read_link(format!("/proc/{}/ns/mnt", cred.pid)).await?;
-    if ours != theirs {
-        return Err(invalid(
-            "Docker peer and manager mount namespaces differ; host overlay visibility is unqualified",
-        ));
-    }
-    Ok(())
-}
 
 /// Disposition after all writers stop. Default reproduces persistent host output.
 /// Retaining results uses `WriteBack` to the configured host source.
@@ -86,7 +51,7 @@ pub struct OverlayTree {
     pub upper: PathBuf,
     /// Fresh kernel scratch directory on the upper filesystem.
     pub work: PathBuf,
-    /// Mountpoint bound into containers.
+    /// Mountpoint exposed through the backend launch.
     pub merged: PathBuf,
     /// Original metadata inventory used for conflict detection.
     pub baseline: PathBuf,
@@ -96,13 +61,13 @@ pub struct OverlayTree {
 pub struct MountMapping {
     /// Backend-selected display name for the bind consumer.
     pub consumer: String,
-    /// Unchanged container destination.
+    /// Unchanged application destination.
     pub target: String,
     /// Canonical user-specified source.
     pub original: PathBuf,
     /// Source used by the generated execution manifest.
     pub effective: PathBuf,
-    /// Original access flag retained at the container bind.
+    /// Original access flag retained at the application bind.
     pub read_only: bool,
     /// Reason for redirecting or preserving this source.
     pub reason: String,
@@ -131,7 +96,7 @@ pub struct PrepareInput {
     /// Must be fresh, outside source trees, and have an existing canonical parent.
     pub workspace: PathBuf,
     /// Bind sources, destinations and access settings supplied by the backend.
-    pub bind_mounts: Vec<BindMount>,
+    pub bind_mounts: Vec<DirectoryMount>,
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
 }
@@ -147,20 +112,6 @@ pub struct OverlayResults {
     /// Coverage limitations for this disposition.
     #[serde(default)]
     pub warnings: Vec<String>,
-}
-/// Strictly unmount, then apply upper changes or discard them; writers must stop first.
-/// Interrupted write-back leaves upper data for the user to salvage before reset.
-/// Pre-run reset never replays writes.
-pub struct FinalizeOverlays;
-impl Step for FinalizeOverlays {
-    const ID: Option<&'static str> = Some("workload_docker::compose::overlay::FinalizeOverlays");
-    type Input = OverlaySet;
-    type Output = OverlayResults;
-    async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        finalize(input)
-            .await
-            .map_err(|e| orchestrator::Error::message(e.to_string()))
-    }
 }
 fn cstr(path: &Path) -> Result<CString> {
     CString::new(path.as_os_str().as_bytes()).map_err(|_| invalid("NUL in mount path"))
@@ -247,6 +198,23 @@ async fn snapshot(root: &Path) -> Result<BTreeMap<PathBuf, super::filesystem::Fi
     }
     Ok(entries)
 }
+/// Resolved sources awaiting backend validation and native mount preparation.
+/// Owns no filesystem resources; dropping it needs no cleanup.
+pub struct OverlayPlan {
+    views: OverlaySet,
+    roots: Vec<PathBuf>,
+}
+impl OverlayPlan {
+    /// Canonical mappings in backend input order, before view redirection.
+    pub fn mappings(&self) -> &[MountMapping] {
+        &self.views.mappings
+    }
+    /// Non-overlapping roots selected for shared writable and read-only aliases.
+    pub fn roots(&self) -> &[PathBuf] {
+        &self.roots
+    }
+}
+
 fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf>) -> Vec<PathBuf> {
     mappings
         .iter()
@@ -255,10 +223,10 @@ fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf
         .collect()
 }
 
-/// Plan and mount views. Sources must exist and be ordinary directories. Read-only
+/// Resolve view mappings without creating directories or mounts. Sources must exist and be ordinary directories. Read-only
 /// binds outside shared writable trees and dedicated run artifacts stay unchanged.
 /// Writable files, special nodes and nested mounts fail closed with their paths.
-pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
+pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
     let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
     let directory = artifacts.join("overlays");
     let workspace = input.workspace;
@@ -290,7 +258,7 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         }
         let meta = tokio::fs::symlink_metadata(&source).await?;
         let owned = source.starts_with(&artifacts);
-        let host_shm = host_filesystem::is_host_shm_source(&source)?;
+        let host_shm = crate::is_host_shm_source(&source)?;
         if !bind.read_only && !owned && !host_shm {
             if !meta.is_dir()
                 || ["/proc", "/sys", "/dev"]
@@ -344,26 +312,30 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         }
         writable.insert(alias);
     }
-    let roots: Vec<_> = writable
+    let set = OverlaySet {
+        directory: directory.clone(),
+        workspace: workspace.clone(),
+        trees: vec![],
+        mappings,
+        policy: input.policy,
+    };
+    let roots = writable
         .iter()
         .filter(|p| !writable.iter().any(|q| q != *p && p.starts_with(q)))
         .cloned()
         .collect();
-    // Validate all binds that will use a shared view before creating it.
-    for (mapping, bind) in mappings.iter().zip(&input.bind_mounts) {
-        if (!matches!(bind.propagation.as_str(), "" | "rprivate" | "private") || bind.selinux)
-            && roots.iter().any(|root| mapping.original.starts_with(root))
-        {
-            return Err(invalid(format!(
-                "{}: unsupported OverlayFS bind options for {} -> {} (propagation {:?}, SELinux relabeling: {})",
-                bind.consumer,
-                mapping.original.display(),
-                bind.target,
-                bind.propagation,
-                bind.selinux,
-            )));
-        }
-    }
+    Ok(OverlayPlan { views: set, roots })
+}
+
+/// Validate native source constraints, then mount resolved views and save ownership.
+/// Callers validate backend-specific options before this first mount attempt.
+pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
+    let OverlayPlan {
+        views: mut set,
+        roots,
+    } = plan;
+    let directory = set.directory.clone();
+    let workspace = set.workspace.clone();
     let mountpoints = mounts().await?;
     for root in &roots {
         let mut links: BTreeMap<(u64, u64), (u64, u64)> = BTreeMap::new();
@@ -396,13 +368,6 @@ pub async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
     }
     super::files::create_private_dir(&directory).await?;
     super::files::create_private_dir(&workspace).await?;
-    let mut set = OverlaySet {
-        directory: directory.clone(),
-        workspace: workspace.clone(),
-        trees: vec![],
-        mappings,
-        policy: input.policy,
-    };
     for (i, source) in roots.into_iter().enumerate() {
         let base = directory.join(i.to_string());
         tokio::fs::create_dir(&base).await?;
@@ -526,7 +491,7 @@ async fn rsync(
         .arg(format!("{}/", target.display()))
         .stdout(stdout)
         .stderr(stderr);
-    let (mut child, group) = super::ProcessGroup::spawn(&mut command)?;
+    let (mut child, group) = super::files::ProcessGroup::spawn(&mut command)?;
     let status = child.wait().await?;
     drop(group);
     if !status.success() {
@@ -782,49 +747,8 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn unsupported_options_on_read_only_alias_fail_before_view_creation() {
-        // Arrange
-        let root = tempfile::tempdir().unwrap();
-        let artifacts = root.path().join("artifacts");
-        let workspace = root.path().join("workspace");
-        let source = root.path().join("source");
-        let child = source.join("child");
-        std::fs::create_dir(&artifacts).unwrap();
-        std::fs::create_dir_all(&child).unwrap();
-
-        // Act
-        let error = prepare(PrepareInput {
-            artifacts: artifacts.clone(),
-            workspace: workspace.clone(),
-            bind_mounts: vec![
-                BindMount {
-                    consumer: "project/writer".into(),
-                    source: child.to_str().unwrap().into(),
-                    target: "/out".into(),
-                    ..Default::default()
-                },
-                BindMount {
-                    consumer: "project/reader".into(),
-                    source: source.to_str().unwrap().into(),
-                    target: "/in".into(),
-                    read_only: true,
-                    propagation: "rshared".into(),
-                    ..Default::default()
-                },
-            ],
-            policy: OverlayPolicy::default(),
-        })
-        .await
-        .unwrap_err();
-
-        // Assert
-        let message = error.to_string();
-        assert!(message.contains("project/reader"), "{message}");
-        assert!(message.contains("rshared"), "{message}");
-        assert!(!workspace.exists());
-        assert!(!artifacts.join("overlays").exists());
+    async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
+        super::prepare(resolve(input).await?).await
     }
 
     #[tokio::test]
@@ -837,24 +761,23 @@ mod tests {
         let file = shared.path().join("segment");
         std::fs::write(&file, b"initial").unwrap();
         let bind_mounts = vec![
-            BindMount {
+            DirectoryMount {
                 consumer: "project/app".into(),
                 source: shared.path().to_string_lossy().into(),
                 target: "/input/shm".into(),
                 ..Default::default()
             },
-            BindMount {
+            DirectoryMount {
                 consumer: "project/app".into(),
                 source: file.to_string_lossy().into(),
                 target: "/input/camera".into(),
                 ..Default::default()
             },
-            BindMount {
+            DirectoryMount {
                 consumer: "project/app".into(),
                 source: file.to_string_lossy().into(),
                 target: "/read-only".into(),
                 read_only: true,
-                ..Default::default()
             },
         ];
 

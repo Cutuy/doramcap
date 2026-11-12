@@ -1,6 +1,6 @@
 # Docker Engine operations
 
-Share Docker connections, cleanup of owned resources and automatic filesystem capture across workload backends.
+Share Docker connections, cleanup of owned resources and Docker storage observations across workload backends.
 
 ![Docker operations](architecture.svg)
 
@@ -11,7 +11,6 @@ let stopped = owned.quiesce(stop_seconds).await?;
 ```
 
 Backends resolve mounts, verify container ownership and choose the container removed last.
-Filesystem operations retain the existing recording schema and require stopped writers for finalization.
+Docker verifies socket-peer mount visibility, discovers volumes and streams stopped-container layer diffs into shared filesystem records.
 
-See the [API](src/lib.rs), [filesystem capture](src/filesystem.rs) and [view preparation](src/overlay.rs).
-Build the mounted-filesystem tests with `cargo test --profile ci --locked -p docker-engine --test overlay --no-run`, then run the produced test executable with mount capabilities.
+See the [API](src/lib.rs), [Docker observations](src/filesystem.rs), [namespace check](src/namespace.rs) and [shared Linux capture](../host-filesystem/README.md).

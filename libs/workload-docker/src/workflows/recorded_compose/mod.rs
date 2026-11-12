@@ -1,7 +1,7 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
-use docker_engine::{
+use host_filesystem::{
     filesystem::FilesystemChanges,
-    overlay::{self, OverlayPolicy, OverlayResults},
+    overlay::{OverlayPolicy, OverlayResults},
 };
 mod execution;
 pub mod finalization;
@@ -222,7 +222,7 @@ impl ComposeRunner {
         let executor = super::steps::attach(executor, self.adapter.clone(), diagnostics.clone());
         self.blocked = false;
         if spec.filesystem.is_some() {
-            overlay::verify_namespace(self.adapter.socket_path()).await?;
+            docker_engine::namespace::verify_namespace(self.adapter.socket_path()).await?;
         }
         let artifacts = prepared.value().artifacts.clone();
 

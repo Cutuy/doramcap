@@ -7,8 +7,8 @@ pub use project::stop_timeout;
 
 use super::{ResolvedComposeProject, Result, error::invalid};
 use docker_engine::Engine;
-pub use docker_engine::files::{digest, private_write};
 pub use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
+pub use host_filesystem::files::{digest, private_write};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 /// Reserved marker for the Dora runtime whose removal completes an experiment.

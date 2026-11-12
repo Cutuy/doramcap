@@ -12,3 +12,5 @@ on one repository; see its [architecture](docs/111026-admission-lock.md).
 Plan: [launch forms for Compose, systemd and Supervisor](docs/110726-launch-forms.md).
 [Launch contracts](proto/launch.proto) separate app configuration from the shared runtime
 filled by preparation; [shared run fields](docs/110726-shared-run-fields.md) records adoption.
+
+Shared [filesystem steps](src/capture.rs) save metadata before finalizing Linux views. Backends resolve storage, verify stopped writers and supply Engine or service-manager observations. Existing Compose step identifiers and collection-to-finalization dependencies remain stable.

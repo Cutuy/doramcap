@@ -1502,16 +1502,13 @@ name = "docker-engine"
 version = "0.1.0"
 dependencies = [
  "bollard",
- "hex",
  "host-filesystem",
  "libc",
- "orchestrator",
  "prost",
  "prost-build",
  "protoc-bin-vendored",
  "serde",
  "serde_json",
- "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
@@ -2273,7 +2270,17 @@ dependencies = [
 name = "host-filesystem"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "libc",
+ "prost",
+ "prost-build",
+ "protoc-bin-vendored",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
@@ -3704,6 +3711,7 @@ dependencies = [
  "compose-apps",
  "docker-engine",
  "futures-util",
+ "host-filesystem",
  "mcap",
  "orchestrator",
  "serde",
@@ -6535,6 +6543,7 @@ dependencies = [
  "dora-control",
  "dora-core",
  "futures-util",
+ "host-filesystem",
  "libc",
  "notify",
  "orchestrator",

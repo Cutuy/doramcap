@@ -1,4 +1,13 @@
-//! Native filesystem identity checks shared by workload backends.
+//! Native Linux filesystem identity, isolated views and metadata capture.
+pub mod error;
+pub mod files;
+pub mod filesystem;
+pub mod overlay;
+pub use error::{Error, Result};
+/// Binary filesystem records and backend-neutral capture inputs.
+pub mod filesystem_proto {
+    include!(concat!(env!("OUT_DIR"), "/doramcap.filesystem.v1.rs"));
+}
 use std::{io, os::unix::fs::MetadataExt, path::Path};
 
 /// Conventional application mount path; native declarations can select other paths or backing.

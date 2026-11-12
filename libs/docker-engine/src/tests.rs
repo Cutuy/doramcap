@@ -54,11 +54,11 @@ pub(crate) fn test_engine_status(
 async fn process_group_guard_terminates_its_spawned_child() {
     use std::{os::unix::process::ExitStatusExt, process::Stdio, time::Duration};
     // Arrange
-    let mut command = Command::new("/bin/cat");
+    let mut command = tokio::process::Command::new("/bin/cat");
     command.stdin(Stdio::piped()).stdout(Stdio::null());
 
     // Act
-    let (mut child, group) = ProcessGroup::spawn(&mut command).unwrap();
+    let (mut child, group) = host_filesystem::files::ProcessGroup::spawn(&mut command).unwrap();
     let pid = i32::try_from(child.id().unwrap()).unwrap();
     // SAFETY: getpgid only observes the process group of the spawned child.
     assert_eq!(unsafe { libc::getpgid(pid) }, pid);
