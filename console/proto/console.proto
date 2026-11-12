@@ -146,8 +146,9 @@ enum HistoryState {
   HISTORY_BLOCKED = 5; // Cleanup was not verified.
   HISTORY_INTERRUPTED = 6; // Console stopped before the run reported a result.
 }
-// One declared output; an absent size means no file exists on the host.
+// Zero preserves recordings in saved entries that predate artifact kinds.
 enum ArtifactKind { RECORDING = 0; REPORT = 1; FILE_CHANGES = 2; }
+// One declared output; an absent size means no file exists on the host.
 message HistoryArtifact {
   string id = 1;
   optional uint64 size_bytes = 2;

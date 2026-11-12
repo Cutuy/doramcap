@@ -1,7 +1,7 @@
 # Overlays for writable mounts: implementation plan
 
 Created November 11, 2026. Updated November 11, 2026: decisions from the plan review recorded.
-Status: milestone 1 implemented and validated, in review ([#318](https://github.com/Cutuy/doramcap/pull/318)),
+Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318)),
 milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
 [Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
@@ -9,7 +9,7 @@ milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull
 
 | Milestone | Starts | Reason |
 | --- | --- | --- |
-| 1: move the overlay code | Done, in review | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
+| 1: move the overlay code | Merged | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
 | 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
 | 2: change list from the uppers | After 1 | Replaces the before/after folder walks; every later milestone builds on it. |
 | 4: systemd overlays | After 2 | systemd starts on the final change list. |
@@ -138,29 +138,15 @@ across all of this work.
 
 **Validation**
 
-- [x] Native result, protobuf, saved report, History detail and JSON report retain the same counts and coverage.
-- [x] A 3,000-change fixture exceeds the preview budget; an independent JSON Lines reader
-  recovers every change and coverage note, verifies totals and sees the completion record.
-- [x] Missing/truncated manifests, oversized preview records, invalid UTF-8 names,
-  absent metadata, complete zero changes and failed collection render distinctly.
-- [x] Cross-run references, traversal, symlink escapes, session authorization, slow
-  downloads and disconnects. A 30,000-change export closed both descriptors on disconnect.
-- [x] Real Compose runs retain the preview and full download after Console restart.
-- [x] Service integration tests retain failed runs with usable file reports after restart.
-- [ ] Verify a real failed Compose run retains its file report after Console restart.
-- [ ] Real systemd runs: waits for milestone 4.
-- [ ] Desktop and narrow screens: no browser surface was available. Component rendering
-  and responsive CSS were checked; recording downloads and byte totals are preserved.
-
-Before rebasing onto milestone 1: full local CI, 128 server and 90 frontend tests, and
-ARM64 worker job 668 passed. After rebasing, checkpoint publishing lives in
-`host-filesystem`. On the rebased source: formatting, boundaries, strict Clippy for the
-capture, Docker, lifecycle and Console native crates, their release tests, 128 server
-tests (one skipped) and 90 frontend tests pass. Real Compose, full CI and ARM64 were
-not rerun.
-
-At the plan-review rebase (November 11, 2026), only this document changed; no check
-was rerun at that point.
+- [x] Result and saved-report consistency.
+- [x] Large-list export and preview bounds.
+- [x] Missing, malformed and incomplete data.
+- [x] Run confinement, authorization and download cancellation.
+- [x] Compose report persistence after restart.
+- [x] Failed-run service recovery.
+- [ ] Failed Compose run after restart.
+- [ ] Real systemd runs.
+- [ ] Desktop and narrow-screen rendering.
 
 ## Milestone 4: Give systemd services the same overlays
 
