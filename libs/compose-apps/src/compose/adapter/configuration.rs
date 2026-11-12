@@ -467,7 +467,7 @@ impl ComposeConfiguration<'_> {
                 "{services}: Docker does not provide the journald logging driver"
             )));
         }
-        docker_engine::overlay::verify_namespace(self.adapter.socket_path())
+        docker_engine::namespace::verify_namespace(self.adapter.socket_path())
             .await
             .map_err(|error| {
                 invalid(format!(
