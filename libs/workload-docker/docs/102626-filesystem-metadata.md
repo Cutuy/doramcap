@@ -43,8 +43,8 @@ lower subtrees hidden by deletions, allocating with their size. Output listing i
 incremental, with open directory handles proportional to depth. There are no
 entry, depth or time cutoffs. Docker's client materializes its Engine diff response.
 
-Metadata comparison uses type, permissions, owner, modification time, symlink target
-and non-directory size; it does not prove content equality. Shared sources are
+Metadata comparison uses type, permissions, owner, modification time and non-directory
+size; it does not prove content equality. Records retain symlink targets. Shared sources are
 deduplicated. Manifests stream length-delimited protobuf records; full downloads
 remain available beyond the bounded Console preview.
 

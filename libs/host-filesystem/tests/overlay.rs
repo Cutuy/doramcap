@@ -2,7 +2,10 @@
 use host_filesystem::filesystem_proto::DirectoryMount as BindMount;
 use host_filesystem::overlay::*;
 use std::{
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{MetadataExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 async fn prepare(input: PrepareInput) -> host_filesystem::Result<OverlaySet> {
@@ -1102,7 +1105,7 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn upper_records_and_writeback_cover_real_kernel_entries() {
-    use host_filesystem::filesystem::{ChangeKind, StorageCategory};
+    use host_filesystem::filesystem_proto::{ChangeKind, StorageCategory};
     use std::os::unix::ffi::OsStringExt;
     // Arrange: a large unchanged directory and several lower transitions.
     let root = tempfile::tempdir().unwrap();
@@ -1192,13 +1195,13 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         std::fs::metadata(source.join("child")).unwrap().size()
     );
     let rows = changes(tree).await.unwrap();
-    let find = |path: &str| rows.iter().find(|row| row.path == Path::new(path)).unwrap();
+    let find = |path: &str| rows.iter().find(|row| row.path == path.as_bytes()).unwrap();
     assert!(
         !rows
             .iter()
-            .any(|row| row.path == Path::new("child") || row.path == Path::new("opened"))
+            .any(|row| row.path == b"child" || row.path == b"opened")
     );
-    assert_eq!(find("child/edit").kind, ChangeKind::Modified);
+    assert_eq!(find("child/edit").kind(), ChangeKind::Modified);
     assert_eq!(
         find("permissions").before.as_ref().unwrap().mode & 0o777,
         0o644
@@ -1208,7 +1211,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         0o640
     );
     for path in ["deleted", "deleted/deep", "deleted/deep/file", "rename"] {
-        assert_eq!(find(path).kind, ChangeKind::Deleted);
+        assert_eq!(find(path).kind(), ChangeKind::Deleted);
     }
     for path in [
         "renamed",
@@ -1219,15 +1222,18 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         "new-link",
         "new-alias",
     ] {
-        assert_eq!(find(path).kind, ChangeKind::Added);
+        assert_eq!(find(path).kind(), ChangeKind::Added);
     }
-    assert!(rows.iter().any(|row| row.path == Path::new(&unusual)));
     assert!(
         rows.iter()
-            .all(|row| row.category == StorageCategory::HostBind)
+            .any(|row| row.path == unusual.as_encoded_bytes())
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row.category() == StorageCategory::HostBind)
     );
     assert_eq!(find("").after.as_ref().unwrap().mode & 0o777, 0o750);
-    assert_eq!(find("opaque/recreated/hidden").kind, ChangeKind::Deleted);
+    assert_eq!(find("opaque/recreated/hidden").kind(), ChangeKind::Deleted);
     let paths: std::collections::BTreeSet<_> = rows.iter().map(|row| &row.path).collect();
     assert_eq!(paths.len(), rows.len());
     // Act: reading needs no mounted view, and outside changes lose to the run's version.
@@ -1415,7 +1421,10 @@ async fn writable_parent_and_child_use_one_view_and_write_back_once() {
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing() {
-    use host_filesystem::filesystem::{ChangeKind, FileMetadata, MetadataWalk};
+    use host_filesystem::{
+        filesystem::MetadataWalk,
+        filesystem_proto::{ChangeKind, FileMetadata},
+    };
     use std::collections::BTreeMap;
     async fn inventory(path: &Path) -> BTreeMap<PathBuf, FileMetadata> {
         let mut walk = MetadataWalk::open(path).await.unwrap();
@@ -1455,7 +1464,7 @@ async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing()
     let start = std::time::Instant::now();
     let untouched = changes(tree).await.unwrap();
     assert!(
-        untouched.iter().all(|row| row.path.as_os_str().is_empty()),
+        untouched.iter().all(|row| row.path.is_empty()),
         "{untouched:#?}"
     );
     let unchanged_listing = start.elapsed();
@@ -1487,8 +1496,8 @@ async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing()
                 if metadata.mode != other.mode
                     || metadata.uid != other.uid
                     || metadata.gid != other.gid
-                    || metadata.mtime != other.mtime
-                    || metadata.symlink != other.symlink
+                    || metadata.mtime_seconds != other.mtime_seconds
+                    || metadata.mtime_nanoseconds != other.mtime_nanoseconds
                     || (metadata.mode & libc::S_IFMT != libc::S_IFDIR
                         && metadata.size != other.size) =>
             {
@@ -1503,7 +1512,15 @@ async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing()
     let start = std::time::Instant::now();
     let rows = changes(tree).await.unwrap();
     let listing = start.elapsed();
-    let actual: BTreeMap<_, _> = rows.into_iter().map(|row| (row.path, row.kind)).collect();
+    let actual: BTreeMap<_, _> = rows
+        .into_iter()
+        .map(|row| {
+            (
+                PathBuf::from(std::ffi::OsStr::from_bytes(&row.path)),
+                row.kind(),
+            )
+        })
+        .collect();
     // Assert: every reference path and kind agrees; the measurement includes all upper inspection.
     assert_eq!(actual, expected);
     println!(

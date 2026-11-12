@@ -6,7 +6,7 @@ mod support;
 use compose_apps::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
 use compose_apps::{compose::*, preparation};
 use orchestrator::Step;
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::os::unix::ffi::OsStringExt;
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
 use workload_docker::workflows::recorded_compose::finalization::{
     FinalizeRun, ObserveDockerFilesystem,
@@ -353,7 +353,7 @@ async fn multi_project_lifecycle() {
             .filesystem_changes
             .as_ref()
             .expect("filesystem collection");
-        async fn rows(path: &Path) -> Vec<host_filesystem::filesystem::FileChange> {
+        async fn rows(path: &Path) -> Vec<host_filesystem::filesystem_proto::FileChange> {
             let mut reader = host_filesystem::filesystem::FileChanges::open(path)
                 .await
                 .unwrap();
@@ -363,11 +363,13 @@ async fn multi_project_lifecycle() {
             }
             records
         }
-        use host_filesystem::filesystem::{ChangeKind, StorageCategory};
+        use host_filesystem::filesystem_proto::{ChangeKind, StorageCategory};
         let host_rows = rows(&evidence.host_binds.manifest).await;
-        assert!(host_rows.iter().any(
-            |r| r.path.as_os_str().as_bytes() == b"byte-\xff" && r.kind == ChangeKind::Modified
-        ));
+        assert!(
+            host_rows
+                .iter()
+                .any(|r| r.path == b"byte-\xff" && r.kind() == ChangeKind::Modified)
+        );
         assert_eq!(std::fs::read(host.join(&byte_name)).unwrap(), b"changed");
         assert_eq!(
             std::fs::read_link(host.join("byte-link"))
@@ -378,7 +380,7 @@ async fn multi_project_lifecycle() {
         assert!(
             host_rows
                 .iter()
-                .all(|r| r.category == StorageCategory::HostBind)
+                .all(|r| r.category() == StorageCategory::HostBind)
         );
         if index == 0 {
             for (name, kind) in [
@@ -388,9 +390,9 @@ async fn multi_project_lifecycle() {
             ] {
                 let row = host_rows
                     .iter()
-                    .find(|r| r.path == Path::new(name))
+                    .find(|r| r.path == name.as_bytes())
                     .expect("host transition");
-                assert_eq!(row.kind, kind);
+                assert_eq!(row.kind(), kind);
                 assert_eq!(row.consumers.len(), 2);
             }
         } else {
@@ -398,7 +400,7 @@ async fn multi_project_lifecycle() {
             assert!(
                 !host_rows
                     .iter()
-                    .any(|r| r.kind == ChangeKind::Added || r.kind == ChangeKind::Deleted)
+                    .any(|r| r.kind() == ChangeKind::Added || r.kind() == ChangeKind::Deleted)
             );
         }
         assert_eq!(
@@ -409,7 +411,7 @@ async fn multi_project_lifecycle() {
         assert!(
             layer_rows
                 .iter()
-                .all(|r| r.category == StorageCategory::ContainerLayer
+                .all(|r| r.category() == StorageCategory::ContainerLayer
                     && r.before.is_none()
                     && r.after.is_none())
         );
@@ -421,7 +423,7 @@ async fn multi_project_lifecycle() {
             assert!(
                 layer_rows
                     .iter()
-                    .any(|r| r.path == Path::new(name) && r.kind == kind),
+                    .any(|r| r.path == name.as_bytes() && r.kind() == kind),
                 "missing {name}: {layer_rows:?}"
             );
         }
@@ -429,7 +431,7 @@ async fn multi_project_lifecycle() {
         assert!(
             volume_rows
                 .iter()
-                .all(|r| r.category == StorageCategory::NamedVolume)
+                .all(|r| r.category() == StorageCategory::NamedVolume)
         );
         assert!(volume_rows.is_empty());
         assert!(!evidence.named_volumes.coverage_complete);
@@ -3399,12 +3401,12 @@ async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
         paths.push(row.path);
     }
     // Assert: a new caller record is excluded through its owner contract without a backend filename change.
-    assert!(paths.contains(&std::path::PathBuf::from("application-result")));
+    assert!(paths.contains(&b"application-result".to_vec()));
     assert!(
-        !paths.iter().any(|path| path.ends_with("app.inputs.json")
-            || path.ends_with("caller-added-record.json")
-            || path.ends_with("experiment.compose.json")
-            || path.ends_with("experiment.resolution.json")),
+        !paths.iter().any(|path| path.ends_with(b"app.inputs.json")
+            || path.ends_with(b"caller-added-record.json")
+            || path.ends_with(b"experiment.compose.json")
+            || path.ends_with(b"experiment.resolution.json")),
         "{paths:?}"
     );
     assert!(!result.host_binds.coverage_complete);

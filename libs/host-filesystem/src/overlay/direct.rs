@@ -1,6 +1,6 @@
 //! Offline interpretation of the supported kernel OverlayFS upper format.
 use super::{OverlayTree, Result, cstr, invalid};
-use crate::filesystem::{ChangeKind, FileChange, FileMetadata, StorageCategory};
+use crate::filesystem_proto::{ChangeKind, FileChange, FileMetadata, StorageCategory};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, Metadata},
@@ -90,7 +90,7 @@ pub(super) fn inspect(
 ) -> Result<ApplyPlan> {
     let mut deleted_paths = BTreeSet::new();
     let mut emit = |row: FileChange| {
-        if row.kind != ChangeKind::Deleted || deleted_paths.insert(row.path.clone()) {
+        if row.kind() != ChangeKind::Deleted || deleted_paths.insert(row.path.clone()) {
             emit(row)?;
         }
         Ok(())
@@ -141,14 +141,14 @@ pub(super) fn inspect(
         let changed = before.as_ref().is_none_or(|old| differs(old, &after));
         if changed {
             emit(FileChange {
-                category: StorageCategory::HostBind,
+                category: StorageCategory::HostBind as i32,
                 source: tree.source.to_string_lossy().into(),
                 consumers: Vec::new(),
-                path: path.clone(),
+                path: path.as_os_str().as_bytes().to_vec(),
                 kind: if before.is_some() {
-                    ChangeKind::Modified
+                    ChangeKind::Modified as i32
                 } else {
-                    ChangeKind::Added
+                    ChangeKind::Added as i32
                 },
                 before,
                 after: Some(after),
@@ -239,10 +239,12 @@ pub(crate) fn metadata(path: &Path, m: &Metadata) -> Result<FileMetadata> {
         size: m.size(),
         uid: m.uid(),
         gid: m.gid(),
-        mtime: (m.mtime(), m.mtime_nsec()),
-        ctime: (m.ctime(), m.ctime_nsec()),
+        mtime_seconds: m.mtime(),
+        mtime_nanoseconds: m.mtime_nsec(),
+        ctime_seconds: m.ctime(),
+        ctime_nanoseconds: m.ctime_nsec(),
         symlink: if m.file_type().is_symlink() {
-            Some(fs::read_link(path)?)
+            Some(fs::read_link(path)?.into_os_string().into_encoded_bytes())
         } else {
             None
         },
@@ -252,7 +254,8 @@ fn differs(before: &FileMetadata, after: &FileMetadata) -> bool {
     before.mode != after.mode
         || before.uid != after.uid
         || before.gid != after.gid
-        || before.mtime != after.mtime
+        || before.mtime_seconds != after.mtime_seconds
+        || before.mtime_nanoseconds != after.mtime_nanoseconds
         || (matches!(after.mode & libc::S_IFMT, libc::S_IFREG | libc::S_IFLNK)
             && before.size != after.size)
 }
@@ -273,11 +276,11 @@ fn deleted(
         }
         if include {
             emit(FileChange {
-                category: StorageCategory::HostBind,
+                category: StorageCategory::HostBind as i32,
                 source: tree.source.to_string_lossy().into(),
                 consumers: Vec::new(),
-                path,
-                kind: ChangeKind::Deleted,
+                path: path.as_os_str().as_bytes().to_vec(),
+                kind: ChangeKind::Deleted as i32,
                 before: Some(metadata(&absolute, &meta)?),
                 after: None,
             })?;

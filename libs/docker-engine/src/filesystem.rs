@@ -5,10 +5,10 @@ use crate::{
     error::{engine, invalid},
 };
 use host_filesystem::{
-    filesystem::{CategoryChanges, ChangeKind, ChangeWriter, FileChange, StorageCategory},
-    filesystem_proto::MetadataSource,
+    filesystem::{CategoryChanges, ChangeWriter},
+    filesystem_proto::{ChangeKind, FileChange, MetadataSource, StorageCategory},
 };
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Preserve declared named volumes as untracked sources without inspecting their contents.
 pub fn volume_sources(mounts: Vec<VolumeMount>) -> Vec<MetadataSource> {
@@ -74,11 +74,11 @@ pub async fn container_changes(
             };
             output
                 .emit(FileChange {
-                    category: StorageCategory::ContainerLayer,
+                    category: StorageCategory::ContainerLayer as i32,
                     source: container.id.clone(),
                     consumers: vec![container.consumer.clone()],
-                    path: PathBuf::from(change.path),
-                    kind,
+                    path: change.path.into_bytes(),
+                    kind: kind as i32,
                     before: None,
                     after: None,
                 })
@@ -203,12 +203,12 @@ mod tests {
             .unwrap();
         let mut result = None;
         while let Some(change) = host.next_change().await.unwrap() {
-            if change.path == Path::new("result") {
+            if change.path == b"result" {
                 result = Some(change);
             }
         }
         let result = result.unwrap();
-        assert_eq!(result.kind, ChangeKind::Added);
+        assert_eq!(result.kind(), ChangeKind::Added);
         assert_eq!(
             result.consumers,
             ["dc-project/reader:/in", "dc-project/writer:/out"]
@@ -218,7 +218,7 @@ mod tests {
             .unwrap();
         let result = layers.next_change().await.unwrap().unwrap();
         assert_eq!(result.consumers, ["dc-project/app"]);
-        assert_eq!(result.path, Path::new("/result"));
+        assert_eq!(result.path, b"/result");
         assert!(layers.next_change().await.unwrap().is_none());
         server.await.unwrap();
     }

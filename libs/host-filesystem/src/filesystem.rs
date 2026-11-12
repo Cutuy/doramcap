@@ -7,63 +7,19 @@ mod wire;
 pub(crate) use wire::write_record;
 
 use super::{Result, error::invalid, files::private_write};
-use crate::filesystem_proto::{DirectoryMount, MetadataSource, SourceKind};
+use crate::filesystem_proto::{
+    ChangeKind, DirectoryMount, FileChange, FileMetadata, MetadataSource, SourceKind,
+    StorageCategory,
+};
 use crate::overlay::{self, OverlaySet};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    os::unix::fs::MetadataExt,
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
 };
 use tokio::io::{AsyncWriteExt, BufReader};
 
-/// Storage category is retained on every record and in separate artifact files.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StorageCategory {
-    HostBind,
-    ContainerLayer,
-    NamedVolume,
-}
-/// An individual path transition, never collapsed into a generic changed flag.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChangeKind {
-    Added,
-    Modified,
-    Deleted,
-}
-/// Available stat metadata. Modification detection does not prove content equality.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FileMetadata {
-    /// Unix file type and permission bits.
-    pub mode: u32,
-    /// Byte length reported by stat.
-    pub size: u64,
-    /// Owning user and group identifiers.
-    pub uid: u32,
-    pub gid: u32,
-    /// Modification and change timestamps as seconds/nanoseconds.
-    pub mtime: (i64, i64),
-    pub ctime: (i64, i64),
-    /// Symlink destination; never followed during traversal.
-    pub symlink: Option<PathBuf>,
-}
-/// One change with its original category, source and consumers.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FileChange {
-    pub category: StorageCategory,
-    /// Host source path, volume name or container ID.
-    pub source: String,
-    /// Project/service/container-target associations; shared sources appear once.
-    pub consumers: Vec<String>,
-    /// Source-relative path, or container-absolute path for Engine diffs.
-    pub path: PathBuf,
-    pub kind: ChangeKind,
-    /// Unavailable for Engine changes and for absent sides of a transition.
-    pub before: Option<FileMetadata>,
-    pub after: Option<FileMetadata>,
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Source {
     category: StorageCategory,
@@ -250,7 +206,12 @@ impl MetadataWalk {
             .map_err(|_| invalid("scan path escaped root"))?
             .to_path_buf();
         let symlink = if m.file_type().is_symlink() {
-            Some(tokio::fs::read_link(&path).await?)
+            Some(
+                tokio::fs::read_link(&path)
+                    .await?
+                    .into_os_string()
+                    .into_encoded_bytes(),
+            )
         } else {
             None
         };
@@ -264,8 +225,10 @@ impl MetadataWalk {
                 size: m.size(),
                 uid: m.uid(),
                 gid: m.gid(),
-                mtime: (m.mtime(), m.mtime_nsec()),
-                ctime: (m.ctime(), m.ctime_nsec()),
+                mtime_seconds: m.mtime(),
+                mtime_nanoseconds: m.mtime_nsec(),
+                ctime_seconds: m.ctime(),
+                ctime_nanoseconds: m.ctime_nsec(),
                 symlink,
             },
         )))
@@ -287,10 +250,11 @@ impl FileChanges {
     }
     /// Return the next change, or None at a clean record boundary.
     pub async fn next_change(&mut self) -> Result<Option<FileChange>> {
-        wire::read_record::<_, crate::filesystem_proto::FileChange>(&mut self.input)
-            .await?
-            .map(wire::decode_change)
-            .transpose()
+        let row = wire::read_record::<_, FileChange>(&mut self.input).await?;
+        if let Some(row) = &row {
+            validate_change(row)?;
+        }
+        Ok(row)
     }
 }
 
@@ -446,6 +410,21 @@ pub async fn coverage_notes(
     }
     Ok(notes)
 }
+fn validate_change(row: &FileChange) -> Result<()> {
+    if row.category() == StorageCategory::Unspecified {
+        return Err(invalid(format!(
+            "unknown storage category: {}",
+            row.category
+        )));
+    }
+    if row.kind() == ChangeKind::Unspecified {
+        return Err(invalid(format!(
+            "unknown filesystem change kind: {}",
+            row.kind
+        )));
+    }
+    Ok(())
+}
 /// Streaming category manifest; dropping before finish leaves incomplete evidence.
 pub struct ChangeWriter((CategoryChanges, tokio::io::BufWriter<tokio::fs::File>));
 impl ChangeWriter {
@@ -484,6 +463,9 @@ async fn writer(
     category: StorageCategory,
     name: &str,
 ) -> Result<(CategoryChanges, tokio::io::BufWriter<tokio::fs::File>)> {
+    if category == StorageCategory::Unspecified {
+        return Err(invalid("unspecified storage category"));
+    }
     let path = directory.join(name);
     let file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -506,17 +488,22 @@ async fn emit(
     out: &mut (CategoryChanges, tokio::io::BufWriter<tokio::fs::File>),
     row: FileChange,
 ) -> Result<()> {
-    match row.kind {
+    validate_change(&row)?;
+    match row.kind() {
         ChangeKind::Added => out.0.counts.added += 1,
         ChangeKind::Modified => out.0.counts.modified += 1,
         ChangeKind::Deleted => out.0.counts.deleted += 1,
+        ChangeKind::Unspecified => return Err(invalid("unspecified filesystem change kind")),
     }
-    wire::write_record(&mut out.1, &wire::change(&row)).await?;
+    wire::write_record(&mut out.1, &row).await?;
     let counts = &out.0.counts;
     if counts.added + counts.modified + counts.deleted <= 10 {
         eprintln!(
             "warning: filesystem {:?} {:?}: {} {:?}",
-            row.category, row.kind, row.source, row.path
+            row.category(),
+            row.kind(),
+            row.source,
+            std::ffi::OsStr::from_bytes(&row.path)
         );
     }
     Ok(())
@@ -551,7 +538,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
     if let Some(overlays) = &input.overlays {
         for tree in &overlays.trees {
             for mut row in overlay::changes(tree).await? {
-                let absolute = tree.source.join(&row.path);
+                let absolute = tree.source.join(std::ffi::OsStr::from_bytes(&row.path));
                 row.consumers = sources
                     .sources
                     .iter()
@@ -669,11 +656,11 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 emit(
                     out,
                     FileChange {
-                        category: StorageCategory::HostBind,
+                        category: StorageCategory::HostBind as i32,
                         source: source.identity.clone(),
                         consumers,
-                        path: relative,
-                        kind: ChangeKind::Added,
+                        path: relative.as_os_str().as_bytes().to_vec(),
+                        kind: ChangeKind::Added as i32,
                         before: None,
                         after: Some(metadata),
                     },
@@ -784,11 +771,11 @@ mod tests {
         emit(
             &mut out,
             FileChange {
-                category: StorageCategory::HostBind,
+                category: StorageCategory::HostBind as i32,
                 source: "fixture".into(),
                 consumers: vec![],
-                path,
-                kind: ChangeKind::Added,
+                path: path.as_os_str().as_bytes().to_vec(),
+                kind: ChangeKind::Added as i32,
                 before: None,
                 after: Some(metadata),
             },
@@ -799,8 +786,11 @@ mod tests {
         let mut reader = FileChanges::open(&out.0.manifest).await.unwrap();
         let row = reader.next_change().await.unwrap().unwrap();
         // Assert
-        assert_eq!(row.path, Path::new(&name));
-        assert_eq!(row.after.unwrap().symlink.unwrap(), Path::new(&target));
+        assert_eq!(row.path, name.as_encoded_bytes());
+        assert_eq!(
+            row.after.unwrap().symlink.unwrap(),
+            target.as_encoded_bytes()
+        );
         assert!(reader.next_change().await.unwrap().is_none());
         // Act
         out.1.write_all(&[0x80]).await.unwrap();
@@ -873,10 +863,10 @@ mod source_tests {
             .unwrap();
         let mut count = 0;
         while let Some(row) = reader.next_change().await.unwrap() {
-            assert_eq!(row.kind, ChangeKind::Added);
+            assert_eq!(row.kind(), ChangeKind::Added);
             assert!(row.before.is_none());
-            assert!(row.path.starts_with("output"));
-            if row.path != Path::new("output") {
+            assert!(Path::new(std::ffi::OsStr::from_bytes(&row.path)).starts_with("output"));
+            if row.path != b"output" {
                 assert_eq!(row.consumers.len(), 3);
             }
             count += 1;

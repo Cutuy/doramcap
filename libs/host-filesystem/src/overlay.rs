@@ -793,7 +793,7 @@ async fn classify_source(
 
 /// Read upper metadata transitions after writers stop; no mount or payload reads are required.
 /// Results allocate with the upper and removed lower subtrees. Collection errors retain the upper.
-pub async fn changes(tree: &OverlayTree) -> Result<Vec<crate::filesystem::FileChange>> {
+pub async fn changes(tree: &OverlayTree) -> Result<Vec<crate::filesystem_proto::FileChange>> {
     let tree = tree.clone();
     tokio::task::spawn_blocking(move || {
         let mut changes = Vec::new();
