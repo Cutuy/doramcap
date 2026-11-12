@@ -14,7 +14,7 @@ function validateOutputs(recordings: Output[], live: NonNullable<App['liveOutput
     sources.add(output.source!);
   }
   for (const output of recordings) {
-    if (!output.id || !/^[-a-zA-Z0-9]+$/.test(output.id) || ['report', 'file-changes'].includes(output.id) || seen.has(output.id))
+    if (!output.id || !/^[-a-zA-Z0-9]+$/.test(output.id) || output.id === 'report' || seen.has(output.id))
       throw new Error('empty, duplicate or reserved recording id');
     seen.add(output.id);
     if (!child(output.path ?? '') || (output.stream && !child(output.stream)))

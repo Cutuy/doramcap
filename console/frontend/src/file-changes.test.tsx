@@ -30,7 +30,8 @@ test('current and past failed runs share counts, coverage and a file download in
     assert.match(html, /Incomplete observation/);
     assert.match(html, /More coverage notes/);
     assert.match(html, /Download file changes/);
-    assert.match(html, /file-changes.jsonl/);
+    assert.ok(html.includes(`href="/api/artifacts/${status.runId}/file-changes.jsonl"`));
+    assert.match(html, /download="file-changes.jsonl"/);
     assert.match(html, /metadata unavailable/);
     assert.match(html, /&lt;script&gt;evil\(\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>|href="\/source|href="&lt;script/);
@@ -54,7 +55,7 @@ test('artifact kinds exclude file reports from recording byte totals and preserv
   const entry = wire.HistoryEntry.create({ artifacts: [
     wire.HistoryArtifact.create({ id: 'cpu', sizeBytes: 123 }),
     wire.HistoryArtifact.create({ id: 'report', sizeBytes: 222 }),
-    wire.HistoryArtifact.create({ id: 'file-changes', sizeBytes: 999, kind: wire.ArtifactKind.FILE_CHANGES }),
+    wire.HistoryArtifact.create({ id: 'file-changes.jsonl', sizeBytes: 999, kind: wire.ArtifactKind.FILE_CHANGES }),
   ] });
   // Assert
   assert.equal(entryRecordingBytes(entry), 123);

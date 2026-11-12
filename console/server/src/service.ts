@@ -1,6 +1,6 @@
 import { runPlan } from './run-plan.js';
 import { ensureImages } from './images.js';
-import { PREPARING_RUN } from './generated/transport.js';
+import { PREPARING_RUN, FILE_CHANGES_ARTIFACT } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -611,7 +611,7 @@ export class ConsoleService implements ConsoleBackend {
               event_stream_healthy: this.snapshot.outcome.eventStreamHealthy,
               system_apps: this.snapshot.systemApps?.ids ?? [],
               file_changes: this.snapshot.fileChanges ? wire.FileChanges.toObject(wire.FileChanges.create(this.snapshot.fileChanges), { ...objectOptions, bytes: String }) : null,
-              file_changes_artifact: this.snapshot.fileChanges?.downloadable ? 'file-changes' : null,
+              file_changes_artifact: this.snapshot.fileChanges?.downloadable ? FILE_CHANGES_ARTIFACT : null,
             }),
           ),
         );

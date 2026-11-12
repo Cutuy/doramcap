@@ -1,12 +1,12 @@
 import { createReadStream } from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import { pipeline, Readable } from 'node:stream';
-import { artifactFilename } from './generated/transport.js';
+import { artifactFilename, FILE_CHANGES_ARTIFACT } from './generated/transport.js';
 import type { ConsoleBackend } from './native.js';
 
 /** Stream an already-authorized descriptor; pipeline closes it on disconnect. */
 export async function streamArtifact(native: ConsoleBackend, response: ServerResponse, runId: string, kind: string): Promise<void> {
-  if (kind === 'file-changes') {
+  if (kind === FILE_CHANGES_ARTIFACT) {
     const controller = new AbortController();
     const abort = () => controller.abort();
     response.once('close', abort);

@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { fileChangeAvailability } from './file-changes.js';
-import { LIMITS } from './generated/transport.js';
+import { LIMITS, FILE_CHANGES_ARTIFACT } from './generated/transport.js';
 import { browserError, execution, wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
 
@@ -135,7 +135,7 @@ export class History {
     });
     const report = this.store.size(status.runId, 'console-report.json');
     if (status.fileChanges?.report) declared.push(wire.HistoryArtifact.create({
-      id: 'file-changes', kind: wire.ArtifactKind.FILE_CHANGES,
+      id: FILE_CHANGES_ARTIFACT, kind: wire.ArtifactKind.FILE_CHANGES,
       downloadable: fileChangeAvailability(join(this.store.root, 'runs', status.runId), status.fileChanges)?.downloadable === true,
     }));
     return report === null ? declared : [...declared, wire.HistoryArtifact.create({ id: 'report', kind: wire.ArtifactKind.REPORT, sizeBytes: report, downloadable: done })];

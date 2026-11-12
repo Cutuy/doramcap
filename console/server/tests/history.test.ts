@@ -636,8 +636,8 @@ test('file-change facts survive failed execution, navigation and service restart
     assert.equal(status.fileChanges?.report?.categories?.[0].counts?.added?.toString(), '3000');
     assert.ok(status.fileChanges?.downloadable);
     assert.equal(report.file_changes.report.categories[0].counts.added, '3000');
-    assert.equal(report.file_changes_artifact, 'file-changes');
-    assert.equal(saved.entry?.artifacts?.find(a => a.id === 'file-changes')?.kind, wire.ArtifactKind.FILE_CHANGES);
+    assert.equal(report.file_changes_artifact, 'file-changes.jsonl');
+    assert.equal(saved.entry?.artifacts?.find(a => a.id === 'file-changes.jsonl')?.kind, wire.ArtifactKind.FILE_CHANGES);
     // Act: close and reopen the real service/database, then navigate through a later review.
     await run.backend.close();
     restored = await service(root);
@@ -650,7 +650,7 @@ test('file-change facts survive failed execution, navigation and service restart
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     const address = server.address(); assert.ok(address && typeof address !== 'string');
     const base = `http://127.0.0.1:${address.port}`;
-    const path = `/api/artifacts/${runId}/file-changes`;
+    const path = `/api/artifacts/${runId}/file-changes.jsonl`;
     // Assert: existing session authorization protects the new artifact.
     assert.equal((await fetch(base + path)).status, 401);
     const cookie = await sessionCookie(base);
@@ -661,7 +661,7 @@ test('file-change facts survive failed execution, navigation and service restart
     const rows = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
     assert.equal(rows.filter(row => row.type === 'change').length, 3000);
     assert.equal(rows.at(-1).type, 'complete');
-    assert.equal((await fetch(`${base}/api/artifacts/${id(999)}/file-changes`, { headers: { cookie } })).status, 404);
+    assert.equal((await fetch(`${base}/api/artifacts/${id(999)}/file-changes.jsonl`, { headers: { cookie } })).status, 404);
     // Act / Assert: failed traversal terminates the HTTP transfer without a completion line.
     await writeFile(join(runRoot, 'filesystem/host.pb'), Buffer.from([0x80]));
     const broken = await fetch(base + path, { headers: { cookie } });
@@ -674,5 +674,53 @@ test('file-change facts survive failed execution, navigation and service restart
     if (server) { server.closeAllConnections(); server.close(); await once(server, 'close'); }
     await (restored?.backend ?? run.backend).close();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('legacy recording IDs and a file report download independently through the artifact route', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { fileChangePreview } = await import('../src/file-changes.js');
+  const root = await temporary(), run = await service(root);
+  let server: ReturnType<typeof createConsoleServer> | undefined;
+  try {
+    for (const [runId, withReport] of [[id(777), false], [id(778), true]] as const) {
+      await checkpoint(run.store, runId, { recordings: [{ id: 'file-changes', path: 'legacy.mcap' }] });
+      const runRoot = join(run.config.dataRoot, 'runs', runId);
+      await writeFile(join(runRoot, 'legacy.mcap'), 'legacy recording bytes');
+      if (withReport) {
+        const { reference } = await fileChangeFixture(runRoot, 3, []);
+        await checkpoint(run.store, runId, {
+          recordings: [{ id: 'file-changes', path: 'legacy.mcap' }],
+          fileChanges: await fileChangePreview(runRoot, reference),
+        });
+      }
+    }
+    server = createConsoleServer({ backend: run.backend, secret: 'secret', origin: 'http://console.test', assets: root });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const base = `http://127.0.0.1:${address.port}`, cookie = await sessionCookie(base);
+    // Act / Assert: old runs and runs with both artifacts retain the recording URL and filename.
+    for (const runId of [id(777), id(778)]) {
+      const response = await fetch(`${base}/api/artifacts/${runId}/file-changes`, { headers: { cookie } });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.mcap"/);
+      assert.equal(await response.text(), 'legacy recording bytes');
+    }
+    // Act / Assert: the report uses its own artifact name under the same authentication.
+    const path = `${base}/api/artifacts/${id(778)}/file-changes.jsonl`;
+    assert.equal((await fetch(path)).status, 401);
+    const response = await fetch(path, { headers: { cookie } });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.jsonl"/);
+    const rows = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(rows.filter(row => row.type === 'change').length, 3);
+    assert.equal(rows.at(-1).type, 'complete');
+    const saved = await detail(run, id(778));
+    assert.deepEqual(saved.entry!.artifacts!.map(artifact => artifact.id), ['file-changes', 'file-changes.jsonl']);
+  } finally {
+    if (server) { server.closeAllConnections(); server.close(); await once(server, 'close'); }
+    await run.backend.close(); await rm(root, { recursive: true, force: true });
   }
 });

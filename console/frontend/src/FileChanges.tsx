@@ -1,5 +1,5 @@
 import { useConsole } from './context';
-import { artifactFilename, displayPath } from './generated/transport';
+import { artifactFilename, displayPath, FILE_CHANGES_ARTIFACT } from './generated/transport';
 import type { Snapshot } from './api';
 import { doramcap } from './generated/console';
 
@@ -15,7 +15,7 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const summaries = view?.report?.categories ?? [];
   const total = summaries.reduce((sum, c) => sum + integer(c.counts?.added) + integer(c.counts?.modified) + integer(c.counts?.deleted), 0n);
   return <section className="panel file-changes">
-    <div className="panel-heading"><h2>File changes</h2>{view?.downloadable && <a className="button secondary" href={client.artifactUrl(snapshot.runId, 'file-changes')} download={artifactFilename('file-changes')}>Download file changes</a>}</div>
+    <div className="panel-heading"><h2>File changes</h2>{view?.downloadable && <a className="button secondary" href={client.artifactUrl(snapshot.runId, FILE_CHANGES_ARTIFACT)} download={artifactFilename(FILE_CHANGES_ARTIFACT)}>Download file changes</a>}</div>
     {!view && <p className="unavailable">File changes unavailable for this run.</p>}
     {view?.error && <p className="notice failure-notice" role="alert">{view.error}</p>}
     {summaries.length > 0 && <>
