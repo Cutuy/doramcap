@@ -26,8 +26,15 @@ pub const HOST_SHM_SOURCE: &str = "live host shared memory; no scan";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageCategory {
+    /// A host file or directory bind-mounted into a workload.
+    /// The source identifies the host path; change paths are relative to it.
     HostBind,
+    /// A Docker container's writable filesystem layer above its image.
+    /// The source identifies the container; change paths are container-absolute.
+    /// Bind mounts and volumes have their own categories.
     ContainerLayer,
+    /// A Docker-managed persistent volume mounted by name.
+    /// The source identifies the volume; change paths are relative to its root.
     NamedVolume,
 }
 /// An individual path transition, never collapsed into a generic changed flag.
