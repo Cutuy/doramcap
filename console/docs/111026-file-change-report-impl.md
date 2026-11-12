@@ -55,10 +55,12 @@ across all of this work.
 - [ ] Resolve typed binds and effective native-unit bind properties using the service
   manager. Reuse captured unit/drop-in inputs; do not build another unit-file parser.
   Record sources, targets, consumers, optional-source behavior, access flags and exclusions.
-- [ ] Resolve each unit's explicitly declared working directory through the service
-  manager and capture it as a source. Skip an undeclared one, the filesystem root and a
-  home directory shorthand, and list each with its reason. List declared state, log and
-  cache directories as declared and uncaptured.
+- [ ] Resolve each unit's explicitly declared working directory through its mounts.
+  Under a writable bind it adds no source. At its host path (the private root's
+  same-path bind, or a native unit without a root change) it is a source. Otherwise list
+  it as uncaptured. Skip an undeclared one, the filesystem root and a home directory
+  shorthand, and list each with its reason. List declared state, log and cache
+  directories as declared and uncaptured.
 - [ ] Review shows known capture sources and unresolved native sources explicitly.
   At Start resolve the effective inventory before writers start; a changed launch
   configuration follows the existing stale-review check.
@@ -86,8 +88,10 @@ across all of this work.
   Writes remain isolated during execution and reach the original directories after write-back.
 - [ ] One real Compose fixture and one real systemd fixture produce equivalent change
   records for equivalent writes, deletions, shared aliases and read-only aliases.
-- [ ] A unit that writes relative paths into its declared working directory has those
-  writes captured. A unit with no declared working directory runs unchanged.
+- [ ] A unit whose working directory sits at its host path has its relative writes
+  captured. A unit with no declared working directory runs unchanged.
+- [ ] Dora's coordinator and daemon, whose `/runtime` working directory sits under their
+  output bind, add no source, create nothing at host `/runtime` and count each change once.
 - [ ] A unit behaves correctly with a view over its working directory, including units
   started under the Dora daemon.
 - [ ] Cover source resolution, optional missing sources, drop-ins, nested binds, private
@@ -154,9 +158,11 @@ across all of this work.
 - [ ] Add one Console configuration field selecting write back or keep with the run,
   default write back. Pass it to Compose and systemd runs.
 - [ ] Show the policy at Review and the kept location with the result. Add no file browser.
-- [ ] Add a download action for each listed file inside the run folder: kept files and log
-  dumps. Reuse the authenticated artifact route and the safe open beneath the run root.
-  Send every file as an attachment.
+- [ ] Add a download action for kept files and log dumps as one new kind on the
+  authenticated artifact route. The request names a saved change-list entry or a program,
+  never a path. The server resolves its raw name bytes and opens it only inside the run's
+  kept-files or log folder. Extend the existing safe open to take raw name bytes.
+  Send every file as an attachment with an encoded filename and a plain fallback.
 
 **Validation**
 
@@ -166,8 +172,9 @@ across all of this work.
 - [ ] A second run starts from the original source and keeps its own separate files.
 - [ ] Full disk and an interrupted copy preserve the upper data and block verified cleanup.
 - [ ] The view folder and the run folder on different filesystems.
-- [ ] A kept file and a log dump download intact. Paths outside the run folder, traversal
-  and symlink escapes are refused. A kept HTML file downloads and never renders in Console.
+- [ ] A kept file, one with a non-UTF-8 name and a log dump download intact. Requests for
+  Console's run records, another run's entries, traversal and symlink escapes are refused.
+  A kept HTML file downloads and never renders in Console.
 - [ ] Projects with no setting behave as before.
 
 ## Integration and qualification

@@ -11,8 +11,8 @@ Reuse the existing filesystem mechanism for both and expose one report in Consol
 
 ## Agreed behavior
 
-- Capture the host folders a launch declares it can write to: directory binds, declared
-  output directories and, for host launches, the declared working directory.
+- Capture the host folders behind a launch's declared writable mounts: directory binds,
+  declared output directories and a declared working directory the program sees at its host path.
 - Show counts, coverage and a bounded file preview on current and past run results.
 - Download the complete collected list as JSON Lines.
 - Offer a choice of where written files end up: written back to their source, or kept with the run.
@@ -95,28 +95,38 @@ Machine-observation timing remains unchanged.
 
 ## Capture scope
 
-Console captures the host folders a launch declares it can write to. The user
-declares them in the launcher's own format and Console reads them.
+Every launch has two views of the filesystem:
 
-| Launch kind | Declared writable host folders |
+- **App view:** the paths the program sees, including its working directory.
+- **Host view:** where those files live on the machine.
+
+Console captures host folders. A program reaches a host folder only through a
+writable mount in its app view, so the capture sources are the host sources of
+those mounts. The user declares them in the launcher's own format and Console reads them.
+
+| Launch | Writable mounts |
 | --- | --- |
-| Container: Compose, Holoscan in Docker | Host folder mounts. |
-| Host: systemd, Holoscan on the host | The working directory and declared binds. |
+| Compose, Holoscan in Docker | Each service's host folder mounts. |
+| Typed systemd program | Its writable binds into its private root, plus a same-path bind of its working directory when no declared bind covers it. |
+| Native systemd unit | Its effective binds. Without a root change, it sees the host tree at the same paths. |
 
-A container's working directory is a path inside the container. It reaches the
-host only through a mount, which is already captured.
+The working directory is an app-view path. It leads to a host folder like any other path:
 
-| Launcher | Working directory declaration |
+| Working directory sits | Capture |
 | --- | --- |
-| systemd | `WorkingDirectory=` in the unit. |
-| Docker Compose | `working_dir:` on the service, or the image's `WORKDIR`. |
-| Holoscan | `workdir` in the application's `metadata.json`, per run mode. |
+| Under a writable mount | Already captured through that mount. It adds no source. |
+| At its host path: a same-path bind, or a unit without a root change | That host folder is a source. |
+| Under a read-only mount, or inside a root Console does not bind | Listed with the reason and left uncaptured. |
 
-For a host launch:
+Dora's coordinator and daemon run in `/runtime`, which their run-owned output bind
+covers, so they add no source. A native unit that sets `RootDirectory=`,
+`RootImage=` or its own binds is resolved through those settings. A container's
+working directory follows the first or the last row.
 
-- Capture only an explicitly declared working directory that names an ordinary
-  folder. A unit that declares none keeps its native behavior and is listed as
-  outside coverage.
+For a working directory that reaches the host at its own path:
+
+- Capture only an explicitly declared one that names an ordinary folder. A unit
+  that declares none keeps its native behavior and is listed as outside coverage.
 - A working directory that is the filesystem root or a home directory shorthand
   is listed with the reason and left uncaptured.
 - Units that share or nest working directories follow the existing rules for
@@ -135,7 +145,7 @@ Console's project root is the scope for admission. It is no capture source by it
 | Docker writable layers / named volumes | Preserve existing Engine diff, metadata and volume-retention behavior. |
 | Read-only aliases into a tracked tree | Preserve the alias relationship and read-only access using the same view mapping. |
 | Devices, live shared memory and unsupported private storage | Preserve native access and list the exclusion. No filesystem-content capture claim. |
-| Declared working directory of a native unit or typed program | Reuse shared OverlayFS views at the original path through an owned drop-in or property. |
+| Declared working directory at its host path | Reuse shared OverlayFS views at that path through the same-path bind, an owned drop-in or a property. A working directory under a mount adds no source. |
 | Arbitrary native-unit writes outside resolved sources | Outside capture coverage; retain native unit semantics. |
 
 Systemd reads effective bind properties through the service manager and retains native
@@ -197,9 +207,13 @@ keep with the run, the files the run wrote. Console controls this folder, so it
 is where size and file-count limits will apply. Those limits are later work;
 nothing bounds the folder today.
 
-Each file in the run folder that the change list names has a download action,
-through the existing authenticated artifact route and the existing safe open
-beneath the run root. Files are always sent as downloads and never shown inline.
+Each kept file and log dump has a download action through the existing
+authenticated artifact route. The browser names a kept file by its entry in the
+run's saved change list and a log dump by its program; it never sends a path. The
+server reads the entry's raw name bytes and opens the file only inside the run's
+kept-files or log folder, so Console's own records stay private. Names need not be
+UTF-8: the open takes the raw bytes, and the download name carries an encoded form
+with a plain fallback. Files are always sent as downloads and never shown inline.
 
 | Policy | Downloadable through Console |
 | --- | --- |
