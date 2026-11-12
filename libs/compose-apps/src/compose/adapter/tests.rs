@@ -53,6 +53,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
     let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 120).unwrap(),
+        journal_socket: root.path().join("journal.sock"),
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
@@ -190,6 +191,7 @@ fn state() -> ComposeProjectState {
                 },
             )]),
             diagnostics: vec![],
+            warnings: vec![],
             remove_volumes: false,
         }),
         containers: vec![Container {
@@ -296,20 +298,39 @@ pub(crate) fn test_engine_status(
     root: &Path,
     responses: Vec<(&'static str, u16, Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+    test_engine_with_info(
+        root,
+        responses,
+        json!({"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["journald","json-file"]}}),
+    )
+}
+
+fn test_engine_with_info(
+    root: &Path,
+    responses: Vec<(&'static str, u16, Value)>,
+    info: Value,
+) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let socket = root.join("engine.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let journal_socket = root.join("journal.sock");
+    let journal = std::os::unix::net::UnixDatagram::bind(&journal_socket).unwrap();
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 1).unwrap(),
+        journal_socket,
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {
+        let _journal = journal;
         let mut responses = responses.into_iter().peekable();
         while let Some((path, status, response)) = responses.peek() {
             let (stream, _) = listener.accept().await.unwrap();
             let mut stream = BufReader::new(stream);
             let mut line = String::new();
-            stream.read_line(&mut line).await.unwrap();
+            if stream.read_line(&mut line).await.unwrap() == 0 {
+                // Namespace verification opens the socket only to read peer credentials.
+                continue;
+            }
             let negotiation = line.starts_with("HEAD /_ping ");
             let daemon_info = line.starts_with("GET ")
                 && line
@@ -337,7 +358,7 @@ pub(crate) fn test_engine_status(
             }
             let status = if daemon_info { 200 } else { *status };
             let body = if daemon_info {
-                json!({"OSType":"linux","LoggingDriver":"json-file"}).to_string()
+                info.to_string()
             } else if status == 204 {
                 String::new()
             } else {
@@ -770,13 +791,123 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         assert_eq!(plan.sha256, digest(&bytes));
         if logging.is_some() {
             assert!(changes.is_empty());
-            assert!(plan.diagnostics.iter().any(|message| message
+            assert!(plan.warnings.iter().any(|message| message
                 == "worker: logging configured by project; Console will not collect its logs"));
         } else {
+            assert!(plan.warnings.is_empty());
             assert_eq!(changes.len(), 1);
             assert_eq!(changes[0]["original"], Value::Null);
             assert_eq!(changes[0]["effective"], json!({"driver":"journald"}));
         }
         server.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn resolution_rechecks_journal_before_writing_a_launch_manifest() {
+    // Arrange: a local Engine advertises journald and the journal socket initially accepts clients.
+    let root = tempfile::tempdir().unwrap();
+    let source = b"services:\n  worker:\n    image: example:local\n";
+    std::fs::write(root.path().join("compose.yaml"), source).unwrap();
+    let (adapter, server) = test_engine(
+        root.path(),
+        vec![
+            ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+            ("/containers/json", json!([])),
+            ("/networks", json!([])),
+            ("/volumes", json!({"Volumes":[]})),
+            // Keep the Engine available for fresh Start resolution.
+            ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+        ],
+    );
+    let input = ResolveInput {
+        run: "run".into(),
+        artifacts: root.path().to_str().unwrap().into(),
+        project: Some(input_project(root.path())),
+        repository_root: None,
+    };
+
+    // Act / Assert: Review resolves with the journal available.
+    let plan = adapter
+        .configuration()
+        .resolve(input.clone())
+        .await
+        .unwrap();
+    assert!(std::fs::read(&plan.manifest).is_ok());
+    std::fs::remove_file(&plan.manifest).unwrap();
+    std::fs::remove_file(&adapter.journal_socket).unwrap();
+
+    // Act: the journal goes away between Review and fresh Start preparation.
+    let error = adapter.configuration().resolve(input).await.unwrap_err();
+
+    // Assert: no new manifest or runtime mutation is reached.
+    assert!(
+        error
+            .to_string()
+            .contains("worker: journald logging requires a reachable journal"),
+        "{error}"
+    );
+    assert!(!Path::new(&plan.manifest).exists());
+    assert_eq!(
+        std::fs::read(root.path().join("compose.yaml")).unwrap(),
+        source
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging() {
+    for logging in [None, Some(json!({})), Some(json!({"driver":"json-file"}))] {
+        // Arrange: a Docker host without journald; every Engine request is read-only.
+        let root = tempfile::tempdir().unwrap();
+        let mut service = json!({"image":"example:local"});
+        if let Some(logging) = &logging {
+            service["logging"] = logging.clone();
+        }
+        std::fs::write(
+            root.path().join("compose.yaml"),
+            serde_json::to_vec(&json!({"services":{"worker":service}})).unwrap(),
+        )
+        .unwrap();
+        let (adapter, server) = test_engine_with_info(
+            root.path(),
+            vec![
+                (
+                    "/images/example:local/json",
+                    200,
+                    json!({"Id":"sha256:pinned"}),
+                ),
+                ("/containers/json", 200, json!([])),
+                ("/networks", 200, json!([])),
+                ("/volumes", 200, json!({"Volumes":[]})),
+            ],
+            json!({"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["json-file"]}}),
+        );
+
+        // Act: use the shared Review/Start resolver.
+        let result = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await;
+
+        // Assert: only journal-dependent services require the host journal.
+        if logging.is_none() {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("worker: Docker does not provide the journald logging driver")
+            );
+            assert!(!root.path().join("workload.compose.json").exists());
+            server.abort();
+        } else {
+            assert_eq!(result.unwrap().warnings.len(), 1);
+            server.await.unwrap();
+        }
     }
 }

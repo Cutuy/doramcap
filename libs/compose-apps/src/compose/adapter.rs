@@ -9,7 +9,14 @@ use super::{ResolvedComposeProject, Result, error::invalid};
 use docker_engine::Engine;
 pub use docker_engine::{ARTIFACTS_LABEL, CONTROLLER_LABEL, RUN_LABEL};
 pub use host_filesystem::files::{digest, private_write};
-use std::{collections::BTreeMap, path::Path, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+/// Native journal transport used by Docker's journald driver.
+const JOURNAL_SOCKET: &str = "/run/systemd/journal/socket";
 
 /// Reserved marker for the Dora runtime whose removal completes an experiment.
 pub const EXPERIMENT_OWNER_LABEL: &str = "io.doramcap.experiment-owner";
@@ -26,6 +33,7 @@ type StartupCommand = tokio::sync::Mutex<Option<StartupOutcome>>;
 pub struct DockerAdapter {
     /// Shared Engine connection for observation and explicit owned-resource cleanup.
     pub engine: Engine,
+    journal_socket: PathBuf,
     starting: Arc<tokio::sync::Mutex<BTreeMap<String, Arc<StartupCommand>>>>,
 }
 impl DockerAdapter {
@@ -38,6 +46,7 @@ impl DockerAdapter {
     pub async fn connect(socket: impl Into<String>) -> Result<Self> {
         Ok(Self {
             engine: Engine::connect(socket).await?,
+            journal_socket: JOURNAL_SOCKET.into(),
             starting: Default::default(),
         })
     }
@@ -106,6 +115,7 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
                 let socket = socket_path.to_str().unwrap();
                 let adapter = DockerAdapter {
                     engine: Engine::new(socket, 120).unwrap(),
+                    journal_socket: JOURNAL_SOCKET.into(),
                     starting: Default::default(),
                 };
                 adapter

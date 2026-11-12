@@ -18,7 +18,8 @@ tradeoffs considered before the choice.
 - Preserve explicit project logging, including empty blocks. Review identifies
   project-managed logs and their exclusion from Console collection.
 - Associate captured stdout and stderr with one run and one program.
-- Keep logs with the run's files once #316 milestone 4 provides that storage.
+- Export retained entries into the run folder's log folder; #316 milestone 5
+  supplies their download action.
 - Preserve available output on failure and finish capture before deleting its
   source. Report capture and storage failures separately from program failure.
 
@@ -74,7 +75,8 @@ host administrator. Shared rate-limit loss and retention are accepted limits.
 
 B would extend Console into host-wide journal policy. C would add capture and
 recovery responsibilities to each workflow. Those changes are outside the
-selected scope. Export and run-file work remain deferred until #316 milestone 4.
+selected scope. Export remains a separate follow-up and needs no keep-with-the-run
+policy. Its download action follows #316 milestone 5.
 
 Applicable rules: D-01/D-02 (behavior and simplicity), D-03/D-06 (ownership and
 lifetime), D-08 (retention), D-11/D-12 (capacity and host scope), and I-06/D-13

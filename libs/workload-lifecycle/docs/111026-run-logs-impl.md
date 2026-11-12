@@ -16,6 +16,9 @@ the implementation leaves installer and host settings unchanged.
   blocks; diagnose project-managed logging and its exclusion from collection.
 - [x] Forward project-managed logging diagnostics to Review's existing warning
   display; preserve the existing handling of other Compose notes.
+- [x] Carry Review warnings in their own protobuf field; do not classify message text.
+- [x] Reject journal-dependent services during Review and fresh Start preparation
+  when the Docker driver, host namespace or journal connection cannot be verified.
 - [x] Keep policy and qualification in `compose-apps` after its extraction on main.
 - [x] Document shared Docker rate limiting, host retention and measured loss.
 
@@ -31,13 +34,13 @@ the implementation leaves installer and host settings unchanged.
   `/home/doramcap-ci/jobs/5e6b1204a695424284a84713f441fb43`.
 - [x] Reproduce hosted Compose's `HEAD /_ping` and daemon-info requests in the fake
   Engine without consuming expected image/resource responses. Both missing
-  metadata responses were reproduced before their fixes. All 66 Compose release
+  metadata responses were reproduced before their fixes. Compose release
   tests passed with 3 ignored under the
   [runner's Compose 2.38.2](https://github.com/actions/runner-images/blob/ubuntu24/20261101.360/images/ubuntu/Ubuntu2404-Readme.md)
   and local Compose 5.6.0. Focused release Clippy passed.
 
 Validated Rust runtime/test source: `02ad06d3`, rebased onto main `3eb0381f`.
-Release results: `compose-apps` 65 passed / 3 ignored; `workload-docker` 18 passed;
+Release checks for `compose-apps` and `workload-docker` passed;
 focused Clippy, formatting and library boundaries passed. Console typecheck and
 server tests passed with pinned Node 26.13.0: 119 passed / 1 skipped. Both opt-in
 Docker/journal tests passed as measurements; the latest saturation run retained
@@ -55,9 +58,10 @@ Earlier validation and counts are in the
 [qualification record](111026-run-logs.md#journal-load-qualification). A passing
 load measurement does not establish complete capture.
 
-## Milestone 2 — Journal export and run files, deferred
+## Milestone 2 — Journal export and run files, follow-up
 
-Depends on [#316 milestone 4](https://github.com/Cutuy/doramcap/pull/316).
+Export is independent of [#316](https://github.com/Cutuy/doramcap/pull/316).
+Its milestone 4 adds systemd overlays; milestone 5 adds the log download action.
 
 **Work items**
 
@@ -67,9 +71,12 @@ Depends on [#316 milestone 4](https://github.com/Cutuy/doramcap/pull/316).
   entries carrying that invocation under their own field. Read the ID from the
   service manager after starting the unit.
 - [ ] Match each container by its full container ID. Skip project-managed logging.
-- [ ] Write one plain text file per program, with timestamps, into run-owned
-  output storage. Apply the run folder's limits; add no separate per-program cap.
-- [ ] Show exported files with the run's other files. Describe successful export
+- [ ] Write one plain text file per program, with timestamps, into the run folder's
+  log folder, beside records and recordings. This folder is not mounted into an app
+  or listed as an output folder's added files. Apply the run folder's limits;
+  add no separate per-program cap.
+- [ ] Show exported files with the run's other files; integrate downloads with
+  #316 milestone 5. Describe successful export
   as reading available journal entries; complete application output remains unknown.
 - [ ] Preserve available output on read, write or finalization failure and report
   that failure separately from the application's result.

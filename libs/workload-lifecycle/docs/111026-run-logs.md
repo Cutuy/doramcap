@@ -2,7 +2,7 @@
 
 # Application logs for a run
 
-Created November 10, 2026. Updated November 11, 2026. Compose journal driver implemented in #314; log dump deferred until #316 milestone 4.
+Created November 10, 2026. Updated November 12, 2026. Compose journal driver implemented in #314; log export remains a separate follow-up.
 
 **Selected: option A, keep the host journal as configured.** Capture is best
 effort under the host's existing rate limits and retention. Console leaves those
@@ -12,9 +12,8 @@ completed work and the deferred dump.
 
 Console does not keep application output with a run today. This PR sends Compose
 output to the host journal by default. A later change will dump each run's output
-into the run's files after
-[Cutuy/doramcap#316 milestone 4](https://github.com/Cutuy/doramcap/pull/316) provides
-keep-with-the-run storage.
+into the run folder's log folder, beside records and recordings. Export needs
+neither overlays nor the keep-with-the-run policy.
 
 ## Today
 
@@ -38,6 +37,11 @@ keep-with-the-run storage.
   native behavior. Review shows that logging is configured by the project and
   Console will not collect its logs. The later log dump will skip these containers.
 - Console's per-container setting takes precedence over a host-wide Docker default.
+- Journal-dependent services require a local Docker daemon with the journal
+  driver and a reachable journal socket. Review and fresh Start preparation
+  verify the Docker peer's mount namespace and journal connection before mounts
+  or container creation. A missing or unverifiable journal fails with the service
+  names. Explicit non-journal logging keeps its native behavior.
 - An application that writes its own log files is unaffected. Those files appear
   in the file-change report when they land in a captured folder.
 
@@ -46,19 +50,21 @@ keep-with-the-run storage.
 | Item | Description |
 | --- | --- |
 | Compose through the journal | Implemented in #314: set `journald` for services without a `logging` block; record the default in resolution policy changes. |
-| Log dump | Deferred until #316 milestone 4: export each program's available journal entries into a run-owned output folder after the run. |
-| Web app | Show the dumped logs with the run's other files. |
+| Log dump | Separate follow-up: export each program's available journal entries into the run folder's log folder after the run. |
+| Web app | Show the dumped logs with the run's other files; #316 milestone 5 adds the download action. |
 
-The planned dump will be a set of ordinary run files. The file-change report will
-list it and the run folder will keep it. Once saved, the dump follows run-file
+The planned dump will be a set of ordinary run files in the log folder. An output
+folder is a folder mounted into an app; journal export does not use one or add
+entries to its change list. Once saved, the dump follows run-file
 retention. Console will export all matching entries still available from the
 journal and select no snippets. It cannot recover entries already dropped or
 removed by the host.
 
 ## Later log dump
 
-Implementation depends on #316 milestone 4. The decisions below describe the
-agreed follow-up.
+Export can be implemented independently. [#316 milestone 4](https://github.com/Cutuy/doramcap/pull/316)
+adds systemd overlays; milestone 5 adds downloads for log dumps, output folders
+and kept files. The decisions below describe the agreed export follow-up.
 
 At the end of a run, after every program has stopped, Console exports each
 program's available journal entries into ordinary run files. Workflows identify
@@ -80,11 +86,11 @@ Measured November 11, 2026 on x86_64, Docker 29.9.1, Compose 5.6.0 and systemd
 10,000-message burst setting. No host settings were changed. Each case used new
 containers and started after the default rate window had elapsed.
 
-The opt-in `journald` test runs two Compose services through the frozen manifest.
-Both emit numbered stdout and stderr. The quiet service emits 40 lines per
+The qualification ran two Compose services through the frozen manifest.
+Both emitted numbered stdout and stderr. The quiet service emitted 40 lines per
 stream during the noisy workload and 20 more after the noisy container exits.
-After container removal and journal synchronization, the test counts distinct
-messages by full container ID and checks for duplicate or invalid sequences.
+After container removal and journal synchronization, it counted distinct
+messages by full container ID and checked for duplicate or invalid sequences.
 The effective burst allowance also depends on the journal's available space;
 the configured 10,000-message setting is not a fixed throughput guarantee.
 
@@ -122,8 +128,8 @@ Disabling the journal's default rate limit uses `RateLimitIntervalSec=0` in
 That setting changes the host-wide default; explicit per-unit overrides can
 still apply their own limits.
 
-The test reports saturation loss explicitly; a passing measurement test does not
-establish complete log capture. Option A accepts the host's existing policy and
+The scripted Rust qualification tests were removed after these measurements
+were recorded. These results do not establish complete log capture. Option A accepts the host's existing policy and
 the measured shared-loss limitation. The per-unit zero override did not remove
 throttling on the supported systemd version. The later dump cannot recover
 entries that the journal already dropped, and host retention still bounds what

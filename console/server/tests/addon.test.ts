@@ -36,7 +36,7 @@ test('an empty Docker socket opens without Docker and refuses Compose work', asy
   }
 });
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -216,12 +216,13 @@ test('unchanged Start passes preflight while changed commands reject before cont
   const root = await mkdtemp(join(tmpdir(),'console-consistency-'));
   const socket=join(root,'docker.sock'), project=join(root,'project'), bin=join(root,'bin');
   await mkdir(project); await mkdir(bin);
-  await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{worker:{image:'app:local',command:['original'],logging:{}}},networks:{default:{}}}));
+  await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{worker:{image:'app:local',command:['original']}},networks:{default:{}}}));
   const mutations: string[]=[];
   const engine=createServer((request,response)=>{
     const path=request.url??'';response.setHeader('content-type','application/json');
     if(request.method!=='GET'){mutations.push(path);response.writeHead(500);response.end('{}');}
     else if(path.endsWith('/version')) response.end('{"ApiVersion":"1.45"}');
+    else if(path.endsWith('/info')) response.end('{"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["json-file"]}}');
     else if(path.includes('/images/')) response.end('{"Id":"sha256:approved","Config":{}}');
     else if(/\/containers\/json|\/networks(?:\?|$)/.test(path)) response.end('[]');
     else if(/\/volumes(?:\?|$)/.test(path)) response.end('{"Volumes":[]}');
@@ -237,6 +238,13 @@ test('unchanged Start passes preflight while changed commands reject before cont
   const handle=await openService(config) as ConsoleHandle & {prepare(input:Buffer):Promise<Buffer>;start(input:Buffer):Promise<Buffer>};
   const wire=doramcap.console.v1;
   try {
+    // Act / Assert: omitted logging rejects at Review on a host without journald.
+    await assert.rejects(handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())),/InvalidInput/);
+    assert.deepEqual(mutations,[]);
+    const diagnosticFiles = await readdir(join(root,'data','diagnostics'));
+    assert.ok((await Promise.all(diagnosticFiles.map(file => readFile(join(root,'data','diagnostics',file),'utf8'))))
+      .some(text => text.includes('worker: Docker does not provide the journald logging driver')));
+    await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{worker:{image:'app:local',command:['original'],logging:{}}},networks:{default:{}}}));
     // Act
     const review=wire.Review.decode(await handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())));
     // Assert
@@ -245,7 +253,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     assert.equal(review.systemApps.filter((app:any)=>app.required&&app.selected).length,0);
     assert.deepEqual(mutations,[]);
     // Act / Assert: changing a command must reject before reservation or launch.
-    await writeFile(join(project,'compose.yaml'),'services:\n  worker:\n    image: app:local\n    command: changed\n');
+    await writeFile(join(project,'compose.yaml'),JSON.stringify({services:{worker:{image:'app:local',command:['changed'],logging:{}}},networks:{default:{}}}));
     await assert.rejects(handle.start(Buffer.from(wire.StartRequest.encode({preparedId:review.preparedId,requestKey:'changed-command'}).finish())),/StaleReview/);
     assert.deepEqual(mutations,[]);
     // Wait for the rejected run to finish publishing its terminal status.

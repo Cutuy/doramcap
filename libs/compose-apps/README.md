@@ -4,7 +4,9 @@ Project lifecycle steps, Dora runtime control and preparation of Dora, system an
 optional extra app groups. Workflows supply their own run order and finalization.
 
 Services without a `logging` block use Docker's `journald` driver and need a working
-systemd journal on the Docker host. Explicit logging
+systemd journal on the local Docker host. Review and fresh Start preparation
+check driver support, the Docker peer's mount namespace and journal connectivity
+before mounting folders or creating containers. Explicit logging
 stays intact and Review identifies project-managed logs. Capture is best effort
 under the host's existing journal rate limits and retention; a noisy container
 can cost other containers their output. See the

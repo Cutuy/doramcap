@@ -106,6 +106,28 @@ const waitFor = async (predicate: () => boolean) => {
   assert.ok(predicate());
 };
 
+test('Review forwards the warning list without interpreting diagnostic text', async () => {
+  // Arrange
+  const { root, engine, backend } = await fixture();
+  const inspect = engine.inspect.bind(engine);
+  engine.inspect = async request => {
+    const inspected = await inspect(request);
+    inspected.plan!.warnings = ['A reworded project logging notice'];
+    inspected.plan!.diagnostics = ['worker: logging configured by project; internal diagnostic'];
+    return inspected;
+  };
+  try {
+    // Act
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+
+    // Assert
+    assert.deepEqual(review.warnings, ['A reworded project logging notice']);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('systemd Start carries its Review snapshot and rediscovers current unit files', async () => {
   // Arrange
   const { root, config, engine, backend } = await fixture();
