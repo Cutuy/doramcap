@@ -22,8 +22,36 @@ impl Drop for Repository {
     }
 }
 
+/// Reruns the calling test alone in a single-threaded process; true in the parent.
+/// A concurrent fork briefly shares every held lock, so lock-holding tests run isolated.
+fn ran_in_isolated_process() -> bool {
+    if std::env::args().any(|arg| arg == "--test-threads=1") {
+        return false;
+    }
+    let thread = std::thread::current();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            thread.name().unwrap(),
+            "--test-threads=1",
+            "--nocapture",
+        ])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.contains("1 passed;"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 #[test]
 fn aliases_are_busy_other_repositories_are_independent_and_drop_releases() {
+    if ran_in_isolated_process() {
+        return;
+    }
     // Arrange
     let first = Repository::new();
     let other = Repository::new();
@@ -64,24 +92,7 @@ fn relative_missing_and_file_paths_are_invalid() {
 
 #[test]
 fn exec_inheritance_is_opt_in_and_child_exit_releases_admission() {
-    // Descriptor inheritance affects every concurrent fork; isolate this test.
-    if !std::env::args().any(|arg| arg == "--test-threads=1") {
-        let thread = std::thread::current();
-        let output = Command::new(std::env::current_exe().unwrap())
-            .args([
-                "--exact",
-                thread.name().unwrap(),
-                "--test-threads=1",
-                "--nocapture",
-            ])
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("1 passed;"),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    if ran_in_isolated_process() {
         return;
     }
     for inherit in [false, true] {
