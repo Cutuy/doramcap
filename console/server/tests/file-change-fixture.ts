@@ -18,6 +18,6 @@ export async function fileChangeFixture(root: string, count = 3, notes = ['sourc
     manifest: 'filesystem/host.pb', coverageNoteCount: notes.length,
   });
   const reference = filesystem.FileChangeReference.create({ checkpoint: 'filesystem/report.pb', categories: [summary] });
-  await writeFile(join(root, reference.checkpoint), filesystem.FileChangeReport.encode({ state: filesystem.ReportState.REPORT_COMPLETE, categories: [{ summary, coverageNotes: notes }] }).finish());
+  await writeFile(join(root, reference.checkpoint), filesystem.FileChangeReport.encode({ state: filesystem.ReportState.REPORT_STATE_COMPLETE, categories: [{ summary, coverageNotes: notes }] }).finish());
   return { reference, records };
 }

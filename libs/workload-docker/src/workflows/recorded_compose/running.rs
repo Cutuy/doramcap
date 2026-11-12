@@ -206,7 +206,7 @@ impl ComposeRunning {
                 Input::new(FinalizeInput {
                     id: self.spec.id.clone(),
                     artifacts: prepared.artifacts.clone(),
-                    baseline: prepared.baseline.clone(),
+                    sources: prepared.sources.clone(),
                     overlays: self.overlays.take().map(|output| output.into_value().views),
                     shutdown: writer_evidence,
                     project: self.plan.clone(),

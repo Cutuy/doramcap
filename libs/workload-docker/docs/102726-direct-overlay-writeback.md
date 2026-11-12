@@ -2,7 +2,7 @@
 
 # Upper-driven write-back MVP with rsync
 
-Created: 2026-10-27. Updated: 2026-10-27. Status: implemented; qualification in progress.
+Created: 2026-10-27. Updated: 2026-11-12. Status: implemented; qualification in progress.
 
 ## Goal and scope
 
@@ -31,9 +31,9 @@ Default write-back uses this implementation. `Discard` deletes upper data.
 
 Upper/work remain accessible after unmount. Runtime merge planning does not inspect
 the merged view, enumerate lower to discover changes, or read/hash file payloads.
-Opaque-directory deletion necessarily visits affected destination subtrees. Existing
-baseline/conflict checks and separate provenance scans retain their own costs; this
-change does not claim those scans disappear.
+Opaque-directory deletion necessarily visits affected destination subtrees. The
+pre-launch inventories and external-change checks have been removed. Collection
+uses the same upper reader and saves its report before unmount and write-back.
 
 ## Supported operations and limits
 
@@ -47,8 +47,8 @@ change does not claim those scans disappear.
 | Directory marked opaque=x | Treat as whiteout-scan optimization, not whole-directory deletion. |
 | Type replacement | Remove the incompatible destination object before installation. |
 | Redirect/metacopy marker | Reject with path and feature before mutation. |
-| Unsupported special file | Reject with path/type; recognized whiteout device markers are handled as deletions. |
-| Hardlink ambiguity | Reject upper multi-link files and affected lower multi-link replacements that cannot be safely represented. No alias discovery or reconstruction in MVP. |
+| Socket, FIFO or device | Record its change; skip transfer with a per-entry warning. Whiteout devices remain deletions. |
+| Hard link | Record its change; copy as a separate file with a per-entry warning. Other host names remain unchanged. |
 
 Support both kernel whiteout representations: character device 0:0 and regular-file
 whiteout xattr. The current mount uses `trusted.overlay.*`; only that namespace
@@ -59,9 +59,8 @@ with ordinary chmod/chown changes on complete upper files.
 
 Validate effective mount configuration and reject dependent features; directory
 redirect following can depend on kernel settings even with `redirect_dir=off`.
-Hardlink checks must account for index bookkeeping conservatively: an ambiguous
-link count produces an explicit unsupported error, never silently split aliases.
-This restriction can reject valid workloads and must be visible in onboarding/docs.
+Hard links are copied independently; their topology is unqualified. Sockets, FIFOs
+and devices remain listed even though write-back skips their contents.
 
 Keep paths confined to each planned source. Inspect symlinks without following them;
 reject unsafe destination-ancestor traversal. Validate all roots before applying any.
@@ -94,8 +93,8 @@ list; do not introduce entry/depth/time cutoffs. Warning previews remain bounded
 
 - No lower mutation before successful unmount and complete semantic validation.
 - Busy/failed unmount blocks application; lazy unmount is not proof of cleanup.
-- Cooperative/exclusive source access remains required. Metadata checks cannot
-  detect every content edit or eliminate races with external writers.
+- Host edits to paths changed by the run yield to the run's version at write-back.
+  Metadata comparisons do not prove content equality or eliminate concurrent-write races.
 - Apply is non-atomic. Errors/cancellation preserve upper, action records and logs,
   mark disposition incomplete. Pre-run reset discards the remaining upper.
 - Preserved upper contains changed payloads; it cannot restore already deleted
@@ -116,11 +115,12 @@ list; do not introduce entry/depth/time cutoffs. Warning previews remain bounded
 
 - [x] Cover both whiteouts, opaque=y/x, ordinary directories, opaque root, type replacements,
   dangling symlinks, unusual names and unsafe destination ancestors.
-- [x] Reject redirect/metacopy, unsupported special files and ambiguous hardlinks visibly.
+- [x] Reject unsupported redirect/metacopy; record special nodes and hard-link warnings.
 - [x] Prove no payload copies/hashes, merged traversal or new full lower discovery scan occurs.
 - [x] Verify rejected plans leave all host sources unchanged; record evidence before checking items.
 
-Evidence: x86_64 native test executable, built unprivileged and run via sudo: 12/12
+Historical 2026-10-27 evidence (before the current special-node/hard-link policy):
+x86_64 native test executable, built unprivileged and run via sudo: 12/12
 real OverlayFS tests passed. `direct_writeback_preserves_files_symlinks_and_whiteouts`,
 `opaque_upper_root_hides_lower_children_without_copying_internal_xattrs`,
 `xattr_whiteout_deletes_and_opaque_x_preserves_other_children` (including an
@@ -128,7 +128,7 @@ ordinary `user.overlay.whiteout` attribute), and
 `unsupported_upper_entries_reject_before_any_writeback` exercise the stated cases.
 Hardlink tests cover existing lower aliases and newly created aliases. Source review
 confirms planning walks upper and performs targeted lower lookups without payload I/O.
-The independent baseline/observation scanner now preserves Unix path bytes in
+That earlier observation scanner preserved Unix path bytes in
 [protobuf streams](102726-filesystem-protobuf.md).
 
 ## M2 — Apply with rsync directly from upper
@@ -194,7 +194,7 @@ Interrupted apply remains untested; detailed performance and Jetson evidence rem
 - [ ] Compare staged and direct paths with recordings, resumed datasets, untouched models,
   many small files and basic metadata edits.
 - [ ] Measure transfer bytes, wall time, peak memory, temporary disk use and physical I/O
-  where available; separate baseline/provenance scans and workload copy-up costs.
+  where available; account separately for workload copy-up and deleted-subtree traversal.
 - [ ] Qualify ext4 x86 and ARM/Jetson, including a 4 GB memory configuration.
 
 ### Validation

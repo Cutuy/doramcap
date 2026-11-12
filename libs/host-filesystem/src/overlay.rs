@@ -5,20 +5,18 @@
 //! preparation/finalization own mounts; dropping serialized values does no cleanup.
 mod direct;
 
-use super::{
-    Result,
-    error::invalid,
-    files::private_write,
-    filesystem::{MetadataWalk, Snapshot, read_snapshot, write_record, write_snapshot},
-};
-use crate::filesystem_proto::DirectoryMount;
+use super::{Result, changes::write_record, error::invalid, files::private_write};
+use crate::filesystem_proto::{DirectoryMount, SourceKind};
+
+/// Run-relative directory owned by overlay preparation and finalization.
+pub const RECORDS_DIRECTORY: &str = "overlays";
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::CString,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::{MetadataExt, OpenOptionsExt},
+        fs::OpenOptionsExt,
     },
     path::{Path, PathBuf},
 };
@@ -45,7 +43,7 @@ pub struct OverlayPolicy {
 /// One shared tree and its private run-owned mount/staging locations.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverlayTree {
-    /// Original directory; immutable while mounted.
+    /// Original host directory backing this view.
     pub source: PathBuf,
     /// Fresh copy-up layer owned by this run.
     pub upper: PathBuf,
@@ -53,8 +51,8 @@ pub struct OverlayTree {
     pub work: PathBuf,
     /// Mountpoint exposed through the backend launch.
     pub merged: PathBuf,
-    /// Original metadata inventory used for conflict detection.
-    pub baseline: PathBuf,
+    /// Private action journals and write-back diagnostics.
+    pub records: PathBuf,
 }
 /// Explicit original/effective bind mapping, including read-only aliases.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -190,19 +188,12 @@ async fn mounts() -> Result<Vec<PathBuf>> {
         .map(unescape_mount)
         .collect())
 }
-async fn snapshot(root: &Path) -> Result<BTreeMap<PathBuf, crate::filesystem_proto::FileMetadata>> {
-    let mut walk = MetadataWalk::open(root).await?;
-    let mut entries = BTreeMap::new();
-    while let Some((p, m)) = walk.next_entry().await? {
-        entries.insert(p, m);
-    }
-    Ok(entries)
-}
 /// Resolved sources awaiting backend validation and native mount preparation.
 /// Owns no filesystem resources; dropping it needs no cleanup.
 pub struct OverlayPlan {
     views: OverlaySet,
     roots: Vec<PathBuf>,
+    names: BTreeMap<PathBuf, std::ffi::OsString>,
 }
 impl OverlayPlan {
     /// Canonical mappings in backend input order, before view redirection.
@@ -212,6 +203,21 @@ impl OverlayPlan {
     /// Non-overlapping roots selected for shared writable and read-only aliases.
     pub fn roots(&self) -> &[PathBuf] {
         &self.roots
+    }
+    /// Name a source's view after its host folder; the name must be one normal path component.
+    /// Call before preparation. Unknown roots and path traversal return errors.
+    pub fn name_view(&mut self, source: &Path, name: &std::ffi::OsStr) -> Result<()> {
+        let mut parts = Path::new(name).components();
+        if !self.roots.iter().any(|root| root == source)
+            || !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+            || parts.next().is_some()
+        {
+            return Err(invalid(
+                "view name requires a known root and one normal path component",
+            ));
+        }
+        self.names.insert(source.into(), name.into());
+        Ok(())
     }
 }
 
@@ -223,12 +229,12 @@ fn set_readonly_ancestors(mappings: &[MountMapping], writable: &BTreeSet<PathBuf
         .collect()
 }
 
-/// Resolve view mappings without creating directories or mounts. Sources must exist and be ordinary directories. Read-only
-/// binds outside shared writable trees and dedicated run artifacts stay unchanged.
-/// Writable files, special nodes and nested mounts fail closed with their paths.
+/// Resolve views without walking source folders or creating mounts.
+/// Unsupported sources and run outputs stay directly mounted with a coverage reason.
+/// Sources must exist; mutable workspace overlaps and unsafe alias sharing fail.
 pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
     let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-    let directory = artifacts.join("overlays");
+    let directory = artifacts.join(RECORDS_DIRECTORY);
     let workspace = input.workspace;
     let parent = workspace
         .parent()
@@ -242,9 +248,38 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
             "overlay workspace must be canonical and separate from records",
         ));
     }
+    let (mappings, roots) = resolve_sources(&input.bind_mounts, &artifacts).await?;
+    for mapping in &mappings {
+        if mapping.original.starts_with(&workspace)
+            || roots.iter().any(|root| workspace.starts_with(root))
+        {
+            return Err(invalid("overlay source overlaps the mutable workspace"));
+        }
+    }
+    let set = OverlaySet {
+        directory,
+        workspace,
+        trees: vec![],
+        mappings,
+        policy: input.policy,
+    };
+    Ok(OverlayPlan {
+        views: set,
+        roots,
+        names: BTreeMap::new(),
+    })
+}
+
+/// Resolve existing bind identities and reject aliases that cannot share one view.
+/// Creates no files or mounts; Review and native preparation share these decisions.
+pub async fn resolve_sources(
+    bind_mounts: &[DirectoryMount],
+    artifacts: &Path,
+) -> Result<(Vec<MountMapping>, Vec<PathBuf>)> {
+    let mountpoints = mounts().await?;
     let mut writable = BTreeSet::new();
     let mut mappings = Vec::new();
-    for bind in &input.bind_mounts {
+    for bind in bind_mounts {
         let source = tokio::fs::canonicalize(&bind.source)
             .await
             .map_err(|error| {
@@ -253,29 +288,8 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
                     bind.consumer, bind.source
                 ))
             })?;
-        if source.starts_with(&workspace) || workspace.starts_with(&source) {
-            return Err(invalid("overlay source overlaps the mutable workspace"));
-        }
-        let meta = tokio::fs::symlink_metadata(&source).await?;
-        let owned = source.starts_with(&artifacts);
-        let host_shm = crate::is_host_shm_source(&source)?;
-        if !bind.read_only && !owned && !host_shm {
-            if !meta.is_dir()
-                || ["/proc", "/sys", "/dev"]
-                    .iter()
-                    .any(|p| source.starts_with(p))
-            {
-                return Err(invalid(format!(
-                    "writable bind requires explicit unsupported-source handling: {}",
-                    source.display()
-                )));
-            }
-            if artifacts.starts_with(&source) {
-                return Err(invalid(format!(
-                    "artifact directory overlaps lower tree: {}",
-                    source.display()
-                )));
-            }
+        let (kind, reason) = classify_source(&source, artifacts, &mountpoints).await?;
+        if !bind.read_only && kind == SourceKind::Overlay {
             writable.insert(source.clone());
         }
         mappings.push(MountMapping {
@@ -284,27 +298,22 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
             original: source.clone(),
             effective: source,
             read_only: bind.read_only,
-            reason: if host_shm {
-                "live host shared memory"
-            } else if owned {
-                "fresh run artifact"
-            } else if bind.read_only {
-                "read-only input"
-            } else {
-                "OverlayFS"
-            }
-            .into(),
+            reason: reason.unwrap_or_else(|| {
+                if bind.read_only {
+                    "read-only input"
+                } else {
+                    "OverlayFS"
+                }
+                .into()
+            }),
         });
     }
     // A read-only ancestor must see mutations through a writable child alias.
     // Include it in the shared tree while retaining read_only on its bind target.
     let aliases: Vec<_> = set_readonly_ancestors(&mappings, &writable);
     for alias in aliases {
-        if artifacts.starts_with(&alias)
-            || ["/proc", "/sys", "/dev"]
-                .iter()
-                .any(|p| alias.starts_with(p))
-        {
+        let (kind, _) = classify_source(&alias, artifacts, &mountpoints).await?;
+        if kind != SourceKind::Overlay {
             return Err(invalid(format!(
                 "read-only ancestor cannot share isolated view: {}",
                 alias.display()
@@ -312,19 +321,38 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
         }
         writable.insert(alias);
     }
-    let set = OverlaySet {
-        directory: directory.clone(),
-        workspace: workspace.clone(),
-        trees: vec![],
-        mappings,
-        policy: input.policy,
-    };
-    let roots = writable
+    let roots: Vec<_> = writable
         .iter()
         .filter(|p| !writable.iter().any(|q| q != *p && p.starts_with(q)))
         .cloned()
         .collect();
-    Ok(OverlayPlan { views: set, roots })
+    // Every overlapping alias must use the same view before any mount is created.
+    for mapping in &mappings {
+        for root in &roots {
+            if root.starts_with(&mapping.original) && root != &mapping.original {
+                return Err(invalid(format!(
+                    "{}:{}: direct ancestor {} cannot share isolated view {}",
+                    mapping.consumer,
+                    mapping.target,
+                    mapping.original.display(),
+                    root.display()
+                )));
+            }
+            if !mapping.read_only && mapping.original.starts_with(root) {
+                let (kind, _) = classify_source(&mapping.original, artifacts, &mountpoints).await?;
+                if kind != SourceKind::Overlay {
+                    return Err(invalid(format!(
+                        "{}:{}: direct source {} cannot share isolated view {}",
+                        mapping.consumer,
+                        mapping.target,
+                        mapping.original.display(),
+                        root.display()
+                    )));
+                }
+            }
+        }
+    }
+    Ok((mappings, roots))
 }
 
 /// Validate native source constraints, then mount resolved views and save ownership.
@@ -333,39 +361,10 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
     let OverlayPlan {
         views: mut set,
         roots,
+        names,
     } = plan;
     let directory = set.directory.clone();
     let workspace = set.workspace.clone();
-    let mountpoints = mounts().await?;
-    for root in &roots {
-        let mut links: BTreeMap<(u64, u64), (u64, u64)> = BTreeMap::new();
-        let mut walk = MetadataWalk::open(root).await?;
-        while let Some((p, _)) = walk.next_entry().await? {
-            let m = tokio::fs::symlink_metadata(root.join(p)).await?;
-            if m.is_file() && m.nlink() > 1 {
-                let group = links.entry((m.dev(), m.ino())).or_insert((0, m.nlink()));
-                group.0 += 1;
-            }
-        }
-        if links.values().any(|(seen, total)| seen != total) {
-            return Err(invalid(format!(
-                "hardlink group escapes overlay source: {}",
-                root.display()
-            )));
-        }
-    }
-    for root in &roots {
-        if let Some(nested) = mountpoints
-            .iter()
-            .find(|p| *p != root && p.starts_with(root))
-        {
-            return Err(invalid(format!(
-                "nested mount {} inside overlay source {}",
-                nested.display(),
-                root.display()
-            )));
-        }
-    }
     super::files::create_private_dir(&directory).await?;
     super::files::create_private_dir(&workspace).await?;
     for (i, source) in roots.into_iter().enumerate() {
@@ -373,26 +372,21 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
         tokio::fs::create_dir(&base).await?;
         let view = workspace.join(i.to_string());
         tokio::fs::create_dir(&view).await?;
+        let merged = names.get(&source).map_or_else(
+            || view.join("merged"),
+            |name| view.join("merged").join(name),
+        );
+        tokio::fs::create_dir_all(&merged).await?;
         let tree = OverlayTree {
             source,
             upper: view.join("upper"),
             work: view.join("work"),
-            merged: view.join("merged"),
-            baseline: base.join("baseline.pb"),
+            merged,
+            records: base.clone(),
         };
-        for path in [&tree.upper, &tree.work, &tree.merged] {
+        for path in [&tree.upper, &tree.work] {
             tokio::fs::create_dir(path).await?;
         }
-        // Capture baselines before any mounts so failure here owns no kernel resources.
-        write_snapshot(
-            &tree.baseline,
-            &Snapshot {
-                entries: snapshot(&tree.source).await?,
-                complete: true,
-                reason: None,
-            },
-        )
-        .await?;
         let root_list = base.join("root.paths0");
         list_file(&root_list, &BTreeSet::from([PathBuf::new()])).await?;
         rsync(
@@ -521,16 +515,6 @@ async fn list_file(path: &Path, paths: &BTreeSet<PathBuf>) -> Result<()> {
     file.flush().await?;
     Ok(())
 }
-async fn check_lower(tree: &OverlayTree) -> Result<()> {
-    let expected = read_snapshot(&tree.baseline).await?;
-    if !expected.complete || snapshot(&tree.source).await? != expected.entries {
-        return Err(invalid(format!(
-            "lower tree changed outside isolated view: {}",
-            tree.source.display()
-        )));
-    }
-    Ok(())
-}
 /// Unmount and discard the owned mutable workspace; an absent workspace succeeds.
 /// Writers must be stopped. Per-run records belong outside this directory.
 /// Unexpected mounts, symlinks and I/O errors fail.
@@ -560,8 +544,17 @@ pub async fn discard(directory: &Path) -> Result<()> {
         }
     }
     // Inspect every mount before changing any filesystem state.
-    let views: Vec<_> = trees.iter().map(|tree| tree.join("merged")).collect();
     let mounted = mounts().await?;
+    let views: Vec<_> = mounted
+        .iter()
+        .filter(|path| {
+            trees.iter().any(|tree| {
+                let merged = tree.join("merged");
+                **path == merged || path.parent() == Some(merged.as_path())
+            })
+        })
+        .cloned()
+        .collect();
     for mount in mounted.iter().filter(|mount| mount.starts_with(directory)) {
         if !views.contains(mount) {
             return Err(invalid("unexpected mount in overlay cleanup"));
@@ -614,16 +607,19 @@ pub async fn discard(directory: &Path) -> Result<()> {
 }
 
 /// Finalize stopped views: apply supported upper changes, or discard them.
-/// Write-back validates stable lower trees; errors preserve upper data until reset.
+/// Write-back replaces conflicting host changes; errors preserve upper data until reset.
 /// Application is non-atomic and is never replayed by pre-run cleanup.
 pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     if set.policy.disposition == Disposition::Discard {
         discard(&set.workspace).await?;
     } else {
-        for tree in &set.trees {
-            check_lower(tree).await?;
-        }
-        for tree in set.trees.iter().rev() {
+        let mounted = mounts().await?;
+        for tree in set
+            .trees
+            .iter()
+            .rev()
+            .filter(|tree| mounted.contains(&tree.merged))
+        {
             unmount(&tree.merged).await?;
         }
         if mounts()
@@ -642,15 +638,14 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         // as arrays so filesystem names need not be UTF-8.
         let mut plans = Vec::new();
         for tree in &set.trees {
-            check_lower(tree).await?;
             let tree = tree.clone();
-            let plan = tokio::task::spawn_blocking(move || direct::inspect(&tree))
+            let plan = tokio::task::spawn_blocking(move || direct::inspect(&tree, |_| Ok(())))
                 .await
                 .map_err(|e| invalid(e.to_string()))??;
             plans.push(plan);
         }
         for (tree, plan) in set.trees.iter().zip(&plans) {
-            let base = tree.baseline.parent().unwrap();
+            let base = &tree.records;
             let actions = tokio::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
@@ -691,8 +686,8 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         warnings.push(warning.to_string());
         private_write(&set.directory.join("metadata-coverage.txt"), b"Basic rsync archive attributes; ACLs, xattrs, capabilities and hardlinks are not qualified.\n").await?;
         for (tree, plan) in set.trees.iter().zip(plans) {
-            check_lower(tree).await?;
-            let base = tree.baseline.parent().unwrap();
+            warnings.extend(plan.warnings);
+            let base = &tree.records;
             let mut journal = tokio::fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)
@@ -727,6 +722,16 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 true,
             )
             .await?;
+            // Copy root attributes separately so selecting it cannot include whiteouts or special children.
+            rsync(
+                &tree.upper,
+                &tree.source,
+                Some(&base.join("root.paths0")),
+                &base.join("apply-root.log"),
+                true,
+                true,
+            )
+            .await?;
             paths.push(tree.source.clone());
         }
     }
@@ -744,11 +749,130 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     Ok(result)
 }
 
+/// Classify an existing canonical source without traversing folders or reading payloads.
+/// Host shared memory retains native passthrough semantics at every mount path.
+pub async fn source_kind(source: &Path, artifacts: &Path) -> Result<(SourceKind, Option<String>)> {
+    classify_source(source, artifacts, &mounts().await?).await
+}
+async fn classify_source(
+    source: &Path,
+    artifacts: &Path,
+    mountpoints: &[PathBuf],
+) -> Result<(SourceKind, Option<String>)> {
+    if crate::is_host_shm_source(source)? {
+        return Ok((
+            SourceKind::HostSharedMemory,
+            Some("live host shared memory".into()),
+        ));
+    }
+    let meta = tokio::fs::symlink_metadata(source).await?;
+    let reason = if !meta.is_dir() {
+        "not tracked: single file or special mount source".into()
+    } else if ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|root| source.starts_with(root))
+    {
+        "not tracked: pseudo-filesystem or device mount".into()
+    } else if source.starts_with(artifacts) {
+        return Ok((
+            SourceKind::RunOutput,
+            Some("run output folder; files listed as added".into()),
+        ));
+    } else if artifacts.starts_with(source) {
+        "not tracked: source contains the run folder".into()
+    } else if let Some(nested) = mountpoints
+        .iter()
+        .find(|point| *point != source && point.starts_with(source))
+    {
+        format!("not tracked: contains mount point {}", nested.display())
+    } else {
+        return Ok((SourceKind::Overlay, None));
+    };
+    Ok((SourceKind::Untracked, Some(reason)))
+}
+
+/// Read upper metadata transitions after writers stop; no mount or payload reads are required.
+/// Results allocate with the upper and removed lower subtrees. Collection errors retain the upper.
+pub async fn changes(tree: &OverlayTree) -> Result<Vec<crate::filesystem_proto::FileChange>> {
+    let tree = tree.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut changes = Vec::new();
+        direct::inspect(&tree, |row| {
+            changes.push(row);
+            Ok(())
+        })?;
+        Ok(changes)
+    })
+    .await
+    .map_err(|error| invalid(error.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     async fn prepare(input: PrepareInput) -> Result<OverlaySet> {
         super::prepare(resolve(input).await?).await
+    }
+
+    #[tokio::test]
+    async fn unsafe_direct_aliases_fail_before_creating_views() {
+        // Arrange: the parent contains the run folder, or a writable file aliases a folder view.
+        for shape in ["writable-parent", "readonly-parent", "writable-file"] {
+            let root = tempfile::tempdir().unwrap();
+            let source = root.path().join("source");
+            let child = source.join("child");
+            std::fs::create_dir_all(&child).unwrap();
+            let file = child.join("file");
+            std::fs::write(&file, b"original").unwrap();
+            let artifacts = if shape == "writable-file" {
+                root.path().join("run")
+            } else {
+                source.join("run")
+            };
+            std::fs::create_dir(&artifacts).unwrap();
+            let workspace = root.path().join("views");
+            let bind = |path: &Path, target: &str, read_only| DirectoryMount {
+                source: path.to_string_lossy().into(),
+                consumer: "app".into(),
+                target: target.into(),
+                read_only,
+            };
+            let bind_mounts = if shape == "writable-file" {
+                vec![bind(&child, "/folder", false), bind(&file, "/file", false)]
+            } else {
+                vec![
+                    bind(&source, "/parent", shape == "readonly-parent"),
+                    bind(&child, "/child", false),
+                ]
+            };
+            // Act: Review and launch reject the same unsupported alias shape.
+            let review_error = crate::changes::coverage_notes(&bind_mounts, &[], &artifacts, true)
+                .await
+                .unwrap_err();
+            assert!(
+                review_error
+                    .to_string()
+                    .contains("cannot share isolated view"),
+                "{shape}: {review_error}"
+            );
+            let error = resolve(PrepareInput {
+                artifacts: artifacts.clone(),
+                workspace: workspace.clone(),
+                bind_mounts,
+                policy: Default::default(),
+            })
+            .await
+            .err()
+            .unwrap();
+            // Assert: both source data and mount ownership are untouched.
+            assert!(
+                error.to_string().contains("cannot share isolated view"),
+                "{shape}: {error}"
+            );
+            assert!(!workspace.exists());
+            assert!(!artifacts.join(RECORDS_DIRECTORY).exists());
+            assert_eq!(std::fs::read(file).unwrap(), b"original");
+        }
     }
 
     #[tokio::test]

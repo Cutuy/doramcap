@@ -2,7 +2,7 @@ use super::super::reset::tests::test_engine_status;
 use super::*;
 use compose_apps::compose::{ComposeService, ResolvedComposeProject, Shutdown};
 use host_filesystem::{
-    filesystem::{self, BaselineInput, FileChanges},
+    changes::{self, FileChanges, SourcesInput},
     filesystem_proto::{MetadataSource, StorageCategory},
 };
 use orchestrator::{Event, State};
@@ -17,12 +17,15 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
         let volume = root.path().join("volume");
         std::fs::create_dir(&volume).unwrap();
         std::fs::write(volume.join("seeded"), b"image contents").unwrap();
-        let baseline = filesystem::capture(BaselineInput {
+        let baseline = changes::prepare_sources(SourcesInput {
+            overlays: true,
+            excluded: vec![],
             artifacts: root.path().into(),
             bind_mounts: vec![],
             metadata_sources: vec![MetadataSource {
                 category: StorageCategory::NamedVolume as i32,
                 identity: "data".into(),
+                reason: "not tracked: Docker named volume".into(),
                 consumer: "project/app:/data".into(),
                 ..Default::default()
             }],
@@ -33,7 +36,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             "io.doramcap.run":"run", "com.docker.compose.project":"project",
             "com.docker.compose.service":"app"
         });
-        let mut responses = if failure == Some("inspect") {
+        let responses = if failure == Some("inspect") {
             vec![(
                 "/containers/json",
                 500,
@@ -70,16 +73,6 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                 ),
             ]
         };
-        if failure.is_none() {
-            responses.push((
-                "/volumes/data",
-                200,
-                json!({
-                    "Name":"data", "Driver":"local", "Mountpoint":volume,
-                    "Options":{}, "Labels":{}, "Scope":"local"
-                }),
-            ));
-        }
         let (adapter, server) = test_engine_status(root.path(), responses).await;
         let diagnostics = Diagnostics::default();
         let events = Rc::new(RefCell::new(Vec::<Event>::new()));
@@ -108,7 +101,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             .run::<FinalizeRun>(FinalizeInput {
                 id: "run".into(),
                 artifacts: root.path().into(),
-                baseline,
+                sources: baseline,
                 overlays: None,
                 shutdown: Shutdown {
                     stopped: true,
@@ -176,7 +169,15 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             while let Some(change) = volumes.next_change().await.unwrap() {
                 seeded |= change.path == b"seeded";
             }
-            assert!(seeded);
+            assert!(!seeded);
+            assert!(!changes.named_volumes.coverage_complete);
+            assert!(
+                changes
+                    .named_volumes
+                    .warnings
+                    .iter()
+                    .any(|note| note.contains("not tracked: Docker named volume"))
+            );
             let mut layers = FileChanges::open(changes.container_layers.manifest)
                 .await
                 .unwrap();

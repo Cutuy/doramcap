@@ -6,7 +6,7 @@ import { doramcap } from './generated/console.js';
 import { displayPath } from './generated/transport.js';
 
 export const filesystem = doramcap.filesystem.v1;
-const CATEGORIES = [filesystem.StorageCategory.HOST_BIND, filesystem.StorageCategory.CONTAINER_LAYER, filesystem.StorageCategory.NAMED_VOLUME];
+const CATEGORIES = [filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND, filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER, filesystem.StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME];
 const CHANGE_KINDS = [filesystem.ChangeKind.CHANGE_KIND_ADDED, filesystem.ChangeKind.CHANGE_KIND_MODIFIED, filesystem.ChangeKind.CHANGE_KIND_DELETED];
 const CHECKPOINT = 'filesystem/report.pb';
 type Reference = doramcap.filesystem.v1.IFileChangeReference;
@@ -39,7 +39,7 @@ async function checkpoint(runRoot: string, path: string, signal?: AbortSignal) {
 /** Read the published checkpoint and verify its bounded reference; missing publication is unavailable. */
 async function report(runRoot: string, reference: Reference, signal?: AbortSignal) {
   const saved = await checkpoint(runRoot, reference.checkpoint!, signal);
-  if (saved.state !== filesystem.ReportState.REPORT_COMPLETE || !saved.categories.length || saved.categories.length !== reference.categories?.length)
+  if (saved.state !== filesystem.ReportState.REPORT_STATE_COMPLETE || !saved.categories.length || saved.categories.length !== reference.categories?.length)
     throw new Error('File-change category mismatch');
   const seen = new Set<number>();
   for (const [index, category] of saved.categories.entries()) {
@@ -102,8 +102,8 @@ async function* categoryChanges(runRoot: string, summary: Summary, signal?: Abor
 /** Save a whole-record preview; export validates records beyond its display budget.
  * Memory includes the checkpoint's coverage notes, one whole record and the bounded preview.
  */
-export async function fileChangePreview(runRoot: string, reference?: Reference | null, state = filesystem.ReportState.REPORT_UNAVAILABLE): Promise<View | null> {
-  if (!reference && state === filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN) {
+export async function fileChangePreview(runRoot: string, reference?: Reference | null, state = filesystem.ReportState.REPORT_STATE_UNAVAILABLE): Promise<View | null> {
+  if (!reference && state === filesystem.ReportState.REPORT_STATE_CHECKPOINT_UNKNOWN) {
     // Later native report writes can fail after capture has already been published.
     try {
       const saved = await checkpoint(runRoot, CHECKPOINT);
@@ -111,12 +111,12 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
         throw new Error('File-change checkpoint has no category summary');
       reference = { checkpoint: CHECKPOINT, categories: saved.categories.map(category => category.summary!) };
     } catch {
-      return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: 'File changes unavailable: no valid published checkpoint.' });
+      return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_FAILED, error: 'File changes unavailable: no valid published checkpoint.' });
     }
   }
-  if (!reference) return state === filesystem.ReportState.REPORT_UNAVAILABLE ? null
-    : wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: 'File changes were not collected; inspect the run diagnostics.' });
-  const view = wire.FileChanges.create({ state: filesystem.ReportState.REPORT_COMPLETE, report: reference });
+  if (!reference) return state === filesystem.ReportState.REPORT_STATE_UNAVAILABLE ? null
+    : wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_FAILED, error: 'File changes were not collected; inspect the run diagnostics.' });
+  const view = wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_COMPLETE, report: reference });
   try {
     const saved = await report(runRoot, reference);
     for (const category of saved.categories) {
@@ -139,14 +139,14 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
     }
     view.downloadable = true;
   } catch (error) {
-    view.state = filesystem.ReportState.REPORT_FAILED;
+    view.state = filesystem.ReportState.REPORT_STATE_FAILED;
     view.error = browserError(`File changes unavailable: ${(error as Error).message}`);
     view.previewIncomplete = true;
   }
   while (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
     if (view.preview.length) { view.preview.pop(); view.previewIncomplete = true; }
     else if (view.coverageNotes.length) { view.coverageNotes.pop(); view.notesIncomplete = true; }
-    else return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: 'File-change reference exceeds the display budget.' });
+    else return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_FAILED, error: 'File-change reference exceeds the display budget.' });
   }
   return view;
 }
@@ -160,7 +160,7 @@ export function fileChangeAvailability(runRoot: string, view?: doramcap.console.
     }
   } catch {
     view.downloadable = false;
-    view.state = filesystem.ReportState.REPORT_FAILED;
+    view.state = filesystem.ReportState.REPORT_STATE_FAILED;
     view.error = 'File-change checkpoint or manifest is unavailable.';
   }
   return view;

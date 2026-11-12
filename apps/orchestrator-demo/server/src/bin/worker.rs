@@ -1,6 +1,6 @@
 //! Authorized fixed-workflow worker. HTTP remains in a separate unprivileged process.
 use compose_apps::compose::{ComposeProject, DockerAdapter};
-use host_filesystem::{filesystem::FileChanges, filesystem_proto::FileMetadata};
+use host_filesystem::{changes::FileChanges, filesystem_proto::FileMetadata};
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use serde_json::json;
 use std::{collections::BTreeMap, rc::Rc, time::Duration};
@@ -250,6 +250,7 @@ async fn recorded_demo(
     Ok(runner
         .run(
             ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: workload_lifecycle::launch::HostShmAccess::Blocked as i32,
                 filesystem: Some(Default::default()),
                 id: session.into(),

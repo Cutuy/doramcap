@@ -149,7 +149,7 @@ impl ComposeConfiguration<'_> {
         let normalized = self.normalize(&input.run, project, &name).await?;
         let mut model = normalized.model;
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
-        let manifest = artifacts.join(format!("{}.compose.json", project.key));
+        let manifest = artifacts.join(super::compose_record(&project.key));
         let mut diagnostics = Vec::new();
         let mut warnings = Vec::new();
         let mut policy_changes = Vec::new();
@@ -439,7 +439,7 @@ impl ComposeConfiguration<'_> {
         .await?;
         // Record source hashes, resolved settings and policy changes beside the manifest.
         private_write(
-            &artifacts.join(format!("{}.resolution.json", project.key)),
+            &artifacts.join(super::resolution_record(&project.key)),
             &serde_json::to_vec_pretty(
                 &json!({"compose_version":normalized.compose_version.trim(),"sources":normalized.input_hashes,"request":project,"plan":plan,"policy_changes":policy_changes}),
             )?,

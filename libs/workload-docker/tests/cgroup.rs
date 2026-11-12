@@ -129,6 +129,7 @@ impl Fixture {
             artifacts: self.directory.path().join(format!("run-{index}")),
             projects: vec![app("user")],
             system_apps: vec![app("system")],
+            private_records: Vec::new(),
             host_shm_access: HostShmAccess::Passthrough as i32,
             readiness_seconds: STARTUP_SECONDS,
             stop_seconds: STOP_SECONDS,
@@ -222,6 +223,7 @@ async fn placement_and_recovery(fixture: Fixture) {
         let observed = events.clone();
         let mut run = Box::pin(runner.run_with_ready(
             ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: if index == 0 {
                     HostShmAccess::Passthrough
                 } else {
@@ -440,6 +442,7 @@ async fn misplaced_on_socket(socket: &str) {
             RUN_LIMIT,
             runner.run(
                 ComposeRun {
+                    private_records: Vec::new(),
                     host_shm_access: if service == SHM_SERVICE {
                         HostShmAccess::Blocked
                     } else {

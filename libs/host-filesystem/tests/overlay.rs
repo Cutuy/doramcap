@@ -2,7 +2,10 @@
 use host_filesystem::filesystem_proto::DirectoryMount as BindMount;
 use host_filesystem::overlay::*;
 use std::{
-    os::unix::fs::{MetadataExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt,
+        fs::{MetadataExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
 };
 async fn prepare(input: PrepareInput) -> host_filesystem::Result<OverlaySet> {
@@ -223,8 +226,17 @@ async fn failures_preserve_lower_and_unwind_preparation() {
             None
         };
         // Act
-        let error = finalize(set.clone()).await.unwrap_err();
-        // Assert: no automatic write-back after conflict or busy unmount.
+        let result = finalize(set.clone()).await;
+        if !busy {
+            result.unwrap();
+            assert_unmounted(&set);
+            assert_eq!(std::fs::read(source.join("file")).unwrap(), b"isolated");
+            drop(cleanup);
+            std::fs::write(source.join("file"), b"before").unwrap();
+            continue;
+        }
+        let error = result.unwrap_err();
+        // Assert: busy unmount preserves the upper and host source.
         assert_eq!(
             std::fs::read(source.join("file")).unwrap(),
             if busy {
@@ -329,17 +341,16 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     let artifacts = root.join("reject-link");
     std::fs::create_dir(&artifacts).unwrap();
     // Act
-    let error = prepare(PrepareInput {
+    let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts: artifacts.clone(),
         policy: Default::default(),
     })
     .await
-    .unwrap_err();
-    // Assert
-    assert!(error.to_string().contains("hardlink group escapes"));
-    assert!(!artifacts.join("overlays").exists());
+    .unwrap();
+    // Assert: preparation accepts a link with an external name without inventorying the lower.
+    finalize(set).await.unwrap();
     std::fs::remove_file(root.join("external-link")).unwrap();
 
     // Arrange: even a same-device nested bind mount must fail preflight.
@@ -365,17 +376,19 @@ async fn read_only_parent_alias_and_unsupported_sources() {
     let artifacts = root.join("reject-mount");
     std::fs::create_dir(&artifacts).unwrap();
     // Act
-    let error = prepare(PrepareInput {
+    let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts: artifacts.clone(),
         policy: Default::default(),
     })
     .await
-    .unwrap_err();
-    // Assert
-    assert!(error.to_string().contains("nested mount"), "{error}");
-    assert!(!artifacts.join("overlays").exists());
+    .unwrap();
+    // Assert: the source remains directly mounted and its nested mount stays intact.
+    assert!(set.trees.is_empty());
+    assert!(set.mappings[0].reason.contains("contains mount point"));
+    assert_eq!(set.mappings[0].effective, source);
+    finalize(set).await.unwrap();
     // SAFETY: live path to this test's bind mount; strict unmount.
     assert_eq!(unsafe { libc::umount2(dst.as_ptr(), 0) }, 0);
     std::fs::remove_dir_all(root).unwrap();
@@ -484,10 +497,9 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
         std::fs::read(source.join("unchanged")).unwrap(),
         b"large model untouched"
     );
-    assert!(!tree.baseline.parent().unwrap().join("stage.log").exists());
+    assert!(!tree.records.as_path().join("stage.log").exists());
     use prost::Message;
-    let action_bytes =
-        std::fs::read(tree.baseline.parent().unwrap().join("apply-plan.pb")).unwrap();
+    let action_bytes = std::fs::read(tree.records.as_path().join("apply-plan.pb")).unwrap();
     let mut action_stream = action_bytes.as_slice();
     let mut actions = Vec::new();
     while !action_stream.is_empty() {
@@ -513,7 +525,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
             .iter()
             .any(|a| a.kind == 2 && a.path == b"non-utf8-\xff")
     );
-    let log = std::fs::read_to_string(tree.baseline.parent().unwrap().join("apply.log")).unwrap();
+    let log = std::fs::read_to_string(tree.records.as_path().join("apply.log")).unwrap();
     assert!(log.contains("same-time"));
     assert!(!log.contains("unchanged"));
     assert!(tree.upper.join("same-time").exists());
@@ -522,7 +534,7 @@ async fn direct_writeback_preserves_files_symlinks_and_whiteouts() {
 
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
-async fn hardlinks_fail_before_any_source_is_modified() {
+async fn modified_hardlink_warns_and_leaves_other_name_unchanged() {
     // Arrange: a real copied-up hardlink group and a second ordinary change.
     let root = std::env::temp_dir().join(format!("overlay-hardlinks-{}", std::process::id()));
     std::fs::create_dir_all(root.join("source/child")).unwrap();
@@ -543,21 +555,26 @@ async fn hardlinks_fail_before_any_source_is_modified() {
     std::fs::write(set.trees[0].merged.join("a"), b"changed").unwrap();
     std::fs::write(set.trees[0].merged.join("ordinary"), b"new").unwrap();
     // Act
-    let error = finalize(set.clone()).await.unwrap_err();
-    // Assert: source remains unchanged after the mount is gone; upper is retained.
-    assert!(error.to_string().contains("hardlink"), "{error}");
+    let result = finalize(set.clone()).await.unwrap();
+    // Assert
     assert_unmounted(&set);
-    assert_eq!(std::fs::read(source.join("a")).unwrap(), b"before");
+    assert_eq!(std::fs::read(source.join("a")).unwrap(), b"changed");
     assert_eq!(std::fs::read(source.join("b")).unwrap(), b"before");
-    assert!(!source.join("ordinary").exists());
-    assert!(set.trees[0].upper.join("ordinary").exists());
-    assert!(!set.directory.join("results.json").exists());
+    assert_eq!(std::fs::read(source.join("ordinary")).unwrap(), b"new");
+    assert_eq!(
+        result
+            .warnings
+            .iter()
+            .filter(|warning| warning.contains("other hard-link names"))
+            .count(),
+        1
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
-async fn newly_created_hardlink_is_rejected() {
+async fn newly_created_hardlink_is_copied_as_separate_file() {
     // Arrange: hardlink added to a previously single-link lower file.
     let root = std::env::temp_dir().join(format!("overlay-new-hardlink-{}", std::process::id()));
     std::fs::create_dir_all(root.join("source/child")).unwrap();
@@ -580,12 +597,20 @@ async fn newly_created_hardlink_is_rejected() {
     )
     .unwrap();
     // Act
-    let error = finalize(set.clone()).await.unwrap_err();
+    let result = finalize(set.clone()).await.unwrap();
     // Assert
-    assert!(error.to_string().contains("hardlink"), "{error}");
     assert_unmounted(&set);
-    assert!(!source.join("alias").exists());
-    assert_eq!(std::fs::read(source.join("a")).unwrap(), b"before");
+    assert_eq!(std::fs::read(source.join("alias")).unwrap(), b"before");
+    assert_ne!(
+        std::fs::metadata(source.join("a")).unwrap().ino(),
+        std::fs::metadata(source.join("alias")).unwrap().ino()
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("separate file"))
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -593,7 +618,7 @@ async fn newly_created_hardlink_is_rejected() {
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn unsupported_upper_entries_reject_before_any_writeback() {
     // Arrange: each case uses real kernel OverlayFS and a valid change in a second tree.
-    for feature in ["fifo", "redirect", "metacopy"] {
+    for feature in ["redirect", "metacopy"] {
         let root =
             std::env::temp_dir().join(format!("overlay-reject-{feature}-{}", std::process::id()));
         std::fs::create_dir_all(root.join("a/child")).unwrap();
@@ -839,14 +864,7 @@ async fn exhausted_host_filesystem_keeps_upper_and_reports_failure() {
         8 * 1024 * 1024
     );
     assert!(!set.directory.join("results.json").exists());
-    assert!(
-        set.trees[0]
-            .baseline
-            .parent()
-            .unwrap()
-            .join("apply.log")
-            .exists()
-    );
+    assert!(set.trees[0].records.join("apply.log").exists());
     // SAFETY: strict unmount of this test's own tmpfs after all handles close.
     assert_eq!(unsafe { libc::umount2(mountpoint.as_ptr(), 0) }, 0);
     std::fs::remove_dir_all(root).unwrap();
@@ -948,8 +966,7 @@ async fn direct_transfer_large_payload_without_staging_unchanged_data() {
         std::fs::read(source.join("model")).unwrap(),
         vec![3u8; 8 * 1024 * 1024]
     );
-    let log =
-        std::fs::read_to_string(set.trees[0].baseline.parent().unwrap().join("apply.log")).unwrap();
+    let log = std::fs::read_to_string(set.trees[0].records.as_path().join("apply.log")).unwrap();
     assert!(log.contains("recording"));
     assert!(!log.contains("model"));
     assert!(
@@ -969,6 +986,8 @@ async fn interrupted_copyback_child() {
     let root = PathBuf::from(root);
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
+    let output = artifacts.join("output");
+    std::fs::create_dir(&output).unwrap();
     let mut projects = Vec::new();
     for name in ["a", "b"] {
         let source = root.join(format!("source-{name}"));
@@ -980,6 +999,12 @@ async fn interrupted_copyback_child() {
         let project = plan(&input, &source);
         projects.push(project);
     }
+    projects.push(vec![BindMount {
+        consumer: "app".into(),
+        source: output.to_string_lossy().into(),
+        target: "/output".into(),
+        read_only: false,
+    }]);
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         artifacts,
@@ -991,6 +1016,13 @@ async fn interrupted_copyback_child() {
     for tree in &set.trees {
         std::fs::write(tree.merged.join("file"), b"after").unwrap();
     }
+    let direct = set
+        .mappings
+        .iter()
+        .find(|mapping| mapping.target == "/output")
+        .unwrap();
+    assert_eq!(direct.effective, output);
+    std::fs::write(direct.effective.join("result"), b"survives interruption").unwrap();
     // Act: the test rsync wrapper pauses after applying the first tree.
     finalize(set).await.unwrap();
     panic!("copy-back should remain paused until the parent kills this child");
@@ -1043,6 +1075,10 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
             Some(libc::ESRCH)
         );
     }
+    assert_eq!(
+        std::fs::read(root.path().join("run/output/result")).unwrap(),
+        b"survives interruption"
+    );
     let first = root.path().join("source-a/file");
     let second = root.path().join("source-b/file");
     assert_eq!(std::fs::read(&first).unwrap(), b"after");
@@ -1052,6 +1088,10 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     // Act: reset the interrupted state twice through the pre-run discard primitive.
     for _ in 0..2 {
         discard(&overlays).await.unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("run/output/result")).unwrap(),
+            b"survives interruption"
+        );
         // Assert: copied changes remain; unapplied changes are discarded without replay.
         assert_eq!(std::fs::read(&first).unwrap(), b"after");
         assert_eq!(std::fs::read(&second).unwrap(), b"before");
@@ -1060,4 +1100,432 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
             assert!(!overlays.join(index).join("work").exists());
         }
     }
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn upper_records_and_writeback_cover_real_kernel_entries() {
+    use host_filesystem::filesystem_proto::{ChangeKind, StorageCategory};
+    use std::os::unix::ffi::OsStringExt;
+    // Arrange: a large unchanged directory and several lower transitions.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("child")).unwrap();
+    for i in 0..1500 {
+        std::fs::write(source.join(format!("child/unchanged-{i}")), b"model").unwrap();
+    }
+    for name in ["child/edit", "opened", "permissions", "rename", "linked"] {
+        std::fs::write(source.join(name), b"before").unwrap();
+    }
+    std::fs::hard_link(source.join("linked"), source.join("other-name")).unwrap();
+    std::fs::create_dir_all(source.join("deleted/deep")).unwrap();
+    std::fs::write(source.join("deleted/deep/file"), b"removed").unwrap();
+    std::fs::create_dir_all(source.join("opaque/recreated")).unwrap();
+    std::fs::write(source.join("opaque/recreated/hidden"), b"removed").unwrap();
+    let artifacts = root.path().join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let mut mounts = plan(root.path(), &source);
+    mounts.push(BindMount {
+        consumer: "direct".into(),
+        source: source.join("permissions").to_string_lossy().into(),
+        target: "/file".into(),
+        read_only: true,
+    });
+    let mut planned = resolve(PrepareInput {
+        artifacts,
+        workspace: root.path().join("views"),
+        bind_mounts: mounts,
+        policy: OverlayPolicy::default(),
+    })
+    .await
+    .unwrap();
+    planned
+        .name_view(&source, source.file_name().unwrap())
+        .unwrap();
+    let set = host_filesystem::overlay::prepare(planned).await.unwrap();
+    assert_eq!(
+        set.mappings.last().unwrap().effective,
+        set.trees[0].merged.join("permissions")
+    );
+    let tree = &set.trees[0];
+    let view = &tree.merged;
+    assert_eq!(view.file_name().unwrap(), source.file_name().unwrap());
+    assert!(!tree.records.join("baseline.pb").exists());
+    // Act: modify only an existing child so its parent's mtime remains unchanged.
+    std::fs::write(view.join("child/edit"), b"changed").unwrap();
+    drop(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(view.join("opened"))
+            .unwrap(),
+    );
+    std::fs::set_permissions(
+        view.join("permissions"),
+        std::fs::Permissions::from_mode(0o640),
+    )
+    .unwrap();
+    std::fs::remove_dir_all(view.join("deleted")).unwrap();
+    std::fs::rename(view.join("rename"), view.join("renamed")).unwrap();
+    std::fs::write(view.join("linked"), b"run version").unwrap();
+    std::fs::write(view.join("new-link"), b"new").unwrap();
+    std::fs::hard_link(view.join("new-link"), view.join("new-alias")).unwrap();
+    let unusual = std::ffi::OsString::from_vec(b"new-\xff".to_vec());
+    std::fs::write(view.join(&unusual), b"new").unwrap();
+    std::os::unix::fs::symlink(&unusual, view.join("symlink")).unwrap();
+    let socket = std::os::unix::net::UnixListener::bind(view.join("socket")).unwrap();
+    let fifo = std::ffi::CString::new(view.join("fifo").as_os_str().as_encoded_bytes()).unwrap();
+    // SAFETY: live path in the test-owned overlay.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    let device =
+        std::ffi::CString::new(view.join("device").as_os_str().as_encoded_bytes()).unwrap();
+    // SAFETY: test-owned char device, distinct from the OverlayFS 0:0 whiteout.
+    assert_eq!(
+        unsafe { libc::mknod(device.as_ptr(), libc::S_IFCHR | 0o600, libc::makedev(1, 3)) },
+        0
+    );
+    drop(socket);
+    std::fs::remove_dir_all(view.join("opaque")).unwrap();
+    std::fs::create_dir_all(view.join("opaque/recreated")).unwrap();
+    std::fs::write(view.join("opaque/recreated/new"), b"new").unwrap();
+    std::fs::set_permissions(view, std::fs::Permissions::from_mode(0o750)).unwrap();
+    // Assert: directory size differs but its copied-up metadata is otherwise unchanged.
+    assert_ne!(
+        std::fs::metadata(tree.upper.join("child")).unwrap().size(),
+        std::fs::metadata(source.join("child")).unwrap().size()
+    );
+    let rows = changes(tree).await.unwrap();
+    let find = |path: &str| rows.iter().find(|row| row.path == path.as_bytes()).unwrap();
+    assert!(
+        !rows
+            .iter()
+            .any(|row| row.path == b"child" || row.path == b"opened")
+    );
+    assert_eq!(find("child/edit").kind(), ChangeKind::Modified);
+    assert_eq!(
+        find("permissions").before.as_ref().unwrap().mode & 0o777,
+        0o644
+    );
+    assert_eq!(
+        find("permissions").after.as_ref().unwrap().mode & 0o777,
+        0o640
+    );
+    for path in ["deleted", "deleted/deep", "deleted/deep/file", "rename"] {
+        assert_eq!(find(path).kind(), ChangeKind::Deleted);
+    }
+    for path in [
+        "renamed",
+        "symlink",
+        "socket",
+        "fifo",
+        "device",
+        "new-link",
+        "new-alias",
+    ] {
+        assert_eq!(find(path).kind(), ChangeKind::Added);
+    }
+    assert!(
+        rows.iter()
+            .any(|row| row.path == unusual.as_encoded_bytes())
+    );
+    assert!(
+        rows.iter()
+            .all(|row| row.category() == StorageCategory::HostBind)
+    );
+    assert_eq!(find("").after.as_ref().unwrap().mode & 0o777, 0o750);
+    assert_eq!(find("opaque/recreated/hidden").kind(), ChangeKind::Deleted);
+    let paths: std::collections::BTreeSet<_> = rows.iter().map(|row| &row.path).collect();
+    assert_eq!(paths.len(), rows.len());
+    // Act: reading needs no mounted view, and outside changes lose to the run's version.
+    unmount(view).await.unwrap();
+    let unmounted = changes(tree).await.unwrap();
+    assert_eq!(rows.len(), unmounted.len());
+    std::fs::write(source.join("linked"), b"external version").unwrap();
+    // Re-mounting is unnecessary for finalization; finalize accepts already unmounted views.
+    let result = finalize(set.clone()).await.unwrap();
+    // Assert
+    assert_eq!(
+        std::fs::read(source.join("linked")).unwrap(),
+        b"run version"
+    );
+    assert_eq!(
+        std::fs::read(source.join("other-name")).unwrap(),
+        b"external version"
+    );
+    assert_eq!(
+        result
+            .warnings
+            .iter()
+            .filter(|warning| warning.contains("skipped during write-back"))
+            .count(),
+        3
+    );
+    assert_eq!(
+        result
+            .warnings
+            .iter()
+            .filter(|warning| warning.contains("separate file"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        result
+            .warnings
+            .iter()
+            .filter(|warning| warning.contains("other hard-link names"))
+            .count(),
+        1
+    );
+    for path in ["socket", "fifo", "device"] {
+        assert!(source.join(path).symlink_metadata().is_err());
+    }
+    assert_eq!(std::fs::metadata(&source).unwrap().mode() & 0o777, 0o750);
+    assert_eq!(
+        std::fs::read(source.join("opaque/recreated/new")).unwrap(),
+        b"new"
+    );
+    assert!(!source.join("opaque/recreated/hidden").exists());
+    assert!(!source.join("deleted").exists());
+    assert_ne!(
+        std::fs::metadata(source.join("new-link")).unwrap().ino(),
+        std::fs::metadata(source.join("new-alias")).unwrap().ino()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage() {
+    use host_filesystem::changes::{self, CollectInput, SourcesInput};
+    // Arrange: filesystem identity, rather than a /dev prefix, determines live shared memory.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    for backing in ["hugetlbfs", "shm-alias"] {
+        let source = root.path().join(backing);
+        std::fs::create_dir(&source).unwrap();
+        let target = std::ffi::CString::new(source.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: live C strings and a fresh test-owned mountpoint; no persistent host configuration.
+        let status = unsafe {
+            if backing == "hugetlbfs" {
+                libc::mount(
+                    std::ptr::null(),
+                    target.as_ptr(),
+                    c"hugetlbfs".as_ptr(),
+                    0,
+                    std::ptr::null(),
+                )
+            } else {
+                libc::mount(
+                    c"/dev/shm".as_ptr(),
+                    target.as_ptr(),
+                    std::ptr::null(),
+                    libc::MS_BIND,
+                    std::ptr::null(),
+                )
+            }
+        };
+        assert_eq!(status, 0, "{}", std::io::Error::last_os_error());
+        let artifacts = root.path().join(format!("run-{backing}"));
+        std::fs::create_dir(&artifacts).unwrap();
+        let binds = vec![BindMount {
+            source: source.to_string_lossy().into(),
+            consumer: "app".into(),
+            target: "/memory".into(),
+            read_only: false,
+        }];
+        // Act
+        let notes = changes::coverage_notes(&binds, &[], &artifacts, true)
+            .await
+            .unwrap();
+        let sources = changes::prepare_sources(SourcesInput {
+            overlays: true,
+            artifacts: artifacts.clone(),
+            bind_mounts: binds.clone(),
+            metadata_sources: vec![],
+            excluded: vec![],
+        })
+        .await
+        .unwrap();
+        let set = prepare(PrepareInput {
+            artifacts,
+            workspace: root.path().join(format!("views-{backing}")),
+            bind_mounts: binds,
+            policy: Default::default(),
+        })
+        .await
+        .unwrap();
+        // Creating an empty hugetlbfs segment allocates no huge pages.
+        let segment = format!("pr326-segment-{}", std::process::id());
+        std::fs::write(set.mappings[0].effective.join(&segment), []).unwrap();
+        let result = changes::collect(CollectInput {
+            sources,
+            overlays: Some(set.clone()),
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        finalize(set.clone()).await.unwrap();
+        // Assert
+        assert!(set.trees.is_empty());
+        assert_eq!(set.mappings[0].effective, source);
+        assert!(source.join(&segment).exists());
+        assert!(notes.is_empty());
+        assert!(result.host_binds.coverage_complete);
+        assert!(result.host_binds.warnings.is_empty());
+        std::fs::remove_file(source.join(segment)).unwrap();
+        unmount(&source).await.unwrap();
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn writable_parent_and_child_use_one_view_and_write_back_once() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("child")).unwrap();
+    std::fs::write(source.join("child/file"), b"before").unwrap();
+    let artifacts = root.path().join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let mut bind_mounts = plan(root.path(), &source);
+    bind_mounts[1].read_only = false;
+    // Act
+    let set = prepare(PrepareInput {
+        artifacts,
+        workspace: root.path().join("views"),
+        bind_mounts,
+        policy: Default::default(),
+    })
+    .await
+    .unwrap();
+    std::fs::write(set.mappings[1].effective.join("file"), b"child").unwrap();
+    // Assert
+    assert_eq!(set.trees.len(), 1);
+    assert_eq!(
+        std::fs::read(set.mappings[0].effective.join("child/file")).unwrap(),
+        b"child"
+    );
+    assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"before");
+    // Act
+    std::fs::write(set.mappings[0].effective.join("child/file"), b"parent").unwrap();
+    // Assert
+    assert_eq!(
+        std::fs::read(set.mappings[1].effective.join("file")).unwrap(),
+        b"parent"
+    );
+    let result = finalize(set).await.unwrap();
+    assert_eq!(result.paths.as_slice(), std::slice::from_ref(&source));
+    assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"parent");
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing() {
+    use host_filesystem::{
+        changes::MetadataWalk,
+        filesystem_proto::{ChangeKind, FileMetadata},
+    };
+    use std::collections::BTreeMap;
+    async fn inventory(path: &Path) -> BTreeMap<PathBuf, FileMetadata> {
+        let mut walk = MetadataWalk::open(path).await.unwrap();
+        let mut entries = BTreeMap::new();
+        while let Some((path, metadata)) = walk.next_entry().await.unwrap() {
+            entries.insert(path, metadata);
+        }
+        entries
+    }
+    // Arrange: an independent before/after walk supplies the reference for ordinary transitions.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("child")).unwrap();
+    for index in 0..20_000 {
+        std::fs::write(source.join(format!("child/model-{index}")), b"unchanged").unwrap();
+    }
+    for name in ["edit", "gone", "rename", "mode", "opened"] {
+        std::fs::write(source.join(name), b"before").unwrap();
+    }
+    let before = inventory(&source).await;
+    let artifacts = root.path().join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let start = std::time::Instant::now();
+    let set = prepare(PrepareInput {
+        artifacts,
+        workspace: root.path().join("views"),
+        bind_mounts: plan(root.path(), &source),
+        policy: OverlayPolicy {
+            disposition: Disposition::Discard,
+        },
+    })
+    .await
+    .unwrap();
+    let preparation = start.elapsed();
+    let tree = &set.trees[0];
+    let start = std::time::Instant::now();
+    let untouched = changes(tree).await.unwrap();
+    assert!(
+        untouched.iter().all(|row| row.path.is_empty()),
+        "{untouched:#?}"
+    );
+    let unchanged_listing = start.elapsed();
+    // Act
+    std::fs::write(tree.merged.join("edit"), b"after-longer").unwrap();
+    std::fs::write(tree.merged.join("added"), b"new").unwrap();
+    std::fs::remove_file(tree.merged.join("gone")).unwrap();
+    std::fs::rename(tree.merged.join("rename"), tree.merged.join("renamed")).unwrap();
+    std::fs::set_permissions(
+        tree.merged.join("mode"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    drop(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(tree.merged.join("opened"))
+            .unwrap(),
+    );
+    let after = inventory(&tree.merged).await;
+    let mut expected = BTreeMap::new();
+    for (path, metadata) in &before {
+        match after.get(path) {
+            None => {
+                expected.insert(path.clone(), ChangeKind::Deleted);
+            }
+            // Walk comparison retains the milestone's documented metadata fields, excluding ctime and directory size.
+            Some(other)
+                if metadata.mode != other.mode
+                    || metadata.uid != other.uid
+                    || metadata.gid != other.gid
+                    || metadata.mtime_seconds != other.mtime_seconds
+                    || metadata.mtime_nanoseconds != other.mtime_nanoseconds
+                    || (metadata.mode & libc::S_IFMT != libc::S_IFDIR
+                        && metadata.size != other.size) =>
+            {
+                expected.insert(path.clone(), ChangeKind::Modified);
+            }
+            _ => {}
+        }
+    }
+    for path in after.keys().filter(|path| !before.contains_key(*path)) {
+        expected.insert(path.clone(), ChangeKind::Added);
+    }
+    let start = std::time::Instant::now();
+    let rows = changes(tree).await.unwrap();
+    let listing = start.elapsed();
+    let actual: BTreeMap<_, _> = rows
+        .into_iter()
+        .map(|row| {
+            (
+                PathBuf::from(std::ffi::OsStr::from_bytes(&row.path)),
+                row.kind(),
+            )
+        })
+        .collect();
+    // Assert: every reference path and kind agrees; the measurement includes all upper inspection.
+    assert_eq!(actual, expected);
+    println!(
+        "20,000 unchanged files: preparation={preparation:?}, unchanged-tree listing={unchanged_listing:?}, changed-upper listing={listing:?}, records={}",
+        actual.len()
+    );
+    finalize(set).await.unwrap();
 }

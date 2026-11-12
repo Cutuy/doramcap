@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { execFileSync } from 'node:child_process';
 import { ConsoleService } from '../src/service.js';
 import { wire } from '../src/native.js';
 
@@ -13,19 +14,25 @@ test('real Compose writes retain the same file report and complete export after 
   const root = await mkdtemp(join(tmpdir(), 'console-real-file-changes-'));
   const project = join(root, 'project'), source = join(root, 'source');
   await mkdir(project); await mkdir(source);
+  const direct = join(root, 'single-file'); await writeFile(direct, 'before');
+  const untracked = join(root, 'untracked'), nested = join(untracked, 'nested'), mountSource = join(root, 'mount-source');
+  await mkdir(nested, { recursive: true }); await mkdir(mountSource);
+  execFileSync('mount', ['--bind', mountSource, nested]);
   await writeFile(join(source, 'modified'), 'before');
   await writeFile(join(source, 'deleted'), 'remove me');
   await writeFile(join(project, 'compose.yaml'), `services:
   worker:
     image: doramcap/mcap-recorder:local
     entrypoint: [/bin/sh, -c]
-    command: ["printf added > /tracked/added; printf after > /tracked/modified; rm /tracked/deleted; touch /tracked/ready; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"]
-    volumes: ["${source}:/tracked"]
+    command: ["printf added > /tracked/added; printf after > /tracked/modified; rm /tracked/deleted; touch /tracked/ready; printf direct > /direct; printf volume > /cache/result; printf nested > /nested/result; trap 'exit 0' TERM INT; while :; do /bin/sleep 1 & wait $$!; done"]
+    volumes: ["${source}:/tracked", "${direct}:/direct", "cache:/cache", "${untracked}:/nested"]
     healthcheck:
       test: [CMD-SHELL, "test -f /tracked/ready"]
       interval: 1s
       timeout: 1s
       retries: 20
+volumes:
+  cache: {}
 `);
   await writeFile(join(root, 'secret'), 'qualification-only', { mode: 0o600 });
   const config = join(root, 'console.pbtxt');
@@ -40,6 +47,9 @@ test('real Compose writes retain the same file report and complete export after 
   try {
     ({ backend } = await ConsoleService.open(config));
     const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({ systemApps: { ids: [] } }).finish())));
+    assert.ok(review.warnings.some(note => note.includes('not tracked: single file')), JSON.stringify(review.warnings));
+    assert.ok(review.warnings.some(note => note.includes('not tracked: Docker named volume')), JSON.stringify(review.warnings));
+    assert.ok(review.warnings.some(note => note.includes('contains mount point')), JSON.stringify(review.warnings));
     // Act
     clean = false;
     await backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'file-changes' }).finish()));
@@ -59,10 +69,15 @@ test('real Compose writes retain the same file report and complete export after 
     assert.ok(status.fileChanges?.downloadable, JSON.stringify(status.fileChanges));
     const lines = [];
     for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) lines.push(JSON.parse(bytes.toString()));
-    const changes = lines.filter(row => row.type === 'change' && row.category === 'HOST_BIND');
+    const changes = lines.filter(row => row.type === 'change' && row.category === 'STORAGE_CATEGORY_HOST_BIND');
     for (const [path, kind] of [['added', 'CHANGE_KIND_ADDED'], ['modified', 'CHANGE_KIND_MODIFIED'], ['deleted', 'CHANGE_KIND_DELETED']])
       assert.ok(changes.some(row => row.pathDisplay === path && row.kind === kind), `${path}: ${JSON.stringify(changes)}`);
     assert.equal(lines.at(-1).type, 'complete');
+    assert.equal(await readFile(direct, 'utf8'), 'direct');
+    assert.equal(await readFile(join(untracked, 'result'), 'utf8'), 'nested');
+    assert.ok(status.fileChanges!.coverageNotes?.some(note => note.includes('contains mount point')));
+    assert.ok(status.fileChanges!.coverageNotes?.some(note => note.includes('not tracked: single file')));
+    assert.ok(status.fileChanges!.coverageNotes?.some(note => note.includes('not tracked: Docker named volume')));
     assert.equal(await readFile(join(source, 'modified'), 'utf8'), 'after');
     await assert.rejects(readFile(join(source, 'deleted')));
     // Act: restart and read the persisted current result and History detail.
@@ -79,7 +94,10 @@ test('real Compose writes retain the same file report and complete export after 
     console.log(`Verified ${changes.length} host changes, report persistence and complete restart export.`);
   } finally {
     await backend?.close();
-    if (clean) await rm(root, { recursive: true, force: true });
+    if (clean) {
+      execFileSync('umount', [nested]);
+      await rm(root, { recursive: true, force: true });
+    }
     else console.error(`Qualification resources retained for recovery: ${root}`);
   }
 });

@@ -53,10 +53,10 @@ assert!(report.successful());
 [Direct write-back plan and coverage](docs/102726-direct-overlay-writeback.md)
 
 API details: `cargo doc -p workload-docker --no-deps`.
-Real native Docker tests: `python3 libs/workload-docker/scripts/compose-e2e.py --output /tmp/compose-test`.
+Real native Docker tests: `node libs/workload-docker/scripts/compose-e2e.mts --output /tmp/compose-test`.
 
 Host overlays require Linux CAP_SYS_ADMIN, a local daemon sharing the manager mount
-namespace, and rsync. Direct write-back rejects ambiguous hardlinks and overlay
-redirect/metacopy features; ACL/xattr/capability fidelity is unqualified. Use
+namespace, and rsync. Direct write-back rejects overlay redirect/metacopy features, skips special nodes
+and copies hard links separately with warnings; ACL/xattr/capability fidelity is unqualified. Use
 `filesystem.disposition: "discard"` to delete upper data without changing original
 host directories. Named volumes retain their separate declared policy.

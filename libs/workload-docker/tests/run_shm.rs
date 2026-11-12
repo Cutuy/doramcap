@@ -110,6 +110,7 @@ async fn run_memory_survives_producer_exit_and_preserves_live_host_binds() {
                 "consumer":consumer
             },"volumes":{"selected":{"driver":"local","driver_opts":{"type":"none","o":"bind","device":host.path()}}}})).unwrap()).unwrap();
             let spec = ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: mode as i32,
                 id: format!("shm-{}", identity.to_ascii_lowercase()),
                 artifacts: root.path().join("run"),

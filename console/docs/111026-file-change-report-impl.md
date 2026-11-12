@@ -1,8 +1,9 @@
 # Overlays for writable mounts: implementation plan
 
-Created November 11, 2026. Updated November 11, 2026: decisions from the plan review recorded.
-Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318)),
-milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
+Created November 11, 2026. Updated November 12, 2026: milestone 2 implemented.
+Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318));
+milestone 3 merged ([#320](https://github.com/Cutuy/doramcap/pull/320));
+milestone 2 ([#326](https://github.com/Cutuy/doramcap/pull/326)) ready for review. Milestones 4 and 5 remain planned.
 [Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
 ## Order
@@ -10,8 +11,8 @@ milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull
 | Milestone | Starts | Reason |
 | --- | --- | --- |
 | 1: move the overlay code | Merged | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
-| 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
-| 2: change list from the uppers | After 1 | Replaces the before/after folder walks; every later milestone builds on it. |
+| 3: report in Console | Merged, after 1 | Reads change records, whatever produced them. |
+| 2: change list from the uppers | Done, in review | Replaces the before/after folder walks; every later milestone builds on it. |
 | 4: systemd overlays | After 2 | systemd starts on the final change list. |
 | 5: keep with the run | After 2 and 3 | Keeps the uppers and uses milestone 3's download route. |
 
@@ -58,55 +59,75 @@ across all of this work.
 
 **Work items**
 
-- [ ] In `host-filesystem`, read each upper into change records: added when absent from
+- [x] In `host-filesystem`, read each upper into change records: added when absent from
   the lower, deleted when the run removed it, and modified when its type, permissions,
   owner or modification time differs from the lower, or its size for a file or symlink.
   Ignore a folder's size. Leave out entries that match the lower. Read no file contents. Take "before"
   metadata from the lower and "after" from the upper. Use the one upper reader that
   write back already uses.
-- [ ] Record one deleted entry for each path under a deleted folder in the lower.
-- [ ] Record sockets, FIFOs, device files and hard links like any other entry. Remove the
+- [x] Record one deleted entry for each path under a deleted folder in the lower.
+- [x] Record sockets, FIFOs, device files and hard links like any other entry. Remove the
   reader's refusals for them.
-- [ ] List each output folder directly, every file as added. Keep it mounted directly.
+- [x] List each output folder directly, every file as added. Keep it mounted directly.
   Skip Console's own records; mark a mount of the whole run folder as partly listed.
-- [ ] Mount directly, and report as not tracked with a reason, each writable mount that is
-  a single file, sits under `/proc`, `/sys` or `/dev`, or contains another mount point.
-- [ ] Report Docker named volumes as not tracked.
-- [ ] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
+- [x] Mount unsupported sources directly with a coverage reason: writable single files,
+  pseudo-filesystems and sources containing mountpoints. Preserve native host-shared-memory
+  passthrough and its separate observation contract. Reject unsafe direct/overlay overlaps.
+- [x] Report Docker named volumes as not tracked.
+- [x] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
   file; copy a modified file that has other names. Add one warning per such entry to the
   report's write-back result. Keep the run outcome and the change list unaffected.
-- [ ] Delete the before/after folder walks, their records and the metadata comparison,
+- [x] Delete the before/after folder walks, their records and the metadata comparison,
   for host folders and named volumes. Delete the check that the host folder stayed
   unchanged and the hard-link walk before launch. Keep Docker's container filesystem diff.
-- [ ] Let the caller name an overlay directory after its host folder.
-- [ ] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
+- [x] Let the caller name an overlay directory after its host folder.
+- [x] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
   save the report, unmount, apply the write policy, clean up.
-- [ ] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
-  checkpoint unchanged, so milestone 3 needs no change.
+- [x] Preserve the `doramcap.filesystem.v1` binary tags, categories, manifests and report
+  checkpoint. Use their generated types directly across collection and Console.
 
 **Validation**
 
-- [ ] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
-  contents, renames, symlinks, non-UTF-8 names and permission-only changes produce the
-  expected records.
-- [ ] A file opened for writing with nothing written, and the folders above a changed
-  file, are absent from the change list on a filesystem where an upper folder's size
-  differs from the lower folder's.
-- [ ] A socket, a FIFO, a new hard link and a modified file with two names each appear in
-  the change list. Write back finishes, the host folder holds the expected result and the
-  report carries one warning per entry.
-- [ ] The same Compose writes to a host folder produce the same records as the walk-based
-  list did, apart from entries that match the lower.
-- [ ] An output folder's files are listed as added and remain in the run folder after an
-  interrupted run. Console's own records are absent from the list.
-- [ ] A single-file mount, a mount containing another mount point and a named volume start
-  normally and appear as not tracked at Review and in the result.
-- [ ] Listing cost follows the size of the upper: a large unchanged host folder lists
-  quickly, and preparing it walks nothing.
-- [ ] A change made to the host folder during the run, on a path the run also wrote, ends
-  with the run's version after write back.
-- [ ] Discard, busy overlays, full disk and interrupted runs behave as before.
-- [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
+- [x] Native changes and metadata records.
+- [x] Unchanged copy-up omission.
+- [x] Special nodes and hard-link write-back.
+- [x] Independent before/after comparison.
+- [x] Output retention and private records.
+- [x] Review/result coverage consistency.
+- [x] Large unchanged folder timings.
+- [x] Concurrent host edits.
+- [x] Discard and failure recovery.
+- [x] Library boundaries, formatting and lint.
+- [x] Full local workspace validation.
+- [x] ARM64 worker validation.
+
+### PR 326 repair
+
+**Work items**
+
+- [x] Preserve live host shared memory by filesystem identity, including hugetlbfs and `/dev/shm` aliases.
+- [x] Reject direct/overlay overlaps before mounting; share supported parent/child views.
+- [x] Use typed source classifications for execution and coverage; share alias resolution with Review.
+- [x] Pass private record paths from their owners, including per-app inputs and caller records.
+- [x] Update filesystem contracts and convert the edited Compose runner to TypeScript.
+
+**Validation**
+
+- [x] Host shared-memory identity and aliases.
+- [x] Unsafe overlap rejection.
+- [x] Supported parent/child sharing.
+- [x] Owner-supplied record exclusions.
+- [x] Console persistence and restart export.
+- [x] Console bindings, server and frontend.
+- [x] TypeScript runner checks.
+- [x] Final local and ARM64 checks.
+
+The native `upper_records_match_walk_reference_and_measure_unchanged_tree_listing`
+fixture compares upper records with an independent before/after walk. On local
+x86_64 in release mode, 20,000 unchanged files measured about 65 ms preparation,
+0.23 ms unchanged-tree listing and 3.74 ms changed-upper listing. Run it through
+`cargo test --release --locked -p host-filesystem --test overlay --no-run`, then
+elevate only the built test executable with that test name.
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
 

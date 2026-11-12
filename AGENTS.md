@@ -66,6 +66,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ### Visuals
 
 - Use architecture SVGs with short labels showing components and exchanged artifacts.
+- In docs and SVGs, favor structure, abstraction and component interaction; leave out process narration and explanatory notes.
 - In SVGs and web apps, never add footnotes or explanatory notes about caveats unless explicitly requested.
 
 ### Plans
@@ -75,6 +76,10 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 - Implementation holds the code-level details: code/API changes, chosen mechanisms, milestones and checks.
 - Use `component/docs/mmddyy-feature-name.md` for architecture and `component/docs/mmddyy-feature-name-impl.md` for implementation. Include the creation date, update each document in place and keep supporting SVGs alongside it.
 - Give each implementation milestone a labeled section with **Work items** and **Validation** checklists; name each check in a few words, without results.
+
+## Protobuf style
+
+- Prefix every enum value with its enum's name in SCREAMING_SNAKE_CASE (`SOURCE_KIND_OVERLAY`).
 
 ## Pull request descriptions
 

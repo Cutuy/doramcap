@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { artifactFilename } from './generated/transport.js';
 import { launch, type Config } from './native.js';
 import { outputs, type SelectedApp } from './system-apps.js';
 
@@ -26,5 +27,6 @@ export function runPlan(config: Config, run: RunInputs, dataflowFile: string) {
     doraApps: config.doraApps,
     dataflowFile,
     hostShmAccess: config.hostShmAccess,
+    privateRecords: [artifactFilename('report')],
   });
 }
