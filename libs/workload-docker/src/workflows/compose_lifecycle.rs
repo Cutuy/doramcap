@@ -1,6 +1,6 @@
 //! Durable filesystem evidence and the recorded workflow shutdown report.
 use crate::evidence::write_private_once;
-use host_filesystem::filesystem::{FilesystemChanges, StorageCategory};
+use host_filesystem::{filesystem::FilesystemChanges, filesystem_proto::StorageCategory};
 use std::path::Path;
 
 /// Finalization and removal evidence. `cleanup_verified` only describes Docker

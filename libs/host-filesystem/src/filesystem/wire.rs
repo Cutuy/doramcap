@@ -1,5 +1,5 @@
 //! Length-delimited protobuf records for filesystem metadata and actions.
-use super::{ChangeKind, FileChange, FileMetadata, Snapshot, StorageCategory};
+use super::Snapshot;
 use crate::{Result, error::invalid, filesystem_proto as pb};
 use prost::Message;
 use std::{
@@ -12,34 +12,6 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, B
 fn path(bytes: Vec<u8>) -> PathBuf {
     PathBuf::from(std::ffi::OsString::from_vec(bytes))
 }
-fn metadata(m: &FileMetadata) -> pb::FileMetadata {
-    pb::FileMetadata {
-        mode: m.mode,
-        size: m.size,
-        uid: m.uid,
-        gid: m.gid,
-        mtime_seconds: m.mtime.0,
-        mtime_nanoseconds: m.mtime.1,
-        ctime_seconds: m.ctime.0,
-        ctime_nanoseconds: m.ctime.1,
-        symlink: m
-            .symlink
-            .as_ref()
-            .map(|p| p.as_os_str().as_bytes().to_vec()),
-    }
-}
-fn decode_metadata(m: pb::FileMetadata) -> FileMetadata {
-    FileMetadata {
-        mode: m.mode,
-        size: m.size,
-        uid: m.uid,
-        gid: m.gid,
-        mtime: (m.mtime_seconds, m.mtime_nanoseconds),
-        ctime: (m.ctime_seconds, m.ctime_nanoseconds),
-        symlink: m.symlink.map(path),
-    }
-}
-
 /// Write one protobuf message preceded by its varint length.
 pub(crate) async fn write_record<W: AsyncWrite + Unpin, M: Message>(
     out: &mut W,
@@ -85,47 +57,6 @@ pub(crate) async fn read_record<R: AsyncRead + Unpin, M: Message + Default>(
     Err(invalid("invalid protobuf record length"))
 }
 
-pub(super) fn change(row: &FileChange) -> pb::FileChange {
-    pb::FileChange {
-        category: match row.category {
-            StorageCategory::HostBind => 1,
-            StorageCategory::ContainerLayer => 2,
-            StorageCategory::NamedVolume => 3,
-        },
-        source: row.source.clone(),
-        consumers: row.consumers.clone(),
-        path: row.path.as_os_str().as_bytes().to_vec(),
-        kind: match row.kind {
-            ChangeKind::Added => 1,
-            ChangeKind::Modified => 2,
-            ChangeKind::Deleted => 3,
-        },
-        before: row.before.as_ref().map(metadata),
-        after: row.after.as_ref().map(metadata),
-    }
-}
-pub(super) fn decode_change(row: pb::FileChange) -> Result<FileChange> {
-    Ok(FileChange {
-        category: match row.category {
-            1 => StorageCategory::HostBind,
-            2 => StorageCategory::ContainerLayer,
-            3 => StorageCategory::NamedVolume,
-            x => return Err(invalid(format!("unknown storage category: {x}"))),
-        },
-        source: row.source,
-        consumers: row.consumers,
-        path: path(row.path),
-        kind: match row.kind {
-            1 => ChangeKind::Added,
-            2 => ChangeKind::Modified,
-            3 => ChangeKind::Deleted,
-            x => return Err(invalid(format!("unknown filesystem change kind: {x}"))),
-        },
-        before: row.before.map(decode_metadata),
-        after: row.after.map(decode_metadata),
-    })
-}
-
 pub(crate) async fn write_snapshot(file: &Path, snapshot: &Snapshot) -> Result<()> {
     let file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -151,7 +82,7 @@ pub(crate) async fn write_snapshot(file: &Path, snapshot: &Snapshot) -> Result<(
             &pb::SnapshotRecord {
                 body: Some(pb::snapshot_record::Body::Entry(pb::SnapshotEntry {
                     path: path.as_os_str().as_bytes().to_vec(),
-                    metadata: Some(metadata(m)),
+                    metadata: Some(m.clone()),
                 })),
             },
         )
@@ -176,10 +107,7 @@ pub(crate) async fn read_snapshot(file: &Path) -> Result<Snapshot> {
         let m = entry
             .metadata
             .ok_or_else(|| invalid("snapshot metadata missing"))?;
-        if entries
-            .insert(path(entry.path), decode_metadata(m))
-            .is_some()
-        {
+        if entries.insert(path(entry.path), m).is_some() {
             return Err(invalid("duplicate snapshot path"));
         }
     }

@@ -7,7 +7,7 @@ use host_filesystem::{
 };
 use orchestrator::{Event, State};
 use serde_json::json;
-use std::{cell::RefCell, collections::BTreeMap, path::Path};
+use std::{cell::RefCell, collections::BTreeMap};
 
 #[tokio::test]
 async fn docker_observations_record_outcomes_and_gate_collection() {
@@ -174,7 +174,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                 .unwrap();
             let mut seeded = false;
             while let Some(change) = volumes.next_change().await.unwrap() {
-                seeded |= change.path == Path::new("seeded");
+                seeded |= change.path == b"seeded";
             }
             assert!(seeded);
             let mut layers = FileChanges::open(changes.container_layers.manifest)
@@ -182,7 +182,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
                 .unwrap();
             assert_eq!(
                 layers.next_change().await.unwrap().unwrap().path,
-                Path::new("/layer-result")
+                b"/layer-result"
             );
         }
     }
