@@ -26,7 +26,7 @@ test('current and past failed runs share counts, coverage and a file download in
   // Assert
   for (const html of [current, history]) {
     assert.match(html, /3000 added · 2 modified · 1 deleted/);
-    assert.match(html, /Showing 1 of 3003 changes · Preview incomplete/);
+    assert.match(html, /Showing 1 of 3003 host folder changes · Preview incomplete/);
     assert.match(html, /Incomplete observation/);
     assert.match(html, /More coverage notes/);
     assert.match(html, /Download file changes/);
@@ -78,7 +78,7 @@ test('a BOM-only filename is displayed as path bytes rather than the source root
   }
 });
 
-test('modified rows flag changed identity fields and deleted or engine rows keep their remaining facts', () => {
+test('modified rows flag changed identity fields and deleted or metadata-free rows keep their remaining facts', () => {
   // Arrange
   const status = snapshot();
   const file = (mode: number, extra = {}) => ({ mode, size: '112', uid: 1000, gid: 1000, mtimeSeconds: '10', ...extra });
@@ -86,7 +86,7 @@ test('modified rows flag changed identity fields and deleted or engine rows keep
   status.fileChanges!.preview = wire.FileChanges.fromObject({ preview: [
     { category: 1, kind: 2, source: '/source', path: path('a'), before: file(0o100644), after: file(0o100600, { size: '140', mtimeSeconds: '31' }) },
     { category: 1, kind: 3, source: '/source', path: path('b'), before: file(0o100644) },
-    { category: 2, kind: 2, source: 'container', path: path('/usr') },
+    { category: 1, kind: 2, source: '/source', path: path('engine-only') },
   ] }).preview;
   // Act
   const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
@@ -98,4 +98,29 @@ test('modified rows flag changed identity fields and deleted or engine rows keep
   assert.match(html, /metadata unavailable/);
   assert.match(html, /aria-pressed="true"[^>]*>All 3</);
   assert.match(html, /Modified 2/);
+});
+
+test('category tiles select one category, opening on the first with changes', () => {
+  // Arrange
+  const status = wire.Status.fromObject({ runId: 'a'.repeat(32), fileChanges: { downloadable: true,
+    report: { categories: [
+      { category: 1, counts: {}, coverageComplete: true },
+      { category: 2, counts: { added: '5', modified: '35' }, coverageComplete: true },
+      { category: 3, counts: {}, coverageComplete: true },
+    ] },
+    preview: [
+      { category: 2, kind: 1, source: 'layer-a', path: new TextEncoder().encode('/tmp/new') },
+      { category: 2, kind: 2, source: 'layer-a', path: new TextEncoder().encode('/usr') },
+      { category: 1, kind: 1, source: '/host', path: new TextEncoder().encode('stray-host-row') },
+    ] } });
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert
+  assert.equal(html.match(/<button type="button" class="file-change-tile[^"]*" aria-pressed="(true|false)"/g)?.length, 3);
+  assert.match(html, /aria-pressed="true"><span class="file-change-category">Container layers</);
+  assert.match(html, /aria-label="Container layers change preview"/);
+  assert.match(html, />\/tmp\/new</);
+  assert.doesNotMatch(html, /stray-host-row/);
+  assert.match(html, /All 2</);
+  assert.match(html, /Showing 2 of 40 container layer changes · Preview incomplete/);
 });

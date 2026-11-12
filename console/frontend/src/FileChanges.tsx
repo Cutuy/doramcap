@@ -91,63 +91,70 @@ function MetadataTable({ change }: { change: Change }) {
   </dl>;
 }
 
+const changeCount = (summary: doramcap.filesystem.v1.ICategorySummary) =>
+  integer(summary.counts?.added) + integer(summary.counts?.modified) + integer(summary.counts?.deleted);
+
 /** One bounded saved preview, shared by the current result and History. Paths are plain text. */
 export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
   const { client } = useConsole();
+  const [chosen, setChosen] = useState<number | null>(null);
   const [filter, setFilter] = useState<number | null>(null);
   const [showMetadata, setShowMetadata] = useState(false);
   const view = snapshot.fileChanges;
   const summaries = view?.report?.categories ?? [];
-  const total = summaries.reduce((sum, c) => sum + integer(c.counts?.added) + integer(c.counts?.modified) + integer(c.counts?.deleted), 0n);
+  const total = summaries.reduce((sum, summary) => sum + changeCount(summary), 0n);
   const preview = view?.preview ?? [];
-  const shown = preview.filter(change => filter == null || change.kind === filter);
+  // Open on the first category with changes; a tile selects another.
+  const selected = summaries.find(summary => summary.category === chosen) ?? summaries.find(summary => changeCount(summary) > 0n) ?? summaries[0];
+  const selectedTotal = selected ? changeCount(selected) : 0n;
+  const inCategory = preview.filter(change => change.category === selected?.category);
+  const shown = inCategory.filter(change => filter == null || change.kind === filter);
+  const choose = (category: number) => { setChosen(category); setFilter(null); };
   // Group by source in first-seen order so each source header appears once.
   const groups = new Map<string, Change[]>();
-  for (const change of shown) {
-    const key = `${change.category}\0${change.source}`;
-    groups.set(key, [...(groups.get(key) ?? []), change]);
-  }
+  for (const change of shown) groups.set(change.source!, [...(groups.get(change.source!) ?? []), change]);
+  const label = selected ? sourceLabel(selected.category!).toLowerCase() : '';
   return <section className="panel file-changes">
     <div className="panel-heading"><h2>File changes</h2>{view?.downloadable && <a className="button secondary" href={client.artifactUrl(snapshot.runId, FILE_CHANGES_ARTIFACT)} download={artifactFilename(FILE_CHANGES_ARTIFACT)}>Download file changes</a>}</div>
     {!view && <p className="unavailable">File changes unavailable for this run.</p>}
     {view?.error && <p className="notice failure-notice" role="alert">{view.error}</p>}
     {summaries.length > 0 && <>
-      <div className="file-change-counts">{summaries.map(summary => {
+      <div className="file-change-counts" role="group" aria-label="Show changes for a category">{summaries.map(summary => {
         const counts = [integer(summary.counts?.added), integer(summary.counts?.modified), integer(summary.counts?.deleted)];
         const notes = integer(summary.coverageNoteCount);
-        return <div className={`file-change-tile${summary.coverageComplete ? '' : ' incomplete'}`} key={summary.category}>
-          <h3>{categoryLabel(summary.category!)}</h3>
+        return <button type="button" className={`file-change-tile${summary.coverageComplete ? '' : ' incomplete'}`} aria-pressed={summary === selected} onClick={() => choose(summary.category!)} key={summary.category}>
+          <span className="file-change-category">{categoryLabel(summary.category!)}</span>
           {counts.some(count => count > 0n)
-            ? <p className="file-change-tally"><span aria-hidden="true">{KINDS.map((entry, index) => <span className={counts[index] > 0n ? entry.className : 'muted'} key={entry.kind}>{entry.mark}{counts[index].toString()}</span>)}</span><span className="sr-only">{`${counts[0]} added · ${counts[1]} modified · ${counts[2]} deleted`}</span></p>
-            : <p className="file-change-tally muted">No changes</p>}
-          <p className="file-change-coverage">{summary.coverageComplete ? 'Coverage complete' : 'Incomplete observation'}{notes > 0n ? ` · ${notes} coverage ${notes === 1n ? 'note' : 'notes'}` : ''}</p>
-        </div>;
+            ? <span className="file-change-tally"><span aria-hidden="true">{KINDS.map((entry, index) => <span className={counts[index] > 0n ? entry.className : 'muted'} key={entry.kind}>{entry.mark}{counts[index].toString()}</span>)}</span><span className="sr-only">{`${counts[0]} added · ${counts[1]} modified · ${counts[2]} deleted`}</span></span>
+            : <span className="file-change-tally muted">No changes</span>}
+          <span className="file-change-coverage">{summary.coverageComplete ? 'Coverage complete' : 'Incomplete observation'}{notes > 0n ? ` · ${notes} coverage ${notes === 1n ? 'note' : 'notes'}` : ''}</span>
+        </button>;
       })}</div>
       {(view!.coverageNotes ?? []).length > 0 && <ul className="file-change-notes" aria-label="Coverage notes">
         {view!.coverageNotes.map((note, index) => <li className="break" key={index}>{note}</li>)}
         {view!.notesIncomplete && <li>More coverage notes are included in the download.</li>}
       </ul>}
-      {preview.length > 0 && <>
+      {inCategory.length > 0 && <>
         <div className="file-change-toolbar">
           <div className="file-change-filters" role="group" aria-label="Filter by change kind">
-            <button type="button" className="button secondary" aria-pressed={filter == null} onClick={() => setFilter(null)}>All {preview.length}</button>
+            <button type="button" className="button secondary" aria-pressed={filter == null} onClick={() => setFilter(null)}>All {inCategory.length}</button>
             {KINDS.map(entry => {
-              const count = preview.filter(change => change.kind === entry.kind).length;
+              const count = inCategory.filter(change => change.kind === entry.kind).length;
               return count > 0 && <button type="button" className="button secondary" aria-pressed={filter === entry.kind} onClick={() => setFilter(entry.kind)} key={entry.kind}>{entry.label} {count}</button>;
             })}
           </div>
           <ActionButton type="button" variant="secondary" onClick={() => setShowMetadata(!showMetadata)}>{showMetadata ? 'Hide full metadata' : 'Show full metadata'}</ActionButton>
         </div>
-        <div className="file-change-list" tabIndex={0} aria-label="File change preview">
+        <div className="file-change-list" tabIndex={0} aria-label={`${categoryLabel(selected!.category!)} change preview`}>
           <table>
             <thead className="sr-only"><tr><th>Kind</th><th>Path</th><th>Size</th><th>Details</th></tr></thead>
             {[...groups.values()].map(changes => {
               const first = changes[0];
               const consumers = first.consumers ?? [];
-              return <tbody key={`${first.category}\0${first.source}`}>
+              return <tbody key={first.source}>
                 <tr className="file-change-source"><th colSpan={4} scope="rowgroup">
                   <span className="mono break">{first.source}</span>
-                  <span className="muted">{sourceLabel(first.category!)}{consumers.length > 0 ? ` · ${consumers.join(', ')}` : ''} · {changes.length} {changes.length === 1 ? 'change' : 'changes'}</span>
+                  <span className="muted">{consumers.length > 0 ? `${consumers.join(', ')} · ` : ''}{changes.length} {changes.length === 1 ? 'change' : 'changes'}</span>
                 </th></tr>
                 {changes.map((change, index) => {
                   const kind = kindOf(change.kind);
@@ -165,7 +172,8 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
           </table>
         </div>
       </>}
-      {(total > 0n || view!.previewIncomplete) && <p className="muted file-change-shown">Showing {shown.length} of {total.toString()} changes{view!.previewIncomplete ? ' · Preview incomplete; download for the full list' : ''}</p>}
+      {total > 0n && selectedTotal === 0n && <p className="muted">No {label} changes.</p>}
+      {selectedTotal > 0n && <p className="muted file-change-shown">Showing {shown.length} of {selectedTotal.toString()} {label} changes{inCategory.length < selectedTotal ? ' · Preview incomplete; download for the full list' : ''}</p>}
       {total === 0n && !view!.error && <p>No changes observed.</p>}
     </>}
   </section>;
