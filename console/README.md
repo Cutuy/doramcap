@@ -27,10 +27,8 @@ native addon on the target platform. Configure
 host paths and app inputs in [console.pbtxt.example](console.pbtxt.example) and
 [configuration](docs/configuration.md). Open the access link printed at startup; it signs the browser in automatically.
 Console binds to loopback, starting at port 43187 and retrying occupied ports.
-Use `--port PORT` for an exact server port. For remote playground access, follow
-the [Tailscale hosting runbook](docs/hosting-over-tailscale.md) to share a direct URL
-with embedded access. It also covers optional SSH forwarding with `--ssh` and
-`--browser-port`.
+Use `--port PORT` for an exact server port; follow the
+[Tailscale hosting instructions](docs/hosting-over-tailscale.md) for a direct remote URL with embedded access.
 
 [HTTP contract](contract/transport.ts) · [Backend](server/README.md) · [Live bridge](bridge/README.md) · [Recovery](docs/recovery.md) ·
 [System app specification](docs/103026-system-apps-plan.md) · [Open source comparison](docs/111126-open-source-comparison.md)
