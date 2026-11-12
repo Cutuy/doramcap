@@ -52,20 +52,25 @@ shape the boundary needs.
 | --- | --- | --- |
 | Compose puts user services in the same project and checks across groups. | Preparation takes Dora apps, system apps and user projects as three lists. The cross-group check takes two lists and does nothing when the user list is empty. | The optional extra group matches how preparation is written. |
 | Monitoring checks the whole project's health in one call. | The start path already checks system apps alone: it inspects the project, narrows the result to the system services and asks whether those are ready. | Watching a chosen list of services is an existing pattern. |
-| Reset decides which container is removed last. | Reset does three things: stop and remove by ownership label, discard leftover views, and pick the shared-memory holder to remove last. The first is two calls in `docker-engine`. The second moves with the capture work. | Only the third belongs here. |
+| Reset decides which container is removed last. | Reset does three things: stop and remove by ownership label, discard leftover views, and pick the Dora experiment owner to remove last. The first is two calls in `docker-engine`. The second moves with the capture work. | Only the third belongs here. |
 
 Reset keeps a fixed order: stop the containers, discard the views, then remove
 the containers. The shared crate therefore offers the rule for picking the last
 container, and each workflow runs the three steps in order.
+
+The SHM holder starts before participants join its namespace and stops with the
+other system apps. SHM change auditing is outside this work. The stopped Dora
+experiment owner retains the repository reservation until other cleanup succeeds.
 
 These were checked by reading the code. Nothing has been built or run. The
 snapshot comparison in milestone 3 of the plan is where a hidden coupling would show.
 
 ## Expected behavior
 
-This is a restructuring. A Compose run behaves exactly as before: the same steps
-with the same identities, the same Review snapshot for the same inputs, the same
-saved records and the same report.
+The extraction preserves step identities, Review snapshots, saved records and
+report formats. The SHM holder joins ordinary system-app shutdown before the
+Dora runtime stops; it has no separate inspection or retention phase. This
+simplification was agreed on November 12, 2026.
 
 ## Order
 

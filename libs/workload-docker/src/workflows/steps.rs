@@ -53,8 +53,7 @@ pub(super) fn attach(
             adapter: dependency.clone(),
         });
         executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
-        use workload_lifecycle::recording::{FinalizeRecordings, WaitForRecordings};
-        executor.register::<WaitForRecordings>(|| WaitForRecordings);
+        use workload_lifecycle::recording::FinalizeRecordings;
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
         let dependency = adapter.clone();
         let child = weak.clone();

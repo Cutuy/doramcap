@@ -4,8 +4,8 @@ Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 in pro
 [Architecture](111126-compose-apps-crate.md).
 
 Create `libs/compose-apps` and move four pieces into it from `workload-docker`,
-one milestone each. Every milestone is a move with no behavior change. Milestones 1 to 3
-can start now.
+one milestone each. Milestones preserve behavior except for the agreed milestone 4 simplification:
+the SHM holder stops with ordinary system apps before the Dora runtime.
 
 ## Starting code
 
@@ -83,26 +83,27 @@ The capture move in [PR #318](https://github.com/Cutuy/doramcap/pull/318) is mer
 
 **Work items**
 
-- [ ] Extract the start sequence: shared memory, Dora runtime, graph, system apps,
+- [x] Extract the start sequence: shared memory, Dora runtime, graph, system apps,
   wait for recordings.
-- [ ] Extract watching, taking the services to check. Reuse the existing narrowing of an
+- [x] Extract watching, taking the services to check. Reuse the existing narrowing of an
   inspected project to a list of services.
-- [ ] Extract the stop sequence: system apps, then the Dora runtime.
-- [ ] Move the rule for which container is removed last. Each workflow keeps the reset
+- [x] Extract the stop sequence: system apps including the SHM holder, then the Dora runtime.
+- [x] Move the rule for which container is removed last. Each workflow keeps the reset
   order: stop the containers, discard the views, then remove the containers.
-- [ ] The Compose workflow calls these, then starts and stops its user services around them.
+- [x] The Compose workflow calls these, then starts and stops its user services around them.
 
 **Validation**
 
-- [ ] Start and stop order in a Compose run is unchanged, shown by recorded step order.
+- [ ] Recorded startup lineage and agreed shutdown order.
 - [ ] A run with no user services starts, becomes ready, stops and cleans up.
-- [ ] Reset after an interrupted run removes the shared-memory holder last.
+- [ ] Interrupted-run reset removes the Dora experiment owner last.
 - [ ] Full local CI and an ARM64 worker run at integration.
 
 ## Outside this plan
 
 - The Holoscan workflow's use of these pieces.
-- Any change to what a Compose run does.
+- SHM change auditing or a separate SHM inspection phase.
+- Other changes to what a Compose run does.
 
 Applicable rules: I-03, I-04, I-05, I-07 and I-09 in the
 [implementation guide](../../../docs/impl-guide.md).

@@ -6,7 +6,8 @@ use super::{
     *,
 };
 use compose_apps::compose::{ComposeProjectState, ServiceExit};
-use compose_apps::preparation::{self, PreparedRun};
+use compose_apps::preparation::PreparedRun;
+use compose_apps::system_apps;
 use orchestrator::{LocalExecutor, Output};
 use workload_lifecycle::launch::{CleanupRecord, RemovalPermit, StopRecord};
 
@@ -65,12 +66,10 @@ impl workload_lifecycle::run::Running for ComposeRunning {
         let failure = self.events.failure();
         let launch = execution::launch_apps(
             &self.executor,
-            &self.spec,
             &self.prepared,
             &self.plan,
             self.overlays.as_ref(),
             &mut self.last_launch,
-            &self.system_apps,
             &self.adapter,
         );
         // A lost event stream ends startup as it ends observation.
@@ -89,9 +88,11 @@ impl workload_lifecycle::run::Running for ComposeRunning {
 
     async fn ended(&mut self) -> String {
         let failure = self.events.failure();
-        let monitor = execution::monitor(
+        let services = self.plan.services.keys().cloned().collect::<Vec<_>>();
+        let monitor = system_apps::watch(
             &self.executor,
             &self.plan,
+            &services,
             &self.resources,
             self.events.changes(),
         );
@@ -153,7 +154,7 @@ impl ComposeRunning {
             let _ = quiescing.send(());
         }
         let prepared = self.prepared.value();
-        let adopted = execution::quiesce_services(
+        let adopted = system_apps::quiesce_services(
             &self.executor,
             &self.plan,
             &prepared.user_services,
@@ -166,51 +167,18 @@ impl ComposeRunning {
                 .exits
                 .iter()
                 .any(|exit| exit.killed && prepared.mcap_services.contains(&exit.service));
-        let systems_stopped = self
-            .resources
-            .lock()
-            .await
-            .shutdown(&prepared.system_services)
-            .await;
-        if let Err(error) = &systems_stopped {
-            execution::record_failure(&self.diagnostics, "system shutdown", error);
-        }
-        let systems = execution::quiesce_services(
+        let systems = system_apps::stop(
             &self.executor,
             &self.plan,
             &prepared.system_services,
+            &self.resources,
             &self.diagnostics,
         )
         .await;
-        let systems_clean = systems.stopped && !systems.exits.iter().any(|exit| exit.killed);
+        let runtime_stopped = systems.runtime_stopped;
+        let runtime_exit_clean = systems.runtime_exit_clean;
         let mut service_exits = adopted.exits;
         service_exits.extend(systems.exits);
-        let runtime_shutdown = self
-            .executor
-            .run::<compose_apps::experiment::StopDoraRuntime>(())
-            .await;
-        let runtime_stopped = runtime_shutdown
-            .as_ref()
-            .is_ok_and(|output| output.value().stopped);
-        let runtime_exit_clean = runtime_shutdown
-            .as_ref()
-            .is_ok_and(|output| output.value().diagnostics.is_empty());
-        match runtime_shutdown {
-            Ok(stopped) => {
-                let stopped = stopped.into_value();
-                service_exits.extend(stopped.exits);
-                self.diagnostics.borrow_mut().extend(stopped.diagnostics);
-            }
-            Err(error) => execution::record_failure(&self.diagnostics, "Dora shutdown", error),
-        }
-
-        if self.plan.services.contains_key(preparation::SHM_SERVICE)
-            && !(adopted.stopped && systems.stopped && runtime_stopped)
-        {
-            return Err(invalid(
-                "run shared memory retained because app shutdown is unconfirmed",
-            ));
-        }
 
         // Filesystem evidence requires every writer stopped.
         let mut input = Input::new(StopInput {
@@ -250,7 +218,7 @@ impl ComposeRunning {
             .map_err(step_error)?;
         Ok(Stopped {
             service_exits,
-            apps_clean: adopted_clean && systems_stopped.is_ok() && systems_clean,
+            apps_clean: adopted_clean && systems.clean,
             runtime_stopped,
             runtime_exit_clean,
             shutdown,

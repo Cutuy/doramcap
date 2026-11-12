@@ -83,18 +83,10 @@ impl ResetExperiment {
         // Stop and verify this repository's writers before touching its overlay workspace.
         let resources = self.adapter.engine.resources(scope, &owner);
         let stopped = resources.quiesce(self.stop_seconds).await?;
-        let mut last = None;
-        for container in stopped {
-            if container.labels.is_some_and(|labels| {
-                labels.contains_key(compose_apps::compose::adapter::EXPERIMENT_OWNER_LABEL)
-            }) && last.replace(container.id.unwrap()).is_some()
-            {
-                return Err(invalid("multiple experiment IPC owners"));
-            }
-        }
+        let last = compose_apps::system_apps::removal_owner(&stopped)?;
         overlay::discard(&self.controller.workspace()).await?;
         // Empty containers/networks and an absent workspace are the success conditions.
-        resources.remove(last.as_deref()).await?;
+        resources.remove(last).await?;
         Ok(())
     }
 }

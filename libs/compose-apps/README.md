@@ -1,7 +1,8 @@
 # Apps in Compose containers
 
 Project lifecycle steps, Dora runtime control and preparation of Dora, system and
-optional extra app groups. Workflows supply their own run order and finalization.
+optional extra app groups, plus shared system-app start, watch and stop sequences.
+Workflows supply their own user-app order and finalization.
 
 ![Shared apps](../workload-docker/docs/111126-compose-apps-crate.svg)
 
@@ -15,4 +16,4 @@ assert!(!resolved.plan.manifest.is_empty());
 ```
 
 [Architecture](../workload-docker/docs/111126-compose-apps-crate.md) ·
-[Compose workflow](../workload-docker) · API: `cargo doc -p compose-apps --no-deps`.
+[Compose workflow](../workload-docker) · [System-app API](src/system_apps.rs) · API: `cargo doc -p compose-apps --no-deps`.
