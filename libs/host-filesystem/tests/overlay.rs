@@ -1095,12 +1095,21 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
     std::fs::hard_link(source.join("linked"), source.join("other-name")).unwrap();
     std::fs::create_dir_all(source.join("deleted/deep")).unwrap();
     std::fs::write(source.join("deleted/deep/file"), b"removed").unwrap();
+    std::fs::create_dir_all(source.join("opaque/recreated")).unwrap();
+    std::fs::write(source.join("opaque/recreated/hidden"), b"removed").unwrap();
     let artifacts = root.path().join("run");
     std::fs::create_dir(&artifacts).unwrap();
+    let mut mounts = plan(root.path(), &source);
+    mounts.push(BindMount {
+        consumer: "direct".into(),
+        source: source.join("permissions").to_string_lossy().into(),
+        target: "/file".into(),
+        read_only: false,
+    });
     let mut planned = resolve(PrepareInput {
         artifacts,
         workspace: root.path().join("views"),
-        bind_mounts: plan(root.path(), &source),
+        bind_mounts: mounts,
         policy: OverlayPolicy::default(),
     })
     .await
@@ -1109,6 +1118,10 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         .name_view(&source, source.file_name().unwrap())
         .unwrap();
     let set = host_filesystem::overlay::prepare(planned).await.unwrap();
+    assert_eq!(
+        set.mappings.last().unwrap().effective,
+        source.join("permissions")
+    );
     let tree = &set.trees[0];
     let view = &tree.merged;
     assert_eq!(view.file_name().unwrap(), source.file_name().unwrap());
@@ -1146,6 +1159,10 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         0
     );
     drop(socket);
+    std::fs::remove_dir_all(view.join("opaque")).unwrap();
+    std::fs::create_dir_all(view.join("opaque/recreated")).unwrap();
+    std::fs::write(view.join("opaque/recreated/new"), b"new").unwrap();
+    std::fs::set_permissions(view, std::fs::Permissions::from_mode(0o750)).unwrap();
     // Assert: directory size differs but its copied-up metadata is otherwise unchanged.
     assert_ne!(
         std::fs::metadata(tree.upper.join("child")).unwrap().size(),
@@ -1186,6 +1203,10 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         rows.iter()
             .all(|row| row.category == StorageCategory::HostBind)
     );
+    assert_eq!(find("").after.as_ref().unwrap().mode & 0o777, 0o750);
+    assert_eq!(find("opaque/recreated/hidden").kind, ChangeKind::Deleted);
+    let paths: std::collections::BTreeSet<_> = rows.iter().map(|row| &row.path).collect();
+    assert_eq!(paths.len(), rows.len());
     // Act: reading needs no mounted view, and outside changes lose to the run's version.
     unmount(view).await.unwrap();
     let unmounted = changes(tree).await.unwrap();
@@ -1229,6 +1250,12 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
     for path in ["socket", "fifo", "device"] {
         assert!(source.join(path).symlink_metadata().is_err());
     }
+    assert_eq!(std::fs::metadata(&source).unwrap().mode() & 0o777, 0o750);
+    assert_eq!(
+        std::fs::read(source.join("opaque/recreated/new")).unwrap(),
+        b"new"
+    );
+    assert!(!source.join("opaque/recreated/hidden").exists());
     assert!(!source.join("deleted").exists());
     assert_ne!(
         std::fs::metadata(source.join("new-link")).unwrap().ino(),

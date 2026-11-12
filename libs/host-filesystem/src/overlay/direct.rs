@@ -139,7 +139,7 @@ pub(super) fn inspect(
             .transpose()?;
         let after = metadata(&upper, &meta)?;
         let changed = before.as_ref().is_none_or(|old| differs(old, &after));
-        if !path.as_os_str().is_empty() && changed {
+        if changed {
             emit(FileChange {
                 category: StorageCategory::HostBind,
                 source: tree.source.to_string_lossy().into(),
@@ -210,7 +210,7 @@ pub(super) fn inspect(
                 pending.push(path.join(entry?.file_name()));
             }
         }
-        if !path.as_os_str().is_empty() {
+        if !path.as_os_str().is_empty() || changed {
             plan.transfer.insert(bytes);
         }
     }

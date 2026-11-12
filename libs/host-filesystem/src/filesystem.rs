@@ -596,10 +596,14 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 )
                 .await?;
             }
-        } else if !input
-            .overlays
-            .as_ref()
-            .is_some_and(|set| set.trees.iter().any(|tree| path.starts_with(&tree.source)))
+        } else if source
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.starts_with("not tracked"))
+            || !input
+                .overlays
+                .as_ref()
+                .is_some_and(|set| set.trees.iter().any(|tree| path.starts_with(&tree.source)))
         {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(

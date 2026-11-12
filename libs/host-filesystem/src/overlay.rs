@@ -370,6 +370,9 @@ pub async fn prepare(plan: OverlayPlan) -> Result<OverlaySet> {
             }
         }
         for mapping in &mut set.mappings {
+            if !mapping.read_only && mapping.reason.starts_with("not tracked") {
+                continue;
+            }
             if let Some(tree) = set
                 .trees
                 .iter()
@@ -694,6 +697,63 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     Ok(result)
 }
 
+/// Explain why an existing canonical source stays directly mounted; no recursive traversal.
+pub async fn source_reason(source: &Path, artifacts: &Path) -> Result<Option<String>> {
+    direct_reason(source, artifacts, &mounts().await?).await
+}
+async fn direct_reason(
+    source: &Path,
+    artifacts: &Path,
+    mountpoints: &[PathBuf],
+) -> Result<Option<String>> {
+    let meta = tokio::fs::symlink_metadata(source).await?;
+    if !meta.is_dir() {
+        return Ok(Some(
+            "not tracked: single file or special mount source".into(),
+        ));
+    }
+    if ["/proc", "/sys", "/dev"]
+        .iter()
+        .any(|root| source.starts_with(root))
+    {
+        return Ok(Some(
+            "not tracked: pseudo-filesystem or device mount".into(),
+        ));
+    }
+    if source.starts_with(artifacts) {
+        return Ok(Some("run output folder; files listed as added".into()));
+    }
+    if artifacts.starts_with(source) {
+        return Ok(Some("not tracked: source contains the run folder".into()));
+    }
+    if let Some(nested) = mountpoints
+        .iter()
+        .find(|point| *point != source && point.starts_with(source))
+    {
+        return Ok(Some(format!(
+            "not tracked: contains mount point {}",
+            nested.display()
+        )));
+    }
+    Ok(None)
+}
+
+/// Read upper metadata transitions after writers stop; no mount or payload reads are required.
+/// Results allocate with the upper and removed lower subtrees. Collection errors retain the upper.
+pub async fn changes(tree: &OverlayTree) -> Result<Vec<crate::filesystem::FileChange>> {
+    let tree = tree.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut changes = Vec::new();
+        direct::inspect(&tree, |row| {
+            changes.push(row);
+            Ok(())
+        })?;
+        Ok(changes)
+    })
+    .await
+    .map_err(|error| invalid(error.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -758,61 +818,4 @@ mod tests {
         // Assert
         assert_eq!(std::fs::read(&file).unwrap(), b"live");
     }
-}
-
-/// Explain why an existing canonical source stays directly mounted; no recursive traversal.
-pub async fn source_reason(source: &Path, artifacts: &Path) -> Result<Option<String>> {
-    direct_reason(source, artifacts, &mounts().await?).await
-}
-async fn direct_reason(
-    source: &Path,
-    artifacts: &Path,
-    mountpoints: &[PathBuf],
-) -> Result<Option<String>> {
-    let meta = tokio::fs::symlink_metadata(source).await?;
-    if !meta.is_dir() {
-        return Ok(Some(
-            "not tracked: single file or special mount source".into(),
-        ));
-    }
-    if ["/proc", "/sys", "/dev"]
-        .iter()
-        .any(|root| source.starts_with(root))
-    {
-        return Ok(Some(
-            "not tracked: pseudo-filesystem or device mount".into(),
-        ));
-    }
-    if source.starts_with(artifacts) {
-        return Ok(Some("run output folder; files listed as added".into()));
-    }
-    if artifacts.starts_with(source) {
-        return Ok(Some("not tracked: source contains the run folder".into()));
-    }
-    if let Some(nested) = mountpoints
-        .iter()
-        .find(|point| *point != source && point.starts_with(source))
-    {
-        return Ok(Some(format!(
-            "not tracked: contains mount point {}",
-            nested.display()
-        )));
-    }
-    Ok(None)
-}
-
-/// Read upper metadata transitions after writers stop; no mount or payload reads are required.
-/// Results allocate with the upper and removed lower subtrees. Collection errors retain the upper.
-pub async fn changes(tree: &OverlayTree) -> Result<Vec<crate::filesystem::FileChange>> {
-    let tree = tree.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut changes = Vec::new();
-        direct::inspect(&tree, |row| {
-            changes.push(row);
-            Ok(())
-        })?;
-        Ok(changes)
-    })
-    .await
-    .map_err(|error| invalid(error.to_string()))?
 }
