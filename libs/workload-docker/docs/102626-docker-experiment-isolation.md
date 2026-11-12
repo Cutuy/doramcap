@@ -207,7 +207,7 @@ specified before resource removal. No hook framework is required for this milest
   a measured cost, not a promise of block-level copy-on-write.
 - Harvest host-overlay changes and metadata. Container layers incur a diff query
   and manifest write only; do not recursively export changed directories or copy
-  large files from the container. Reject ambiguous hardlink write-back and deduplicate overlapping selections.
+  large files from the container. Copy hard links separately with warnings and deduplicate overlapping selections.
 - Stream host inventories and file payloads with sequential async traversal. Metadata
   indexes use dynamic memory proportional to tree size; there are no entry cutoffs.
   Blocking filesystem work must not stall the async orchestration loop. Target hosts include 4 GB machines.
@@ -263,7 +263,7 @@ Keep the workflow ordinary async Rust. The preparation step receives the Docker 
 operations use the existing libc dependency; installed rsync handles file transfer.
 Inputs/outputs remain serializable paths, policies and resolved project records. No pipeline declaration format or orchestration context is introduced.
 
-1. Resolve Compose and inventory all projects' mounts together.
+1. Resolve Compose and classify all projects' mounts together.
 2. **Prepare overlays:** validate policies, prepare mounts, persist ownership records,
    resolve source coverage, and generate execution manifests with substituted source paths.
 3. Start fresh first-party services, then foreign projects; observe the experiment.

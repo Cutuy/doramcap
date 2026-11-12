@@ -115,7 +115,7 @@ list; do not introduce entry/depth/time cutoffs. Warning previews remain bounded
 
 - [x] Cover both whiteouts, opaque=y/x, ordinary directories, opaque root, type replacements,
   dangling symlinks, unusual names and unsafe destination ancestors.
-- [x] Reject redirect/metacopy, unsupported special files and ambiguous hardlinks visibly.
+- [x] Reject unsupported redirect/metacopy; record special nodes and hard-link warnings.
 - [x] Prove no payload copies/hashes, merged traversal or new full lower discovery scan occurs.
 - [x] Verify rejected plans leave all host sources unchanged; record evidence before checking items.
 
@@ -128,7 +128,7 @@ ordinary `user.overlay.whiteout` attribute), and
 `unsupported_upper_entries_reject_before_any_writeback` exercise the stated cases.
 Hardlink tests cover existing lower aliases and newly created aliases. Source review
 confirms planning walks upper and performs targeted lower lookups without payload I/O.
-The independent baseline/observation scanner now preserves Unix path bytes in
+That earlier observation scanner preserved Unix path bytes in
 [protobuf streams](102726-filesystem-protobuf.md).
 
 ## M2 — Apply with rsync directly from upper
@@ -194,7 +194,7 @@ Interrupted apply remains untested; detailed performance and Jetson evidence rem
 - [ ] Compare staged and direct paths with recordings, resumed datasets, untouched models,
   many small files and basic metadata edits.
 - [ ] Measure transfer bytes, wall time, peak memory, temporary disk use and physical I/O
-  where available; separate baseline/provenance scans and workload copy-up costs.
+  where available; account separately for workload copy-up and deleted-subtree traversal.
 - [ ] Qualify ext4 x86 and ARM/Jetson, including a 4 GB memory configuration.
 
 ### Validation

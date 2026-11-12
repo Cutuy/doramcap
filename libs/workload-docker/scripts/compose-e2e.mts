@@ -8,7 +8,7 @@ import { parseArgs } from 'node:util';
 const root = resolve(import.meta.dirname, '../../..');
 function run(argv: string[], capture = false, stdout?: number, stdin?: number): string {
   const result = spawnSync(argv[0], argv.slice(1), {
-    cwd: root, encoding: 'utf8', stdio: [stdin ?? 'ignore', stdout ?? (capture ? 'pipe' : 'inherit'), stdout ?? 'inherit'],
+    cwd: root, encoding: 'utf8', maxBuffer: Infinity, stdio: [stdin ?? 'ignore', stdout ?? (capture ? 'pipe' : 'inherit'), stdout ?? 'inherit'],
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${argv[0]} failed (${result.signal ?? result.status})`);
@@ -22,6 +22,7 @@ function main() {
   if (values.help) { console.log('Usage: node compose-e2e.mts --output NEW_DIRECTORY [--profile release|ci] [--socket PATH]'); return; }
   if (!values.output) throw new Error('--output is required');
   const output = resolve(values.output), socket = resolve(values.socket!);
+  mkdirSync(dirname(output), { recursive: true });
   mkdirSync(output);
   const docker = ['docker', '--host', `unix://${socket}`];
   const mainCheckout = run(['git', 'worktree', 'list', '--porcelain'], true).split('\n')[0].replace(/^worktree /, '');
