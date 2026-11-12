@@ -69,8 +69,8 @@ volumes:
       assert.ok(changes.some(row => row.pathDisplay === path && row.kind === kind), `${path}: ${JSON.stringify(changes)}`);
     assert.equal(lines.at(-1).type, 'complete');
     assert.equal(await readFile(direct, 'utf8'), 'direct');
-    assert.ok(status.fileChanges!.coverageNotes.some(note => note.includes('not tracked: single file')));
-    assert.ok(status.fileChanges!.coverageNotes.some(note => note.includes('not tracked: Docker named volume')));
+    assert.ok(status.fileChanges!.coverageNotes?.some(note => note.includes('not tracked: single file')));
+    assert.ok(status.fileChanges!.coverageNotes?.some(note => note.includes('not tracked: Docker named volume')));
     assert.equal(await readFile(join(source, 'modified'), 'utf8'), 'after');
     await assert.rejects(readFile(join(source, 'deleted')));
     // Act: restart and read the persisted current result and History detail.
