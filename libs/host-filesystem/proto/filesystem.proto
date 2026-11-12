@@ -33,14 +33,14 @@ message DirectoryMount {
   string target = 3;
   bool read_only = 4;
 }
-// A backend-resolved metadata source; an empty path denotes a newly created source.
+// A backend-declared source whose writes cannot be listed.
 message MetadataSource {
   StorageCategory category = 1;
   string identity = 2;
-  string path = 3;
+  reserved 3; // Former resolved metadata path; sources are no longer walked.
   string consumer = 4;
   bool read_only = 5;
-  // Empty when the source is available for metadata capture.
+  // Reason the backend cannot track this source.
   string reason = 6;
 }
 // Counts describe metadata transitions. All references are relative to one run.

@@ -17,7 +17,6 @@ pub fn volume_sources(mounts: Vec<VolumeMount>) -> Vec<MetadataSource> {
         .map(|mount| MetadataSource {
             category: host_filesystem::filesystem_proto::StorageCategory::NamedVolume as i32,
             identity: mount.name,
-            path: String::new(),
             reason: "not tracked: Docker named volume".into(),
             read_only: mount.read_only,
             consumer: format!("{}:{}", mount.consumer, mount.target),

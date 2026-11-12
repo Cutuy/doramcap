@@ -330,7 +330,11 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
                 path: None,
                 consumers: Vec::new(),
                 read_only: true,
-                reason: Some("not tracked: Docker named volume".into()),
+                reason: Some(if source.reason.is_empty() {
+                    "not tracked: named volume".into()
+                } else {
+                    source.reason
+                }),
             });
         entry.read_only &= source.read_only;
         entry.consumers.push(source.consumer);
@@ -385,8 +389,14 @@ pub async fn coverage_notes(
     }
     for source in metadata_sources.iter().filter(|s| !s.read_only) {
         notes.push(format!(
-            "{}: {}: not tracked: Docker named volume",
-            source.consumer, source.identity
+            "{}: {}: {}",
+            source.consumer,
+            source.identity,
+            if source.reason.is_empty() {
+                "not tracked: named volume"
+            } else {
+                &source.reason
+            }
         ));
     }
     Ok(notes)
@@ -525,8 +535,12 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         if source.category == StorageCategory::NamedVolume {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(
-                "{}: not tracked: Docker named volume ({})",
+                "{}: {} ({})",
                 source.identity,
+                source
+                    .reason
+                    .as_deref()
+                    .unwrap_or("not tracked: named volume"),
                 source.consumers.join(", ")
             ));
             continue;
@@ -836,6 +850,7 @@ mod source_tests {
         let volumes = vec![MetadataSource {
             category: WireCategory::NamedVolume as i32,
             identity: "data".into(),
+            reason: "not tracked: Docker named volume".into(),
             consumer: "app:/data".into(),
             ..Default::default()
         }];

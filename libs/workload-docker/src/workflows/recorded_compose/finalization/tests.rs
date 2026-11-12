@@ -24,6 +24,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
             metadata_sources: vec![MetadataSource {
                 category: StorageCategory::NamedVolume as i32,
                 identity: "data".into(),
+                reason: "not tracked: Docker named volume".into(),
                 consumer: "project/app:/data".into(),
                 ..Default::default()
             }],
