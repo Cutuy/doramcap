@@ -2,12 +2,14 @@
 
 # Shared crate for apps as containers
 
-Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 not started.
+Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 in progress.
 [Implementation plan](111126-compose-apps-crate-impl.md).
 
 Running Dora apps and Console's system apps as containers moves from
 `workload-docker` into a shared crate, `compose-apps`. The Compose workflow and
 the Holoscan workflow both use it. Each keeps only its own run order.
+
+![Dora, shared memory and apps](111126-compose-apps-runtime.svg)
 
 ## Why
 
@@ -72,8 +74,8 @@ Milestones 1 to 3 can start now, in parallel with the
 [capture move](https://github.com/Cutuy/doramcap/pull/316). All three move code
 out of `workload-docker`, which means ordinary code conflicts.
 
-Milestone 4 waits for the capture move. Both reshape the Compose run sequence
-and reset, and the capture move decides that shape first.
+The capture move is merged in [PR #318](https://github.com/Cutuy/doramcap/pull/318).
+Milestone 4 can now extract the shared sequences and reset rule from that shape.
 
 The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) needs
 milestone 4 before it starts system apps.
