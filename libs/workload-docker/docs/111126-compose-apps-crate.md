@@ -2,7 +2,7 @@
 
 # Shared crate for apps as containers
 
-Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 in progress.
+Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 implemented; integration validation in progress.
 [Implementation plan](111126-compose-apps-crate-impl.md).
 
 Running Dora apps and Console's system apps as containers moves from
@@ -61,9 +61,6 @@ container, and each workflow runs the three steps in order.
 The SHM holder starts before participants join its namespace and stops with the
 other system apps. SHM change auditing is outside this work. The stopped Dora
 experiment owner retains the repository reservation until other cleanup succeeds.
-
-These were checked by reading the code. Nothing has been built or run. The
-snapshot comparison in milestone 3 of the plan is where a hidden coupling would show.
 
 ## Expected behavior
 

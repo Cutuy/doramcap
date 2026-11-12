@@ -613,12 +613,12 @@ async fn shared_system_sequences_preserve_lineage_and_stop_shm_with_system_apps(
         experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime},
     };
     // Arrange: real system services run with and without an extra user-service group.
-    let fixture = Fixture::new();
-    let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
     for index in 0..4 {
+        let fixture = Fixture::new();
+        let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
         let with_user = index % 2 != 0;
         let isolated = index < 2;
-        let mut spec = fixture.spec(index);
+        let mut spec = fixture.spec(index % 2);
         spec.host_shm_access = if isolated {
             HostShmAccess::Blocked
         } else {
@@ -643,7 +643,7 @@ async fn shared_system_sequences_preserve_lineage_and_stop_shm_with_system_apps(
 
         // Act: readiness is independently confirmed before requesting cooperative stop.
         let plan = tokio::time::timeout(RUN_LIMIT, async {
-            tokio::select! { plan = started => plan.unwrap(), result = &mut run => panic!("startup failed: {result:?}") }
+            tokio::select! { plan = started => match plan { Ok(plan) => plan, Err(_) => panic!("startup failed: {:?}", (&mut run).await) }, result = &mut run => panic!("startup failed: {result:?}") }
         }).await.unwrap();
         assert!(
             adapter
