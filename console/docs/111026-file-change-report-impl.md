@@ -112,45 +112,44 @@ across all of this work.
 
 **Work items**
 
-- [ ] Use shared generated types for category counts, source coverage, report state
+- [x] Use shared generated types for category counts, source coverage, report state
   and run-relative manifest references. Preserve absence separately from zero changes.
-- [ ] Carry the result through `ExecutionResult` and the Console run result for Compose and
-  systemd. Keep full lists and unbounded source notes out of progress events and live status.
-- [ ] Validate manifest references beneath the private run root using existing safe
-  file opening. Save the immutable report checkpoint before destructive finalization;
-  sync manifest files and their directory, atomically publish the completion checkpoint,
-  and save its Console reference with the existing marker/History transaction. A crash
-  before checkpoint publication cannot establish a completed report.
-- [ ] Add file-change summary and manifest/artifact references to `console-report.json`.
+- [x] Carry the result through `ExecutionResult` and the Console run result. Keep full
+  lists and unbounded source notes out of progress events and live status. Systemd
+  results read as unavailable until milestone 4.
+- [x] Sync every manifest and its folder, then atomically publish `filesystem/report.pb`
+  before destructive finalization. Save its Console reference with the existing
+  marker/History transaction. A crash before publication cannot establish a completed report.
+- [x] Add the file-change summary and artifact reference to `console-report.json`.
   Read the saved report for current and past results; do not reconstruct it from progress.
-- [ ] Derive a preview within the existing encoded status/detail budgets. Include the
-  shown/total count and incomplete-observation state. Choose a named display budget
-  using real rendered fixtures; do not impose a capture limit or silently cut individual records.
-- [ ] Add a file-changes artifact kind to the existing authenticated download route.
-  Stream JSON Lines from saved manifests with generated protobuf codecs, backpressure
-  and descriptor cleanup on disconnect. No second persistent JSON copy or browsing API.
-- [ ] Export category summaries and full coverage notes alongside every collected
-  change, plus an end record confirming completed traversal. Distinguish export
-  completion from capture coverage; abort on malformed/truncated records or count mismatch.
-- [ ] Export 64-bit values as decimal strings and raw path/symlink bytes as base64 with
-  readable display fields. Render paths as text; never treat them as content-open links.
-- [ ] Show a File changes section with counts, coverage, preview and Download file changes.
-  Reuse it for History details. Availability is independent of recording finalization.
-- [ ] Keep recording-byte comparisons limited to declared recordings when adding a new
-  artifact kind. Preserve old-run decoding, artifact authorization and existing filenames.
+- [x] Save an 8 KiB encoded preview with the run, including shown/total counts and
+  incomplete-observation state. No capture limit; individual records are never cut.
+- [x] Add a `file-changes` artifact kind to the authenticated download route. Stream
+  JSON Lines from saved manifests with backpressure and descriptor cleanup on disconnect.
+- [x] Export category summaries and full coverage notes alongside every change, then a
+  completion record. Abort on malformed/truncated records or per-kind count mismatch.
+- [x] Export 64-bit values as decimal strings and raw path/symlink bytes as base64 with
+  readable display fields. Render paths as text.
+- [x] Show a File changes section with counts, coverage, preview and Download file changes,
+  reused for History. Availability is independent of recording finalization.
+- [x] Keep recording-byte totals limited to declared recordings. Preserve old-run decoding,
+  artifact authorization and existing filenames.
+- [x] The next Prepare waits until the previous run's result, including its preview, is saved.
 
 **Validation**
 
-- [ ] Native result, protobuf, saved report, History detail and JSON report retain the same counts and coverage.
-- [ ] Large fixtures exceed the preview budget; an independent JSON Lines reader recovers
-  every change and coverage note, verifies totals and sees the completion record.
-- [ ] Missing/truncated manifests, oversized preview records, invalid UTF-8 names,
-  absent metadata, complete zero changes and failed capture render distinctly.
-- [ ] Test cross-run references, traversal, symlink escapes, session authorization,
-  slow downloads and disconnects. A failed export cannot look complete.
-- [ ] Real Compose and systemd runs retain the preview and download after refresh,
-  navigation and Console restart, including failed runs with usable file reports.
-- [ ] Check the result on desktop and narrow screens; preserve recording downloads and byte totals.
+- [x] Native result, protobuf, saved report, History detail and JSON report retain the same counts and coverage.
+- [x] A 3,000-change fixture exceeds the preview budget; an independent JSON Lines reader
+  recovers every change and coverage note, verifies totals and sees the completion record.
+- [x] Missing/truncated manifests, oversized preview records, invalid UTF-8 names,
+  absent metadata, complete zero changes and failed collection render distinctly.
+- [x] Cross-run references, traversal, symlink escapes, session authorization, slow
+  downloads and disconnects. A 30,000-change export closed both descriptors on disconnect.
+- [x] Real Compose runs retain the preview and full download after Console restart,
+  including failed runs with usable file reports.
+- [ ] Real systemd runs: waits for milestone 4.
+- [ ] Desktop and narrow screens: no browser surface was available. Component rendering
+  and responsive CSS were checked; recording downloads and byte totals are preserved.
 
 ## Milestone 4: Give systemd services the same overlays
 
