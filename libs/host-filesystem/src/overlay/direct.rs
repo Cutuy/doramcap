@@ -210,7 +210,7 @@ pub(super) fn inspect(
                 pending.push(path.join(entry?.file_name()));
             }
         }
-        if !path.as_os_str().is_empty() || changed {
+        if !path.as_os_str().is_empty() {
             plan.transfer.insert(bytes);
         }
     }

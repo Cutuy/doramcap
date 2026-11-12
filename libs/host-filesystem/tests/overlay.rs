@@ -983,6 +983,8 @@ async fn interrupted_copyback_child() {
     let root = PathBuf::from(root);
     let artifacts = root.join("run");
     std::fs::create_dir(&artifacts).unwrap();
+    let output = artifacts.join("output");
+    std::fs::create_dir(&output).unwrap();
     let mut projects = Vec::new();
     for name in ["a", "b"] {
         let source = root.join(format!("source-{name}"));
@@ -994,6 +996,12 @@ async fn interrupted_copyback_child() {
         let project = plan(&input, &source);
         projects.push(project);
     }
+    projects.push(vec![BindMount {
+        consumer: "app".into(),
+        source: output.to_string_lossy().into(),
+        target: "/output".into(),
+        read_only: false,
+    }]);
     let set = prepare(PrepareInput {
         workspace: artifacts.join("views"),
         artifacts,
@@ -1005,6 +1013,13 @@ async fn interrupted_copyback_child() {
     for tree in &set.trees {
         std::fs::write(tree.merged.join("file"), b"after").unwrap();
     }
+    let direct = set
+        .mappings
+        .iter()
+        .find(|mapping| mapping.target == "/output")
+        .unwrap();
+    assert_eq!(direct.effective, output);
+    std::fs::write(direct.effective.join("result"), b"survives interruption").unwrap();
     // Act: the test rsync wrapper pauses after applying the first tree.
     finalize(set).await.unwrap();
     panic!("copy-back should remain paused until the parent kills this child");
@@ -1057,6 +1072,10 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
             Some(libc::ESRCH)
         );
     }
+    assert_eq!(
+        std::fs::read(root.path().join("run/output/result")).unwrap(),
+        b"survives interruption"
+    );
     let first = root.path().join("source-a/file");
     let second = root.path().join("source-b/file");
     assert_eq!(std::fs::read(&first).unwrap(), b"after");
@@ -1066,6 +1085,10 @@ async fn interrupted_copyback_discards_remaining_upper_data() {
     // Act: reset the interrupted state twice through the pre-run discard primitive.
     for _ in 0..2 {
         discard(&overlays).await.unwrap();
+        assert_eq!(
+            std::fs::read(root.path().join("run/output/result")).unwrap(),
+            b"survives interruption"
+        );
         // Assert: copied changes remain; unapplied changes are discarded without replay.
         assert_eq!(std::fs::read(&first).unwrap(), b"after");
         assert_eq!(std::fs::read(&second).unwrap(), b"before");

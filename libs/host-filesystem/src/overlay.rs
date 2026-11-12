@@ -680,6 +680,16 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 true,
             )
             .await?;
+            // Copy root attributes separately so selecting it cannot include whiteouts or special children.
+            rsync(
+                &tree.upper,
+                &tree.source,
+                Some(&base.join("root.paths0")),
+                &base.join("apply-root.log"),
+                true,
+                true,
+            )
+            .await?;
             paths.push(tree.source.clone());
         }
     }
