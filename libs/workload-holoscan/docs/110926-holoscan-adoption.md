@@ -2,7 +2,7 @@
 
 # Holoscan adoption in Console
 
-Created November 9, 2026. Updated November 12, 2026: order of work refreshed from the current PR statuses. Status: architecture agreed across all seven stages; implementation not started.
+Created November 9, 2026. Updated November 13, 2026: order of work refreshed; all shared prerequisites are merged. Status: architecture agreed across all seven stages; implementation not started.
 
 Console opens a Holoscan project, discovers its applications, runs a selected
 application and retains the results. `workload-holoscan` owns this adoption
@@ -169,49 +169,36 @@ seven stages are agreed.
 Work runs in parallel wherever the pieces only risk ordinary code conflicts. It
 is serial only where one piece decides the shape another builds on.
 
-Status checked November 12, 2026. Merging a design approves its plan; implementation
-status is tracked separately below.
-
-Merged:
+Status checked November 13, 2026. All shared prerequisites are merged.
 
 | Piece | Where |
 | --- | --- |
 | Admission lock | [#315](https://github.com/Cutuy/doramcap/pull/315) |
-| Apps crate pieces: project steps, Dora in containers, app preparation | [#317](https://github.com/Cutuy/doramcap/pull/317) milestones 1 to 3 |
+| Apps crate: pieces and system apps sequences | [#317](https://github.com/Cutuy/doramcap/pull/317), [#324](https://github.com/Cutuy/doramcap/pull/324) |
 | Overlay design | [#316](https://github.com/Cutuy/doramcap/pull/316) |
 | Move the overlay code to `host-filesystem` | [#318](https://github.com/Cutuy/doramcap/pull/318), #316 milestone 1 |
-
-Open implementation PRs:
-
-| Piece | Where | Status |
-| --- | --- | --- |
-| Show the change list in Console | [#320](https://github.com/Cutuy/doramcap/pull/320), #316 milestone 3 | In review |
-| Change list from the uppers | [#326](https://github.com/Cutuy/doramcap/pull/326), #316 milestone 2 | Draft; stacked on #320 |
-| Journal log driver for Compose | [#314](https://github.com/Cutuy/doramcap/pull/314) | Draft; export is a separate follow-up |
+| Change list from the uppers | [#326](https://github.com/Cutuy/doramcap/pull/326), #316 milestone 2 |
+| Show the change list in Console | [#320](https://github.com/Cutuy/doramcap/pull/320), #316 milestone 3 |
+| Journal log driver for Compose | [#314](https://github.com/Cutuy/doramcap/pull/314) |
 
 Can start now:
 
 | Piece | Where |
 | --- | --- |
-| Apps crate: system apps sequences | [#324](https://github.com/Cutuy/doramcap/pull/324), #317 milestone 4. Draft placeholder; implementation has not started. Its prerequisite, #318, is merged. |
 | Holoscan probes, discovery, Prepare and Review | Runner milestones 1 to 3 |
-| Holoscan Build | Runner milestone 4. The lock it needs is merged. |
+| Holoscan Build | Runner milestone 4 |
+| systemd overlays | #316 milestone 4 |
+| Keep files with the run | #316 milestone 5 |
+| Journal export | Follow-up to #314. It writes directly into the run folder's log folder; downloads join #316 milestone 5. |
 
 These wait for another piece:
 
-| Piece | Waits for | Reason |
-| --- | --- | --- |
-| systemd overlays (#316 milestone 4) | Change list from the uppers (#326) | systemd starts on the final change list. |
-| Keep files with the run (#316 milestone 5) | Change list from the uppers (#326), show the change list (#320) | It keeps the uppers and uses the download route. |
-| Journal export (follow-up to #314) | Journal log driver (#314) | It writes directly into the run folder's log folder. It can be implemented independently of #316; downloads join milestone 5. |
-| Holoscan run (runner milestone 5) | Holoscan Build, change list from the uppers (#326) | The run uses the final overlay code, and an extra data folder needs an overlay directory that carries its name. |
-| Holoscan system apps and acceptance (runner milestones 6 and 7) | Holoscan run, apps crate system apps sequences (#324) | They start system apps with the shared pieces. |
-| Holoscan web app screens | Holoscan run | Their plan is written once the run works. |
-
-Expected code conflicts, to be handled as they come:
-
-- The apps crate's system apps sequences and journal logging both edit Compose launch handling.
-- Holoscan's Prepare and the change-list report both extend Console's execution contract.
+| Piece | Waits for |
+| --- | --- |
+| Holoscan run (runner milestone 5) | Holoscan Build |
+| Holoscan system apps and acceptance (runner milestones 6 and 7) | Holoscan run |
+| Holoscan web app screens | Holoscan run; their plan is written once the run works |
+| Saved application logs | Holoscan run, journal export |
 
 ## Agreed scope
 

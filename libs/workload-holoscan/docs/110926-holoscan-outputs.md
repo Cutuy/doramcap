@@ -2,7 +2,7 @@
 
 # Holoscan file changes and logs
 
-Created November 9, 2026. Updated November 11, 2026: aligned with the overlay plan in
+Created November 9, 2026. Updated November 13, 2026: aligned with the merged overlay plan in
 [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
 Stage 5 architecture: agreed.
 [Adoption overview](110926-holoscan-adoption.md).
@@ -26,9 +26,9 @@ change list, write policy and not tracked.
 | `docker-engine` | Docker client, cleanup of owned resources by label and the container filesystem diff. |
 | Holoscan application | Its own sensor recording and file formats. |
 
-The overlay code started in `workload-docker`, moved to `docker-engine`, and moves to
-`host-filesystem` in [Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318),
-so systemd can use it too. The earlier move is recorded in the
+The overlay code lives in `host-filesystem` since
+[Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318), so systemd can use it
+too. The earlier move is recorded in the
 [`docker-engine` plan](111026-docker-engine-crate-impl.md).
 
 ## What a Holoscan launch mounts
@@ -84,7 +84,7 @@ the record of what the application wrote.
 A recording cut short is not detected. Checking MCAP files found in the change list is
 a possible later addition.
 
-Showing the change list in the web app is implemented in
+The web app shows the change list since
 [Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320).
 
 ## Logs
@@ -102,10 +102,10 @@ Console's setting takes precedence over a host-wide Docker default. On failure,
 Console reads the container's last lines through the Engine for the error
 message, as Compose does. The CLI's own output is saved to a launch log file.
 
-Planned: at the end of a run, Console dumps each program's full output from the
-journal into an output folder, where it is kept with the run's other files. That work
-and the same change for Compose are tracked in
-[Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
+Compose sends output to the journal since
+[Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314). Planned: at the end of a
+run, Console dumps each program's full output from the journal into an output folder,
+where it is kept with the run's other files.
 
 The journal driver has not been tested here. Real-container qualification must
 confirm it, including reading back the last lines.
