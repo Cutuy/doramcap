@@ -156,3 +156,22 @@ test('a published file report survives a later native report failure', async () 
     assert.equal(malformed?.downloadable, false);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test('BOM-prefixed Unix paths remain distinct in the readable export and raw bytes', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
+  const names = ['name', '\ufeffname', '\ufeff'];
+  try {
+    const { reference, records } = await fileChangeFixture(root, names.length, []);
+    records.forEach((record, index) => { record.path = Buffer.from(names[index]); });
+    records[0].after!.symlink = Buffer.from('\ufefftarget');
+    await writeFile(join(root, 'filesystem/host.pb'), Buffer.concat(records.map(row => filesystem.FileChange.encodeDelimited(row).finish())));
+    // Act
+    const changes = (await jsonLines(root, reference)).filter(row => row.type === 'change');
+    // Assert
+    assert.deepEqual(changes.map(row => row.pathDisplay), ['name', '\\xef\\xbb\\xbfname', '\\xef\\xbb\\xbf']);
+    assert.deepEqual(changes.map(row => Buffer.from(row.path, 'base64').toString()), names);
+    assert.equal(changes[0].after.symlinkDisplay, '\\xef\\xbb\\xbftarget');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

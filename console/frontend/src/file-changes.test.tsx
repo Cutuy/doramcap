@@ -59,3 +59,16 @@ test('artifact kinds exclude file reports from recording byte totals and preserv
   // Assert
   assert.equal(entryRecordingBytes(entry), 123);
 });
+
+
+test('a BOM-only filename is displayed as path bytes rather than the source root', () => {
+  // Arrange
+  const status = snapshot();
+  // Act / Assert
+  for (const [name, shown] of [['name', 'name'], ['\ufeffname', '\\xef\\xbb\\xbfname'], ['\ufeff', '\\xef\\xbb\\xbf']]) {
+    status.fileChanges!.preview[0].path = new TextEncoder().encode(name);
+    const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+    assert.ok(html.includes(`>${shown}</p>`));
+    assert.doesNotMatch(html, /\(source root\)/);
+  }
+});

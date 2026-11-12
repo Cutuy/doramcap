@@ -95,8 +95,8 @@ export class FramedMessages<T> {
 export function displayPath(bytes: Uint8Array): string {
   const escape = (value: number) => `\\x${value.toString(16).padStart(2, '0')}`;
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/[\\\x00-\x1f\x7f]/g,
-      char => char === '\\' ? '\\\\' : escape(char.charCodeAt(0)));
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes).replace(/[\\\x00-\x1f\x7f\ufeff]/g,
+      char => char === '\\' ? '\\\\' : char === '\ufeff' ? '\\xef\\xbb\\xbf' : escape(char.charCodeAt(0)));
   } catch {
     return Array.from(bytes, byte => byte >= 32 && byte < 127 && byte !== 92 ? String.fromCharCode(byte) : escape(byte)).join('');
   }
