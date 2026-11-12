@@ -569,7 +569,6 @@ mod tests {
             sha256: String::new(),
             services: Default::default(),
             diagnostics: vec![],
-            warnings: vec![],
             remove_volumes: false,
         }
     }

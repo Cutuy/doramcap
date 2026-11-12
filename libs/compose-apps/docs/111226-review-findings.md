@@ -42,8 +42,8 @@ user-facing text.
 
 ## Rejections
 
-Each user-fixable `Invalid(String)` becomes a named variant. The `#[error]` text
-stays for logs and the diagnostics file.
+The Review checks below return named variants. The `#[error]` text stays for logs
+and the diagnostics file. Other validation errors use the generic fallback.
 
 | Variant | Case |
 | --- | --- |
