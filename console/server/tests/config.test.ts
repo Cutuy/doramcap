@@ -79,6 +79,7 @@ test('catalog selection distinguishes defaults from an explicit empty choice', (
   ];
   // Act / Assert
   validateApps(apps);
+  validateApps([{ ...apps[0], recordings: [{ id: 'file-changes', path: 'changes.mcap' }] }]);
   assert.equal(selectApps(apps).length, 1);
   assert.equal(selectApps(apps, []).length, 0);
   assert.throws(() => selectApps(apps, ['missing']));

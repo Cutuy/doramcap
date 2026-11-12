@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 compose-apps = { path = "../../../libs/compose-apps" }
 prost = "0.14"
+host-filesystem = { path = "../../../libs/host-filesystem" }
 tokio = { version = "1", features = ["rt", "sync"] }
 prost-reflect = { version = "0.16", features = ["text-format"] }
 system-config = { path = "../../../libs/resources/system-config" }

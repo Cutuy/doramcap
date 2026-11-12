@@ -126,7 +126,7 @@ function outcomeFacts({ detail }: Side): Facts {
   const unfinished = entry.state === wire.HistoryState.HISTORY_RUNNING ? 'In progress' : 'Interrupted';
   const facts: Facts = new Map([['execution', { value: outcome?.execution || unfinished }]]);
   if (entry.finishedAtMs != null) facts.set('duration_seconds', { value: ((Number(entry.finishedAtMs) - Number(entry.startedAtMs)) / 1000).toFixed(1) });
-  const sizes = (entry.artifacts ?? []).filter((artifact) => artifact.id !== 'report' && artifact.sizeBytes != null);
+  const sizes = (entry.artifacts ?? []).filter((artifact) => artifact.id !== 'report' && artifact.kind === wire.ArtifactKind.RECORDING && artifact.sizeBytes != null);
   if (sizes.length) facts.set('recording_bytes', { value: String(sizes.reduce((total, artifact) => total + Number(artifact.sizeBytes), 0)) });
   if (outcome?.recordingFinalized != null) facts.set('recording_saved', { value: String(outcome.recordingFinalized) });
   if (outcome?.boundaryClean != null) facts.set('cleanup_verified', { value: String(outcome.boundaryClean) });

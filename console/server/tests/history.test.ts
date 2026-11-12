@@ -60,7 +60,7 @@ async function service(root: string) {
   const store = await Store.open(config.dataRoot),
     engine = new Engine(),
     backend = new ConsoleService(config, engine, store);
-  new History(store).closeInterrupted();
+  await new History(store).closeInterrupted();
   return { project, config, store, engine, backend };
 }
 type Service = Awaited<ReturnType<typeof service>>;
@@ -287,7 +287,7 @@ test('a run open at a crash reopens as interrupted with no finish time or downlo
   history.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
   try {
     // Act
-    history.closeInterrupted();
+    await history.closeInterrupted();
     const entry = history.list(wire.HistoryQuery.create()).entries[0];
     // Assert
     assert.equal(entry.state, State.HISTORY_INTERRUPTED);
@@ -308,13 +308,12 @@ test('a result that cannot reach History leaves the marker unfinished, so restar
   const runId = await startRun(run);
   run.store.db.exec("CREATE TRIGGER refuse BEFORE UPDATE ON runs BEGIN SELECT RAISE(ABORT, 'disk full'); END");
   try {
-    // Act
-    await finishRun(run, runId);
-    // Assert
+    // Act / Assert: the save error propagates and leaves the durable marker unfinished.
+    await assert.rejects(finishRun(run, runId), /disk full/);
     assert.ok(![Phase.FINISHED, Phase.BLOCKED].includes(run.store.marker()!.phase!));
     // Act
     run.store.db.exec('DROP TRIGGER refuse');
-    new History(run.store).closeInterrupted();
+    await new History(run.store).closeInterrupted();
     // Assert
     assert.equal((await list(run)).entries[0].state, State.HISTORY_INTERRUPTED);
   } finally {
@@ -323,18 +322,21 @@ test('a result that cannot reach History leaves the marker unfinished, so restar
   }
 });
 
-test('a report that cannot be written blocks the marker and History row alike', async () => {
+test('a report write error propagates while native result facts remain available', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   await mkdir(join(run.config.dataRoot, 'runs', runId), { recursive: true });
   await writeFile(join(run.config.dataRoot, 'runs', runId, 'console-report.json'), 'already here');
   try {
-    // Act
-    await finishRun(run, runId);
-    // Assert
-    assert.equal(run.store.marker()!.phase, Phase.BLOCKED);
-    assert.equal((await list(run)).entries[0].state, State.HISTORY_BLOCKED);
+    // Act / Assert: report storage fails through the normal error path.
+    await assert.rejects(finishRun(run, runId), /EEXIST/);
+    const status = wire.Status.decode(await run.backend.status());
+    assert.equal(status.phase, Phase.FINISHED);
+    assert.equal(status.outcome?.boundaryClean, true);
+    // Act: Review saves those facts before preparing the next run.
+    await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    assert.equal((await list(run)).entries[0].state, State.HISTORY_COMPLETED);
   } finally {
     await run.backend.close();
     await rm(root, { recursive: true, force: true });
@@ -492,7 +494,7 @@ test('an interrupted run keeps its before state, and an earlier run reads an emp
   run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
   await run.backend.status();
   // Act
-  new History(run.store).closeInterrupted();
+  await new History(run.store).closeInterrupted();
   const history = new History(run.store);
   // Assert
   assert.equal(history.capture(runId).before?.configuration?.governor?.[0].value, 'performance');
@@ -614,4 +616,113 @@ test('a review compares with the latest completed captured run, or with the run 
   assert.equal(latest.comparison?.baseline?.runId, recent);
   assert.equal(again.comparison?.baseline?.runId, old);
   await run.backend.close();
+});
+
+test('file-change facts survive failed execution, navigation and service restart with a complete authenticated download', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const root = await temporary();
+  const run = await service(root);
+  let restored: Service | undefined;
+  let server: ReturnType<typeof createConsoleServer> | undefined;
+  try {
+    const runId = await startRun(run);
+    const runRoot = join(run.config.dataRoot, 'runs', runId);
+    const { reference } = await fileChangeFixture(runRoot, 3000);
+    // Act: recording validation fails after useful file metadata has been saved.
+    const status = await finishRun(run, runId, { fileChanges: reference, error: 'Recording invalid', recordingFinalized: false });
+    const saved = await detail(run, runId);
+    const report = JSON.parse(readFileSync(join(runRoot, 'console-report.json'), 'utf8'));
+    // Assert
+    assert.deepEqual(status.fileChanges, saved.status?.fileChanges);
+    assert.equal(status.fileChanges?.report?.categories?.[0].counts?.added?.toString(), '3000');
+    assert.ok(status.fileChanges?.downloadable);
+    assert.equal(report.file_changes.report.categories[0].counts.added, '3000');
+    assert.equal(report.file_changes_artifact, 'file-changes.jsonl');
+    assert.equal(saved.entry?.artifacts?.find(a => a.id === 'file-changes.jsonl')?.kind, wire.ArtifactKind.FILE_CHANGES);
+    // Act: close and reopen the real service/database, then navigate through a later review.
+    await run.backend.close();
+    restored = await service(root);
+    await (restored.backend as any).restore();
+    const current = wire.Status.decode(await restored.backend.status());
+    assert.deepEqual(current.fileChanges, saved.status?.fileChanges);
+    await restored.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    assert.deepEqual((await detail(restored, runId)).status?.fileChanges, saved.status?.fileChanges);
+    server = createConsoleServer({ backend: restored.backend, secret: 'secret', origin: 'http://console.test', assets: root });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const base = `http://127.0.0.1:${address.port}`;
+    const path = `/api/artifacts/${runId}/file-changes.jsonl`;
+    // Assert: existing session authorization protects the new artifact.
+    assert.equal((await fetch(base + path)).status, 401);
+    const cookie = await sessionCookie(base);
+    const response = await fetch(base + path, { headers: { cookie } });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/x-ndjson');
+    assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.jsonl"/);
+    const rows = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(rows.filter(row => row.type === 'change').length, 3000);
+    assert.equal(rows.at(-1).type, 'complete');
+    assert.equal((await fetch(`${base}/api/artifacts/${id(999)}/file-changes.jsonl`, { headers: { cookie } })).status, 404);
+    // Act / Assert: failed traversal terminates the HTTP transfer without a completion line.
+    await writeFile(join(runRoot, 'filesystem/host.pb'), Buffer.from([0x80]));
+    const broken = await fetch(base + path, { headers: { cookie } });
+    await assert.rejects(broken.text());
+    await rm(join(runRoot, 'filesystem/report.pb'));
+    const unavailable = await detail(restored, runId);
+    assert.equal(unavailable.status?.fileChanges?.downloadable, false);
+    assert.match(unavailable.status?.fileChanges?.error ?? '', /unavailable/);
+  } finally {
+    if (server) { server.closeAllConnections(); server.close(); await once(server, 'close'); }
+    await (restored?.backend ?? run.backend).close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('legacy recording IDs and a file report download independently through the artifact route', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { fileChangePreview } = await import('../src/file-changes.js');
+  const root = await temporary(), run = await service(root);
+  let server: ReturnType<typeof createConsoleServer> | undefined;
+  try {
+    for (const [runId, withReport] of [[id(777), false], [id(778), true]] as const) {
+      await checkpoint(run.store, runId, { recordings: [{ id: 'file-changes', path: 'legacy.mcap' }] });
+      const runRoot = join(run.config.dataRoot, 'runs', runId);
+      await writeFile(join(runRoot, 'legacy.mcap'), 'legacy recording bytes');
+      if (withReport) {
+        const { reference } = await fileChangeFixture(runRoot, 3, []);
+        await checkpoint(run.store, runId, {
+          recordings: [{ id: 'file-changes', path: 'legacy.mcap' }],
+          fileChanges: await fileChangePreview(runRoot, reference),
+        });
+      }
+    }
+    server = createConsoleServer({ backend: run.backend, secret: 'secret', origin: 'http://console.test', assets: root });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const address = server.address(); assert.ok(address && typeof address !== 'string');
+    const base = `http://127.0.0.1:${address.port}`, cookie = await sessionCookie(base);
+    // Act / Assert: old runs and runs with both artifacts retain the recording URL and filename.
+    for (const runId of [id(777), id(778)]) {
+      const response = await fetch(`${base}/api/artifacts/${runId}/file-changes`, { headers: { cookie } });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.mcap"/);
+      assert.equal(await response.text(), 'legacy recording bytes');
+    }
+    // Act / Assert: the report uses its own artifact name under the same authentication.
+    const path = `${base}/api/artifacts/${id(778)}/file-changes.jsonl`;
+    assert.equal((await fetch(path)).status, 401);
+    const response = await fetch(path, { headers: { cookie } });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-disposition')!, /attachment; filename="file-changes.jsonl"/);
+    const rows = (await response.text()).trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(rows.filter(row => row.type === 'change').length, 3);
+    assert.equal(rows.at(-1).type, 'complete');
+    const saved = await detail(run, id(778));
+    assert.deepEqual(saved.entry!.artifacts!.map(artifact => artifact.id), ['file-changes', 'file-changes.jsonl']);
+  } finally {
+    if (server) { server.closeAllConnections(); server.close(); await once(server, 'close'); }
+    await run.backend.close(); await rm(root, { recursive: true, force: true });
+  }
 });

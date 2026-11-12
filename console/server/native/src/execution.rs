@@ -1,6 +1,7 @@
 //! Active workflow resources and bounded event transport; Console state lives in TypeScript.
 use crate::protocol::*;
 use compose_apps::compose::DockerAdapter;
+use host_filesystem::filesystem_proto::ReportState;
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use prost::Message;
 use std::{
@@ -329,6 +330,15 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
         let result = match result {
             Ok(report) => ExecutionResult {
                 blocked,
+                file_changes: report
+                    .filesystem_changes
+                    .as_ref()
+                    .map(|changes| changes.reference()),
+                file_changes_state: if report.filesystem_changes.is_some() {
+                    ReportState::ReportComplete
+                } else {
+                    ReportState::ReportFailed
+                } as i32,
                 error: report.execution_error,
                 writers_stopped: Some(report.writers_stopped),
                 recording_finalized: Some(report.recording_finalized),
@@ -339,6 +349,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             Err(error) => ExecutionResult {
                 blocked,
                 error: Some(error.to_string()),
+                file_changes_state: ReportState::ReportCheckpointUnknown as i32,
                 ..Default::default()
             },
         };
@@ -492,6 +503,7 @@ fn systemd_result(report: workload_systemd::SystemdRunReport, blocked: bool) -> 
         boundary_clean: Some(report.cleanup_verified),
         // systemd runs have no Docker event stream to lose.
         event_stream_healthy: Some(true),
+        ..Default::default()
     }
 }
 

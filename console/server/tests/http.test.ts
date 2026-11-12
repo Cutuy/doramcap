@@ -17,7 +17,7 @@ test('authentication, Origin, size and field validation precede native mutations
   const native: ConsoleBackend = {
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     frames: () => () => {},
-    close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
+    close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => { throw new Error('Missing'); },
     historyCompare: async (input) => { if (wire.HistoryComparisonRequest.decode(input).sides[0].runIds?.[0] === 'f'.repeat(32)) throw new Error('Missing'); return Buffer.from(wire.HistoryComparison.encode({ truncated: true }).finish()); },
     prepare: async input => { selections.push(wire.PrepareRequest.decode(input).systemApps?.ids ?? undefined); return Buffer.from(wire.Review.encode({ runId: 'run', preparedId: 'run' }).finish()); },
@@ -101,7 +101,7 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
   const bridgeFrame = Buffer.from(live.Frame.encode({ stream: 'cpu-monitor_0', sequence: 7, payload: Buffer.from([1, 2, 3]) }).finish());
   const native: ConsoleBackend = {
     frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
-    close: async () => {}, openArtifact: async () => { throw new Error('Missing'); },
+    close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0), historyCompare: async () => Buffer.alloc(0),
     prepare: async () => Buffer.alloc(0), start: async () => Buffer.alloc(0), stop: async () => Buffer.alloc(0),
     status: async () => { statuses++; return Buffer.alloc(0); },

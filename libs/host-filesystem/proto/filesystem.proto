@@ -97,3 +97,20 @@ message HostView {
   string source = 1;
   string view = 2;
 }
+
+// Counts describe metadata transitions. All references are relative to one run.
+message ChangeCounts { uint64 added = 1; uint64 modified = 2; uint64 deleted = 3; }
+message CategorySummary {
+  StorageCategory category = 1;
+  ChangeCounts counts = 2;
+  bool coverage_complete = 3;
+  string manifest = 4;
+  uint64 coverage_note_count = 5;
+}
+message CategoryReport { CategorySummary summary = 1; repeated string coverage_notes = 2; }
+// Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
+enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; REPORT_CHECKPOINT_UNKNOWN = 3; }
+// Published only after all manifests and their directory have been synced.
+message FileChangeReport { repeated CategoryReport categories = 1; ReportState state = 2; }
+// Small completion fact; full source notes and change lists stay on disk.
+message FileChangeReference { string checkpoint = 1; repeated CategorySummary categories = 2; }
