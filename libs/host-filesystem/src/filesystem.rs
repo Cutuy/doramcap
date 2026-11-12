@@ -139,7 +139,10 @@ impl CategoryChanges {
             // A nameless manifest yields a reference that export refuses to open.
             manifest: format!(
                 "{FILESYSTEM_DIRECTORY}/{}",
-                self.manifest.file_name().unwrap_or_default().to_string_lossy()
+                self.manifest
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
             ),
             coverage_complete: self.coverage_complete,
             coverage_note_count: self.warnings.len() as u64,
