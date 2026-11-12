@@ -60,7 +60,7 @@ test('real Compose writes retain the same file report and complete export after 
     const lines = [];
     for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) lines.push(JSON.parse(bytes.toString()));
     const changes = lines.filter(row => row.type === 'change' && row.category === 'HOST_BIND');
-    for (const [path, kind] of [['added', 'ADDED'], ['modified', 'MODIFIED'], ['deleted', 'DELETED']])
+    for (const [path, kind] of [['added', 'CHANGE_KIND_ADDED'], ['modified', 'CHANGE_KIND_MODIFIED'], ['deleted', 'CHANGE_KIND_DELETED']])
       assert.ok(changes.some(row => row.pathDisplay === path && row.kind === kind), `${path}: ${JSON.stringify(changes)}`);
     assert.equal(lines.at(-1).type, 'complete');
     assert.equal(await readFile(join(source, 'modified'), 'utf8'), 'after');

@@ -57,7 +57,10 @@ test('artifact kinds exclude file reports from recording byte totals and preserv
     wire.HistoryArtifact.create({ id: 'report', sizeBytes: 222 }),
     wire.HistoryArtifact.create({ id: 'file-changes.jsonl', sizeBytes: 999, kind: wire.ArtifactKind.FILE_CHANGES }),
   ] });
-  // Assert
+  // Assert: absent kinds retain legacy recording behavior; unknown future values do not.
+  const future = wire.HistoryArtifact.decode(wire.HistoryArtifact.encode(wire.HistoryArtifact.fromObject({ id: 'future', sizeBytes: 9999, kind: 99 })).finish());
+  assert.equal(future.kind, 99);
+  entry.artifacts.push(future);
   assert.equal(entryRecordingBytes(entry), 123);
 });
 

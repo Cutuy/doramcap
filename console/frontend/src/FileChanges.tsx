@@ -28,7 +28,7 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
       {view!.notesIncomplete && <p className="muted">More coverage notes are included in the download.</p>}
       <p className="muted">Preview: {view!.preview.length} of {total.toString()} collected changes{view!.previewIncomplete ? ' · Preview incomplete' : ''}.</p>
       {view!.preview.length > 0 && <div className="file-change-list" tabIndex={0} aria-label="File change preview">{view!.preview.map((change, index) => <article key={index}>
-        <div><strong>{ChangeKind[change.kind!].toLowerCase()}</strong> · {categoryLabel(change.category!)} · <span className="mono break">{change.source}</span></div>
+        <div><strong>{ChangeKind[change.kind!].replace(/^CHANGE_KIND_/, '').toLowerCase()}</strong> · {categoryLabel(change.category!)} · <span className="mono break">{change.source}</span></div>
         <p className="mono break">{displayPath(change.path!) || '(source root)'}</p>
         {(change.consumers ?? []).length > 0 && <p className="muted break">{change.consumers!.join(', ')}</p>}
         <details><summary>Metadata</summary>{[['Before', change.before], ['After', change.after]].map(([label, metadata]) => {

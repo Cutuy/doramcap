@@ -124,13 +124,8 @@ impl FilesystemChanges {
 }
 impl CategoryChanges {
     fn summary(&self) -> crate::filesystem_proto::CategorySummary {
-        use crate::filesystem_proto::StorageCategory as Wire;
         crate::filesystem_proto::CategorySummary {
-            category: match self.category {
-                StorageCategory::HostBind => Wire::HostBind,
-                StorageCategory::ContainerLayer => Wire::ContainerLayer,
-                StorageCategory::NamedVolume => Wire::NamedVolume,
-            } as i32,
+            category: self.category as i32,
             counts: Some(crate::filesystem_proto::ChangeCounts {
                 added: self.counts.added,
                 modified: self.counts.modified,
