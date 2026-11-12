@@ -99,7 +99,7 @@ async function* categoryChanges(runRoot: string, summary: Summary, signal?: Abor
   if (counts.some((n, index) => n !== expected[index])) throw new Error('File-change manifest count mismatch');
 }
 
-/** Save a whole-record preview; export validates records beyond its display budget.
+/** Save a whole-record preview shared across categories; export validates records beyond its display budget.
  * Memory includes the checkpoint's coverage notes, one whole record and the bounded preview.
  */
 export async function fileChangePreview(runRoot: string, reference?: Reference | null, state = filesystem.ReportState.REPORT_STATE_UNAVAILABLE): Promise<View | null> {
@@ -128,14 +128,28 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
           view.coverageNotes.pop(); view.notesIncomplete = true;
         }
       }
-      if (view.previewIncomplete) continue;
-      for await (const change of categoryChanges(runRoot, category.summary!)) {
-        view.preview.push(change);
-        if (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
-          view.preview.pop(); view.previewIncomplete = true;
-          break;
+    }
+    // Take one record from each category in turn so every category with changes shares the budget.
+    const streams = saved.categories.map(category => categoryChanges(runRoot, category.summary!));
+    try {
+      let active = streams;
+      while (active.length && !view.previewIncomplete) {
+        const remaining: typeof streams = [];
+        for (const stream of active) {
+          const next = await stream.next();
+          if (next.done) continue;
+          view.preview.push(next.value);
+          if (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
+            view.preview.pop(); view.previewIncomplete = true;
+            break;
+          }
+          remaining.push(stream);
         }
+        active = remaining;
       }
+    } finally {
+      // Close manifests left unread; their tails are validated by export.
+      await Promise.all(streams.map(stream => stream.return(undefined)));
     }
     view.downloadable = true;
   } catch (error) {

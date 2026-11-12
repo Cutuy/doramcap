@@ -180,6 +180,22 @@ test('BOM-prefixed Unix paths remain distinct in the readable export and raw byt
 });
 
 
+test('a large category leaves preview room for the next category', async () => {
+  // Arrange: thousands of host-folder records precede a few container-layer records.
+  const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
+  try {
+    const { reference } = await fileChangeFixture(root, 3000, [], 4);
+    // Act
+    const view = await fileChangePreview(root, reference);
+    // Assert: both categories appear and the bound still holds.
+    const layers = view!.preview.filter(change => change.category === filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER);
+    assert.equal(layers.length, 4);
+    assert.ok(view!.preview.some(change => change.category === filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND));
+    assert.ok(view!.downloadable && view!.previewIncomplete);
+    assert.ok(wire.FileChanges.encode(view!).finish().length <= FILE_CHANGE_PREVIEW_BYTES);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('a bounded preview defers validation of the unread tail until export', async () => {
   // Arrange
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
