@@ -26,7 +26,9 @@ function main() {
   const docker = ['docker', '--host', `unix://${socket}`];
   const mainCheckout = run(['git', 'worktree', 'list', '--porcelain'], true).split('\n')[0].replace(/^worktree /, '');
   const credential = join(mainCheckout, '.sudo-password');
-  if ((statSync(credential).mode & 0o777) !== 0o600) throw new Error('Provision main .sudo-password locally, mode 0600');
+  let provisioned = false;
+  try { const metadata = statSync(credential); provisioned = metadata.isFile() && (metadata.mode & 0o777) === 0o600; } catch { /* Local provisioning is required below. */ }
+  if (!provisioned) throw new Error('Provision main .sudo-password locally, mode 0600');
   run(['git', '-C', mainCheckout, 'check-ignore', '-q', '.sudo-password']);
   function elevated(argv: string[], log: number) {
     const secret = openSync(credential, 'r');

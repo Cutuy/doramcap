@@ -1408,7 +1408,7 @@ async fn writable_parent_and_child_use_one_view_and_write_back_once() {
         b"parent"
     );
     let result = finalize(set).await.unwrap();
-    assert_eq!(result.paths, [source.clone()]);
+    assert_eq!(result.paths.as_slice(), std::slice::from_ref(&source));
     assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"parent");
 }
 
