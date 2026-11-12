@@ -20,7 +20,15 @@ implementation/design guidance. Keep agent process instructions in this file.
 
 ## Important decisions
 
-For every important decision, ask the user and wait for their answer before proceeding. Present your recommended option and alternatives.
+Before asking the user for an important design decision:
+
+- Explain the current workflow, the concrete problem, relevant constraints and affected components.
+- Show a compact visual of the current flow and proposed change, using inline Mermaid or architecture SVGs. Include success, failure and recovery where they matter.
+- Present your recommended option and alternatives, with their behavior and tradeoffs.
+
+Then ask the user and wait for their answer before implementing that decision. Follow this process for design questions during planning, implementation and review.
+
+For other important decisions, present your recommended option and alternatives, then ask the user and wait before proceeding.
 
 Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
