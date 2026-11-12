@@ -1,4 +1,4 @@
 # Console over Tailscale
 
-- Keep Console on loopback and relay the host's existing Tailscale address, preserving auth, cookies and streams while translating the validated browser origin to Console's loopback origin; keep Tailscale settings unchanged.
-- Immediately share `http://TAILSCALE_IP:PORT/#access=TOKEN` using the running launcher's token, then verify that exact URL in fresh headless Chromium; preserve the user's active run and leave Console running.
+- Before hosting from source, run [`stageSystemAppInputs`](../scripts/system-app-inputs.mts), use the staged app bundle, and verify all app manifests, profiles, graphs and shared files exist, including optional apps.
+- Relay Console's loopback listener through the existing Tailscale address with auth, cookies, streams and origin validation/translation preserved; share the complete `http://TAILSCALE_IP:PORT/#access=TOKEN` immediately, then verify it in fresh headless Chromium while preserving active runs, Tailscale settings and the running Console.
