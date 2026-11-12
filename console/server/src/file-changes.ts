@@ -6,7 +6,7 @@ import { doramcap } from './generated/console.js';
 import { displayPath } from './generated/transport.js';
 
 export const filesystem = doramcap.filesystem.v1;
-const CATEGORIES = [filesystem.StorageCategory.HOST_BIND, filesystem.StorageCategory.CONTAINER_LAYER, filesystem.StorageCategory.NAMED_VOLUME];
+const CATEGORIES = [filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND, filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER, filesystem.StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME];
 const CHANGE_KINDS = [filesystem.ChangeKind.CHANGE_KIND_ADDED, filesystem.ChangeKind.CHANGE_KIND_MODIFIED, filesystem.ChangeKind.CHANGE_KIND_DELETED];
 const CHECKPOINT = 'filesystem/report.pb';
 type Reference = doramcap.filesystem.v1.IFileChangeReference;

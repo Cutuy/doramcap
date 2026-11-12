@@ -69,7 +69,7 @@ volumes:
     assert.ok(status.fileChanges?.downloadable, JSON.stringify(status.fileChanges));
     const lines = [];
     for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) lines.push(JSON.parse(bytes.toString()));
-    const changes = lines.filter(row => row.type === 'change' && row.category === 'HOST_BIND');
+    const changes = lines.filter(row => row.type === 'change' && row.category === 'STORAGE_CATEGORY_HOST_BIND');
     for (const [path, kind] of [['added', 'CHANGE_KIND_ADDED'], ['modified', 'CHANGE_KIND_MODIFIED'], ['deleted', 'CHANGE_KIND_DELETED']])
       assert.ok(changes.some(row => row.pathDisplay === path && row.kind === kind), `${path}: ${JSON.stringify(changes)}`);
     assert.equal(lines.at(-1).type, 'complete');

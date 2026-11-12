@@ -26,14 +26,14 @@ enum StorageCategory {
   STORAGE_CATEGORY_UNSPECIFIED = 0;
   // A host file or directory bind-mounted into a workload.
   // The source identifies the host path; change paths are relative to it.
-  HOST_BIND = 1;
+  STORAGE_CATEGORY_HOST_BIND = 1;
   // A Docker container's writable filesystem layer above its image.
   // The source identifies the container; change paths are container-absolute.
   // Bind mounts and volumes have their own categories.
-  CONTAINER_LAYER = 2;
+  STORAGE_CATEGORY_CONTAINER_LAYER = 2;
   // A Docker-managed persistent volume mounted by name.
   // The source identifies the volume; change paths are relative to its root.
-  NAMED_VOLUME = 3;
+  STORAGE_CATEGORY_NAMED_VOLUME = 3;
 }
 // An individual path transition, retained separately as added, modified or deleted.
 enum ChangeKind {

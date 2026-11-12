@@ -4,8 +4,8 @@ import type { Snapshot } from './api';
 import { doramcap } from './generated/console';
 
 const { StorageCategory, ChangeKind } = doramcap.filesystem.v1;
-const categoryLabel = (category: number) => category === StorageCategory.HOST_BIND ? 'Host folders'
-  : category === StorageCategory.CONTAINER_LAYER ? 'Container layers' : 'Named volumes';
+const categoryLabel = (category: number) => category === StorageCategory.STORAGE_CATEGORY_HOST_BIND ? 'Host folders'
+  : category === StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER ? 'Container layers' : 'Named volumes';
 const integer = (value: unknown) => BigInt(String(value ?? 0));
 
 /** One bounded saved preview, shared by the current result and History. Paths are plain text. */
