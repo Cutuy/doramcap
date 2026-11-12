@@ -1,6 +1,7 @@
 //! Active workflow resources and bounded event transport; Console state lives in TypeScript.
 use crate::protocol::*;
 use compose_apps::compose::DockerAdapter;
+use host_filesystem::filesystem_proto::ReportState;
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use prost::Message;
 use std::{
@@ -333,11 +334,11 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                     .filesystem_changes
                     .as_ref()
                     .map(|changes| changes.reference()),
-                file_changes_error: if report.filesystem_changes.is_none() {
-                    "File changes were not collected; inspect the run diagnostics.".into()
+                file_changes_state: if report.filesystem_changes.is_some() {
+                    ReportState::ReportComplete
                 } else {
-                    String::new()
-                },
+                    ReportState::ReportFailed
+                } as i32,
                 error: report.execution_error,
                 writers_stopped: Some(report.writers_stopped),
                 recording_finalized: Some(report.recording_finalized),
@@ -348,8 +349,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             Err(error) => ExecutionResult {
                 blocked,
                 error: Some(error.to_string()),
-                file_changes_error:
-                    "File changes could not be returned; checking the saved checkpoint.".into(),
+                file_changes_state: ReportState::ReportCheckpointUnknown as i32,
                 ..Default::default()
             },
         };

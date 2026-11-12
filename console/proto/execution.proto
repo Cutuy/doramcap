@@ -56,7 +56,9 @@ message ExecutionResult {
   optional bool event_stream_healthy = 6;
   repeated doramcap.compose.v1.ServiceExit service_exits = 7;
   doramcap.filesystem.v1.FileChangeReference file_changes = 8;
-  string file_changes_error = 9;
+  reserved 9;
+  reserved "file_changes_error";
+  doramcap.filesystem.v1.ReportState file_changes_state = 10;
 }
 // The local image one service ran.
 message ServiceImage {

@@ -108,8 +108,9 @@ message CategorySummary {
   uint64 coverage_note_count = 5;
 }
 message CategoryReport { CategorySummary summary = 1; repeated string coverage_notes = 2; }
+// Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
+enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; REPORT_CHECKPOINT_UNKNOWN = 3; }
 // Published only after all manifests and their directory have been synced.
-enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; }
 message FileChangeReport { repeated CategoryReport categories = 1; ReportState state = 2; }
 // Small completion fact; full source notes and change lists stay on disk.
 message FileChangeReference { string checkpoint = 1; repeated CategorySummary categories = 2; }

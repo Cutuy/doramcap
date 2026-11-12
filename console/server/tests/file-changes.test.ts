@@ -47,7 +47,7 @@ test('absence, failed capture, complete zero and an oversized preview record rem
   try {
     // Act / Assert
     assert.equal(await fileChangePreview(root), null);
-    assert.match((await fileChangePreview(root, null, 'Writers are active'))!.error, /Writers/);
+    assert.match((await fileChangePreview(root, null, filesystem.ReportState.REPORT_FAILED))!.error, /not collected/);
     const { reference } = await fileChangeFixture(root, 0, []);
     const zero = await fileChangePreview(root, reference);
     assert.ok(zero?.downloadable && !zero.previewIncomplete);
@@ -138,8 +138,11 @@ test('a published file report survives a later native report failure', async () 
   const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
   try {
     await fileChangeFixture(root, 3, []);
+    // Act / Assert: known absence never guesses that a checkpoint should be recovered.
+    assert.equal(await fileChangePreview(root), null);
+    assert.equal((await fileChangePreview(root, null, filesystem.ReportState.REPORT_FAILED))?.downloadable, false);
     // Act
-    const recovered = await fileChangePreview(root, null, 'Native report write failed');
+    const recovered = await fileChangePreview(root, null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
     // Assert
     assert.ok(recovered?.downloadable);
     assert.equal(recovered.state, filesystem.ReportState.REPORT_COMPLETE);
@@ -149,7 +152,7 @@ test('a published file report survives a later native report failure', async () 
     await writeFile(join(root, 'filesystem/report.pb'), filesystem.FileChangeReport.encode({
       state: filesystem.ReportState.REPORT_COMPLETE, categories: [{ coverageNotes: ['incomplete checkpoint'] }],
     }).finish());
-    const malformed = await fileChangePreview(root, null, 'Native report write failed');
+    const malformed = await fileChangePreview(root, null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
     // Assert
     assert.equal(malformed?.state, filesystem.ReportState.REPORT_FAILED);
     assert.equal(malformed?.report, null);

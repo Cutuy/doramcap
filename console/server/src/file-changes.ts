@@ -102,8 +102,8 @@ async function* categoryChanges(runRoot: string, summary: Summary, signal?: Abor
 /** Save a whole-record preview; export validates records beyond its display budget.
  * Memory includes the checkpoint's coverage notes, one whole record and the bounded preview.
  */
-export async function fileChangePreview(runRoot: string, reference?: Reference | null, error = ''): Promise<View | null> {
-  if (!reference && error) {
+export async function fileChangePreview(runRoot: string, reference?: Reference | null, state = filesystem.ReportState.REPORT_UNAVAILABLE): Promise<View | null> {
+  if (!reference && state === filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN) {
     // Later native report writes can fail after capture has already been published.
     try {
       const saved = await checkpoint(runRoot, CHECKPOINT);
@@ -111,10 +111,11 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
         throw new Error('File-change checkpoint has no category summary');
       reference = { checkpoint: CHECKPOINT, categories: saved.categories.map(category => category.summary!) };
     } catch {
-      return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: browserError(error) });
+      return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: 'File changes unavailable: no valid published checkpoint.' });
     }
   }
-  if (!reference) return null;
+  if (!reference) return state === filesystem.ReportState.REPORT_UNAVAILABLE ? null
+    : wire.FileChanges.create({ state: filesystem.ReportState.REPORT_FAILED, error: 'File changes were not collected; inspect the run diagnostics.' });
   const view = wire.FileChanges.create({ state: filesystem.ReportState.REPORT_COMPLETE, report: reference });
   try {
     const saved = await report(runRoot, reference);

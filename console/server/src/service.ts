@@ -595,7 +595,7 @@ export class ConsoleService implements ConsoleBackend {
     this.pendingResultAt = Date.now();
     this.completed = true;
     this.snapshot.fileChanges = await fileChangePreview(
-      join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesError ?? '',
+      join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesState ?? filesystem.ReportState.REPORT_UNAVAILABLE,
     );
     this.marker!.fileChanges = this.snapshot.fileChanges?.report ?? null;
     this.marker!.phase = this.snapshot.phase;
