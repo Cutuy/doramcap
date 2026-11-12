@@ -145,8 +145,9 @@ across all of this work.
   absent metadata, complete zero changes and failed collection render distinctly.
 - [x] Cross-run references, traversal, symlink escapes, session authorization, slow
   downloads and disconnects. A 30,000-change export closed both descriptors on disconnect.
-- [x] Real Compose runs retain the preview and full download after Console restart,
-  including failed runs with usable file reports.
+- [x] Real Compose runs retain the preview and full download after Console restart.
+- [x] Service integration tests retain failed runs with usable file reports after restart.
+- [ ] Verify a real failed Compose run retains its file report after Console restart.
 - [ ] Real systemd runs: waits for milestone 4.
 - [ ] Desktop and narrow screens: no browser surface was available. Component rendering
   and responsive CSS were checked; recording downloads and byte totals are preserved.
@@ -158,8 +159,8 @@ capture, Docker, lifecycle and Console native crates, their release tests, 128 s
 tests (one skipped) and 90 frontend tests pass. Real Compose, full CI and ARM64 were
 not rerun.
 
-Rebased again onto the plan review decisions (November 11, 2026). Only this document
-differs from that source; no check was rerun.
+At the plan-review rebase (November 11, 2026), only this document changed; no check
+was rerun at that point.
 
 ## Milestone 4: Give systemd services the same overlays
 
@@ -258,5 +259,3 @@ differs from that source; no check was rerun.
   Holoscan runner checks that an extra data folder appears at the same path with an
   overlay directory as without one.
 
-Design validation: source/guide review, local links, SVG XML/rendering and whitespace checks pass.
-Runtime checks above are deferred until implementation; this design PR changes documentation only.
