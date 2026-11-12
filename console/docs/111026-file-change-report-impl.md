@@ -1,18 +1,21 @@
-# File changes in Console: implementation plan
+# Run directory layers: implementation plan
 
-Created November 11, 2026. Status: planned; application code unchanged.
+Created November 11, 2026. Updated November 11, 2026: reworked around overlay layers.
+Status: milestone 1 implemented in review ([#318](https://github.com/Cutuy/doramcap/pull/318)),
+milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
 [Architecture](111026-file-change-report.md).
 
 ## Order
 
-Milestones are numbered by topic. Two can start at once and two wait:
-
 | Milestone | Starts | Reason |
 | --- | --- | --- |
-| 1: extract capture | Now | Everything that reuses capture builds on the moved code. |
-| 3: report in Console | Now, alongside milestone 1 | Capture already works for Compose. It builds on report types that milestone 1 relocates, which is an ordinary code conflict. |
-| 4: keep with the run | After milestones 1 and 3 | It changes the finalization that milestone 1 relocates and uses milestone 3's download route. |
-| 2: systemd capture | After milestone 1 | systemd cannot use the capture code until it leaves the Docker crate. Until it lands, a systemd run reads as unavailable. |
+| 1: extract capture | Done, in review | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
+| 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
+| 2: change list from upper layers | After 1 | Replaces baseline scans; every later milestone builds on it. |
+| 4: systemd overlays | After 2 | systemd starts on the final change-list mechanism. |
+| 5: keep with the run | After 2 and 3 | Keeps upper layers and uses milestone 3's download route. |
+
+Milestone numbers 1 and 3 keep their earlier meaning, so PR references stay valid.
 
 The [admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
 [shared apps crate](https://github.com/Cutuy/doramcap/pull/317) also move code
@@ -48,59 +51,32 @@ across all of this work.
 - [ ] Existing Compose file-change manifests and independent readback remain compatible.
 - [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
 
-## Milestone 2: Wire systemd into the same capture lifecycle
+## Milestone 2: Read the change list from upper layers
 
 **Work items**
 
-- [ ] Resolve the binds of services Console creates and the effective binds of unit
-  files using the service manager. Reuse captured unit/drop-in inputs; do not build
-  another unit-file parser.
-  Record sources, targets, consumers, optional-source behavior, access flags and exclusions.
-- [ ] Resolve each unit's explicitly declared working directory through its mounts.
-  Under a writable bind it adds no source. At its host path (a same-path bind into
-  a created service's root, or a unit file without its own root) it is a source.
-  Otherwise list it as uncaptured. Skip an undeclared one, the filesystem root and a home directory
-  shorthand, and list each with its reason. List declared state, log and cache
-  directories as declared and uncaptured.
-- [ ] Review shows known capture sources and unresolved native sources explicitly.
-  At Start resolve the effective inventory before writers start; a changed launch
-  configuration follows the existing stale-review check.
-- [ ] Separate runtime/source preparation from starting writers where needed. The
-  shared lifecycle owns the capture from the first attempted mount through verified cleanup.
-- [ ] Create the same views as Docker. Rewrite supported bind sources through owned
-  D-Bus properties/drop-ins and safe aliases, preserving targets, access and native settings.
-- [ ] Verify that the systemd manager can resolve the mounted views. Keep the existing
-  capability requirements; fail preparation when visibility is unqualified. Do not change
-  persistent mount propagation or service-manager configuration as a workaround.
-- [ ] Collect from declared application output roots through the same record writer.
-  Preserve the current exclusion of controller-owned artifacts; report partial coverage
-  where application output shares an inseparable control root. Avoid recursive self-capture.
-- [ ] Stop all attempted units before collecting. Preserve the views until collection
-  and saving finish; release unit-held bind references before strict overlay unmount.
-  Keep write-back failure separate from file-list availability and cleanup verification.
-- [ ] Extend the native report with the shared filesystem result. Preserve existing
-  recording checks, host `/dev/shm` observation and launch/machine snapshot purposes.
-- [ ] Carry the existing ownership records into interrupted-run reset. Stop writers
-  before discarding leftover views; never replay a partial write-back automatically.
+- [ ] In `host-filesystem`, walk each stopped upper layer into change records: added
+  when absent from the lower layer, modified when present, deleted for whiteouts and
+  opaque directories. Take "before" metadata from the lower layer, "after" from the upper.
+  Reuse the existing upper-layer interpretation that write back already uses.
+- [ ] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
+  checkpoint unchanged, so milestone 3 needs no change.
+- [ ] Mount each Compose run output folder as an overlay with an empty lower layer.
+- [ ] Apply the named-volume decision: overlay local volumes like binds, or list them as
+  not tracked.
+- [ ] Apply the copied-up-file decision.
+- [ ] Delete baseline scans, their records and the metadata comparison once nothing reads them.
+  Keep Docker's container-layer diff.
 
 **Validation**
 
-- [ ] Real unit files and services Console creates see tracked views at their original targets.
-  Writes remain isolated during execution and reach the original directories after write-back.
-- [ ] One real Compose fixture and one real systemd fixture produce equivalent change
-  records for equivalent writes, deletions, shared aliases and read-only aliases.
-- [ ] A unit whose working directory sits at its host path has its relative writes
-  captured. A unit with no declared working directory runs unchanged.
-- [ ] Dora's coordinator and daemon, whose `/runtime` working directory sits under their
-  output bind, add no source, create nothing at host `/runtime` and count each change once.
-- [ ] A unit behaves correctly with a view over its working directory, including units
-  started under the Dora daemon.
-- [ ] Cover source resolution, optional missing sources, drop-ins, nested binds, private
-  roots, nontrivial filenames, output/control-root separation and explicit exclusions.
-- [ ] Verify preparation rollback, cancellation before/during startup, active writers,
-  report-save failure, busy mount, external source mutation and controller restart.
-- [ ] Build unprivileged; elevate only capability-required test executables. Verify all
-  owned mounts and units are gone after success and retained as specified after failure.
+- [ ] Real OverlayFS fixtures: additions, modifications, deletions, opaque directories,
+  renames, symlinks, non-UTF-8 names and metadata-only changes produce the expected records.
+- [ ] The same Compose writes produce the same records as the scan-based list did, apart
+  from the copied-up-file decision.
+- [ ] Listing cost follows the size of the upper layer: a large unchanged source lists quickly.
+- [ ] Write back, discard, busy mounts, full disk and interrupted runs behave as before.
+- [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
 
@@ -146,24 +122,54 @@ across all of this work.
   navigation and Console restart, including failed runs with usable file reports.
 - [ ] Check the result on desktop and narrow screens; preserve recording downloads and byte totals.
 
-## Milestone 4: Keep a run's files with the run
+## Milestone 4: Give systemd services the same overlays
 
 **Work items**
 
-- [ ] Add a keep-with-the-run disposition beside write back and discard in `host-filesystem`.
-- [ ] In finalization, reuse the unmount and upper-layer inspection. Copy the transfer
-  list into a folder inside the run and record the removal list. Leave the source untouched.
-- [ ] Remove the temporary view folder only after the copy is verified. A failed copy
-  preserves the upper data, as a failed write back does.
-- [ ] Record the disposition and the kept location in the file-change report.
-- [ ] Add one Console configuration field selecting write back or keep with the run,
-  default write back. Pass it to Compose and systemd runs.
+- [ ] Read each unit's declared writable binds: from the app's settings for services
+  Console creates, and from the unit file and its drop-ins through the service manager
+  for your own unit files. Reuse the existing input copies; add no unit-file parser.
+- [ ] Mount one overlay per writable bind before any unit starts, through the shared
+  lifecycle. Point each bind at its merged view with an owned property or drop-in, keeping
+  its app path and access.
+- [ ] Delete the automatic same-path bind of a created service's working directory.
+- [ ] Add a test that the Dora coordinator and daemon keep `/runtime` under their
+  declared output bind.
+- [ ] Review lists your own unit files as partly tracked: only their declared binds are.
+- [ ] Stop all attempted units and release their hold on the views before unmounting.
+  Then reuse milestone 2's listing and the shared write policy.
+- [ ] Extend the systemd run report with the shared file-change result. Keep recording
+  checks, host `/dev/shm` observation and machine snapshots unchanged.
+- [ ] Carry ownership records into interrupted-run reset: stop units, then discard leftover views.
+
+**Validation**
+
+- [ ] Real created services and unit files see their views at their app paths; writes
+  stay isolated during the run and reach the source after write back.
+- [ ] Equivalent Compose and systemd fixtures produce equivalent change records.
+- [ ] A created service whose working directory has no mount under it fails with
+  systemd's own error; Dora's system apps start unchanged.
+- [ ] Preparation rollback, cancellation before and during startup, busy views, report-save
+  failure and Console restart.
+- [ ] Build unprivileged; elevate only capability-required test executables. All owned
+  mounts and units are gone after success and kept as specified after failure.
+
+## Milestone 5: Keep a run's files with the run
+
+**Work items**
+
+- [ ] Add keep with the run beside write back and discard in `host-filesystem`: copy each
+  upper layer's files into the run folder and record its deletions. Leave the source untouched.
+- [ ] Remove the view's run layer only after the copy is verified. A failed copy keeps the
+  upper data, as a failed write back does.
+- [ ] Record the policy and the kept location in the file-change report.
+- [ ] Add one Console setting selecting write back or keep with the run, default write back.
+  Pass it to Compose and systemd runs.
 - [ ] Show the policy at Review and the kept location with the result. Add no file browser.
 - [ ] Add a download action for kept files and log dumps as one new kind on the
   authenticated artifact route. The request names a saved change-list entry or a program,
-  never a path. The server resolves its raw name bytes and opens it only inside the run's
-  kept-files or log folder. Extend the existing safe open to take raw name bytes.
-  Send every file as an attachment with an encoded filename and a plain fallback.
+  never a path. The server opens the file only inside the run's kept-files or log folder,
+  by its raw name bytes. Send every file as an attachment with an encoded filename.
 
 **Validation**
 
@@ -171,8 +177,8 @@ across all of this work.
 - [ ] The source folder is byte-identical before and after a keep run.
 - [ ] Deletions appear in the report and remove nothing.
 - [ ] A second run starts from the original source and keeps its own separate files.
-- [ ] Full disk and an interrupted copy preserve the upper data and block verified cleanup.
-- [ ] The view folder and the run folder on different filesystems.
+- [ ] Full disk and an interrupted copy keep the upper data and block verified cleanup.
+- [ ] The run layer and the run folder on different filesystems.
 - [ ] A kept file, one with a non-UTF-8 name and a log dump download intact. Requests for
   Console's run records, another run's entries, traversal and symlink escapes are refused.
   A kept HTML file downloads and never renders in Console.
@@ -182,8 +188,7 @@ across all of this work.
 
 **Work items**
 
-- [ ] Publish focused implementation PRs in the order above. Keep the shared extraction
-  behavior-preserving and finish systemd capture before claiming backend parity.
+- [ ] Publish focused implementation PRs in the order above.
 - [ ] Record completed and deferred checks here as implementation lands.
 
 **Validation**
@@ -192,10 +197,9 @@ across all of this work.
   boundaries, formatting, default/all-feature Clippy and workspace tests, storage without
   default features and snapshot synchronization. Use release/CI profiles and locked dependencies.
 - [ ] Run ARM64 worker validation and report it separately from local results.
-- [ ] Qualify packaged systemd mount visibility, OverlayFS backing and capabilities on
-  a real target. Unit tests alone do not establish this deployment contract.
+- [ ] Qualify systemd view visibility, OverlayFS backing and capabilities on a real
+  packaged target. Unit tests alone do not establish this deployment contract.
 - [ ] Keep Holoscan, CUDA/GPU/IPC and sensor qualification explicit separate work.
 
 Design validation: source/guide review, local links, SVG XML/rendering and whitespace checks pass.
-Runtime behavior remains unverified; the unchecked milestone checks above define acceptance.
 Runtime checks above are deferred until implementation; this design PR changes documentation only.
