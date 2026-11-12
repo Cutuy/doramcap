@@ -1,7 +1,7 @@
 # Overlays for writable mounts: implementation plan
 
 Created November 11, 2026. Updated November 11, 2026: decisions from the plan review recorded.
-Status: milestone 1 implemented in review ([#318](https://github.com/Cutuy/doramcap/pull/318)),
+Status: milestone 1 implemented and validated, in review ([#318](https://github.com/Cutuy/doramcap/pull/318)),
 milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
 [Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
@@ -28,28 +28,31 @@ across all of this work.
 
 **Work items**
 
-- [ ] Move the existing overlay trees, mapping, direct upper actions, metadata
+- [x] Move the existing overlay trees, mapping, direct upper actions, metadata
   traversal, record readers/writers and schema into `host-filesystem`. Keep this crate
   independent of Docker, workloads and `orchestrator`.
-- [ ] Put concrete shared workflow steps in `workload-lifecycle`. Extract the common
+- [x] Put concrete shared workflow steps in `workload-lifecycle`. Extract the common
   capture/finalization sequence from Compose and use it without a plugin framework.
-- [ ] Keep Docker socket namespace verification, Engine layer diffs, volume discovery
+- [x] Keep Docker socket namespace verification, Engine layer diffs, volume discovery
   and owned-container checks in `docker-engine`. Supply their observations to the common report.
-- [ ] Replace Docker-specific mount input types at the shared boundary with generated
+- [x] Observe stopped-container inspection, layer diffs and volume re-resolution in
+  one Docker workflow step. Preserve its producer dependency into shared collection.
+- [x] Replace Docker-specific mount input types at the shared boundary with generated
   source/consumer/access records. Keep propagation and SELinux validation in the Docker adapter.
-- [ ] Preserve `doramcap.filesystem.v1` record tags, path bytes, existing category values,
+  New source/observation strings use empty values for absent paths and reasons.
+- [x] Preserve `doramcap.filesystem.v1` record tags, path bytes, existing category values,
   overlay/checkpoint layouts, reset behavior, write-back/discard and Compose step lineage.
   Update owners, public names, callers, API doc comments and boundary rules together; add no forwarding aliases.
-- [ ] Reuse the repository's existing dependencies and implementations. No new external
+- [x] Reuse the repository's existing dependencies and implementations. No new external
   crate or custom capture algorithm is selected by this plan.
 
 **Validation**
 
-- [ ] Existing real OverlayFS cases pass after the move: isolation, shared aliases,
+- [x] Existing real OverlayFS cases pass after the move: isolation, shared aliases,
   additions, modifications, deletion/opaque directories, write-back and discard.
-- [ ] Preserve busy-mount, full-disk, external-lower-change and interrupted-apply behavior.
-- [ ] Existing Compose file-change manifests and independent readback remain compatible.
-- [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
+- [x] Preserve busy-mount, full-disk, external-lower-change and interrupted-apply behavior.
+- [x] Existing Compose file-change manifests and independent readback remain compatible.
+- [x] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
 
 ## Milestone 2: Read the change list from the uppers
 
@@ -163,6 +166,9 @@ across all of this work.
   shared lifecycle. Point each mount at its overlay directory with an owned property or
   drop-in, keeping the path the app sees and its read-only or writable setting.
 - [ ] Delete the mount Console adds for a created service's undeclared working directory.
+- [ ] The shared steps keep their `workload_docker::compose::…` IDs from milestone 1,
+  preserving Compose lineage. Before systemd runs them, agree with the user whether to
+  give them neutral IDs; a rename changes new Compose runs' step identity.
 - [ ] Check that each declared working directory exists where its app will run: when
   Review is produced and again before anything is mounted or started. Fail with the app
   and the directory. Skip units that write `WorkingDirectory=-/path`.
