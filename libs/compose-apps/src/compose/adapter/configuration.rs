@@ -11,6 +11,9 @@ use crate::compose::{
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, path::Path, time::Duration};
 
+/// Docker driver used when a service leaves logging unspecified.
+const DEFAULT_LOG_DRIVER: &str = "journald";
+
 /// Rendered Compose configuration and the inputs used to produce it.
 pub(crate) struct NormalizedCompose {
     pub(crate) model: Value,
@@ -148,6 +151,7 @@ impl ComposeConfiguration<'_> {
         let artifacts = tokio::fs::canonicalize(&input.artifacts).await?;
         let manifest = artifacts.join(format!("{}.compose.json", project.key));
         let mut diagnostics = Vec::new();
+        let mut warnings = Vec::new();
         let mut policy_changes = Vec::new();
         if !normalized.stderr.trim().is_empty() {
             diagnostics.push(normalized.stderr);
@@ -202,6 +206,18 @@ impl ComposeConfiguration<'_> {
             .ok_or_else(|| invalid("resolved Compose has no services"))?;
         if model_services.is_empty() {
             return Err(crate::compose::Error::EmptySelection);
+        }
+        // Check the Docker host before freezing a journal-dependent launch.
+        let journal_services: Vec<_> = model_services
+            .iter()
+            .filter(|(_, service)| {
+                service.get("logging").is_none()
+                    || service["logging"]["driver"] == DEFAULT_LOG_DRIVER
+            })
+            .map(|(name, _)| name.as_str())
+            .collect();
+        if !journal_services.is_empty() {
+            self.validate_journal(&journal_services.join(", ")).await?;
         }
         // Recognize one-shot services declared explicitly or through completion dependencies.
         let mut completed = project.completed_services.clone();
@@ -303,6 +319,16 @@ impl ComposeConfiguration<'_> {
             let object = service
                 .as_object_mut()
                 .ok_or_else(|| invalid("invalid resolved service"))?;
+            if object.contains_key("logging") {
+                warnings.push(format!(
+                    "{service_name}: logging configured by project; Console will not collect its logs"
+                ));
+            } else {
+                let logging = json!({"driver": DEFAULT_LOG_DRIVER});
+                policy_changes.push(json!({"service":service_name,"field":"logging",
+                    "original":null,"effective":logging,"reason":"application output goes to the host journal"}));
+                object.insert("logging".into(), logging);
+            }
             object.remove("build");
             object.remove("profiles");
             object.remove("pull_policy");
@@ -366,6 +392,7 @@ impl ComposeConfiguration<'_> {
             sha256: String::new(),
             services,
             diagnostics,
+            warnings,
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
@@ -419,6 +446,40 @@ impl ComposeConfiguration<'_> {
         )
         .await?;
         Ok(plan)
+    }
+
+    /// Require a registered driver and a reachable journal on the verified local Docker host.
+    /// Review and fresh Start resolution both call this before mounts or container creation.
+    async fn validate_journal(&self, services: &str) -> Result<()> {
+        let info = self
+            .adapter
+            .engine
+            .client()
+            .info()
+            .await
+            .map_err(|error| engine("inspect Docker journal support", error))?;
+        if !info
+            .plugins
+            .and_then(|plugins| plugins.log)
+            .is_some_and(|drivers| drivers.iter().any(|driver| driver == DEFAULT_LOG_DRIVER))
+        {
+            return Err(invalid(format!(
+                "{services}: Docker does not provide the journald logging driver"
+            )));
+        }
+        docker_engine::namespace::verify_namespace(self.adapter.socket_path())
+            .await
+            .map_err(|error| {
+                invalid(format!(
+                    "{services}: cannot verify the Docker host for journal logging: {error}"
+                ))
+            })?;
+        let socket = std::os::unix::net::UnixDatagram::unbound()?;
+        socket.connect(&self.adapter.journal_socket).map_err(|error| invalid(format!(
+            "{services}: journald logging requires a reachable journal on the Docker host ({}): {error}",
+            self.adapter.journal_socket.display()
+        )))?;
+        Ok(())
     }
 }
 struct AppOverlay {

@@ -250,7 +250,7 @@ export class ConsoleService implements ConsoleBackend {
         })),
         systemApps: appOptions(this.config.apps.filter((app) => app.id !== RUN_SHM_APP), chosen, this.config.doraApps),
         recordings: outputs(apps),
-        warnings: [],
+        warnings: inspected.plan?.warnings ?? [],
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
       });
       this.prepared = {

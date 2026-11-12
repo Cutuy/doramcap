@@ -18,6 +18,8 @@ The shm app starts first and stops last. Explicit private settings remain native
 
 Inspection and launch preparation share resolution; the caller compares their
 configuration snapshots before reservation and startup.
+Application output uses the [Compose app logging policy](../compose-apps);
+recent failure output is read through Docker's logs API.
 
 ![Compose resolution and launch](docs/103126-compose-resolution.svg)
 

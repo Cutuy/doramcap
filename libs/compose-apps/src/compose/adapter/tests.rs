@@ -53,6 +53,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
     let _listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 120).unwrap(),
+        journal_socket: root.path().join("journal.sock"),
         starting: Default::default(),
     };
     for (run, key) in [("invalid/run", "workload"), ("valid", "invalid/key")] {
@@ -190,6 +191,7 @@ fn state() -> ComposeProjectState {
                 },
             )]),
             diagnostics: vec![],
+            warnings: vec![],
             remove_volumes: false,
         }),
         containers: vec![Container {
@@ -296,20 +298,49 @@ pub(crate) fn test_engine_status(
     root: &Path,
     responses: Vec<(&'static str, u16, Value)>,
 ) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
+    test_engine_with_info(
+        root,
+        responses,
+        json!({"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["journald","json-file"]}}),
+    )
+}
+
+fn test_engine_with_info(
+    root: &Path,
+    responses: Vec<(&'static str, u16, Value)>,
+    info: Value,
+) -> (DockerAdapter, tokio::task::JoinHandle<()>) {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let socket = root.join("engine.sock");
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+    let journal_socket = root.join("journal.sock");
+    let journal = std::os::unix::net::UnixDatagram::bind(&journal_socket).unwrap();
     let adapter = DockerAdapter {
         engine: Engine::new(socket.to_str().unwrap(), 1).unwrap(),
+        journal_socket,
         starting: Default::default(),
     };
     let server = tokio::spawn(async move {
-        for (path, status, response) in responses {
+        let _journal = journal;
+        let mut responses = responses.into_iter().peekable();
+        while let Some((path, status, response)) = responses.peek() {
             let (stream, _) = listener.accept().await.unwrap();
             let mut stream = BufReader::new(stream);
             let mut line = String::new();
-            stream.read_line(&mut line).await.unwrap();
-            assert!(line.contains(path), "unexpected Engine request: {line}");
+            if stream.read_line(&mut line).await.unwrap() == 0 {
+                // Namespace verification opens the socket only to read peer credentials.
+                continue;
+            }
+            let negotiation = line.starts_with("HEAD /_ping ");
+            let daemon_info = line.starts_with("GET ")
+                && line
+                    .split_whitespace()
+                    .nth(1)
+                    .is_some_and(|target| target.ends_with("/info"));
+            assert!(
+                negotiation || daemon_info || line.contains(*path),
+                "unexpected Engine request: {line}"
+            );
             loop {
                 line.clear();
                 assert_ne!(stream.read_line(&mut line).await.unwrap(), 0);
@@ -317,7 +348,18 @@ pub(crate) fn test_engine_status(
                     break;
                 }
             }
-            let body = if status == 204 {
+            // Compose may negotiate before rendering; this is independent of Engine facts.
+            if negotiation {
+                stream.get_mut().write_all(format!(
+                    "HTTP/1.1 200 OK\r\nAPI-Version: {}\r\nOSType: linux\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    bollard::API_DEFAULT_VERSION
+                ).as_bytes()).await.unwrap();
+                continue;
+            }
+            let status = if daemon_info { 200 } else { *status };
+            let body = if daemon_info {
+                info.to_string()
+            } else if status == 204 {
                 String::new()
             } else {
                 response.to_string()
@@ -325,9 +367,49 @@ pub(crate) fn test_engine_status(
             stream.get_mut().write_all(format!(
                 "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",body.len()
             ).as_bytes()).await.unwrap();
+            if !daemon_info {
+                let _ = responses.next();
+            }
         }
     });
     (adapter, server)
+}
+
+#[tokio::test]
+async fn engine_fixture_negotiation_preserves_expected_requests() {
+    use tokio::io::AsyncReadExt;
+
+    // Arrange: the image response must remain available after Compose's API probe.
+    let root = tempfile::tempdir().unwrap();
+    let (adapter, server) = test_engine(
+        root.path(),
+        vec![("/images/example:local/json", json!({"Id":"sha256:pinned"}))],
+    );
+    let mut probe = tokio::net::UnixStream::connect(root.path().join("engine.sock"))
+        .await
+        .unwrap();
+
+    // Act: reproduce the negotiation and daemon-info requests made on hosted runners.
+    probe
+        .write_all(b"HEAD /_ping HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = String::new();
+    probe.read_to_string(&mut response).await.unwrap();
+
+    // Assert: negotiation succeeds without consuming the expected image request.
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(response.contains(&format!("API-Version: {}", bollard::API_DEFAULT_VERSION)));
+    let info = adapter.engine.client().info().await.unwrap();
+    assert_eq!(info.logging_driver.as_deref(), Some("json-file"));
+    let image = adapter
+        .engine
+        .client()
+        .inspect_image("example:local")
+        .await
+        .unwrap();
+    assert_eq!(image.id.as_deref(), Some("sha256:pinned"));
+    server.await.unwrap();
 }
 
 #[tokio::test]
@@ -643,4 +725,189 @@ files { source: "settings.pbtxt" target: "/config/settings.pbtxt" }"#;
     );
     assert_ne!(first.input_hashes, second.input_hashes);
     server.await.unwrap();
+}
+
+#[tokio::test]
+async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
+    for logging in [
+        None,
+        Some(json!({"driver":"local", "options":{"max-size":"5m"}})),
+        Some(json!({"driver":"none"})),
+        Some(json!({"driver":"journald", "options":{"tag":"project-tag"}})),
+        Some(json!({"options":{"max-size":"10m"}})),
+        Some(json!({})),
+    ] {
+        // Arrange: Compose renders a real source file; Engine supplies only image/resource facts.
+        let root = tempfile::tempdir().unwrap();
+        let mut service = json!({"image":"example:local", "network_mode":"none"});
+        if let Some(logging) = &logging {
+            service["logging"] = logging.clone();
+        }
+        let source = serde_json::to_vec(&json!({"services":{"worker":service}})).unwrap();
+        let path = root.path().join("compose.yaml");
+        std::fs::write(&path, &source).unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+                ("/containers/json", json!([])),
+                ("/networks", json!([])),
+                ("/volumes", json!({"Volumes":[]})),
+            ],
+        );
+
+        // Act: freeze the same manifest used by inspection and launch.
+        let plan = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await
+            .unwrap();
+        let bytes = std::fs::read(&plan.manifest).unwrap();
+        let model: Value = serde_json::from_slice(&bytes).unwrap();
+        let resolution: Value = serde_json::from_slice(
+            &std::fs::read(root.path().join("workload.resolution.json")).unwrap(),
+        )
+        .unwrap();
+        let changes: Vec<_> = resolution["policy_changes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|change| change["field"] == "logging")
+            .collect();
+
+        // Assert: native logging survives verbatim and only the absent setting gets a default.
+        assert_eq!(
+            model["services"]["worker"]["logging"],
+            logging
+                .clone()
+                .unwrap_or_else(|| json!({"driver":"journald"}))
+        );
+        assert_eq!(std::fs::read(path).unwrap(), source);
+        assert_eq!(plan.sha256, digest(&bytes));
+        if logging.is_some() {
+            assert!(changes.is_empty());
+            assert!(plan.warnings.iter().any(|message| message
+                == "worker: logging configured by project; Console will not collect its logs"));
+        } else {
+            assert!(plan.warnings.is_empty());
+            assert_eq!(changes.len(), 1);
+            assert_eq!(changes[0]["original"], Value::Null);
+            assert_eq!(changes[0]["effective"], json!({"driver":"journald"}));
+        }
+        server.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn resolution_rechecks_journal_before_writing_a_launch_manifest() {
+    // Arrange: a local Engine advertises journald and the journal socket initially accepts clients.
+    let root = tempfile::tempdir().unwrap();
+    let source = b"services:\n  worker:\n    image: example:local\n";
+    std::fs::write(root.path().join("compose.yaml"), source).unwrap();
+    let (adapter, server) = test_engine(
+        root.path(),
+        vec![
+            ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+            ("/containers/json", json!([])),
+            ("/networks", json!([])),
+            ("/volumes", json!({"Volumes":[]})),
+            // Keep the Engine available for fresh Start resolution.
+            ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+        ],
+    );
+    let input = ResolveInput {
+        run: "run".into(),
+        artifacts: root.path().to_str().unwrap().into(),
+        project: Some(input_project(root.path())),
+        repository_root: None,
+    };
+
+    // Act / Assert: Review resolves with the journal available.
+    let plan = adapter
+        .configuration()
+        .resolve(input.clone())
+        .await
+        .unwrap();
+    assert!(std::fs::read(&plan.manifest).is_ok());
+    std::fs::remove_file(&plan.manifest).unwrap();
+    std::fs::remove_file(&adapter.journal_socket).unwrap();
+
+    // Act: the journal goes away between Review and fresh Start preparation.
+    let error = adapter.configuration().resolve(input).await.unwrap_err();
+
+    // Assert: no new manifest or runtime mutation is reached.
+    assert!(
+        error
+            .to_string()
+            .contains("worker: journald logging requires a reachable journal"),
+        "{error}"
+    );
+    assert!(!Path::new(&plan.manifest).exists());
+    assert_eq!(
+        std::fs::read(root.path().join("compose.yaml")).unwrap(),
+        source
+    );
+    server.abort();
+}
+
+#[tokio::test]
+async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging() {
+    for logging in [None, Some(json!({})), Some(json!({"driver":"json-file"}))] {
+        // Arrange: a Docker host without journald; every Engine request is read-only.
+        let root = tempfile::tempdir().unwrap();
+        let mut service = json!({"image":"example:local"});
+        if let Some(logging) = &logging {
+            service["logging"] = logging.clone();
+        }
+        std::fs::write(
+            root.path().join("compose.yaml"),
+            serde_json::to_vec(&json!({"services":{"worker":service}})).unwrap(),
+        )
+        .unwrap();
+        let (adapter, server) = test_engine_with_info(
+            root.path(),
+            vec![
+                (
+                    "/images/example:local/json",
+                    200,
+                    json!({"Id":"sha256:pinned"}),
+                ),
+                ("/containers/json", 200, json!([])),
+                ("/networks", 200, json!([])),
+                ("/volumes", 200, json!({"Volumes":[]})),
+            ],
+            json!({"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["json-file"]}}),
+        );
+
+        // Act: use the shared Review/Start resolver.
+        let result = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await;
+
+        // Assert: only journal-dependent services require the host journal.
+        if logging.is_none() {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("worker: Docker does not provide the journald logging driver")
+            );
+            assert!(!root.path().join("workload.compose.json").exists());
+            server.abort();
+        } else {
+            assert_eq!(result.unwrap().warnings.len(), 1);
+            server.await.unwrap();
+        }
+    }
 }

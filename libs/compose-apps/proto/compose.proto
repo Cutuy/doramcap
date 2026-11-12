@@ -44,10 +44,12 @@ message ResolvedComposeProject {
   string sha256 = 5;
   // Selected service names mapped to expected image and lifecycle state.
   map<string, ComposeService> services = 6;
-  // Resolution warnings and applied policy changes.
+  // Detailed resolution notes and applied policy changes.
   repeated string diagnostics = 7;
   // Whether teardown removes owned named volumes.
   bool remove_volumes = 8;
+  // User-facing resolution warnings, displayed directly at Review.
+  repeated string warnings = 9;
 }
 
 // Read-only view of one bind mount in a resolved Compose manifest.
