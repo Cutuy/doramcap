@@ -2,9 +2,8 @@
 use super::ComposeRunReport;
 use compose_apps::compose::{Diagnostics, adapter::private_write, error::invalid};
 use docker_engine::docker_proto::OwnedContainer;
-use host_filesystem::filesystem_proto::HostView;
 use host_filesystem::{
-    filesystem::{CollectInput, FilesystemBaseline, FilesystemChanges},
+    filesystem::{CollectInput, FilesystemChanges, FilesystemSources},
     overlay::{OverlayResults, OverlaySet},
 };
 use orchestrator::{LocalExecutor, Step};
@@ -19,7 +18,7 @@ use workload_lifecycle::capture::{self, CaptureFinalization};
 pub struct FinalizeInput {
     pub id: String,
     pub artifacts: PathBuf,
-    pub baseline: FilesystemBaseline,
+    pub sources: FilesystemSources,
     pub overlays: Option<OverlaySet>,
     pub shutdown: compose_apps::compose::Shutdown,
     pub project: compose_apps::compose::ResolvedComposeProject,
@@ -28,11 +27,11 @@ pub struct FinalizeInput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ObserveDockerFilesystemInput {
     pub project: compose_apps::compose::ResolvedComposeProject,
-    pub baseline: FilesystemBaseline,
-    pub host_views: Vec<HostView>,
+    pub sources: FilesystemSources,
+    pub overlays: Option<OverlaySet>,
 }
 
-/// Verify stopped owned containers, save their layer changes, and re-resolve volumes.
+/// Verify stopped owned containers, save their layer changes, without inspecting named-volume contents.
 /// Errors retain resources and are recorded before shared collection starts.
 pub struct ObserveDockerFilesystem {
     pub adapter: Rc<compose_apps::compose::DockerAdapter>,
@@ -60,18 +59,20 @@ impl Step for ObserveDockerFilesystem {
         let container_layers = docker_engine::filesystem::container_changes(
             &self.adapter.engine,
             &containers,
-            &input.baseline.directory,
+            &input.sources.directory,
         )
         .await
         .map_err(|error| orchestrator::Error::message(error.to_string()))?;
-        let observations =
-            docker_engine::filesystem::volume_observations(&self.adapter.engine, &input.baseline)
-                .await
-                .map_err(|error| orchestrator::Error::message(error.to_string()))?;
+        let mut sources = input.sources;
+        sources.excluded.extend(containers.iter().map(|container| {
+            PathBuf::from(format!(
+                "{}-{}.stopped.json",
+                input.project.key, container.id
+            ))
+        }));
         Ok(CollectInput {
-            baseline: input.baseline,
-            host_views: input.host_views,
-            observations,
+            sources,
+            overlays: input.overlays,
             container_layers: Some(container_layers),
         })
     }
@@ -83,7 +84,7 @@ pub struct FinalizedRun {
     pub filesystem_results: Option<OverlayResults>,
     /// Writers stopped, filesystem evidence durable, and overlays finalized.
     pub can_remove: bool,
-    /// Retain all volumes if their before/after metadata scans are incomplete.
+    /// Retain volumes when collection failed; untracked volume coverage does not block removal.
     pub preserve_volumes: bool,
 }
 
@@ -109,17 +110,8 @@ impl Step for FinalizeRun {
                 let collect = executor
                     .run::<ObserveDockerFilesystem>(ObserveDockerFilesystemInput {
                         project: input.project.clone(),
-                        baseline: input.baseline.clone(),
-                        host_views: input
-                            .overlays
-                            .as_ref()
-                            .into_iter()
-                            .flat_map(|o| &o.trees)
-                            .map(|tree| HostView {
-                                source: tree.source.to_string_lossy().into(),
-                                view: tree.merged.to_string_lossy().into(),
-                            })
-                            .collect(),
+                        sources: input.sources.clone(),
+                        overlays: input.overlays.clone(),
                     })
                     .await?;
                 Ok::<_, orchestrator::Error>(
@@ -163,15 +155,7 @@ impl Step for FinalizeRun {
             evidence_durable = false;
         }
         let filesystem_changes = changes;
-        let preserve_volumes = filesystem_changes
-            .as_ref()
-            .is_none_or(|c| !c.named_volumes.coverage_complete);
-        if preserve_volumes {
-            self.failure(
-                "filesystem changes",
-                "named-volume evidence incomplete; volumes retained",
-            );
-        }
+        let preserve_volumes = filesystem_changes.is_none();
         Ok(FinalizedRun {
             can_remove: evidence_durable
                 && (input.overlays.is_none() || filesystem_results.is_some()),

@@ -239,6 +239,7 @@ impl Execution {
                                     capture_parts(Some(system_config::observe(&data)));
                                 Ok(protocol::Inspection {
                                     plan: None,
+                                    filesystem_notes: Vec::new(),
                                     backend: Some(protocol::inspection::Backend::SystemdSnapshot(
                                         snapshot,
                                     )),
@@ -273,6 +274,7 @@ impl Execution {
                         .await;
                     let (machine, machine_error) = capture_parts(Some(machine));
                     Ok(protocol::Inspection {
+                        filesystem_notes: resolved.plan.diagnostics.clone(),
                         plan: Some(resolved.plan),
                         backend: Some(protocol::inspection::Backend::ComposeSnapshot(
                             resolved.snapshot,

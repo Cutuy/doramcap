@@ -2,102 +2,27 @@
 use crate::{
     Engine, Result,
     docker_proto::{OwnedContainer, VolumeMount},
-    error::{absent, engine, invalid},
+    error::{engine, invalid},
 };
 use host_filesystem::{
-    filesystem::{CategoryChanges, ChangeWriter, FilesystemBaseline, HOST_SHM_SOURCE},
-    filesystem_proto::{
-        ChangeKind, FileChange, MetadataSource, SourceObservation, StorageCategory,
-    },
+    filesystem::{CategoryChanges, ChangeKind, ChangeWriter, FileChange, StorageCategory},
+    filesystem_proto::MetadataSource,
 };
 use std::path::{Path, PathBuf};
 
-async fn volume_path(adapter: &Engine, name: &str) -> Result<Option<PathBuf>> {
-    match adapter.docker.inspect_volume(name).await {
-        Ok(v)
-            if v.driver == "local"
-                && v.options.is_empty()
-                && Path::new(&v.mountpoint).is_absolute() =>
-        {
-            Ok(Some(PathBuf::from(v.mountpoint)))
-        }
-        Ok(v) if v.driver == "local" => {
-            if v.options.get("o").is_some_and(|options| {
-                options
-                    .split(',')
-                    .any(|option| matches!(option, "bind" | "rbind"))
-            }) && let Some(source) = v.options.get("device")
-                && host_filesystem::is_host_shm_source(Path::new(source))?
-            {
-                return Ok(Some(PathBuf::from(source)));
-            }
-            Err(invalid(
-                "volume driver/options do not support direct local metadata inspection",
-            ))
-        }
-        Ok(_) => Err(invalid(
-            "volume driver/options do not support direct local metadata inspection",
-        )),
-        Err(e) if absent(&e) => Ok(None),
-        Err(e) => Err(engine("inspect volume metadata", e)),
-    }
-}
-
-/// Resolve native volume metadata sources before the shared baseline step.
-/// Unsupported drivers retain their diagnostic as incomplete coverage.
-pub async fn volume_sources(
-    adapter: &Engine,
-    mounts: Vec<VolumeMount>,
-) -> Result<Vec<MetadataSource>> {
-    let mut sources = Vec::new();
-    for mount in mounts {
-        let (path, reason) = match volume_path(adapter, &mount.name).await {
-            Ok(Some(path)) if host_filesystem::is_host_shm_source(&path)? => {
-                (Some(path), Some(HOST_SHM_SOURCE.into()))
-            }
-            Ok(path) => (path, None),
-            Err(error) => (None, Some(error.to_string())),
-        };
-        sources.push(MetadataSource {
+/// Preserve declared named volumes as untracked sources without inspecting their contents.
+pub fn volume_sources(mounts: Vec<VolumeMount>) -> Vec<MetadataSource> {
+    mounts
+        .into_iter()
+        .map(|mount| MetadataSource {
             category: host_filesystem::filesystem_proto::StorageCategory::NamedVolume as i32,
             identity: mount.name,
-            path: path
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            reason: reason.unwrap_or_default(),
+            path: String::new(),
+            reason: "not tracked: Docker named volume".into(),
             read_only: mount.read_only,
             consumer: format!("{}:{}", mount.consumer, mount.target),
-        });
-    }
-    Ok(sources)
-}
-/// Re-resolve complete named-volume baselines after writers stop.
-/// Missing and unsupported sources remain explicit observations.
-pub async fn volume_observations(
-    adapter: &Engine,
-    baseline: &FilesystemBaseline,
-) -> Result<Vec<SourceObservation>> {
-    let mut observations = Vec::new();
-    for identity in baseline
-        .pending_sources(StorageCategory::NamedVolume)
-        .await?
-    {
-        let (path, reason) = match volume_path(adapter, &identity).await {
-            Ok(Some(path)) if host_filesystem::is_host_shm_source(&path)? => {
-                (Some(path), Some(HOST_SHM_SOURCE.into()))
-            }
-            Ok(path) => (path, None),
-            Err(error) => (None, Some(error.to_string())),
-        };
-        observations.push(SourceObservation {
-            identity,
-            path: path
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            reason: reason.unwrap_or_default(),
-        });
-    }
-    Ok(observations)
+        })
+        .collect()
 }
 /// Verify all supplied owned containers are stopped, then stream their Engine diffs.
 /// Errors preserve runtime resources; the caller has already verified ownership.
@@ -150,11 +75,11 @@ pub async fn container_changes(
             };
             output
                 .emit(FileChange {
-                    category: StorageCategory::ContainerLayer as i32,
+                    category: StorageCategory::ContainerLayer,
                     source: container.id.clone(),
                     consumers: vec![container.consumer.clone()],
-                    path: change.path.into_bytes(),
-                    kind: kind as i32,
+                    path: PathBuf::from(change.path),
+                    kind,
                     before: None,
                     after: None,
                 })
@@ -170,12 +95,15 @@ mod tests {
     use super::*;
     use host_filesystem::filesystem;
     use host_filesystem::{
-        filesystem::{BaselineInput, CollectInput, FileChanges},
+        filesystem::{CollectInput, FileChanges, SourcesInput},
         filesystem_proto::DirectoryMount as BindMount,
     };
-    async fn capture(adapter: &Engine, input: BaselineInput) -> Result<FilesystemBaseline> {
+    async fn capture(
+        adapter: &Engine,
+        input: SourcesInput,
+    ) -> Result<filesystem::FilesystemSources> {
         let _ = adapter;
-        Ok(filesystem::capture(input).await?)
+        Ok(filesystem::prepare_sources(input).await?)
     }
     async fn collect(
         adapter: &Engine,
@@ -183,8 +111,7 @@ mod tests {
         containers: Vec<OwnedContainer>,
     ) -> Result<filesystem::FilesystemChanges> {
         input.container_layers =
-            Some(container_changes(adapter, &containers, &input.baseline.directory).await?);
-        input.observations = volume_observations(adapter, &input.baseline).await?;
+            Some(container_changes(adapter, &containers, &input.sources.directory).await?);
         Ok(filesystem::collect(input).await?)
     }
     #[tokio::test]
@@ -193,10 +120,9 @@ mod tests {
         use serde_json::json;
         // Arrange: read-only and writable aliases share the same baseline.
         let root = tempfile::tempdir().unwrap();
-        let source = root.path().join("source");
+        let source = root.path().join("artifacts/output");
         let artifacts = root.path().join("artifacts");
-        std::fs::create_dir(&source).unwrap();
-        std::fs::create_dir(&artifacts).unwrap();
+        std::fs::create_dir_all(&source).unwrap();
         let (adapter, server) = test_engine(
             root.path(),
             vec![
@@ -218,7 +144,8 @@ mod tests {
         };
         let baseline = capture(
             &adapter,
-            BaselineInput {
+            SourcesInput {
+                excluded: vec![],
                 artifacts,
                 bind_mounts: vec![
                     bind("dc-project/reader", "/in", true),
@@ -235,9 +162,8 @@ mod tests {
         let changes = collect(
             &adapter,
             CollectInput {
-                host_views: vec![],
-                baseline,
-                observations: vec![],
+                overlays: None,
+                sources: baseline,
                 container_layers: None,
             },
             vec![OwnedContainer {
@@ -277,12 +203,12 @@ mod tests {
             .unwrap();
         let mut result = None;
         while let Some(change) = host.next_change().await.unwrap() {
-            if change.path == b"result" {
+            if change.path == Path::new("result") {
                 result = Some(change);
             }
         }
         let result = result.unwrap();
-        assert_eq!(result.kind(), ChangeKind::Added);
+        assert_eq!(result.kind, ChangeKind::Added);
         assert_eq!(
             result.consumers,
             ["dc-project/reader:/in", "dc-project/writer:/out"]
@@ -292,7 +218,7 @@ mod tests {
             .unwrap();
         let result = layers.next_change().await.unwrap().unwrap();
         assert_eq!(result.consumers, ["dc-project/app"]);
-        assert_eq!(result.path, b"/result");
+        assert_eq!(result.path, Path::new("/result"));
         assert!(layers.next_change().await.unwrap().is_none());
         server.await.unwrap();
     }
@@ -312,7 +238,8 @@ mod tests {
         );
         let baseline = capture(
             &adapter,
-            BaselineInput {
+            SourcesInput {
+                excluded: vec![],
                 artifacts: root.path().into(),
                 bind_mounts: vec![],
                 metadata_sources: vec![],
@@ -325,9 +252,8 @@ mod tests {
         let error = collect(
             &adapter,
             CollectInput {
-                host_views: vec![],
-                baseline,
-                observations: vec![],
+                overlays: None,
+                sources: baseline,
                 container_layers: None,
             },
             vec![OwnedContainer {

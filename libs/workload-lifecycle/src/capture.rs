@@ -1,19 +1,19 @@
 //! Concrete filesystem steps shared by workload backends.
 use host_filesystem::{
-    filesystem::{self, BaselineInput, CollectInput, FilesystemBaseline, FilesystemChanges},
+    filesystem::{self, CollectInput, FilesystemChanges, FilesystemSources, SourcesInput},
     overlay::{self, OverlayResults, OverlaySet},
 };
 use orchestrator::Step;
 
-/// Save pre-launch metadata without mutating sources or mounting views.
-pub struct CaptureFilesystemBaseline;
-impl Step for CaptureFilesystemBaseline {
+/// Prepare source identities and coverage without walking folders or mounting views.
+pub struct PrepareFilesystemSources;
+impl Step for PrepareFilesystemSources {
     const ID: Option<&'static str> =
         Some("workload_docker::compose::filesystem::CaptureFilesystemBaseline");
-    type Input = BaselineInput;
-    type Output = FilesystemBaseline;
+    type Input = SourcesInput;
+    type Output = FilesystemSources;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        filesystem::capture(input)
+        filesystem::prepare_sources(input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }

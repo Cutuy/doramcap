@@ -1,6 +1,6 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
-use host_filesystem::filesystem::{BaselineInput, FilesystemBaseline};
-use workload_lifecycle::capture::CaptureFilesystemBaseline;
+use host_filesystem::filesystem::{FilesystemSources, SourcesInput};
+use workload_lifecycle::capture::PrepareFilesystemSources;
 mod model;
 mod snapshot;
 pub use model::SHM_SERVICE;
@@ -82,7 +82,7 @@ pub struct PreparedRun {
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
-    pub baseline: FilesystemBaseline,
+    pub sources: FilesystemSources,
     pub dora: crate::dora::DoraApps,
     pub snapshot: ConfigurationSnapshot,
 }
@@ -360,6 +360,15 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
     for warning in &diagnostics {
         eprintln!("warning: {warning}");
     }
+    let effective = mounts::model(&plan, "filesystem manifest changed").await?;
+    diagnostics.extend(
+        host_filesystem::filesystem::coverage_notes(
+            &mounts::directories(&mounts::binds(&plan.name, &effective)?),
+            &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
+            &artifacts,
+        )
+        .await?,
+    );
     plan.diagnostics.extend(diagnostics);
     let snapshot = snapshot::capture(
         &spec,
@@ -577,23 +586,35 @@ impl PrepareRun {
     async fn prepare(&self, spec: PrepareInput) -> Result<PreparedRun> {
         let overlays = spec.filesystem.is_some();
         let resolved = resolve(&self.adapter, spec).await?;
-        let model = mounts::model(&resolved.plan, "filesystem baseline manifest changed").await?;
+        let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
         // Runtime endpoint availability is checked after execution resets the experiment.
         crate::shared_dora::validate_endpoints(resolved.run.dora_runtime.as_ref())?;
-        // Capture the filesystem baseline only for execution.
+        // Prepare identities and coverage without walking host folders.
         let executor = self
             .executor
             .upgrade()
             .ok_or_else(|| invalid("executor dropped"))?;
-        let baseline = executor
-            .run::<CaptureFilesystemBaseline>(BaselineInput {
+        let sources = executor
+            .run::<PrepareFilesystemSources>(SourcesInput {
+                excluded: [
+                    "inputs",
+                    "experiment.input.json",
+                    "experiment.compose.json",
+                    "experiment.resolution.json",
+                    "experiment.execution.json",
+                    "docker-events.jsonl",
+                    "report.json",
+                    "console-report.json",
+                ]
+                .into_iter()
+                .map(PathBuf::from)
+                .collect(),
                 bind_mounts: mounts::directories(&mounts::binds(&resolved.plan.name, &model)?),
-                metadata_sources: docker_engine::filesystem::volume_sources(
-                    &self.adapter.engine,
-                    mounts::volumes(&resolved.plan, &model)?,
-                )
-                .await?,
+                metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
+                    &resolved.plan,
+                    &model,
+                )?),
                 artifacts: resolved.artifacts.clone(),
             })
             .await
@@ -609,7 +630,7 @@ impl PrepareRun {
             mcap_services: resolved.mcap_services,
             dora: resolved.dora,
             snapshot: resolved.snapshot,
-            baseline,
+            sources,
         })
     }
 }

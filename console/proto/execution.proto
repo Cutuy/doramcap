@@ -24,6 +24,7 @@ message Inspection {
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
+  repeated string filesystem_notes = 6; // Mounts not tracked, or partly listed.
 }
 // List profiles declared by the project's Docker Compose files.
 message ComposeProfilesRequest {

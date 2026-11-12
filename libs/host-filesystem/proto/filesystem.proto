@@ -1,71 +1,29 @@
 syntax = "proto3";
 package doramcap.filesystem.v1;
 
-// Available stat metadata. Modification detection does not prove content equality.
 message FileMetadata {
-  // Unix file type and permission bits.
   uint32 mode = 1;
-  // Byte length reported by stat.
   uint64 size = 2;
-  // Owning user identifier.
   uint32 uid = 3;
-  // Owning group identifier.
   uint32 gid = 4;
-  // Modification time, split into seconds and nanoseconds.
   sint64 mtime_seconds = 5;
   sint64 mtime_nanoseconds = 6;
-  // Change time, split into seconds and nanoseconds.
   sint64 ctime_seconds = 7;
   sint64 ctime_nanoseconds = 8;
-  // Symlink destination as Unix bytes; never followed during traversal.
   optional bytes symlink = 9;
 }
-message SnapshotHeader { bool complete = 1; optional string reason = 2; uint64 entries = 3; }
-message SnapshotEntry { bytes path = 1; FileMetadata metadata = 2; }
-message SnapshotRecord {
-  oneof body { SnapshotHeader header = 1; SnapshotEntry entry = 2; }
-}
-// Storage category is retained on every record and in separate artifact files.
-enum StorageCategory {
-  STORAGE_CATEGORY_UNSPECIFIED = 0;
-  // A host file or directory bind-mounted into a workload.
-  // The source identifies the host path; change paths are relative to it.
-  HOST_BIND = 1;
-  // A Docker container's writable filesystem layer above its image.
-  // The source identifies the container; change paths are container-absolute.
-  // Bind mounts and volumes have their own categories.
-  CONTAINER_LAYER = 2;
-  // A Docker-managed persistent volume mounted by name.
-  // The source identifies the volume; change paths are relative to its root.
-  NAMED_VOLUME = 3;
-}
-// An individual path transition, retained separately as added, modified or deleted.
-enum ChangeKind {
-  CHANGE_KIND_UNSPECIFIED = 0;
-  CHANGE_KIND_ADDED = 1;
-  CHANGE_KIND_MODIFIED = 2;
-  CHANGE_KIND_DELETED = 3;
-}
-// One change with its original category, source and consumers.
+enum StorageCategory { STORAGE_CATEGORY_UNSPECIFIED = 0; HOST_BIND = 1; CONTAINER_LAYER = 2; NAMED_VOLUME = 3; }
+enum ChangeKind { CHANGE_KIND_UNSPECIFIED = 0; ADDED = 1; MODIFIED = 2; DELETED = 3; }
 message FileChange {
   StorageCategory category = 1;
-  // Host source path, volume name or container ID.
   string source = 2;
-  // Project/service/container-target associations; shared sources appear once.
   repeated string consumers = 3;
-  // Unix bytes: source-relative, or container-absolute for Engine diffs.
   bytes path = 4;
   ChangeKind kind = 5;
-  // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata before = 6;
-  // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata after = 7;
 }
-enum ActionKind {
-  ACTION_KIND_UNSPECIFIED = 0;
-  ACTION_KIND_REMOVE = 1;
-  ACTION_KIND_TRANSFER = 2;
-}
+enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }
 message FileAction { ActionKind kind = 1; bytes path = 2; }
 
 // A backend-resolved directory mount, with native access preserved by the backend.
@@ -85,19 +43,6 @@ message MetadataSource {
   // Empty when the source is available for metadata capture.
   string reason = 6;
 }
-// A post-run source resolution; an empty path means the source is absent.
-message SourceObservation {
-  string identity = 1;
-  string path = 2;
-  // Empty when available; otherwise describes an unavailable or excluded observation.
-  string reason = 3;
-}
-// Original host directory and its active per-run filesystem view.
-message HostView {
-  string source = 1;
-  string view = 2;
-}
-
 // Counts describe metadata transitions. All references are relative to one run.
 message ChangeCounts { uint64 added = 1; uint64 modified = 2; uint64 deleted = 3; }
 message CategorySummary {
@@ -108,9 +53,8 @@ message CategorySummary {
   uint64 coverage_note_count = 5;
 }
 message CategoryReport { CategorySummary summary = 1; repeated string coverage_notes = 2; }
-// Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
-enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; REPORT_CHECKPOINT_UNKNOWN = 3; }
 // Published only after all manifests and their directory have been synced.
+enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; }
 message FileChangeReport { repeated CategoryReport categories = 1; ReportState state = 2; }
 // Small completion fact; full source notes and change lists stay on disk.
 message FileChangeReference { string checkpoint = 1; repeated CategorySummary categories = 2; }

@@ -83,7 +83,7 @@ def main():
         ('reset_discards_fixed_workspace_without_launch_history', 1),
         ('shared_experiment_preserves_native_inputs_and_rejects_conflicts', 1),
         ('mixed_volume_policies_and_evidence_preservation', 1),
-        ('incomplete_volume_scan_retains_volumes', 1),
+        ('untracked_named_volume_keeps_declared_cleanup_policy', 1),
     ]
     for case, expected in cases:
         log = output / f'{case}.log'

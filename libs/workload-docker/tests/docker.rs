@@ -6,7 +6,7 @@ mod support;
 use compose_apps::experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime};
 use compose_apps::{compose::*, preparation};
 use orchestrator::Step;
-use std::os::unix::ffi::OsStringExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{cell::RefCell, collections::BTreeMap, path::Path, rc::Rc, time::Duration};
 use workload_docker::workflows::recorded_compose::finalization::{
     FinalizeRun, ObserveDockerFilesystem,
@@ -351,7 +351,7 @@ async fn multi_project_lifecycle() {
             .filesystem_changes
             .as_ref()
             .expect("filesystem collection");
-        async fn rows(path: &Path) -> Vec<host_filesystem::filesystem_proto::FileChange> {
+        async fn rows(path: &Path) -> Vec<host_filesystem::filesystem::FileChange> {
             let mut reader = host_filesystem::filesystem::FileChanges::open(path)
                 .await
                 .unwrap();
@@ -361,13 +361,11 @@ async fn multi_project_lifecycle() {
             }
             records
         }
-        use host_filesystem::filesystem_proto::{ChangeKind, StorageCategory};
+        use host_filesystem::filesystem::{ChangeKind, StorageCategory};
         let host_rows = rows(&evidence.host_binds.manifest).await;
-        assert!(
-            host_rows
-                .iter()
-                .any(|r| r.path.as_slice() == b"byte-\xff" && r.kind() == ChangeKind::Modified)
-        );
+        assert!(host_rows.iter().any(
+            |r| r.path.as_os_str().as_bytes() == b"byte-\xff" && r.kind == ChangeKind::Modified
+        ));
         assert_eq!(std::fs::read(host.join(&byte_name)).unwrap(), b"changed");
         assert_eq!(
             std::fs::read_link(host.join("byte-link"))
@@ -378,7 +376,7 @@ async fn multi_project_lifecycle() {
         assert!(
             host_rows
                 .iter()
-                .all(|r| r.category() == StorageCategory::HostBind)
+                .all(|r| r.category == StorageCategory::HostBind)
         );
         if index == 0 {
             for (name, kind) in [
@@ -388,9 +386,9 @@ async fn multi_project_lifecycle() {
             ] {
                 let row = host_rows
                     .iter()
-                    .find(|r| r.path == name.as_bytes())
+                    .find(|r| r.path == Path::new(name))
                     .expect("host transition");
-                assert_eq!(row.kind(), kind);
+                assert_eq!(row.kind, kind);
                 assert_eq!(row.consumers.len(), 2);
             }
         } else {
@@ -398,7 +396,7 @@ async fn multi_project_lifecycle() {
             assert!(
                 !host_rows
                     .iter()
-                    .any(|r| r.kind() == ChangeKind::Added || r.kind() == ChangeKind::Deleted)
+                    .any(|r| r.kind == ChangeKind::Added || r.kind == ChangeKind::Deleted)
             );
         }
         assert_eq!(
@@ -409,7 +407,7 @@ async fn multi_project_lifecycle() {
         assert!(
             layer_rows
                 .iter()
-                .all(|r| r.category() == StorageCategory::ContainerLayer
+                .all(|r| r.category == StorageCategory::ContainerLayer
                     && r.before.is_none()
                     && r.after.is_none())
         );
@@ -421,7 +419,7 @@ async fn multi_project_lifecycle() {
             assert!(
                 layer_rows
                     .iter()
-                    .any(|r| r.path == name.as_bytes() && r.kind() == kind),
+                    .any(|r| r.path == Path::new(name) && r.kind == kind),
                 "missing {name}: {layer_rows:?}"
             );
         }
@@ -429,13 +427,10 @@ async fn multi_project_lifecycle() {
         assert!(
             volume_rows
                 .iter()
-                .all(|r| r.category() == StorageCategory::NamedVolume)
+                .all(|r| r.category == StorageCategory::NamedVolume)
         );
-        assert!(
-            volume_rows
-                .iter()
-                .any(|r| r.path == b"volume-added" && r.kind() == ChangeKind::Added)
-        );
+        assert!(volume_rows.is_empty());
+        assert!(!evidence.named_volumes.coverage_complete);
         assert!(!evidence.named_volumes.warnings.is_empty());
         assert!(
             !request.artifacts.join("layer-added").exists(),
@@ -1804,7 +1799,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
             b"retain"
         );
         assert!(records.join("prepared.json").is_file());
-        assert!(set.trees[0].baseline.is_file());
+        assert!(set.trees[0].records.is_dir());
     }
 }
 
@@ -2935,10 +2930,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires Docker and prebuilt images"]
-async fn incomplete_volume_scan_retains_volumes() {
-    use host_filesystem::filesystem_proto as pb;
-    use prost::Message;
-
+async fn untracked_named_volume_keeps_declared_cleanup_policy() {
     // Arrange: an ordinary run whose policy would otherwise delete its named volume.
     let root = tempfile::tempdir().unwrap();
     let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
@@ -2960,7 +2952,7 @@ async fn incomplete_volume_scan_retains_volumes() {
     let (ready, started) = tokio::sync::oneshot::channel();
     let mut runner = ComposeRunner::new(adapter.clone());
 
-    // Act: make one baseline explicitly incomplete after startup, before final scanning.
+    // Act: run a named volume with its declared removal policy.
     let report = runner
         .run_with_ready(
             ComposeRun {
@@ -2980,28 +2972,6 @@ async fn incomplete_volume_scan_retains_volumes() {
             },
             async {
                 started.await.unwrap();
-                let baseline: serde_json::Value = serde_json::from_slice(
-                    &std::fs::read(artifacts.join("filesystem/baseline.json")).unwrap(),
-                )
-                .unwrap();
-                let source = baseline["sources"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .find(|source| source["category"] == "named_volume")
-                    .unwrap();
-                let header = pb::SnapshotRecord {
-                    body: Some(pb::snapshot_record::Body::Header(pb::SnapshotHeader {
-                        complete: false,
-                        reason: Some("incomplete scan fixture".into()),
-                        entries: 0,
-                    })),
-                };
-                std::fs::write(
-                    source["baseline"].as_str().unwrap(),
-                    header.encode_length_delimited_to_vec(),
-                )
-                .unwrap();
             },
             |_: &orchestrator::Event| {},
             Some(ready),
@@ -3009,57 +2979,18 @@ async fn incomplete_volume_scan_retains_volumes() {
         .await
         .unwrap();
 
-    // Assert: incomplete metadata blocks volume deletion.
+    // Assert: untracked named-volume coverage preserves the project's removal policy.
     assert!(report.writers_stopped);
-    assert!(!report.boundary_clean);
+    assert!(report.boundary_clean, "{:?}", report.diagnostics);
+    let volumes = &report.filesystem_changes.as_ref().unwrap().named_volumes;
+    assert!(!volumes.coverage_complete);
     assert!(
-        !report
-            .filesystem_changes
-            .as_ref()
-            .unwrap()
-            .named_volumes
-            .coverage_complete
-    );
-    assert!(
-        report
-            .diagnostics
+        volumes
+            .warnings
             .iter()
-            .any(|d| d.message.contains("named-volume evidence incomplete"))
+            .any(|note| note.contains("not tracked: Docker named volume"))
     );
-    assert_eq!(owned_volumes(&adapter, &run).await.len(), 1);
-
-    // Act / Assert: explicitly dispose of this test's stopped synthetic resources.
-    let plan: ResolvedComposeProject = serde_json::from_value(
-        serde_json::from_slice::<serde_json::Value>(
-            &std::fs::read(artifacts.join("experiment.resolution.json")).unwrap(),
-        )
-        .unwrap()["plan"]
-            .clone(),
-    )
-    .unwrap();
-    assert!(
-        adapter
-            .project(&plan)
-            .inspect()
-            .await
-            .unwrap()
-            .containers
-            .iter()
-            .all(|c| c.pid == 0)
-    );
-    let cleanup = RemoveCompose {
-        adapter: adapter.clone(),
-        diagnostics: Default::default(),
-    }
-    .run(StopInput {
-        allow_volume_deletion: true,
-        services: vec![],
-        plan: Some(plan),
-    })
-    .await
-    .unwrap();
-    assert!(cleanup.verified, "{cleanup:?}");
-    support::assert_no_run_resources(&adapter, &run).await;
+    assert!(owned_volumes(&adapter, &run).await.is_empty());
 }
 
 /// List volumes owned by exactly one synthetic run for retention assertions.
@@ -3324,11 +3255,8 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
                 .iter()
                 .any(|r| r.category == 2 && r.path == b"/capture-layer" && r.kind == 1)
         );
-        assert!(
-            decode(&changes.named_volumes.manifest)
-                .iter()
-                .any(|r| r.category == 3 && r.path == b"added" && r.kind == 1)
-        );
+        assert!(decode(&changes.named_volumes.manifest).is_empty());
+        assert!(!changes.named_volumes.coverage_complete);
         let kept = disposition == overlay::Disposition::WriteBack;
         assert_eq!(source.join("added").exists(), kept);
         assert_eq!(source.join("deleted").exists(), !kept);

@@ -5,7 +5,7 @@ use crate::compose::{
 };
 use orchestrator::LocalExecutor;
 use std::rc::Rc;
-use workload_lifecycle::capture::{CaptureFilesystemBaseline, CollectFilesystemChanges};
+use workload_lifecycle::capture::{CollectFilesystemChanges, PrepareFilesystemSources};
 
 /// Register lifecycle and filesystem steps with shared adapter and diagnostics.
 /// The caller retains its executor's observer, label and payload policy.
@@ -29,7 +29,7 @@ pub fn register(
     step!(InspectCompose);
     step!(QuiesceCompose);
     step!(RemoveCompose);
-    executor.register::<CaptureFilesystemBaseline>(|| CaptureFilesystemBaseline);
+    executor.register::<PrepareFilesystemSources>(|| PrepareFilesystemSources);
     executor.register::<CollectFilesystemChanges>(|| CollectFilesystemChanges);
 }
 
