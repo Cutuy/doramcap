@@ -26,14 +26,13 @@ test('current and past failed runs share counts, coverage and a file download in
   // Assert
   for (const html of [current, history]) {
     assert.match(html, /3000 added · 2 modified · 1 deleted/);
-    assert.match(html, /Preview: 1 of 3003 collected changes · Preview incomplete/);
+    assert.match(html, /Showing 1 of 3003 changes · Preview incomplete/);
     assert.match(html, /Incomplete observation/);
     assert.match(html, /More coverage notes/);
     assert.match(html, /Download file changes/);
     assert.ok(html.includes(`href="/api/artifacts/${status.runId}/file-changes.jsonl"`));
     assert.match(html, /download="file-changes.jsonl"/);
-    assert.match(html, /Before: metadata unavailable/);
-    assert.match(html, /After: 9223372036854775807 bytes/);
+    assert.match(html, /0600 · 0:0/);
     assert.doesNotMatch(html, /<details|<summary/);
     assert.match(html, /&lt;script&gt;evil\(\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>|href="\/source|href="&lt;script/);
@@ -74,7 +73,29 @@ test('a BOM-only filename is displayed as path bytes rather than the source root
   for (const [name, shown] of [['name', 'name'], ['\ufeffname', '\\xef\\xbb\\xbfname'], ['\ufeff', '\\xef\\xbb\\xbf']]) {
     status.fileChanges!.preview[0].path = new TextEncoder().encode(name);
     const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
-    assert.ok(html.includes(`>${shown}</p>`));
+    assert.ok(html.includes(`>${shown}</td>`));
     assert.doesNotMatch(html, /\(source root\)/);
   }
+});
+
+test('modified rows flag changed identity fields and deleted or engine rows keep their remaining facts', () => {
+  // Arrange
+  const status = snapshot();
+  const file = (mode: number, extra = {}) => ({ mode, size: '112', uid: 1000, gid: 1000, mtimeSeconds: '10', ...extra });
+  const path = (name: string) => new TextEncoder().encode(name);
+  status.fileChanges!.preview = wire.FileChanges.fromObject({ preview: [
+    { category: 1, kind: 2, source: '/source', path: path('a'), before: file(0o100644), after: file(0o100600, { size: '140', mtimeSeconds: '31' }) },
+    { category: 1, kind: 3, source: '/source', path: path('b'), before: file(0o100644) },
+    { category: 2, kind: 2, source: 'container', path: path('/usr') },
+  ] }).preview;
+  // Act
+  const html = renderToStaticMarkup(<FileChanges snapshot={status}/>);
+  // Assert
+  assert.match(html, /class="file-change-fact changed">mode 0644 → 0600</);
+  assert.match(html, /112 B → 140 B/);
+  assert.match(html, /mtime \+21 s/);
+  assert.match(html, /was 0644 · 1000:1000/);
+  assert.match(html, /metadata unavailable/);
+  assert.match(html, /aria-pressed="true"[^>]*>All 3</);
+  assert.match(html, /Modified 2/);
 });
