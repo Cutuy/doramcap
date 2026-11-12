@@ -11,71 +11,20 @@ use super::{
     error::invalid,
     files::{digest, private_write},
 };
-use crate::filesystem_proto::{DirectoryMount, HostView, MetadataSource, SourceObservation};
+use crate::filesystem_proto::{
+    ChangeKind, DirectoryMount, FileChange, FileMetadata, HostView, MetadataSource,
+    SourceObservation, StorageCategory,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    os::unix::fs::MetadataExt,
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
 };
 use tokio::io::{AsyncWriteExt, BufReader};
 
 pub const HOST_SHM_SOURCE: &str = "live host shared memory; no scan";
 
-/// Storage category is retained on every record and in separate artifact files.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StorageCategory {
-    /// A host file or directory bind-mounted into a workload.
-    /// The source identifies the host path; change paths are relative to it.
-    HostBind,
-    /// A Docker container's writable filesystem layer above its image.
-    /// The source identifies the container; change paths are container-absolute.
-    /// Bind mounts and volumes have their own categories.
-    ContainerLayer,
-    /// A Docker-managed persistent volume mounted by name.
-    /// The source identifies the volume; change paths are relative to its root.
-    NamedVolume,
-}
-/// An individual path transition, never collapsed into a generic changed flag.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ChangeKind {
-    Added,
-    Modified,
-    Deleted,
-}
-/// Available stat metadata. Modification detection does not prove content equality.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FileMetadata {
-    /// Unix file type and permission bits.
-    pub mode: u32,
-    /// Byte length reported by stat.
-    pub size: u64,
-    /// Owning user and group identifiers.
-    pub uid: u32,
-    pub gid: u32,
-    /// Modification and change timestamps as seconds/nanoseconds.
-    pub mtime: (i64, i64),
-    pub ctime: (i64, i64),
-    /// Symlink destination; never followed during traversal.
-    pub symlink: Option<PathBuf>,
-}
-/// One change with its original category, source and consumers.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FileChange {
-    pub category: StorageCategory,
-    /// Host source path, volume name or container ID.
-    pub source: String,
-    /// Project/service/container-target associations; shared sources appear once.
-    pub consumers: Vec<String>,
-    /// Source-relative path, or container-absolute path for Engine diffs.
-    pub path: PathBuf,
-    pub kind: ChangeKind,
-    /// Unavailable for Engine changes and for absent sides of a transition.
-    pub before: Option<FileMetadata>,
-    pub after: Option<FileMetadata>,
-}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Snapshot {
     pub(crate) entries: BTreeMap<PathBuf, FileMetadata>,
@@ -204,7 +153,12 @@ impl MetadataWalk {
             .map_err(|_| invalid("scan path escaped root"))?
             .to_path_buf();
         let symlink = if m.file_type().is_symlink() {
-            Some(tokio::fs::read_link(&path).await?)
+            Some(
+                tokio::fs::read_link(&path)
+                    .await?
+                    .into_os_string()
+                    .into_encoded_bytes(),
+            )
         } else {
             None
         };
@@ -218,8 +172,10 @@ impl MetadataWalk {
                 size: m.size(),
                 uid: m.uid(),
                 gid: m.gid(),
-                mtime: (m.mtime(), m.mtime_nsec()),
-                ctime: (m.ctime(), m.ctime_nsec()),
+                mtime_seconds: m.mtime(),
+                mtime_nanoseconds: m.mtime_nsec(),
+                ctime_seconds: m.ctime(),
+                ctime_nanoseconds: m.ctime_nsec(),
                 symlink,
             },
         )))
@@ -241,11 +197,28 @@ impl FileChanges {
     }
     /// Return the next change, or None at a clean record boundary.
     pub async fn next_change(&mut self) -> Result<Option<FileChange>> {
-        wire::read_record::<_, crate::filesystem_proto::FileChange>(&mut self.input)
-            .await?
-            .map(wire::decode_change)
-            .transpose()
+        let row = wire::read_record::<_, FileChange>(&mut self.input).await?;
+        if let Some(row) = &row {
+            validate_change(row)?;
+        }
+        Ok(row)
     }
+}
+
+fn validate_change(row: &FileChange) -> Result<()> {
+    if row.category() == StorageCategory::Unspecified {
+        return Err(invalid(format!(
+            "unknown storage category: {}",
+            row.category
+        )));
+    }
+    if row.kind() == ChangeKind::Unspecified {
+        return Err(invalid(format!(
+            "unknown filesystem change kind: {}",
+            row.kind
+        )));
+    }
+    Ok(())
 }
 
 // Diff indexing deliberately allocates with source size. Traversal itself streams.
@@ -322,10 +295,8 @@ pub async fn capture(input: BaselineInput) -> Result<FilesystemBaseline> {
         );
     }
     for source in input.metadata_sources {
-        let category = match source.category {
-            x if x == crate::filesystem_proto::StorageCategory::NamedVolume as i32 => {
-                StorageCategory::NamedVolume
-            }
+        let category = match StorageCategory::try_from(source.category) {
+            Ok(StorageCategory::NamedVolume) => StorageCategory::NamedVolume,
             _ => return Err(invalid("unsupported backend metadata source category")),
         };
         record(
@@ -416,6 +387,9 @@ async fn writer(
     category: StorageCategory,
     name: &str,
 ) -> Result<(CategoryChanges, tokio::io::BufWriter<tokio::fs::File>)> {
+    if category == StorageCategory::Unspecified {
+        return Err(invalid("unspecified storage category"));
+    }
     let path = directory.join(name);
     let file = tokio::fs::OpenOptions::new()
         .write(true)
@@ -438,17 +412,22 @@ async fn emit(
     out: &mut (CategoryChanges, tokio::io::BufWriter<tokio::fs::File>),
     row: FileChange,
 ) -> Result<()> {
-    match row.kind {
+    validate_change(&row)?;
+    match row.kind() {
         ChangeKind::Added => out.0.counts.added += 1,
         ChangeKind::Modified => out.0.counts.modified += 1,
         ChangeKind::Deleted => out.0.counts.deleted += 1,
+        ChangeKind::Unspecified => return Err(invalid("unspecified filesystem change kind")),
     }
-    wire::write_record(&mut out.1, &wire::change(&row)).await?;
+    wire::write_record(&mut out.1, &row).await?;
     let counts = &out.0.counts;
     if counts.added + counts.modified + counts.deleted <= 10 {
         eprintln!(
             "warning: filesystem {:?} {:?}: {} {:?}",
-            row.category, row.kind, row.source, row.path
+            row.category(),
+            row.kind(),
+            row.source,
+            std::ffi::OsStr::from_bytes(&row.path)
         );
     }
     Ok(())
@@ -560,15 +539,15 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 emit(
                     out,
                     FileChange {
-                        category: source.category,
+                        category: source.category as i32,
                         source: source.identity.clone(),
                         consumers: source.consumers.clone(),
-                        path: path.clone(),
+                        path: path.as_os_str().as_bytes().to_vec(),
                         kind: if new.is_none() {
                             ChangeKind::Deleted
                         } else {
                             ChangeKind::Modified
-                        },
+                        } as i32,
                         before: Some(meta.clone()),
                         after: new.cloned(),
                     },
@@ -581,11 +560,11 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
                 emit(
                     out,
                     FileChange {
-                        category: source.category,
+                        category: source.category as i32,
                         source: source.identity.clone(),
                         consumers: source.consumers.clone(),
-                        path: path.clone(),
-                        kind: ChangeKind::Added,
+                        path: path.as_os_str().as_bytes().to_vec(),
+                        kind: ChangeKind::Added as i32,
                         before: None,
                         after: Some(meta.clone()),
                     },
@@ -614,6 +593,114 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn generated_categories_preserve_saved_json_names() {
+        // Arrange
+        for (category, name) in [
+            (StorageCategory::HostBind, "host_bind"),
+            (StorageCategory::ContainerLayer, "container_layer"),
+            (StorageCategory::NamedVolume, "named_volume"),
+        ] {
+            let saved = serde_json::json!({
+                "sources": [{"category": name, "identity": "source", "path": "/source",
+                    "consumers": ["app:/data"], "baseline": "/run/baseline.pb", "reason": null}],
+                "directory": "/run/filesystem"
+            });
+
+            // Act
+            let baseline: FilesystemBaseline = serde_json::from_value(saved.clone()).unwrap();
+            let encoded = serde_json::to_value(&baseline).unwrap();
+
+            // Assert
+            assert_eq!(baseline.sources[0].category, category);
+            assert_eq!(encoded, saved);
+        }
+    }
+
+    #[tokio::test]
+    async fn generated_changes_preserve_the_v1_record_format() {
+        // Arrange: length-delimited fixture encoded independently with protoc.
+        let fixture = hex::decode(concat!(
+            "40080112052f686f73741a096170703a2f64617461220666696c652dff2802",
+            "3a2008a48302100718e80720e907280330f60138084090074a087461726765742dfe"
+        ))
+        .unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let manifest = root.path().join("existing.pb");
+        tokio::fs::write(&manifest, &fixture).await.unwrap();
+        let expected = FileChange {
+            category: StorageCategory::HostBind as i32,
+            source: "/host".into(),
+            consumers: vec!["app:/data".into()],
+            path: b"file-\xff".to_vec(),
+            kind: ChangeKind::Modified as i32,
+            before: None,
+            after: Some(FileMetadata {
+                mode: 0o100644,
+                size: 7,
+                uid: 1000,
+                gid: 1001,
+                mtime_seconds: -2,
+                mtime_nanoseconds: 123,
+                ctime_seconds: 4,
+                ctime_nanoseconds: 456,
+                symlink: Some(b"target-\xfe".to_vec()),
+            }),
+        };
+
+        // Act
+        let mut input = FileChanges::open(&manifest).await.unwrap();
+        let decoded = input.next_change().await.unwrap().unwrap();
+        let mut output = ChangeWriter::create(root.path(), StorageCategory::HostBind, "new.pb")
+            .await
+            .unwrap();
+        output.emit(expected.clone()).await.unwrap();
+        let report = output.finish().await.unwrap();
+
+        // Assert: old records read correctly and new writes retain exactly the same bytes.
+        assert_eq!(decoded, expected);
+        assert!(input.next_change().await.unwrap().is_none());
+        assert_eq!(tokio::fs::read(&report.manifest).await.unwrap(), fixture);
+        assert_eq!(report.counts.modified, 1);
+        assert_eq!(report.counts.added + report.counts.deleted, 0);
+    }
+
+    #[tokio::test]
+    async fn generated_changes_reject_unknown_or_unspecified_enums() {
+        // Arrange
+        for (category, kind) in [(0, 1), (-1, 1), (99, 1), (1, 0), (1, -1), (1, 99)] {
+            let root = tempfile::tempdir().unwrap();
+            let row = FileChange {
+                category,
+                kind,
+                ..Default::default()
+            };
+            let manifest = root.path().join("invalid.pb");
+            let mut file = tokio::fs::File::create(&manifest).await.unwrap();
+            wire::write_record(&mut file, &row).await.unwrap();
+            file.flush().await.unwrap();
+            let mut input = FileChanges::open(&manifest).await.unwrap();
+            let mut output =
+                ChangeWriter::create(root.path(), StorageCategory::HostBind, "output.pb")
+                    .await
+                    .unwrap();
+
+            // Act
+            let read = input.next_change().await;
+            let write = output.emit(row).await;
+            let report = output.finish().await.unwrap();
+
+            // Assert: invalid enum values cannot become valid records or change counts.
+            assert!(read.is_err(), "category={category} kind={kind}");
+            assert!(write.is_err(), "category={category} kind={kind}");
+            assert_eq!(
+                report.counts.added + report.counts.modified + report.counts.deleted,
+                0
+            );
+            assert!(tokio::fs::read(&report.manifest).await.unwrap().is_empty());
+        }
+    }
+
     #[tokio::test]
     async fn empty_backend_paths_and_exclusion_reasons_preserve_coverage() {
         for reason in ["", "unsupported volume driver", HOST_SHM_SOURCE] {
@@ -696,7 +783,7 @@ mod tests {
         assert_eq!(before.entries.len(), 3);
         assert_eq!(
             before.entries[Path::new("link")].symlink.as_deref(),
-            Some(Path::new("/proc"))
+            Some(b"/proc".as_slice())
         );
         // Act
         let socket = std::os::unix::net::UnixListener::bind(root.join("socket")).unwrap();
@@ -742,15 +829,15 @@ mod tests {
             emit(
                 &mut out,
                 FileChange {
-                    category: StorageCategory::HostBind,
+                    category: StorageCategory::HostBind as i32,
                     source: "fixture".into(),
                     consumers: vec![],
-                    path,
+                    path: path.into_os_string().into_encoded_bytes(),
                     kind: match i % 3 {
                         0 => ChangeKind::Added,
                         1 => ChangeKind::Modified,
                         _ => ChangeKind::Deleted,
-                    },
+                    } as i32,
                     before: None,
                     after: Some(metadata),
                 },
@@ -762,11 +849,12 @@ mod tests {
         let mut reader = FileChanges::open(&out.0.manifest).await.unwrap();
         let mut counts = [0; 3];
         while let Some(row) = reader.next_change().await.unwrap() {
-            assert_eq!(row.category, StorageCategory::HostBind);
-            counts[match row.kind {
+            assert_eq!(row.category(), StorageCategory::HostBind);
+            counts[match row.kind() {
                 ChangeKind::Added => 0,
                 ChangeKind::Modified => 1,
                 ChangeKind::Deleted => 2,
+                ChangeKind::Unspecified => panic!("reader accepted an unspecified change kind"),
             }] += 1;
         }
         // Assert: log preview truncation does not truncate the manifest or stream.
@@ -804,8 +892,8 @@ mod tests {
                 .symlink
                 .as_ref()
                 .unwrap()
-                .as_os_str(),
-            target
+                .as_slice(),
+            target.as_bytes()
         );
         let mut output = writer(&root, StorageCategory::HostBind, "changes.pb")
             .await
@@ -813,11 +901,11 @@ mod tests {
         let mut empty = FileChanges::open(&output.0.manifest).await.unwrap();
         assert!(empty.next_change().await.unwrap().is_none());
         let expected = FileChange {
-            category: StorageCategory::HostBind,
+            category: StorageCategory::HostBind as i32,
             source: "fixture".into(),
             consumers: vec!["test".into()],
-            path: PathBuf::from(&name),
-            kind: ChangeKind::Added,
+            path: name.as_bytes().to_vec(),
+            kind: ChangeKind::Added as i32,
             before: None,
             after: Some(decoded.entries[Path::new("link")].clone()),
         };

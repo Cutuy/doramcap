@@ -1,15 +1,23 @@
 syntax = "proto3";
 package doramcap.filesystem.v1;
 
+// Available stat metadata. Modification detection does not prove content equality.
 message FileMetadata {
+  // Unix file type and permission bits.
   uint32 mode = 1;
+  // Byte length reported by stat.
   uint64 size = 2;
+  // Owning user identifier.
   uint32 uid = 3;
+  // Owning group identifier.
   uint32 gid = 4;
+  // Modification time, split into seconds and nanoseconds.
   sint64 mtime_seconds = 5;
   sint64 mtime_nanoseconds = 6;
+  // Change time, split into seconds and nanoseconds.
   sint64 ctime_seconds = 7;
   sint64 ctime_nanoseconds = 8;
+  // Symlink destination as Unix bytes; never followed during traversal.
   optional bytes symlink = 9;
 }
 message SnapshotHeader { bool complete = 1; optional string reason = 2; uint64 entries = 3; }
@@ -17,15 +25,40 @@ message SnapshotEntry { bytes path = 1; FileMetadata metadata = 2; }
 message SnapshotRecord {
   oneof body { SnapshotHeader header = 1; SnapshotEntry entry = 2; }
 }
-enum StorageCategory { STORAGE_CATEGORY_UNSPECIFIED = 0; HOST_BIND = 1; CONTAINER_LAYER = 2; NAMED_VOLUME = 3; }
-enum ChangeKind { CHANGE_KIND_UNSPECIFIED = 0; ADDED = 1; MODIFIED = 2; DELETED = 3; }
+// Storage category is retained on every record and in separate artifact files.
+enum StorageCategory {
+  STORAGE_CATEGORY_UNSPECIFIED = 0;
+  // A host file or directory bind-mounted into a workload.
+  // The source identifies the host path; change paths are relative to it.
+  HOST_BIND = 1;
+  // A Docker container's writable filesystem layer above its image.
+  // The source identifies the container; change paths are container-absolute.
+  // Bind mounts and volumes have their own categories.
+  CONTAINER_LAYER = 2;
+  // A Docker-managed persistent volume mounted by name.
+  // The source identifies the volume; change paths are relative to its root.
+  NAMED_VOLUME = 3;
+}
+// An individual path transition, retained separately as added, modified or deleted.
+enum ChangeKind {
+  CHANGE_KIND_UNSPECIFIED = 0;
+  ADDED = 1;
+  MODIFIED = 2;
+  DELETED = 3;
+}
+// One change with its original category, source and consumers.
 message FileChange {
   StorageCategory category = 1;
+  // Host source path, volume name or container ID.
   string source = 2;
+  // Project/service/container-target associations; shared sources appear once.
   repeated string consumers = 3;
+  // Unix bytes: source-relative, or container-absolute for Engine diffs.
   bytes path = 4;
   ChangeKind kind = 5;
+  // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata before = 6;
+  // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata after = 7;
 }
 enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }

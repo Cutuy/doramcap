@@ -190,7 +190,7 @@ async fn mounts() -> Result<Vec<PathBuf>> {
         .map(unescape_mount)
         .collect())
 }
-async fn snapshot(root: &Path) -> Result<BTreeMap<PathBuf, super::filesystem::FileMetadata>> {
+async fn snapshot(root: &Path) -> Result<BTreeMap<PathBuf, crate::filesystem_proto::FileMetadata>> {
     let mut walk = MetadataWalk::open(root).await?;
     let mut entries = BTreeMap::new();
     while let Some((p, m)) = walk.next_entry().await? {

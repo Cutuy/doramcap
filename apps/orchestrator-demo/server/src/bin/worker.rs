@@ -1,10 +1,10 @@
 //! Authorized fixed-workflow worker. HTTP remains in a separate unprivileged process.
 use compose_apps::compose::{ComposeProject, DockerAdapter};
-use host_filesystem::filesystem::{FileChanges, FileMetadata};
+use host_filesystem::{filesystem::FileChanges, filesystem_proto::FileMetadata};
 use orchestrator::{Observer, telemetry::TelemetryObserver};
 use serde_json::json;
 use std::{collections::BTreeMap, rc::Rc, time::Duration};
-use std::{io, path::Path};
+use std::{io, os::unix::ffi::OsStrExt, path::Path};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::UnixStream,
@@ -309,8 +309,8 @@ async fn filesystem_preview(report: &ComposeRunReport) -> serde_json::Value {
                     break;
                 };
                 let value = json!({
-                    "category": row.category, "source": row.source, "consumers": row.consumers,
-                    "path": preview_path(&row.path), "kind": row.kind,
+                    "category": row.category(), "source": row.source, "consumers": row.consumers,
+                    "path": preview_path(&row.path), "kind": row.kind(),
                     "before": row.before.as_ref().map(preview_metadata),
                     "after": row.after.as_ref().map(preview_metadata),
                 });
@@ -334,11 +334,13 @@ async fn filesystem_preview(report: &ComposeRunReport) -> serde_json::Value {
 // JSON is a display-only preview; the underlying protobuf retains exact Unix bytes.
 fn preview_metadata(m: &FileMetadata) -> serde_json::Value {
     json!({"mode":m.mode,"size":m.size,"uid":m.uid,"gid":m.gid,
-        "mtime":m.mtime,"ctime":m.ctime,
-        "symlink":m.symlink.as_ref().map(|p|preview_path(p))})
+        "mtime":[m.mtime_seconds,m.mtime_nanoseconds],
+        "ctime":[m.ctime_seconds,m.ctime_nanoseconds],
+        "symlink":m.symlink.as_deref().map(preview_path)})
 }
 
-fn preview_path(path: &Path) -> String {
+fn preview_path(bytes: &[u8]) -> String {
+    let path = Path::new(std::ffi::OsStr::from_bytes(bytes));
     path.to_str()
         .map(str::to_owned)
         .unwrap_or_else(|| format!("{:?}", path.as_os_str()))
@@ -347,6 +349,35 @@ fn preview_path(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_metadata_retains_the_existing_preview_format() {
+        // Arrange
+        let metadata = FileMetadata {
+            mode: 0o120777,
+            size: 4,
+            uid: 1000,
+            gid: 1001,
+            mtime_seconds: -2,
+            mtime_nanoseconds: 123,
+            ctime_seconds: 4,
+            ctime_nanoseconds: 456,
+            symlink: Some(b"target-\xff".to_vec()),
+        };
+
+        // Act
+        let preview = preview_metadata(&metadata);
+
+        // Assert
+        assert_eq!(
+            preview,
+            json!({
+                "mode":0o120777, "size":4, "uid":1000, "gid":1001,
+                "mtime":[-2,123], "ctime":[4,456], "symlink":"\"target-\\xFF\""
+            })
+        );
+        assert_eq!(preview_path(b"relative/path"), "relative/path");
+    }
 
     #[test]
     fn hosted_events_hide_sensitive_payloads_and_error_details() {
