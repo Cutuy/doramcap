@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="320" viewBox="0 0 1060 320" role="img" aria-labelledby="title desc">
+<title id="title">Working directory and Review</title>
+<desc id="desc">Three working directories. One inside a declared output folder passes Review and its writes are listed. One that exists outside every writable mount passes Review, is listed as not tracked, and its writes are not tracked. One that does not exist fails Review, naming the app and directory, and nothing is mounted or started.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1060" height="320" fill="white"/>
+<text x="190" y="40" class="title">Working directory</text>
+<text x="530" y="40" class="title">Review</text>
+<text x="870" y="40" class="title">Run</text>
+<rect x="40" y="70" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="96.0" class="mono">/runtime</text>
+<text x="190.0" y="119.0" class="label">Inside a declared output folder</text>
+<rect x="380" y="70" width="300" height="60" rx="10" class="overlay"/>
+<text x="530.0" y="106.0">Passes</text>
+<rect x="720" y="70" width="300" height="60" rx="10" class="overlay"/>
+<text x="870.0" y="96.0">App starts</text>
+<text x="870.0" y="119.0" class="label">Writes are listed</text>
+<path d="M340 100 L378 100" class="line"/>
+<path d="M680 100 L718 100" class="line"/>
+<rect x="40" y="146" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="172.0" class="mono">/srv/app</text>
+<text x="190.0" y="195.0" class="label">Exists, outside writable mounts</text>
+<rect x="380" y="146" width="300" height="60" rx="10" class="upper"/>
+<text x="530.0" y="172.0">Passes</text>
+<text x="530.0" y="195.0" class="label">Lists it as not tracked</text>
+<rect x="720" y="146" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="172.0">App starts</text>
+<text x="870.0" y="195.0" class="label">Writes are not tracked</text>
+<path d="M340 176 L378 176" class="line"/>
+<path d="M680 176 L718 176" class="line"/>
+<rect x="40" y="222" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="248.0" class="mono">/work</text>
+<text x="190.0" y="271.0" class="label">Does not exist for the app</text>
+<rect x="380" y="222" width="300" height="60" rx="10" class="bad"/>
+<text x="530.0" y="248.0">Fails</text>
+<text x="530.0" y="271.0" class="label">Names the app and directory</text>
+<rect x="720" y="222" width="300" height="60" rx="10" class="bad"/>
+<text x="870.0" y="258.0">Nothing mounted or started</text>
+<path d="M340 252 L378 252" class="line"/>
+<path d="M680 252 L718 252" class="line"/>
+</svg>

@@ -1,110 +1,198 @@
-![Run directory layers](111026-file-change-report.svg)
+![Overlays for writable mounts](111026-file-change-report.svg)
 
-# Run directory layers
+# Overlays for writable mounts
 
-Created November 10, 2026. Updated November 11, 2026: reworked around overlay layers.
-Status: architecture proposed; milestone 1 implemented in review, the rest pending.
+Created November 10, 2026. Updated November 11, 2026: decisions from the plan review recorded.
+Status: architecture agreed; milestones 1 and 3 implemented in review, the rest pending.
 [Implementation plan](111026-file-change-report-impl.md).
 
-Every run gets its writable directories the same way, for Compose and systemd: one
-overlay per writable mount. The overlays' upper layers hold everything the run wrote.
-Console reads them for the file-change list, applies the write policy to them and
-reports both.
+Console puts an overlay on every host folder a launch mounts as writable. After the
+apps stop, the overlay's upper holds everything the run wrote there. Console reads it
+for the change list, applies the write policy to it and reports both.
+
+## Terms
+
+These documents use only these terms.
+
+| Term | Meaning |
+| --- | --- |
+| Host folder | A folder on the machine that a launch mounts into an app. |
+| Path the app sees | Where that folder appears to the app. |
+| Writable mount | A mount the launch declares as writable. |
+| Overlay | A kernel OverlayFS mount that Console creates for one writable mount. |
+| Lower | The host folder under an overlay. The run never changes it. |
+| Upper | The directory that receives the run's writes. |
+| Overlay directory | The directory the overlay is mounted on. The app is given this in place of the host folder. |
+| Run folder | `runs/<run id>/`, the one place Console owns. |
+| Output folder | A folder inside the run folder that Console creates for a run and mounts into an app. |
+| Change list | Added, modified and deleted records for a run. |
+| Write policy | What happens to an upper after the run: write back, keep with the run, or discard. |
+| Not tracked | Storage an app can write that has no overlay and no change list. |
 
 ## Goal
 
-1. **A launch sees only the mounts it declares.** Compose services, services Console
-   creates and your own unit files all declare their mounts in their own format.
-2. **Every writable mount is an overlay.** The host folder is the lower layer and a
-   private run layer is the upper. A fresh run output folder has an empty lower layer.
-3. **The changed files are the upper layers.** After writers stop, Console walks each
-   upper layer. The lower layer stays unchanged during the run, so it supplies the
-   "before" metadata.
-4. **The write policy acts on the upper layers:** write back, keep with the run, or discard.
-5. **The working directory is a path in the app's view.** It reaches a host folder
-   only through a declared mount, as in Compose.
+1. **Console overlays the writable mounts a launch declares.** Compose services,
+   services Console creates, your own unit files and Holoscan launches each declare
+   mounts in their own format. Console adds none.
+2. **Each of those mounts gets one overlay.** The host folder is the lower.
+3. **The change list is read from the uppers** after the apps stop.
+4. **The write policy acts on the uppers.**
+5. **Everything else an app can write is not tracked,** and Review says so.
 
-Machine snapshots (three per run) and input copies (frozen launch inputs) keep their
-current owners and are outside this design.
+Machine snapshots and input copies keep their current owners and are outside this design.
 
-## Layers
+## What each writable mount gets
 
-| Layer | Does | Owner |
-| --- | --- | --- |
-| Host folders | Hold the data the app reads and, after write back, its results. | The host |
-| Declared mounts | List each mount: host source or none, app path, read-only or writable. | Backend |
-| Overlay per writable mount | Mount lower + upper; the merged view is what the app gets. Read-only mounts bind directly. | `host-filesystem`, ordered by `workload-lifecycle` |
-| App view | Map each merged view at its app path: a Compose bind or a systemd `BindPaths=`. | Backend |
-| Change list | Walk upper layers into added, modified and deleted records. | `host-filesystem` |
-| Write policy | Apply, keep or drop the upper layers. | `host-filesystem` |
-| Report and downloads | Save the report, show a preview, stream the list, serve kept files. | Console |
+![What each writable mount gets](111126-file-change-mounts.svg)
 
-Backends own only their native steps: declaring mounts, mapping views, launching and
-stopping writers. Everything that touches overlays is shared.
+| Writable mount | Overlay | Change list | Write policy |
+| --- | --- | --- | --- |
+| Host folder | Yes | From the upper | Applies |
+| Output folder | No, mounted directly | Every file listed as added | Files are already in the run folder |
+| Docker named volume | No | Not tracked | Docker keeps the volume |
+| Host folder that cannot be overlaid | No, mounted directly | Not tracked | Writes go straight to the host folder |
+| Devices and `/dev/shm` | No, mounted directly | Not tracked | None |
+
+- **Output folder.** It starts empty and already lives in the run folder, so its files
+  survive a Console crash and need no copy. Console lists the folder directly and skips
+  its own records there. When an app mounts the whole run folder, Console's records are
+  skipped and the report marks that mount as partly listed.
+- **Named volume.** Docker creates and manages it. Replacing it with an overlay would
+  stop Docker filling a new volume from the image and break volume drivers.
+- **Cannot be overlaid.** The mount is a single file, sits under `/proc`, `/sys` or
+  `/dev`, or contains another mount point. The run starts anyway.
+- Review and the result list every mount that is not tracked, with the reason.
+
+Read-only mounts are mounted directly. A read-only mount that contains a writable one
+shares that mount's overlay, so it shows the run's writes.
+
+Known gap: a mount that is not tracked reports nothing about what the app wrote.
+Recording basic metadata for it without walking the whole folder is later work.
 
 ## What each launch declares
 
-| Launch | Writable mounts | Not tracked |
+| Launch | Writable mounts Console overlays | Not tracked |
 | --- | --- | --- |
-| Compose service | Host folder binds; local named volumes (pending decision) | The container layer, read through Docker's diff as today |
-| Service Console creates | Its declared binds and output folders | Nothing else is writable in its own root |
-| Your own unit file | Its declared binds | Writes elsewhere on the host; Review lists the unit as partly tracked |
+| Compose service | Host folders in the Compose file | Named volumes. The container's own filesystem is read through Docker's diff as today. |
+| Service Console creates | Host folders in the app's settings | Nothing else is writable for it. |
+| Your own unit file | Host folders in `BindPaths=` | Writes anywhere else on the host. |
+| Holoscan | The project folder and extra data folders | Mounts the project sets in its own Docker options. |
 
-Console no longer binds a service's working directory automatically. A Console system
-app keeps its working directory under a declared mount; tests check the Dora coordinator
-and daemon (`/runtime`). A working directory with no mount under it fails to start with
-systemd's own error.
+Compose reads the user's Compose file and works on its own copy for the run. In that
+copy each writable host folder is replaced by its overlay directory. The user's file is
+never changed.
 
-Devices and `/dev/shm` stay direct in every launch.
+### The path the app sees
+
+![Host path to the path the app sees](111126-file-change-path-mapping.svg)
+
+Console keeps the path the app sees unchanged.
+
+- **Compose and systemd** write that path out next to the host folder. Swapping the
+  host folder for the overlay directory changes nothing for the app.
+- **Holoscan** builds the path from the last part of an extra data folder's path. The
+  Holoscan CLI starts the container, so Console cannot set the path itself. The overlay
+  directory for such a folder therefore carries the host folder's name. The project
+  folder always appears at the same path and needs no special name.
+
+### Working directory
+
+![Working directory with no mount](111126-file-change-working-directory.svg)
+
+A working directory is only the path an app starts in. It declares no mount and gets no
+overlay.
+
+- Console no longer mounts a working directory that the app's settings do not declare.
+- Console checks that a declared working directory exists where the app will run: when
+  Review is produced, and again before anything is mounted or started. A missing one
+  fails there, naming the app and the directory.
+- A unit that writes `WorkingDirectory=-/path` accepts a missing directory, and Console
+  skips the check. Compose needs no check; Docker creates a missing working directory.
+- When a working directory is writable and outside every writable mount, Review lists
+  it as not tracked and suggests declaring it. The user makes that change.
+
+Console's Dora coordinator and daemon use `/runtime`, their declared output folder.
 
 ## Write policy
 
-| Policy | Upper layer goes to | Source folder | Run keeps |
+| Policy | Upper goes to | Host folder | Run keeps |
 | --- | --- | --- | --- |
-| Write back (default) | The source folder | Modified | The list |
-| Keep with the run | A folder inside the run | Untouched | The list and the files |
-| Discard | Nowhere | Untouched | The list |
+| Write back (default) | The host folder | Modified | The change list |
+| Keep with the run | A folder inside the run folder | Untouched | The change list and the files |
+| Discard | Nowhere | Untouched | The change list |
 
 One Console setting selects the policy for the project. Write back stays the default,
 so existing projects behave as before. This setting is approved.
 
-- With keep, the next run starts from the unchanged source; state an app carries between
-  runs resets.
+- With keep, the next run starts from the unchanged host folder; state an app carries
+  between runs resets.
 - Run folders grow, and Console has no pruning yet. That is separate work.
+- A mount that is not tracked ignores the policy. Its writes land where the app put them.
+
+### Write back
+
+![What write back does with each entry](111126-file-change-write-back.svg)
+
+Write back copies each entry in the upper onto the host folder. It never fails the run.
+Execution, the change list and write back each report their own outcome.
+
+| Entry in the upper | Change list | Write back |
+| --- | --- | --- |
+| File, folder or symlink | Recorded | Copied |
+| Deleted file or folder | Recorded | Deleted from the host folder |
+| Socket, FIFO or device file | Recorded | Skipped, with a warning |
+| New hard link | Recorded | Copied as a separate file, with a warning |
+| Modified file that has other names | Recorded | Copied, with a warning that the other names keep the old contents |
+
+A file with two names is one file. An overlay copies it into the upper under the name
+the app wrote, so the app already sees the two names differ during the run. Write back
+leaves the host folder the same way.
+
+**Changes from outside the run.** Console does not check whether the host folder changed
+during a run. When something outside the run and the run itself both change the same
+path, write back keeps the run's version.
+
+- **Inside the run:** any write through a declared mount, whichever app made it. Apps
+  that mount the same host folder share one overlay. The record names the folder and
+  the apps that mount it.
+- **Outside the run:** a process that is not part of the run, or a service from your own
+  unit file writing to a host path it did not declare.
 
 ## One run
 
-1. **Mount overlays** for every writable mount before any writer starts.
-2. **Launch** with each merged view at its app path.
-3. **Stop** every attempted writer, including after partial startup or cancellation.
-4. **Read upper layers** into the change list while the views stay mounted.
-5. **Save the report**: sync the list, then publish its checkpoint atomically.
-6. **Apply the write policy** to each upper layer.
-7. **Unmount and clean up** owned views after the report is saved.
+1. **Check** each declared working directory.
+2. **Mount an overlay** for every writable host folder before any app starts.
+3. **Launch** each app with the overlay directories in place of the host folders.
+4. **Stop** every app that was started, including after partial startup or cancellation.
+5. **Read each upper** and each output folder into the change list. Reading needs no mount.
+6. **Save the report:** sync the change list, then publish its checkpoint atomically.
+7. **Unmount** the overlays.
+8. **Apply the write policy** to each upper.
+9. **Clean up** what the run owns.
 
-The change list must be saved before the write policy runs. A busy view stays owned and
-blocks verified cleanup.
+The change list is saved before the write policy runs. An overlay that stays busy keeps
+its saved change list, waits for its write policy and blocks verified cleanup.
 
 ## Change list
 
-- **Added:** in the upper layer, absent from the lower.
+- **Added:** in the upper, absent from the lower.
 - **Modified:** in both; "before" from the lower, "after" from the upper.
-- **Deleted:** a whiteout or an opaque directory in the upper layer.
+- **Deleted:** removed by the run. A deleted folder produces one record for each path
+  under it in the lower.
 
-Opening a file for writing or changing its metadata copies it into the upper layer even
-when its contents are unchanged. Whether such files read as modified is a pending decision.
+The list records metadata and paths with their raw Unix bytes. It holds the final state
+of each upper and no history of writes. Listing cost follows the size of the upper.
 
-The list records metadata and paths with their raw Unix bytes. It does not record a
-history of writes, only the final state of each upper layer.
+Opening a file for writing or changing its metadata copies it into the upper even when
+its contents are unchanged. Whether such files read as modified is a pending decision.
 
 ## Report and downloads
 
 Console saves the report reference and an 8 KiB preview with the run, shows them on the
-Result and History pages, and streams the full list as JSON Lines. Old runs without a
-report read as unavailable; a complete zero-change run reads as zero.
+Result and History pages, and streams the full change list as JSON Lines. Old runs
+without a report read as unavailable; a complete zero-change run reads as zero.
 
-The run folder, `runs/<run id>/`, is the one place Console owns. It holds Console's
-records, recordings, program log dumps
+The run folder holds Console's records, recordings, program log dumps
 ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)) and, with keep with the
 run, the kept files.
 
@@ -113,35 +201,54 @@ route. The browser names a kept file by its entry in the saved change list and a
 by its program; it never sends a path. The server opens the file only inside the run's
 kept-files or log folder, by its raw name bytes. Files are always sent as downloads.
 
+## Owners
+
+| Part | Owner |
+| --- | --- |
+| Declared mounts, launching and stopping apps | `workload-docker`, `workload-systemd`, `workload-holoscan` |
+| Overlays, change list, write policy | `host-filesystem`, ordered by `workload-lifecycle` |
+| Container filesystem diff, Docker resources | `docker-engine` |
+| Report, preview, downloads | Console |
+
+The shared overlay step takes a host folder and returns its overlay directory. The path
+the app sees stays with the launch that declares it.
+
 ## Failure and recovery
 
 | Event | Result |
 | --- | --- |
-| Overlay setup fails | No writer starts; only newly owned views are cleaned up. |
-| Writers remain active | No final list; their views stay mounted. |
-| Reading or saving the list fails | Views stay mounted for recovery; the failure is reported and blocks verified cleanup. |
-| Write back fails | The remaining upper data is kept with diagnostics. Writes are never replayed automatically. |
-| Console stops unexpectedly | The next admission stops owned writers, then discards leftover views as today. |
+| A declared working directory is missing | Review or Start fails; nothing is mounted or started. |
+| Overlay setup fails | No app starts; only newly created overlays are cleaned up. |
+| Apps remain active | No final change list; their overlays stay mounted. |
+| Reading or saving the change list fails | Uppers are kept for recovery; the failure is reported and blocks verified cleanup. |
+| Write back cannot copy an entry | A warning names the entry. The change list is complete and the run outcome is unchanged. |
+| Write back stops on an I/O error | The remaining upper is kept with diagnostics. Writes are never replayed automatically. |
+| Console stops unexpectedly | The next admission stops the apps it owns, then discards leftover overlays as today. Output folders stay in the run folder. |
 
 ## Limits
 
-- Overlay backing, overlapping writable mounts, nested mounts and hard links keep their
-  current restrictions, checked before launch.
+- An overlay needs backing storage that supports it. This is checked before launch.
+- When one writable host folder contains another, both share the outer folder's overlay.
 - The whole host filesystem is never overlaid.
-- A file's copy into the upper layer breaks its hard links for the run.
+- A file copied into the upper loses its link to its other names for the run and after
+  write back.
+- A change from outside the run to a path the run also wrote is overwritten at write back.
+- Named volumes and mounts that cannot be overlaid are not tracked.
 
 ## Pending decisions
 
 | Decision | Options |
 | --- | --- |
-| Local named volumes | Overlay them like binds, or list them as not tracked. |
-| Files copied up without content changes | Report them as modified, or compare with the lower file and drop identical ones. |
+| Files copied into the upper without content changes | Report them as modified, or compare with the lower file and drop identical ones. |
+| Output folders under discard | Leave their files in the run folder as today, or delete them. |
+| Discard in the Console setting | Offer it beside write back and keep, or leave it out. |
 
 ## Qualification
 
-This is a design. Milestone 1 (the code move) is implemented and in review. Upper-layer
-listing, systemd overlays and keep with the run remain unbuilt; the implementation plan
-lists their checks.
+This is a design. Milestone 1 (the code move) and milestone 3 (the Console report) are
+implemented and in review. The rest is unbuilt; the implementation plan lists its checks.
+The Holoscan path rule comes from a test of the real CLI with a fake Docker; no real
+container has run with an overlay directory.
 
 Applicable rules: D-01 through D-04, D-06 through D-09, D-11 through D-13; I-03, I-04,
 I-06 and I-07.

@@ -1,19 +1,19 @@
-# Run directory layers: implementation plan
+# Overlays for writable mounts: implementation plan
 
-Created November 11, 2026. Updated November 11, 2026: reworked around overlay layers.
+Created November 11, 2026. Updated November 11, 2026: decisions from the plan review recorded.
 Status: milestone 1 implemented in review ([#318](https://github.com/Cutuy/doramcap/pull/318)),
 milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull/320)), the rest planned.
-[Architecture](111026-file-change-report.md).
+[Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
 ## Order
 
 | Milestone | Starts | Reason |
 | --- | --- | --- |
-| 1: extract capture | Done, in review | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
+| 1: move the overlay code | Done, in review | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
 | 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
-| 2: change list from upper layers | After 1 | Replaces baseline scans; every later milestone builds on it. |
-| 4: systemd overlays | After 2 | systemd starts on the final change-list mechanism. |
-| 5: keep with the run | After 2 and 3 | Keeps upper layers and uses milestone 3's download route. |
+| 2: change list from the uppers | After 1 | Replaces the before/after folder walks; every later milestone builds on it. |
+| 4: systemd overlays | After 2 | systemd starts on the final change list. |
+| 5: keep with the run | After 2 and 3 | Keeps the uppers and uses milestone 3's download route. |
 
 Milestone numbers 1 and 3 keep their earlier meaning, so PR references stay valid.
 
@@ -28,17 +28,17 @@ across all of this work.
 
 **Work items**
 
-- [ ] Move the existing overlay trees, mapping, direct upper-layer actions, metadata
+- [ ] Move the existing overlay trees, mapping, direct upper actions, metadata
   traversal, record readers/writers and schema into `host-filesystem`. Keep this crate
   independent of Docker, workloads and `orchestrator`.
 - [ ] Put concrete shared workflow steps in `workload-lifecycle`. Extract the common
-  capture/finalization sequence from Compose and use it without a backend plugin framework.
+  capture/finalization sequence from Compose and use it without a plugin framework.
 - [ ] Keep Docker socket namespace verification, Engine layer diffs, volume discovery
   and owned-container checks in `docker-engine`. Supply their observations to the common report.
 - [ ] Replace Docker-specific mount input types at the shared boundary with generated
   source/consumer/access records. Keep propagation and SELinux validation in the Docker adapter.
 - [ ] Preserve `doramcap.filesystem.v1` record tags, path bytes, existing category values,
-  view/checkpoint layouts, reset behavior, write-back/discard and Compose step lineage.
+  overlay/checkpoint layouts, reset behavior, write-back/discard and Compose step lineage.
   Update owners, public names, callers, API doc comments and boundary rules together; add no forwarding aliases.
 - [ ] Reuse the repository's existing dependencies and implementations. No new external
   crate or custom capture algorithm is selected by this plan.
@@ -51,31 +51,54 @@ across all of this work.
 - [ ] Existing Compose file-change manifests and independent readback remain compatible.
 - [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
 
-## Milestone 2: Read the change list from upper layers
+## Milestone 2: Read the change list from the uppers
 
 **Work items**
 
-- [ ] In `host-filesystem`, walk each stopped upper layer into change records: added
-  when absent from the lower layer, modified when present, deleted for whiteouts and
-  opaque directories. Take "before" metadata from the lower layer, "after" from the upper.
-  Reuse the existing upper-layer interpretation that write back already uses.
+- [ ] In `host-filesystem`, read each upper into change records: added when absent from
+  the lower, modified when present, deleted when the run removed it. Take "before"
+  metadata from the lower and "after" from the upper. Use the one upper reader that
+  write back already uses.
+- [ ] Record one deleted entry for each path under a deleted folder in the lower.
+- [ ] Record sockets, FIFOs, device files and hard links like any other entry. Remove the
+  reader's refusals for them.
+- [ ] List each output folder directly, every file as added. Keep it mounted directly.
+  Skip Console's own records; mark a mount of the whole run folder as partly listed.
+- [ ] Mount directly, and report as not tracked with a reason, each writable mount that is
+  a single file, sits under `/proc`, `/sys` or `/dev`, or contains another mount point.
+- [ ] Report Docker named volumes as not tracked.
+- [ ] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
+  file; copy a modified file that has other names. Add one warning per such entry to the
+  report's write-back result. Keep the run outcome and the change list unaffected.
+- [ ] Delete the before/after folder walks, their records and the metadata comparison,
+  for host folders and named volumes. Delete the check that the host folder stayed
+  unchanged and the hard-link walk before launch. Keep Docker's container filesystem diff.
+- [ ] Let the caller name an overlay directory after its host folder.
+- [ ] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
+  save the report, unmount, apply the write policy, clean up.
 - [ ] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
   checkpoint unchanged, so milestone 3 needs no change.
-- [ ] Mount each Compose run output folder as an overlay with an empty lower layer.
-- [ ] Apply the named-volume decision: overlay local volumes like binds, or list them as
-  not tracked.
-- [ ] Apply the copied-up-file decision.
-- [ ] Delete baseline scans, their records and the metadata comparison once nothing reads them.
-  Keep Docker's container-layer diff.
+- [ ] Apply the copied-file decision.
 
 **Validation**
 
-- [ ] Real OverlayFS fixtures: additions, modifications, deletions, opaque directories,
-  renames, symlinks, non-UTF-8 names and metadata-only changes produce the expected records.
-- [ ] The same Compose writes produce the same records as the scan-based list did, apart
-  from the copied-up-file decision.
-- [ ] Listing cost follows the size of the upper layer: a large unchanged source lists quickly.
-- [ ] Write back, discard, busy mounts, full disk and interrupted runs behave as before.
+- [ ] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
+  contents, renames, symlinks, non-UTF-8 names and metadata-only changes produce the
+  expected records.
+- [ ] A socket, a FIFO, a new hard link and a modified file with two names each appear in
+  the change list. Write back finishes, the host folder holds the expected result and the
+  report carries one warning per entry.
+- [ ] The same Compose writes to a host folder produce the same records as the walk-based
+  list did, apart from the copied-file decision.
+- [ ] An output folder's files are listed as added and remain in the run folder after an
+  interrupted run. Console's own records are absent from the list.
+- [ ] A single-file mount, a mount containing another mount point and a named volume start
+  normally and appear as not tracked at Review and in the result.
+- [ ] Listing cost follows the size of the upper: a large unchanged host folder lists
+  quickly, and preparing it walks nothing.
+- [ ] A change made to the host folder during the run, on a path the run also wrote, ends
+  with the run's version after write back.
+- [ ] Discard, busy overlays, full disk and interrupted runs behave as before.
 - [ ] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
@@ -84,8 +107,8 @@ across all of this work.
 
 - [ ] Use shared generated types for category counts, source coverage, report state
   and run-relative manifest references. Preserve absence separately from zero changes.
-- [ ] Carry the result through `ExecutionResult` and the Console run result for both
-  backends. Keep full lists and unbounded source notes out of progress events and live status.
+- [ ] Carry the result through `ExecutionResult` and the Console run result for Compose and
+  systemd. Keep full lists and unbounded source notes out of progress events and live status.
 - [ ] Validate manifest references beneath the private run root using existing safe
   file opening. Save the immutable report checkpoint before destructive finalization;
   sync manifest files and their directory, atomically publish the completion checkpoint,
@@ -126,31 +149,39 @@ across all of this work.
 
 **Work items**
 
-- [ ] Read each unit's declared writable binds: from the app's settings for services
+- [ ] First, on a real systemd host, confirm the service manager sees overlays Console
+  mounts and that an owned drop-in can replace one `BindPaths=` entry while keeping the
+  others and their order. Stop and report if either fails.
+- [ ] Read each unit's writable host folders: from the app's settings for services
   Console creates, and from the unit file and its drop-ins through the service manager
   for your own unit files. Reuse the existing input copies; add no unit-file parser.
-- [ ] Mount one overlay per writable bind before any unit starts, through the shared
-  lifecycle. Point each bind at its merged view with an owned property or drop-in, keeping
-  its app path and access.
-- [ ] Delete the automatic same-path bind of a created service's working directory.
+- [ ] Mount one overlay per writable host folder before any unit starts, through the
+  shared lifecycle. Point each mount at its overlay directory with an owned property or
+  drop-in, keeping the path the app sees and its read-only or writable setting.
+- [ ] Delete the mount Console adds for a created service's undeclared working directory.
+- [ ] Check that each declared working directory exists where its app will run: when
+  Review is produced and again before anything is mounted or started. Fail with the app
+  and the directory. Skip units that write `WorkingDirectory=-/path`.
+- [ ] At Review, list a writable working directory outside every writable mount as not
+  tracked and suggest declaring it. List your own unit files' other writes as not tracked.
 - [ ] Add a test that the Dora coordinator and daemon keep `/runtime` under their
-  declared output bind.
-- [ ] Review lists your own unit files as partly tracked: only their declared binds are.
-- [ ] Stop all attempted units and release their hold on the views before unmounting.
-  Then reuse milestone 2's listing and the shared write policy.
+  declared output folder.
+- [ ] Stop all started units and release their hold on the overlays before unmounting.
+  Then reuse milestone 2's change list and the shared write policy.
 - [ ] Extend the systemd run report with the shared file-change result. Keep recording
   checks, host `/dev/shm` observation and machine snapshots unchanged.
-- [ ] Carry ownership records into interrupted-run reset: stop units, then discard leftover views.
+- [ ] Carry ownership records into interrupted-run reset: stop units, then discard
+  leftover overlays.
 
 **Validation**
 
-- [ ] Real created services and unit files see their views at their app paths; writes
-  stay isolated during the run and reach the source after write back.
+- [ ] Real created services and unit files see their overlay directories at the paths
+  they expect; writes stay out of the host folder during the run and reach it after write back.
 - [ ] Equivalent Compose and systemd fixtures produce equivalent change records.
-- [ ] A created service whose working directory has no mount under it fails with
-  systemd's own error; Dora's system apps start unchanged.
-- [ ] Preparation rollback, cancellation before and during startup, busy views, report-save
-  failure and Console restart.
+- [ ] A missing working directory fails at Review and again at Start with nothing mounted
+  or started. `WorkingDirectory=-/path` starts. Dora's system apps start unchanged.
+- [ ] Preparation rollback, cancellation before and during startup, busy overlays,
+  report-save failure and Console restart.
 - [ ] Build unprivileged; elevate only capability-required test executables. All owned
   mounts and units are gone after success and kept as specified after failure.
 
@@ -159,9 +190,9 @@ across all of this work.
 **Work items**
 
 - [ ] Add keep with the run beside write back and discard in `host-filesystem`: copy each
-  upper layer's files into the run folder and record its deletions. Leave the source untouched.
-- [ ] Remove the view's run layer only after the copy is verified. A failed copy keeps the
-  upper data, as a failed write back does.
+  upper's files into the run folder and record its deletions. Leave the host folder untouched.
+- [ ] Remove the upper only after the copy is verified. A failed copy keeps the upper, as
+  a write back stopped by an I/O error does.
 - [ ] Record the policy and the kept location in the file-change report.
 - [ ] Add one Console setting selecting write back or keep with the run, default write back.
   Pass it to Compose and systemd runs.
@@ -174,11 +205,11 @@ across all of this work.
 **Validation**
 
 - [ ] The kept files match the report's added and modified entries exactly.
-- [ ] The source folder is byte-identical before and after a keep run.
+- [ ] The host folder is byte-identical before and after a keep run.
 - [ ] Deletions appear in the report and remove nothing.
-- [ ] A second run starts from the original source and keeps its own separate files.
-- [ ] Full disk and an interrupted copy keep the upper data and block verified cleanup.
-- [ ] The run layer and the run folder on different filesystems.
+- [ ] A second run starts from the unchanged host folder and keeps its own separate files.
+- [ ] Full disk and an interrupted copy keep the upper and block verified cleanup.
+- [ ] The upper and the run folder on different filesystems.
 - [ ] A kept file, one with a non-UTF-8 name and a log dump download intact. Requests for
   Console's run records, another run's entries, traversal and symlink escapes are refused.
   A kept HTML file downloads and never renders in Console.
@@ -197,9 +228,11 @@ across all of this work.
   boundaries, formatting, default/all-feature Clippy and workspace tests, storage without
   default features and snapshot synchronization. Use release/CI profiles and locked dependencies.
 - [ ] Run ARM64 worker validation and report it separately from local results.
-- [ ] Qualify systemd view visibility, OverlayFS backing and capabilities on a real
+- [ ] Qualify systemd's sight of overlays, OverlayFS backing and capabilities on a real
   packaged target. Unit tests alone do not establish this deployment contract.
-- [ ] Keep Holoscan, CUDA/GPU/IPC and sensor qualification explicit separate work.
+- [ ] Keep Holoscan, CUDA/GPU/IPC and sensor qualification explicit separate work. The
+  Holoscan runner checks that an extra data folder appears at the same path with an
+  overlay directory as without one.
 
 Design validation: source/guide review, local links, SVG XML/rendering and whitespace checks pass.
 Runtime checks above are deferred until implementation; this design PR changes documentation only.

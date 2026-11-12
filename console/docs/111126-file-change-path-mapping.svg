@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1130" height="560" viewBox="0 0 1130 560" role="img" aria-labelledby="title desc">
+<title id="title">Host path to the path the app sees</title>
+<desc id="desc">Docker Compose: the Compose file states the path the app sees, so the host folder /mnt/recordings/day1 and an overlay directory of any name both appear at /data. Holoscan: the Holoscan CLI builds the path from the last part of the host path, so /mnt/recordings/day1 appears at /workspace/volumes/day1, an overlay directory named day1 appears at the same path, and an overlay directory with another name appears at a different path.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1130" height="560" fill="white"/>
+<text x="40" y="44" class="title left">Docker Compose</text>
+<text x="40" y="72" class="label left">The Compose file states the path the app sees.</text>
+<text x="480" y="106" class="label">Host path</text>
+<text x="900" y="106" class="label">Path the app sees</text>
+<text x="40" y="150" class="left">Without Console</text>
+<rect x="290" y="118" width="380" height="52" rx="10" class="base"/>
+<text x="480.0" y="150.0" class="mono">/mnt/recordings/day1</text>
+<path d="M670 144 L708 144" class="line"/>
+<rect x="710" y="118" width="380" height="52" rx="10" class="base"/>
+<text x="900.0" y="150.0" class="mono">/data</text>
+<text x="40" y="214" class="left">Overlay directory, any name</text>
+<rect x="290" y="182" width="380" height="52" rx="10" class="base"/>
+<text x="480.0" y="214.0" class="mono">…/0/any-name</text>
+<path d="M670 208 L708 208" class="line"/>
+<rect x="710" y="182" width="380" height="52" rx="10" class="overlay"/>
+<text x="900.0" y="214.0" class="mono">/data</text>
+<text x="40" y="284" class="title left">Holoscan</text>
+<text x="40" y="312" class="label left">The Holoscan CLI builds the path from the last part of the host path.</text>
+<text x="480" y="346" class="label">Host path</text>
+<text x="900" y="346" class="label">Path the app sees</text>
+<text x="40" y="390" class="left">Without Console</text>
+<rect x="290" y="358" width="380" height="52" rx="10" class="base"/>
+<text x="480.0" y="390.0" class="mono">/mnt/recordings/day1</text>
+<path d="M670 384 L708 384" class="line"/>
+<rect x="710" y="358" width="380" height="52" rx="10" class="base"/>
+<text x="900.0" y="390.0" class="mono">/workspace/volumes/day1</text>
+<text x="40" y="454" class="left">Overlay directory named day1</text>
+<rect x="290" y="422" width="380" height="52" rx="10" class="base"/>
+<text x="480.0" y="454.0" class="mono">…/0/day1</text>
+<path d="M670 448 L708 448" class="line"/>
+<rect x="710" y="422" width="380" height="52" rx="10" class="overlay"/>
+<text x="900.0" y="454.0" class="mono">/workspace/volumes/day1</text>
+<text x="40" y="518" class="left">Overlay directory, other name</text>
+<rect x="290" y="486" width="380" height="52" rx="10" class="base"/>
+<text x="480.0" y="518.0" class="mono">…/0/other</text>
+<path d="M670 512 L708 512" class="line"/>
+<rect x="710" y="486" width="380" height="52" rx="10" class="bad"/>
+<text x="900.0" y="518.0" class="mono">/workspace/volumes/other</text>
+</svg>
