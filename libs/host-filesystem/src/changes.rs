@@ -354,7 +354,8 @@ pub fn validate_exclusions(paths: impl IntoIterator<Item = impl AsRef<Path>>) ->
     }
     Ok(())
 }
-/// Review notes use the same source classification as execution; no report files are created.
+/// Review notes name writable sources left untracked, using the execution classification.
+/// No report files are created.
 pub async fn coverage_notes(
     bind_mounts: &[DirectoryMount],
     metadata_sources: &[MetadataSource],
@@ -377,23 +378,16 @@ pub async fn coverage_notes(
             Ok(source) => source,
             Err(_) => PathBuf::from(&bind.source),
         };
-        let (kind, reason) = source_coverage(&source, artifacts, overlays).await;
-        if let Some(reason) = reason {
-            if kind == SourceKind::RunOutput && source == artifacts {
-                notes.push(format!(
-                    "{}:{}: {} partly listed; Console records excluded",
-                    bind.consumer,
-                    bind.target,
-                    source.display()
-                ));
-            } else if kind == SourceKind::Untracked {
-                notes.push(format!(
-                    "{}:{}: {}: {reason}",
-                    bind.consumer,
-                    bind.target,
-                    source.display()
-                ));
-            }
+        // Run output is listed after the run; skipped Console records need no Review note.
+        if let (SourceKind::Untracked, Some(reason)) =
+            source_coverage(&source, artifacts, overlays).await
+        {
+            notes.push(format!(
+                "{}:{}: {}: {reason}",
+                bind.consumer,
+                bind.target,
+                source.display()
+            ));
         }
     }
     for source in metadata_sources.iter().filter(|s| !s.read_only) {
@@ -826,7 +820,7 @@ mod source_tests {
         let notes = coverage_notes(&mounts, &[], root.path(), true)
             .await
             .unwrap();
-        assert!(notes.iter().any(|note| note.contains("partly listed")));
+        assert!(notes.is_empty(), "{notes:?}");
         let sources = prepare_sources(SourcesInput {
             overlays: true,
             artifacts: root.path().into(),
