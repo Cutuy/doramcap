@@ -2,6 +2,12 @@
 
 Follow the [worktree-pool skill](.agents/skills/worktree-pool/SKILL.md):
 
+```sh
+node .agents/skills/worktree-pool/scripts/pool.ts acq --owner CHAT-TASK --branch codex/task
+# Work in the returned path; keep its owner and token.
+node .agents/skills/worktree-pool/scripts/pool.ts release --owner CHAT-TASK --token TOKEN --pr PR_URL
+```
+
 1. Acquire a lease before editing. Ask before using main when it already holds the target branch.
 2. Implement, run minimal local checks, then push and create/update the PR before remaining validation.
 3. Finish validation, mark the PR ready, then release. Keep the lease while local work uses the checkout.
@@ -15,20 +21,37 @@ Before planning, implementing, or reviewing code changes, read both the
 Briefly identify applicable rule IDs and check the final changes against them.
 Re-read if the guides change or leave context.
 
+## Engineering rules
+
+The guides hold the full rules. These are the ones most often missed:
+
+- **Behavior first (D-01):** agree on workflow, scope, success, failure and recovery before choosing mechanisms.
+- **Simplicity (D-02):** favor deletion and less code. Justify each abstraction, option, dependency and compatibility layer with a current use case.
+- **One owner (D-03):** each concept, fact and policy has one owner. Avoid duplicate models, defaults, stores and forwarding wrappers.
+- **Languages (D-05, I-04):** write new code in Rust or TypeScript. Use protobuf for internal models and configuration. Keep Python out of the serving stack.
+- **Events, not polling (D-10, I-05):** outside tests, block on channels, `select!`, condition variables or kernel notifications. Use timers only for sampling, pacing and real deadlines.
+- **Lifetimes and outcomes (D-06, D-07):** own resources from the first side effect through verified cleanup. Represent unknown explicitly and keep evidence when another step fails.
+- **Inputs and limits (I-04, I-06):** validate configuration before side effects and name fixed values. Document limits, fail explicitly at exhaustion and label partial results.
+- **Tests (I-07, D-13):** assert observable behavior with real inputs, synchronize on events, and cover failure, cancellation, restart and cleanup.
+- **API docs (I-09):** keep contracts in doc comments beside the code, at most three lines each.
+
 Use [Scanner](.agents/skills/scanner/SKILL.md) to review a PR or branch and reconcile
 implementation/design guidance. Keep agent process instructions in this file.
 
 ## Important decisions
 
-Before asking the user for an important design decision:
+**Before EVERY important decision, stop, ask the user and wait for their answer.** This holds during planning, implementation and review, for design choices, scope changes, dependencies, configuration and added complexity.
 
-- Explain the current workflow, the concrete problem, relevant constraints and affected components.
-- Show a compact visual of the current flow and proposed change, using inline Mermaid or architecture SVGs. Include success, failure and recovery where they matter.
-- Present your recommended option and alternatives, with their behavior and tradeoffs.
+Explain each decision in rendered visuals (Mermaid or SVG; never ASCII art), each with a few lines of text:
 
-Then ask the user and wait for their answer before implementing that decision. Follow this process for design questions during planning, implementation and review.
+1. **Context:** the current workflow and the components involved.
+2. **Problem:** what goes wrong, shown with a concrete example. Say whether example names are made up or taken from the code.
+3. **Options:** one visual per possible solution, showing its behavior and tradeoffs, including success, failure and recovery where they matter. Mark your recommendation.
 
-For other important decisions, present your recommended option and alternatives, then ask the user and wait before proceeding.
+- Raise one decision at a time; close it before moving to the next.
+- Agree on a small set of terms and use only those. Explain a term from a document in plain words before using it.
+- Ground every claim in the code or docs before stating it.
+- Carry the same visuals into plan documents and PR descriptions.
 
 Added complexity is strongly discouraged; discuss it with the user and obtain agreement before introducing it.
 
