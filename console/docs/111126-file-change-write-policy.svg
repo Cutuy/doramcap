@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="400" viewBox="0 0 1100 400" role="img" aria-labelledby="title desc">
+<title id="title">The three write policies</title>
+<desc id="desc">Write back copies the upper onto the host folder, which is modified, and the run keeps the change list. Keep with the run copies the upper into the run folder, the host folder is untouched, and the run keeps the change list and the files. Discard removes the upper, the host folder is untouched, and the run keeps the change list. An output folder has no upper, so its files stay in the run folder under every policy.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1100" height="400" fill="white"/>
+<text x="160" y="40" class="title">Write policy</text>
+<text x="420" y="40" class="title">The upper</text>
+<text x="680" y="40" class="title">Host folder</text>
+<text x="940" y="40" class="title">Run keeps</text>
+<rect x="40" y="70" width="240" height="60" rx="10" class="declare"/>
+<text x="160.0" y="96.0">Write back</text>
+<text x="160.0" y="119.0" class="label">Default</text>
+<rect x="300" y="70" width="240" height="60" rx="10" class="upper"/>
+<text x="420.0" y="106.0">Copied onto the host folder</text>
+<rect x="560" y="70" width="240" height="60" rx="10" class="upper"/>
+<text x="680.0" y="106.0">Modified</text>
+<rect x="820" y="70" width="240" height="60" rx="10" class="base"/>
+<text x="940.0" y="106.0">Change list</text>
+<rect x="40" y="146" width="240" height="60" rx="10" class="declare"/>
+<text x="160.0" y="182.0">Keep with the run</text>
+<rect x="300" y="146" width="240" height="60" rx="10" class="upper"/>
+<text x="420.0" y="182.0">Copied into the run folder</text>
+<rect x="560" y="146" width="240" height="60" rx="10" class="overlay"/>
+<text x="680.0" y="182.0">Untouched</text>
+<rect x="820" y="146" width="240" height="60" rx="10" class="base"/>
+<text x="940.0" y="182.0">Change list and files</text>
+<rect x="40" y="222" width="240" height="60" rx="10" class="declare"/>
+<text x="160.0" y="258.0">Discard</text>
+<rect x="300" y="222" width="240" height="60" rx="10" class="off"/>
+<text x="420.0" y="258.0">Removed</text>
+<rect x="560" y="222" width="240" height="60" rx="10" class="overlay"/>
+<text x="680.0" y="258.0">Untouched</text>
+<rect x="820" y="222" width="240" height="60" rx="10" class="base"/>
+<text x="940.0" y="258.0">Change list</text>
+<rect x="40" y="308" width="240" height="60" rx="10" class="declare"/>
+<text x="160.0" y="334.0">Output folder</text>
+<text x="160.0" y="357.0" class="label">No overlay</text>
+<rect x="300" y="308" width="760" height="60" rx="10" class="base"/>
+<text x="680.0" y="334.0">No upper, so no policy applies</text>
+<text x="680.0" y="357.0" class="label">Files stay in the run folder under every policy</text>
+</svg>

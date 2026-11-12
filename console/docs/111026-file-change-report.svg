@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="600" viewBox="0 0 1240 600" role="img" aria-labelledby="title desc">
+<title id="title">Overlays for writable mounts</title>
+<desc id="desc">Left, bottom to top: host folders, the writable mounts each launch declares, one overlay per writable host folder, the Compose, systemd and Holoscan launches that receive overlay directories, the change list read from the uppers, the write policy and the Console report and downloads. Right: the nine steps of one run with their owners.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1240" height="600" fill="white"/>
+<text x="320" y="40" class="title">Parts</text>
+<rect x="40" y="70" width="560" height="60" rx="10" class="upper"/>
+<text x="320.0" y="96.0">Report and downloads</text>
+<text x="320.0" y="119.0" class="label">Preview, change list, kept files</text>
+<rect x="40" y="142" width="560" height="60" rx="10" class="upper"/>
+<text x="320.0" y="168.0">Write policy</text>
+<text x="320.0" y="191.0" class="label">Write back · keep with the run · discard</text>
+<rect x="40" y="214" width="560" height="60" rx="10" class="upper"/>
+<text x="320.0" y="240.0">Change list</text>
+<text x="320.0" y="263.0" class="label">Read from the uppers after apps stop</text>
+<rect x="40" y="286" width="178" height="60" rx="10" class="base"/>
+<text x="129.0" y="312.0">Compose</text>
+<text x="129.0" y="335.0" class="label">Overlay directories</text>
+<rect x="231" y="286" width="178" height="60" rx="10" class="base"/>
+<text x="320.0" y="312.0">systemd</text>
+<text x="320.0" y="335.0" class="label">Overlay directories</text>
+<rect x="422" y="286" width="178" height="60" rx="10" class="base"/>
+<text x="511.0" y="312.0">Holoscan</text>
+<text x="511.0" y="335.0" class="label">Overlay directories</text>
+<rect x="40" y="358" width="560" height="60" rx="10" class="overlay"/>
+<text x="320.0" y="384.0">Overlay per writable host folder</text>
+<text x="320.0" y="407.0" class="label">Lower: host folder · upper: run writes</text>
+<rect x="40" y="430" width="560" height="60" rx="10" class="declare"/>
+<text x="320.0" y="456.0">Writable mounts</text>
+<text x="320.0" y="479.0" class="label">Declared by each launch in its own format</text>
+<rect x="40" y="502" width="560" height="50" rx="10" class="base"/>
+<text x="320.0" y="533.0">Host folders</text>
+<text x="830" y="40" class="title">One run</text>
+<rect x="660" y="70" width="300" height="44" rx="10" class="base"/>
+<text x="810.0" y="98.0">Check working directories</text>
+<text x="980" y="98" class="label left">workload crates</text>
+<path d="M810 114 L810 126" class="line"/>
+<rect x="660" y="126" width="300" height="44" rx="10" class="overlay"/>
+<text x="810.0" y="154.0">Mount overlays</text>
+<text x="980" y="154" class="label left">lifecycle</text>
+<path d="M810 170 L810 182" class="line"/>
+<rect x="660" y="182" width="300" height="44" rx="10" class="base"/>
+<text x="810.0" y="210.0">Launch apps</text>
+<text x="980" y="210" class="label left">workload crates</text>
+<path d="M810 226 L810 238" class="line"/>
+<rect x="660" y="238" width="300" height="44" rx="10" class="base"/>
+<text x="810.0" y="266.0">Stop every app</text>
+<text x="980" y="266" class="label left">workload crates</text>
+<path d="M810 282 L810 294" class="line"/>
+<rect x="660" y="294" width="300" height="44" rx="10" class="upper"/>
+<text x="810.0" y="322.0">Read uppers</text>
+<text x="980" y="322" class="label left">host-filesystem</text>
+<path d="M810 338 L810 350" class="line"/>
+<rect x="660" y="350" width="300" height="44" rx="10" class="upper"/>
+<text x="810.0" y="378.0">Save report</text>
+<text x="980" y="378" class="label left">host-filesystem, Console</text>
+<path d="M810 394 L810 406" class="line"/>
+<rect x="660" y="406" width="300" height="44" rx="10" class="overlay"/>
+<text x="810.0" y="434.0">Unmount overlays</text>
+<text x="980" y="434" class="label left">lifecycle</text>
+<path d="M810 450 L810 462" class="line"/>
+<rect x="660" y="462" width="300" height="44" rx="10" class="upper"/>
+<text x="810.0" y="490.0">Apply write policy</text>
+<text x="980" y="490" class="label left">host-filesystem</text>
+<path d="M810 506 L810 518" class="line"/>
+<rect x="660" y="518" width="300" height="44" rx="10" class="overlay"/>
+<text x="810.0" y="546.0">Clean up</text>
+<text x="980" y="546" class="label left">lifecycle</text>
+</svg>

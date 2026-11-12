@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="400" viewBox="0 0 1060 400" role="img" aria-labelledby="title desc">
+<title id="title">Which entries in the upper are listed as modified</title>
+<desc id="desc">Four entries found in an upper. A file the app appended to and a file whose permissions changed differ from the lower and are listed as modified. A file opened for writing with nothing written and the folder above a changed file match the lower and are left out of the change list.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1060" height="400" fill="white"/>
+<text x="190" y="40" class="title">Entry in the upper</text>
+<text x="530" y="40" class="title">Compared with the lower</text>
+<text x="870" y="40" class="title">Change list</text>
+<rect x="40" y="70" width="300" height="60" rx="10" class="base"/>
+<text x="190.0" y="96.0" class="mono">data/log.txt</text>
+<text x="190.0" y="119.0" class="label">App appended lines</text>
+<rect x="380" y="70" width="300" height="60" rx="10" class="upper"/>
+<text x="530.0" y="106.0">Size and time differ</text>
+<rect x="720" y="70" width="300" height="60" rx="10" class="upper"/>
+<text x="870.0" y="106.0">Modified</text>
+<path d="M340 100 L378 100" class="line"/>
+<path d="M680 100 L718 100" class="line"/>
+<rect x="40" y="146" width="300" height="60" rx="10" class="base"/>
+<text x="190.0" y="172.0" class="mono">run.sh</text>
+<text x="190.0" y="195.0" class="label">App changed its permissions</text>
+<rect x="380" y="146" width="300" height="60" rx="10" class="upper"/>
+<text x="530.0" y="182.0">Permissions differ</text>
+<rect x="720" y="146" width="300" height="60" rx="10" class="upper"/>
+<text x="870.0" y="182.0">Modified</text>
+<path d="M340 176 L378 176" class="line"/>
+<path d="M680 176 L718 176" class="line"/>
+<rect x="40" y="222" width="300" height="60" rx="10" class="base"/>
+<text x="190.0" y="248.0" class="mono">config.yaml</text>
+<text x="190.0" y="271.0" class="label">Opened for writing, nothing written</text>
+<rect x="380" y="222" width="300" height="60" rx="10" class="overlay"/>
+<text x="530.0" y="258.0">Same as the lower</text>
+<rect x="720" y="222" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="258.0">Not listed</text>
+<path d="M340 252 L378 252" class="line"/>
+<path d="M680 252 L718 252" class="line"/>
+<rect x="40" y="298" width="300" height="60" rx="10" class="base"/>
+<text x="190.0" y="324.0" class="mono">data/</text>
+<text x="190.0" y="347.0" class="label">Folder above log.txt</text>
+<rect x="380" y="298" width="300" height="60" rx="10" class="overlay"/>
+<text x="530.0" y="334.0">Same as the lower</text>
+<rect x="720" y="298" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="334.0">Not listed</text>
+<path d="M340 328 L378 328" class="line"/>
+<path d="M680 328 L718 328" class="line"/>
+</svg>

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="420" viewBox="0 0 1240 420" role="img" aria-labelledby="title desc">
+<title id="title">What write back does with each entry</title>
+<desc id="desc">Left: each kind of entry in the upper and what write back does with it. Files, folders and symlinks are copied, deletions are applied, sockets, FIFOs and device files are skipped with a warning, a new hard link is copied as a separate file with a warning, and a modified file with other names is copied with a warning. Right: a file with two names, a.bin and b.bin, before the run, without Console, during the run and after write back.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1240" height="420" fill="white"/>
+<text x="180" y="40" class="title">Entry in the upper</text>
+<text x="510" y="40" class="title">Write back</text>
+<rect x="40" y="70" width="280" height="56" rx="10" class="base"/>
+<text x="180.0" y="104.0">File, folder or symlink</text>
+<path d="M320 98 L358 98" class="line"/>
+<rect x="360" y="70" width="300" height="56" rx="10" class="overlay"/>
+<text x="510.0" y="104.0">Copied</text>
+<rect x="40" y="138" width="280" height="56" rx="10" class="base"/>
+<text x="180.0" y="172.0">Deleted file or folder</text>
+<path d="M320 166 L358 166" class="line"/>
+<rect x="360" y="138" width="300" height="56" rx="10" class="overlay"/>
+<text x="510.0" y="172.0">Deleted from the host folder</text>
+<rect x="40" y="206" width="280" height="56" rx="10" class="base"/>
+<text x="180.0" y="240.0">Socket, FIFO or device file</text>
+<path d="M320 234 L358 234" class="line"/>
+<rect x="360" y="206" width="300" height="56" rx="10" class="upper"/>
+<text x="510.0" y="230.0">Skipped</text>
+<text x="510.0" y="253.0" class="label">Warning</text>
+<rect x="40" y="274" width="280" height="56" rx="10" class="base"/>
+<text x="180.0" y="308.0">New hard link</text>
+<path d="M320 302 L358 302" class="line"/>
+<rect x="360" y="274" width="300" height="56" rx="10" class="upper"/>
+<text x="510.0" y="298.0">Copied as a separate file</text>
+<text x="510.0" y="321.0" class="label">Warning</text>
+<rect x="40" y="342" width="280" height="56" rx="10" class="base"/>
+<text x="180.0" y="376.0">Modified file with other names</text>
+<path d="M320 370 L358 370" class="line"/>
+<rect x="360" y="342" width="300" height="56" rx="10" class="upper"/>
+<text x="510.0" y="366.0">Copied</text>
+<text x="510.0" y="389.0" class="label">Warning: other names keep old data</text>
+<text x="960" y="40" class="title">A file with two names</text>
+<rect x="720" y="70" width="200" height="60" rx="10" class="declare"/>
+<text x="820.0" y="106.0">Before the run</text>
+<rect x="940" y="70" width="260" height="60" rx="10" class="base"/>
+<text x="1070.0" y="96.0">a.bin = b.bin</text>
+<text x="1070.0" y="119.0" class="label">One file, old data</text>
+<rect x="720" y="146" width="200" height="60" rx="10" class="declare"/>
+<text x="820.0" y="172.0">Without Console</text>
+<text x="820.0" y="195.0" class="label">App writes a.bin</text>
+<rect x="940" y="146" width="260" height="60" rx="10" class="overlay"/>
+<text x="1070.0" y="172.0">a.bin = b.bin</text>
+<text x="1070.0" y="195.0" class="label">One file, new data</text>
+<rect x="720" y="222" width="200" height="60" rx="10" class="declare"/>
+<text x="820.0" y="248.0">During the run</text>
+<text x="820.0" y="271.0" class="label">What the app sees</text>
+<rect x="940" y="222" width="124" height="60" rx="10" class="upper"/>
+<text x="1002.0" y="248.0">a.bin</text>
+<text x="1002.0" y="271.0" class="label">New data</text>
+<rect x="1076" y="222" width="124" height="60" rx="10" class="base"/>
+<text x="1138.0" y="248.0">b.bin</text>
+<text x="1138.0" y="271.0" class="label">Old data</text>
+<rect x="720" y="298" width="200" height="60" rx="10" class="declare"/>
+<text x="820.0" y="324.0">After write back</text>
+<text x="820.0" y="347.0" class="label">Host folder</text>
+<rect x="940" y="298" width="124" height="60" rx="10" class="upper"/>
+<text x="1002.0" y="324.0">a.bin</text>
+<text x="1002.0" y="347.0" class="label">New data</text>
+<rect x="1076" y="298" width="124" height="60" rx="10" class="base"/>
+<text x="1138.0" y="324.0">b.bin</text>
+<text x="1138.0" y="347.0" class="label">Old data</text>
+</svg>

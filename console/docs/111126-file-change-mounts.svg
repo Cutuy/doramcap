@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="470" viewBox="0 0 1060 470" role="img" aria-labelledby="title desc">
+<title id="title">What each writable mount gets</title>
+<desc id="desc">Five kinds of writable mount. A host folder gets an overlay and its change list comes from the upper. An output folder is mounted directly and every file is listed as added. A Docker named volume, a host folder that cannot be overlaid, and devices and /dev/shm are mounted without an overlay and are not tracked.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.left{text-anchor:start}.mono{font:15px monospace;fill:#17324d}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.off{fill:#f4f4f4;stroke:#9a9a9a;stroke-width:1.5;stroke-dasharray:6 4}.bad{fill:#fdecec;stroke:#c96a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
+<rect width="1060" height="470" fill="white"/>
+<text x="190" y="40" class="title">Writable mount</text>
+<text x="530" y="40" class="title">How the app gets it</text>
+<text x="870" y="40" class="title">Change list</text>
+<rect x="40" y="70" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="106.0">Host folder</text>
+<rect x="380" y="70" width="300" height="60" rx="10" class="overlay"/>
+<text x="530.0" y="96.0">Overlay</text>
+<text x="530.0" y="119.0" class="label">Lower: host folder · upper: run writes</text>
+<rect x="720" y="70" width="300" height="60" rx="10" class="upper"/>
+<text x="870.0" y="96.0">From the upper</text>
+<text x="870.0" y="119.0" class="label">Write policy applies</text>
+<path d="M340 100 L378 100" class="line"/>
+<path d="M680 100 L718 100" class="line"/>
+<rect x="40" y="146" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="172.0">Output folder</text>
+<text x="190.0" y="195.0" class="label">Inside the run folder</text>
+<rect x="380" y="146" width="300" height="60" rx="10" class="base"/>
+<text x="530.0" y="182.0">Mounted directly</text>
+<rect x="720" y="146" width="300" height="60" rx="10" class="upper"/>
+<text x="870.0" y="172.0">Every file added</text>
+<text x="870.0" y="195.0" class="label">Files stay in the run folder</text>
+<path d="M340 176 L378 176" class="line"/>
+<path d="M680 176 L718 176" class="line"/>
+<rect x="40" y="222" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="258.0">Docker named volume</text>
+<rect x="380" y="222" width="300" height="60" rx="10" class="base"/>
+<text x="530.0" y="258.0">Mounted by Docker</text>
+<rect x="720" y="222" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="258.0">Not tracked</text>
+<path d="M340 252 L378 252" class="line"/>
+<path d="M680 252 L718 252" class="line"/>
+<rect x="40" y="298" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="324.0">Cannot be overlaid</text>
+<text x="190.0" y="347.0" class="label">Single file, device path, inner mount</text>
+<rect x="380" y="298" width="300" height="60" rx="10" class="base"/>
+<text x="530.0" y="334.0">Mounted directly</text>
+<rect x="720" y="298" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="334.0">Not tracked</text>
+<path d="M340 328 L378 328" class="line"/>
+<path d="M680 328 L718 328" class="line"/>
+<rect x="40" y="374" width="300" height="60" rx="10" class="declare"/>
+<text x="190.0" y="410.0">Devices and /dev/shm</text>
+<rect x="380" y="374" width="300" height="60" rx="10" class="base"/>
+<text x="530.0" y="410.0">Mounted directly</text>
+<rect x="720" y="374" width="300" height="60" rx="10" class="off"/>
+<text x="870.0" y="410.0">Not tracked</text>
+<path d="M340 404 L378 404" class="line"/>
+<path d="M680 404 L718 404" class="line"/>
+</svg>
