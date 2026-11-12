@@ -42,9 +42,9 @@ enum StorageCategory {
 // An individual path transition, retained separately as added, modified or deleted.
 enum ChangeKind {
   CHANGE_KIND_UNSPECIFIED = 0;
-  ADDED = 1;
-  MODIFIED = 2;
-  DELETED = 3;
+  CHANGE_KIND_ADDED = 1;
+  CHANGE_KIND_MODIFIED = 2;
+  CHANGE_KIND_DELETED = 3;
 }
 // One change with its original category, source and consumers.
 message FileChange {
@@ -61,7 +61,11 @@ message FileChange {
   // Unavailable for Engine changes and for absent sides of a transition.
   FileMetadata after = 7;
 }
-enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }
+enum ActionKind {
+  ACTION_KIND_UNSPECIFIED = 0;
+  ACTION_KIND_REMOVE = 1;
+  ACTION_KIND_TRANSFER = 2;
+}
 message FileAction { ActionKind kind = 1; bytes path = 2; }
 
 // A backend-resolved directory mount, with native access preserved by the backend.
