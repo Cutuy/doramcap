@@ -109,19 +109,19 @@ those mounts. The user declares them in the launcher's own format and Console re
 | Launch | Writable mounts |
 | --- | --- |
 | Compose, Holoscan in Docker | Each service's host folder mounts. |
-| Typed systemd program | Its writable binds into its private root, plus a same-path bind of its working directory when no declared bind covers it. |
-| Native systemd unit | Its effective binds. Without a root change, it sees the host tree at the same paths. |
+| systemd service Console creates from a command | Its writable binds into its own root folder, plus a same-path bind of its working directory when no declared bind covers it. |
+| Your own systemd unit file | Its effective binds. Unless the unit sets its own root, it sees the host folders at the same paths. |
 
 The working directory is an app-view path. It leads to a host folder like any other path:
 
 | Working directory sits | Capture |
 | --- | --- |
 | Under a writable mount | Already captured through that mount. It adds no source. |
-| At its host path: a same-path bind, or a unit without a root change | That host folder is a source. |
+| At its host path: a same-path bind, or a unit file without its own root | That host folder is a source. |
 | Under a read-only mount, or inside a root Console does not bind | Listed with the reason and left uncaptured. |
 
 Dora's coordinator and daemon run in `/runtime`, which their run-owned output bind
-covers, so they add no source. A native unit that sets `RootDirectory=`,
+covers, so they add no source. A unit file that sets `RootDirectory=`,
 `RootImage=` or its own binds is resolved through those settings. A container's
 working directory follows the first or the last row.
 
@@ -148,7 +148,7 @@ Console's project root is the scope for admission. It is no capture source by it
 | Read-only aliases into a tracked tree | Preserve the alias relationship and read-only access using the same view mapping. |
 | Devices, live shared memory and unsupported private storage | Preserve native access and list the exclusion. No filesystem-content capture claim. |
 | Declared working directory at its host path | Reuse shared OverlayFS views at that path through the same-path bind, an owned drop-in or a property. A working directory under a mount adds no source. |
-| Arbitrary native-unit writes outside resolved sources | Outside capture coverage; retain native unit semantics. |
+| Unit-file writes outside resolved sources | Outside capture coverage; the unit keeps its own settings. |
 
 Systemd reads effective bind properties through the service manager and retains native
 optional-source, target, ordering and access semantics. Review identifies sources that

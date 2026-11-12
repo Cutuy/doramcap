@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1240" height="760" viewBox="0 0 1240 760" role="img" aria-labelledby="title desc">
 <title id="title">What a launch sees and what Console captures</title>
-<desc id="desc">For Compose services, typed systemd programs and native systemd units, each application path reaches a host source through a mount. Writable host folders are captured through overlay views; run outputs are listed; read-only paths and devices are not captured. A captured folder combines the unchanged host folder with a private run layer, mounted at the application target, and the run layer becomes the change list and the write policy input.</desc>
+<desc id="desc">For Compose services, systemd services Console creates and your own systemd unit files, each application path reaches a host source through a mount. Writable host folders are captured through overlay views; run outputs are listed; read-only paths and devices are not captured. A captured folder combines the unchanged host folder with a private run layer, mounted at the application target, and the run layer becomes the change list and the write policy input.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
 <style>text{font:16px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.head{font-size:15px;font-weight:600;fill:#52677c}.group{font-size:18px;font-weight:600;text-anchor:start}.label{font-size:14px;fill:#3d5468}.mono{font-family:monospace;font-size:15px}.app{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.host{fill:#fbf6ec;stroke:#c2a46b;stroke-width:1.5}.captured{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.listed{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.none{fill:#f3f3f3;stroke:#adadad;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;marker-end:url(#arrow)}</style>
 <rect width="1240" height="760" fill="white"/>
@@ -17,7 +17,7 @@
 <rect x="640" y="182" width="300" height="40" rx="8" class="host"/><text x="790" y="208">Container layer</text>
 <path d="M940 202 H985" class="line"/><rect x="985" y="182" width="215" height="40" rx="8" class="listed"/><text x="1092" y="208">Layer changes listed</text>
 
-<text x="40" y="252" class="group">Typed systemd program · private root</text>
+<text x="40" y="252" class="group">systemd: service Console creates</text>
 <rect x="40" y="262" width="290" height="40" rx="8" class="app"/><text x="185" y="288" class="mono">/runtime · working dir</text>
 <path d="M330 282 H640" class="line"/><text x="485" y="274" class="label">run output bind</text>
 <rect x="640" y="262" width="300" height="40" rx="8" class="host"/><text x="790" y="288" class="mono">runs/&lt;id&gt;/dora/runtime</text>
@@ -31,7 +31,7 @@
 <rect x="640" y="362" width="300" height="40" rx="8" class="host"/><text x="790" y="388" class="mono">/etc/app</text>
 <path d="M940 382 H985" class="line"/><rect x="985" y="362" width="215" height="40" rx="8" class="none"/><text x="1092" y="388">Not captured</text>
 
-<text x="40" y="432" class="group">Native systemd unit · host root</text>
+<text x="40" y="432" class="group">systemd: your own unit file</text>
 <rect x="40" y="442" width="290" height="40" rx="8" class="app"/><text x="185" y="468" class="mono">/opt/tool · working dir</text>
 <path d="M330 462 H640" class="line"/><text x="485" y="454" class="label">host path</text>
 <rect x="640" y="442" width="300" height="40" rx="8" class="host"/><text x="790" y="468" class="mono">/opt/tool</text>
@@ -41,7 +41,7 @@
 <rect x="640" y="492" width="300" height="40" rx="8" class="host"/><text x="790" y="518" class="mono">/var/a</text>
 <path d="M940 512 H985" class="line"/><rect x="985" y="492" width="215" height="40" rx="8" class="captured"/><text x="1092" y="518">Captured</text>
 <rect x="40" y="542" width="290" height="40" rx="8" class="app"/><text x="185" y="568" class="mono">/dev, /dev/shm</text>
-<path d="M330 562 H640" class="line"/><text x="485" y="554" class="label">native</text>
+<path d="M330 562 H640" class="line"/><text x="485" y="554" class="label">direct access</text>
 <rect x="640" y="542" width="300" height="40" rx="8" class="host"/><text x="790" y="568">Host devices</text>
 <path d="M940 562 H985" class="line"/><rect x="985" y="542" width="215" height="40" rx="8" class="none"/><text x="1092" y="568">Not captured</text>
 

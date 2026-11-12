@@ -52,13 +52,14 @@ across all of this work.
 
 **Work items**
 
-- [ ] Resolve typed binds and effective native-unit bind properties using the service
-  manager. Reuse captured unit/drop-in inputs; do not build another unit-file parser.
+- [ ] Resolve the binds of services Console creates and the effective binds of unit
+  files using the service manager. Reuse captured unit/drop-in inputs; do not build
+  another unit-file parser.
   Record sources, targets, consumers, optional-source behavior, access flags and exclusions.
 - [ ] Resolve each unit's explicitly declared working directory through its mounts.
-  Under a writable bind it adds no source. At its host path (the private root's
-  same-path bind, or a native unit without a root change) it is a source. Otherwise list
-  it as uncaptured. Skip an undeclared one, the filesystem root and a home directory
+  Under a writable bind it adds no source. At its host path (a same-path bind into
+  a created service's root, or a unit file without its own root) it is a source.
+  Otherwise list it as uncaptured. Skip an undeclared one, the filesystem root and a home directory
   shorthand, and list each with its reason. List declared state, log and cache
   directories as declared and uncaptured.
 - [ ] Review shows known capture sources and unresolved native sources explicitly.
@@ -84,7 +85,7 @@ across all of this work.
 
 **Validation**
 
-- [ ] Real native units and typed programs see tracked views at their original targets.
+- [ ] Real unit files and services Console creates see tracked views at their original targets.
   Writes remain isolated during execution and reach the original directories after write-back.
 - [ ] One real Compose fixture and one real systemd fixture produce equivalent change
   records for equivalent writes, deletions, shared aliases and read-only aliases.
