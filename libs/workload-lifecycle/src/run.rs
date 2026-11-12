@@ -16,8 +16,8 @@ pub trait Running {
     type Removed;
     /// Start every app group in order. Cancellation leaves attempted resources in the handle.
     async fn start(&mut self) -> Result<(), String>;
-    /// Publish readiness after a successful start.
-    fn ready(&mut self);
+    /// Publish readiness after a successful start; an error ends execution and starts teardown.
+    fn ready(&mut self) -> Result<(), String>;
     /// Resolve with a reason when the form can no longer continue the run.
     async fn ended(&mut self) -> String;
     /// Stop every app in reverse group order and secure form-owned evidence.
@@ -29,7 +29,7 @@ pub trait Running {
 /// Shared results of one run; form evidence returns separately.
 #[derive(Clone, Debug, Default)]
 pub struct Outcome {
-    /// Start or observation failure; `None` when the stop request ended the run.
+    /// Start, readiness or observation failure; `None` when the stop request ended the run.
     pub execution_error: Option<String>,
     pub stopped: StopRecord,
     pub permit: RemovalPermit,
@@ -53,7 +53,7 @@ pub async fn run<R: Running>(
         running.start().await?;
         // Yield before publishing readiness so a stop made ready by start wins.
         tokio::task::yield_now().await;
-        running.ready();
+        running.ready()?;
         Err::<(), String>(running.ended().await)
     };
     let execution_error = tokio::select! {
@@ -100,6 +100,7 @@ mod tests {
     struct Fake {
         calls: Vec<&'static str>,
         start_error: Option<&'static str>,
+        ready_error: Option<&'static str>,
         start_blocks: Option<oneshot::Sender<()>>,
         stopped: StopRecord,
         permit: Option<RemovalPermit>,
@@ -114,8 +115,9 @@ mod tests {
             }
             self.start_error.map_or(Ok(()), |error| Err(error.into()))
         }
-        fn ready(&mut self) {
+        fn ready(&mut self) -> Result<(), String> {
             self.calls.push("ready");
+            self.ready_error.map_or(Ok(()), |error| Err(error.into()))
         }
         async fn ended(&mut self) -> String {
             self.calls.push("ended");
@@ -179,6 +181,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn readiness_failure_still_stops_and_removes() {
+        // Arrange
+        let fake = Fake {
+            ready_error: Some("readiness receiver dropped"),
+            stopped: writers_stopped(),
+            ..Default::default()
+        };
+        // Act
+        let (outcome, (calls, permit)) =
+            run(fake, &executor(), vec![], std::future::pending()).await;
+        // Assert
+        assert_eq!(calls, ["start", "ready", "stop", "remove"]);
+        assert_eq!(
+            outcome.execution_error.as_deref(),
+            Some("readiness receiver dropped")
+        );
+        assert!(permit.unwrap().remove && outcome.cleanup.verified);
+    }
+
+    #[tokio::test]
     async fn stop_before_start_never_starts_but_removes() {
         // Arrange
         let fake = Fake {
@@ -209,6 +231,32 @@ mod tests {
         // Assert
         assert_eq!(calls, ["start", "stop", "remove"]);
         assert!(outcome.execution_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_recording_check_does_not_prevent_verified_cleanup() {
+        // Arrange: a directory cannot be read as an MCAP recording.
+        let fake = Fake {
+            stopped: writers_stopped(),
+            ..Default::default()
+        };
+        let recordings = vec![Recording {
+            stream: std::path::PathBuf::new(),
+            recording: std::env::temp_dir(),
+        }];
+        // Act
+        let (outcome, (calls, permit)) = run(fake, &executor(), recordings, async {}).await;
+        // Assert
+        let permit = permit.unwrap();
+        assert_eq!(calls, ["stop", "remove"]);
+        assert!(outcome.execution_error.is_none() && outcome.stopped.writers_stopped);
+        assert!(!permit.recording_finalized && permit.remove && outcome.cleanup.verified);
+        assert!(
+            outcome
+                .diagnostics
+                .iter()
+                .any(|message| message.starts_with("finalize recording:"))
+        );
     }
 
     #[tokio::test]

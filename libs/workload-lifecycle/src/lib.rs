@@ -7,7 +7,6 @@ pub mod files;
 pub mod launch {
     include!(concat!(env!("OUT_DIR"), "/doramcap.launch.v1.rs"));
 }
-pub mod recorded_run;
 pub mod recording;
 pub mod run;
 

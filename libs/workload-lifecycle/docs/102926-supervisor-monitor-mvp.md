@@ -53,7 +53,7 @@ admission behavior and existing report fields.
 | --- | --- |
 | `apps/system-monitor/deploy/supervisor/recording.conf` | Fixed first-party program recipe |
 | `libs/workload-lifecycle/src/recording.rs` | Shared recording steps |
-| `libs/workload-lifecycle/src/recorded_run.rs` | Shared lifecycle sequencing and outcomes |
+| `libs/workload-lifecycle/src/run.rs` | Shared lifecycle sequencing and outcomes |
 | `libs/workload-supervisor/src/` | Native ownership, adapter and typed steps |
 | `libs/workload-supervisor/proto/` | MVP run configuration and durable ownership evidence |
 | `libs/workload-supervisor/examples/supervisor_monitor.rs` | End-to-end monitor run using generated protobuf settings |

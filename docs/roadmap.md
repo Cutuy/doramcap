@@ -61,7 +61,7 @@ cover selected x86_64/ARM64 cases. ARM64 WSL coverage leaves Jetson qualificatio
 - [ ] Verify orphan reconciliation and cleanup using retained ownership evidence.
 
 Starting points: [session concept](../libs/session/docs/102526-session-concept.md),
-[recorded-run driver](../libs/workload-lifecycle/src/recorded_run.rs) and
+[recorded-run driver](../libs/workload-lifecycle/src/run.rs) and
 [Supervisor native tests](../libs/workload-supervisor/tests/native.rs).
 
 ### 3. Recording and GPU integration

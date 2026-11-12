@@ -148,6 +148,19 @@ async fn failures_cancellation_descendants_and_abandoned_admission() {
         Err(tokio::sync::oneshot::error::TryRecvError::Closed)
     ));
 
+    // Arrange: an already-requested stop must create no run resources.
+    let never_started = sandbox.spec("neverstarted", &fixture);
+    // Act
+    let report = manager
+        .run(never_started.clone(), async {}, observer)
+        .await
+        .unwrap();
+    // Assert
+    assert!(report.execution_error.is_none() && report.writers_stopped && report.cleanup_verified);
+    assert!(!report.recording_finalized && !manager.blocked());
+    assert!(!Path::new(&never_started.output_directory).exists());
+    assert!(!sandbox.parent.join(&never_started.id).exists());
+
     // Arrange: a daemon executable that fails before creating a socket.
     let mut failed = sandbox.spec("startup", &fixture);
     failed.supervisord = "/bin/false".into();
@@ -197,6 +210,31 @@ async fn failures_cancellation_descendants_and_abandoned_admission() {
         Err(tokio::sync::oneshot::error::TryRecvError::Closed)
     ));
     assert_reaped(&ledger(&cancelled));
+
+    // Arrange: losing the readiness receiver must end execution and await cleanup.
+    let receiver_dropped = sandbox.spec("receiverdropped", &fixture);
+    let (ready, notification) = tokio::sync::oneshot::channel();
+    drop(notification);
+    // Act
+    let report = manager
+        .run_with_ready(
+            receiver_dropped.clone(),
+            std::future::pending(),
+            observer,
+            Some(ready),
+        )
+        .await
+        .unwrap();
+    // Assert
+    assert_eq!(
+        report.execution_error.as_deref(),
+        Some("readiness receiver dropped")
+    );
+    assert!(
+        report.writers_stopped && report.cleanup_verified && !manager.blocked(),
+        "{report:?}"
+    );
+    assert_reaped(&ledger(&receiver_dropped));
 
     // Arrange: a TERM-resistant monitor and descendant writing a truncated MCAP.
     let timeout = sandbox.spec("timeout", &fixture);
@@ -260,4 +298,88 @@ async fn failures_cancellation_descendants_and_abandoned_admission() {
     );
     // Test-owned recovery after verifying emptiness; application recovery remains deferred.
     std::fs::remove_dir(&evidence.cgroup).unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires capabilities, cgroup v2, Supervisor and DORAMCAP_TEST_FIXTURE"]
+async fn forced_stop_rejects_a_readable_mcap_without_blocking_cleanup() {
+    use std::{cell::RefCell, rc::Rc};
+
+    // Arrange: a real MCAP writer produces a file the resistant monitor will copy.
+    let sandbox = Sandbox::new();
+    let fixture = std::env::var("DORAMCAP_TEST_FIXTURE").unwrap();
+    let monitor = sandbox.dir.join("finalized-monitor");
+    std::fs::copy(fixture, &monitor).unwrap();
+    let mut writer =
+        mcap::Writer::new(std::fs::File::create(sandbox.dir.join("finalized.mcap")).unwrap())
+            .unwrap();
+    writer.finish().unwrap();
+    let spec = sandbox.spec("validfooter", monitor.to_str().unwrap());
+    let mut manager = SupervisorRunner::new();
+    let (ready, notification) = tokio::sync::oneshot::channel();
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let captured = events.clone();
+
+    // Act: stop after readiness; the fixture and its descendant require forced termination.
+    let report = manager
+        .run_with_ready(
+            spec.clone(),
+            async {
+                notification.await.unwrap();
+            },
+            move |event: &orchestrator::Event| {
+                observer(event);
+                captured.borrow_mut().push(event.clone());
+            },
+            Some(ready),
+        )
+        .await
+        .unwrap();
+
+    // Assert: readable MCAP and stopped writers cannot hide the forced shutdown.
+    let bytes = std::fs::read(Path::new(&spec.output_directory).join("cpu.mcap")).unwrap();
+    mcap::MessageStream::new(&bytes)
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+    assert!(
+        report.execution_error.is_none() && report.writers_stopped && report.cleanup_verified,
+        "{report:?}"
+    );
+    assert!(
+        !report.recording_finalized && !manager.blocked(),
+        "{report:?}"
+    );
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|message| message == "forced shutdown cannot establish recording success")
+    );
+    let events = events.borrow();
+    let succeeded = |name: &str| {
+        events
+            .iter()
+            .position(|event| {
+                event.invocation.step.ends_with(name)
+                    && event.state == orchestrator::State::Succeeded
+            })
+            .unwrap()
+    };
+    let stopped = succeeded("::Quiesce");
+    let checked = succeeded("::FinalizeRecordings");
+    let removed = events
+        .iter()
+        .rposition(|event| {
+            event.invocation.step == "system-apps.cgroups"
+                && event.state == orchestrator::State::Succeeded
+        })
+        .unwrap();
+    assert!(stopped < checked && checked < removed);
+    assert_reaped(&ledger(&spec));
+    let saved: workload_supervisor::RunReport = serde_json::from_slice(
+        &std::fs::read(Path::new(&spec.output_directory).join("report.json")).unwrap(),
+    )
+    .unwrap();
+    assert!(!saved.recording_finalized && saved.cleanup_verified);
 }

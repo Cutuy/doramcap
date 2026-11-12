@@ -186,10 +186,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         Ok(())
     }
 
-    fn ready(&mut self) {
+    fn ready(&mut self) -> std::result::Result<(), String> {
         if let Some(ready) = self.ready.take() {
             let _ = ready.send(());
         }
+        Ok(())
     }
 
     /// A failed unit is recorded at stop; only a stop request ends a systemd run.

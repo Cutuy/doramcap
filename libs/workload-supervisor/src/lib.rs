@@ -14,8 +14,9 @@ use std::{
 };
 use tokio::io::{Interest, unix::AsyncFd};
 use workload_lifecycle::{
-    recorded_run::{self, Phases},
-    recording::{FinalizeRecordings, ReadinessInput, Recording, WaitForRecordings},
+    launch::{CleanupRecord, RemovalPermit, StopRecord},
+    recording::{ReadinessInput, Recording, WaitForRecordings},
+    run::{self, Running},
 };
 
 include!(concat!(env!("OUT_DIR"), "/doramcap.supervisor.v1.rs"));
@@ -28,6 +29,7 @@ pub(crate) fn error(e: impl std::fmt::Display) -> String {
 pub struct RunReport {
     pub execution_error: Option<String>,
     pub writers_stopped: bool,
+    /// Files passed validation after a completed launch and unforced shutdown.
     pub recording_finalized: bool,
     pub cleanup_verified: bool,
     pub diagnostics: Vec<String>,
@@ -99,8 +101,9 @@ impl SupervisorRunner {
             },
         )));
         workload_lifecycle::cgroup::register(&mut executor, cgroup.clone());
-        let mut phases = SupervisorPhases {
-            executor,
+        let executor = Rc::new(executor);
+        let running = SupervisorRunning {
+            executor: executor.clone(),
             cgroup,
             run: run.clone(),
             state,
@@ -109,20 +112,36 @@ impl SupervisorRunner {
             stopped: None,
             ready,
             exits: None,
+            diagnostics: Vec::new(),
         };
-        let outcome = recorded_run::run(&mut phases, stop).await;
-        let mut diagnostics = outcome.completion_errors;
-        if let Some(stopped) = &phases.stopped {
-            diagnostics.extend(stopped.value().diagnostics.clone());
+        let recordings = running.recordings();
+        let (outcome, removed) = run::run(running, &executor, recordings, stop).await;
+        let mut diagnostics = outcome.diagnostics;
+        diagnostics.extend(removed.diagnostics);
+        if let Some(stopped) = &removed.stopped {
+            diagnostics.extend(stopped.diagnostics.clone());
         }
-        if phases.executor.observer_failures() != 0 {
+        let recording_allowed = if !outcome.stopped.writers_stopped || !removed.launched {
+            diagnostics.push("recording writer quiescence or launch unverified".into());
+            false
+        } else if removed
+            .stopped
+            .as_ref()
+            .is_some_and(|stopped| stopped.forced)
+        {
+            diagnostics.push("forced shutdown cannot establish recording success".into());
+            false
+        } else {
+            true
+        };
+        if executor.observer_failures() != 0 {
             diagnostics.push("workflow observer lost events".into());
         }
         let report = RunReport {
             execution_error: outcome.execution_error,
-            writers_stopped: outcome.writers_stopped,
-            recording_finalized: outcome.recording_finalized,
-            cleanup_verified: outcome.cleanup_verified,
+            writers_stopped: outcome.stopped.writers_stopped,
+            recording_finalized: outcome.permit.recording_finalized && recording_allowed,
+            cleanup_verified: outcome.cleanup.verified,
             diagnostics,
         };
         // No report can erase the durable ownership record; evidence remains beside outputs.
@@ -136,8 +155,8 @@ impl SupervisorRunner {
         Ok(report)
     }
 }
-struct SupervisorPhases {
-    executor: LocalExecutor,
+struct SupervisorRunning {
+    executor: Rc<LocalExecutor>,
     cgroup: Rc<workload_lifecycle::cgroup::Group>,
     run: MonitorRun,
     state: steps::State,
@@ -146,8 +165,15 @@ struct SupervisorPhases {
     stopped: Option<Output<steps::Quiesced>>,
     ready: Option<tokio::sync::oneshot::Sender<()>>,
     exits: Option<(AsyncFd<OwnedFd>, AsyncFd<OwnedFd>)>,
+    diagnostics: Vec<String>,
 }
-impl SupervisorPhases {
+
+struct Removed {
+    launched: bool,
+    stopped: Option<steps::Quiesced>,
+    diagnostics: Vec<String>,
+}
+impl SupervisorRunning {
     fn recordings(&self) -> Vec<Recording> {
         vec![Recording {
             stream: Path::new(&self.run.output_directory).join("cpu.pb"),
@@ -155,8 +181,10 @@ impl SupervisorPhases {
         }]
     }
 }
-impl Phases for SupervisorPhases {
-    async fn launch(&mut self) -> Result<()> {
+impl Running for SupervisorRunning {
+    type Removed = Removed;
+
+    async fn start(&mut self) -> Result<()> {
         let prepared = self
             .executor
             .run::<steps::Prepare>(self.run.clone())
@@ -219,6 +247,73 @@ impl Phases for SupervisorPhases {
         }
         Ok(())
     }
+    async fn ended(&mut self) -> String {
+        if let Err(error) = self.inspect().await {
+            return error;
+        }
+        self.wait_for_change().await
+    }
+    async fn stop(&mut self) -> StopRecord {
+        let mut input = Input::new(self.run.clone());
+        if let Some(prepared) = &self.prepared {
+            input = input.after(prepared);
+        }
+        if let Some(launched) = &self.launched {
+            input = input.after(launched);
+        }
+        match self.executor.run::<steps::Quiesce>(input).await {
+            Ok(stopped) => {
+                let record = StopRecord {
+                    writers_stopped: stopped.value().writers_stopped,
+                    evidence_durable: true,
+                };
+                self.stopped = Some(stopped);
+                record
+            }
+            Err(error) => {
+                self.diagnostics.push(error.to_string());
+                StopRecord::default()
+            }
+        }
+    }
+
+    async fn remove(mut self, permit: &RemovalPermit) -> (CleanupRecord, Removed) {
+        let verified = if permit.remove {
+            let mut input = Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
+                action: workload_lifecycle::cgroup::Action::Remove.into(),
+                ..Default::default()
+            });
+            if let Some(stopped) = &self.stopped {
+                input = input.after(stopped);
+            }
+            match self
+                .executor
+                .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(input)
+                .await
+            {
+                Ok(output) => output.value().is_none(),
+                Err(error) => {
+                    self.diagnostics.push(error.to_string());
+                    false
+                }
+            }
+        } else {
+            self.diagnostics
+                .push("preserved: writer quiescence or durable evidence unverified".into());
+            false
+        };
+        (
+            CleanupRecord { verified },
+            Removed {
+                launched: self.launched.is_some(),
+                stopped: self.stopped.map(Output::into_value),
+                diagnostics: self.diagnostics,
+            },
+        )
+    }
+}
+
+impl SupervisorRunning {
     async fn inspect(&mut self) -> Result<()> {
         let mut input = Input::new(self.run.clone());
         if let Some(launched) = &self.launched {
@@ -230,68 +325,18 @@ impl Phases for SupervisorPhases {
             .map_err(error)?;
         Ok(())
     }
-    async fn wait_for_change(&mut self) -> Result<()> {
-        let (daemon, monitor) = self.exits.as_ref().ok_or("process-exit handles absent")?;
+    async fn wait_for_change(&self) -> String {
+        let Some((daemon, monitor)) = &self.exits else {
+            return "process-exit handles absent".into();
+        };
         tokio::select! {
             exit = wait_for_exit(daemon) => {
-                exit.map_err(error)?;
-                Err("Supervisor exited early".into())
+                exit.map_or_else(error, |_| "Supervisor exited early".into())
             }
             exit = wait_for_exit(monitor) => {
-                exit.map_err(error)?;
-                Err("monitor exited early".into())
+                exit.map_or_else(error, |_| "monitor exited early".into())
             }
         }
-    }
-    async fn quiesce(&mut self) -> Result<bool> {
-        let mut input = Input::new(self.run.clone());
-        if let Some(prepared) = &self.prepared {
-            input = input.after(prepared);
-        }
-        if let Some(launched) = &self.launched {
-            input = input.after(launched);
-        }
-        let stopped = self
-            .executor
-            .run::<steps::Quiesce>(input)
-            .await
-            .map_err(error)?;
-        let writers_stopped = stopped.value().writers_stopped;
-        self.stopped = Some(stopped);
-        Ok(writers_stopped)
-    }
-    async fn finalize(&mut self, writers_stopped: bool) -> Result<()> {
-        if !writers_stopped || self.launched.is_none() {
-            return Err("recording writer quiescence or launch unverified".into());
-        }
-        let stopped = self.stopped.as_ref().ok_or("quiescence evidence absent")?;
-        if stopped.value().forced {
-            return Err("forced shutdown cannot establish recording success".into());
-        }
-        self.executor
-            .run::<FinalizeRecordings>(Input::new(self.recordings()).after(stopped))
-            .await
-            .map_err(error)?;
-        Ok(())
-    }
-    async fn remove(&mut self) -> Result<bool> {
-        let mut input = Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
-            action: workload_lifecycle::cgroup::Action::Remove.into(),
-            ..Default::default()
-        });
-        if let Some(stopped) = &self.stopped {
-            input = input.after(stopped);
-        }
-        self.executor
-            .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(input)
-            .await
-            .map(|o| o.value().is_none())
-            .map_err(error)
-    }
-    async fn finish(&mut self) -> Result<()> {
-        // Keep runtime alive through every hook; Drop bounds cancellation cleanup.
-        let _ = &self.state;
-        Ok(())
     }
 }
 
@@ -348,8 +393,8 @@ mod tests {
                 unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE) }.unwrap()
             });
             let [daemon, monitor] = exits;
-            let mut phases = SupervisorPhases {
-                executor: LocalExecutor::new(|_: &orchestrator::Event| {}),
+            let running = SupervisorRunning {
+                executor: Rc::new(LocalExecutor::new(|_: &orchestrator::Event| {})),
                 run: MonitorRun::default(),
                 cgroup: Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
                     steps::CgroupBackend {
@@ -362,8 +407,9 @@ mod tests {
                 stopped: None,
                 ready: None,
                 exits: Some((daemon, monitor)),
+                diagnostics: Vec::new(),
             };
-            let wait = phases.wait_for_change();
+            let wait = running.wait_for_change();
             tokio::pin!(wait);
 
             // Act / Assert: observation stays pending while both processes live.
@@ -380,7 +426,7 @@ mod tests {
                 .expect("process exit did not wake observation");
 
             // Assert: exit ends execution immediately, allowing the driver to clean up.
-            assert_eq!(result.unwrap_err(), expected_error);
+            assert_eq!(result, expected_error);
             for child in &mut children {
                 child.kill().await.unwrap();
             }

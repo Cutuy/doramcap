@@ -28,7 +28,11 @@ fn main() {
     let config = args[args.iter().position(|a| a == "--config").unwrap() + 1].clone();
     let directory = std::path::Path::new(&config).parent().unwrap();
     let stream = directory.join("cpu.pb");
-    fs::write(directory.join("cpu.mcap"), b"\x89MCAP0\r\n").unwrap();
+    if executable.file_name().unwrap().to_string_lossy().contains("finalized") {
+        fs::copy(executable.with_file_name("finalized.mcap"), directory.join("cpu.mcap")).unwrap();
+    } else {
+        fs::write(directory.join("cpu.mcap"), b"\x89MCAP0\r\n").unwrap();
+    }
     let mut bytes = vec![1];
     loop {
         fs::write(&stream, &bytes).unwrap();

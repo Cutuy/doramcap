@@ -4,9 +4,8 @@
 
 Created: 2026-11-10. [Implementation plan](111026-supervisor-run-driver-impl.md).
 
-Compose and systemd use `run::Running`; Supervisor alone uses `recorded_run::Phases`.
-Move Supervisor onto the shared sequence and delete the legacy driver once its
-callers and behavior tests have migrated. This follows the review of
+Compose, systemd and Supervisor use the same `run::run` function with backend-owned
+`Running` handles. Supervisor’s former lifecycle driver is removed. This follows the review of
 [PR #252](https://github.com/Cutuy/doramcap/pull/252).
 
 The shared driver owns sequencing: start, readiness, observation, stop, recording
@@ -23,11 +22,16 @@ steps remain the machine-operation boundary.
 | Outcomes | Execution, recording validity and verified cleanup remain independent. |
 | Ownership | Dropping a run keeps admission blocked; cleanup retains identity checks and the durable ledger. |
 
-The recording-policy boundary needs agreement before implementation: the current
-shared driver checks recordings whenever writers stopped; Supervisor has an
-additional launch/forced-shutdown guard. Keep this policy explicit without
-misreporting stopped writers. Preserve the current `MonitorRun` and `RunReport`
-contracts and app placement.
+The shared driver checks recording files after writers stop. Supervisor combines
+that file result with completed-launch and unforced-shutdown evidence in its
+report, following Compose’s existing report policy. Forced shutdown still rejects
+recording success when the MCAP footer is valid; verified cleanup remains independent.
+This introduces a read-only recording-check step after forced or incomplete launches.
+No recording-policy hook is added to `Running`.
+
+`Running::ready` can return an execution error so Supervisor retains teardown on a
+closed readiness receiver. Compose and systemd retain their readiness behavior.
+The current `MonitorRun`, `Ownership` and `RunReport` formats and app placement remain.
 
 Limit the migration to the driver and its callers. Transport changes, monitor
 collectors and new metrics remain separate work.
