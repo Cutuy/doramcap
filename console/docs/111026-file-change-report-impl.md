@@ -62,7 +62,8 @@ across all of this work.
 - [x] In `host-filesystem`, read each upper into change records: added when absent from
   the lower, deleted when the run removed it, and modified when its type, permissions,
   owner or modification time differs from the lower, or its size for a file or symlink.
-  Ignore a folder's size. Leave out entries that match the lower. Read no file contents. Take "before"
+  Ignore a folder's size. Leave out entries that match the lower; a folder that gained or
+  lost an entry has a new modification time and is listed. Read no file contents. Take "before"
   metadata from the lower and "after" from the upper. Use the one upper reader that
   write back already uses.
 - [x] Record one deleted entry for each path under a deleted folder in the lower.
@@ -187,8 +188,10 @@ elevate only the built test executable with that test name.
   preserving Compose lineage. Before systemd runs them, agree with the user whether to
   give them neutral IDs; a rename changes new Compose runs' step identity.
 - [ ] Check that each declared working directory exists where its app will run: when
-  Review is produced and again before anything is mounted or started. Fail with the app
-  and the directory. Skip units that write `WorkingDirectory=-/path`.
+  Review is produced and again before anything is mounted or started. For a service
+  Console creates, look inside its private root (system folders and declared mounts),
+  not on the host. Fail with the app and the directory. Skip units that write
+  `WorkingDirectory=-/path`.
 - [ ] At Review, list a writable working directory outside every writable mount as not
   tracked and suggest declaring it. List your own unit files' other writes as not tracked.
 - [ ] Add a test that the Dora coordinator and daemon keep `/runtime` under their
@@ -206,7 +209,8 @@ elevate only the built test executable with that test name.
   they expect; writes stay out of the host folder during the run and reach it after write back.
 - [ ] Equivalent Compose and systemd fixtures produce equivalent change records.
 - [ ] A missing working directory fails at Review and again at Start with nothing mounted
-  or started. `WorkingDirectory=-/path` starts. Dora's system apps start unchanged.
+  or started. A created service's host-only working directory fails the same way.
+  `WorkingDirectory=-/path` starts. Dora's system apps start unchanged.
 - [ ] Preparation rollback, cancellation before and during startup, busy overlays,
   report-save failure and Console restart.
 - [ ] Build unprivileged; elevate only capability-required test executables. All owned
