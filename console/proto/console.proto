@@ -111,7 +111,12 @@ message Status {
   FileChanges file_changes = 26;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
 }
-message ConsoleError { string code = 1; string message = 2; }
+message ConsoleError {
+  string code = 1;
+  string message = 2;
+  string reason = 3; // Compose Review rejection; unknown reasons use the generic message.
+  string subject = 4; // Service, mount, label or resource identified by the rejection.
+}
 message Marker {
   uint32 version = 1;
   string run_id = 2;

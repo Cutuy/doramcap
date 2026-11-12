@@ -4,7 +4,7 @@ use super::{
     project_name, repository_scope, validate_name,
 };
 use crate::compose::{
-    ComposeProject, ComposeService, ResolveInput, ResolvedComposeProject, Result,
+    ComposeProject, ComposeService, Error, ResolveInput, ResolvedComposeProject, Result,
     command::compose,
     error::{absent, engine, invalid},
 };
@@ -59,7 +59,7 @@ impl ComposeConfiguration<'_> {
         )
         .await?;
         if stderr.contains("variable is not set") {
-            return Err(invalid(format!("unresolved Compose environment: {stderr}")));
+            return Err(Error::UnresolvedEnvironment { detail: stderr });
         }
         let model: Value = serde_json::from_str(&stdout)?;
         let (version, _) = compose(
@@ -114,7 +114,10 @@ impl ComposeConfiguration<'_> {
     /// Freeze supplied Compose inputs and pinned image IDs into private launch artifacts.
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
-    pub(crate) async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+    pub(crate) async fn resolve(
+        &self,
+        input: ResolveInput,
+    ) -> Result<(ResolvedComposeProject, Vec<String>)> {
         // Validate identities and normalize Compose under the stable repository project name.
         validate_name(&input.run)?;
         let project = input
@@ -168,9 +171,9 @@ impl ComposeConfiguration<'_> {
                         .as_str()
                         .is_some_and(|n| n != format!("{name}_{key}"))
                     {
-                        return Err(invalid(format!(
-                            "unscoped {kind}/{key}: explicit resource name requires external ownership"
-                        )));
+                        return Err(Error::UnscopedResource {
+                            resource: format!("{kind}/{key}"),
+                        });
                     }
                     if resource["external"] != true {
                         if kind == "volumes" {
@@ -183,11 +186,12 @@ impl ComposeConfiguration<'_> {
                             .or_insert_with(|| json!({}))
                             .as_object_mut()
                             .ok_or_else(|| invalid("invalid resource labels"))?;
-                        if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
-                            return Err(invalid("reserved resource ownership label"));
-                        }
-                        if labels.contains_key(CONTROLLER_LABEL) {
-                            return Err(invalid("reserved experiment-controller label"));
+                        for label in [RUN_LABEL, ARTIFACTS_LABEL, CONTROLLER_LABEL] {
+                            if labels.contains_key(label) {
+                                return Err(Error::ReservedLabel {
+                                    label: label.into(),
+                                });
+                            }
                         }
                         if kind == "networks"
                             && let Some(scope) = &scope
@@ -238,11 +242,11 @@ impl ComposeConfiguration<'_> {
         // Pin local images and validate each service's mounts, replicas and container name.
         let mut services = BTreeMap::new();
         for (service_name, service) in model_services.iter_mut() {
-            let image = service["image"].as_str().ok_or_else(|| {
-                invalid(format!(
-                    "{service_name}: prepare a named local image before the experiment"
-                ))
-            })?;
+            let image = service["image"]
+                .as_str()
+                .ok_or_else(|| Error::ImageNotPrepared {
+                    service: service_name.clone(),
+                })?;
             let image = self
                 .adapter
                 .engine
@@ -255,16 +259,17 @@ impl ComposeConfiguration<'_> {
                 .iter()
                 .any(|m| m["type"] == "volume" && m.get("source").is_none())
             {
-                return Err(invalid(format!(
-                    "{service_name}: anonymous volumes need explicit named-volume retention settings"
-                )));
+                return Err(Error::AnonymousVolume {
+                    service: service_name.clone(),
+                });
             }
             if let Some(declared) = image.config.as_ref().and_then(|c| c.volumes.as_ref()) {
                 for target in declared {
                     if !mounts.iter().any(|m| m["target"].as_str() == Some(target)) {
-                        return Err(invalid(format!(
-                            "{service_name}: image volume {target} needs an explicit mount for ownership/retention"
-                        )));
+                        return Err(Error::ImageVolume {
+                            service: service_name.clone(),
+                            target: target.clone(),
+                        });
                     }
                 }
             }
@@ -274,9 +279,9 @@ impl ComposeConfiguration<'_> {
                 .or_else(|| service["deploy"]["replicas"].as_u64())
                 .unwrap_or(1);
             if replicas == 0 {
-                return Err(invalid(format!(
-                    "{service_name}: zero replicas is unsupported; deselect via profiles"
-                )));
+                return Err(Error::ZeroReplicas {
+                    service: service_name.clone(),
+                });
             }
             if let Some(fixed) = service["container_name"].as_str() {
                 match self
@@ -292,9 +297,7 @@ impl ComposeConfiguration<'_> {
                             .as_ref()
                             .and_then(|config| config.labels.as_ref());
                         if !owned(labels) {
-                            return Err(invalid(format!(
-                                "container name already occupied: {fixed}"
-                            )));
+                            return Err(Error::NameOccupied { name: fixed.into() });
                         }
                     }
                     Err(e) if absent(&e) => {}
@@ -360,11 +363,12 @@ impl ComposeConfiguration<'_> {
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
                 .ok_or_else(|| invalid("labels did not normalize to an object"))?;
-            if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
-                return Err(invalid(format!("reserved label {RUN_LABEL}")));
-            }
-            if labels.contains_key(CONTROLLER_LABEL) {
-                return Err(invalid("reserved experiment-controller label"));
+            for label in [RUN_LABEL, ARTIFACTS_LABEL, CONTROLLER_LABEL] {
+                if labels.contains_key(label) {
+                    return Err(Error::ReservedLabel {
+                        label: label.into(),
+                    });
+                }
             }
             if let Some(scope) = &scope {
                 labels.insert(CONTROLLER_LABEL.into(), json!(scope));
@@ -392,31 +396,33 @@ impl ComposeConfiguration<'_> {
             sha256: String::new(),
             services,
             diagnostics,
-            warnings,
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
         for container in execution.containers().await? {
             if !owned(container.labels.as_ref()) {
-                return Err(invalid(
-                    "runtime project container belongs to another controller",
-                ));
+                return Err(Error::ForeignResource {
+                    resource: format!(
+                        "container/{}",
+                        container.id.as_deref().unwrap_or(&plan.name)
+                    ),
+                });
             }
         }
         for network in execution.networks().await? {
             if !owned(network.labels.as_ref()) {
-                return Err(invalid(
-                    "runtime project network belongs to another controller",
-                ));
+                return Err(Error::ForeignResource {
+                    resource: format!("network/{}", network.name.as_deref().unwrap_or(&plan.name)),
+                });
             }
         }
         for volume in execution.volumes().await? {
             if volume.labels.get(RUN_LABEL) != Some(&plan.run)
                 || volume.labels.get(super::project::PROJECT_LABEL) != Some(&plan.name)
             {
-                return Err(invalid(
-                    "runtime project volume belongs to another run or project",
-                ));
+                return Err(Error::ForeignResource {
+                    resource: format!("volume/{}", volume.name),
+                });
             }
         }
         // Save and hash the private manifest with Compose's escaped dollar values intact.
@@ -445,7 +451,7 @@ impl ComposeConfiguration<'_> {
             )?,
         )
         .await?;
-        Ok(plan)
+        Ok((plan, warnings))
     }
 
     /// Require a registered driver and a reachable journal on the verified local Docker host.
@@ -463,22 +469,22 @@ impl ComposeConfiguration<'_> {
             .and_then(|plugins| plugins.log)
             .is_some_and(|drivers| drivers.iter().any(|driver| driver == DEFAULT_LOG_DRIVER))
         {
-            return Err(invalid(format!(
-                "{services}: Docker does not provide the journald logging driver"
-            )));
+            return Err(Error::NoJournal {
+                services: services.into(),
+                detail: "Docker does not provide the journald logging driver".into(),
+            });
         }
         docker_engine::namespace::verify_namespace(self.adapter.socket_path())
             .await
-            .map_err(|error| {
-                invalid(format!(
-                    "{services}: cannot verify the Docker host for journal logging: {error}"
-                ))
+            .map_err(|error| Error::NoJournal {
+                services: services.into(),
+                detail: format!("cannot verify the Docker host for journal logging: {error}"),
             })?;
         let socket = std::os::unix::net::UnixDatagram::unbound()?;
-        socket.connect(&self.adapter.journal_socket).map_err(|error| invalid(format!(
-            "{services}: journald logging requires a reachable journal on the Docker host ({}): {error}",
+        socket.connect(&self.adapter.journal_socket).map_err(|error| Error::NoJournal { services: services.into(), detail: format!(
+            "journald logging requires a reachable journal on the Docker host ({}): {error}",
             self.adapter.journal_socket.display()
-        )))?;
+        ) })?;
         Ok(())
     }
 }
@@ -601,7 +607,7 @@ pub(super) async fn config_arguments(
     name: &str,
 ) -> Result<(std::path::PathBuf, Vec<String>, BTreeMap<String, String>)> {
     if project.files.is_empty() {
-        return Err(invalid("at least one Compose file is required"));
+        return Err(Error::NoComposeFile);
     }
     if project
         .environment

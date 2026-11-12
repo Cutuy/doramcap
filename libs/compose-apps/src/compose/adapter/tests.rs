@@ -191,7 +191,6 @@ fn state() -> ComposeProjectState {
                 },
             )]),
             diagnostics: vec![],
-            warnings: vec![],
             remove_volumes: false,
         }),
         containers: vec![Container {
@@ -757,7 +756,7 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         );
 
         // Act: freeze the same manifest used by inspection and launch.
-        let plan = adapter
+        let (plan, warnings) = adapter
             .configuration()
             .resolve(ResolveInput {
                 run: "run".into(),
@@ -789,12 +788,13 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         );
         assert_eq!(std::fs::read(path).unwrap(), source);
         assert_eq!(plan.sha256, digest(&bytes));
+        assert!(resolution["plan"].get("warnings").is_none());
         if logging.is_some() {
             assert!(changes.is_empty());
-            assert!(plan.warnings.iter().any(|message| message
+            assert!(warnings.iter().any(|message| message
                 == "worker: logging configured by project; Console will not collect its logs"));
         } else {
-            assert!(plan.warnings.is_empty());
+            assert!(warnings.is_empty());
             assert_eq!(changes.len(), 1);
             assert_eq!(changes[0]["original"], Value::Null);
             assert_eq!(changes[0]["effective"], json!({"driver":"journald"}));
@@ -828,7 +828,7 @@ async fn resolution_rechecks_journal_before_writing_a_launch_manifest() {
     };
 
     // Act / Assert: Review resolves with the journal available.
-    let plan = adapter
+    let (plan, _) = adapter
         .configuration()
         .resolve(input.clone())
         .await
@@ -847,6 +847,7 @@ async fn resolution_rechecks_journal_before_writing_a_launch_manifest() {
             .contains("worker: journald logging requires a reachable journal"),
         "{error}"
     );
+    assert!(matches!(error, Error::NoJournal { ref services, .. } if services == "worker"));
     assert!(!Path::new(&plan.manifest).exists());
     assert_eq!(
         std::fs::read(root.path().join("compose.yaml")).unwrap(),
@@ -897,17 +898,240 @@ async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging(
 
         // Assert: only journal-dependent services require the host journal.
         if logging.is_none() {
+            let error = result.unwrap_err();
+            assert!(matches!(error, Error::NoJournal { ref services, .. } if services == "worker"));
             assert!(
-                result
-                    .unwrap_err()
+                error
                     .to_string()
-                    .contains("worker: Docker does not provide the journald logging driver")
+                    .contains("Docker does not provide the journald logging driver")
             );
             assert!(!root.path().join("workload.compose.json").exists());
             server.abort();
         } else {
-            assert_eq!(result.unwrap().warnings.len(), 1);
+            assert_eq!(result.unwrap().1.len(), 1);
             server.await.unwrap();
         }
     }
+}
+
+#[tokio::test]
+async fn resolution_returns_named_rejections_with_the_affected_subject() {
+    for (service, image, extra, reason, subject) in [
+        (
+            json!({"build":"."}),
+            json!({}),
+            json!({}),
+            "ImageNotPrepared",
+            "worker",
+        ),
+        (
+            json!({"volumes":["/data"]}),
+            json!({}),
+            json!({}),
+            "AnonymousVolume",
+            "worker",
+        ),
+        (
+            json!({}),
+            json!({"Config":{"Volumes":{"/data":{}}}}),
+            json!({}),
+            "ImageVolume",
+            "worker: /data",
+        ),
+        (
+            json!({"deploy":{"replicas":0}}),
+            json!({}),
+            json!({}),
+            "ZeroReplicas",
+            "worker",
+        ),
+        (
+            json!({"container_name":"occupied"}),
+            json!({}),
+            json!({}),
+            "NameOccupied",
+            "occupied",
+        ),
+        (
+            json!({"labels":{ARTIFACTS_LABEL:"foreign"}}),
+            json!({}),
+            json!({}),
+            "ReservedLabel",
+            ARTIFACTS_LABEL,
+        ),
+        (
+            json!({}),
+            json!({}),
+            json!({"networks":{"default":{"name":"unscoped"}}}),
+            "UnscopedResource",
+            "networks/default",
+        ),
+    ] {
+        // Arrange: render native Compose input; the Engine provides read-only facts.
+        let root = tempfile::tempdir().unwrap();
+        let mut fields = json!({"image":"example:local", "logging":{"driver":"none"}});
+        fields
+            .as_object_mut()
+            .unwrap()
+            .extend(service.as_object().unwrap().clone());
+        if reason == "ImageNotPrepared" {
+            fields.as_object_mut().unwrap().remove("image");
+        }
+        let mut model = json!({"services":{"worker":fields}});
+        model
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        std::fs::write(
+            root.path().join("compose.yaml"),
+            serde_json::to_vec(&model).unwrap(),
+        )
+        .unwrap();
+        let mut image_response = json!({"Id":"sha256:pinned"});
+        image_response
+            .as_object_mut()
+            .unwrap()
+            .extend(image.as_object().unwrap().clone());
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                ("/images/example:local/json", image_response),
+                ("/containers/occupied/json", json!({"Config":{"Labels":{}}})),
+            ],
+        );
+        // Act
+        let error = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await
+            .unwrap_err();
+        // Assert
+        assert_eq!(error.reason(), Some((reason, subject.into())), "{error}");
+        assert_eq!(error.diagnostic("Review").kind, "validation");
+        assert!(!root.path().join("workload.compose.json").exists());
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn missing_compose_files_have_a_named_rejection_before_io() {
+    // Arrange
+    let project = ComposeProject::default();
+    // Act
+    let error = super::configuration::config_arguments(&project, "project")
+        .await
+        .unwrap_err();
+    // Assert
+    assert!(matches!(error, Error::NoComposeFile));
+    assert_eq!(error.reason(), Some(("NoComposeFile", String::new())));
+}
+
+#[tokio::test]
+async fn unresolved_environment_has_a_named_rejection_and_retains_its_diagnostic() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("compose.yaml"),
+        "services:\n  worker:\n    image: example:local\n    environment:\n      VALUE: ${PR329_MISSING_VALUE}\n").unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![("/unused", json!({}))]);
+    // Act
+    let error = adapter
+        .configuration()
+        .normalize("run", &input_project(root.path()), "project")
+        .await
+        .err()
+        .unwrap();
+    // Assert
+    assert!(matches!(error, Error::UnresolvedEnvironment { .. }));
+    assert!(error.to_string().contains("PR329_MISSING_VALUE"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn foreign_project_resources_report_their_identity() {
+    for (containers, networks, volumes, subject) in [
+        (
+            json!([{"Id":"other-container","Labels":{}}]),
+            json!([]),
+            json!({"Volumes":[]}),
+            "container/other-container",
+        ),
+        (
+            json!([]),
+            json!([{"Name":"other-network","Labels":{}}]),
+            json!({"Volumes":[]}),
+            "network/other-network",
+        ),
+        (
+            json!([]),
+            json!([]),
+            json!({"Volumes":[{"Name":"other-volume","Driver":"local","Scope":"local","Mountpoint":"/unused","Labels":{},"Options":{}}]}),
+            "volume/other-volume",
+        ),
+    ] {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("compose.yaml"),
+            "services:\n  worker:\n    image: example:local\n    logging: {driver: none}\n",
+        )
+        .unwrap();
+        let (adapter, server) = test_engine(
+            root.path(),
+            vec![
+                ("/images/example:local/json", json!({"Id":"sha256:pinned"})),
+                ("/containers/json", containers),
+                ("/networks", networks),
+                ("/volumes", volumes),
+            ],
+        );
+        // Act
+        let error = adapter
+            .configuration()
+            .resolve(ResolveInput {
+                run: "run".into(),
+                artifacts: root.path().to_str().unwrap().into(),
+                project: Some(input_project(root.path())),
+                repository_root: None,
+            })
+            .await
+            .unwrap_err();
+        // Assert
+        assert!(
+            matches!(error, Error::ForeignResource { ref resource } if resource == subject),
+            "{error}"
+        );
+        assert!(!root.path().join("workload.compose.json").exists());
+        server.abort();
+    }
+}
+
+#[tokio::test]
+async fn a_profile_only_project_reports_empty_selection() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("compose.yaml"),
+        "services:\n  worker:\n    image: example:local\n    profiles: [optional]\n",
+    )
+    .unwrap();
+    let (adapter, server) = test_engine(root.path(), vec![("/unused", json!({}))]);
+    // Act
+    let error = adapter
+        .configuration()
+        .resolve(ResolveInput {
+            run: "run".into(),
+            artifacts: root.path().to_str().unwrap().into(),
+            project: Some(input_project(root.path())),
+            repository_root: None,
+        })
+        .await
+        .unwrap_err();
+    // Assert
+    assert!(matches!(error, Error::EmptySelection));
+    server.abort();
 }

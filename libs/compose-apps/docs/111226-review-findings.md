@@ -2,7 +2,8 @@
 
 # Review warnings and rejections
 
-Created November 12, 2026. Status: design agreed; not implemented.
+Created November 12, 2026. Status: implementation in progress; addon rejection
+transport awaits a decision.
 [Implementation plan](111226-review-findings-impl.md).
 
 Compose resolution gives the user two kinds of result at Review. A warning lets
@@ -18,7 +19,7 @@ This design makes two changes:
    `compose::Error` variant with its service or resource. Console shows its own
    message for each one.
 
-## Today
+## Previous behavior
 
 ![Review messages today](111226-review-findings-today.svg)
 

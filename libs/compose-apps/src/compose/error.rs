@@ -5,6 +5,28 @@ use super::Diagnostic;
 pub enum Error {
     #[error("selection contains no services")]
     EmptySelection,
+    #[error("at least one Compose file is required")]
+    NoComposeFile,
+    #[error("unresolved Compose environment: {detail}")]
+    UnresolvedEnvironment { detail: String },
+    #[error("{service}: prepare a named local image before the experiment")]
+    ImageNotPrepared { service: String },
+    #[error("{service}: anonymous volumes need explicit named-volume retention settings")]
+    AnonymousVolume { service: String },
+    #[error("{service}: image volume {target} needs an explicit mount for ownership/retention")]
+    ImageVolume { service: String, target: String },
+    #[error("{service}: zero replicas is unsupported; deselect via profiles")]
+    ZeroReplicas { service: String },
+    #[error("container name already occupied: {name}")]
+    NameOccupied { name: String },
+    #[error("reserved label {label}")]
+    ReservedLabel { label: String },
+    #[error("unscoped {resource}: explicit resource name requires external ownership")]
+    UnscopedResource { resource: String },
+    #[error("runtime project resource {resource} belongs to another run or controller")]
+    ForeignResource { resource: String },
+    #[error("{services}: {detail}")]
+    NoJournal { services: String, detail: String },
     #[error("{0}")]
     Invalid(String),
     #[error("{operation}: {source}")]
@@ -31,6 +53,28 @@ pub enum Error {
     Json(#[from] serde_json::Error),
 }
 impl Error {
+    /// Stable rejection reason and affected subject for Review; faults have no reason.
+    /// Image-volume subjects identify both service and mount target; journal subjects list services.
+    pub fn reason(&self) -> Option<(&'static str, String)> {
+        Some(match self {
+            Self::EmptySelection => ("EmptySelection", String::new()),
+            Self::NoComposeFile => ("NoComposeFile", String::new()),
+            Self::UnresolvedEnvironment { .. } => ("UnresolvedEnvironment", String::new()),
+            Self::ImageNotPrepared { service } => ("ImageNotPrepared", service.clone()),
+            Self::AnonymousVolume { service } => ("AnonymousVolume", service.clone()),
+            Self::ImageVolume { service, target } => {
+                ("ImageVolume", format!("{service}: {target}"))
+            }
+            Self::ZeroReplicas { service } => ("ZeroReplicas", service.clone()),
+            Self::NameOccupied { name } => ("NameOccupied", name.clone()),
+            Self::ReservedLabel { label } => ("ReservedLabel", label.clone()),
+            Self::UnscopedResource { resource } => ("UnscopedResource", resource.clone()),
+            Self::ForeignResource { resource } => ("ForeignResource", resource.clone()),
+            Self::NoJournal { services, .. } => ("NoJournal", services.clone()),
+            _ => return None,
+        })
+    }
+
     pub fn diagnostic(&self, operation: &str) -> Diagnostic {
         let mut d = Diagnostic {
             operation: operation.into(),
@@ -67,7 +111,7 @@ impl Error {
             Self::OutputLimit { .. } => d.kind = "output_limit".into(),
             Self::Io(_) => d.kind = "io".into(),
             Self::Json(_) => d.kind = "json".into(),
-            Self::Invalid(_) | Self::EmptySelection => {}
+            _ => {}
         }
         d
     }

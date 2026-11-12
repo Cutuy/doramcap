@@ -48,8 +48,8 @@ message ResolvedComposeProject {
   repeated string diagnostics = 7;
   // Whether teardown removes owned named volumes.
   bool remove_volumes = 8;
-  // User-facing resolution warnings, displayed directly at Review.
-  repeated string warnings = 9;
+  reserved 9;
+  reserved "warnings";
 }
 
 // Read-only view of one bind mount in a resolved Compose manifest.

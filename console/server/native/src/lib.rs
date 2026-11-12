@@ -244,6 +244,7 @@ impl Execution {
                                     )),
                                     machine,
                                     machine_error,
+                                    warnings: Vec::new(),
                                 }
                                 .encode_to_vec())
                             })
@@ -279,6 +280,7 @@ impl Execution {
                         )),
                         machine,
                         machine_error,
+                        warnings: resolved.warnings,
                     }
                     .encode_to_vec())
                 }

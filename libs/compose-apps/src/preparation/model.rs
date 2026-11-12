@@ -40,7 +40,9 @@ pub(super) fn merge_app(
     if let Some(volumes) = part.get_mut("volumes").and_then(Value::as_object_mut) {
         for volume in volumes.values_mut().filter(|v| v["external"] != true) {
             if volume["labels"].get("io.doramcap.remove-volume").is_some() {
-                return Err(invalid("reserved volume-removal policy label"));
+                return Err(Error::ReservedLabel {
+                    label: "io.doramcap.remove-volume".into(),
+                });
             }
             volume["labels"]["io.doramcap.remove-volume"] = remove_volumes.to_string().into();
         }

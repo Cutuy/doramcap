@@ -2,6 +2,9 @@
 
 Created November 12, 2026. [Architecture](111226-review-findings.md).
 
+Addon rejection transport awaits a decision. Warnings and the remaining rejection
+components are implemented.
+
 ## Code changes
 
 | Area | Change |
@@ -21,28 +24,28 @@ Review, so no saved value is needed.
 
 **Work items**
 
-- [ ] Reserve plan field 9 and add `Inspection.warnings`
-- [ ] Return warnings from resolution beside the plan
-- [ ] Fill and read `Inspection.warnings` in the addon and Console
+- [x] Reserve plan field 9 and add `Inspection.warnings`
+- [x] Return warnings from resolution beside the plan
+- [x] Fill and read `Inspection.warnings` in the addon and Console
 
 **Validation**
 
-- [ ] Compose warning tests
-- [ ] Console warning passthrough test
-- [ ] Older saved plan decode
+- [x] Compose warning tests
+- [x] Console warning passthrough test
+- [x] Older saved plan decode
 
 ## Milestone 2 — Typed rejections
 
 **Work items**
 
-- [ ] Add rejection variants and `Error::reason()`
-- [ ] Replace user-fixable `invalid(...)` sites
+- [x] Add rejection variants and `Error::reason()`
+- [x] Replace user-fixable `invalid(...)` sites
 - [ ] Pass reason and subject through the addon and Console error body
-- [ ] Frontend message table with fallback
+- [x] Frontend message table with fallback
 
 **Validation**
 
-- [ ] Compose rejection tests by variant
-- [ ] Console error body test
-- [ ] Frontend message selection test
+- [x] Compose rejection tests by variant
+- [x] Console error body test
+- [x] Frontend message selection test
 - [ ] Native journal rejection regression

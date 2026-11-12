@@ -159,7 +159,7 @@ test('a failed request returns its error code and cause', async () => {
     close: async () => {},
     status: async () => Buffer.from(wire.Status.encode({ phase: wire.Phase.IDLE }).finish()),
     frames: () => () => {},
-    prepare: async () => { throw Object.assign(new Error('InvalidInput'), { detail: 'compose.yaml is broken' }); },
+    prepare: async () => { throw Object.assign(new Error('InvalidInput'), { detail: 'compose.yaml is broken', reason: 'NoJournal', subject: 'worker' }); },
   } as unknown as ConsoleBackend;
   const assets = await mkdtemp(join(tmpdir(), 'console-http-'));
   const server = createConsoleServer({ backend: native, secret: 'secret', origin: 'http://console.test', assets });
@@ -174,6 +174,8 @@ test('a failed request returns its error code and cause', async () => {
     assert.equal(response.status, 400);
     assert.equal(error.code, 'InvalidInput');
     assert.equal(error.message, 'compose.yaml is broken');
+    assert.equal(error.reason, 'NoJournal');
+    assert.equal(error.subject, 'worker');
   } finally {
     server.close();
     await rm(assets, { recursive: true, force: true });

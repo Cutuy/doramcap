@@ -24,6 +24,7 @@ message Inspection {
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
+  repeated string warnings = 6; // Review notices; excluded from frozen launch identity.
 }
 // List profiles declared by the project's Docker Compose files.
 message ComposeProfilesRequest {

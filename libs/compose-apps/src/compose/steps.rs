@@ -41,7 +41,11 @@ step!(
     ResolvedComposeProject,
     adapter,
     input,
-    adapter.configuration().resolve(input).await,
+    adapter
+        .configuration()
+        .resolve(input)
+        .await
+        .map(|(plan, _)| plan),
     "Resolve prepared project settings and freeze its launch manifest and image IDs."
 );
 step!(
