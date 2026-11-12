@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="260" viewBox="0 0 960 260" role="img" aria-labelledby="title">
+  <title id="title">Review findings and failures after Review</title>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#64748b"/></marker>
+    <style>
+      text { font-family: sans-serif; fill: #172554; text-anchor: middle; }
+      .head { font-size: 16px; font-weight: bold; }
+      .label { font-size: 17px; }
+      .small { font-size: 13px; fill: #475569; }
+      .edge { font-size: 13px; fill: #475569; text-anchor: start; }
+      .box { fill: white; stroke: #94a3b8; stroke-width: 1.5; rx: 10; }
+      .flow { stroke: #64748b; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="600" height="260" rx="14" fill="#f0fdf4"/>
+  <text class="head" x="300" y="34">Review: expected outcomes</text>
+  <rect class="box" x="40" y="70" width="150" height="56"/><text class="label" x="115" y="104">Warnings</text>
+  <rect class="box" x="40" y="166" width="150" height="56"/><text class="label" x="115" y="200">Rejections</text>
+  <rect class="box" x="250" y="112" width="130" height="64"/><text class="label" x="315" y="140">Findings</text><text class="small" x="315" y="162">kind + service</text>
+  <rect class="box" x="450" y="112" width="130" height="64"/><text class="label" x="515" y="140">Frontend</text><text class="small" x="515" y="162">text per kind</text>
+  <path class="flow" d="M190 98L242 132"/>
+  <path class="flow" d="M190 194L242 160"/>
+  <path class="flow" d="M380 144H442"/>
+  <rect x="620" y="0" width="340" height="260" rx="14" fill="#fff7ed"/>
+  <text class="head" x="790" y="34">After Review: unexpected failures</text>
+  <rect class="box" x="650" y="70" width="280" height="56"/><text class="label" x="790" y="104">Start and run failures</text>
+  <rect class="box" x="650" y="174" width="280" height="56"/><text class="label" x="790" y="208">Raw error and diagnostics</text>
+  <path class="flow" d="M790 126V166"/><text class="edge" x="800" y="152">kept as evidence</text>
+</svg>
