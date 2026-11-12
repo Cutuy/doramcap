@@ -2,8 +2,8 @@
 
 Created November 11, 2026. Updated November 12, 2026: milestone 2 implemented.
 Status: milestone 1 merged ([#318](https://github.com/Cutuy/doramcap/pull/318));
-milestones 2 ([#326](https://github.com/Cutuy/doramcap/pull/326)) and
-3 ([#320](https://github.com/Cutuy/doramcap/pull/320)) implemented in review. Milestones 4 and 5 remain planned.
+milestone 3 merged ([#320](https://github.com/Cutuy/doramcap/pull/320));
+milestone 2 ([#326](https://github.com/Cutuy/doramcap/pull/326)) ready for review. Milestones 4 and 5 remain planned.
 [Architecture](111026-file-change-report.md). Terms follow its [term list](111026-file-change-report.md#terms).
 
 ## Order
@@ -11,7 +11,7 @@ milestones 2 ([#326](https://github.com/Cutuy/doramcap/pull/326)) and
 | Milestone | Starts | Reason |
 | --- | --- | --- |
 | 1: move the overlay code | Merged | Moves overlays and change records into `host-filesystem`; behavior unchanged. |
-| 3: report in Console | Done, in review, after 1 | Reads change records, whatever produced them. |
+| 3: report in Console | Merged, after 1 | Reads change records, whatever produced them. |
 | 2: change list from the uppers | Done, in review | Replaces the before/after folder walks; every later milestone builds on it. |
 | 4: systemd overlays | After 2 | systemd starts on the final change list. |
 | 5: keep with the run | After 2 and 3 | Keeps the uppers and uses milestone 3's download route. |
@@ -83,36 +83,23 @@ across all of this work.
 - [x] Let the caller name an overlay directory after its host folder.
 - [x] Read uppers without requiring a mount. Order the run as: stop apps, read uppers,
   save the report, unmount, apply the write policy, clean up.
-- [x] Keep the `doramcap.filesystem.v1` change records, categories, manifests and report
-  checkpoint unchanged, so milestone 3 needs no change.
+- [x] Preserve the `doramcap.filesystem.v1` binary tags, categories, manifests and report
+  checkpoint. Use their generated types directly across collection and Console.
 
 **Validation**
 
-- [x] Real OverlayFS fixtures: additions, modifications, deletions, a deleted folder with
-  contents, renames, symlinks, non-UTF-8 names and permission-only changes produce the
-  expected records.
-- [x] A file opened for writing with nothing written, and the folders above a changed
-  file, are absent from the change list on a filesystem where an upper folder's size
-  differs from the lower folder's.
-- [x] A socket, a FIFO, a new hard link and a modified file with two names each appear in
-  the change list. Write back finishes, the host folder holds the expected result and the
-  report carries one warning per entry.
-- [x] Ordinary native writes match an independent before/after walk using the documented
-  metadata fields. Earlier Compose assertions checked fixed expected records only.
-- [x] An output folder's files are listed as added and remain in the run folder after an
-  interrupted run. Console's own records are absent from the list.
-- [x] A single-file mount, a mount containing another mount point and a named volume start
-  normally and appear as not tracked at Review and in the result.
-- [x] Measure preparation and listing for a 20,000-file unchanged folder. Preparation
-  walks no source folders; timings are recorded in the repair validation below.
-- [x] A change made to the host folder during the run, on a path the run also wrote, ends
-  with the run's version after write back.
-- [x] Discard, busy overlays, full disk and interrupted runs behave as before.
-- [x] Boundary checks, focused release tests, formatting and strict Clippy pass with locked dependencies.
-
-- [x] ARM64 worker validation for the milestone 2 implementation.
-- [ ] Full local workspace validation without exclusions: four watcher-dependent tests
-  are blocked by the host's inotify quota. Details are in [#326](https://github.com/Cutuy/doramcap/pull/326).
+- [x] Native changes and metadata records.
+- [x] Unchanged copy-up omission.
+- [x] Special nodes and hard-link write-back.
+- [x] Independent before/after comparison.
+- [x] Output retention and private records.
+- [x] Review/result coverage consistency.
+- [x] Large unchanged folder timings.
+- [x] Concurrent host edits.
+- [x] Discard and failure recovery.
+- [x] Library boundaries, formatting and lint.
+- [x] Full local workspace validation.
+- [x] ARM64 worker validation.
 
 ### PR 326 repair
 
@@ -126,11 +113,21 @@ across all of this work.
 
 **Validation**
 
-- [x] Focused release tests, native mount regressions and real Compose preparation/output exclusions.
-- [x] Independent before/after walk agrees with upper records. A 20,000-file fixture measured
-  47 ms preparation and 0.23 ms unchanged-tree listing on local x86_64.
-- [ ] Console bindings, server checks, TypeScript runner, formatting and library boundaries.
-- [ ] Final local and ARM64 validation; record blocked checks explicitly.
+- [x] Host shared-memory identity and aliases.
+- [x] Unsafe overlap rejection.
+- [x] Supported parent/child sharing.
+- [x] Owner-supplied record exclusions.
+- [x] Console persistence and restart export.
+- [x] Console bindings, server and frontend.
+- [x] TypeScript runner checks.
+- [x] Final local and ARM64 checks.
+
+The native `upper_records_match_walk_reference_and_measure_unchanged_tree_listing`
+fixture compares upper records with an independent before/after walk. On local
+x86_64 in release mode, 20,000 unchanged files measured about 65 ms preparation,
+0.23 ms unchanged-tree listing and 3.74 ms changed-upper listing. Run it through
+`cargo test --release --locked -p host-filesystem --test overlay --no-run`, then
+elevate only the built test executable with that test name.
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
 
