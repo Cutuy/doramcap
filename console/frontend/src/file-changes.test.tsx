@@ -32,7 +32,9 @@ test('current and past failed runs share counts, coverage and a file download in
     assert.match(html, /Download file changes/);
     assert.ok(html.includes(`href="/api/artifacts/${status.runId}/file-changes.jsonl"`));
     assert.match(html, /download="file-changes.jsonl"/);
-    assert.match(html, /metadata unavailable/);
+    assert.match(html, /Before: metadata unavailable/);
+    assert.match(html, /After: 9223372036854775807 bytes/);
+    assert.doesNotMatch(html, /<details|<summary/);
     assert.match(html, /&lt;script&gt;evil\(\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>|href="\/source|href="&lt;script/);
   }
