@@ -1,96 +1,76 @@
-![Review findings and failures after Review](111226-review-findings.svg)
+![Review warnings and rejections](111226-review-findings.svg)
 
-# Review findings
+# Review warnings and rejections
 
-Created November 12, 2026. Status: design agreed; not implemented. The
-implementation plan will be added when work starts.
+Created November 12, 2026. Status: design agreed; not implemented.
+[Implementation plan](111226-review-findings-impl.md).
 
-Compose resolution reports two kinds of result to the user at Review: warnings,
-where the run can go ahead, and rejections, where it cannot. Both are designed
-checks with a known set of cases. Each tells the user what to change in the
-project or on the host. They are expected outcomes, so both become **findings**:
-a kind and the service or resource it applies to. The frontend owns the text.
+Compose resolution gives the user two kinds of result at Review. A warning lets
+the run go ahead; a rejection stops it. Both come from designed checks, and each
+tells the user what to change. Failures after Review are unexpected and keep
+their raw evidence.
 
-Failures after Review are unexpected. They cannot be listed in advance, and a
-category gives the user nothing to act on. Console keeps their evidence instead:
-the raw error, the diagnostics file and the run's recorded error.
+This design makes two changes:
+
+1. **Warnings move out of the frozen plan.** The plan is launch identity. Review
+   warnings belong in `Inspection`, the message that answers Review.
+2. **Rejections become typed errors.** A user-fixable rejection is a named
+   `compose::Error` variant with its service or resource. Console shows its own
+   message for each one.
 
 ## Today
 
 ![Review messages today](111226-review-findings-today.svg)
 
-- Warnings are free text in the frozen plan's `diagnostics`. Console never reads
-  them, so Review shows none.
-- Rejections are `Error::Invalid(String)`. Console maps them to `InvalidInput`;
-  the browser shows a generic message followed by the backend's English text.
-  `EmptySelection` is the only rejection with its own kind.
+- `ResolvedComposeProject` carries `warnings` (project logging, from #314) beside
+  internal `diagnostics`. Text meant for the user is saved with every plan.
+- Other notes stay as free text in `diagnostics`. Review does not show them.
+- Rejections are `Error::Invalid(String)`. Console maps them to `InvalidInput`
+  and shows a generic message followed by the backend's English text.
+  `EmptySelection` is the only rejection with its own variant.
 
-## Findings
+## Warnings
 
-One message serves both warnings and rejections:
-
-```proto
-message ResolutionFinding {
-  enum Kind { KIND_UNSPECIFIED = 0; /* one value per case below */ }
-  Kind kind = 1;
-  string service = 2;   // empty when the finding is project-wide
-  string resource = 3;  // network, volume, path or name, when relevant
-}
-```
-
-| Result | Carried by | Effect |
-| --- | --- | --- |
-| Warnings | `repeated ResolutionFinding` in the frozen plan | Review lists them; the run can start |
-| Rejection | `Error::Rejected(ResolutionFinding)` | Review fails; resolution still stops at the first one |
-
-The frontend maps each kind to its message in one table shared by warnings and
-rejections. New cases add a kind and a message.
-
-### Warning kinds
-
-| Kind | Case |
+| Message | Holds |
 | --- | --- |
-| Host network | The service uses host networking and shares ports. |
-| Privileged | The service is privileged; containment is cooperative. |
-| Live inputs | Bind or external volume contents are live and survive cleanup. |
-| No healthcheck | Readiness is process-level only. |
-| Restart overridden | A restart or deploy restart policy was replaced. |
-| External resource | An external network or volume is kept and not reset. |
-| Project logging | The project configures logging; Console will not collect its logs. |
+| `ResolvedComposeProject` | Launch identity and internal `diagnostics` |
+| `Inspection` | Plan, snapshot, machine state and Review `warnings` |
 
-Compose CLI stderr has no fixed meaning. It stays as detail text beside the findings.
+Resolution returns warnings beside the plan. The addon puts them in
+`Inspection`, and Console lists them at Review. Saved plans no longer carry
+user-facing text.
 
-### Rejection kinds
+## Rejections
 
-| Kind | Case |
+Each user-fixable `Invalid(String)` becomes a named variant. The `#[error]` text
+stays for logs and the diagnostics file.
+
+| Variant | Case |
 | --- | --- |
-| No Compose file | The project names no Compose file. |
-| Empty selection | No service is selected. |
-| Image not prepared | A service needs a named local image. |
-| Anonymous volume | A volume has no retention settings. |
-| Image volume | An image-declared volume needs an explicit mount. |
-| Zero replicas | Replicas are zero; deselect through profiles. |
-| Name occupied | A fixed container name is already in use. |
-| Reserved label | The project sets a label Console owns. |
-| Unscoped resource | A named network or volume is not declared external. |
-| Foreign resource | An existing project resource belongs to another run or controller. |
-| No journal | The host lacks the journald driver or a reachable journal. |
-| Unresolved environment | Compose could not resolve an environment value. |
+| `EmptySelection` | No service is selected. |
+| `NoComposeFile` | The project names no Compose file. |
+| `UnresolvedEnvironment` | Compose could not resolve an environment value. |
+| `ImageNotPrepared { service }` | A service needs a named local image. |
+| `AnonymousVolume { service }` | A volume has no retention settings. |
+| `ImageVolume { service, target }` | An image-declared volume needs an explicit mount. |
+| `ZeroReplicas { service }` | Replicas are zero; deselect through profiles. |
+| `NameOccupied { name }` | A fixed container name is already in use. |
+| `ReservedLabel { label }` | The project sets a label Console owns. |
+| `UnscopedResource { resource }` | A named network or volume is not declared external. |
+| `ForeignResource { resource }` | An existing project resource belongs to another run or controller. |
+| `NoJournal { services }` | The host lacks the journald driver or a reachable journal. |
+
+The addon already turns `EmptySelection` into a code. It does the same for every
+variant: a reason and its subject. Console keeps HTTP status `InvalidInput` and
+adds the reason; the frontend picks the message for that reason.
 
 ## What stays the same
 
-- Engine, I/O, JSON, timeout and output-limit errors inside resolution are
-  faults. They keep today's error path, like failures after Review.
-- Failures after Review keep their codes (`StaleReview`, `Busy`, `Stopped`,
-  `ImageDownload`) and raw detail.
+- Internal `diagnostics` stay in the plan as free text.
+- Engine, I/O, JSON, timeout and output-limit errors keep today's path.
+- Failures after Review keep their codes and raw detail.
 - Policy changes stay in the resolution record.
 
-## Migration
-
-The `warnings` string field from #314 is replaced by `ResolutionFinding`. Its
-field number is reserved, and older saved plans read with an empty list. The
-free-text `diagnostics` field is removed the same way.
-
-Applicable rules: D-03 (core contracts independent of UI text), D-07 (facts
-separate from interpretation), D-08 (saved plans), D-09 (one resolution for
-Review and Start).
+Applicable rules: D-03 (core contracts independent of UI), D-07 (facts separate
+from interpretation), D-08 (saved plans), D-09 (one resolution for Review and
+Start).

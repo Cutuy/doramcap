@@ -25,5 +25,5 @@ assert!(!resolved.plan.manifest.is_empty());
 ```
 
 [Architecture](../workload-docker/docs/111126-compose-apps-crate.md) ·
-[Review findings](docs/111226-review-findings.md) ·
+[Review warnings and rejections](docs/111226-review-findings.md) ·
 [Compose workflow](../workload-docker) · [System-app API](src/system_apps.rs) · API: `cargo doc -p compose-apps --no-deps`.
