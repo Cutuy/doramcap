@@ -739,7 +739,7 @@ test('preparation waits for the current file report and result transaction to fi
   } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test('a failed History transaction preserves the current saved file-change download', async () => {
+test('result reconciliation retains downloads through save failure and the next Prepare', async () => {
   // Arrange
   const { fileChangeFixture } = await import('./file-change-fixture.js');
   const { root, config, store, engine, backend, review } = await fixture();
@@ -759,5 +759,26 @@ test('a failed History transaction preserves the current saved file-change downl
     assert.ok(status.fileChanges?.downloadable);
     assert.equal(rows.filter(row => row.type === 'change').length, 3);
     assert.equal(rows.at(-1).type, 'complete');
+    const completedBy = Date.now();
+    const prepare = Buffer.from(wire.PrepareRequest.encode({}).finish());
+    // Act / Assert: failed reconciliation refuses Prepare without replacing the result.
+    await assert.rejects(backend.prepare(prepare), /Internal/);
+    const retained = wire.Status.decode(await backend.status());
+    assert.equal(retained.runId, review.runId);
+    assert.deepEqual(retained.fileChanges, status.fileChanges);
+    // Act: storage recovers; the same reconciliation saves before Prepare proceeds.
+    store.db.exec('DROP TRIGGER refuse_result');
+    await backend.prepare(prepare);
+    const saved = wire.HistoryDetail.decode(await backend.historyRun(review.runId));
+    const downloaded = [];
+    for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) downloaded.push(JSON.parse(bytes.toString()));
+    // Assert
+    assert.equal(saved.entry!.state, wire.HistoryState.HISTORY_BLOCKED);
+    assert.ok(Number(saved.entry!.finishedAtMs) <= completedBy);
+    assert.deepEqual(saved.status!.fileChanges, status.fileChanges);
+    assert.deepEqual(downloaded, rows);
+    // Act / Assert: another Prepare leaves the reconciled result unchanged.
+    await backend.prepare(prepare);
+    assert.deepEqual(wire.HistoryDetail.decode(await backend.historyRun(review.runId)), saved);
   } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
 });

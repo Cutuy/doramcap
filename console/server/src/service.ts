@@ -77,6 +77,7 @@ export class ConsoleService implements ConsoleBackend {
   private accepted = false;
   private stopped = false;
   private completed = true;
+  private pendingResultAt?: number;
   private metadataFailed = false;
   private executionStarted = false;
   private begun = 0n;
@@ -169,6 +170,11 @@ export class ConsoleService implements ConsoleBackend {
     if (this.closing || this.preparing || !this.completed || active(this.snapshot.phase) || this.admissionPending)
       return Promise.reject(new Error('Conflict'));
     const request = wire.PrepareRequest.decode(input);
+    try {
+      this.reconcileResult();
+    } catch (error) {
+      return Promise.reject(failure('Internal', error));
+    }
     this.preparing = this.prepareRequest(request).finally(() => {
       this.preparing = undefined;
     });
@@ -582,12 +588,7 @@ export class ConsoleService implements ConsoleBackend {
     this.marker!.phase = this.snapshot.phase;
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
-    // The marker and History row commit together, so a crash cannot leave them disagreeing.
-    const save = () =>
-      this.store.transaction(() => {
-        this.store.write(this.marker!);
-        this.runIndex.record(this.enriched(), this.startedAt, Date.now(), result.error ?? '');
-      });
+    this.pendingResultAt = Date.now();
     try {
       const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, 'console-report.json');
       if (this.executionStarted) await mkdir(dirname(report), { recursive: true, mode: 0o700 });
@@ -614,18 +615,28 @@ export class ConsoleService implements ConsoleBackend {
             }),
           ),
         );
-      save();
+      this.reconcileResult();
     } catch {
       this.snapshot.phase = Phase.BLOCKED;
       this.marker!.phase = Phase.BLOCKED;
       try {
-        save();
+        this.reconcileResult();
       } catch (error) {
         console.error('Could not save the run result', error);
       }
     }
     this.recorded = this.snapshot.phase;
     this.completed = true;
+  }
+  /** Save the terminal marker and History together; failure throws and remains pending for retry. */
+  private reconcileResult() {
+    const finishedAt = this.pendingResultAt;
+    if (finishedAt === undefined) return;
+    this.store.transaction(() => {
+      this.store.write(this.marker!);
+      this.runIndex.record(this.enriched(), this.startedAt, finishedAt, this.snapshot.outcome?.error ?? '');
+    });
+    this.pendingResultAt = undefined;
   }
   private enriched(): Snapshot {
     const status = wire.Status.fromObject(wire.Status.toObject(this.snapshot, objectOptions));
