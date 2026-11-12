@@ -1,24 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="790" viewBox="0 0 1200 790" role="img" aria-labelledby="title desc">
 <title id="title">Order of work</title>
-<desc id="desc">Status checked November 12, 2026. Completed prerequisites: admission lock #315, apps crate pieces #317 and overlay code move #318. Remaining arrows show prerequisites: the change-list report #320 precedes the stacked upper-based change list #326; the uppers precede systemd overlays, keeping files and the Holoscan run. Keeping files also needs the report. Apps crate system apps #324 is a placeholder whose code-move prerequisite is merged; it joins the Holoscan run at system apps and acceptance. Holoscan probes, discovery and Prepare lead to Build and Run. Run also precedes the web app screens. Journal export follows the draft journal driver #314 and writes directly into the run folder; its downloads join milestone 5.</desc>
+<desc id="desc">Status checked November 12, 2026. Completed prerequisites: admission lock #315, apps crate pieces #317 and overlay code move #318. Dashed arrows show the shared prerequisites already merged: #315 enables Build and Run, #317 enables system apps through #324, and #318 enables the change-list report and upper-based collection. Solid arrows show the remaining work order: the change-list report #320 precedes the stacked upper-based change list #326; the uppers precede systemd overlays, keeping files and the Holoscan run. Keeping files also needs the report. Apps crate system apps #324 is a placeholder whose code-move prerequisite is merged; it joins the Holoscan run at system apps and acceptance. Holoscan probes, discovery and Prepare lead to Build and Run. Run also precedes the web app screens. Journal export follows the draft journal driver #314 and writes directly into the run folder; its downloads join milestone 5.</desc>
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
-<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.declare{fill:#eef0fb;stroke:#8a92c8;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.prerequisite{stroke-dasharray:7 5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
 <rect width="1200" height="790" fill="white"/>
 <text x="600" y="40" class="title">Order of work</text>
+<g aria-label="Arrow key">
+<path d="M340 68 H390" class="line prerequisite"/>
+<text x="510" y="73" class="label">Shared prerequisite</text>
+<path d="M690 68 H740" class="line"/>
+<text x="815" y="73" class="label">Work order</text>
+</g>
 <g id="admission">
-<rect x="40" y="70" width="250" height="56" rx="10" class="overlay"/>
-<text x="165" y="94">Admission lock</text>
-<text x="165" y="117" class="label">#315 · merged</text>
+<rect x="330" y="410" width="250" height="56" rx="10" class="overlay"/>
+<text x="455" y="434">Admission lock</text>
+<text x="455" y="457" class="label">#315 · merged</text>
 </g>
 <g id="pieces">
-<rect x="330" y="70" width="250" height="56" rx="10" class="overlay"/>
-<text x="455" y="94">Apps crate: pieces</text>
-<text x="455" y="117" class="label">#317 · merged</text>
+<rect x="910" y="90" width="250" height="56" rx="10" class="overlay"/>
+<text x="1035" y="114">Apps crate: pieces</text>
+<text x="1035" y="137" class="label">#317 · merged</text>
 </g>
 <g id="move">
-<rect x="620" y="70" width="250" height="56" rx="10" class="overlay"/>
-<text x="745" y="94">Move the overlay code</text>
-<text x="745" y="117" class="label">#318 · merged</text>
+<rect x="40" y="90" width="250" height="56" rx="10" class="overlay"/>
+<text x="165" y="114">Move the overlay code</text>
+<text x="165" y="137" class="label">#318 · merged</text>
 </g>
 <g id="report">
 <rect x="40" y="200" width="250" height="56" rx="10" class="declare"/>
@@ -72,7 +78,7 @@
 </g>
 <g id="journal">
 <rect x="40" y="700" width="250" height="56" rx="10" class="declare"/>
-<text x="165" y="724">Journal log driver</text>
+<text x="165" y="724">Compose journal logging</text>
 <text x="165" y="747" class="label">#314 · draft</text>
 </g>
 <g id="export">
@@ -82,7 +88,7 @@
 </g>
 <path data-from="report" data-to="uppers" d="M290 228 H330" class="line"/>
 <path data-from="uppers" data-to="systemd" d="M580 228 H620" class="line"/>
-<path data-from="report" data-to="keep" d="M165 200 V170 H890 V328 H870" class="line"/>
+<path data-from="report" data-to="keep" d="M290 216 H310 V170 H890 V328 H870" class="line"/>
 <path data-from="uppers" data-to="keep" d="M580 240 H600 V328 H620" class="line"/>
 <path data-from="uppers" data-to="run" d="M455 256 V400 H745 V500" class="line"/>
 <path data-from="prepare" data-to="build" d="M290 528 H330" class="line"/>
@@ -91,4 +97,7 @@
 <path data-from="apps" data-to="acceptance" d="M1035 256 V500" class="line"/>
 <path data-from="run" data-to="web" d="M745 556 V600" class="line"/>
 <path data-from="journal" data-to="export" d="M290 728 H330" class="line"/>
+<path data-from="admission" data-to="build" d="M455 466 V500" class="line prerequisite"/>
+<path data-from="pieces" data-to="apps" d="M1035 146 V200" class="line prerequisite"/>
+<path data-from="move" data-to="report" d="M165 146 V200" class="line prerequisite"/>
 </svg>
