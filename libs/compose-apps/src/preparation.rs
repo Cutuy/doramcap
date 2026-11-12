@@ -334,7 +334,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         .iter()
         .chain(&spec.system_apps)
         .chain(&spec.extra_apps);
-    let (mut plan, warnings) = adapter
+    let (mut plan, mut warnings) = adapter
         .configuration()
         .resolve(ResolveInput {
             repository_root: Some(
@@ -370,7 +370,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         eprintln!("warning: {warning}");
     }
     let effective = mounts::model(&plan, "filesystem manifest changed").await?;
-    plan.warnings.extend(
+    warnings.extend(
         host_filesystem::changes::coverage_notes(
             &mounts::directories(&mounts::binds(&plan.name, &effective)?),
             &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
