@@ -437,3 +437,73 @@ pub(crate) async fn test_engine_status(
         .unwrap();
     (adapter, server)
 }
+
+#[tokio::test]
+async fn interrupted_run_reset_removes_the_dora_reservation_after_shm_and_apps() {
+    use compose_apps::compose::adapter::{CONTROLLER_LABEL, EXPERIMENT_OWNER_LABEL};
+    use serde_json::json;
+    // Arrange: interrupted output remains in the overlay workspace, and Engine lists the owner first.
+    let root = tempfile::tempdir().unwrap();
+    let controller = Rc::new(
+        Controller::in_directory(
+            Admission::acquire(root.path()).unwrap(),
+            root.path().join("controller"),
+        )
+        .unwrap(),
+    );
+    let workspace = controller.workspace();
+    std::fs::create_dir_all(workspace.join("0/upper")).unwrap();
+    std::fs::write(workspace.join("0/upper/data"), b"interrupted").unwrap();
+    let owner = json!({"Id":"owner","Labels":{CONTROLLER_LABEL:controller.directory,EXPERIMENT_OWNER_LABEL:"true"}});
+    let containers = json!([
+        owner.clone(),
+        {"Id":"shm","Labels":{CONTROLLER_LABEL:controller.directory}},
+        {"Id":"app","Labels":{CONTROLLER_LABEL:controller.directory}},
+    ]);
+    let stopped = json!({"State":{"Pid":0,"Running":false}});
+    let verify = vec![
+        ("/containers/json", 200, containers.clone()),
+        ("/containers/owner/json", 200, stopped.clone()),
+        ("/containers/shm/json", 200, stopped.clone()),
+        ("/containers/app/json", 200, stopped),
+    ];
+    let (adapter, server) = test_engine_status(
+        root.path(),
+        [
+            vec![
+                ("/containers/dc-", 404, json!({"message":"absent"})),
+                ("/containers/json", 200, containers.clone()),
+                ("/containers/owner/stop", 204, json!(null)),
+                ("/containers/shm/stop", 204, json!(null)),
+                ("/containers/app/stop", 204, json!(null)),
+            ],
+            verify.clone(),
+            verify,
+            vec![
+                ("/containers/json", 200, containers),
+                ("/containers/shm", 204, json!(null)),
+                ("/containers/app", 204, json!(null)),
+                ("/networks", 200, json!([])),
+                ("/networks", 200, json!([])),
+                ("/containers/json", 200, json!([owner])),
+                ("/containers/owner", 204, json!(null)),
+                ("/containers/json", 200, json!([])),
+                ("/networks", 200, json!([])),
+            ],
+        ]
+        .concat(),
+    )
+    .await;
+    let mut reset = ResetExperiment {
+        adapter: Rc::new(adapter),
+        controller,
+        stop_seconds: 3,
+    };
+
+    // Act
+    reset.run(()).await.unwrap();
+
+    // Assert: all ordered Engine calls completed, including owner removal after other resources.
+    server.await.unwrap();
+    assert!(!workspace.exists());
+}

@@ -604,3 +604,151 @@ async fn cgroupfs_misplacement_prevents_user_start() {
     // Act / Assert
     misplaced_on_socket(&daemon.socket).await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local Docker with Compose and cgroup v2"]
+async fn shared_system_sequences_preserve_lineage_and_stop_shm_with_system_apps() {
+    use compose_apps::{
+        compose::{QuiesceCompose, StartInput, StopInput},
+        experiment::{RegisterDoraGraph, StartDoraRuntime, StopDoraRuntime},
+    };
+    // Arrange: real system services run with and without an extra user-service group.
+    for index in 0..4 {
+        let fixture = Fixture::new();
+        let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
+        let with_user = index % 2 != 0;
+        let isolated = index < 2;
+        let mut spec = fixture.spec(index % 2);
+        spec.host_shm_access = if isolated {
+            HostShmAccess::Blocked
+        } else {
+            HostShmAccess::Passthrough
+        } as i32;
+        if !with_user {
+            spec.projects.clear();
+        }
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let sink = events.clone();
+        let mut runner = ComposeRunner::new(adapter.clone());
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let mut run = Box::pin(runner.run_with_ready(
+            spec.clone(),
+            async {
+                let _ = stopped.await;
+            },
+            move |event: &Event| sink.borrow_mut().push(event.clone()),
+            Some(ready),
+        ));
+
+        // Act: readiness is independently confirmed before requesting cooperative stop.
+        let plan = tokio::time::timeout(RUN_LIMIT, async {
+            tokio::select! { plan = started => match plan { Ok(plan) => plan, Err(_) => panic!("startup failed: {:?}", (&mut run).await) }, result = &mut run => panic!("startup failed: {result:?}") }
+        }).await.unwrap();
+        assert!(
+            adapter
+                .project(&plan)
+                .inspect()
+                .await
+                .unwrap()
+                .ready()
+                .unwrap()
+        );
+        stop.send(()).unwrap();
+        let report = tokio::time::timeout(RUN_LIMIT, run).await.unwrap().unwrap();
+
+        // Assert: startup, graph lineage, shutdown and owned-resource cleanup are observable.
+        assert!(report.successful(), "{report:?}");
+        assert!(
+            report.boundary_clean && report.writers_stopped,
+            "{report:?}"
+        );
+        assert!(
+            adapter
+                .project(&plan)
+                .inspect()
+                .await
+                .unwrap()
+                .containers
+                .is_empty()
+        );
+        assert!(
+            fixture
+                .docker(&[
+                    "ps",
+                    "-aq",
+                    "--filter",
+                    &format!("label=io.doramcap.run={}", spec.id)
+                ])
+                .stdout
+                .is_empty()
+        );
+        let events = events.borrow();
+        let event = |id: &str, state| {
+            events
+                .iter()
+                .find(|e| e.invocation.step == id && e.state == state)
+                .unwrap()
+        };
+        let runtime = event(StartDoraRuntime::ID.unwrap(), State::Succeeded);
+        let graph = event(RegisterDoraGraph::ID.unwrap(), State::Succeeded);
+        assert!(
+            graph
+                .invocation
+                .dependencies
+                .contains(&runtime.invocation.id)
+        );
+        let starts: Vec<_> = events
+            .iter()
+            .filter(|e| e.invocation.step == StartCompose::ID.unwrap() && e.state == State::Started)
+            .collect();
+        assert_eq!(
+            starts.len(),
+            1 + usize::from(isolated) + usize::from(with_user)
+        );
+        let systems = starts[usize::from(isolated)];
+        assert!(
+            systems
+                .invocation
+                .dependencies
+                .contains(&graph.invocation.id)
+        );
+        if isolated {
+            let holder: StartInput =
+                serde_json::from_value(starts[0].payload.clone().unwrap()).unwrap();
+            assert_eq!(holder.services, [SHM_SERVICE]);
+            assert!(starts[0].elapsed_ns < runtime.elapsed_ns);
+            assert!(
+                systems
+                    .invocation
+                    .dependencies
+                    .contains(&starts[0].invocation.id)
+            );
+        }
+        let stops: Vec<_> = events
+            .iter()
+            .filter(|e| {
+                e.invocation.step == QuiesceCompose::ID.unwrap() && e.state == State::Started
+            })
+            .collect();
+        let systems = stops[usize::from(with_user)];
+        let input: StopInput = serde_json::from_value(systems.payload.clone().unwrap()).unwrap();
+        assert!(input.services.contains(&"system".into()));
+        assert_eq!(
+            input.services.iter().any(|name| name == SHM_SERVICE),
+            isolated
+        );
+        if with_user {
+            let input: StopInput =
+                serde_json::from_value(stops[0].payload.clone().unwrap()).unwrap();
+            assert_eq!(input.services, ["user"]);
+        }
+        assert!(
+            systems.elapsed_ns < event(StopDoraRuntime::ID.unwrap(), State::Started).elapsed_ns
+        );
+        assert!(
+            event(StopDoraRuntime::ID.unwrap(), State::Succeeded).elapsed_ns
+                < event("compose.finalize", State::Started).elapsed_ns
+        );
+    }
+}

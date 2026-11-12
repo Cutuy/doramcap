@@ -669,18 +669,14 @@ impl ComposeExecution<'_> {
             project: self.plan.name.clone(),
             ..Default::default()
         };
-        let mut experiment_owner = None;
-        // Keep the stopped IPC owner until all other owned resources are removed.
-        for summary in self.containers().await? {
-            if summary
-                .labels
-                .as_ref()
-                .and_then(|labels| labels.get(EXPERIMENT_OWNER_LABEL))
-                .is_some()
-            {
-                if self.owned(&summary) {
-                    experiment_owner = summary.id;
-                }
+        let containers = self.containers().await?;
+        let experiment_owner = crate::system_apps::removal_owner(
+            containers.iter().filter(|summary| self.owned(summary)),
+        )?
+        .map(str::to_owned);
+        // Release the stopped ownership reservation after every other resource is removed.
+        for summary in containers {
+            if summary.id == experiment_owner {
                 continue;
             }
             if self.owned(&summary)

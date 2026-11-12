@@ -2,12 +2,14 @@
 
 # Shared crate for apps as containers
 
-Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 not started.
+Created November 11, 2026. Status: milestones 1–4 complete.
 [Implementation plan](111126-compose-apps-crate-impl.md).
 
 Running Dora apps and Console's system apps as containers moves from
 `workload-docker` into a shared crate, `compose-apps`. The Compose workflow and
 the Holoscan workflow both use it. Each keeps only its own run order.
+
+![Dora, shared memory and apps](111126-compose-apps-runtime.svg)
 
 ## Why
 
@@ -50,20 +52,22 @@ shape the boundary needs.
 | --- | --- | --- |
 | Compose puts user services in the same project and checks across groups. | Preparation takes Dora apps, system apps and user projects as three lists. The cross-group check takes two lists and does nothing when the user list is empty. | The optional extra group matches how preparation is written. |
 | Monitoring checks the whole project's health in one call. | The start path already checks system apps alone: it inspects the project, narrows the result to the system services and asks whether those are ready. | Watching a chosen list of services is an existing pattern. |
-| Reset decides which container is removed last. | Reset does three things: stop and remove by ownership label, discard leftover views, and pick the shared-memory holder to remove last. The first is two calls in `docker-engine`. The second moves with the capture work. | Only the third belongs here. |
+| Reset decides which container is removed last. | Reset does three things: stop and remove by ownership label, discard leftover views, and pick the Dora experiment owner to remove last. The first is two calls in `docker-engine`. The second moves with the capture work. | Only the third belongs here. |
 
 Reset keeps a fixed order: stop the containers, discard the views, then remove
 the containers. The shared crate therefore offers the rule for picking the last
 container, and each workflow runs the three steps in order.
 
-These were checked by reading the code. Nothing has been built or run. The
-snapshot comparison in milestone 3 of the plan is where a hidden coupling would show.
+The SHM holder starts before participants join its namespace and stops with the
+other system apps. SHM change auditing is outside this work. The stopped Dora
+experiment owner retains the repository reservation until other cleanup succeeds.
 
 ## Expected behavior
 
-This is a restructuring. A Compose run behaves exactly as before: the same steps
-with the same identities, the same Review snapshot for the same inputs, the same
-saved records and the same report.
+The extraction preserves step identities, Review snapshots, saved records and
+report formats. The SHM holder joins ordinary system-app shutdown before the
+Dora runtime stops; it has no separate inspection or retention phase. This
+simplification was agreed on November 12, 2026.
 
 ## Order
 
@@ -72,8 +76,8 @@ Milestones 1 to 3 can start now, in parallel with the
 [capture move](https://github.com/Cutuy/doramcap/pull/316). All three move code
 out of `workload-docker`, which means ordinary code conflicts.
 
-Milestone 4 waits for the capture move. Both reshape the Compose run sequence
-and reset, and the capture move decides that shape first.
+The capture move is merged in [PR #318](https://github.com/Cutuy/doramcap/pull/318).
+Milestone 4 can now extract the shared sequences and reset rule from that shape.
 
 The [Holoscan runner](https://github.com/Cutuy/doramcap/pull/264) needs
 milestone 4 before it starts system apps.

@@ -31,6 +31,9 @@ pub fn register(
     step!(RemoveCompose);
     executor.register::<CaptureFilesystemBaseline>(|| CaptureFilesystemBaseline);
     executor.register::<CollectFilesystemChanges>(|| CollectFilesystemChanges);
+    executor.register::<workload_lifecycle::recording::WaitForRecordings>(|| {
+        workload_lifecycle::recording::WaitForRecordings
+    });
 }
 
 /// Register communication, graph and workload operations on the experiment executor.
