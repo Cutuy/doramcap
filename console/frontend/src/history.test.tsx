@@ -238,6 +238,19 @@ test('shm capture failure is an alert and leaves its review value unavailable', 
   assert.doesNotMatch(review, /Host shm error/);
 });
 
+test('an unavailable machine comparison never reports the configuration as unchanged', () => {
+  // Arrange: an oversized comparison keeps only its capture error.
+  const error = wire.ComparisonRow.fromObject({ group: wire.ComparisonGroup.COMPARISON_CONDITION, name: 'machine_capture_error', result: wire.ComparisonResult.COMPARISON_UNAVAILABLE, cells: [{ values: [] }, { values: ['Machine comparison is too large to display. Changes are unavailable.'] }] });
+  // Act
+  const failed = renderToStaticMarkup(<MachineChanges rows={[error]}/>);
+  const unchanged = renderToStaticMarkup(<MachineChanges rows={[]}/>);
+  // Assert
+  assert.match(failed, /role="alert">Machine capture unavailable \(After\)/);
+  assert.match(failed, /Machine configuration changes are unavailable\./);
+  assert.doesNotMatch(failed, /did not change/);
+  assert.match(unchanged, /Machine configuration did not change\./);
+});
+
 test('an embedded host keeps every route and link beneath its base path', () => {
   // Arrange
   const base = '/console', a = 'a'.repeat(32), b = 'b'.repeat(32);

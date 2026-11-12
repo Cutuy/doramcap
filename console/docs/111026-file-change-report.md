@@ -107,10 +107,13 @@ overlay.
 - Console checks that a declared working directory exists where the app will run: when
   Review is produced, and again before anything is mounted or started. A missing one
   fails there, naming the app and the directory.
+- A service Console creates runs in a private root that holds only the system folders and
+  its declared mounts. Its working directory must be inside one of them; a host folder
+  outside them is missing for the app.
 - A unit that writes `WorkingDirectory=-/path` accepts a missing directory, and Console
   skips the check. Compose needs no check; Docker creates a missing working directory.
-- When a working directory is writable and outside every writable mount, Review lists
-  it as not tracked and suggests declaring it. The user makes that change.
+- When your own unit's working directory is writable and outside every writable mount,
+  Review lists it as not tracked and suggests declaring it. The user makes that change.
 
 Console's Dora coordinator and daemon use `/runtime`, their declared output folder.
 
@@ -191,7 +194,8 @@ its saved change list, waits for its write policy and blocks verified cleanup.
 
 The kernel copies a file into the upper when an app opens it for writing, and creates
 every folder on the way to a changed file. Such entries match the lower and are left out
-of the list. A folder's size is ignored, because a folder in the upper holds only the
+of the list. A folder where the run added, removed or renamed an entry gets a new
+modification time, as it would on the host, and is listed as modified. A folder's size is ignored, because a folder in the upper holds only the
 entries the run touched. The comparison reads no file contents.
 
 The list records metadata and paths with their raw Unix bytes. It holds the final state

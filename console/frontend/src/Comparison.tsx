@@ -96,12 +96,14 @@ export function ReviewPreview({ comparison }: { comparison: ReviewComparison }) 
 export function MachineChanges({ rows }: { rows: Row[] }) {
   const inGroup = (group: number) => rows.filter(row => row.group === group);
   const configuration = inGroup(Group.COMPARISON_CONFIGURATION);
+  // A failed or oversized capture leaves the configuration unknown, not unchanged.
+  const captureFailed = rows.some(row => row.name === 'machine_capture_error' && row.cells.some(cell => (cell.values ?? []).some(Boolean)));
   return <section className="panel comparison machine-changes" aria-label="Machine changes during this run">
     <h2>Machine during this run</h2>
     <MachineCaptureErrors rows={rows} sides={['Before', 'After']}/>
     {configuration.length
       ? <GroupSection group={Group.COMPARISON_CONFIGURATION} title="Machine configuration" rows={configuration} warn showMatching sides={['Before', 'After']}/>
-      : <p className="muted">Machine configuration did not change.</p>}
+      : <p className="muted">{captureFailed ? 'Machine configuration changes are unavailable.' : 'Machine configuration did not change.'}</p>}
     <GroupSection group={Group.COMPARISON_CONDITION} title="Machine condition" rows={inGroup(Group.COMPARISON_CONDITION)} warn={false} showMatching sides={['Before', 'After']}/>
   </section>;
 }
