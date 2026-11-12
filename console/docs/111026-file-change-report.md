@@ -95,6 +95,8 @@ Machine-observation timing remains unchanged.
 
 ## Capture scope
 
+![What a launch sees and what Console captures](111126-capture-scope.svg)
+
 Every launch has two views of the filesystem:
 
 - **App view:** the paths the program sees, including its working directory.
