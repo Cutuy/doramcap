@@ -1,9 +1,10 @@
 import { ApiError, Phase, StepState, wire, workflow, type HistoryEntry, type Review, type Snapshot, type createClient } from '../api';
-import { LIMITS, PREPARING_RUN } from '../generated/transport';
+import { FILE_CHANGES_ARTIFACT, LIMITS, PREPARING_RUN } from '../generated/transport';
 import { doramcap } from '../generated/console';
 import { createRequestKey } from '../model';
 import type { Frame } from '../streams';
 import { RUN_SAMPLES, SAMPLE_MS, WORKLOAD_SERVICES, createWorkload, digest, faultPacket, noise } from './telemetry';
+import { demoFileChanges, demoFileChangesJsonl } from './file-changes';
 
 type Client = ReturnType<typeof createClient>;
 type Facts = Record<string, string>;
@@ -20,6 +21,7 @@ const NS_PER_SAMPLE = SAMPLE_MS * 1e6;
 const RUN_SECONDS = RUN_SAMPLES * SAMPLE_MS / 1000;
 const REPORT = 'report', COMPLETED = 'Completed', IN_PROGRESS = 'In progress';
 const JSON_DATA_URL = 'data:application/json;charset=utf-8,';
+const JSONL_DATA_URL = 'data:application/x-ndjson;charset=utf-8,';
 const EXIT_ON_SIGTERM = 143, STOP_SECONDS = 30;
 const RECORDING_RATE_BYTES_PER_SECOND = 10 * 1024 * 1024, RECORDING_RATE_VARIATION = 0.3;
 
@@ -212,6 +214,7 @@ function finishedEntry(runId: string, selection: Selection, startedAtMs: number,
     artifacts: [
       ...(recordingBytes === undefined ? [] : [wire.HistoryArtifact.create({ id: CPU_RECORDING, sizeBytes: recordingBytes, downloadable: true })]),
       wire.HistoryArtifact.create({ id: REPORT, sizeBytes: new TextEncoder().encode(report(status)).length, downloadable: true }),
+      wire.HistoryArtifact.create({ id: FILE_CHANGES_ARTIFACT, sizeBytes: new TextEncoder().encode(demoFileChangesJsonl(status.fileChanges!)).length, downloadable: true, kind: wire.ArtifactKind.FILE_CHANGES }),
     ],
   });
 }
@@ -224,6 +227,7 @@ function builtinRun(): StoredRun {
   const selection = DEFAULT_SELECTION;
   const status = runStatus(BUILTIN_RUN_ID, selection, Phase.FINISHED, RUN_SAMPLES, RUN_SAMPLES - STOP_SAMPLES, condition(0), condition(1));
   const duration = RUN_SECONDS;
+  status.fileChanges = demoFileChanges(status, BUILTIN_STARTED_AT_MS, BUILTIN_STARTED_AT_MS + duration * 1000);
   return {
     entry: finishedEntry(BUILTIN_RUN_ID, selection, BUILTIN_STARTED_AT_MS, BUILTIN_STARTED_AT_MS + duration * 1000, status, BUILTIN_RECORDING_BYTES), status,
     facts: { setup: setupFacts(selection), configuration: CONFIGURATION.builtin, condition: condition(0),
@@ -261,8 +265,10 @@ export function createDemoClient() {
   const finish = () => {
     const run = active!;
     active = null;
-    publish(runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, run.facts.condition, run.after, run.seed));
     const seconds = run.sample * SAMPLE_MS / 1000;
+    const finished = runStatus(run.runId, run.selection, Phase.FINISHED, run.sample, run.stopAt, run.facts.condition, run.after, run.seed);
+    finished.fileChanges = demoFileChanges(finished, run.startedAtMs, run.startedAtMs + seconds * 1000);
+    publish(finished);
     runs.set(run.runId, {
       status, facts: { ...run.facts, outcome: { ...outcomeFacts(status, seconds), ...(status.metrics.length ? { recording_bytes: String(status.metrics.at(-1)!.recordingBytes) } : {}) } },
       entry: finishedEntry(run.runId, run.selection, run.startedAtMs, run.startedAtMs + seconds * 1000, status),
@@ -375,6 +381,7 @@ export function createDemoClient() {
     artifactUrl: (runId: string, id: string): string | undefined => {
       const run = runs.get(runId);
       if (id === REPORT) return run?.status.reportAvailable ? JSON_DATA_URL + encodeURIComponent(report(run.status)) : undefined;
+      if (id === FILE_CHANGES_ARTIFACT) return run?.status.fileChanges?.downloadable ? JSONL_DATA_URL + encodeURIComponent(demoFileChangesJsonl(run.status.fileChanges)) : undefined;
       return runId === BUILTIN_RUN_ID && id === CPU_RECORDING ? BUILTIN_RECORDING_URL : undefined;
     },
     live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame: (frame: Frame) => void = () => {}) => new Promise<void>(resolve => {
