@@ -60,7 +60,7 @@ async function service(root: string) {
   const store = await Store.open(config.dataRoot),
     engine = new Engine(),
     backend = new ConsoleService(config, engine, store);
-  new History(store).closeInterrupted();
+  await new History(store).closeInterrupted();
   return { project, config, store, engine, backend };
 }
 type Service = Awaited<ReturnType<typeof service>>;
@@ -287,7 +287,7 @@ test('a run open at a crash reopens as interrupted with no finish time or downlo
   history.record(wire.Status.create({ phase: Phase.RUNNING, runId: id(1), recordings: [{ id: 'cpu', path: 'cpu.mcap' }] }), 5000);
   try {
     // Act
-    history.closeInterrupted();
+    await history.closeInterrupted();
     const entry = history.list(wire.HistoryQuery.create()).entries[0];
     // Assert
     assert.equal(entry.state, State.HISTORY_INTERRUPTED);
@@ -308,13 +308,12 @@ test('a result that cannot reach History leaves the marker unfinished, so restar
   const runId = await startRun(run);
   run.store.db.exec("CREATE TRIGGER refuse BEFORE UPDATE ON runs BEGIN SELECT RAISE(ABORT, 'disk full'); END");
   try {
-    // Act
-    await finishRun(run, runId);
-    // Assert
+    // Act / Assert: the save error propagates and leaves the durable marker unfinished.
+    await assert.rejects(finishRun(run, runId), /disk full/);
     assert.ok(![Phase.FINISHED, Phase.BLOCKED].includes(run.store.marker()!.phase!));
     // Act
     run.store.db.exec('DROP TRIGGER refuse');
-    new History(run.store).closeInterrupted();
+    await new History(run.store).closeInterrupted();
     // Assert
     assert.equal((await list(run)).entries[0].state, State.HISTORY_INTERRUPTED);
   } finally {
@@ -323,18 +322,21 @@ test('a result that cannot reach History leaves the marker unfinished, so restar
   }
 });
 
-test('a report that cannot be written blocks the marker and History row alike', async () => {
+test('a report write error propagates while native result facts remain available', async () => {
   // Arrange
   const root = await temporary(), run = await service(root);
   const runId = await startRun(run);
   await mkdir(join(run.config.dataRoot, 'runs', runId), { recursive: true });
   await writeFile(join(run.config.dataRoot, 'runs', runId, 'console-report.json'), 'already here');
   try {
-    // Act
-    await finishRun(run, runId);
-    // Assert
-    assert.equal(run.store.marker()!.phase, Phase.BLOCKED);
-    assert.equal((await list(run)).entries[0].state, State.HISTORY_BLOCKED);
+    // Act / Assert: report storage fails through the normal error path.
+    await assert.rejects(finishRun(run, runId), /EEXIST/);
+    const status = wire.Status.decode(await run.backend.status());
+    assert.equal(status.phase, Phase.FINISHED);
+    assert.equal(status.outcome?.boundaryClean, true);
+    // Act: Review saves those facts before preparing the next run.
+    await run.backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    assert.equal((await list(run)).entries[0].state, State.HISTORY_COMPLETED);
   } finally {
     await run.backend.close();
     await rm(root, { recursive: true, force: true });
@@ -492,7 +494,7 @@ test('an interrupted run keeps its before state, and an earlier run reads an emp
   run.engine.update.machineBefore = execution.ExecutionUpdate.fromObject({ machineBefore: machine('performance') }).machineBefore;
   await run.backend.status();
   // Act
-  new History(run.store).closeInterrupted();
+  await new History(run.store).closeInterrupted();
   const history = new History(run.store);
   // Assert
   assert.equal(history.capture(runId).before?.configuration?.governor?.[0].value, 'performance');

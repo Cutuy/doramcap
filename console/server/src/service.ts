@@ -118,7 +118,7 @@ export class ConsoleService implements ConsoleBackend {
       if (relay && !relay.liveRelay!.port) relay.liveRelay!.port = await availablePort();
       // A systemd Console has no Docker socket, so the addon never connects to Docker.
       const engine = await capabilities.open(config.dockerSocket, 1);
-      new History(store).closeInterrupted();
+      await new History(store).closeInterrupted();
       const backend = new ConsoleService(config, engine, store);
       await backend.restore();
       return { backend, config, secret };

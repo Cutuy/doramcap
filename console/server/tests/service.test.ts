@@ -822,3 +822,56 @@ test('a preview exception fails its request without preventing a later Review', 
     assert.equal(rows.at(-1).type, 'complete');
   } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
+
+test('shutdown during a failed result save retains published file evidence after restart', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { capabilities } = await import('../src/native.js');
+  const { root, config, store, engine, backend, review } = await fixture();
+  const original = capabilities.openFile;
+  let restored: ConsoleService | undefined;
+  let closed = false;
+  try {
+    await writeFile(config.accessSecretFile, 'restart-test', { mode: 0o600 });
+    const configPath = join(root, 'restart.pbtxt');
+    await writeFile(configPath, capabilities.formatConfig(config));
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'restart-save' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!(); await starting;
+    const { reference } = await fileChangeFixture(join(config.dataRoot, 'runs', review.runId), 3, []);
+    store.db.exec("CREATE TRIGGER refuse_result BEFORE UPDATE ON runs WHEN NEW.state != 1 BEGIN SELECT RAISE(FAIL, 'result storage failed'); END");
+    let opened!: () => void;
+    const observed = new Promise<void>(resolve => { opened = resolve; });
+    capabilities.openFile = (runRoot, path) => {
+      const fd = original(runRoot, path);
+      if (path === reference.checkpoint) opened();
+      return fd;
+    };
+    engine.update.result = execution.ExecutionResult.create({ fileChanges: reference, boundaryClean: true });
+    // Act: shutdown joins the in-progress save; both callers receive the storage failure.
+    const finishing = assert.rejects(backend.status(), /result storage failed/);
+    await observed;
+    await Promise.all([finishing, assert.rejects(backend.close(), /result storage failed/)]);
+    closed = true;
+    capabilities.openFile = original;
+    const writable = await Store.open(config.dataRoot);
+    writable.db.exec('DROP TRIGGER refuse_result');
+    writable.close();
+    ({ backend: restored } = await ConsoleService.open(configPath));
+    const saved = wire.HistoryDetail.decode(await restored.historyRun(review.runId));
+    const rows = [];
+    for await (const bytes of restored.fileChanges(review.runId, new AbortController().signal)) rows.push(JSON.parse(bytes.toString()));
+    // Assert: the run outcome is unknown, while its saved file evidence is usable.
+    assert.equal(saved.entry!.state, wire.HistoryState.HISTORY_INTERRUPTED);
+    assert.equal(saved.entry!.finishedAtMs, null);
+    assert.equal(saved.status!.outcome, null);
+    assert.equal(saved.status!.fileChanges!.report!.categories![0].counts!.added!.toString(), '3');
+    assert.equal(rows.filter(row => row.type === 'change').length, 3);
+    assert.equal(rows.at(-1).type, 'complete');
+  } finally {
+    capabilities.openFile = original;
+    await restored?.close();
+    if (!closed) await backend.close().catch(() => {});
+    await rm(root, { recursive: true, force: true });
+  }
+});

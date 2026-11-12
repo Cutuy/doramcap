@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { fileChangeAvailability } from './file-changes.js';
-import { LIMITS, FILE_CHANGES_ARTIFACT } from './generated/transport.js';
+import { fileChangeAvailability, fileChangePreview, filesystem } from './file-changes.js';
+import { LIMITS, FILE_CHANGES_ARTIFACT, runId } from './generated/transport.js';
 import { browserError, execution, wire, type Snapshot } from './native.js';
 import type { Store } from './store.js';
 
@@ -32,11 +32,17 @@ const encodeDetail = (status: Snapshot) => {
  */
 export class History {
   constructor(private store: Store) {}
-  /** A row still open when Console starts belongs to a run that never reported a result. */
-  closeInterrupted() {
+  /** Close interrupted runs and recover published file evidence without inferring a final outcome. */
+  async closeInterrupted() {
     const open = this.store.db.prepare('SELECT detail, started_at_ms AS t FROM runs WHERE state = ?').all(State.HISTORY_RUNNING) as { detail: Uint8Array; t: number }[];
-    for (const row of open)
-      this.upsert(wire.Status.decode(row.detail), State.HISTORY_INTERRUPTED, row.t, undefined, 'Console stopped before this run reported a result.');
+    for (const row of open) {
+      const status = wire.Status.decode(row.detail);
+      if (!status.fileChanges && runId.test(status.runId)) {
+        const recovered = await fileChangePreview(join(this.store.root, 'runs', status.runId), null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
+        if (recovered?.report) status.fileChanges = recovered;
+      }
+      this.upsert(status, State.HISTORY_INTERRUPTED, row.t, undefined, 'Console stopped before this run reported a result.');
+    }
   }
   /** Save one run transition. `startedAt` is ignored once the row exists. */
   record(status: Snapshot, startedAt: number, finishedAt?: number, error = '') {
