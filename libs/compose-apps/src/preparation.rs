@@ -366,7 +366,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         eprintln!("warning: {warning}");
     }
     let effective = mounts::model(&plan, "filesystem manifest changed").await?;
-    diagnostics.extend(
+    plan.warnings.extend(
         host_filesystem::filesystem::coverage_notes(
             &mounts::directories(&mounts::binds(&plan.name, &effective)?),
             &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
