@@ -18,9 +18,9 @@ milestone 3 implemented in review ([#320](https://github.com/Cutuy/doramcap/pull
 Milestone numbers 1 and 3 keep their earlier meaning, so PR references stay valid.
 
 The [admission lock](https://github.com/Cutuy/doramcap/pull/315) and the
-[shared apps crate](https://github.com/Cutuy/doramcap/pull/317) also move code
-out of `workload-docker` and proceed in parallel. The apps crate's last milestone
-waits for milestone 1 here, since both reshape the Compose run sequence. The
+[shared apps crate's pieces](https://github.com/Cutuy/doramcap/pull/317) are merged.
+The apps crate's [system apps sequences](https://github.com/Cutuy/doramcap/pull/324)
+are in review; they and milestone 1 here both reshape the Compose run sequence. The
 [Holoscan overview](https://github.com/Cutuy/doramcap/pull/264) holds the order
 across all of this work.
 
@@ -56,9 +56,9 @@ across all of this work.
 **Work items**
 
 - [ ] In `host-filesystem`, read each upper into change records: added when absent from
-  the lower, deleted when the run removed it, and modified when its type, size,
-  permissions, owner or modification time differs from the lower. Leave out entries
-  that match the lower. Read no file contents. Take "before"
+  the lower, deleted when the run removed it, and modified when its type, permissions,
+  owner or modification time differs from the lower, or its size for a file or symlink.
+  Ignore a folder's size. Leave out entries that match the lower. Read no file contents. Take "before"
   metadata from the lower and "after" from the upper. Use the one upper reader that
   write back already uses.
 - [ ] Record one deleted entry for each path under a deleted folder in the lower.
@@ -87,7 +87,8 @@ across all of this work.
   contents, renames, symlinks, non-UTF-8 names and permission-only changes produce the
   expected records.
 - [ ] A file opened for writing with nothing written, and the folders above a changed
-  file, are absent from the change list.
+  file, are absent from the change list on a filesystem where an upper folder's size
+  differs from the lower folder's.
 - [ ] A socket, a FIFO, a new hard link and a modified file with two names each appear in
   the change list. Write back finishes, the host folder holds the expected result and the
   report carries one warning per entry.
@@ -200,20 +201,22 @@ across all of this work.
 - [ ] Add one Console setting selecting write back, keep with the run or discard, default
   write back. Pass it to Compose and systemd runs.
 - [ ] Show the policy at Review and the kept location with the result. Add no file browser.
-- [ ] Add a download action for kept files and log dumps as one new kind on the
-  authenticated artifact route. The request names a saved change-list entry or a program,
-  never a path. The server opens the file only inside the run's kept-files or log folder,
-  by its raw name bytes. Send every file as an attachment with an encoded filename.
+- [ ] Add a download action for kept files, output folder files and log dumps as one new
+  kind on the authenticated artifact route. The request names a saved change-list entry
+  or a program, never a path. The server opens the file only inside the run's kept-files
+  folder, the entry's output folder or the log folder, by its raw name bytes. Send every file as an attachment with an encoded filename.
 
 **Validation**
 
-- [ ] The kept files match the report's added and modified entries exactly.
+- [ ] The kept files match the added and modified entries of overlaid host folders
+  exactly. Output folder entries stay in their output folder and are copied nowhere.
 - [ ] The host folder is byte-identical before and after a keep run.
 - [ ] Deletions appear in the report and remove nothing.
 - [ ] A second run starts from the unchanged host folder and keeps its own separate files.
 - [ ] Full disk and an interrupted copy keep the upper and block verified cleanup.
 - [ ] The upper and the run folder on different filesystems.
-- [ ] A kept file, one with a non-UTF-8 name and a log dump download intact. Requests for
+- [ ] A kept file, one with a non-UTF-8 name, an output folder file and a log dump
+  download intact. Requests for
   Console's run records, another run's entries, traversal and symlink escapes are refused.
   A kept HTML file downloads and never renders in Console.
 - [ ] Under discard the host folder is byte-identical before and after, the run keeps the

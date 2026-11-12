@@ -183,14 +183,16 @@ its saved change list, waits for its write policy and blocks verified cleanup.
 ![Which entries in the upper are listed as modified](111126-file-change-unchanged-entries.svg)
 
 - **Added:** in the upper, absent from the lower.
-- **Modified:** in both, and its type, size, permissions, owner or modification time
-  differs from the lower. "Before" comes from the lower, "after" from the upper.
+- **Modified:** in both, and its type, permissions, owner or modification time differs
+  from the lower. A file or symlink is also modified when its size differs. "Before"
+  comes from the lower, "after" from the upper.
 - **Deleted:** removed by the run. A deleted folder produces one record for each path
   under it in the lower.
 
 The kernel copies a file into the upper when an app opens it for writing, and creates
 every folder on the way to a changed file. Such entries match the lower and are left out
-of the list. The same rule applies to files and folders, and it reads no file contents.
+of the list. A folder's size is ignored, because a folder in the upper holds only the
+entries the run touched. The comparison reads no file contents.
 
 The list records metadata and paths with their raw Unix bytes. It holds the final state
 of each upper and no history of writes. Listing cost follows the size of the upper.
@@ -205,10 +207,13 @@ The run folder holds Console's records, recordings, program log dumps
 ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)) and, with keep with the
 run, the kept files.
 
-Each kept file and log dump has a download action through the authenticated artifact
-route. The browser names a kept file by its entry in the saved change list and a log dump
-by its program; it never sends a path. The server opens the file only inside the run's
-kept-files or log folder, by its raw name bytes. Files are always sent as downloads.
+Each file the change list names inside the run folder has a download action through the
+authenticated artifact route: kept files, output folder files and log dumps. The browser
+names a kept file or an output folder file by its entry in the saved change list and a
+log dump by its program; it never sends a path. The server opens the file only inside
+the run's kept-files folder, the entry's output folder or the log folder, by its raw
+name bytes. Console's own records are never served this way. Files are always sent as
+downloads.
 
 ## Owners
 
