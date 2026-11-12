@@ -32,7 +32,7 @@ tests today, so it does not take the lock.
 
 The interrupted run remains recorded as interrupted. A new run receives its own
 identity. Cleanup runs as part of the next-run workflow. Normal finalization owns
-write-back; pre-run cleanup discards old filesystem views after best-effort salvage.
+write-back; pre-run cleanup discards leftover overlays after best-effort salvage.
 
 ## Resource ownership
 
@@ -59,7 +59,7 @@ for its run label and waits on them.
 | Step | Signal |
 | --- | --- |
 | Start | Console starts the CLI and waits for a labelled container to be created. If the CLI exits first, Start fails with the CLI's output. |
-| Check | Console compares the container's image ID, view mounts and labels with the Review snapshot. A mismatch stops the container and fails Start. |
+| Check | Console compares the container's image ID, overlay mounts and labels with the Review snapshot. A mismatch stops the container and fails Start. |
 | Ready | The container is running and passed the check. |
 | Ended | The Engine reports the container stopped, with its exit code. |
 | CLI exits early | Recorded as a note. The run continues. |
@@ -84,9 +84,9 @@ Compose and systemd hold separate locks today, so their runs on one repository
 can overlap. The shared lock closes that.
 
 The common principle is verified cleanup before admission to a new execution.
-Holoscan owns its workflow. Cleanup of owned resources by label moves to the
-[shared Docker crate](110926-holoscan-outputs.md#shared-docker-crate), where both
-backends use it.
+Holoscan owns its workflow. Cleanup of owned resources by label lives in
+[`docker-engine`](110926-holoscan-outputs.md#owners), where Compose and Holoscan
+both use it.
 
 ## Evidence and acceptance
 

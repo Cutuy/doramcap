@@ -49,7 +49,7 @@ Discovery outcomes appear in place of the list:
 | Part | Content |
 | --- | --- |
 | Summary rows | Application with language and mode, image ID, the build's commit and Clean or Dirty, and where the log goes. |
-| Notes | One list: a Dirty build, mounts not captured, a project-set log driver. Nothing in it blocks Start. |
+| Notes | One list: a Dirty build, mounts not tracked, a project-set log driver. Nothing in it blocks Start. |
 | Launch command | The normalized command the snapshot covers, collapsed behind a toggle. The project's own Docker options are listed with it. |
 | Kept from today | System apps, once the runner starts them, and the comparison with an earlier run. |
 
@@ -62,8 +62,8 @@ Review has no recordings section for Holoscan.
 | Outcome | Succeeded or failed, with the container's exit code. |
 | Facts | Writers stopped and cleanup verified, as today. |
 | Recordings | Shown as not checked. Console runs no recording check for Holoscan. |
-| Notes | Mounts not captured, and the CLI exiting before the application when that happened. |
-| File changes | Arrive with [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316). |
+| Notes | Mounts not tracked, and the CLI exiting before the application when that happened. |
+| File changes | The change list, shown as implemented in [Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320). |
 | Application log | Arrives with [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314). |
 
 ## Later options

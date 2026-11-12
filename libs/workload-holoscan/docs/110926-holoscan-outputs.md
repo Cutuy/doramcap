@@ -1,91 +1,91 @@
-![Shared automatic filesystem capture](110926-holoscan-outputs.svg)
+![Overlays and the change list for Compose and Holoscan](110926-holoscan-outputs.svg)
 
-# Holoscan observations and automatic filesystem capture
+# Holoscan file changes and logs
 
-Created November 9, 2026. Updated November 10, 2026. Stage 5 architecture: automatic capture agreed; shared owner agreed.
+Created November 9, 2026. Updated November 11, 2026: aligned with the overlay plan in
+[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
+Stage 5 architecture: agreed.
 [Adoption overview](110926-holoscan-adoption.md).
 
-Adopt the existing automatic filesystem capture workflow for Holoscan. The backend
-prepares the filesystem views first and passes the view to the Holoscan CLI as its
-project root.
+A Holoscan run gets the same overlays, change list and write policy as a Compose run.
+Console mounts an overlay on the project folder and on each extra data folder, then
+passes the overlay directories to the Holoscan CLI in place of the host folders.
 
-## Reuse boundary
+Terms follow the
+[overlay plan's term list](https://github.com/Cutuy/doramcap/blob/codex/console-file-change-design/console/docs/111026-file-change-report.md#terms):
+host folder, overlay, lower, upper, overlay directory, run folder, output folder,
+change list, write policy and not tracked.
+
+## Owners
 
 | Owner | Responsibility |
 | --- | --- |
-| Holoscan backend | Name the folders to capture, pass their views to its own launch and supply its container IDs. |
-| Compose backend | Preserve its manifest resolution, mount rewriting and Compose validation. |
-| Shared Docker crate | Docker client, cleanup of owned resources by label, private views, file-change collection, write finalization and coverage. |
-| Holoscan application | Continue its native sensor recording and file formats. |
+| `workload-holoscan` | Name the host folders to overlay, pass their overlay directories to the Holoscan CLI and supply its container IDs. |
+| `workload-docker` | Read the Compose file and point its copy for the run at the overlay directories. |
+| `host-filesystem`, ordered by `workload-lifecycle` | Overlays, the change list and the write policy. |
+| `docker-engine` | Docker client, cleanup of owned resources by label and the container filesystem diff. |
+| Holoscan application | Its own sensor recording and file formats. |
 
-## Shared Docker crate
+The overlay code started in `workload-docker`, moved to `docker-engine`, and moves to
+`host-filesystem` in [Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318),
+so systemd can use it too. The earlier move is recorded in the
+[`docker-engine` plan](111026-docker-engine-crate-impl.md).
 
-The `docker-engine` crate, now on `main`, holds the Docker operations both backends need.
-`workload-docker` keeps the Compose parts and depends on it, as
-`workload-holoscan` does. The [implementation plan](111026-docker-engine-crate-impl.md)
-lists the milestones.
+## What a Holoscan launch mounts
 
-Current filesystem steps accept Compose project inputs, so the work has two stages:
-
-1. Change the step inputs in place to mounts and container IDs. Compose keeps
-   reading its manifest and rewriting it. Existing acceptance cases keep passing.
-2. Move the code to the new crate with no behavior change.
-
-| Compose phase | Stays in `workload-docker` | Shared Docker crate |
+| Storage | Overlay | Change list |
 | --- | --- | --- |
-| Reset | The reset step. The repository lock moves to `workload-lifecycle`. | Stop, verify and remove resources by ownership label; discard leftover views. |
-| Prepare | Resolve and pin the manifest; read its binds and volumes. | Record the file baseline. |
-| Views | Rewrite manifest sources; Compose validation. | Create views; return each source and its view. |
-| Start, stop, remove | Compose project operations. | None. |
-| Finalize | List the project's containers. | Collect file changes; write back or discard; close views. |
+| Project folder | Yes | From the upper |
+| Extra data folder | Yes | From the upper |
+| Mount the project sets in its own Docker options | No, the project's host folder is used as is | Not tracked |
+| Docker named volume | No | Not tracked |
+| The container's own filesystem | No | Read through Docker's diff |
+| Devices, host IPC, host networking | No | Not tracked |
 
-`workload-docker` keeps its own prepare step around view creation and manifest
-rewriting. A failed Compose validation discards the new views, as today, and the
-step keeps its current identity.
+Review lists every mount that is not tracked, and Start is allowed. The run result
+repeats the list.
 
-Details settled in the implementation plan:
+### Folder names
 
-- The new step inputs are protobuf messages.
-- Mount records name a Compose project and service today. They become a plain consumer name.
-- Reset removes the container holding the shared-memory reservation last. The shared operation takes that as an input.
-- The saved view record drops its Compose projects. Only tests read it.
+![Host path to the path the app sees](https://github.com/Cutuy/doramcap/blob/codex/console-file-change-design/console/docs/111126-file-change-path-mapping.svg?raw=true)
+
+The Holoscan CLI decides where each folder appears in the container.
+
+- The project folder always appears at `/workspace/holohub`, whatever its host path.
+- An extra data folder appears at `/workspace/volumes/` plus the last part of its host
+  path. Its overlay directory therefore carries the host folder's name.
 
 ## Run sequence
 
 1. Clean up lingering owned runs.
 2. Build through the existing Holoscan workflow.
 3. Prepare saves the Review snapshot.
-4. Start creates the automatic capture views.
-5. Start runs the application with the view as its project root.
-6. Stop writers, collect changes and finalize through the existing filesystem policy.
+4. Start mounts the overlays.
+5. Start runs the application with the overlay directories in place of the host folders.
+6. Stop the application and read the uppers into the change list.
+7. Save the report, unmount the overlays and apply the write policy.
 
-Build completes before the application's capture views are created. The native
-application writes its files through the prepared mounts. Console retains its
-host observations, workflow logs and the filesystem results under the same run.
+Build completes before the overlays are mounted, so build output is in the lower.
+Console keeps its host observations, workflow logs and the change list under the same run.
 
-## Existing coverage to preserve
+## Write policy
 
-| Storage | Existing behavior |
-| --- | --- |
-| Supported host directory mounts | Per-run OverlayFS views carry writes; finalization applies the selected write-back or discard policy. |
-| Container writable layers | Docker supplies added, changed and deleted path metadata. |
-| Supported named volumes | Before/after metadata reports identify changes; volume preservation follows the current lifecycle policy. |
-| Device paths and live shared memory | Native access and the existing coverage rules remain explicit in the launch plan. |
+The project's write policy applies to a Holoscan run as it does to Compose and systemd:
+write back (the default), keep with the run, or discard. Write back never fails the run.
 
-Results identify storage categories, retained paths and capture coverage. Native
-recording validity and filesystem change reports keep separate outcomes.
+Cleanup of an interrupted earlier run stops its applications and discards leftover overlays.
 
 ## Recordings and results
 
 The Holoscan runner passes an empty recording list to the shared run sequence.
-Console runs no validity check on the application's native recordings. The
-file-change report is the record of what the application wrote.
+Console runs no validity check on the application's own recordings. The change list is
+the record of what the application wrote.
 
-A recording cut short is not detected. Checking MCAP files found among the
-changed files is a possible later addition.
+A recording cut short is not detected. Checking MCAP files found in the change list is
+a possible later addition.
 
-Console's web app does not show file changes yet. That work is tracked in
-[Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316).
+Showing the change list in the web app is implemented in
+[Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320).
 
 ## Logs
 
@@ -96,63 +96,32 @@ log. Console sets Docker's journal log driver as a launch option.
 | --- | --- |
 | Project sets no log driver | Console sets the journal driver. |
 | Project sets its own log driver | The project's choice stays. Review shows that the log is set by the project. Console collects nothing for that container. |
-| Application writes its own log files | Unaffected. The files appear in the file-change report when they land in a captured folder. |
+| Application writes its own log files | Unaffected. The files appear in the change list when they land in an overlaid folder. |
 
 Console's setting takes precedence over a host-wide Docker default. On failure,
 Console reads the container's last lines through the Engine for the error
 message, as Compose does. The CLI's own output is saved to a launch log file.
 
 Planned: at the end of a run, Console dumps each program's full output from the
-journal into a run-owned output folder, where it is kept with the run's other files. That work and the same
-change for Compose are tracked in
+journal into an output folder, where it is kept with the run's other files. That work
+and the same change for Compose are tracked in
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
 
 The journal driver has not been tested here. Real-container qualification must
 confirm it, including reading back the last lines.
 
-Normal finalization owns write-back. Cleanup of an interrupted prior run stops
-its writers and discards temporary views after any best-effort salvage.
-
-## Holoscan integration work
+## Qualification
 
 The [launch document](111026-holoscan-launch-handoff.md) records the agreed
-launch design and the designs it was compared with.
+launch design and the designs it was compared with. The folder-name rule comes from
+its test of the real CLI with a fake Docker.
 
-Captured folders reach the container through inputs Console controls: the
-project root and extra data folders. The view of an extra data folder keeps the
-folder's name, because the CLI derives the container path from it. Mounts declared
-in a project's own Docker options keep their original source and are reported as
-outside capture coverage. Review lists them under "Not captured" and Start is
-allowed. The run result repeats the list.
+Still to qualify on a real container: an application running from overlay directories,
+an extra data folder appearing at the same path as without Console, the project's own
+mounts, and device and shared-memory access.
 
-The default launch also shares host networking, host IPC and `/dev`. These pass
-through to the host unchanged.
-
-Qualify the resulting launch against native behavior, including project mounts,
-additional data mounts, shared aliases and device/shared-memory access. Reuse the
-current local Docker/OverlayFS requirements and existing failure behavior.
-
-## Evidence and acceptance
-
-Source inspected at repository revision `935212e1`:
-
-- [Filesystem views and finalization](../../workload-docker/src/compose/overlay.rs).
-- [Filesystem change collection](../../workload-docker/src/compose/filesystem.rs).
-- [Output finalization ordering](../../workload-docker/src/workflows/recorded_compose/finalization.rs).
-- [Existing overlay acceptance cases](../../workload-docker/tests/overlay.rs).
-
-The [upstream container launcher][launcher] generates the native mounts from the
-project root it receives.
-
-Shared-crate boundary reviewed against
-[ownership cleanup](../../workload-docker/src/compose/adapter/scope.rs),
-[Compose project operations](../../workload-docker/src/compose/adapter/project.rs) and the
-[Compose run sequence](../../workload-docker/src/workflows/recorded_compose/mod.rs).
-
-Carry the existing isolation, shared-alias, deletion, write-back, full-disk and
-interruption cases into acceptance for both consumers. Extraction must preserve
-Compose behavior. The shared crate has landed. Holoscan runtime qualification has
-not been performed.
+The [upstream container launcher][launcher] generates the mounts from the project
+folder it receives.
 
 Applicable rules: D-02, D-03, D-04, D-06, D-07, D-09, D-11, D-12, D-13 and D-14.
 

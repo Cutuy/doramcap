@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
   <title id="title">Holoscan launch designs compared</title>
-  <desc id="desc">Three launch designs. In the chosen design Console prepares filesystem views, passes the view to the Holoscan CLI as its project root and manages the created container through the Docker API. The fallback places a Docker stand-in between the CLI and Docker. The design set aside exports a launch plan for Console to execute.</desc>
+  <desc id="desc">Three launch designs. In the chosen design Console mounts overlays, passes the overlay directory to the Holoscan CLI as its project root and manages the created container through the Docker API. The fallback places a Docker stand-in between the CLI and Docker. The design set aside exports a launch plan for Console to execute.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#526579"/></marker>
     <style>
@@ -19,7 +19,7 @@
   <text class="heading" x="40" y="40">Chosen: Console steers the native CLI</text>
   <rect class="console" x="40" y="65" width="210" height="100" rx="10"/>
   <text class="name" x="145" y="104" text-anchor="middle">Console backend</text>
-  <text class="detail" x="145" y="134" text-anchor="middle">Views and labels</text>
+  <text class="detail" x="145" y="134" text-anchor="middle">Overlays and labels</text>
   <rect class="box" x="330" y="65" width="230" height="100" rx="10"/>
   <text class="name" x="445" y="104" text-anchor="middle">Holoscan CLI</text>
   <text class="detail" x="445" y="134" text-anchor="middle">Resolve and launch</text>
@@ -30,7 +30,7 @@
   <text class="name" x="1055" y="104" text-anchor="middle">Console backend</text>
   <text class="detail" x="1055" y="134" text-anchor="middle">Check, stop, remove</text>
   <path class="flow" d="M250 115 H330"/>
-  <text class="label" x="290" y="99" text-anchor="middle">view root</text>
+  <text class="label" x="290" y="99" text-anchor="middle">project root</text>
   <path class="flow" d="M560 115 H640"/>
   <text class="label" x="600" y="99" text-anchor="middle">launch</text>
   <path class="flow" d="M870 115 H950"/>

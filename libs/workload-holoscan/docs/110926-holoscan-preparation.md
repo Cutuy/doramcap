@@ -17,7 +17,7 @@ Lingering owned resources must be stopped and cleaned before the workflow procee
 | Operation | Responsibility | Result |
 | --- | --- | --- |
 | Build | Delegate container-image and application builds to the existing Holoscan CLI. | Build outcome, native artifacts and build logs. |
-| Prepare | Check the selected application, built outputs and run requirements; resolve launch settings and prepare filesystem views. | Prepared run inputs, owned filesystem views and diagnostics, or a clear failure. |
+| Prepare | Check the selected application, built outputs and run requirements; resolve launch settings and mount overlays. | Prepared run inputs, owned overlays and diagnostics, or a clear failure. |
 | Start | Launch the prepared application using the upstream path that skips builds. | Application execution, owned by the execution stage. |
 
 The selected project, application, language, optional mode and native settings
@@ -49,7 +49,7 @@ defined in stage 3; detailed run ownership and cancellation are defined in stage
 Console's current Prepare request produces Review. Runtime preparation and
 filesystem mounting occur inside Start. A Build that affects image or launch
 identity must complete before the Review snapshot; the native runner then
-rechecks that snapshot before creating filesystem views.
+rechecks that snapshot before mounting overlays.
 
 Review explains the selected inputs and the expected build and preparation work.
 Build, Prepare and Start use the same project context.
@@ -89,7 +89,7 @@ Source inspection and CLI 5.0.0 dry runs establish the intended operation split:
 These checks cover command generation. Building a real image and launching its
 application with the same settings remain backend acceptance work. A real build
 has not been run, so it is unverified that build output stays visible through
-the filesystem view at run time.
+the overlay directory at run time.
 
 Applicable rules: D-01, D-02, D-03, D-04, D-06, D-07, D-09, D-13 and D-14.
 Individual steps, shared operations and artifact checks belong in the separate
