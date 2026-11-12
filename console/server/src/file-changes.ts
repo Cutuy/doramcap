@@ -99,7 +99,9 @@ async function* categoryChanges(runRoot: string, summary: Summary, signal?: Abor
   if (counts.some((n, index) => n !== expected[index])) throw new Error('File-change manifest count mismatch');
 }
 
-/** Derive one saved preview, validating every manifest. Errors retain the summary as failed evidence. */
+/** Save a whole-record preview; export validates records beyond its display budget.
+ * Memory includes the checkpoint's coverage notes, one whole record and the bounded preview.
+ */
 export async function fileChangePreview(runRoot: string, reference?: Reference | null, error = ''): Promise<View | null> {
   if (!reference && error) {
     // Later native report writes can fail after capture has already been published.
@@ -117,18 +119,20 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
   try {
     const saved = await report(runRoot, reference);
     for (const category of saved.categories) {
+      closeSync(descriptor(runRoot, category.summary!.manifest!));
       for (const note of category.coverageNotes ?? []) {
-        if (view.notesIncomplete) continue;
+        if (view.notesIncomplete) break;
         view.coverageNotes.push(note);
         if (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
           view.coverageNotes.pop(); view.notesIncomplete = true;
         }
       }
+      if (view.previewIncomplete) continue;
       for await (const change of categoryChanges(runRoot, category.summary!)) {
-        if (view.previewIncomplete) continue;
         view.preview.push(change);
         if (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
           view.preview.pop(); view.previewIncomplete = true;
+          break;
         }
       }
     }

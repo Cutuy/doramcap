@@ -175,3 +175,26 @@ test('BOM-prefixed Unix paths remain distinct in the readable export and raw byt
     assert.equal(changes[0].after.symlinkDisplay, '\\xef\\xbb\\xbftarget');
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+
+test('a bounded preview defers validation of the unread tail until export', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'file-changes-'));
+  try {
+    const { reference } = await fileChangeFixture(root, 3000, []);
+    const manifest = join(root, 'filesystem/host.pb');
+    await writeFile(manifest, Buffer.concat([await readFile(manifest), Buffer.from([0x80])]));
+    // Act
+    const view = await fileChangePreview(root, reference);
+    const exported: unknown[] = [];
+    // Assert: the saved preview does not traverse the tail; export still rejects it.
+    assert.ok(view?.downloadable && view.previewIncomplete);
+    assert.equal(view.error, '');
+    assert.ok(view.preview.length > 0 && view.preview.length < 3000);
+    assert.ok(wire.FileChanges.encode(view).finish().length <= FILE_CHANGE_PREVIEW_BYTES);
+    await assert.rejects(async () => {
+      for await (const row of exportFileChanges(root, reference)) exported.push(JSON.parse(row.toString()));
+    }, /Truncated/);
+    assert.ok(!exported.some((row: any) => row.type === 'complete'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
