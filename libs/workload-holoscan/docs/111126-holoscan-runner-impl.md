@@ -1,6 +1,6 @@
 # Holoscan runner: implementation plan
 
-Created November 11, 2026. Updated November 11, 2026: aligned with the overlay plan in
+Created November 11, 2026. Updated November 13, 2026: aligned with the overlay plan in
 [Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316). Status: draft; no open items.
 [Adoption overview](110926-holoscan-adoption.md) ·
 [Launch design](111026-holoscan-launch-handoff.md).
@@ -14,10 +14,10 @@ its results. The web app journey is a later stage.
 | Piece | State |
 | --- | --- |
 | `docker-engine` | On `main`: Engine client, cleanup by label and the container filesystem diff. |
-| Overlays, change list, write policy | Moving to `host-filesystem` in [Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318). The change list is then read from the uppers in #316 milestone 2. Milestone 5 depends on both. |
+| Overlays, change list, write policy | On `main` in `host-filesystem`, with the change list read from the uppers ([Cutuy/doramcap#318](https://github.com/Cutuy/doramcap/pull/318), [Cutuy/doramcap#326](https://github.com/Cutuy/doramcap/pull/326)). |
 | Shared run sequence | On `main`: `workload_lifecycle::run` with the `Running` trait. |
 | Admission lock | On `main`, from [Cutuy/doramcap#315](https://github.com/Cutuy/doramcap/pull/315). |
-| Shared apps crate, `compose-apps` | Pieces on `main`. System apps sequences in review in [Cutuy/doramcap#324](https://github.com/Cutuy/doramcap/pull/324). Milestone 6 depends on them. |
+| Shared apps crate, `compose-apps` | On `main`, including system apps sequences from [Cutuy/doramcap#324](https://github.com/Cutuy/doramcap/pull/324). |
 | Console backend | Two operations today, inspect and start, each with a Compose and a systemd form. |
 | Holoscan | Design documents only. Probed with the real CLI 5.0.0 and a fake Docker. |
 
@@ -232,9 +232,8 @@ The admission lock it needs is merged.
 
 ## Milestone 5: run
 
-Depends on milestone 4 and on the overlay plan's milestones 1 and 2
-([Cutuy/doramcap#316](https://github.com/Cutuy/doramcap/pull/316)): the moved overlay code, the change
-list read from the uppers, and an overlay directory that can carry its host folder's name.
+Depends on milestone 4. The overlay code, the change list read from the uppers and an
+overlay directory named after its host folder are on `main`.
 
 **Work items**
 
@@ -309,8 +308,7 @@ Depends on the shared apps crate.
 ## Outside this plan
 
 - The [web app journey](111126-holoscan-web-app.md). It gets its own plan after the application-only run works.
-- Showing the change list in the web app ([Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320)).
-- Collecting a run's log from the journal ([Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314)).
+- Collecting a run's log from the journal, a follow-up to [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
 - Host-native execution without Docker.
 - Launching the container through the Engine API in place of the CLI.
 

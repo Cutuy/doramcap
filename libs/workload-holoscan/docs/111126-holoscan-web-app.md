@@ -63,8 +63,8 @@ Review has no recordings section for Holoscan.
 | Facts | Writers stopped and cleanup verified, as today. |
 | Recordings | Shown as not checked. Console runs no recording check for Holoscan. |
 | Notes | Mounts not tracked, and the CLI exiting before the application when that happened. |
-| File changes | The change list, shown as implemented in [Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320). |
-| Application log | Arrives with [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314). |
+| File changes | The change list, as shown since [Cutuy/doramcap#320](https://github.com/Cutuy/doramcap/pull/320). |
+| Application log | Arrives with journal export, a follow-up to [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314). |
 
 ## Later options
 
