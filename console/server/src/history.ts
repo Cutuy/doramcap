@@ -38,7 +38,7 @@ export class History {
     for (const row of open) {
       const status = wire.Status.decode(row.detail);
       if (!status.fileChanges && runId.test(status.runId)) {
-        const recovered = await fileChangePreview(join(this.store.root, 'runs', status.runId), null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
+        const recovered = await fileChangePreview(join(this.store.root, 'runs', status.runId), null, filesystem.ReportState.REPORT_STATE_CHECKPOINT_UNKNOWN);
         if (recovered?.report) status.fileChanges = recovered;
       }
       this.upsert(status, State.HISTORY_INTERRUPTED, row.t, undefined, 'Console stopped before this run reported a result.');

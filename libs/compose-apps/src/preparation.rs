@@ -1,5 +1,5 @@
 //! Resolve app inputs natively, then freeze one experiment and its startup stages.
-use host_filesystem::filesystem::{FilesystemSources, SourcesInput};
+use host_filesystem::changes::{FilesystemSources, SourcesInput};
 use workload_lifecycle::capture::PrepareFilesystemSources;
 mod model;
 mod snapshot;
@@ -22,6 +22,8 @@ use std::{
 
 /// Largest read-only bind, config or secret file frozen into run artifacts.
 const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
+/// Run-artifact folder holding frozen copies of read-only bind, config and secret files,
+/// so a run reads stable inputs; it is excluded from the run-output change list.
 const INPUTS_DIRECTORY: &str = "inputs";
 const INPUT_RECORD: &str = "experiment.input.json";
 fn app_input_record(key: &str) -> PathBuf {
@@ -367,7 +369,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
     }
     let effective = mounts::model(&plan, "filesystem manifest changed").await?;
     plan.warnings.extend(
-        host_filesystem::filesystem::coverage_notes(
+        host_filesystem::changes::coverage_notes(
             &mounts::directories(&mounts::binds(&plan.name, &effective)?),
             &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
             &artifacts,

@@ -1295,7 +1295,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
 #[tokio::test]
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage() {
-    use host_filesystem::filesystem::{self, CollectInput, SourcesInput};
+    use host_filesystem::changes::{self, CollectInput, SourcesInput};
     // Arrange: filesystem identity, rather than a /dev prefix, determines live shared memory.
     let root = tempfile::tempdir().unwrap();
     let _cleanup = MountCleanup(root.path().into());
@@ -1333,10 +1333,10 @@ async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage(
             read_only: false,
         }];
         // Act
-        let notes = filesystem::coverage_notes(&binds, &[], &artifacts, true)
+        let notes = changes::coverage_notes(&binds, &[], &artifacts, true)
             .await
             .unwrap();
-        let sources = filesystem::prepare_sources(SourcesInput {
+        let sources = changes::prepare_sources(SourcesInput {
             overlays: true,
             artifacts: artifacts.clone(),
             bind_mounts: binds.clone(),
@@ -1356,7 +1356,7 @@ async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage(
         // Creating an empty hugetlbfs segment allocates no huge pages.
         let segment = format!("pr326-segment-{}", std::process::id());
         std::fs::write(set.mappings[0].effective.join(&segment), []).unwrap();
-        let result = filesystem::collect(CollectInput {
+        let result = changes::collect(CollectInput {
             sources,
             overlays: Some(set.clone()),
             container_layers: None,
@@ -1422,7 +1422,7 @@ async fn writable_parent_and_child_use_one_view_and_write_back_once() {
 #[ignore = "requires CAP_SYS_ADMIN and rsync"]
 async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing() {
     use host_filesystem::{
-        filesystem::MetadataWalk,
+        changes::MetadataWalk,
         filesystem_proto::{ChangeKind, FileMetadata},
     };
     use std::collections::BTreeMap;

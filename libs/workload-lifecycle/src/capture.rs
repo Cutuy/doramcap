@@ -1,6 +1,6 @@
 //! Concrete filesystem steps shared by workload backends.
 use host_filesystem::{
-    filesystem::{self, CollectInput, FilesystemChanges, FilesystemSources, SourcesInput},
+    changes::{self, CollectInput, FilesystemChanges, FilesystemSources, SourcesInput},
     overlay::{self, OverlayResults, OverlaySet},
 };
 use orchestrator::Step;
@@ -13,7 +13,7 @@ impl Step for PrepareFilesystemSources {
     type Input = SourcesInput;
     type Output = FilesystemSources;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        filesystem::prepare_sources(input)
+        changes::prepare_sources(input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }
@@ -27,7 +27,7 @@ impl Step for CollectFilesystemChanges {
     type Input = CollectInput;
     type Output = FilesystemChanges;
     async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
-        filesystem::collect(input)
+        changes::collect(input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
     }

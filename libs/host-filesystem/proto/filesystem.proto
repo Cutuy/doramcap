@@ -66,10 +66,10 @@ message FileAction { ActionKind kind = 1; bytes path = 2; }
 
 enum SourceKind {
   SOURCE_KIND_UNSPECIFIED = 0;
-  OVERLAY = 1;
-  RUN_OUTPUT = 2;
-  HOST_SHARED_MEMORY = 3;
-  UNTRACKED = 4;
+  SOURCE_KIND_OVERLAY = 1;
+  SOURCE_KIND_RUN_OUTPUT = 2;
+  SOURCE_KIND_HOST_SHARED_MEMORY = 3;
+  SOURCE_KIND_UNTRACKED = 4;
 }
 
 // A backend-resolved directory mount, with native access preserved by the backend.
@@ -101,7 +101,7 @@ message CategorySummary {
 }
 message CategoryReport { CategorySummary summary = 1; repeated string coverage_notes = 2; }
 // Checkpoint-unknown asks the consumer to inspect the published capture checkpoint.
-enum ReportState { REPORT_UNAVAILABLE = 0; REPORT_COMPLETE = 1; REPORT_FAILED = 2; REPORT_CHECKPOINT_UNKNOWN = 3; }
+enum ReportState { REPORT_STATE_UNAVAILABLE = 0; REPORT_STATE_COMPLETE = 1; REPORT_STATE_FAILED = 2; REPORT_STATE_CHECKPOINT_UNKNOWN = 3; }
 // Published only after all manifests and their directory have been synced.
 message FileChangeReport { repeated CategoryReport categories = 1; ReportState state = 2; }
 // Small completion fact; full source notes and change lists stay on disk.

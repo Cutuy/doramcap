@@ -406,7 +406,7 @@ pub(super) fn merge(model: &mut Value, part: Value) -> Result<Vec<String>> {
 }
 /// Validate run identity, paths, app keys and budgets before creating artifacts.
 pub(super) fn validate(spec: &PrepareInput) -> Result<()> {
-    host_filesystem::filesystem::validate_exclusions(&spec.run_plan.private_records)?;
+    host_filesystem::changes::validate_exclusions(&spec.run_plan.private_records)?;
     workload_lifecycle::plan::validate_host_shm_access(spec.run_plan.host_shm_access)
         .map_err(invalid)?;
     validate_name(&spec.run_plan.id)?;

@@ -47,7 +47,7 @@ test('absence, failed capture, complete zero and an oversized preview record rem
   try {
     // Act / Assert
     assert.equal(await fileChangePreview(root), null);
-    assert.match((await fileChangePreview(root, null, filesystem.ReportState.REPORT_FAILED))!.error, /not collected/);
+    assert.match((await fileChangePreview(root, null, filesystem.ReportState.REPORT_STATE_FAILED))!.error, /not collected/);
     const { reference } = await fileChangeFixture(root, 0, []);
     const zero = await fileChangePreview(root, reference);
     assert.ok(zero?.downloadable && !zero.previewIncomplete);
@@ -103,7 +103,7 @@ test('run-relative references reject traversal, cross-run paths and symlink esca
     for (const path of ['../b/filesystem/host.pb', join(other, 'filesystem/host.pb'), 'escape.pb']) {
       // Act: even an internally consistent saved reference cannot escape the run.
       const summary = { ...reference.categories[0], manifest: path };
-      await writeFile(join(root, reference.checkpoint), filesystem.FileChangeReport.encode({ state: filesystem.ReportState.REPORT_COMPLETE, categories: [{ summary, coverageNotes: ['source excluded: live shared memory'] }] }).finish());
+      await writeFile(join(root, reference.checkpoint), filesystem.FileChangeReport.encode({ state: filesystem.ReportState.REPORT_STATE_COMPLETE, categories: [{ summary, coverageNotes: ['source excluded: live shared memory'] }] }).finish());
       const view = await fileChangePreview(root, { ...reference, categories: [summary] });
       // Assert
       assert.ok(view?.error && !view.downloadable, path);
@@ -140,21 +140,21 @@ test('a published file report survives a later native report failure', async () 
     await fileChangeFixture(root, 3, []);
     // Act / Assert: known absence never guesses that a checkpoint should be recovered.
     assert.equal(await fileChangePreview(root), null);
-    assert.equal((await fileChangePreview(root, null, filesystem.ReportState.REPORT_FAILED))?.downloadable, false);
+    assert.equal((await fileChangePreview(root, null, filesystem.ReportState.REPORT_STATE_FAILED))?.downloadable, false);
     // Act
-    const recovered = await fileChangePreview(root, null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
+    const recovered = await fileChangePreview(root, null, filesystem.ReportState.REPORT_STATE_CHECKPOINT_UNKNOWN);
     // Assert
     assert.ok(recovered?.downloadable);
-    assert.equal(recovered.state, filesystem.ReportState.REPORT_COMPLETE);
+    assert.equal(recovered.state, filesystem.ReportState.REPORT_STATE_COMPLETE);
     assert.equal(recovered.preview.length, 3);
     assert.equal(recovered.error, '');
     // Act: a decodable checkpoint with a missing summary is failed evidence.
     await writeFile(join(root, 'filesystem/report.pb'), filesystem.FileChangeReport.encode({
-      state: filesystem.ReportState.REPORT_COMPLETE, categories: [{ coverageNotes: ['incomplete checkpoint'] }],
+      state: filesystem.ReportState.REPORT_STATE_COMPLETE, categories: [{ coverageNotes: ['incomplete checkpoint'] }],
     }).finish());
-    const malformed = await fileChangePreview(root, null, filesystem.ReportState.REPORT_CHECKPOINT_UNKNOWN);
+    const malformed = await fileChangePreview(root, null, filesystem.ReportState.REPORT_STATE_CHECKPOINT_UNKNOWN);
     // Assert
-    assert.equal(malformed?.state, filesystem.ReportState.REPORT_FAILED);
+    assert.equal(malformed?.state, filesystem.ReportState.REPORT_STATE_FAILED);
     assert.equal(malformed?.report, null);
     assert.equal(malformed?.downloadable, false);
   } finally { await rm(root, { recursive: true, force: true }); }

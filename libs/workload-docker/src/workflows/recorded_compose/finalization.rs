@@ -3,7 +3,7 @@ use super::ComposeRunReport;
 use compose_apps::compose::{Diagnostics, adapter::private_write, error::invalid};
 use docker_engine::docker_proto::OwnedContainer;
 use host_filesystem::{
-    filesystem::{CollectInput, FilesystemChanges, FilesystemSources},
+    changes::{CollectInput, FilesystemChanges, FilesystemSources},
     overlay::{OverlayResults, OverlaySet},
 };
 use orchestrator::{LocalExecutor, Step};

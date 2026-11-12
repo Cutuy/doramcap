@@ -1,7 +1,7 @@
 //! Native Linux filesystem identity, isolated views and metadata capture.
+pub mod changes;
 pub mod error;
 pub mod files;
-pub mod filesystem;
 pub mod overlay;
 pub use error::{Error, Result};
 /// Binary filesystem records and backend-neutral capture inputs.

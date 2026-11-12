@@ -1,6 +1,6 @@
 //! Durable filesystem evidence and the recorded workflow shutdown report.
 use crate::evidence::write_private_once;
-use host_filesystem::{filesystem::FilesystemChanges, filesystem_proto::StorageCategory};
+use host_filesystem::{changes::FilesystemChanges, filesystem_proto::StorageCategory};
 use std::path::Path;
 
 /// Finalization and removal evidence. `cleanup_verified` only describes Docker
@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     #[test]
     fn outer_evidence_requires_complete_private_regular_manifests() {
-        use host_filesystem::filesystem::{CategoryChanges, ChangeCounts};
+        use host_filesystem::changes::{CategoryChanges, ChangeCounts};
         // Arrange
         let metadata = std::env::temp_dir().join(format!(
             "gallery-evidence-{:032x}",

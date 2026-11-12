@@ -5,7 +5,7 @@ use crate::{
     error::{engine, invalid},
 };
 use host_filesystem::{
-    filesystem::{CategoryChanges, ChangeWriter},
+    changes::{CategoryChanges, ChangeWriter},
     filesystem_proto::{ChangeKind, FileChange, MetadataSource, StorageCategory},
 };
 use std::path::Path;
@@ -92,26 +92,23 @@ pub async fn container_changes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use host_filesystem::filesystem;
+    use host_filesystem::changes;
     use host_filesystem::{
-        filesystem::{CollectInput, FileChanges, SourcesInput},
+        changes::{CollectInput, FileChanges, SourcesInput},
         filesystem_proto::DirectoryMount as BindMount,
     };
-    async fn capture(
-        adapter: &Engine,
-        input: SourcesInput,
-    ) -> Result<filesystem::FilesystemSources> {
+    async fn capture(adapter: &Engine, input: SourcesInput) -> Result<changes::FilesystemSources> {
         let _ = adapter;
-        Ok(filesystem::prepare_sources(input).await?)
+        Ok(changes::prepare_sources(input).await?)
     }
     async fn collect(
         adapter: &Engine,
         mut input: CollectInput,
         containers: Vec<OwnedContainer>,
-    ) -> Result<filesystem::FilesystemChanges> {
+    ) -> Result<changes::FilesystemChanges> {
         input.container_layers =
             Some(container_changes(adapter, &containers, &input.sources.directory).await?);
-        Ok(filesystem::collect(input).await?)
+        Ok(changes::collect(input).await?)
     }
     #[tokio::test]
     async fn mount_inputs_preserve_change_record_consumers() {

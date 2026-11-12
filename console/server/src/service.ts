@@ -585,7 +585,7 @@ export class ConsoleService implements ConsoleBackend {
     });
     const categories = result.fileChanges?.categories ?? [];
     this.snapshot.fileChanges = result.fileChanges ? wire.FileChanges.create({
-      report: result.fileChanges, state: filesystem.ReportState.REPORT_COMPLETE, downloadable: true,
+      report: result.fileChanges, state: filesystem.ReportState.REPORT_STATE_COMPLETE, downloadable: true,
       previewIncomplete: categories.some(c => integer(c.counts?.added) + integer(c.counts?.modified) + integer(c.counts?.deleted) > 0n),
       notesIncomplete: categories.some(c => integer(c.coverageNoteCount) > 0n),
     }) : null;
@@ -595,7 +595,7 @@ export class ConsoleService implements ConsoleBackend {
     this.pendingResultAt = Date.now();
     this.completed = true;
     this.snapshot.fileChanges = await fileChangePreview(
-      join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesState ?? filesystem.ReportState.REPORT_UNAVAILABLE,
+      join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesState ?? filesystem.ReportState.REPORT_STATE_UNAVAILABLE,
     );
     this.marker!.fileChanges = this.snapshot.fileChanges?.report ?? null;
     this.marker!.phase = this.snapshot.phase;

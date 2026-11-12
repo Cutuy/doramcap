@@ -5,7 +5,7 @@
 //! preparation/finalization own mounts; dropping serialized values does no cleanup.
 mod direct;
 
-use super::{Result, error::invalid, files::private_write, filesystem::write_record};
+use super::{Result, changes::write_record, error::invalid, files::private_write};
 use crate::filesystem_proto::{DirectoryMount, SourceKind};
 
 /// Run-relative directory owned by overlay preparation and finalization.
@@ -846,10 +846,9 @@ mod tests {
                 ]
             };
             // Act: Review and launch reject the same unsupported alias shape.
-            let review_error =
-                crate::filesystem::coverage_notes(&bind_mounts, &[], &artifacts, true)
-                    .await
-                    .unwrap_err();
+            let review_error = crate::changes::coverage_notes(&bind_mounts, &[], &artifacts, true)
+                .await
+                .unwrap_err();
             assert!(
                 review_error
                     .to_string()

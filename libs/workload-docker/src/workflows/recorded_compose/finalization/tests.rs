@@ -2,7 +2,7 @@ use super::super::reset::tests::test_engine_status;
 use super::*;
 use compose_apps::compose::{ComposeService, ResolvedComposeProject, Shutdown};
 use host_filesystem::{
-    filesystem::{self, FileChanges, SourcesInput},
+    changes::{self, FileChanges, SourcesInput},
     filesystem_proto::{MetadataSource, StorageCategory},
 };
 use orchestrator::{Event, State};
@@ -17,7 +17,7 @@ async fn docker_observations_record_outcomes_and_gate_collection() {
         let volume = root.path().join("volume");
         std::fs::create_dir(&volume).unwrap();
         std::fs::write(volume.join("seeded"), b"image contents").unwrap();
-        let baseline = filesystem::prepare_sources(SourcesInput {
+        let baseline = changes::prepare_sources(SourcesInput {
             overlays: true,
             excluded: vec![],
             artifacts: root.path().into(),

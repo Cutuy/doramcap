@@ -1,6 +1,6 @@
 //! Compose startup, observation and teardown policy expressed through shared steps.
 use host_filesystem::{
-    filesystem::FilesystemChanges,
+    changes::FilesystemChanges,
     overlay::{OverlayPolicy, OverlayResults},
 };
 mod execution;

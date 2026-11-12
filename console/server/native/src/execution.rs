@@ -335,9 +335,9 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                     .as_ref()
                     .map(|changes| changes.reference()),
                 file_changes_state: if report.filesystem_changes.is_some() {
-                    ReportState::ReportComplete
+                    ReportState::Complete
                 } else {
-                    ReportState::ReportFailed
+                    ReportState::Failed
                 } as i32,
                 error: report.execution_error,
                 writers_stopped: Some(report.writers_stopped),
@@ -349,7 +349,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
             Err(error) => ExecutionResult {
                 blocked,
                 error: Some(error.to_string()),
-                file_changes_state: ReportState::ReportCheckpointUnknown as i32,
+                file_changes_state: ReportState::CheckpointUnknown as i32,
                 ..Default::default()
             },
         };

@@ -24,7 +24,6 @@ message Inspection {
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
-  reserved 6; // Coverage notes use the resolved plan's user-facing warnings.
 }
 // List profiles declared by the project's Docker Compose files.
 message ComposeProfilesRequest {

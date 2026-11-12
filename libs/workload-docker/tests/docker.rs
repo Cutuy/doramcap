@@ -354,7 +354,7 @@ async fn multi_project_lifecycle() {
             .as_ref()
             .expect("filesystem collection");
         async fn rows(path: &Path) -> Vec<host_filesystem::filesystem_proto::FileChange> {
-            let mut reader = host_filesystem::filesystem::FileChanges::open(path)
+            let mut reader = host_filesystem::changes::FileChanges::open(path)
                 .await
                 .unwrap();
             let mut records = Vec::new();
@@ -3336,7 +3336,7 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires local Docker and a prebuilt test image; starts no containers"]
 async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
-    use host_filesystem::filesystem::{self, CollectInput, FileChanges};
+    use host_filesystem::changes::{self, CollectInput, FileChanges};
     // Arrange
     let root = tempfile::tempdir().unwrap();
     let artifacts = root.path().join("run");
@@ -3386,7 +3386,7 @@ async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
     assert!(artifacts.join("app.inputs.json").is_file());
     std::fs::write(artifacts.join("caller-added-record.json"), b"private").unwrap();
     std::fs::write(artifacts.join("application-result"), b"output").unwrap();
-    let result = filesystem::collect(CollectInput {
+    let result = changes::collect(CollectInput {
         sources: prepared.sources,
         overlays: None,
         container_layers: None,

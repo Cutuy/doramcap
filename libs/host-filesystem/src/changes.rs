@@ -715,7 +715,7 @@ async fn publish_report(directory: &Path, result: &FilesystemChanges) -> Result<
     let folder = tokio::fs::File::open(directory).await?;
     folder.sync_all().await?;
     let report = crate::filesystem_proto::FileChangeReport {
-        state: crate::filesystem_proto::ReportState::ReportComplete as i32,
+        state: crate::filesystem_proto::ReportState::Complete as i32,
         categories: result
             .categories()
             .into_iter()
