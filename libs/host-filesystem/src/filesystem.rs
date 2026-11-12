@@ -898,3 +898,52 @@ mod source_tests {
         assert_eq!(std::fs::read(file).unwrap(), b"direct");
     }
 }
+
+#[cfg(test)]
+mod exclusion_tests {
+    use super::*;
+    #[tokio::test]
+    async fn private_subtree_mount_and_removed_direct_file_do_not_leak_records_or_fail_collection()
+    {
+        // Arrange
+        let root = tempfile::tempdir().unwrap();
+        let private = root.path().join("private/deep");
+        std::fs::create_dir_all(&private).unwrap();
+        std::fs::write(private.join("secret"), b"private").unwrap();
+        let file = root.path().join("file");
+        std::fs::write(&file, b"direct").unwrap();
+        let mounts = [&private, &file]
+            .into_iter()
+            .map(|source| DirectoryMount {
+                consumer: "app".into(),
+                source: source.to_string_lossy().into(),
+                target: source.to_string_lossy().into(),
+                read_only: false,
+            })
+            .collect();
+        let sources = prepare_sources(SourcesInput {
+            artifacts: root.path().into(),
+            bind_mounts: mounts,
+            excluded: vec!["private".into()],
+            metadata_sources: vec![],
+        })
+        .await
+        .unwrap();
+        std::fs::remove_file(&file).unwrap();
+        // Act
+        let changes = collect(CollectInput {
+            sources,
+            overlays: None,
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        // Assert
+        assert!(!changes.host_binds.coverage_complete);
+        assert_eq!(changes.host_binds.warnings.len(), 2);
+        let mut rows = FileChanges::open(changes.host_binds.manifest)
+            .await
+            .unwrap();
+        assert!(rows.next_change().await.unwrap().is_none());
+    }
+}
