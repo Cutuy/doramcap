@@ -32,7 +32,7 @@ import { Store } from './store.js';
 import { History } from './history.js';
 import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
-import { fileChangePreview, fileChangeAvailability, exportFileChanges } from './file-changes.js';
+import { fileChangePreview, fileChangeAvailability, exportFileChanges, filesystem } from './file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
@@ -167,20 +167,22 @@ export class ConsoleService implements ConsoleBackend {
     }
   }
   prepare(input: Buffer): Promise<Buffer> {
-    if (this.closing || this.preparing || !this.completed || active(this.snapshot.phase) || this.admissionPending)
+    if (this.closing || this.preparing || active(this.snapshot.phase) || this.admissionPending)
       return Promise.reject(new Error('Conflict'));
     const request = wire.PrepareRequest.decode(input);
-    try {
-      this.reconcileResult();
-    } catch (error) {
-      return Promise.reject(failure('Internal', error));
-    }
     this.preparing = this.prepareRequest(request).finally(() => {
       this.preparing = undefined;
     });
     return this.preparing;
   }
   private async prepareRequest(request: typeof wire.PrepareRequest.prototype) {
+    try {
+      await this.ticking;
+      this.reconcileResult();
+    } catch (error) {
+      throw failure('Internal', error);
+    }
+    if (this.closing) throw new Error('Closing');
     this.preparation = new AbortController();
     this.snapshot = wire.Status.create({ phase: Phase.PREPARING });
     this.startPromise = undefined;
@@ -581,6 +583,17 @@ export class ConsoleService implements ConsoleBackend {
       serviceExits: result.serviceExits ?? [],
       eventStreamHealthy: this.accepted ? result.eventStreamHealthy : null,
     });
+    const categories = result.fileChanges?.categories ?? [];
+    this.snapshot.fileChanges = result.fileChanges ? wire.FileChanges.create({
+      report: result.fileChanges, state: filesystem.ReportState.REPORT_COMPLETE, downloadable: true,
+      previewIncomplete: categories.some(c => integer(c.counts?.added) + integer(c.counts?.modified) + integer(c.counts?.deleted) > 0n),
+      notesIncomplete: categories.some(c => integer(c.coverageNoteCount) > 0n),
+    }) : null;
+    this.marker!.fileChanges = result.fileChanges ?? null;
+    this.marker!.phase = this.snapshot.phase;
+    this.marker!.outcome = this.snapshot.outcome;
+    this.pendingResultAt = Date.now();
+    this.completed = true;
     this.snapshot.fileChanges = await fileChangePreview(
       join(this.config.dataRoot, 'runs', this.snapshot.runId), result.fileChanges, result.fileChangesError ?? '',
     );
@@ -588,8 +601,7 @@ export class ConsoleService implements ConsoleBackend {
     this.marker!.phase = this.snapshot.phase;
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
-    this.pendingResultAt = Date.now();
-    try {
+    {
       const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, 'console-report.json');
       if (this.executionStarted) await mkdir(dirname(report), { recursive: true, mode: 0o700 });
       if (this.executionStarted)
@@ -616,17 +628,8 @@ export class ConsoleService implements ConsoleBackend {
           ),
         );
       this.reconcileResult();
-    } catch {
-      this.snapshot.phase = Phase.BLOCKED;
-      this.marker!.phase = Phase.BLOCKED;
-      try {
-        this.reconcileResult();
-      } catch (error) {
-        console.error('Could not save the run result', error);
-      }
     }
     this.recorded = this.snapshot.phase;
-    this.completed = true;
   }
   /** Save the terminal marker and History together; failure throws and remains pending for retry. */
   private reconcileResult() {

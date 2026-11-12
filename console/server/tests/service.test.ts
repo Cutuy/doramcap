@@ -214,10 +214,10 @@ test('failed intent persistence prevents execution admission', async () => {
           wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'no-marker' }).finish(),
         ),
       ),
-      /Internal/,
+      /no such table: marker/,
     );
     assert.equal(engine.starts, 0);
-    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.BLOCKED);
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });
@@ -729,13 +729,16 @@ test('preparation waits for the current file report and result transaction to fi
     // Act: attempt a new review while the previous result is reading its manifest.
     const finishing = backend.status();
     await observed;
-    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), /Conflict/);
+    let reviewReturned = false;
+    const preparing = backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())).finally(() => { reviewReturned = true; });
+    await Promise.resolve();
+    assert.equal(reviewReturned, false);
     const status = wire.Status.decode(await finishing);
     // Assert
     assert.equal(status.runId, review.runId);
     assert.equal(status.fileChanges?.previewIncomplete, true);
     assert.ok(status.fileChanges?.downloadable);
-    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    await preparing;
   } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -750,12 +753,14 @@ test('result reconciliation retains downloads through save failure and the next 
     const { reference } = await fileChangeFixture(join(config.dataRoot, 'runs', review.runId), 3);
     store.db.exec("CREATE TRIGGER refuse_result BEFORE UPDATE ON runs WHEN NEW.state != 1 BEGIN SELECT RAISE(FAIL, 'result storage failed'); END");
     engine.update.result = execution.ExecutionResult.create({ fileChanges: reference, boundaryClean: true });
-    // Act
+    // Act: storage fails through the normal error path; native outcome facts remain available.
+    await assert.rejects(backend.status(), /result storage failed/);
     const status = wire.Status.decode(await backend.status());
     const rows = [];
     for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) rows.push(JSON.parse(bytes.toString()));
     // Assert: a current run uses its own terminal facts, as existing artifact downloads do.
-    assert.equal(status.phase, wire.Phase.BLOCKED);
+    assert.equal(status.phase, wire.Phase.FINISHED);
+    assert.equal(status.outcome?.boundaryClean, true);
     assert.ok(status.fileChanges?.downloadable);
     assert.equal(rows.filter(row => row.type === 'change').length, 3);
     assert.equal(rows.at(-1).type, 'complete');
@@ -773,7 +778,7 @@ test('result reconciliation retains downloads through save failure and the next 
     const downloaded = [];
     for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) downloaded.push(JSON.parse(bytes.toString()));
     // Assert
-    assert.equal(saved.entry!.state, wire.HistoryState.HISTORY_BLOCKED);
+    assert.equal(saved.entry!.state, wire.HistoryState.HISTORY_COMPLETED);
     assert.ok(Number(saved.entry!.finishedAtMs) <= completedBy);
     assert.deepEqual(saved.status!.fileChanges, status.fileChanges);
     assert.deepEqual(downloaded, rows);
@@ -781,4 +786,39 @@ test('result reconciliation retains downloads through save failure and the next 
     await backend.prepare(prepare);
     assert.deepEqual(wire.HistoryDetail.decode(await backend.historyRun(review.runId)), saved);
   } finally { await backend.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('a preview exception fails its request without preventing a later Review', async () => {
+  // Arrange
+  const { fileChangeFixture } = await import('./file-change-fixture.js');
+  const { capabilities } = await import('../src/native.js');
+  const { root, config, engine, backend, review } = await fixture();
+  const original = capabilities.openFile;
+  try {
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'preview-fault' }).finish()));
+    await waitFor(() => engine.starts === 1);
+    engine.release!(); await starting;
+    const { reference } = await fileChangeFixture(join(config.dataRoot, 'runs', review.runId), 3);
+    capabilities.openFile = (runRoot, path) => {
+      if (path === reference.checkpoint) throw null;
+      return original(runRoot, path);
+    };
+    engine.update.result = execution.ExecutionResult.create({ fileChanges: reference, boundaryClean: true });
+    // Act / Assert: an unexpected preview fault propagates; the native facts remain intact.
+    await assert.rejects(backend.status());
+    capabilities.openFile = original;
+    const status = wire.Status.decode(await backend.status());
+    assert.equal(status.phase, wire.Phase.FINISHED);
+    assert.equal(status.outcome?.boundaryClean, true);
+    assert.ok(status.fileChanges?.previewIncomplete);
+    // Act: Review retries saving those facts instead of repeating finalization forever.
+    await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish()));
+    const saved = wire.HistoryDetail.decode(await backend.historyRun(review.runId));
+    const rows = [];
+    for await (const bytes of backend.fileChanges(review.runId, new AbortController().signal)) rows.push(JSON.parse(bytes.toString()));
+    // Assert
+    assert.equal(saved.entry!.state, wire.HistoryState.HISTORY_COMPLETED);
+    assert.equal(rows.filter(row => row.type === 'change').length, 3);
+    assert.equal(rows.at(-1).type, 'complete');
+  } finally { capabilities.openFile = original; await backend.close(); await rm(root, { recursive: true, force: true }); }
 });
