@@ -31,12 +31,12 @@ export function FileChanges({ snapshot }: { snapshot: Snapshot }) {
         <div><strong>{ChangeKind[change.kind!].replace(/^CHANGE_KIND_/, '').toLowerCase()}</strong> · {categoryLabel(change.category!)} · <span className="mono break">{change.source}</span></div>
         <p className="mono break">{displayPath(change.path!) || '(source root)'}</p>
         {(change.consumers ?? []).length > 0 && <p className="muted break">{change.consumers!.join(', ')}</p>}
-        <details><summary>Metadata</summary>{[['Before', change.before], ['After', change.after]].map(([label, metadata]) => {
+        {[['Before', change.before], ['After', change.after]].map(([label, metadata]) => {
           const value = metadata as doramcap.filesystem.v1.IFileMetadata | null;
           return <p className="muted break" key={String(label)}>{String(label)}: {value
             ? `${String(value.size ?? 0)} bytes · mode ${(value.mode ?? 0).toString(8)} · uid ${value.uid ?? 0} · gid ${value.gid ?? 0} · mtime ${String(value.mtimeSeconds ?? 0)} s + ${String(value.mtimeNanoseconds ?? 0)} ns · ctime ${String(value.ctimeSeconds ?? 0)} s + ${String(value.ctimeNanoseconds ?? 0)} ns${value.symlink != null ? ` · symlink ${displayPath(value.symlink)}` : ''}`
             : 'metadata unavailable'}</p>;
-        })}</details>
+        })}
       </article>)}</div>}
       {total === 0n && !view!.error && <p>No changes observed.</p>}
     </>}

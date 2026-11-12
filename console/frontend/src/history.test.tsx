@@ -286,14 +286,15 @@ test('a host frame arranges the view links, run phases and screen without a page
   assert.doesNotMatch(history, /<i>/);
 });
 
-test('matching comparison facts collapse behind a control that expands them', () => {
+test('comparison matching facts use the shared Show all filter', () => {
   // Arrange
   const row = (name: string, result: number) => wire.ComparisonRow.create({ group: wire.ComparisonGroup.COMPARISON_SETUP, name, result, cells: [wire.ComparisonCell.create({ values: ['x'] }), wire.ComparisonCell.create({ values: ['y'] })] });
   const comparison = wire.ReviewComparison.create({ baseline: entry(), rows: [row('profiles', wire.ComparisonResult.COMPARISON_CHANGED), row('source_state', wire.ComparisonResult.COMPARISON_SAME)] });
   // Act
   const html = renderToStaticMarkup(<ReviewPreview comparison={comparison}/>);
   // Assert
-  assert.match(html, /<button[^>]*class="comparison-matching"[^>]*aria-expanded="false"/);
+  assert.match(html, /<button[^>]*>Show all<\/button>/);
+  assert.doesNotMatch(html, /aria-expanded|▸|▾|<details|<summary/);
   assert.match(html, /1 matching/);
   assert.match(html, /Profiles/);
   assert.doesNotMatch(html, /Source state/);
