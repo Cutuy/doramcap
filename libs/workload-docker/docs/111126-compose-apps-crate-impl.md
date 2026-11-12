@@ -1,6 +1,6 @@
 # Shared crate for apps as containers: implementation plan
 
-Created November 11, 2026. Status: milestones 1–3 complete; milestone 4 implemented; integration validation in progress.
+Created November 11, 2026. Status: milestones 1–4 complete.
 [Architecture](111126-compose-apps-crate.md).
 
 Create `libs/compose-apps` and move four pieces into it from `workload-docker`,
@@ -78,7 +78,7 @@ crate.
 
 ## Milestone 4: system apps start, watch and stop
 
-Status: implemented; integration validation in progress in [PR #324](https://github.com/Cutuy/doramcap/pull/324).
+Status: complete in [PR #324](https://github.com/Cutuy/doramcap/pull/324).
 The capture move in [PR #318](https://github.com/Cutuy/doramcap/pull/318) is merged.
 
 **Work items**
@@ -97,7 +97,7 @@ The capture move in [PR #318](https://github.com/Cutuy/doramcap/pull/318) is mer
 - [x] Recorded startup lineage and agreed shutdown order.
 - [x] A run with no user services starts, becomes ready, stops and cleans up.
 - [x] Interrupted-run reset removes the Dora experiment owner last.
-- [ ] Full local CI and an ARM64 worker run at integration.
+- [x] Full local CI and an ARM64 worker run at integration.
 
 ## Outside this plan
 
