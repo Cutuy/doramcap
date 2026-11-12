@@ -26,6 +26,15 @@ message FileChange {
 enum ActionKind { ACTION_KIND_UNSPECIFIED = 0; REMOVE = 1; TRANSFER = 2; }
 message FileAction { ActionKind kind = 1; bytes path = 2; }
 
+// How a host source participates in filesystem recording; access flags remain separate.
+enum SourceKind {
+  SOURCE_KIND_UNSPECIFIED = 0;
+  OVERLAY = 1;
+  RUN_OUTPUT = 2;
+  HOST_SHARED_MEMORY = 3;
+  UNTRACKED = 4;
+}
+
 // A backend-resolved directory mount, with native access preserved by the backend.
 message DirectoryMount {
   string consumer = 1;

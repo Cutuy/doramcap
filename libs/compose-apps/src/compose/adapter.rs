@@ -129,3 +129,28 @@ pub(crate) fn fixture_model(project: super::ComposeProject) -> serde_json::Value
     .join()
     .unwrap()
 }
+
+/// Run-relative Compose manifest frozen by configuration resolution.
+pub fn compose_record(key: &str) -> std::path::PathBuf {
+    format!("{key}.compose.json").into()
+}
+/// Run-relative resolution facts saved by the Compose configuration owner.
+pub fn resolution_record(key: &str) -> std::path::PathBuf {
+    format!("{key}.resolution.json").into()
+}
+/// Run-relative execution manifest selecting prepared filesystem views.
+pub fn execution_record(key: &str) -> std::path::PathBuf {
+    format!("{key}.execution.json").into()
+}
+/// Run-relative container snapshot written after stopping an owned container.
+pub fn stopped_record(key: &str, id: &str) -> std::path::PathBuf {
+    format!("{key}-{id}.stopped.json").into()
+}
+/// Private project records, including the manifest generated during startup.
+pub fn project_records(key: &str) -> [std::path::PathBuf; 3] {
+    [
+        compose_record(key),
+        resolution_record(key),
+        execution_record(key),
+    ]
+}

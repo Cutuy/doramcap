@@ -73,6 +73,7 @@ fn recordings(artifacts: &Path) -> Vec<Recording> {
 }
 fn spec(root: &Path, id: String, image: &str) -> ComposeRun {
     ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         filesystem: Some(Default::default()),
         artifacts: root.join(&id),
@@ -147,6 +148,7 @@ async fn native_recorded_workflow() {
     let mut runner = ComposeRunner::new(adapter);
     let artifacts = root.join(&run);
     let spec = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         filesystem: Some(Default::default()),
         id: run,
@@ -214,7 +216,7 @@ async fn native_recorded_workflow() {
     );
 }
 #[tokio::test(flavor = "current_thread")]
-#[ignore = "requires local Docker, native monitor image and BPF capabilities; use scripts/compose-e2e.py"]
+#[ignore = "requires local Docker, native monitor image and BPF capabilities; use scripts/compose-e2e.mts"]
 async fn multi_project_lifecycle() {
     // Arrange: fresh shared source files, prebuilt image and independent project boundaries.
     let root =
@@ -884,6 +886,7 @@ async fn direct_session_lifecycle_and_prerun_reset() {
         let id = format!("session-{}-{}", std::process::id(), mode);
         let artifacts = root.join(&id);
         let spec = ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: artifacts.clone(),
@@ -1035,6 +1038,7 @@ async fn stopping_a_run_respects_each_service_grace_period() {
         );
         let id = format!("stop-grace-{}-{key}", std::process::id());
         let spec = ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(&id),
@@ -1152,6 +1156,7 @@ async fn parallel_projects_preserve_readiness_and_shutdown_barriers() {
         let events = Rc::new(RefCell::new(Vec::<orchestrator::Event>::new()));
         let sink = events.clone();
         let spec = ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(&id),
@@ -1297,6 +1302,7 @@ async fn reset_failure_blocks_preparation_and_retries_after_partial_removal() {
     );
     let adapter = Rc::new(DockerAdapter::connect(socket.clone()).await.unwrap());
     let original = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: format!("partial-{}", std::process::id()),
         artifacts: root.join("first"),
@@ -1420,6 +1426,7 @@ async fn stable_project_keeps_retained_volumes_isolated_between_experiments() {
         let mut project = project(&root, "session");
         project.remove_volumes = false;
         let input = ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: id.clone(),
             artifacts: root.join(id),
@@ -1507,6 +1514,7 @@ async fn selected_profile_starts_its_service() {
         let mut project = project(&root, "session");
         project.profiles = profiles;
         ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             artifacts: root.join(&id),
             id,
@@ -1589,6 +1597,7 @@ async fn active_experiments_are_exclusive_per_repository_and_independent_between
         })
         .collect();
     let input = |repository: &Path, id: &str| ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: id.into(),
         artifacts: repository.join(id),
@@ -1709,6 +1718,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     );
     let mut runner = ComposeRunner::new(adapter.clone());
     let original = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "abandoned".into(),
         artifacts: root.path().join("first"),
@@ -1747,6 +1757,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     reset_probe(
         adapter.clone(),
         ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: "other-repository".into(),
             artifacts: root.path().join("other-artifacts"),
@@ -1769,6 +1780,7 @@ async fn reset_discards_fixed_workspace_without_launch_history() {
     );
     for attempt in 0..2 {
         let request = ComposeRun {
+            private_records: Vec::new(),
             host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
             id: format!("next-{attempt}"),
             artifacts: root.path().join(format!("next-{attempt}")),
@@ -1908,6 +1920,7 @@ async fn public_dora_resets_after_launcher_crash() {
             reset_probe(
                 adapter.clone(),
                 ComposeRun {
+                    private_records: Vec::new(),
                     host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                     id: format!("after-crash-{attempt}"),
                     artifacts: root.join(format!("next-{attempt}")),
@@ -2098,6 +2111,7 @@ async fn compose_public_run_with_access(
         serde_json::json!({"services":{"support":support}}),
     );
     let spec = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: access as i32,
         id: run.clone(),
         artifacts: artifacts.clone(),
@@ -2371,6 +2385,7 @@ async fn inspection_accepts_occupied_fixed_endpoints_but_launch_preparation_reje
         serde_json::json!({"services":{"worker":service(&image)}}),
     );
     let spec = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "occupied-ports".into(),
         artifacts: root.path().join("inspection"),
@@ -2469,6 +2484,7 @@ async fn independent_inspection_and_preparation_have_equal_configuration_snapsho
         ..Default::default()
     };
     let spec = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "inspected".into(),
         artifacts: root.path().join("inspection"),
@@ -2604,6 +2620,7 @@ async fn shared_experiment_preserves_native_inputs_and_rejects_conflicts() {
         .environment
         .insert("SETTING".into(), "explicit".into());
     let spec = ComposeRun {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: format!("inputs-{}", std::process::id()),
         artifacts: root.join("frozen"),
@@ -2855,6 +2872,7 @@ async fn mixed_volume_policies_and_evidence_preservation() {
     let report = runner
         .run_with_ready(
             ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 id: run.clone(),
                 artifacts: artifacts.clone(),
@@ -2956,6 +2974,7 @@ async fn untracked_named_volume_keeps_declared_cleanup_policy() {
     let report = runner
         .run_with_ready(
             ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                 id: run.clone(),
                 artifacts: artifacts.clone(),
@@ -3042,6 +3061,7 @@ async fn shared_plan_resolves_writer_app_services() {
         serde_json::json!({"services": {"producer": service(&image)}}),
     );
     let shared = RunPlan {
+        private_records: Vec::new(),
         host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
         id: "shared-plan".into(),
         repository_root: root.to_string_lossy().into(),
@@ -3206,6 +3226,7 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
                     filesystem: Some(overlay::OverlayPolicy {
                         disposition: disposition.clone(),
                     }),
+                    private_records: Vec::new(),
                     host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
                     projects: vec![project(root.path(), "app")],
                     system_apps: vec![],
@@ -3308,4 +3329,83 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
         );
         assert!(finalized.elapsed_ns >= collected.elapsed_ns);
     }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires local Docker and a prebuilt test image; starts no containers"]
+async fn whole_run_mount_excludes_private_records_supplied_by_each_owner() {
+    use host_filesystem::filesystem::{self, CollectInput, FileChanges};
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let artifacts = root.path().join("run");
+    let image = std::env::var("DORAMCAP_TEST_IMAGE").unwrap();
+    let adapter = Rc::new(
+        DockerAdapter::connect(std::env::var("DORAMCAP_TEST_SOCKET").unwrap())
+            .await
+            .unwrap(),
+    );
+    write(
+        &root.path().join("app.json"),
+        serde_json::json!({"services":{"app":{"image":image,"volumes":[{"type":"bind","source":artifacts,"target":"/output","bind":{"create_host_path":false}}]}}}),
+    );
+    let executor = Rc::new_cyclic(|weak| {
+        let mut executor = orchestrator::LocalExecutor::default();
+        compose_apps::steps::register(&mut executor, adapter.clone(), Default::default());
+        let backend = adapter.clone();
+        let weak = weak.clone();
+        executor.register::<preparation::PrepareRun>(move || preparation::PrepareRun {
+            adapter: backend.clone(),
+            executor: weak.clone(),
+        });
+        executor
+    });
+    let spec = ComposeRun {
+        private_records: vec!["caller-added-record.json".into()],
+        host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,
+        id: "owner-records".into(),
+        artifacts: artifacts.clone(),
+        filesystem: Some(Default::default()),
+        repository_root: root.path().into(),
+        projects: vec![project(root.path(), "app")],
+        system_apps: vec![],
+        dora_apps: vec![],
+        dataflow_file: String::new(),
+        recordings: vec![],
+        mcap_writers: Default::default(),
+        readiness_seconds: 10,
+        stop_seconds: 3,
+    };
+    // Act: use the real workflow preparation, including Compose resolution and app input records.
+    let prepared = executor
+        .run::<preparation::PrepareRun>(preparation::PrepareInput::try_from(spec).unwrap())
+        .await
+        .unwrap()
+        .into_value();
+    assert!(artifacts.join("app.inputs.json").is_file());
+    std::fs::write(artifacts.join("caller-added-record.json"), b"private").unwrap();
+    std::fs::write(artifacts.join("application-result"), b"output").unwrap();
+    let result = filesystem::collect(CollectInput {
+        sources: prepared.sources,
+        overlays: None,
+        container_layers: None,
+    })
+    .await
+    .unwrap();
+    let mut rows = FileChanges::open(&result.host_binds.manifest)
+        .await
+        .unwrap();
+    let mut paths = Vec::new();
+    while let Some(row) = rows.next_change().await.unwrap() {
+        paths.push(row.path);
+    }
+    // Assert: a new caller record is excluded through its owner contract without a backend filename change.
+    assert!(paths.contains(&std::path::PathBuf::from("application-result")));
+    assert!(
+        !paths.iter().any(|path| path.ends_with("app.inputs.json")
+            || path.ends_with("caller-added-record.json")
+            || path.ends_with("experiment.compose.json")
+            || path.ends_with("experiment.resolution.json")),
+        "{paths:?}"
+    );
+    assert!(!result.host_binds.coverage_complete);
 }

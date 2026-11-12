@@ -7,7 +7,7 @@ mod wire;
 pub(crate) use wire::write_record;
 
 use super::{Result, error::invalid, files::private_write};
-use crate::filesystem_proto::{DirectoryMount, MetadataSource};
+use crate::filesystem_proto::{DirectoryMount, MetadataSource, SourceKind};
 use crate::overlay::{self, OverlaySet};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -72,11 +72,14 @@ struct Source {
     consumers: Vec<String>,
     read_only: bool,
     reason: Option<String>,
+    #[serde(default)]
+    kind: SourceKind,
 }
 /// Resolved mount identities and coverage. Preparation walks no source folders.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FilesystemSources {
     sources: Vec<Source>,
+    /// Private run directory containing the manifests and completion checkpoint.
     pub directory: PathBuf,
     artifacts: PathBuf,
     /// Caller-owned record paths relative to the run, excluded from output listings.
@@ -85,6 +88,9 @@ pub struct FilesystemSources {
 /// Mounts to report; preparation owns no views or backend resources.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SourcesInput {
+    /// Whether this run prepares OverlayFS views for writable directory sources.
+    #[serde(default = "default_overlays")]
+    pub overlays: bool,
     /// Caller-owned records relative to the run, including records written during teardown.
     pub excluded: Vec<PathBuf>,
     pub bind_mounts: Vec<DirectoryMount>,
@@ -92,10 +98,15 @@ pub struct SourcesInput {
     pub metadata_sources: Vec<MetadataSource>,
     pub artifacts: PathBuf,
 }
+fn default_overlays() -> bool {
+    true
+}
 /// Collection after every writer has stopped. Reading uppers requires no mounted view.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CollectInput {
+    /// Source identities and coverage pinned during preparation.
     pub sources: FilesystemSources,
+    /// Views whose stopped upper layers contain this run's changes.
     pub overlays: Option<OverlaySet>,
     /// Completed backend layer observation; absent backends produce an empty category.
     pub container_layers: Option<CategoryChanges>,
@@ -286,16 +297,7 @@ impl FileChanges {
 /// Resolve mount identities without traversing host folders or inspecting volume contents.
 /// Existing report folders fail. Missing sources retain an explicit coverage reason.
 pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
-    if input.excluded.iter().any(|path| {
-        path.as_os_str().is_empty()
-            || path
-                .components()
-                .any(|part| !matches!(part, std::path::Component::Normal(_)))
-    }) {
-        return Err(invalid(
-            "excluded record paths must be nonempty and run-relative",
-        ));
-    }
+    validate_exclusions(&input.excluded)?;
     let artifacts = tokio::fs::canonicalize(input.artifacts).await?;
     let directory = artifacts.join(FILESYSTEM_DIRECTORY);
     super::files::create_private_dir(&directory).await?;
@@ -312,6 +314,7 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
             consumers: Vec::new(),
             read_only: true,
             reason: None,
+            kind: SourceKind::Unspecified,
         });
         source.read_only &= bind.read_only;
         source
@@ -328,6 +331,7 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
                 category: StorageCategory::NamedVolume,
                 identity: source.identity,
                 path: None,
+                kind: SourceKind::Untracked,
                 consumers: Vec::new(),
                 read_only: true,
                 reason: Some(if source.reason.is_empty() {
@@ -343,11 +347,8 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
         .values_mut()
         .filter(|s| s.category == StorageCategory::HostBind && !s.read_only)
     {
-        source.reason =
-            match overlay::source_reason(source.path.as_ref().unwrap(), &artifacts).await {
-                Ok(reason) => reason,
-                Err(error) => Some(format!("not tracked: source unavailable: {error}")),
-            };
+        (source.kind, source.reason) =
+            source_coverage(source.path.as_ref().unwrap(), &artifacts, input.overlays).await;
     }
     Ok(FilesystemSources {
         sources: sources.into_values().collect(),
@@ -356,28 +357,72 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
         excluded: input.excluded,
     })
 }
+async fn source_coverage(
+    source: &Path,
+    artifacts: &Path,
+    overlays: bool,
+) -> (SourceKind, Option<String>) {
+    match overlay::source_kind(source, artifacts).await {
+        Ok((SourceKind::Overlay, _)) if !overlays => (
+            SourceKind::Untracked,
+            Some("not tracked: no overlay".into()),
+        ),
+        Ok(classification) => classification,
+        Err(error) => (
+            SourceKind::Untracked,
+            Some(format!("not tracked: source unavailable: {error}")),
+        ),
+    }
+}
+/// Require nonempty run-relative private record paths with only normal components.
+/// Call before creating records; absolute paths and traversal are refused.
+pub fn validate_exclusions(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<()> {
+    if paths.into_iter().any(|path| {
+        let path = path.as_ref();
+        path.as_os_str().is_empty()
+            || path
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+    }) {
+        return Err(invalid(
+            "excluded record paths must be nonempty and run-relative",
+        ));
+    }
+    Ok(())
+}
 /// Review notes use the same source classification as execution; no report files are created.
 pub async fn coverage_notes(
     bind_mounts: &[DirectoryMount],
     metadata_sources: &[MetadataSource],
     artifacts: &Path,
+    overlays: bool,
 ) -> Result<Vec<String>> {
+    if overlays {
+        // Docker may create absent short-syntax sources at preparation; Review labels them unavailable.
+        let mut existing = Vec::new();
+        for bind in bind_mounts {
+            if tokio::fs::metadata(&bind.source).await.is_ok() {
+                existing.push(bind.clone());
+            }
+        }
+        overlay::resolve_sources(&existing, artifacts).await?;
+    }
     let mut notes = Vec::new();
     for bind in bind_mounts.iter().filter(|b| !b.read_only) {
         let source = match tokio::fs::canonicalize(&bind.source).await {
             Ok(source) => source,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
+            Err(_) => PathBuf::from(&bind.source),
         };
-        if let Some(reason) = overlay::source_reason(&source, artifacts).await? {
-            if source == artifacts {
+        let (kind, reason) = source_coverage(&source, artifacts, overlays).await;
+        if let Some(reason) = reason {
+            if kind == SourceKind::RunOutput && source == artifacts {
                 notes.push(format!(
                     "{}:{}: {} partly listed; Console records excluded",
                     bind.consumer,
                     bind.target,
                     source.display()
                 ));
-            } else if reason.starts_with("not tracked") {
+            } else if kind == SourceKind::Untracked {
                 notes.push(format!(
                     "{}:{}: {}: {reason}",
                     bind.consumer,
@@ -546,16 +591,25 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
             continue;
         }
         let path = source.path.as_ref().unwrap();
-        if source
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.starts_with("not tracked"))
-        {
+        let kind = if source.kind == SourceKind::Unspecified {
+            source_coverage(path, &sources.artifacts, input.overlays.is_some())
+                .await
+                .0
+        } else {
+            source.kind
+        };
+        if kind == SourceKind::HostSharedMemory {
+            continue;
+        }
+        if kind == SourceKind::Untracked {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(
                 "{}: {} ({})",
                 source.identity,
-                source.reason.as_deref().unwrap(),
+                source
+                    .reason
+                    .as_deref()
+                    .unwrap_or("not tracked: source unavailable"),
                 source.consumers.join(", ")
             ));
             continue;
@@ -577,7 +631,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
             let mut walk = MetadataWalk::open(path).await?;
             let owned = [
                 PathBuf::from(FILESYSTEM_DIRECTORY),
-                PathBuf::from("overlays"),
+                PathBuf::from(overlay::RECORDS_DIRECTORY),
             ];
             for relative in sources.excluded.iter().chain(&owned) {
                 let record = sources.artifacts.join(relative);
@@ -779,9 +833,12 @@ mod source_tests {
             bind(&output, false),
             bind(&output, true),
         ];
-        let notes = coverage_notes(&mounts, &[], root.path()).await.unwrap();
+        let notes = coverage_notes(&mounts, &[], root.path(), true)
+            .await
+            .unwrap();
         assert!(notes.iter().any(|note| note.contains("partly listed")));
         let sources = prepare_sources(SourcesInput {
+            overlays: true,
             artifacts: root.path().into(),
             bind_mounts: mounts,
             metadata_sources: vec![],
@@ -843,6 +900,67 @@ mod source_tests {
     }
 
     #[tokio::test]
+    async fn review_and_results_share_missing_disabled_overlay_and_shm_coverage() {
+        // Arrange: ordinary sources without overlays, a missing source and native shared memory.
+        for case in ["disabled", "missing", "shm"] {
+            let root = tempfile::tempdir().unwrap();
+            let shared = tempfile::tempdir_in("/dev/shm").unwrap();
+            let source = match case {
+                "shm" => shared.path().to_path_buf(),
+                _ => root.path().join("source"),
+            };
+            if case == "disabled" {
+                std::fs::create_dir(&source).unwrap();
+            }
+            let artifacts = root.path().join("run");
+            std::fs::create_dir(&artifacts).unwrap();
+            let mounts = vec![DirectoryMount {
+                consumer: "app".into(),
+                source: source.to_string_lossy().into(),
+                target: "/work".into(),
+                read_only: false,
+            }];
+            // Act
+            let notes = coverage_notes(&mounts, &[], &artifacts, false)
+                .await
+                .unwrap();
+            let sources = prepare_sources(SourcesInput {
+                overlays: false,
+                artifacts,
+                bind_mounts: mounts,
+                metadata_sources: vec![],
+                excluded: vec![],
+            })
+            .await
+            .unwrap();
+            let result = collect(CollectInput {
+                sources,
+                overlays: None,
+                container_layers: None,
+            })
+            .await
+            .unwrap();
+            // Assert: shared memory has its separate observation contract; other gaps agree.
+            if case == "shm" {
+                assert!(notes.is_empty());
+                assert!(result.host_binds.coverage_complete);
+                assert!(result.host_binds.warnings.is_empty());
+            } else {
+                let reason = if case == "disabled" {
+                    "not tracked: no overlay"
+                } else {
+                    "not tracked: source unavailable"
+                };
+                assert_eq!(notes.len(), 1);
+                assert_eq!(result.host_binds.warnings.len(), 1);
+                assert!(notes[0].contains(reason));
+                assert!(result.host_binds.warnings[0].contains(reason));
+                assert!(!result.host_binds.coverage_complete);
+            }
+        }
+    }
+
+    #[tokio::test]
     async fn direct_sources_and_named_volumes_remain_explicitly_untracked() {
         // Arrange: a file mount, pseudo-filesystem and Docker volume; no content reads needed.
         let root = tempfile::tempdir().unwrap();
@@ -866,9 +984,12 @@ mod source_tests {
             consumer: "app:/data".into(),
             ..Default::default()
         }];
-        let notes = coverage_notes(&mounts, &volumes, &artifacts).await.unwrap();
+        let notes = coverage_notes(&mounts, &volumes, &artifacts, true)
+            .await
+            .unwrap();
         assert_eq!(notes.len(), 3);
         let sources = prepare_sources(SourcesInput {
+            overlays: true,
             artifacts,
             bind_mounts: mounts,
             metadata_sources: volumes,
@@ -922,6 +1043,7 @@ mod exclusion_tests {
             })
             .collect();
         let sources = prepare_sources(SourcesInput {
+            overlays: true,
             artifacts: root.path().into(),
             bind_mounts: mounts,
             excluded: vec!["private".into()],

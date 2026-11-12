@@ -65,10 +65,7 @@ impl Step for ObserveDockerFilesystem {
         .map_err(|error| orchestrator::Error::message(error.to_string()))?;
         let mut sources = input.sources;
         sources.excluded.extend(containers.iter().map(|container| {
-            PathBuf::from(format!(
-                "{}-{}.stopped.json",
-                input.project.key, container.id
-            ))
+            compose_apps::compose::adapter::stopped_record(&input.project.key, &container.id)
         }));
         Ok(CollectInput {
             sources,
@@ -173,6 +170,9 @@ impl FinalizeRun {
     }
 }
 
+/// Run-relative final workflow report owned by Docker finalization.
+pub(super) const REPORT_RECORD: &str = "report.json";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ReportInput {
     pub artifacts: PathBuf,
@@ -192,7 +192,7 @@ impl Step for WriteRunReport {
         input.report.diagnostics = self.diagnostics.borrow().clone();
         let bytes = serde_json::to_vec_pretty(&input.report)
             .map_err(|e| orchestrator::Error::message(e.to_string()))?;
-        private_write(&input.artifacts.join("report.json"), &bytes)
+        private_write(&input.artifacts.join(REPORT_RECORD), &bytes)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))?;
         Ok(input.report)

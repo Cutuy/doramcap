@@ -1,6 +1,6 @@
 import { runPlan } from './run-plan.js';
 import { ensureImages } from './images.js';
-import { PREPARING_RUN, FILE_CHANGES_ARTIFACT } from './generated/transport.js';
+import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename } from './generated/transport.js';
 import Long from 'long';
 import { mkdir, rm } from 'node:fs/promises';
 import { closeSync, fstatSync } from 'node:fs';
@@ -602,7 +602,7 @@ export class ConsoleService implements ConsoleBackend {
     this.marker!.outcome = this.snapshot.outcome;
     if (result.error) await this.diagnostic(new Error(result.error));
     {
-      const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, 'console-report.json');
+      const report = join(this.config.dataRoot, 'runs', this.snapshot.runId, artifactFilename('report'));
       if (this.executionStarted) await mkdir(dirname(report), { recursive: true, mode: 0o700 });
       if (this.executionStarted)
         await writeOnce(
@@ -650,7 +650,7 @@ export class ConsoleService implements ConsoleBackend {
       status.outcome?.recordingFinalized === true &&
       status.recordings.find((output) => output.cpu)?.path != null &&
       this.store.available(status.runId, status.recordings.find((output) => output.cpu)!.path!);
-    status.reportAvailable = terminal && this.store.available(status.runId, 'console-report.json');
+    status.reportAvailable = terminal && this.store.available(status.runId, artifactFilename('report'));
     if (terminal) fileChangeAvailability(join(this.config.dataRoot, 'runs', status.runId), status.fileChanges);
     return status;
   }
@@ -709,7 +709,7 @@ export class ConsoleService implements ConsoleBackend {
     const outputs = run.recordings;
     const name =
       kind === 'report'
-        ? 'console-report.json'
+        ? artifactFilename('report')
         : run.outcome?.recordingFinalized
           ? outputs.find((output) => output.id === kind || (kind === 'cpu' && output.cpu))?.path
           : undefined;

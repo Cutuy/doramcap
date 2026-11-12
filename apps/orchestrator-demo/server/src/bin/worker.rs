@@ -250,6 +250,7 @@ async fn recorded_demo(
     Ok(runner
         .run(
             ComposeRun {
+                private_records: Vec::new(),
                 host_shm_access: workload_lifecycle::launch::HostShmAccess::Blocked as i32,
                 filesystem: Some(Default::default()),
                 id: session.into(),

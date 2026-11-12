@@ -70,8 +70,9 @@ across all of this work.
   reader's refusals for them.
 - [x] List each output folder directly, every file as added. Keep it mounted directly.
   Skip Console's own records; mark a mount of the whole run folder as partly listed.
-- [x] Mount directly, and report as not tracked with a reason, each writable mount that is
-  a single file, sits under `/proc`, `/sys` or `/dev`, or contains another mount point.
+- [x] Mount unsupported sources directly with a coverage reason: writable single files,
+  pseudo-filesystems and sources containing mountpoints. Preserve native host-shared-memory
+  passthrough and its separate observation contract. Reject unsafe direct/overlay overlaps.
 - [x] Report Docker named volumes as not tracked.
 - [x] Write back: skip sockets, FIFOs and device files; copy a new hard link as a separate
   file; copy a modified file that has other names. Add one warning per such entry to the
@@ -96,14 +97,14 @@ across all of this work.
 - [x] A socket, a FIFO, a new hard link and a modified file with two names each appear in
   the change list. Write back finishes, the host folder holds the expected result and the
   report carries one warning per entry.
-- [x] The same Compose writes to a host folder produce the same records as the walk-based
-  list did, apart from entries that match the lower.
+- [x] Ordinary native writes match an independent before/after walk using the documented
+  metadata fields. Earlier Compose assertions checked fixed expected records only.
 - [x] An output folder's files are listed as added and remain in the run folder after an
   interrupted run. Console's own records are absent from the list.
 - [x] A single-file mount, a mount containing another mount point and a named volume start
   normally and appear as not tracked at Review and in the result.
-- [x] Listing cost follows the size of the upper: a large unchanged host folder lists
-  quickly, and preparing it walks nothing.
+- [x] Measure preparation and listing for a 20,000-file unchanged folder. Preparation
+  walks no source folders; timings are recorded in the repair validation below.
 - [x] A change made to the host folder during the run, on a path the run also wrote, ends
   with the run's version after write back.
 - [x] Discard, busy overlays, full disk and interrupted runs behave as before.
@@ -112,6 +113,24 @@ across all of this work.
 - [x] ARM64 worker validation for the milestone 2 implementation.
 - [ ] Full local workspace validation without exclusions: four watcher-dependent tests
   are blocked by the host's inotify quota. Details are in [#326](https://github.com/Cutuy/doramcap/pull/326).
+
+### PR 326 repair
+
+**Work items**
+
+- [x] Preserve live host shared memory by filesystem identity, including hugetlbfs and `/dev/shm` aliases.
+- [x] Reject direct/overlay overlaps before mounting; share supported parent/child views.
+- [x] Use typed source classifications for execution and coverage; share alias resolution with Review.
+- [x] Pass private record paths from their owners, including per-app inputs and caller records.
+- [x] Update filesystem contracts and convert the edited Compose runner to TypeScript.
+
+**Validation**
+
+- [x] Focused release tests, native mount regressions and real Compose preparation/output exclusions.
+- [x] Independent before/after walk agrees with upper records. A 20,000-file fixture measured
+  47 ms preparation and 0.23 ms unchanged-tree listing on local x86_64.
+- [ ] Console bindings, server checks, TypeScript runner, formatting and library boundaries.
+- [ ] Final local and ARM64 validation; record blocked checks explicitly.
 
 ## Milestone 3: Persist one report and expose preview plus JSON Lines
 

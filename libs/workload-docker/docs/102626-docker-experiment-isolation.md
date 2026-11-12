@@ -2,13 +2,15 @@
 
 # Docker experiment isolation
 
-Created: 2026-10-26. Implementation updated: 2026-10-27.
+Created: 2026-10-26. Implementation updated: 2026-11-12.
 Local Linux directory-bind overlays are implemented; qualification is recorded below.
 Scope: preventing unintended state carryover between serial experiments.
 Current teardown/reset policy is in the [shared-Dora plan](102926-shared-dora-experiment.md).
 
 [Direct upper write-back](102726-direct-overlay-writeback.md) uses rsync after
-strict unmount. Advanced metadata is unqualified and ambiguous hardlinks fail.
+strict unmount. Advanced metadata and hard-link topology are unqualified.
+Current collection and coverage are described in the [metadata contract](102626-filesystem-metadata.md).
+The dated completion evidence below describes the earlier implementation.
 
 ## Completion audit — 2026-10-27
 
@@ -160,8 +162,7 @@ Emit it once per resolved volume, without a per-run confirmation prompt.
 ## Common metadata-diff step
 
 Add `CollectFilesystemChanges` as a concrete Docker workflow step. It consumes
-resolved storage identities, available pre-launch metadata manifests and stopped
-container IDs. It writes a normalized change manifest and returns its path plus
+resolved storage identities, stopped overlay uppers and stopped container IDs. It writes a normalized change manifest and returns its path plus
 counts/coverage; large file lists stay out of step inputs, outputs and telemetry.
 The metadata collection supplies evidence and does not change storage disposition.
 
@@ -169,7 +170,8 @@ The metadata collection supplies evidence and does not change storage dispositio
 | --- | --- |
 | Host-directory overlay | Overlay delta interpreted with deletion/opaque-directory semantics; available file metadata |
 | Container writable layer | Engine filesystem diff before removal; added/changed/deleted paths, without file content |
-| Named volume | Incremental before/after metadata traversal through supported read-only volume access; no Engine file-diff API |
+| Run output folder | Direct incremental listing; files reported as added, owner-supplied private records excluded |
+| Named volume | Explicitly untracked; no Engine file-diff API |
 
 For each entry record project/service associations, storage identity, relative
 path, change kind, and available before/after metadata (type, size, timestamps,
@@ -178,11 +180,10 @@ alone does not provide all of these fields. No content hashing or content export
 Do not follow symlinks out of a scanned tree or scan device/pseudo-filesystem data.
 Shared storage is scanned once, with all consuming workloads referenced.
 
-Named volumes require a baseline before workloads start. Read them through a
-qualified volume-access mechanism rather than assuming a host mountpoint is
-available. Unsupported drivers, inaccessible paths and incomplete
-baselines produce explicit coverage warnings; absence of evidence is not an empty
-diff. External writers remain subject to the cooperative-access assumption.
+Named volumes are reported as untracked without inspecting their contents. Host
+shared memory retains native passthrough and its separate observation contract.
+Review and results share source classification, including unavailable sources and
+runs with overlays disabled.
 
 Default delivery: save the manifest and emit a warning summary when changes or
 coverage gaps exist. Include storage kind, counts and artifact path; do not dump
@@ -264,8 +265,7 @@ Inputs/outputs remain serializable paths, policies and resolved project records.
 
 1. Resolve Compose and inventory all projects' mounts together.
 2. **Prepare overlays:** validate policies, prepare mounts, persist ownership records,
-   capture required metadata baselines, and generate execution manifests with
-   substituted source paths.
+   resolve source coverage, and generate execution manifests with substituted source paths.
 3. Start fresh first-party services, then foreign projects; observe the experiment.
 4. Stop foreign projects, then first-party services; verify all writers have exited.
 5. **Collect filesystem changes:** persist normalized metadata diffs and emit warning
@@ -288,16 +288,16 @@ upper entries. An upper delta is not an ordinary directory for recursive copying
 
 ## Harvest semantics and failure handling
 
-- Inspect upper after unmount. Interpret whiteouts and opaque directories and reject
-  unsupported redirect/metacopy and ambiguous hardlinks before modifying lower.
+- Inspect stopped uppers before report publication and again for write-back. Interpret
+  whiteouts and opaque directories; reject unsupported redirect/metacopy before
+  modifying lower. Skip special nodes and copy hard links as separate files with warnings.
 - Apply deletions as well as writes. Rsync archive mode preserves basic attributes
   and symlinks; ACL, xattr, capability and hardlink fidelity are unqualified.
 - Use incremental traversal with bounded concurrency and full metadata manifests; no default content hashing or arbitrary scan cutoffs.
   Record unreadable paths, exclusions and incomplete scans. Metadata checks cannot
   prove content identity or eliminate concurrent-write races.
-- Check the original against captured baseline metadata before write-back. Detected
-  conflicts stop automatic write-back and preserve evidence; stable/exclusive source
-  access remains the precondition for reliable application.
+- Write-back replaces host edits on paths changed by the run. There is no pre-launch
+  inventory or external-change check; source metadata is observed during collection.
 - Write-back across a directory tree is not atomic. Record per-operation outcomes;
   preserve upper data on partial failure and require resolution before another run.
 - A workload failure still reaches harvest after verified shutdown, preserving normal
@@ -413,20 +413,25 @@ require CAP_SYS_ADMIN and an OverlayFS-compatible upper/work filesystem. Host
 source trees remain stable under the cooperative-access assumption. Rootless,
 private-namespace and proxied daemons require further qualification.
 
-Preparation rejects writable single files, sockets/devices, pseudo-filesystems,
-nested mounts, cross-root hardlinks, overlapping artifact directories and
-unqualified propagation/SELinux settings. Upper/work directories are fresh.
-Sources must already exist. Ordinary read-only inputs stay direct; shared read-only
-aliases retain their flags. With `redirect_dir=off`, renaming lower directories may
-return EXDEV; applications need their usual copy/delete fallback. Whole-file
-copy-up can affect large mutable models.
-No failure falls back to a writable host bind.
+Preparation keeps writable single files, special nodes, pseudo-filesystems and
+sources containing mountpoints or the run folder directly mounted with explicit
+coverage reasons. Native host shared memory stays direct at every path. Unsafe
+overlaps between direct and isolated sources fail before any mount; supported
+writable and read-only aliases use one shared view. Propagation and SELinux options
+that cannot be preserved by an overlay are rejected. Upper/work directories are
+fresh, and overlay lower sources must exist before mounting. A native overlay
+mount failure fails preparation and unwinds owned mounts.
 
-`overlays/plan.json` and `prepared.json` identify ownership. Per-tree `baseline.pb`,
-`changed.paths0`, `apply-plan.pb`, rsync logs and `apply.pb` retain evidence.
-`unmounted.json` precedes lower modification; `results.json` records successful
-disposition. Failed/cancelled calls leave evidence for manual resolution; no crash
-recovery or automatic retry is implied. Upper and staging data are retained.
+With `redirect_dir=off`, renaming lower directories may return EXDEV; applications
+need their usual copy/delete fallback. Whole-file copy-up can affect large mutable
+models.
+
+`overlays/plan.json` and `prepared.json` identify ownership. Per-tree action lists,
+rsync logs and `apply.pb` retain evidence. The synced `filesystem/report.pb`
+checkpoint precedes strict unmount and lower modification. `unmounted.json`
+records unmount completion; `results.json` records successful disposition.
+Failed/cancelled calls retain evidence and unapplied upper data; reset discards
+leftover uppers after stopping writers. Write-back is non-atomic.
 
 ARM validation, 2026-10-27: jobs 157/158 passed compilation, strict lint,
 default/all-feature tests and the existing native suite, then failed when direct

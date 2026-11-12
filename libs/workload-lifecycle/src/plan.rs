@@ -113,6 +113,18 @@ mod tests {
     }
 
     #[test]
+    fn existing_run_json_defaults_to_no_caller_private_records() {
+        // Arrange
+        let run = RunPlan::default();
+        let mut saved = serde_json::to_value(&run).unwrap();
+        saved.as_object_mut().unwrap().remove("private_records");
+        // Act
+        let decoded: RunPlan = serde_json::from_value(saved).unwrap();
+        // Assert
+        assert!(decoded.private_records.is_empty());
+    }
+
+    #[test]
     fn runs_require_explicit_host_shm_access() {
         // Arrange
         let mut run = RunPlan::default();

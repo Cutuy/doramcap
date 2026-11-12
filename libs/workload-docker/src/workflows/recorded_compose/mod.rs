@@ -274,7 +274,7 @@ impl ComposeRunner {
         let events = EventCapture::start(
             self.adapter.engine.client().clone(),
             plan.name.clone(),
-            artifacts.join("docker-events.jsonl"),
+            artifacts.join(EVENTS_RECORD),
             signals.stopping.clone(),
         );
         let machine = signals.machine.clone();
@@ -349,6 +349,9 @@ impl ComposeRunner {
     }
 }
 
+/// Run-relative Docker event capture record.
+const EVENTS_RECORD: &str = "docker-events.jsonl";
+
 fn step_error(error: impl std::fmt::Display) -> Error {
     invalid(error.to_string())
 }
@@ -356,6 +359,9 @@ fn step_error(error: impl std::fmt::Display) -> Error {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ComposeRun {
+    /// Caller-owned run-relative records excluded from application output listings.
+    #[serde(default)]
+    pub private_records: Vec<String>,
     /// Some isolates writable directory binds through OverlayFS. None uses the
     /// supplied mounts directly. Omitted JSON retains the default write-back policy.
     #[serde(default = "default_filesystem")]
@@ -398,6 +404,7 @@ pub struct ComposeRun {
 impl ComposeRun {
     fn run_plan(&self) -> Result<workload_lifecycle::launch::RunPlan> {
         Ok(workload_lifecycle::launch::RunPlan {
+            private_records: self.private_records.clone(),
             id: self.id.clone(),
             repository_root: self
                 .repository_root
@@ -446,6 +453,7 @@ impl ComposeRun {
             .partition(|app| run.system_apps.contains(&app.key));
         let artifacts = PathBuf::from(run.artifacts);
         Ok(Self {
+            private_records: run.private_records,
             id: run.id,
             repository_root: run.repository_root.into(),
             mcap_writers: McapWriters {
@@ -490,7 +498,12 @@ impl TryFrom<ComposeRun> for PrepareInput {
     /// Build shared preparation inputs, rejecting paths that cannot cross the launch contract.
     fn try_from(spec: ComposeRun) -> Result<Self> {
         Ok(Self {
-            run_plan: spec.run_plan()?,
+            run_plan: {
+                let mut run = spec.run_plan()?;
+                run.private_records
+                    .extend([EVENTS_RECORD.into(), finalization::REPORT_RECORD.into()]);
+                run
+            },
             dora_apps: spec.dora_apps,
             system_apps: spec.system_apps,
             extra_apps: spec.projects,

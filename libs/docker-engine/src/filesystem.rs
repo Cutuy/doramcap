@@ -144,6 +144,7 @@ mod tests {
         let baseline = capture(
             &adapter,
             SourcesInput {
+                overlays: true,
                 excluded: vec![],
                 artifacts,
                 bind_mounts: vec![
@@ -238,6 +239,7 @@ mod tests {
         let baseline = capture(
             &adapter,
             SourcesInput {
+                overlays: true,
                 excluded: vec![],
                 artifacts: root.path().into(),
                 bind_mounts: vec![],

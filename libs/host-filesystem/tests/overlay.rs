@@ -1127,7 +1127,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         consumer: "direct".into(),
         source: source.join("permissions").to_string_lossy().into(),
         target: "/file".into(),
-        read_only: false,
+        read_only: true,
     });
     let mut planned = resolve(PrepareInput {
         artifacts,
@@ -1143,7 +1143,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
     let set = host_filesystem::overlay::prepare(planned).await.unwrap();
     assert_eq!(
         set.mappings.last().unwrap().effective,
-        source.join("permissions")
+        set.trees[0].merged.join("permissions")
     );
     let tree = &set.trees[0];
     let view = &tree.merged;
@@ -1284,4 +1284,231 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         std::fs::metadata(source.join("new-link")).unwrap().ino(),
         std::fs::metadata(source.join("new-alias")).unwrap().ino()
     );
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage() {
+    use host_filesystem::filesystem::{self, CollectInput, SourcesInput};
+    // Arrange: filesystem identity, rather than a /dev prefix, determines live shared memory.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    for backing in ["hugetlbfs", "shm-alias"] {
+        let source = root.path().join(backing);
+        std::fs::create_dir(&source).unwrap();
+        let target = std::ffi::CString::new(source.as_os_str().as_encoded_bytes()).unwrap();
+        // SAFETY: live C strings and a fresh test-owned mountpoint; no persistent host configuration.
+        let status = unsafe {
+            if backing == "hugetlbfs" {
+                libc::mount(
+                    std::ptr::null(),
+                    target.as_ptr(),
+                    c"hugetlbfs".as_ptr(),
+                    0,
+                    std::ptr::null(),
+                )
+            } else {
+                libc::mount(
+                    c"/dev/shm".as_ptr(),
+                    target.as_ptr(),
+                    std::ptr::null(),
+                    libc::MS_BIND,
+                    std::ptr::null(),
+                )
+            }
+        };
+        assert_eq!(status, 0, "{}", std::io::Error::last_os_error());
+        let artifacts = root.path().join(format!("run-{backing}"));
+        std::fs::create_dir(&artifacts).unwrap();
+        let binds = vec![BindMount {
+            source: source.to_string_lossy().into(),
+            consumer: "app".into(),
+            target: "/memory".into(),
+            read_only: false,
+        }];
+        // Act
+        let notes = filesystem::coverage_notes(&binds, &[], &artifacts, true)
+            .await
+            .unwrap();
+        let sources = filesystem::prepare_sources(SourcesInput {
+            overlays: true,
+            artifacts: artifacts.clone(),
+            bind_mounts: binds.clone(),
+            metadata_sources: vec![],
+            excluded: vec![],
+        })
+        .await
+        .unwrap();
+        let set = prepare(PrepareInput {
+            artifacts,
+            workspace: root.path().join(format!("views-{backing}")),
+            bind_mounts: binds,
+            policy: Default::default(),
+        })
+        .await
+        .unwrap();
+        // Creating an empty hugetlbfs segment allocates no huge pages.
+        let segment = format!("pr326-segment-{}", std::process::id());
+        std::fs::write(set.mappings[0].effective.join(&segment), []).unwrap();
+        let result = filesystem::collect(CollectInput {
+            sources,
+            overlays: Some(set.clone()),
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        finalize(set.clone()).await.unwrap();
+        // Assert
+        assert!(set.trees.is_empty());
+        assert_eq!(set.mappings[0].effective, source);
+        assert!(source.join(&segment).exists());
+        assert!(notes.is_empty());
+        assert!(result.host_binds.coverage_complete);
+        assert!(result.host_binds.warnings.is_empty());
+        std::fs::remove_file(source.join(segment)).unwrap();
+        unmount(&source).await.unwrap();
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn writable_parent_and_child_use_one_view_and_write_back_once() {
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("child")).unwrap();
+    std::fs::write(source.join("child/file"), b"before").unwrap();
+    let artifacts = root.path().join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let mut bind_mounts = plan(root.path(), &source);
+    bind_mounts[1].read_only = false;
+    // Act
+    let set = prepare(PrepareInput {
+        artifacts,
+        workspace: root.path().join("views"),
+        bind_mounts,
+        policy: Default::default(),
+    })
+    .await
+    .unwrap();
+    std::fs::write(set.mappings[1].effective.join("file"), b"child").unwrap();
+    // Assert
+    assert_eq!(set.trees.len(), 1);
+    assert_eq!(
+        std::fs::read(set.mappings[0].effective.join("child/file")).unwrap(),
+        b"child"
+    );
+    assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"before");
+    // Act
+    std::fs::write(set.mappings[0].effective.join("child/file"), b"parent").unwrap();
+    // Assert
+    assert_eq!(
+        std::fs::read(set.mappings[1].effective.join("file")).unwrap(),
+        b"parent"
+    );
+    let result = finalize(set).await.unwrap();
+    assert_eq!(result.paths, [source.clone()]);
+    assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"parent");
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing() {
+    use host_filesystem::filesystem::{ChangeKind, FileMetadata, MetadataWalk};
+    use std::collections::BTreeMap;
+    async fn inventory(path: &Path) -> BTreeMap<PathBuf, FileMetadata> {
+        let mut walk = MetadataWalk::open(path).await.unwrap();
+        let mut entries = BTreeMap::new();
+        while let Some((path, metadata)) = walk.next_entry().await.unwrap() {
+            entries.insert(path, metadata);
+        }
+        entries
+    }
+    // Arrange: an independent before/after walk supplies the reference for ordinary transitions.
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir_all(source.join("child")).unwrap();
+    for index in 0..20_000 {
+        std::fs::write(source.join(format!("child/model-{index}")), b"unchanged").unwrap();
+    }
+    for name in ["edit", "gone", "rename", "mode", "opened"] {
+        std::fs::write(source.join(name), b"before").unwrap();
+    }
+    let before = inventory(&source).await;
+    let artifacts = root.path().join("run");
+    std::fs::create_dir(&artifacts).unwrap();
+    let start = std::time::Instant::now();
+    let set = prepare(PrepareInput {
+        artifacts,
+        workspace: root.path().join("views"),
+        bind_mounts: plan(root.path(), &source),
+        policy: OverlayPolicy {
+            disposition: Disposition::Discard,
+        },
+    })
+    .await
+    .unwrap();
+    let preparation = start.elapsed();
+    let tree = &set.trees[0];
+    let start = std::time::Instant::now();
+    let untouched = changes(tree).await.unwrap();
+    assert!(
+        untouched.iter().all(|row| row.path.as_os_str().is_empty()),
+        "{untouched:#?}"
+    );
+    let unchanged_listing = start.elapsed();
+    // Act
+    std::fs::write(tree.merged.join("edit"), b"after-longer").unwrap();
+    std::fs::write(tree.merged.join("added"), b"new").unwrap();
+    std::fs::remove_file(tree.merged.join("gone")).unwrap();
+    std::fs::rename(tree.merged.join("rename"), tree.merged.join("renamed")).unwrap();
+    std::fs::set_permissions(
+        tree.merged.join("mode"),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    drop(
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(tree.merged.join("opened"))
+            .unwrap(),
+    );
+    let after = inventory(&tree.merged).await;
+    let mut expected = BTreeMap::new();
+    for (path, metadata) in &before {
+        match after.get(path) {
+            None => {
+                expected.insert(path.clone(), ChangeKind::Deleted);
+            }
+            // Walk comparison retains the milestone's documented metadata fields, excluding ctime and directory size.
+            Some(other)
+                if metadata.mode != other.mode
+                    || metadata.uid != other.uid
+                    || metadata.gid != other.gid
+                    || metadata.mtime != other.mtime
+                    || metadata.symlink != other.symlink
+                    || (metadata.mode & libc::S_IFMT != libc::S_IFDIR
+                        && metadata.size != other.size) =>
+            {
+                expected.insert(path.clone(), ChangeKind::Modified);
+            }
+            _ => {}
+        }
+    }
+    for path in after.keys().filter(|path| !before.contains_key(*path)) {
+        expected.insert(path.clone(), ChangeKind::Added);
+    }
+    let start = std::time::Instant::now();
+    let rows = changes(tree).await.unwrap();
+    let listing = start.elapsed();
+    let actual: BTreeMap<_, _> = rows.into_iter().map(|row| (row.path, row.kind)).collect();
+    // Assert: every reference path and kind agrees; the measurement includes all upper inspection.
+    assert_eq!(actual, expected);
+    println!(
+        "20,000 unchanged files: preparation={preparation:?}, unchanged-tree listing={unchanged_listing:?}, changed-upper listing={listing:?}, records={}",
+        actual.len()
+    );
+    finalize(set).await.unwrap();
 }

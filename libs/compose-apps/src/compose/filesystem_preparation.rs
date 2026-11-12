@@ -96,7 +96,7 @@ impl PrepareOverlays {
                 let bytes = serde_json::to_vec_pretty(model)?;
                 project.manifest = views
                     .directory
-                    .with_file_name(format!("{}.execution.json", project.key))
+                    .with_file_name(super::adapter::execution_record(&project.key))
                     .to_str()
                     .ok_or_else(|| invalid("manifest path is not UTF-8"))?
                     .into();

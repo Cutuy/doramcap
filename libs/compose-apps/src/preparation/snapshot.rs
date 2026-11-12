@@ -200,6 +200,7 @@ pub(super) async fn capture(
         .collect();
     let settings = serde_json::to_vec(&(
         &spec.filesystem,
+        &spec.run_plan.private_records,
         spec.run_plan.host_shm_access,
         spec.run_plan.readiness_seconds,
         spec.run_plan.stop_seconds,
@@ -348,8 +349,27 @@ mod tests {
         .unwrap();
         assert_eq!(
             original.settings_sha256,
-            "084a4357a51e35bf319c39e8e6a7691e1810bf09522274a448fe51f13d5b2d17"
+            "74a4ed7003026f69d1a90243f398cac4f7d03b04aab04863bbf1a49f9afdcced"
         );
+        // Act / Assert: changing caller-owned private records invalidates the reviewed input.
+        spec.run_plan
+            .private_records
+            .push("caller-record.json".into());
+        assert_ne!(
+            original,
+            capture(
+                &spec,
+                root.path(),
+                &plan,
+                &["collector".into()],
+                &["workload".into()],
+                &dora,
+                Some(&runtime)
+            )
+            .await
+            .unwrap()
+        );
+        spec.run_plan.private_records.clear();
         // Act / Assert: policy, stages and graph contents are compared independently.
         spec.run_plan.stop_seconds += 1;
         assert_ne!(

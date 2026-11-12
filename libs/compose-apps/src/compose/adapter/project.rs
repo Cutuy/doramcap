@@ -813,7 +813,7 @@ async fn save_stopped_inspection(
     bytes: Vec<u8>,
 ) -> Result<()> {
     let directory = directory.to_owned();
-    let destination = directory.join(format!("{key}-{id}.stopped.json"));
+    let destination = directory.join(super::stopped_record(key, id));
     tokio::task::spawn_blocking(move || -> Result<()> {
         use std::io::Write;
         let mut temporary = tempfile::NamedTempFile::new_in(directory)?;

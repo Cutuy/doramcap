@@ -22,6 +22,11 @@ use std::{
 
 /// Largest read-only bind, config or secret file frozen into run artifacts.
 const MAX_FROZEN_FILE_BYTES: u64 = 256 * 1024 * 1024;
+const INPUTS_DIRECTORY: &str = "inputs";
+const INPUT_RECORD: &str = "experiment.input.json";
+fn app_input_record(key: &str) -> PathBuf {
+    format!("{key}.inputs.json").into()
+}
 
 /// App groups resolved into one project, with shared launch facts owned by `RunPlan`.
 /// An empty `extra_apps` group prepares only Dora and system apps.
@@ -215,7 +220,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
                 mcap_services.extend_from_slice(&services[service_start..]);
             }
             private_write(
-                    &artifacts.join(format!("{}.inputs.json", app.key)),
+                    &artifacts.join(app_input_record(&app.key)),
                     &serde_json::to_vec(
                         &json!({"sources":normalized.input_hashes,"diagnostics":normalized.stderr,"warnings":warnings}),
                     )?,
@@ -318,7 +323,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
             )?;
         }
     }
-    let manifest = artifacts.join("experiment.input.json");
+    let manifest = artifacts.join(INPUT_RECORD);
     private_write(&manifest, &serde_json::to_vec(&model)?).await?;
     let apps = spec
         .dora_apps
@@ -366,6 +371,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
             &mounts::directories(&mounts::binds(&plan.name, &effective)?),
             &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
             &artifacts,
+            spec.filesystem.is_some(),
         )
         .await?,
     );
@@ -585,6 +591,20 @@ async fn validate_recording_host(directories: &[PathBuf], run: &str) -> Result<(
 impl PrepareRun {
     async fn prepare(&self, spec: PrepareInput) -> Result<PreparedRun> {
         let overlays = spec.filesystem.is_some();
+        let mut excluded: Vec<PathBuf> = spec
+            .run_plan
+            .private_records
+            .iter()
+            .map(PathBuf::from)
+            .collect();
+        excluded.extend([PathBuf::from(INPUTS_DIRECTORY), PathBuf::from(INPUT_RECORD)]);
+        excluded.extend(
+            spec.dora_apps
+                .iter()
+                .chain(&spec.system_apps)
+                .chain(&spec.extra_apps)
+                .map(|app| app_input_record(&app.key)),
+        );
         let resolved = resolve(&self.adapter, spec).await?;
         let model = mounts::model(&resolved.plan, "filesystem source manifest changed").await?;
         prepare_sources(&ResolvedBind::from_manifest(&model)?, overlays).await?;
@@ -597,19 +617,11 @@ impl PrepareRun {
             .ok_or_else(|| invalid("executor dropped"))?;
         let sources = executor
             .run::<PrepareFilesystemSources>(SourcesInput {
-                excluded: [
-                    "inputs",
-                    "experiment.input.json",
-                    "experiment.compose.json",
-                    "experiment.resolution.json",
-                    "experiment.execution.json",
-                    "docker-events.jsonl",
-                    "report.json",
-                    "console-report.json",
-                ]
-                .into_iter()
-                .map(PathBuf::from)
-                .collect(),
+                excluded: {
+                    excluded.extend(crate::compose::adapter::project_records(&resolved.plan.key));
+                    excluded
+                },
+                overlays,
                 bind_mounts: mounts::directories(&mounts::binds(&resolved.plan.name, &model)?),
                 metadata_sources: docker_engine::filesystem::volume_sources(mounts::volumes(
                     &resolved.plan,
@@ -686,7 +698,7 @@ fn failed(failures: &[String]) -> Result<()> {
 /// Snapshot read-only bind files, config files and secret files into `artifacts/inputs`.
 /// Missing bind paths stay in place for preparation; every other failure is named.
 async fn freeze_files(model: &mut Value, artifacts: &Path) -> Result<()> {
-    let directory = artifacts.join("inputs");
+    let directory = artifacts.join(INPUTS_DIRECTORY);
     host_filesystem::files::create_private_dir(&directory).await?;
     let mut failures = Vec::new();
     for (name, service) in model["services"].as_object_mut().unwrap().iter_mut() {

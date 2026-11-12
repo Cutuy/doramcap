@@ -48,6 +48,8 @@ message RunPlan {
   DoraRuntime dora_runtime = 11;
   // Required: PASSTHROUGH uses host /dev/shm; BLOCKED shares a private run filesystem.
   HostShmAccess host_shm_access = 12;
+  // Caller-owned run-relative records excluded from application output listings.
+  repeated string private_records = 13;
 }
 
 // Per-preparation Dora facts consumed by launch adapters and runtime control.
