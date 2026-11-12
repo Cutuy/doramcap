@@ -82,8 +82,9 @@ impl workload_lifecycle::run::Running for ComposeRunning {
         Ok(())
     }
 
-    fn ready(&mut self) {
+    fn ready(&mut self) -> std::result::Result<(), String> {
         self.signals.notify_ready(self.plan.clone());
+        Ok(())
     }
 
     async fn ended(&mut self) -> String {
