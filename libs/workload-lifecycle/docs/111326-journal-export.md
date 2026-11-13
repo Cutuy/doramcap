@@ -2,7 +2,7 @@
 
 # Journal export
 
-Created November 13, 2026. Updated November 14, 2026. Status: implemented; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
+Created November 13, 2026. Updated November 14, 2026. Status: implemented.
 [Implementation plan](111326-journal-export-impl.md) ·
 [Application logs for a run](111026-run-logs.md), the follow-up to
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
@@ -20,7 +20,7 @@ selected. A saved file holds the entries still available; complete output stays 
   entries stay queryable by full container ID after the container is removed.
 - **Output:** one plain text file per program, one entry per line with its Unix timestamp in seconds and microseconds. Embedded line breaks are escaped.
 - **Result:** a Logs list naming each program with exported, skipped or failed, and the
-  file size. Downloads use the run-file route from [#358](https://github.com/Cutuy/doramcap/pull/358) in [#360](https://github.com/Cutuy/doramcap/pull/360).
+  file size. Downloads use the shared [run-file route](https://github.com/Cutuy/doramcap/pull/358) with a program ID.
 - **Failure:** an export failure never changes the run's outcome. Files already written stay.
 
 ## Matching a program's entries

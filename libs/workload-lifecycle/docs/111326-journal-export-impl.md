@@ -1,6 +1,6 @@
 # Journal export: implementation plan
 
-Created November 13, 2026. Updated November 14, 2026. Status: owner replay applied; downloads follow [#360](https://github.com/Cutuy/doramcap/pull/360).
+Created November 13, 2026. Updated November 14, 2026. Status: implemented.
 [Architecture](111326-journal-export.md). Replaces milestone 2 of the
 [run logs plan](111026-run-logs-impl.md).
 
@@ -54,7 +54,8 @@ Created November 13, 2026. Updated November 14, 2026. Status: owner replay appli
 
 - [x] Show a Logs list on Result and History: program, state and size.
 - [x] Describe an exported file as the entries still available in the journal.
-- [ ] Attach `logs/<position>.log` through #358's run-file route in [#360](https://github.com/Cutuy/doramcap/pull/360).
+- [x] Download program logs through the shared run-file route from the
+  [keep files plan](https://github.com/Cutuy/doramcap/pull/354).
 
 **Validation**
 

@@ -1,5 +1,5 @@
 import { runPlan } from './run-plan.js';
-import { readLogs } from './logs.js';
+import { readLogs, openProgramLog } from './logs.js';
 import { ensureImages } from './images.js';
 import { PREPARING_RUN, FILE_CHANGES_ARTIFACT, artifactFilename, LIMITS } from './generated/transport.js';
 import Long from 'long';
@@ -707,9 +707,12 @@ export class ConsoleService implements ConsoleBackend {
   }
   async openRunFile(id: string, source: doramcap.console.v1.IRunFileRequest, signal: AbortSignal) {
     const run = this.artifactRun(id);
-    if (!run.fileChanges?.report) throw new Error('Missing');
+    if ((source.program != null) === (source.changePosition != null)) throw new Error('Missing');
     try {
-      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition ?? 0)), signal);
+      signal.throwIfAborted();
+      if (source.program != null) return openProgramLog(join(this.config.dataRoot, 'runs', id), source.program);
+      if (!run.fileChanges?.report) throw new Error('Missing');
+      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition)), signal);
     } catch { throw new Error('Missing'); }
   }
   private artifactRun(id: string) {
