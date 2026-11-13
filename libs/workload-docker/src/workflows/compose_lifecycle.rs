@@ -96,7 +96,7 @@ pub(crate) fn read_outer_evidence(
     if name != "filesystem" {
         return Err("outer filesystem checkpoint directory is invalid".into());
     }
-    crate::evidence::open(&root, &format!("{name}/changes.json"), false)
+    crate::evidence::open(&root, format!("{name}/changes.json"), false)
         .map_err(|e| e.to_string())?;
     Ok(Some(evidence.changes))
 }
