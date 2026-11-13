@@ -26,8 +26,9 @@ its delegated parent must enable memory accounting for children.
 Both reuse the shared step and membership checks.
 
 After writers stop and evidence is finalized, directly owned groups are removed.
-Compose removes its empty cgroupfs parent or stops both per-run systemd slices,
+Compose removes its empty cgroupfs run tree or stops both per-run systemd slices,
 preserving the shared `doramcap.slice` and `doramcap-compose.slice` ancestors.
+Compose and native systemd share the slice stop.
 The full per-run subtree must be empty before removal. Systemd stop jobs and unit
 unloading are confirmed within the existing run stop budget; failed cleanup remains
 visible in the run report. Completed runs therefore release their monitor records.

@@ -12,8 +12,6 @@ use std::{
 };
 use workload_lifecycle::cgroup::{self, Backend, Removal};
 
-mod systemd;
-
 const PARENT_PREFIX: &str = "doramcap-compose";
 const PARENT_HASH_CHARS: usize = 12;
 
@@ -130,6 +128,26 @@ fn verify_empty_if_present(path: &Path) -> std::result::Result<(), String> {
     Ok(())
 }
 
+// Remove an empty cgroupfs tree deepest first; the kernel refuses any group that gains a process.
+fn remove_tree(path: &Path) -> std::result::Result<(), String> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+            remove_tree(&entry.path())?;
+        }
+    }
+    match std::fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("{}: {error}", path.display())),
+    }
+}
+
 impl Backend for DockerCgroup {
     fn create(&self) -> LocalBoxFuture<'_, std::result::Result<PathBuf, String>> {
         // Docker creates the parent before container exec; adopt only that prepared location.
@@ -139,18 +157,21 @@ impl Backend for DockerCgroup {
         Box::pin(async {
             let paths = cleanup_paths(&self.placement)?;
             tokio::time::timeout(self.stop, async {
-                // Check the whole run before stopping either slice, including sibling descendants.
+                // Check the whole run before removing anything, including sibling descendants.
                 for path in &paths {
                     verify_empty_if_present(path)?;
                 }
                 if self.placement.parent.ends_with(".slice") {
-                    systemd::remove(&paths).await?;
-                } else {
-                    match std::fs::remove_dir(&paths[0]) {
-                        Ok(()) => {}
-                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => return Err(error.to_string()),
+                    let manager = cgroup::slice::connect().await?;
+                    for path in &paths {
+                        let name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .ok_or("Compose slice name is not UTF-8")?;
+                        cgroup::slice::stop(&manager, name).await?;
                     }
+                } else {
+                    remove_tree(&paths[0])?;
                 }
                 for path in &paths {
                     if path.try_exists().map_err(|e| e.to_string())? {

@@ -938,8 +938,6 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "workload-lifecycle",
- "zbus",
- "zbus_systemd",
 ]
 
 [[package]]
@@ -6556,6 +6554,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "zbus",
+ "zbus_systemd",
 ]
 
 [[package]]

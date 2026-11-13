@@ -3,7 +3,7 @@ use crate::{
     Result, Scope, error,
     manager::{Manager, STOP_REPORT_MARGIN, Unit, value},
 };
-use futures_util::{StreamExt, future::LocalBoxFuture};
+use futures_util::future::LocalBoxFuture;
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -85,12 +85,6 @@ impl SystemAppSlice {
 
     async fn remove_slices(&self) -> Result<()> {
         for name in [self.name(), self.parent()] {
-            let mut removed = self
-                .manager
-                .manager
-                .receive_unit_removed()
-                .await
-                .map_err(error)?;
             if self.manager.units(&name).await?.is_empty() {
                 continue;
             }
@@ -102,65 +96,14 @@ impl SystemAppSlice {
                     "{name}: accounting slice is not owned by this launcher"
                 ));
             }
-            // Read after subscribing; StopUnit also cancels any pending creation job.
-            let object = self
-                .manager
-                .manager
-                .get_unit(name.clone())
-                .await
-                .map_err(error)?;
-            let slice = SliceProxy::builder(&self.manager.connection)
-                .path(object)
-                .cache_properties(CacheProperties::No)
-                .build()
-                .await
-                .map_err(error)?;
-            let group = slice.control_group().await.map_err(error)?;
-            if !group.is_empty() {
-                let path = cgroup::host_path(&group)?;
-                let events = std::fs::read_to_string(path.join("cgroup.events")).map_err(error)?;
-                if !events.lines().any(|line| line == "populated 0") {
-                    return Err(format!(
-                        "{name}: accounting slice still contains live processes"
-                    ));
-                }
-            }
-            let mut events = self
-                .manager
-                .manager
-                .receive_job_removed()
-                .await
-                .map_err(error)?;
-            let job = self
-                .manager
-                .manager
-                .stop_unit(name.clone(), "replace".into())
-                .await
-                .map_err(error)?;
+            // Drop this launcher's reference so the stopped slice can unload.
+            self.manager.release(&name).await;
             tokio::time::timeout(
                 STOP_REPORT_MARGIN,
-                self.manager.started(&name, &mut events, job),
+                cgroup::slice::stop(&self.manager.manager, &name),
             )
             .await
-            .map_err(|_| format!("{name}: slice stop not confirmed"))??;
-            self.manager.release(&name).await;
-            tokio::time::timeout(STOP_REPORT_MARGIN, async {
-                while !self.manager.units(&name).await?.is_empty() {
-                    let signal = removed
-                        .next()
-                        .await
-                        .ok_or_else(|| format!("{name}: unit removal notifications ended"))?;
-                    if signal.args().map_err(error)?.id != name {
-                        continue;
-                    }
-                }
-                Ok::<_, String>(())
-            })
-            .await
-            .map_err(|_| format!("{name}: slice unload not confirmed"))??;
-            if !group.is_empty() && cgroup::host_path(&group)?.try_exists().map_err(error)? {
-                return Err(format!("{name}: cgroup remains after removal"));
-            }
+            .map_err(|_| format!("{name}: slice removal not confirmed"))??;
         }
         Ok(())
     }
