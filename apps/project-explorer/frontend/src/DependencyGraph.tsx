@@ -3,7 +3,7 @@ import { ReactFlow, Background, Controls, MarkerType, Position, type Node, type 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import '@xyflow/react/dist/style.css';
 import { componentHref, dependencyChain, type Catalog } from './model';
-import { useTheme } from './theme';
+import { useTheme } from 'doramcap-console-frontend/theme';
 
 const elk = new ELK();
 export default function DependencyGraph({ catalog, focus, build, dev }: { catalog: Catalog; focus: string; build: boolean; dev: boolean }) {

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useConsole } from '../context';
 import { historyHash, runHash } from '../model';
+import { ThemeSwitch } from './ThemeSwitch';
 export type PagePhase = 'Project' | 'Review' | 'Run' | 'Result';
 const PHASES: PagePhase[] = ['Project', 'Review', 'Run', 'Result'];
 export type ConsoleView = { label: string; href: string; current: boolean };
@@ -21,7 +22,7 @@ export function ConsoleWindow({ children }: { children: ReactNode }) {
 
 const standaloneRail = (phases: ConsolePhase[]) => phases.length > 0 && <nav className="phase-rail" aria-label="Run phases">{phases.map(({ label, current, onSelect }) => onSelect ? <button key={label} className={current ? 'phase phase-link current' : 'phase phase-link'} aria-current={current ? 'step' : undefined} onClick={onSelect}>{label}</button> : <span key={label} className={current ? 'phase current' : 'phase'} aria-current={current ? 'step' : undefined}>{label}</span>)}</nav>;
 
-const standaloneFrame: Frame = ({ views, phases, screen }) => <div className="console-root"><header className="topbar"><strong>doramcap</strong><span className="divider"/><span>Console</span><nav className="topnav" aria-label="Console views">{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}</nav>{standaloneRail(phases)}<span className="host">Single host</span></header><main className="page">{screen}</main></div>;
+const standaloneFrame: Frame = ({ views, phases, screen }) => <div className="console-root"><header className="topbar"><strong>doramcap</strong><span className="divider"/><span>Console</span><nav className="topnav" aria-label="Console views">{views.map(view => <a key={view.label} href={view.href} aria-current={view.current ? 'page' : undefined}>{view.label}</a>)}</nav>{standaloneRail(phases)}<div className="topbar-end"><span className="host">Single host</span><ThemeSwitch /></div></header><main className="page">{screen}</main></div>;
 
 export function PageFrame({ phase, children, onNavigate, history = false, frame = standaloneFrame }: { phase: PagePhase; children: ReactNode; onNavigate?: (phase: PagePhase) => void; history?: boolean; frame?: Frame }) {
   const { basePath } = useConsole();
