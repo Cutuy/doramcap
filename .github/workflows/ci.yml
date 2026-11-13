@@ -22,6 +22,7 @@ on:
       - '**/Cargo.lock'
       # These frontend files are embedded by Rust or used as Rust test fixtures.
       - 'apps/cpu-viewer/frontend/src/fixtures/**'
+      - 'console/frontend/src/fixtures/**'
       - 'apps/fault-demo/frontend/index.html'
       - 'apps/storage-demo/frontend/embedded/**'
   pull_request:

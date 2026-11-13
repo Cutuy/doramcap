@@ -16,9 +16,11 @@ place of the last path segment. It checks, in order:
 
 **Work items**
 - [x] Add `cgroupName` with named patterns, and use it in `CpuStreams`.
+- [x] Check Rust-generated per-app paths against `console/frontend/src/fixtures/app-cgroup-paths.json`.
 - [x] Publish systemd-driver per-app paths from visitor runs of the demo. The built-in run's
   published recording keeps its earlier `docker-<id>.scope` paths.
 
 **Validation**
-- [x] Frontend tests: both Docker drivers, `\x2d`, native units, host cgroups, distinct rows per ID.
+- [x] Shared path fixture: Rust naming matches it; the frontend names its apps.
+- [x] Frontend tests: host cgroups, distinct rows per ID.
 - [x] Demo walk in light and dark.
