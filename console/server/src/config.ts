@@ -5,6 +5,7 @@ import { isIP } from 'node:net';
 import { capabilities, launch, wire, type Config } from './native.js';
 import { validateApps } from './system-apps.js';
 import { expandManifests } from './manifests.js';
+import { filesystem } from './file-changes.js';
 
 /** Decode pbtxt with the existing parser and validate server-owned deployment policy. */
 export async function loadConfig(path: string): Promise<{ config: Config; secret: string }> {
@@ -21,6 +22,10 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
   return { config, secret };
 }
 export function validateConfig(config: Config) {
+  const { WritePolicy } = filesystem;
+  if (![WritePolicy.WRITE_POLICY_UNSPECIFIED, WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD].includes(config.writePolicy))
+    throw new Error('write_policy must be WRITE_POLICY_WRITE_BACK, WRITE_POLICY_KEEP or WRITE_POLICY_DISCARD');
+  if (config.writePolicy === filesystem.WritePolicy.WRITE_POLICY_UNSPECIFIED) config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK;
   if (![launch.HostShmAccess.HOST_SHM_ACCESS_PASSTHROUGH, launch.HostShmAccess.HOST_SHM_ACCESS_BLOCKED].includes(config.hostShmAccess))
     throw new Error('host_shm_access must be HOST_SHM_ACCESS_PASSTHROUGH or HOST_SHM_ACCESS_BLOCKED');
   switch (config.form ?? launch.Form.FORM_UNSPECIFIED) {

@@ -18,6 +18,8 @@ pub fn validate_apps<'a>(
     apps: impl IntoIterator<Item = &'a str>,
 ) -> Result<(), String> {
     validate_host_shm_access(run.host_shm_access)?;
+    host_filesystem::overlay::Disposition::from_policy(run.write_policy)
+        .map_err(|error| error.to_string())?;
     if run.dora_runtime.is_some() {
         return Err("Dora runtime is filled by preparation; caller inputs must omit it".into());
     }

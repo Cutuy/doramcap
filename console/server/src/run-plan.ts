@@ -28,5 +28,6 @@ export function runPlan(config: Config, run: RunInputs, dataflowFile: string) {
     dataflowFile,
     hostShmAccess: config.hostShmAccess,
     privateRecords: [artifactFilename('report')],
+    writePolicy: config.writePolicy,
   });
 }

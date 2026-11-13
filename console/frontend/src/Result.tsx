@@ -9,6 +9,7 @@ import { MachineChanges } from './Comparison';
 import { bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
 import { OutcomeSummary } from './ui/OutcomeSummary';
+import { WritePolicySetting } from './WritePolicy';
 
 /** `past` shows a stored run: its stored title, action and on-disk artifact facts. */
 export type PastRun = { title: string; action: string; disabled: boolean; artifacts: HistoryArtifact[]; aside: ReactNode; error?: string | null };
@@ -32,6 +33,7 @@ export function Result({ snapshot, newRun, viewRun, past }: { snapshot: Snapshot
       {outputs.length ? outputs.map(output => recordingUrl(output.id) ? <a className="button primary" key={output.id} href={recordingUrl(output.id)} download={artifactFilename(output.id)}>Download {output.id} recording{size(output.id)}</a> : <span className="unavailable" key={output.id}>{output.id} recording unavailable{size(output.id) && `${size(output.id)} left on host`}</span>) : <span className="unavailable">Recording disabled</span>}
       {reportUrl ? <a className="button secondary" href={reportUrl} download={artifactFilename('report')}>Download report</a> : <span className="unavailable">Report unavailable</span>}
     </div></section></div>{past ? <aside>{past.aside}</aside> : blocked && <aside><section className="panel attention-panel"><h2>Reset required</h2><p>The next run will ask the repository controller to reset the experiment before starting. If reset fails, the run stays blocked; inspect the private report on the host.</p></section></aside>}</div>
+    <section className="panel"><WritePolicySetting policy={snapshot.writePolicy} kept={snapshot.fileChanges?.keptDirectory}/></section>
     <FileChanges snapshot={snapshot}/>
     {!past && snapshot.machineChanges.length > 0 && <MachineChanges rows={snapshot.machineChanges}/>}
   </>;

@@ -30,6 +30,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "#[serde(deny_unknown_fields)]",
         )
         .extern_path(".doramcap.launch.v1", "::workload_lifecycle::launch")
+        .extern_path(
+            ".doramcap.filesystem.v1",
+            "::host_filesystem::filesystem_proto",
+        )
         .file_descriptor_set_path(out.join("workflow_config.bin"))
         .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
         .compile_protos(
@@ -38,9 +42,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/cgroup.proto",
                 "../workload-lifecycle/proto/launch.proto",
             ],
-            &["proto", "../workload-lifecycle/proto"],
+            &[
+                "proto",
+                "../workload-lifecycle/proto",
+                "../host-filesystem/proto",
+            ],
         )?;
     println!("cargo:rerun-if-changed=../workload-lifecycle/proto/launch.proto");
+    println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/compose.proto");
     println!("cargo:rerun-if-changed=proto/cgroup.proto");
     Ok(())

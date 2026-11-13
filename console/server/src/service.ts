@@ -148,6 +148,7 @@ export class ConsoleService implements ConsoleBackend {
       profiles: marker.profiles,
       systemApps: marker.systemApps,
       recordings: marker.recordings,
+      writePolicy: marker.writePolicy,
     });
     const saved = this.store.activity(marker.runId);
     if (
@@ -255,6 +256,7 @@ export class ConsoleService implements ConsoleBackend {
         recordings: outputs(apps),
         warnings: inspected.warnings,
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
+        writePolicy: this.config.writePolicy,
       });
       this.prepared = {
         review,
@@ -273,6 +275,7 @@ export class ConsoleService implements ConsoleBackend {
         systemApps: { ids: apps.map((app) => app.id!), profiles: appProfiles(apps) },
         recordings: outputs(apps),
         liveStreams: review.liveStreams,
+        writePolicy: review.writePolicy,
       });
       return Buffer.from(wire.Review.encode(review).finish());
     } catch (error) {
@@ -363,6 +366,7 @@ export class ConsoleService implements ConsoleBackend {
       systemApps: { ids: prepared.apps.map((app) => app.id!), profiles: appProfiles(prepared.apps) },
       recordings: outputs(prepared.apps),
       startAccepted: false,
+      writePolicy: prepared.review.writePolicy,
     });
     this.snapshot = wire.Status.create({
       ...this.marker,

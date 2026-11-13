@@ -85,6 +85,8 @@ saved size and a single hard-link name, and refuses all symlink components.
 | Copy verification | Type and size or also a content hash | Orchestrator approved type for all entries, size for regular files and symlinks, and no hashes. Directory sizes vary by filesystem. |
 | Kept destination | Caller-supplied path or fixed run layout | Implementation derives `kept/<n>/` from the existing run records, avoiding another configuration input. |
 | Verification input | Rescan the copied upper or retain pre-copy metadata | Implementation retains expected metadata in the transfer plan. |
+| Policy contract | Separate enums or one filesystem-owned enum | One `filesystem.v1.WritePolicy`, used by ConsoleConfig and the shared RunPlan. |
+| systemd before overlays | Ignore keep/discard or reject them | Reject non-default policies at Review until the sibling integrates overlays; RunPlan carries the policy for that integration. |
 
 ## Limits
 

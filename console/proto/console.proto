@@ -38,6 +38,7 @@ message Review {
   repeated RecordingOutput recordings = 8;
   repeated LiveStream live_streams = 10;
   ReviewComparison comparison = 11;
+  doramcap.filesystem.v1.WritePolicy write_policy = 12;
 }
 
 enum Phase {
@@ -86,6 +87,9 @@ message FileChanges {
   bool downloadable = 6;
   string error = 7;
   doramcap.filesystem.v1.ReportState state = 8;
+  repeated uint64 preview_positions = 9; // Parallel to preview; zero-based positions across saved categories in report order.
+  string kept_directory = 10; // Absolute retained location when KEEP was selected.
+  bool kept_complete = 11; // Every kept copy was verified and synced.
 }
 message Status {
   Phase phase = 1;
@@ -110,6 +114,7 @@ message Status {
   repeated StoppingService stopping_services = 24; // Empty once the run finishes.
   FileChanges file_changes = 26;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
+  doramcap.filesystem.v1.WritePolicy write_policy = 27;
 }
 message ConsoleError {
   string code = 1;
@@ -128,6 +133,7 @@ message Marker {
   repeated RecordingOutput recordings = 11;
   repeated string profiles = 9;
   SystemAppSelection system_apps = 10;
+  doramcap.filesystem.v1.WritePolicy write_policy = 13;
 }
 
 // One bounded, host-observed sample; absent values denote unavailable data.

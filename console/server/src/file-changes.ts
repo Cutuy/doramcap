@@ -1,5 +1,5 @@
 import { createReadStream, closeSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { ReadStream } from 'node:fs';
 import { capabilities, wire, browserError } from './native.js';
 import { doramcap } from './generated/console.js';
@@ -119,6 +119,11 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
   const view = wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_COMPLETE, report: reference });
   try {
     const saved = await report(runRoot, reference);
+    if (saved.writePolicy === filesystem.WritePolicy.WRITE_POLICY_KEEP) {
+      view.keptDirectory = join(runRoot, 'kept');
+      // This record is created only after all kept copies were verified and synced.
+      try { closeSync(descriptor(runRoot, 'overlays/results.json')); view.keptComplete = true; } catch { /* Copy did not complete. */ }
+    }
     for (const category of saved.categories) {
       closeSync(descriptor(runRoot, category.summary!.manifest!));
       for (const note of category.coverageNotes ?? []) {

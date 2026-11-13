@@ -3,6 +3,7 @@ package doramcap.console.v1;
 import "compose.proto";
 import "launch.proto";
 import "live.proto";
+import "filesystem.proto";
 
 message ConsoleConfig {
   bool download_missing_images = 11; // Prepare selected images before Review.
@@ -22,6 +23,7 @@ message ConsoleConfig {
   string binaries = 13;
   // Required host shm access for every run: PASSTHROUGH or BLOCKED.
   doramcap.launch.v1.HostShmAccess host_shm_access = 14;
+  doramcap.filesystem.v1.WritePolicy write_policy = 15;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.
