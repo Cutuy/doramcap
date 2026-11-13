@@ -155,7 +155,6 @@ jobs:
             --notes "Install: download install.sh, inspect it, then run sh install.sh." install.sh doramcap-console-*
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
-
   promote:
     name: Promote published images
     needs: publish
