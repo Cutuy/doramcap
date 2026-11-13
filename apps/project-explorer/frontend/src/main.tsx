@@ -3,13 +3,13 @@ import { createRoot } from 'react-dom/client';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
-import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, Sun, Moon, type LucideIcon } from 'lucide-react';
+import { Activity, Cpu, Database, Radio, SlidersHorizontal, MemoryStick, ShieldAlert, Wrench, Workflow, Layers, ArrowUpRight, Search, ArrowLeft, type LucideIcon } from 'lucide-react';
 import generated from './.generated/catalog.json';
 import overview from './.generated/overview.json';
 import { componentHref, displayName, isConsoleRoute, parseRoute, resolveLink, routeHref, type Catalog, type Component, type Kind, type Route } from './model';
 import Dependencies from './Dependencies';
 import Overview from './Overview';
-import { chooseTheme, useTheme } from './theme';
+import { ThemeSwitch } from 'doramcap-console-frontend/theme';
 import './style.css';
 
 const catalog = generated as Catalog;
@@ -115,11 +115,6 @@ function Explorer({ route }: { route: Route }) {
   const valid = !focus || Boolean(component || pkg);
   return <><div className="intro"><h1>Dependencies.</h1></div><div className="toolbar graph-toolbar"><label>Component <select aria-label="Dependency component" value={focus} onChange={e => updateParams(route, { focus: e.target.value })}><option value="">Whole workspace</option>{catalog.components.map(c => <option key={c.id} value={c.id}>{displayName(c.name)}</option>)}{focus && !catalog.components.some(c => c.id === focus) && <option value={focus}>{focus}</option>}</select></label><div className="dependency-kind-controls">{['build', 'dev'].map(kind => <label key={kind}><input type="checkbox" checked={route.params.get(kind) === '1'} onChange={e => updateParams(route, { [kind]: e.target.checked ? '1' : '' })} />{kind === 'build' ? 'Build' : 'Dev'}</label>)}</div></div>{valid ? <Suspense fallback={<p role="status">Loading dependency graph…</p>}><DependencyGraph catalog={catalog} focus={focus} build={route.params.get('build') === '1'} dev={route.params.get('dev') === '1'} /></Suspense> : <p role="alert">Unknown component. <a href="#/dependencies">Show workspace</a>.</p>}</>;
 
-}
-function ThemeSwitch() {
-  const dark = useTheme() === 'dark';
-  const Icon = dark ? Moon : Sun;
-  return <button type="button" role="switch" aria-checked={dark} aria-label="Dark mode" className="theme-switch" onClick={() => chooseTheme(dark ? 'light' : 'dark')}><span className="theme-track"><span className="theme-thumb"><Icon size={11} strokeWidth={2.2} aria-hidden="true" /></span></span></button>;
 }
 function App() {
   const route = useRoute();

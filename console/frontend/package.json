@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./ui": "./src/entry-ui.ts",
-    "./demo": "./src/entry-demo.ts"
+    "./demo": "./src/entry-demo.ts",
+    "./theme": "./src/ui/ThemeSwitch.tsx"
   },
   "scripts": {
     "build": "npm run generate && tsc --noEmit && vite build",
@@ -14,6 +15,7 @@
     "generate:demo-recording": "npm run generate && tsx scripts/generate-demo-recording.ts"
   },
   "dependencies": {
+    "lucide-react": "^0.468.0",
     "protobufjs": "^8.8.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

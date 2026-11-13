@@ -2,8 +2,9 @@ import { useSyncExternalStore } from 'react';
 
 export type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'doramcap-explorer-theme';
-const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+const STORAGE_KEY = 'doramcap-theme';
+// Absent outside a browser, such as in server rendering, where the theme stays light.
+const systemDark = typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
 let chosen = readChoice();
 
@@ -17,7 +18,7 @@ function readChoice(): Theme | null {
 }
 
 function currentTheme(): Theme {
-  return chosen ?? (systemDark.matches ? 'dark' : 'light');
+  return chosen ?? (systemDark?.matches ? 'dark' : 'light');
 }
 
 function applyTheme() {
@@ -32,7 +33,7 @@ function subscribe(listener: () => void) {
 
 /** Return the active theme: the stored choice, else the system preference. */
 export function useTheme(): Theme {
-  return useSyncExternalStore(subscribe, currentTheme);
+  return useSyncExternalStore(subscribe, currentTheme, currentTheme);
 }
 
 /** Apply `theme` and remember it in this browser; it then overrides the system preference. */
@@ -46,5 +47,7 @@ export function chooseTheme(theme: Theme) {
   applyTheme();
 }
 
-systemDark.addEventListener('change', applyTheme);
-applyTheme();
+if (systemDark) {
+  systemDark.addEventListener('change', applyTheme);
+  applyTheme();
+}
