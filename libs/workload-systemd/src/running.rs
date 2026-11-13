@@ -126,10 +126,17 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 for name in &names {
                     jobs.push(self.manager.start_adopted(name).await?);
                 }
-                futures_util::future::try_join_all(
+                let started = futures_util::future::try_join_all(
                     jobs.into_iter().map(|job| self.manager.wait_started(job)),
                 )
-                .await?;
+                .await;
+                crate::journal::remember(
+                    std::path::Path::new(&self.run.artifacts),
+                    &self.scope,
+                    self.phases.last().unwrap(),
+                )
+                .await;
+                started?;
                 if matches!(role, Phase::Dora | Phase::System) {
                     for unit in self.phases.last().unwrap() {
                         crate::cgroup::verify_unit(
@@ -202,6 +209,14 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn stop(&mut self) -> StopRecord {
         let mut stopped = true;
+        for phase in &self.phases {
+            crate::journal::remember(
+                std::path::Path::new(&self.run.artifacts),
+                &self.scope,
+                phase,
+            )
+            .await;
+        }
         for (index, phase) in self.phases.iter_mut().enumerate().rev() {
             // Dataflows stop before the coordinator and daemon they run on.
             if index == 0

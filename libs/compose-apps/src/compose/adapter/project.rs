@@ -157,6 +157,8 @@ impl ComposeExecution<'_> {
             if !self.plan.services.contains_key(&service) {
                 return Err(invalid(format!("unexpected service {service}")));
             }
+            // Log persistence is independent of the container's execution outcome.
+            let _ = crate::journal::remember_container(&id, labels).await;
             let state = info
                 .state
                 .ok_or_else(|| invalid("Engine omitted container state"))?;

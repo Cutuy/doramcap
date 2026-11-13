@@ -162,6 +162,12 @@ impl RemoveRuntime {
                 units.push(self.manager.watch(name).await?);
             }
         }
+        let journal_run = tokio::fs::read_link(scope.directory.join(crate::journal::POINTER))
+            .await
+            .ok();
+        if let Some(artifacts) = &journal_run {
+            crate::journal::remember(artifacts, scope, &units).await;
+        }
         let results = futures_util::future::join_all(
             units
                 .iter_mut()
@@ -170,6 +176,11 @@ impl RemoveRuntime {
         .await;
         for result in results {
             result?;
+        }
+        if let Some(artifacts) = journal_run {
+            if let Some(executor) = self.executor.upgrade() {
+                let _ = workload_lifecycle::journal::finish(&executor, &artifacts).await;
+            }
         }
         // Remove accounting only after every owned service has stopped.
         self.executor
@@ -194,6 +205,7 @@ impl RemoveRuntime {
         remove_shm(scope)?;
         self.manager.manager.reload().await.map_err(error)?;
         remove_path(&scope.directory.join(crate::ACTIVE_RUN)).await?;
+        remove_path(&scope.directory.join(crate::journal::POINTER)).await?;
         let remaining = self.manager.remaining(scope).await?;
         if remaining.is_empty() {
             Ok(())

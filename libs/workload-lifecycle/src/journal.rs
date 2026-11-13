@@ -28,6 +28,61 @@ pub async fn load(artifacts: &Path) -> io::Result<LogIndex> {
     LogIndex::decode(bytes.as_slice()).map_err(io::Error::other)
 }
 
+/// Save newly observed identities without changing terminal results or numbered file positions.
+/// Missing indexes are created; unreadable indexes are preserved and reported as errors.
+pub async fn remember(
+    artifacts: &Path,
+    programs: impl IntoIterator<Item = ProgramLog>,
+) -> io::Result<()> {
+    let mut index = match load(artifacts).await {
+        Ok(index) => index,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => LogIndex::default(),
+        Err(error) => return Err(error),
+    };
+    let mut changed = false;
+    for program in programs {
+        if let Some(existing) = index.programs.iter_mut().find(|existing| {
+            existing.program_id == program.program_id
+                && (existing.match_kind == JournalMatchKind::SystemdInvocation as i32
+                    || existing.identity == program.identity)
+        }) {
+            if existing.state == LogState::Pending as i32 && existing.identity.is_empty() {
+                *existing = program;
+                changed = true;
+            }
+        } else {
+            index.programs.push(program);
+            changed = true;
+        }
+    }
+    if changed {
+        save(artifacts, &index).await
+    } else {
+        Ok(())
+    }
+}
+
+/// Export a previously saved run through its executor. Failures remain independent of cleanup.
+/// Missing indexes are accepted for runs created before journal export existed.
+pub async fn finish(executor: &orchestrator::LocalExecutor, artifacts: &Path) -> io::Result<()> {
+    let index = match load(artifacts).await {
+        Ok(index) => index,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    executor
+        .run::<ExportJournal>(ExportJournalInput {
+            artifacts: artifacts
+                .to_str()
+                .ok_or_else(|| io::Error::other("run path is not UTF-8"))?
+                .into(),
+            index: Some(index),
+        })
+        .await
+        .map_err(io::Error::other)?;
+    Ok(())
+}
+
 /// Atomically replace the private index and sync its file and directory.
 /// Call under the workflow's repository admission; failures leave the prior index readable.
 pub async fn save(artifacts: &Path, index: &LogIndex) -> io::Result<()> {
@@ -54,6 +109,7 @@ pub async fn save(artifacts: &Path, index: &LogIndex) -> io::Result<()> {
         .open(&temporary)
         .await?;
     file.write_all(&index.encode_to_vec()).await?;
+    file.flush().await?;
     file.sync_all().await?;
     tokio::fs::rename(temporary, directory.join(INDEX)).await?;
     tokio::fs::File::open(directory).await?.sync_all().await
@@ -218,6 +274,7 @@ async fn export_program(program: &mut ProgramLog, path: &Path) -> io::Result<()>
             file.write_all(line.as_bytes()).await?;
             program.entry_count += 1;
         }
+        file.flush().await?;
         file.sync_all().await
     };
     let diagnostic = async {

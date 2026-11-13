@@ -1061,7 +1061,7 @@ async fn placement_and_memlock_reach_the_process() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
-async fn abandoned_units_block_admission_until_explicit_cleanup() {
+async fn next_admission_cleans_abandoned_units() {
     // Arrange: a run dropped after readiness leaves its unit running.
     let fixture = Fixture::new("dropped");
     let (mut run, plan) = fixture.plan(
@@ -1081,18 +1081,7 @@ async fn abandoned_units_block_admission_until_explicit_cleanup() {
         _ = readiness => {}
     }
     assert!(active("doramcap-*-left.service").contains("active running"));
-    // Act: admission observes prior resources without changing them.
-    let (run, plan) = fixture.plan("r2", vec![]);
-    let error = runner
-        .run(run, plan, async {}, |_: &orchestrator::Event| {}, None)
-        .await
-        .unwrap_err();
-    // Assert
-    assert!(error.contains("--cleanup"), "{error}");
-    assert!(active("doramcap-*-left.service").contains("active running"));
-    assert!(!fixture.root.join("r2").exists());
-    // Act
-    runner.cleanup(&fixture.repo()).await.unwrap();
+    // Act: the next admission stops the abandoned run and exports its saved identities.
     let report = run_for_a_while(fixture.plan("r2", vec![])).await;
     // Assert
     assert!(report.successful(), "{report:#?}");

@@ -97,6 +97,9 @@ impl SystemdRunner {
             let mut executor = LocalExecutor::default();
             workload_lifecycle::cgroup::register(&mut executor, system_apps);
             crate::runtime::register(&mut executor, manager, scope.clone(), weak.clone());
+            executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
+                workload_lifecycle::journal::ExportJournal
+            });
             executor
         });
         executor
@@ -159,11 +162,29 @@ impl SystemdRunner {
         let manager = Rc::new(Manager::connect().await?);
         let remaining = manager.remaining(&scope).await?;
         if !remaining.is_empty() {
+            // Admission is already held; reset the prior run before preparing a new one.
             self.blocked = true;
-            return Err(format!(
-                "prior resources remain: {remaining:?}; run systemd_run --cleanup {}",
-                run.repository_root
-            ));
+            let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
+                crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
+            )));
+            let reset = Rc::new_cyclic(|weak| {
+                let mut executor = LocalExecutor::default();
+                workload_lifecycle::cgroup::register(&mut executor, system_apps);
+                crate::runtime::register(
+                    &mut executor,
+                    manager.clone(),
+                    scope.clone(),
+                    weak.clone(),
+                );
+                executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
+                    workload_lifecycle::journal::ExportJournal
+                });
+                executor
+            });
+            reset
+                .run::<crate::runtime::RemoveRuntime>(scope.clone())
+                .await
+                .map_err(error)?;
         }
         let mut executor = LocalExecutor::new(observer)
             .with_label(&run.id)
@@ -172,6 +193,9 @@ impl SystemdRunner {
         executor.register::<crate::DiscardRun>(|| crate::DiscardRun);
         executor.register::<WaitForRecordings>(|| WaitForRecordings);
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
+        executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
+            workload_lifecycle::journal::ExportJournal
+        });
         let system_apps = Rc::new(workload_lifecycle::cgroup::Group::new(Rc::new(
             crate::cgroup::SystemAppSlice::native(manager.clone(), &scope),
         )));
@@ -210,6 +234,25 @@ impl SystemdRunner {
             });
         }
         std::fs::write(scope.directory.join(crate::ACTIVE_RUN), &run.id).map_err(error)?;
+        let log_index = workload_lifecycle::journal::LogIndex {
+            programs: crate::app_ids(&plan)?
+                .into_iter()
+                .map(|id| workload_lifecycle::journal::ProgramLog {
+                    program_id: id,
+                    match_kind: workload_lifecycle::journal::JournalMatchKind::SystemdInvocation
+                        .into(),
+                    state: workload_lifecycle::journal::LogState::Pending.into(),
+                    ..Default::default()
+                })
+                .collect(),
+        };
+        let _ = workload_lifecycle::journal::save(Path::new(&run.artifacts), &log_index).await;
+        // This link locates the existing index; it stores no second identity format.
+        std::os::unix::fs::symlink(
+            &run.artifacts,
+            scope.directory.join(crate::journal::POINTER),
+        )
+        .map_err(error)?;
         self.blocked = true;
 
         let recordings: Vec<Recording> = run

@@ -606,6 +606,7 @@ impl PrepareRun {
             .map(PathBuf::from)
             .collect();
         excluded.extend([PathBuf::from(INPUTS_DIRECTORY), PathBuf::from(INPUT_RECORD)]);
+        excluded.push(PathBuf::from(workload_lifecycle::journal::DIRECTORY));
         excluded.extend(
             spec.dora_apps
                 .iter()

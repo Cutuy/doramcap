@@ -35,12 +35,12 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Work items**
 
-- [ ] systemd: read each unit's invocation ID after start and save it in the single
+- [x] systemd: read each unit's invocation ID after start and save it in the single
   `logs/index.pb`. Match its own output and the service manager's entries for it.
-- [ ] Compose: save each container's full container ID; skip containers with
+- [x] Compose: save each container's full container ID; skip containers with
   project-managed logging and list them as skipped.
-- [ ] Call the export step after every program stops, before cleanup finishes.
-- [ ] Apply the agreed choice for export after a Console crash.
+- [x] Call the export step after every program stops, before cleanup finishes.
+- [x] Apply the agreed choice for export after a Console crash.
 
 **Validation**
 

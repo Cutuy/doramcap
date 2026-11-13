@@ -322,7 +322,8 @@ impl ComposeConfiguration<'_> {
             let object = service
                 .as_object_mut()
                 .ok_or_else(|| invalid("invalid resolved service"))?;
-            if object.contains_key("logging") {
+            let journal_export = !object.contains_key("logging");
+            if !journal_export {
                 warnings.push(format!(
                     "{service_name}: logging configured by project; Console will not collect its logs"
                 ));
@@ -363,7 +364,10 @@ impl ComposeConfiguration<'_> {
                 .or_insert_with(|| json!({}))
                 .as_object_mut()
                 .ok_or_else(|| invalid("labels did not normalize to an object"))?;
-            if labels.contains_key(RUN_LABEL) || labels.contains_key(ARTIFACTS_LABEL) {
+            if labels.contains_key(RUN_LABEL)
+                || labels.contains_key(ARTIFACTS_LABEL)
+                || labels.contains_key(crate::journal::EXPORT_LABEL)
+            {
                 return Err(invalid(format!("reserved label {RUN_LABEL}")));
             }
             if labels.contains_key(CONTROLLER_LABEL) {
@@ -374,6 +378,10 @@ impl ComposeConfiguration<'_> {
             }
             labels.insert(RUN_LABEL.into(), json!(input.run));
             labels.insert(ARTIFACTS_LABEL.into(), json!(artifacts));
+            labels.insert(
+                crate::journal::EXPORT_LABEL.into(),
+                json!(journal_export.to_string()),
+            );
             services.insert(
                 service_name.clone(),
                 ComposeService {

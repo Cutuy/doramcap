@@ -5,6 +5,7 @@ pub mod compose;
 pub mod dora;
 mod evidence;
 pub mod experiment;
+pub mod journal;
 pub mod preparation;
 pub mod shared_dora;
 pub mod steps;

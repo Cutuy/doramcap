@@ -55,6 +55,9 @@ pub(super) fn attach(
         executor.register::<FinalizeOverlays>(|| FinalizeOverlays);
         use workload_lifecycle::recording::FinalizeRecordings;
         executor.register::<FinalizeRecordings>(|| FinalizeRecordings);
+        executor.register::<workload_lifecycle::journal::ExportJournal>(|| {
+            workload_lifecycle::journal::ExportJournal
+        });
         let dependency = adapter.clone();
         let child = weak.clone();
         executor.register::<PrepareRun>(move || PrepareRun {
