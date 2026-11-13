@@ -409,7 +409,7 @@ test('cleanup failure retains the lease and succeeds after repair', { skip: proc
   assert.equal(f.state().slots[0].lease, null);
 });
 
-test('publication release verifies the exact PR, deletes the local branch and preserves the remote', t => {
+test('publication release verifies the PR head commit under any branch name, deletes the local branch and preserves the remote', t => {
   // Arrange
   const f = fixture(t), slot = f.acquire();
   f.write(slot.path, 'source', 'published feature');
@@ -422,12 +422,12 @@ test('publication release verifies the exact PR, deletes the local branch and pr
   const args = ['release', '--owner', OWNER, '--token', slot.lease.token, '--pr', PR_URL];
 
   // Act / Assert
-  for (const mismatch of [{ url: `${PR_URL}0` }, { state: 'CLOSED' }, { headRefName: 'other' }, { headRefOid: 'stale' }]) {
+  for (const mismatch of [{ url: `${PR_URL}0` }, { state: 'CLOSED' }, { headRefOid: 'stale' }]) {
     f.mockPr(slot, mismatch);
     assert.match(f.command(...args).stderr, /PR must be published/);
     assert.equal(f.state().slots[0].lease.token, slot.lease.token);
   }
-  f.mockPr(slot);
+  f.mockPr(slot, { headRefName: 'pr-branch-with-another-name' });
   f.ok(...args);
   assert.equal(f.state().slots[0].lease, null);
   assert.equal(f.state().slots[0].last_pr, PR_URL);

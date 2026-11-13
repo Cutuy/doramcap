@@ -270,8 +270,8 @@ Remote branches are preserved.
         slot.last_local_integration = { branch: lease.branch, feature_head: featureHead, main_head: mainHead,
           authorization: 'User-requested local cherry-pick integration and release' };
       } else {
-        const pr = JSON.parse(run('gh', ['pr', 'view', values.pr!, '--json', 'url,state,headRefName,headRefOid'], path).toString());
-        if (pr.url !== values.pr || !['OPEN', 'MERGED'].includes(pr.state) || pr.headRefName !== lease.branch || pr.headRefOid !== featureHead) throw new Error('PR must be published for the leased branch at its current HEAD');
+        const pr = JSON.parse(run('gh', ['pr', 'view', values.pr!, '--json', 'url,state,headRefOid'], path).toString());
+        if (pr.url !== values.pr || !['OPEN', 'MERGED'].includes(pr.state) || pr.headRefOid !== featureHead) throw new Error('PR must be published at the leased checkout\'s current HEAD');
         slot.last_pr = pr.url;
       }
       cleanBuildOutputs(path);
