@@ -79,6 +79,7 @@ async fn serial_overlay_isolation_and_harvest() {
             bind_mounts: binds(std::slice::from_ref(&original)),
             policy: OverlayPolicy {
                 disposition: disposition.clone(),
+                ..Default::default()
             },
         })
         .await
@@ -828,7 +829,10 @@ async fn exhausted_destination(disposition: Disposition) {
         workspace: root.join("views"),
         bind_mounts: binds(&[plan(&artifacts, &source)]),
         artifacts,
-        policy: OverlayPolicy { disposition },
+        policy: OverlayPolicy {
+            disposition,
+            ..Default::default()
+        },
     })
     .await
     .unwrap();
@@ -1000,6 +1004,7 @@ async fn interrupted_copyback_child() {
             } else {
                 Disposition::WriteBack
             },
+            ..Default::default()
         },
     })
     .await
@@ -1340,10 +1345,12 @@ async fn hugetlbfs_and_shm_aliases_outside_dev_keep_native_sharing_and_coverage(
             read_only: false,
         }];
         // Act
-        let notes = changes::coverage_notes(&binds, &[], &artifacts, true)
+        let notes = changes::review_sources(&binds, &[], &artifacts, true, &[])
             .await
-            .unwrap();
+            .unwrap()
+            .notes;
         let sources = changes::prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             overlays: true,
             artifacts: artifacts.clone(),
             bind_mounts: binds.clone(),
@@ -1469,6 +1476,7 @@ async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
             },
         ];
         let sources = changes::prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             artifacts: artifacts.clone(),
             overlays: true,
             bind_mounts: bind_mounts.clone(),
@@ -1483,6 +1491,7 @@ async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
             bind_mounts,
             policy: OverlayPolicy {
                 disposition: disposition.clone(),
+                ..Default::default()
             },
         })
         .await
@@ -1598,6 +1607,7 @@ async fn upper_records_match_walk_reference_and_measure_unchanged_tree_listing()
         bind_mounts: plan(root.path(), &source),
         policy: OverlayPolicy {
             disposition: Disposition::Discard,
+            ..Default::default()
         },
     })
     .await

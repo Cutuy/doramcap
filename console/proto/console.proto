@@ -40,6 +40,7 @@ message Review {
   repeated LiveStream live_streams = 10;
   ReviewComparison comparison = 11;
   doramcap.filesystem.v1.WritePolicy write_policy = 12;
+  repeated doramcap.filesystem.v1.WritableFolder writable_folders = 13;
 }
 
 enum Phase {

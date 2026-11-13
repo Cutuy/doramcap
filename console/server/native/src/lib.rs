@@ -254,7 +254,7 @@ impl Execution {
                     let spec = match execution::launch(request)? {
                         execution::Launch::Compose(spec) => spec,
                         execution::Launch::Systemd(run, plan) => {
-                            let (snapshot, warnings) =
+                            let (snapshot, filesystem) =
                                 workload_systemd::review(&run, &plan).await?;
                             return tokio::task::spawn_blocking(move || {
                                 let data = std::path::Path::new(&run.artifacts)
@@ -270,7 +270,8 @@ impl Execution {
                                     )),
                                     machine,
                                     machine_error,
-                                    warnings,
+                                    warnings: filesystem.notes,
+                                    writable_folders: filesystem.folders,
                                     rejection: None,
                                 }
                                 .encode_to_vec())
@@ -311,6 +312,7 @@ impl Execution {
                         machine,
                         machine_error,
                         warnings: resolved.warnings,
+                        writable_folders: resolved.writable_folders,
                         rejection: None,
                     }
                     .encode_to_vec())

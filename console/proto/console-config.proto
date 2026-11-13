@@ -24,6 +24,8 @@ message ConsoleConfig {
   // Required host shm access for every run: PASSTHROUGH or BLOCKED.
   doramcap.launch.v1.HostShmAccess host_shm_access = 14;
   doramcap.filesystem.v1.WritePolicy write_policy = 15;
+  // Host folders whose overlapping mounts bypass overlays, tracking and write policy.
+  repeated string passthrough_folders = 16;
 }
 
 // Omitted fields preserve defaults; explicit zero is invalid.

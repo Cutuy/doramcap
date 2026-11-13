@@ -53,6 +53,8 @@ message RunPlan {
   repeated string private_records = 13;
   // Disposition of overlaid host writes; unspecified preserves write-back.
   doramcap.filesystem.v1.WritePolicy write_policy = 14;
+  // Absolute host folders; overlapping binds pass through without tracking or write policy.
+  repeated string passthrough_folders = 15;
 }
 
 // Per-preparation Dora facts consumed by launch adapters and runtime control.

@@ -24,6 +24,7 @@ message Inspection {
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
+  repeated doramcap.filesystem.v1.WritableFolder writable_folders = 8;
   repeated string warnings = 6; // Review notices; excluded from frozen launch identity.
   doramcap.compose.v1.Diagnostic rejection = 7; // Rejected inputs; plan and snapshot are absent.
 }

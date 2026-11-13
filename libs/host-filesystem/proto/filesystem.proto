@@ -70,6 +70,15 @@ enum SourceKind {
   SOURCE_KIND_RUN_OUTPUT = 2;
   SOURCE_KIND_HOST_SHARED_MEMORY = 3;
   SOURCE_KIND_UNTRACKED = 4;
+  SOURCE_KIND_PASSTHROUGH = 5;
+}
+
+// One writable host source at Review, grouped across apps. Run output folders are separate.
+message WritableFolder {
+  string source = 1;
+  repeated string apps = 2;
+  SourceKind kind = 3;
+  string reason = 4;
 }
 
 // A backend-resolved directory mount, with native access preserved by the backend.

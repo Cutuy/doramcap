@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { loadConfig, validateConfig } from '../src/config.js';
-import { capabilities, launch, live, wire } from '../src/native.js';
+import { filesystem } from '../src/file-changes.js';
+import { capabilities, execution, launch, live, wire } from '../src/native.js';
 import { selectApps, validateApps, appOptions, discover } from '../src/system-apps.js';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -197,4 +198,40 @@ test('launch profiles choose one config and add its outputs', () => {
   // Profiles of one app may share a recording ID; another app may not reuse it.
   validateApps([{ ...app, launchProfiles: [record, { ...other, recordings: record.recordings }] }]);
   assert.throws(() => validateApps([app, { ...app, id: 'second' }]));
+});
+
+test('passthrough folders accept absent absolute paths and reach shared Review classification', async () => {
+  // Arrange: real folders and a symlink exercise host identity without mounting anything.
+  const { symlink } = await import('node:fs/promises');
+  const { runPlan } = await import('../src/run-plan.js');
+  const root = await mkdtemp(join(tmpdir(), 'console-passthrough-match-'));
+  const source = join(root, 'source'), child = join(source, 'child'), alias = join(root, 'alias');
+  await mkdir(child, { recursive: true });
+  await symlink(source, alias);
+  const engine = await capabilities.open('', 1);
+  try {
+    assert.deepEqual(config().passthroughFolders, []);
+    for (const folder of ['relative', '']) assert.throws(() => validateConfig(config(`passthrough_folders:${JSON.stringify(folder)}`)), /passthrough_folders.*absolute/);
+    for (const [folder, mount, passed] of [
+      [source, source, true], [source, child, true], [child, source, true],
+      [join(source, 'absent'), source, true], [join(root, 'unrelated'), source, false],
+      [alias, child, true], [child, alias, true], [source + '-other', source, false],
+    ] as const) {
+      // Act: the same generated plan used by Console reaches the real shared resolver.
+      const settings = config(`passthrough_folders:${JSON.stringify(folder)}`);
+      validateConfig(settings);
+      const run = runPlan(settings, { id: 'match', project: root, artifacts: join(root, 'artifacts'), apps: [] }, '');
+      assert.deepEqual(run.passthroughFolders, [folder]);
+      const { warnings, writableFolders } = await engine.inspect(execution.RunRequest.create({ run, systemd: { programs: ['writer', 'other'].map(id => ({ id, argv: ['/bin/true'], binds: [{ source: mount, target: '/work' }] })) } }));
+      // Assert: Review uses the shared decision, with component boundaries and canonical aliases.
+      assert.equal(warnings.some(note => note.includes('not tracked: passed through by passthrough_folders')), passed, JSON.stringify({ folder, mount, warnings }));
+      assert.deepEqual(writableFolders.map(row => ({ source: row.source, apps: row.apps, kind: row.kind })), [{ source: mount === alias ? source : mount, apps: ['writer', 'other'], kind: passed ? filesystem.SourceKind.SOURCE_KIND_PASSTHROUGH : filesystem.SourceKind.SOURCE_KIND_OVERLAY }]);
+    }
+    const file = join(root, 'console.pbtxt');
+    const settings = config(`passthrough_folders:${JSON.stringify(join(root, 'not-created'))}`);
+    settings.projectRoot = root;
+    settings.accessSecretFile = "";
+    await writeFile(file, capabilities.formatConfig(settings));
+    assert.deepEqual((await loadConfig(file)).config.passthroughFolders, [join(root, 'not-created')]);
+  } finally { await engine.close(); await rm(root, { recursive: true, force: true }); }
 });
