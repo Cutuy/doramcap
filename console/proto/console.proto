@@ -119,6 +119,7 @@ message Status {
   string logs_error = 41;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
   doramcap.filesystem.v1.WritePolicy write_policy = 27;
+  repeated doramcap.filesystem.v1.WritableFolder writable_folders = 28;
 }
 message ConsoleError {
   string code = 1;
@@ -138,6 +139,7 @@ message Marker {
   repeated string profiles = 9;
   SystemAppSelection system_apps = 10;
   doramcap.filesystem.v1.WritePolicy write_policy = 13;
+  repeated doramcap.filesystem.v1.WritableFolder writable_folders = 14;
 }
 
 // One bounded, host-observed sample; absent values denote unavailable data.

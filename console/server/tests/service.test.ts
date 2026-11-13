@@ -952,3 +952,38 @@ test('shutdown during a failed result save retains published file evidence after
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('structured folder handling survives Review, completion and Result restoration', async () => {
+  // Arrange: the native engine supplies handling; Console preserves it as data.
+  const { filesystem } = await import('../src/file-changes.js');
+  const { root, config, engine, backend } = await fixture();
+  const inspect = engine.inspect.bind(engine);
+  const folders = [
+    { source: '/data/shared', apps: ['camera', 'recorder'], kind: filesystem.SourceKind.SOURCE_KIND_OVERLAY },
+    { source: '/run/robot', apps: ['camera'], kind: filesystem.SourceKind.SOURCE_KIND_PASSTHROUGH, reason: 'not tracked: passed through by passthrough_folders' },
+    { source: '/proc', apps: ['monitor'], kind: filesystem.SourceKind.SOURCE_KIND_UNTRACKED, reason: 'not tracked: pseudo-filesystem or device mount' },
+  ];
+  engine.inspect = async request => execution.Inspection.create({ ...await inspect(request), writableFolders: folders });
+  config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_KEEP;
+  let restored: ConsoleService | undefined, closed = false;
+  try {
+    // Act / Assert: Review exposes the structured source, apps, handling and reason.
+    const review = wire.Review.decode(await backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())));
+    assert.deepEqual(review.writableFolders.map(folder => filesystem.WritableFolder.toObject(filesystem.WritableFolder.create(folder))), folders);
+    const starting = backend.start(Buffer.from(wire.StartRequest.encode({ preparedId: review.preparedId, requestKey: 'folders' }).finish()));
+    await waitFor(() => engine.starts === 1); engine.release!(); await starting;
+    engine.update.result = execution.ExecutionResult.create({ boundaryClean: true, writersStopped: true, recordingFinalized: true });
+    const finished = wire.Status.decode(await backend.status());
+    assert.equal(finished.phase, wire.Phase.FINISHED);
+    assert.deepEqual(finished.writableFolders, review.writableFolders);
+    assert.deepEqual(wire.HistoryDetail.decode(await backend.historyRun(review.runId)).status!.writableFolders, review.writableFolders);
+    await backend.close(); closed = true;
+    // Act / Assert: restoration uses the saved list and policy, including when config changes.
+    config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_DISCARD;
+    restored = new ConsoleService(config, new Engine(), await Store.open(config.dataRoot));
+    await (restored as any).restore();
+    const status = wire.Status.decode(await restored.status());
+    assert.deepEqual(status.writableFolders, review.writableFolders);
+    assert.equal(status.writePolicy, filesystem.WritePolicy.WRITE_POLICY_KEEP);
+  } finally { await restored?.close(); if (!closed) await backend.close(); await rm(root, { recursive: true, force: true }); }
+});
