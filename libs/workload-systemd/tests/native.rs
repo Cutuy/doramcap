@@ -200,6 +200,10 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         .iter()
         .find(|event| event.invocation.step == "systemd.prepare")
         .unwrap();
+    let cgroups = events
+        .iter()
+        .find(|event| event.invocation.step == <workload_lifecycle::cgroup::SystemAppsCgroups as orchestrator::Step>::ID.unwrap())
+        .unwrap();
     let setup = events
         .iter()
         .find(|event| {
@@ -214,7 +218,11 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
                 && event.state == orchestrator::State::Succeeded
         })
         .unwrap();
-    assert_eq!(setup.invocation.dependencies, [prepared.invocation.id]);
+    let mut dependencies = setup.invocation.dependencies.clone();
+    dependencies.sort_unstable();
+    let mut expected = [prepared.invocation.id, cgroups.invocation.id];
+    expected.sort_unstable();
+    assert_eq!(dependencies, expected);
     assert!(
         removal
             .invocation
