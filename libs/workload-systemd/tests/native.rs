@@ -1081,7 +1081,25 @@ async fn next_admission_cleans_abandoned_units() {
         _ = readiness => {}
     }
     assert!(active("doramcap-*-left.service").contains("active running"));
-    // Act: the next admission stops the abandoned run and exports its saved identities.
+    // Act: reset succeeds, then Review rejects the new run before it owns runtime resources.
+    let (run, plan) = fixture.plan("rejected", vec![]);
+    let error = runner
+        .run_with_preflight(
+            run,
+            plan,
+            async {},
+            |_: &orchestrator::Event| {},
+            None,
+            |_| Err("rejected after reset".into()),
+        )
+        .await
+        .unwrap_err();
+    // Assert: rejection keeps the verified reset boundary clean.
+    assert_eq!(error, "rejected after reset");
+    assert!(!active("doramcap-*-left.service").contains("running"));
+    assert!(!fixture.root.join("rejected").exists());
+    assert!(!runner.blocked());
+    // Act: a subsequent admission still runs normally after the rejected preparation.
     let report = run_for_a_while(fixture.plan("r2", vec![])).await;
     // Assert
     assert!(report.successful(), "{report:#?}");

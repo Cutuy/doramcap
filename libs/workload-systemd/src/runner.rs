@@ -186,6 +186,7 @@ impl SystemdRunner {
                 .await
                 .map_err(error)?;
         }
+        self.blocked = false;
         let mut executor = LocalExecutor::new(observer)
             .with_label(&run.id)
             .capture_payloads(true);
