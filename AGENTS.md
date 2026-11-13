@@ -42,6 +42,7 @@ Use `.sudo-password` from the main checkout (first entry in `git worktree list -
 
 - Use focused checks for incremental changes. Reserve full CI for meaningful integration points, high-risk changes, or explicit requests. Avoid repeating full CI for each interaction. For plan-driven work, update the milestone checkboxes.
 - Show promising results to the user before validation finishes; clearly mark them provisional and continue testing and validation in the background.
+- Use installed headless Chrome/Chromium for browser checks. Check PATH, `~/.cache/ms-playwright` and bundled Playwright runtimes before reporting browser automation unavailable.
 - Profiles: local builds, runs, tests, and Clippy use `--release`; use `--profile ci` when needed. GitHub CI uses `--profile ci`. The ARM64 worker uses Cargo's default profiles for debug coverage. Use locked dependencies.
 - When full local CI is warranted, run these checks on the final source revision unless waived: [CI workflow](.github/workflows/ci.yml) library boundaries, formatting, default/all-feature Clippy and workspace tests, storage tests without default features, and snapshot synchronization tests. Build unprivileged; follow the capability-required test rules above.
 - Run ARM64 validation at PR integration points, when explicitly requested, or for high-risk changes inadequately covered on x86, unless waived. Report local and ARM64 results to the user separately, including skipped/blocked checks; targeted tests alone do not establish a full CI pass.
