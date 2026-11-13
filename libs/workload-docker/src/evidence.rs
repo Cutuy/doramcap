@@ -17,14 +17,14 @@ pub fn root(path: &Path) -> io::Result<File> {
 /// Open a descendant beneath `root`, rejecting symlinks and path escapes.
 /// Requires Linux openat2 support. Files must be regular; `directory` requests
 /// a directory instead. The returned descriptor is independent of `root`.
-pub fn open(root: &File, path: &str, directory: bool) -> io::Result<File> {
+pub fn open(root: &File, path: impl AsRef<Path>, directory: bool) -> io::Result<File> {
     let mut flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK;
     if directory {
         flags |= OFlags::DIRECTORY;
     }
     let fd = openat2(
         root,
-        path,
+        path.as_ref(),
         flags,
         Mode::empty(),
         ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,

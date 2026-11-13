@@ -5,13 +5,13 @@ mod runtime;
 use execution::{State, start};
 use napi::{
     Env, Error, Result, Status,
-    bindgen_prelude::{AsyncBlock, AsyncBlockBuilder, Buffer},
+    bindgen_prelude::{AsyncBlock, AsyncBlockBuilder, Buffer, Either},
 };
 use napi_derive::napi;
 use prost::Message;
 use std::{
     fs::File,
-    os::unix::{fs::OpenOptionsExt, io::IntoRawFd},
+    os::unix::{ffi::OsStrExt, fs::OpenOptionsExt, io::IntoRawFd},
     path::Path,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -149,9 +149,13 @@ pub fn lock_file(path: String) -> Result<FileLock> {
 
 /// Open a server-authorized regular file beneath a root; the caller owns the descriptor.
 #[napi]
-pub fn open_file(root: String, relative: String) -> Result<i32> {
+pub fn open_file(root: String, relative: Either<String, Buffer>) -> Result<i32> {
     let root = workload_docker::evidence::root(Path::new(&root)).map_err(failure)?;
-    workload_docker::evidence::open(&root, &relative, false)
+    let bytes = match relative {
+        Either::A(path) => path.into_bytes(),
+        Either::B(path) => path.to_vec(),
+    };
+    workload_docker::evidence::open(&root, Path::new(std::ffi::OsStr::from_bytes(&bytes)), false)
         .map(IntoRawFd::into_raw_fd)
         .map_err(failure)
 }

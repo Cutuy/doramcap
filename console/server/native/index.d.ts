@@ -34,7 +34,7 @@ export interface NativeCapabilities {
   /** Hold an exclusive process lock until close or handle release. */
   lockFile(path: string): { close(): void };
   /** Open a regular file beneath root; the caller authorizes access and closes the fd. */
-  openFile(root: string, relative: string): number;
+  openFile(root: string, relative: string | Buffer): number;
   /** Open the execution owner with contract version 1; an empty Docker socket opens without Docker. */
   open(socket: string, version: number): Promise<NativeExecution>;
 }
