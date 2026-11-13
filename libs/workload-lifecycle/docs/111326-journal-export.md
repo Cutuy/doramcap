@@ -2,7 +2,7 @@
 
 # Journal export
 
-Created November 13, 2026. Status: implementation in progress.
+Created November 13, 2026. Status: implemented; downloads follow #354.
 [Implementation plan](111326-journal-export-impl.md) ·
 [Application logs for a run](111026-run-logs.md), the follow-up to
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
@@ -42,6 +42,9 @@ never read each other's output.
 
 Numbered files keep program IDs out of file names. The log folder is never mounted into
 an app and is not in the change list. It follows run-folder retention.
+The index starts with pending identities and is replaced atomically after each export.
+Export streams one entry at a time without a file-size ceiling. Console displays indexes
+up to 1 MiB; a larger index shows unavailable and leaves the files on the host.
 
 ## Owners
 
@@ -69,5 +72,12 @@ an app and is not in the change list. It follows run-folder retention.
 | Export after a Console crash | Export during reset, or skip it | Owner chose export during reset from the single `logs/index.pb` written at start. Raise added recovery machinery if needed; skipping is the fallback. |
 | Persisted record | One index, or separate startup identities | Orchestrator approved one atomic `logs/index.pb`: pending identities, then export results. |
 | Reading the journal | `journalctl`, or a journal-reading crate | Owner chose `journalctl`; no new dependency. |
+| Text format | Calendar timestamp, or Unix seconds | Unix seconds and microseconds; escape line breaks and backslashes. |
+| Interrupted file | Replace it, or retain it | Retain the file and mark failed; count its complete saved entries. |
+| Compose recovery policy | Parse preparation records, or label containers | Freeze policy in a reserved internal container label; recover IDs from owned containers. |
+| systemd index locator | Duplicate identities, or point to the index | Private runtime symlink; the next admission resets the abandoned run. |
+| Invocation fields | Two fields, or native invocation matches | Use all four native invocation fields for program, manager and object entries. |
+| Console list | Saved status, or current index | Reread the index on Result and History; apply the explicit display budget. |
+| Change-list exclusion | Per workflow, or lifecycle step | The shared filesystem preparation step excludes `logs`. |
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.

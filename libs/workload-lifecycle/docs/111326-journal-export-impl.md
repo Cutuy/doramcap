@@ -1,6 +1,6 @@
 # Journal export: implementation plan
 
-Created November 13, 2026. Status: implementation in progress.
+Created November 13, 2026. Status: implemented; downloads follow #354.
 [Architecture](111326-journal-export.md). Replaces milestone 2 of the
 [run logs plan](111026-run-logs-impl.md).
 
@@ -22,14 +22,14 @@ Created November 13, 2026. Status: implementation in progress.
 - [x] Ask the journal to finish writing, then run `journalctl` once per program with its
   match and a timestamped plain text output. Stream into `logs/<n>.log`.
 - [x] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
-  (exported, skipped, failed), reason, entry count and size.
+  (pending, exported, skipped, failed), reason, entry count and size.
 - [x] Report export failure separately from the run outcome; keep written files.
 
 **Validation**
 
-- [ ] Adjacent runs with the same unit name read only their own entries.
-- [ ] Journal unavailable, retention loss and run storage full.
-- [ ] Files survive refresh and restart.
+- [x] Adjacent runs with the same unit name read only their own entries.
+- [x] Journal unavailable, retention loss and run storage full.
+- [x] Files survive refresh and restart.
 
 ## Milestone 2: Identities from both workflows
 
@@ -44,9 +44,9 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Validation**
 
-- [ ] Program failure, stop and cancellation still export.
-- [ ] Controller restart and interrupted export.
-- [ ] Measure identity loss for programs that exit almost at once.
+- [x] Program failure, stop and cancellation still export.
+- [x] Controller restart and interrupted export.
+- [x] Measure identity loss for programs that exit almost at once.
 
 ## Milestone 3: Logs in Console
 
@@ -60,8 +60,8 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Validation**
 
-- [ ] Logs list after restart.
-- [ ] Desktop and narrow-screen rendering.
+- [x] Logs list after restart.
+- [x] Desktop and narrow-screen rendering.
 
 ## Tests
 
