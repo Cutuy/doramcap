@@ -72,7 +72,7 @@ async fn resolution_rejects_invalid_identity_before_io() {
         // Assert
         let error = resolution.unwrap_err();
         assert!(
-            matches!(error, Error::Invalid(ref message) if message.starts_with("identity must"))
+            matches!(error, Error::Invalid { ref message, .. } if message.starts_with("identity must"))
         );
     }
 }
@@ -99,7 +99,7 @@ async fn scoped_resolution_rejects_noncanonical_or_nondirectory_roots_before_doc
             .await;
 
         // Assert
-        assert!(matches!(result, Err(Error::Invalid(message))
+        assert!(matches!(result, Err(Error::Invalid { message, .. })
             if message.contains("repository root must be an existing canonical absolute directory")));
     }
     server.await.unwrap();
@@ -191,7 +191,6 @@ fn state() -> ComposeProjectState {
                 },
             )]),
             diagnostics: vec![],
-            warnings: vec![],
             remove_volumes: false,
         }),
         containers: vec![Container {
@@ -597,7 +596,7 @@ async fn endpoint_rejects_a_replaced_image_before_routing_control() {
         .unwrap_err();
 
     // Assert
-    assert!(matches!(error, Error::Invalid(message) if message.contains("image changed")));
+    assert!(matches!(error, Error::Invalid { message, .. } if message.contains("image changed")));
     server.await.unwrap();
 }
 #[tokio::test]
@@ -757,7 +756,7 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         );
 
         // Act: freeze the same manifest used by inspection and launch.
-        let plan = adapter
+        let (plan, warnings) = adapter
             .configuration()
             .resolve(ResolveInput {
                 run: "run".into(),
@@ -791,10 +790,10 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         assert_eq!(plan.sha256, digest(&bytes));
         if logging.is_some() {
             assert!(changes.is_empty());
-            assert!(plan.warnings.iter().any(|message| message
+            assert!(warnings.iter().any(|message| message
                 == "worker: logging configured by project; Console will not collect its logs"));
         } else {
-            assert!(plan.warnings.is_empty());
+            assert!(warnings.is_empty());
             assert_eq!(changes.len(), 1);
             assert_eq!(changes[0]["original"], Value::Null);
             assert_eq!(changes[0]["effective"], json!({"driver":"journald"}));
@@ -828,7 +827,7 @@ async fn resolution_rechecks_journal_before_writing_a_launch_manifest() {
     };
 
     // Act / Assert: Review resolves with the journal available.
-    let plan = adapter
+    let (plan, _) = adapter
         .configuration()
         .resolve(input.clone())
         .await
@@ -897,16 +896,25 @@ async fn missing_journal_driver_rejects_defaults_and_preserves_explicit_logging(
 
         // Assert: only journal-dependent services require the host journal.
         if logging.is_none() {
+            let error = result.unwrap_err();
             assert!(
-                result
-                    .unwrap_err()
+                error
                     .to_string()
                     .contains("worker: Docker does not provide the journald logging driver")
+            );
+            let diagnostic = error.diagnostic("Review");
+            assert_eq!(diagnostic.kind, "validation");
+            assert!(
+                diagnostic
+                    .check
+                    .starts_with("libs/compose-apps/src/compose/adapter/configuration.rs:"),
+                "{}",
+                diagnostic.check
             );
             assert!(!root.path().join("workload.compose.json").exists());
             server.abort();
         } else {
-            assert_eq!(result.unwrap().warnings.len(), 1);
+            assert_eq!(result.unwrap().1.len(), 1);
             server.await.unwrap();
         }
     }

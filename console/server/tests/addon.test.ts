@@ -51,6 +51,38 @@ const doraApps = ['coordinator', 'daemon'].map((role) => {
 interface ConsoleHandle { close(): Promise<void>; status(): Promise<Buffer> }
 const openService=async(path:string)=>(await ConsoleService.open(path)).backend;
 
+test('native profile listing preserves a missing Compose file rejection', async () => {
+  // Arrange
+  const root = await mkdtemp(join(tmpdir(), 'console-profile-rejection-'));
+  const socket = join(root, 'docker.sock');
+  let mutations = 0;
+  const server = createServer((request, response) => {
+    if (request.method !== 'GET') mutations++;
+    response.setHeader('content-type', 'application/json');
+    response.end('{"ApiVersion":"1.45"}');
+  });
+  server.listen(socket);
+  await once(server, 'listening');
+  const owner = await capabilities.open(socket, 1);
+  try {
+    // Act / Assert: profile listing rejects before invoking Compose or creating resources.
+    await assert.rejects(owner.composeProfiles(execution.ComposeProfilesRequest.create({
+      runId: 'profile-rejection', repositoryRoot: root,
+      project: { key: 'workload', directory: root },
+    })), (error: Error & { check?: string }) => {
+      assert.ok(error.check?.startsWith('libs/compose-apps/src/compose/adapter/configuration.rs:'), String(error.check));
+      assert.equal(error.message, 'at least one Compose file is required');
+      return true;
+    });
+    assert.equal(mutations, 0);
+  } finally {
+    await owner.close();
+    server.close();
+    await once(server, 'close');
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('opens and closes twice without contacting Docker', async () => {
   // Arrange
   const directory = await mkdtemp(join(tmpdir(), 'console-addon-'));
@@ -239,7 +271,12 @@ test('unchanged Start passes preflight while changed commands reject before cont
   const wire=doramcap.console.v1;
   try {
     // Act / Assert: omitted logging rejects at Review on a host without journald.
-    await assert.rejects(handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())),/InvalidInput/);
+    await assert.rejects(handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())), (error: Error & { check?: string; detail?: string }) => {
+      assert.equal(error.message, 'InvalidInput');
+      assert.ok(error.check?.startsWith('libs/compose-apps/src/compose/adapter/configuration.rs:'), String(error.check));
+      assert.ok(error.detail?.includes('worker: Docker does not provide the journald logging driver'));
+      return true;
+    });
     assert.deepEqual(mutations,[]);
     const diagnosticFiles = await readdir(join(root,'data','diagnostics'));
     assert.ok((await Promise.all(diagnosticFiles.map(file => readFile(join(root,'data','diagnostics',file),'utf8'))))

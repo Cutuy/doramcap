@@ -1,12 +1,17 @@
 //! Compose configuration, execution and diagnostic failures.
 use super::Diagnostic;
+use std::panic::Location;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("selection contains no services")]
     EmptySelection,
-    #[error("{0}")]
-    Invalid(String),
+    /// Rejected input or precondition; `check` is the source line of the failed check.
+    #[error("{message}")]
+    Invalid {
+        message: String,
+        check: &'static Location<'static>,
+    },
     #[error("{operation}: {source}")]
     Engine {
         operation: String,
@@ -67,7 +72,8 @@ impl Error {
             Self::OutputLimit { .. } => d.kind = "output_limit".into(),
             Self::Io(_) => d.kind = "io".into(),
             Self::Json(_) => d.kind = "json".into(),
-            Self::Invalid(_) | Self::EmptySelection => {}
+            Self::Invalid { check, .. } => d.check = check.to_string(),
+            Self::EmptySelection => {}
         }
         d
     }
@@ -80,9 +86,13 @@ pub fn engine(operation: impl Into<String>, source: bollard::errors::Error) -> E
         source,
     }
 }
-/// Describe a rejected app configuration or workflow precondition.
+/// Reject an app configuration or workflow precondition at the caller's source line.
+#[track_caller]
 pub fn invalid(message: impl Into<String>) -> Error {
-    Error::Invalid(message.into())
+    Error::Invalid {
+        message: message.into(),
+        check: Location::caller(),
+    }
 }
 pub(crate) fn absent(error: &bollard::errors::Error) -> bool {
     matches!(
@@ -95,9 +105,10 @@ pub(crate) fn absent(error: &bollard::errors::Error) -> bool {
 }
 
 impl From<docker_engine::Error> for Error {
+    #[track_caller]
     fn from(error: docker_engine::Error) -> Self {
         match error {
-            docker_engine::Error::Invalid(message) => Self::Invalid(message),
+            docker_engine::Error::Invalid(message) => invalid(message),
             docker_engine::Error::Engine { operation, source } => {
                 Self::Engine { operation, source }
             }
@@ -108,9 +119,10 @@ impl From<docker_engine::Error> for Error {
 }
 
 impl From<host_filesystem::Error> for Error {
+    #[track_caller]
     fn from(error: host_filesystem::Error) -> Self {
         match error {
-            host_filesystem::Error::Invalid(message) => Self::Invalid(message),
+            host_filesystem::Error::Invalid(message) => invalid(message),
             host_filesystem::Error::Io(error) => Self::Io(error),
             host_filesystem::Error::Json(error) => Self::Json(error),
         }

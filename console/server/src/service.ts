@@ -56,7 +56,10 @@ const relayApp = (apps: App[]) => apps.find((app) => app.liveRelay);
 const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
 /** A browser error code that keeps its cause, when the cause says more than the code. */
 const failure = (code: string, cause: unknown) =>
-  Object.assign(new Error(code), { detail: errorCode(cause) === code ? '' : browserError(errorCode(cause)) });
+  Object.assign(new Error(code), {
+    detail: errorCode(cause) === code ? '' : browserError(errorCode(cause)),
+    check: (cause as { check?: string })?.check ?? '',
+  });
 
 /** The TypeScript application owns request coordination, browser state and persistence. */
 export class ConsoleService implements ConsoleBackend {
@@ -250,7 +253,7 @@ export class ConsoleService implements ConsoleBackend {
         })),
         systemApps: appOptions(this.config.apps.filter((app) => app.id !== RUN_SHM_APP), chosen, this.config.doraApps),
         recordings: outputs(apps),
-        warnings: inspected.plan?.warnings ?? [],
+        warnings: inspected.warnings,
         comparison: await this.reviewComparison(request.baselineRunId, id, project, apps, inspected),
       });
       this.prepared = {

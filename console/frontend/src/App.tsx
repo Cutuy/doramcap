@@ -16,7 +16,7 @@ import { StatusLabel } from './ui/StatusLabel';
 
 const active = new Set([Phase.STARTING, Phase.RUNNING, Phase.STOPPING]);
 const messages: Partial<Record<ApiError['code'], string>> = { InvalidInput: 'The project could not be reviewed. Check its Compose files and the selected profiles.', StaleReview: 'The project changed after review. Review it again.', Conflict: 'Another run or request is already active.', Busy: 'The Console is busy. Try again.', ImageDownload: 'An image could not be downloaded. Check network and registry access, then review again. Details: sudo journalctl -u "doramcap-console-*"', Stopped: 'Review cancelled.' };
-const message = (error: unknown) => error instanceof ApiError ? [messages[error.code] ?? 'The request could not be completed.', error.detail].filter(Boolean).join('\n') : 'Connection lost; run may still be active.';
+const message = (error: unknown) => error instanceof ApiError ? [messages[error.code] ?? 'The request could not be completed.', error.detail, error.check && `Check: ${error.check}`].filter(Boolean).join('\n') : 'Connection lost; run may still be active.';
 
 /**
  * The Console screens. `client` stays fixed for one mount; remount with a new `key` to replace it.

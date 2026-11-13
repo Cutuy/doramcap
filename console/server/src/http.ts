@@ -10,7 +10,7 @@ import { wire, type ConsoleBackend } from './native.js';
 import { routes, MEDIA_TYPE, LIMITS, ERROR_STATUS, isErrorCode, artifactRoute, historyCursor, runId, historyRunRoute, frame, type ErrorCode } from './generated/transport.js';
 
 export interface HttpOptions { backend: ConsoleBackend; secret: string; origin: string; assets: string }
-class HttpError extends Error { constructor(public status: number, public code: ErrorCode, public detail = '') { super(code); } }
+class HttpError extends Error { constructor(public status: number, public code: ErrorCode, public detail = '', public check = '') { super(code); } }
 const hash = (s: string) => createHash('sha256').update(s).digest();
 
 function equal(left: string, right: string): boolean {
@@ -50,9 +50,9 @@ function string(value: unknown): string {
 }
 function nativeError(error: unknown): HttpError {
   if (error instanceof HttpError) return error;
-  const value = error as { message?: string; code?: string; detail?: string };
+  const value = error as { message?: string; code?: string; detail?: string; check?: string };
   const code = value?.message ?? '';
-  if (isErrorCode(code)) return new HttpError(ERROR_STATUS[code], code, value.detail);
+  if (isErrorCode(code)) return new HttpError(ERROR_STATUS[code], code, value.detail, value.check);
   if (value?.code === 'QueueFull') return new HttpError(ERROR_STATUS.Busy, 'Busy');
   if (value?.code === 'Closing') return new HttpError(ERROR_STATUS.Closing, 'Closing');
   return new HttpError(500, 'Internal');
@@ -175,7 +175,7 @@ export function createConsoleServer(config: HttpOptions) {
     } catch (error) {
       if (response.headersSent) { response.destroy(); return; }
       const failure = nativeError(error);
-      reply(response, failure.status, routes.error.encode({ code: failure.code, message: failure.detail }).finish());
+      reply(response, failure.status, routes.error.encode({ code: failure.code, message: failure.detail, check: failure.check }).finish());
     }
   });
   return server;

@@ -1274,14 +1274,14 @@ async fn reset_probe(
             |_: &orchestrator::Event| {},
             None,
             |_| {
-                Err(compose_apps::compose::Error::Invalid(
-                    "reset-probe-complete".into(),
+                Err(compose_apps::compose::error::invalid(
+                    "reset-probe-complete",
                 ))
             },
         )
         .await;
     match result {
-        Err(compose_apps::compose::Error::Invalid(message))
+        Err(compose_apps::compose::Error::Invalid { message, .. })
             if message == "reset-probe-complete" =>
         {
             Ok(())

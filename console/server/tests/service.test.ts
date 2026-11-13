@@ -112,7 +112,7 @@ test('Review forwards the warning list without interpreting diagnostic text', as
   const inspect = engine.inspect.bind(engine);
   engine.inspect = async request => {
     const inspected = await inspect(request);
-    inspected.plan!.warnings = ['A reworded project logging notice'];
+    inspected.warnings = ['A reworded project logging notice'];
     inspected.plan!.diagnostics = ['worker: logging configured by project; internal diagnostic'];
     return inspected;
   };
@@ -122,6 +122,30 @@ test('Review forwards the warning list without interpreting diagnostic text', as
 
     // Assert
     assert.deepEqual(review.warnings, ['A reworded project logging notice']);
+  } finally {
+    await backend.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('Review preserves the failed check and saves the complete diagnostic', async () => {
+  // Arrange
+  const { root, config, engine, backend } = await fixture();
+  const detail = `worker: journal unavailable: ${'x'.repeat(3000)}`;
+  engine.inspect = async () => { throw Object.assign(new Error(detail), { check: 'configuration.rs:1' }); };
+  try {
+    // Act / Assert
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), (error: Error & { detail: string; check: string }) => {
+      assert.equal(error.message, 'InvalidInput');
+      assert.equal(error.check, 'configuration.rs:1');
+      assert.equal(error.detail.length, execution.Limit.MAX_ERROR_CHARS);
+      return true;
+    });
+    const { readdir } = await import('node:fs/promises');
+    const directory = join(config.dataRoot, 'diagnostics');
+    const diagnostics = await Promise.all((await readdir(directory)).map(file => readFile(join(directory, file), 'utf8')));
+    assert.ok(diagnostics.some(text => text.includes(detail)));
+    assert.equal(wire.Status.decode(await backend.status()).phase, wire.Phase.IDLE);
   } finally {
     await backend.close();
     await rm(root, { recursive: true, force: true });

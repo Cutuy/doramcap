@@ -303,7 +303,7 @@ pub fn start(state: &mut State, request: StartRequest) -> Reply {
                         if let Some(reply) = check.borrow_mut().take() {
                             let _ = reply.send(Err(error.into()));
                         }
-                        return Err(compose_apps::compose::Error::Invalid(error.into()));
+                        return Err(compose_apps::compose::error::invalid(error));
                     }
                     // Prepare declared recording directories before releasing execution.
                     use std::os::unix::fs::DirBuilderExt;

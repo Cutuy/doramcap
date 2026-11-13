@@ -152,6 +152,8 @@ pub struct ResolvedRun {
     pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
+    /// Notices shown to the user at Review.
+    pub warnings: Vec<String>,
     pub system_cgroup: Option<crate::cgroup::CgroupPlacement>,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
@@ -332,7 +334,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         .iter()
         .chain(&spec.system_apps)
         .chain(&spec.extra_apps);
-    let mut plan = adapter
+    let (mut plan, mut warnings) = adapter
         .configuration()
         .resolve(ResolveInput {
             repository_root: Some(
@@ -368,7 +370,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         eprintln!("warning: {warning}");
     }
     let effective = mounts::model(&plan, "filesystem manifest changed").await?;
-    plan.warnings.extend(
+    warnings.extend(
         host_filesystem::changes::coverage_notes(
             &mounts::directories(&mounts::binds(&plan.name, &effective)?),
             &docker_engine::filesystem::volume_sources(mounts::volumes(&plan, &effective)?),
@@ -392,6 +394,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         run,
         artifacts,
         plan,
+        warnings,
         system_cgroup,
         system_services,
         user_services,

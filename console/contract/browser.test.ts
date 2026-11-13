@@ -32,6 +32,8 @@ test(
       },
       prepare: async (input) => {
         const request = wire.PrepareRequest.decode(input);
+        if (request.profiles.includes('journal-unavailable'))
+          throw Object.assign(new Error('InvalidInput'), { check: 'configuration.rs:1', detail: 'raw journal failure' });
         selections.push(request.systemApps?.ids ?? undefined);
         return Buffer.from(wire.Review.encode({ preparedId: 'prepared', runId: 'run' }).finish());
       },
@@ -107,6 +109,13 @@ test(
     await client.prepare([], []);
     await client.prepare(['extra'], ['recorder']);
     assert.deepEqual(selections, [undefined, [], ['recorder']]);
+    await assert.rejects(client.prepare(['journal-unavailable']), (error: unknown) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.code, 'InvalidInput');
+      assert.equal(error.check, 'configuration.rs:1');
+      assert.equal(error.detail, 'raw journal failure');
+      return true;
+    });
     assert.equal((await client.start('run', 'accepted')).runId, 'run');
     assert.equal((await client.stop('run')).accepted, true);
     await assert.rejects(

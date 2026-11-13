@@ -24,6 +24,8 @@ message Inspection {
   }
   doramcap.system_config.v1.MachineState machine = 3;
   string machine_error = 5; // Observation failed; machine is absent.
+  repeated string warnings = 6; // Review notices; excluded from frozen launch identity.
+  doramcap.compose.v1.Diagnostic rejection = 7; // Rejected inputs; plan and snapshot are absent.
 }
 // List profiles declared by the project's Docker Compose files.
 message ComposeProfilesRequest {
@@ -31,7 +33,10 @@ message ComposeProfilesRequest {
   string repository_root = 2;
   doramcap.compose.v1.ComposeProject project = 3;
 }
-message ComposeProfiles { repeated string names = 1; }
+message ComposeProfiles {
+  repeated string names = 1;
+  doramcap.compose.v1.Diagnostic rejection = 2; // Rejected inputs; names are empty.
+}
 // Limits shared by the native addon and TypeScript server.
 enum Limit {
   LIMIT_UNSPECIFIED = 0;

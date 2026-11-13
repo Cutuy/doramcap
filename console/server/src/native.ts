@@ -29,6 +29,12 @@ type RawCapabilities = Omit<NativeCapabilities, 'parseConfig' | 'parseManifest' 
 };
 const addon = require('../build/console.node') as RawCapabilities;
 
+/** Raise a rejected Compose input as an error that keeps its failed check. */
+function reviewResult<T extends { rejection?: doramcap.compose.v1.IDiagnostic | null }>(result: T): T {
+  if (result.rejection) throw Object.assign(new Error(result.rejection.message ?? ''), { check: result.rejection.check ?? '' });
+  return result;
+}
+
 export const capabilities: NativeCapabilities = {
   formatConfig: (config) => addon.formatConfig(Buffer.from(wire.ConsoleConfig.encode(config).finish())),
   parseConfig: (text) => wire.ConsoleConfig.decode(addon.parseConfig(text)),
@@ -40,13 +46,13 @@ export const capabilities: NativeCapabilities = {
     const owner = await addon.open(socket, version);
     return {
       composeProfiles: async (request) =>
-        execution.ComposeProfiles.decode(
+        reviewResult(execution.ComposeProfiles.decode(
           await owner.composeProfiles(Buffer.from(execution.ComposeProfilesRequest.encode(request).finish())),
-        ),
+        )),
       inspect: async (request) =>
-        execution.Inspection.decode(
+        reviewResult(execution.Inspection.decode(
           await owner.inspect(Buffer.from(execution.RunRequest.encode(request).finish())),
-        ),
+        )),
       start: (request) =>
         owner
           .start(Buffer.from(execution.StartRequest.encode(request).finish()))

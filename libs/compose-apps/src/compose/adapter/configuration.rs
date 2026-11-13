@@ -114,7 +114,10 @@ impl ComposeConfiguration<'_> {
     /// Freeze supplied Compose inputs and pinned image IDs into private launch artifacts.
     /// Reject invalid settings, ownership collisions and missing images; partial artifacts may remain.
     /// Host mounts stay live; callers explicitly own container startup and cleanup.
-    pub(crate) async fn resolve(&self, input: ResolveInput) -> Result<ResolvedComposeProject> {
+    pub(crate) async fn resolve(
+        &self,
+        input: ResolveInput,
+    ) -> Result<(ResolvedComposeProject, Vec<String>)> {
         // Validate identities and normalize Compose under the stable repository project name.
         validate_name(&input.run)?;
         let project = input
@@ -392,7 +395,6 @@ impl ComposeConfiguration<'_> {
             sha256: String::new(),
             services,
             diagnostics,
-            warnings,
             remove_volumes: project.remove_volumes,
         };
         let execution = self.adapter.project(&plan);
@@ -445,7 +447,7 @@ impl ComposeConfiguration<'_> {
             )?,
         )
         .await?;
-        Ok(plan)
+        Ok((plan, warnings))
     }
 
     /// Require a registered driver and a reachable journal on the verified local Docker host.

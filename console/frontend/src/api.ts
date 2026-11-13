@@ -6,7 +6,7 @@ import type { Frame } from './streams';
 export * from './protocol';
 import { wire, routes, type Snapshot } from './protocol';
 export class ApiError extends Error {
-  constructor(public code: ErrorCode, public detail = '') {
+  constructor(public code: ErrorCode, public detail = '', public check = '') {
     super(code);
   }
 }
@@ -28,7 +28,7 @@ async function request<T>(
   if (bytes.length > LIMITS.frameBytes) throw new Error('API response exceeds limit');
   if (!response.ok) {
     const error = routes.error.decode(bytes);
-    throw new ApiError(isErrorCode(error.code) ? error.code : 'Internal', error.message);
+    throw new ApiError(isErrorCode(error.code) ? error.code : 'Internal', error.message, error.check);
   }
   if (response.status !== endpoint.status) throw new Error('Invalid API response status');
   return endpoint.response.decode(bytes);

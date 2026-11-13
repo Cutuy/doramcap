@@ -9,7 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "ComposeProject.completed_services",
         "ComposeProject.remove_volumes",
         "ComposeProject.manifest",
-        "ResolvedComposeProject.warnings",
         "StartInput.services",
         "StopInput.services",
         "StopInput.allow_volume_deletion",

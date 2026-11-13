@@ -111,7 +111,11 @@ message Status {
   FileChanges file_changes = 26;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
 }
-message ConsoleError { string code = 1; string message = 2; }
+message ConsoleError {
+  string code = 1;
+  string message = 2;
+  string check = 3; // Source line of the failed Compose check; empty for other failures.
+}
 message Marker {
   uint32 version = 1;
   string run_id = 2;
