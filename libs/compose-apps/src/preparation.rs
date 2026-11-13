@@ -85,7 +85,8 @@ pub struct PreparedRun {
     pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
-    pub system_cgroup: Option<crate::cgroup::CgroupPlacement>,
+    /// Run group placement whose path is the system group; absent when no service is placed.
+    pub cgroup: Option<crate::cgroup::CgroupPlacement>,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
@@ -154,7 +155,8 @@ pub struct ResolvedRun {
     pub plan: ResolvedComposeProject,
     /// Notices shown to the user at Review.
     pub warnings: Vec<String>,
-    pub system_cgroup: Option<crate::cgroup::CgroupPlacement>,
+    /// Run group placement whose path is the system group; absent when no service is placed.
+    pub cgroup: Option<crate::cgroup::CgroupPlacement>,
     pub system_services: Vec<String>,
     pub user_services: Vec<String>,
     pub mcap_services: Vec<String>,
@@ -241,15 +243,16 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         &mut system_services,
         spec.run_plan.host_shm_access,
     )?;
-    let system_cgroup = if !dora_services.is_empty()
+    let infrastructure = !dora_services.is_empty()
         || !system_services.is_empty()
-        || model["services"].get(SHM_SERVICE).is_some()
-    {
+        || model["services"].get(SHM_SERVICE).is_some();
+    let cgroup = if infrastructure || model::needs_user_cgroup(&model, &user_services) {
         let placement = crate::cgroup::placement(adapter, &spec).await?;
-        model::configure_system_cgroup(
+        model::configure_cgroups(
             &mut model,
             &[dora_services.clone(), system_services.clone()].concat(),
-            &placement.parent,
+            &user_services,
+            &placement,
         )?;
         Some(placement)
     } else {
@@ -395,7 +398,7 @@ pub async fn resolve(adapter: &DockerAdapter, spec: PrepareInput) -> Result<Reso
         artifacts,
         plan,
         warnings,
-        system_cgroup,
+        cgroup,
         system_services,
         user_services,
         mcap_services,
@@ -641,7 +644,7 @@ impl PrepareRun {
             run: resolved.run,
             artifacts: resolved.artifacts,
             plan: resolved.plan,
-            system_cgroup: resolved.system_cgroup,
+            cgroup: resolved.cgroup,
             system_services: resolved.system_services,
             user_services: resolved.user_services,
             mcap_services: resolved.mcap_services,

@@ -860,6 +860,62 @@ fn active(pattern: &str) -> String {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root and the system service manager"]
+async fn user_apps_run_in_the_user_slice_unless_their_unit_sets_its_own() {
+    // Arrange
+    let fixture = Fixture::new("user-slice");
+    let own = format!("own{}.slice", std::process::id());
+    let generated = fixture.root.join("generated-cgroup");
+    let adopted_cgroup = fixture.root.join("adopted-cgroup");
+    let adopted = fixture.repo().join("adopted.service");
+    std::fs::write(
+        &adopted,
+        format!(
+            "[Service]\nSlice={own}\nExecStart=/bin/sh -c 'cat /proc/self/cgroup > {}; exec sleep 300'\n",
+            adopted_cgroup.display()
+        ),
+    )
+    .unwrap();
+    let plan = fixture.plan(
+        "r1",
+        vec![SystemdPlan {
+            programs: vec![sees(
+                program(
+                    "reporter",
+                    &format!(
+                        "cat /proc/self/cgroup > {}; exec sleep 300",
+                        generated.display()
+                    ),
+                ),
+                &fixture,
+            )],
+            unit_files: vec![adopted.to_string_lossy().into()],
+            ..Default::default()
+        }],
+    );
+    // Act
+    let report = run_for_a_while(plan).await;
+    let _ = Command::new("systemctl").args(["stop", &own]).output();
+    // Assert
+    assert!(report.successful(), "{report:#?}");
+    let generated = std::fs::read_to_string(generated).unwrap();
+    assert!(
+        generated.contains("-user.slice/doramcap-")
+            && generated.trim_end().ends_with("-reporter.service"),
+        "{generated}"
+    );
+    let adopted = std::fs::read_to_string(adopted_cgroup).unwrap();
+    assert!(adopted.starts_with(&format!("0::/{own}/")), "{adopted}");
+    let prefix = report
+        .units
+        .iter()
+        .find_map(|unit| unit.unit.strip_suffix("-reporter.service"))
+        .unwrap();
+    let remaining = active(&format!("{prefix}*"));
+    assert!(remaining.trim().is_empty(), "{remaining}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and the system service manager"]
 async fn system_apps_start_before_user_apps_and_stop_cleanly() {
     // Arrange
     let fixture = Fixture::new("order");

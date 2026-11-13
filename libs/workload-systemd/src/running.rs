@@ -80,9 +80,11 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 }
             }
             let mut placement = self.scope.clone();
-            if matches!(role, Phase::Dora | Phase::System) {
-                placement.slice = crate::cgroup::native_name(&self.scope);
-            }
+            placement.slice = if role == Phase::User {
+                crate::cgroup::user_name(&self.scope)
+            } else {
+                crate::cgroup::native_name(&self.scope)
+            };
             let mut phase = crate::phase(&self.run, &self.plan, role);
             if role != Phase::Dora {
                 crate::dora::attach(&self.run, &mut phase)?;

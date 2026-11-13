@@ -1,41 +1,47 @@
 use super::{model::*, *};
 
 #[test]
-fn system_app_cgroup_placement_preserves_native_user_placement() {
+fn every_service_gets_its_own_group_except_user_set_parents() {
     use workload_lifecycle::launch::HostShmAccess;
     // Arrange
     let mut model = json!({"services":{
         "dora":{"image":"dora:local"},
         "monitor":{"image":"monitor:local", "cgroup_parent":"previous.slice"},
         SHM_SERVICE:{"image":"shm:local", "ipc":"shareable"},
-        "user":{"image":"user:local", "ipc":"private", "cgroup_parent":"application.slice"}
+        "user":{"image":"user:local", "ipc":"private", "cgroup_parent":"application.slice"},
+        "my-camera":{"image":"camera:local"}
     }});
     let original_user = model["services"]["user"].clone();
     let mut systems = vec!["monitor".into(), SHM_SERVICE.into()];
+    let placement = crate::cgroup::CgroupPlacement {
+        parent: "doramcap-compose-0123456789ab-ba9876543210-system.slice".into(),
+        path: String::new(),
+    };
+    let users = ["user".to_string(), "my-camera".to_string()];
+    assert!(needs_user_cgroup(&model, &users));
 
     // Act
     configure_shm(&mut model, &mut systems, HostShmAccess::Blocked as i32).unwrap();
-    configure_system_cgroup(
+    configure_cgroups(
         &mut model,
         &["dora".into(), "monitor".into()],
-        "experiment-system.slice",
+        &users,
+        &placement,
     )
     .unwrap();
 
-    // Assert
-    assert_eq!(
-        model["services"]["dora"]["cgroup_parent"],
-        "experiment-system.slice"
-    );
-    assert_eq!(
-        model["services"]["monitor"]["cgroup_parent"],
-        "experiment-system.slice"
-    );
+    // Assert: system parents are always generated; a user-set parent is kept.
+    let run = "doramcap-compose-0123456789ab-ba9876543210";
+    for (service, parent) in [
+        ("dora", format!("{run}-system-dora.slice")),
+        ("monitor", format!("{run}-system-monitor.slice")),
+        (SHM_SERVICE, format!(r"{run}-system-doramcap\x2dshm.slice")),
+        ("my-camera", format!(r"{run}-user-my\x2dcamera.slice")),
+    ] {
+        assert_eq!(model["services"][service]["cgroup_parent"], parent);
+    }
     assert_eq!(model["services"]["user"], original_user);
-    assert_eq!(
-        model["services"][SHM_SERVICE]["cgroup_parent"],
-        "experiment-system.slice"
-    );
+    assert!(!needs_user_cgroup(&model, &["user".into()]));
 }
 
 #[test]

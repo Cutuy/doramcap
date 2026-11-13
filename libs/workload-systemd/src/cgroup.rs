@@ -16,6 +16,11 @@ pub(crate) fn native_name(scope: &Scope) -> String {
     format!("{}-system.slice", scope.prefix)
 }
 
+/// Slice holding the run's user units, each in its own service group.
+pub(crate) fn user_name(scope: &Scope) -> String {
+    format!("{}-user.slice", scope.prefix)
+}
+
 /// Systemd owns native unit allocation and keeps its names out of the shared contract.
 pub struct SystemAppSlice {
     manager: Rc<Manager>,
@@ -84,12 +89,13 @@ impl SystemAppSlice {
     }
 
     async fn remove_slices(&self) -> Result<()> {
-        for name in [self.name(), self.parent()] {
+        let user = format!("{}-user.slice", self.prefix);
+        for name in [self.name(), user, self.parent()] {
             if self.manager.units(&name).await?.is_empty() {
                 continue;
             }
             let unit = self.manager.watch(&name).await?;
-            if name != self.parent()
+            if name == self.name()
                 && unit.unit.description().await.map_err(error)? != Self::description(&name)
             {
                 return Err(format!(

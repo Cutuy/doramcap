@@ -254,7 +254,7 @@ test('unchanged Start passes preflight while changed commands reject before cont
     const path=request.url??'';response.setHeader('content-type','application/json');
     if(request.method!=='GET'){mutations.push(path);response.writeHead(500);response.end('{}');}
     else if(path.endsWith('/version')) response.end('{"ApiVersion":"1.45"}');
-    else if(path.endsWith('/info')) response.end('{"OSType":"linux","LoggingDriver":"json-file","Plugins":{"Log":["json-file"]}}');
+    else if(path.endsWith('/info')) response.end('{"OSType":"linux","CgroupVersion":"2","CgroupDriver":"cgroupfs","LoggingDriver":"json-file","Plugins":{"Log":["json-file"]}}');
     else if(path.includes('/images/')) response.end('{"Id":"sha256:approved","Config":{}}');
     else if(/\/containers\/json|\/networks(?:\?|$)/.test(path)) response.end('[]');
     else if(/\/volumes(?:\?|$)/.test(path)) response.end('{"Volumes":[]}');
