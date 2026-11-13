@@ -100,10 +100,10 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 
 **Validation**
 
-- [ ] Keep and discard for system apps and user apps.
-- [ ] Keep-copy failure preserves uppers.
-- [ ] Console Review, Result and downloads after restart.
-- [ ] Headless Chromium policy and download actions.
+- [x] Keep and discard for system apps and user apps.
+- [x] Keep-copy failure preserves uppers.
+- [x] Console Review, Result and downloads after restart.
+- [x] Headless Chromium policy and download actions.
 
 ## Tests
 

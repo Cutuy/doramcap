@@ -83,7 +83,7 @@ for (const [form, policy] of [
     for await (const chunk of backend.fileChanges(review.runId, new AbortController().signal)) chunks.push(chunk);
     const rows = Buffer.concat(chunks).toString().trim().split('\n').map(line => JSON.parse(line));
     const host = rows.filter(row => row.type === 'change' && row.source === source);
-    if (policy === policies.WRITE_POLICY_WRITE_BACK) records.push(host.map(row => [row.pathDisplay, row.kind, row.before?.mode ?? null, row.after?.mode ?? null, ((row.after?.mode ?? 0) & 0o170000) === 0o100000 ? row.after?.size : null]));
+    if (policy === policies.WRITE_POLICY_WRITE_BACK) records.push(host.sort((a, b) => Buffer.compare(Buffer.from(a.path, 'base64'), Buffer.from(b.path, 'base64'))).map(row => [row.pathDisplay, row.kind, row.before?.mode ?? null, row.after?.mode ?? null, ((row.after?.mode ?? 0) & 0o170000) === 0o100000 ? row.after?.size : null]));
     const result = host.find(row => row.pathDisplay === 'result');
     assert.ok(result);
     if (policy === policies.WRITE_POLICY_WRITE_BACK) {

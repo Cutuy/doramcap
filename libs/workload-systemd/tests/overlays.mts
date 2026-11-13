@@ -117,15 +117,15 @@ try {
   console.log('PASS: discard preserves the host and still publishes file changes');
 
   for (const policy of ['WRITE_POLICY_KEEP', 'WRITE_POLICY_DISCARD']) {
-    for (const kind of ['system app', 'user app']) {
+    for (const kind of ['system', 'user']) {
       const file = `${policy}-${kind}`;
       writeFileSync(join(source, 'existing'), 'before');
       writeFileSync(join(source, 'removed'), 'remove');
-      const target = kind === 'user app' ? source : '/work';
+      const target = kind === 'user' ? source : '/work';
       const script = `echo modified >${target}/existing; rm ${target}/removed; echo changed >${target}/${file}; exec sleep 300`;
       const unit = join(repo, 'policy.service');
-      writeFileSync(unit, `[Service]\n${kind === 'user app' ? `BindPaths=${source}:${source}\n` : ''}ExecStart=/bin/sh -ec '${script}'\n`);
-      const plan = kind === 'system app'
+      writeFileSync(unit, `[Service]\n${kind === 'user' ? `BindPaths=${source}:${source}\n` : ''}ExecStart=/bin/sh -ec '${script}'\n`);
+      const plan = kind === 'system'
         ? `programs { id:"policy" argv:"/bin/sh" argv:"-ec" argv:${quote(script)} binds { source:${quote(source)} target:"/work" } }`
         : `unit_files:${quote(unit)}`;
       const input = inputs(plan, policy);
@@ -149,7 +149,7 @@ try {
         assert.equal(existsSync(join(kept, 'removed')), false);
         assert.equal(existsSync(join(scope, 'overlays')), false);
       } else assert.equal(existsSync(join(input.artifacts, 'kept')), false);
-      console.log(`PASS: ${kind} ${policy} preserves the host and reports added, modified and deleted files`);
+      console.log(`PASS: ${kind} app ${policy} preserves the host and reports added, modified and deleted files`);
     }
   }
 
