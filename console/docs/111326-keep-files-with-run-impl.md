@@ -1,6 +1,6 @@
 # Keep files with the run: implementation plan
 
-Created November 13, 2026. Status: milestone 1 in progress.
+Created November 13, 2026. Status: milestone 2 in progress.
 [Architecture](111326-keep-files-with-run.md). Terms follow the overlay design's
 [term list](111026-file-change-report.md#terms).
 
@@ -20,17 +20,17 @@ Created November 13, 2026. Status: milestone 1 in progress.
 
 - [x] Add `Disposition::Keep` with a kept-folder destination inside the run folder.
 - [x] Reuse write back's plan from `direct::inspect`; copy into `kept/<n>/` and record nothing on the host.
-- [ ] Verify type and size of every planned entry, sync, then remove the upper.
-- [ ] On failure keep the upper and report it; block verified cleanup.
-- [ ] Record the policy and each `n` to host folder mapping in the report.
+- [x] Verify every planned entry's type and regular-file and symlink sizes, sync, then remove the upper. Directory verification checks type; symlink size is its target length.
+- [x] On failure keep the upper and report it; block verified cleanup.
+- [x] Record the policy and each `n` to host folder mapping in the report.
 
 **Validation**
 
 - [x] Kept files match added and modified entries exactly.
-- [ ] Host folder byte-identical before and after.
+- [x] Host folder byte-identical before and after.
 - [x] Deletions reported, nothing removed.
-- [ ] Full disk and interrupted copy keep the upper.
-- [ ] Upper and run folder on different filesystems.
+- [x] Full disk and interrupted copy keep the upper.
+- [x] Upper and run folder on different filesystems.
 - [ ] Output folder files stay put under all three policies.
 - [ ] Discard keeps the change list and no files.
 

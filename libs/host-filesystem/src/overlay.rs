@@ -32,6 +32,27 @@ pub enum Disposition {
     Keep,
     Discard,
 }
+impl Disposition {
+    /// Resolve the shared policy; omitted values preserve write-back and unknown values fail.
+    pub fn from_policy(value: i32) -> Result<Self> {
+        use crate::filesystem_proto::WritePolicy;
+        match WritePolicy::try_from(value) {
+            Ok(WritePolicy::Unspecified | WritePolicy::WriteBack) => Ok(Self::WriteBack),
+            Ok(WritePolicy::Keep) => Ok(Self::Keep),
+            Ok(WritePolicy::Discard) => Ok(Self::Discard),
+            Err(_) => Err(invalid("unknown write_policy")),
+        }
+    }
+    /// Concrete policy written into the immutable filesystem checkpoint.
+    pub fn write_policy(&self) -> crate::filesystem_proto::WritePolicy {
+        use crate::filesystem_proto::WritePolicy;
+        match self {
+            Self::WriteBack => WritePolicy::WriteBack,
+            Self::Keep => WritePolicy::Keep,
+            Self::Discard => WritePolicy::Discard,
+        }
+    }
+}
 /// Per-run filesystem policy. Directory binds are isolated by default.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -785,7 +806,7 @@ fn verify_kept(target: &Path, plan: &direct::ApplyPlan) -> Result<()> {
         let path = target.join(std::ffi::OsStr::from_bytes(bytes));
         let actual = std::fs::symlink_metadata(&path)?;
         if actual.mode() & libc::S_IFMT != expected.mode & libc::S_IFMT
-            || actual.size() != expected.size
+            || (!actual.is_dir() && actual.size() != expected.size)
         {
             return Err(invalid(format!(
                 "kept copy differs from plan: {}",

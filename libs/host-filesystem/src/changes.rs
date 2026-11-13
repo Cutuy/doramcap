@@ -692,14 +692,19 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         &serde_json::to_vec_pretty(&result)?,
     )
     .await?;
-    publish_report(&input.sources.directory, &result).await?;
+    publish_report(&input.sources, input.overlays.as_ref(), &result).await?;
     Ok(result)
 }
 
 /// Sync every manifest and its folder, then atomically publish the completion checkpoint.
 /// Refuses to replace an existing checkpoint; a crash before linking leaves no report.
-async fn publish_report(directory: &Path, result: &FilesystemChanges) -> Result<()> {
+async fn publish_report(
+    sources: &FilesystemSources,
+    overlays: Option<&OverlaySet>,
+    result: &FilesystemChanges,
+) -> Result<()> {
     use prost::Message;
+    let directory = &sources.directory;
     for category in result.categories() {
         tokio::fs::File::open(&category.manifest)
             .await?
@@ -709,6 +714,28 @@ async fn publish_report(directory: &Path, result: &FilesystemChanges) -> Result<
     let folder = tokio::fs::File::open(directory).await?;
     folder.sync_all().await?;
     let report = crate::filesystem_proto::FileChangeReport {
+        write_policy: overlays.map_or(0, |set| set.policy.disposition.write_policy() as i32),
+        overlay_sources: overlays
+            .map(|set| {
+                set.trees
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tree)| {
+                        Ok(crate::filesystem_proto::OverlaySource {
+                            index: u32::try_from(index)
+                                .map_err(|_| invalid("too many overlay sources"))?,
+                            source: tree.source.as_os_str().as_bytes().to_vec(),
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .transpose()?
+            .unwrap_or_default(),
+        excluded: sources
+            .excluded
+            .iter()
+            .map(|path| path.as_os_str().as_bytes().to_vec())
+            .collect(),
         state: crate::filesystem_proto::ReportState::Complete as i32,
         categories: result
             .categories()
