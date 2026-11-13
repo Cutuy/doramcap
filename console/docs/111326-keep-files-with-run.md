@@ -83,6 +83,8 @@ saved size and a single hard-link name, and refuses all symlink components.
 | --- | --- | --- |
 | How a download names an entry | Saved change-list position or path bytes | Owner chose position; the saved report is stable. |
 | Copy verification | Type and size or also a content hash | Owner chose type and size, without hashes. Directory-size handling awaits a decision because filesystems report different sizes. |
+| Kept destination | Caller-supplied path or fixed run layout | Implementation derives `kept/<n>/` from the existing run records, avoiding another configuration input. |
+| Verification input | Rescan the copied upper or retain pre-copy metadata | Implementation retains expected metadata in the transfer plan. |
 
 ## Limits
 
