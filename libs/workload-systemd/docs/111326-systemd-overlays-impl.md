@@ -112,9 +112,9 @@ Terms follow the [overlay term list](../../../console/docs/111026-file-change-re
 
 **Validation**
 
-- [ ] Equal, inside, containing and unrelated folder matches.
-- [ ] Compose and systemd live sockets and direct writes beside an overlaid folder.
-- [ ] Review and Result in Chromium.
+- [x] Equal, inside, containing and unrelated folder matches.
+- [x] Compose and systemd live sockets and direct writes beside an overlaid folder.
+- [x] Review and Result in Chromium.
 
 Scripted regressions are TypeScript in [overlays.mts](../tests/overlays.mts).
 Capability-required tests build unprivileged and elevate only the test executable.

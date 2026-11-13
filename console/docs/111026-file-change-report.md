@@ -78,8 +78,7 @@ Recording basic metadata for it without walking the whole folder is later work.
 | Launch | Writable mounts Console overlays | Not tracked |
 | --- | --- | --- |
 | Compose service | Host folders in the Compose file | Named volumes. The container's own filesystem is read through Docker's diff as today. |
-| System app launched as a command | Host folders in the app's settings | Nothing else is writable for it. |
-| System app shipped as a unit file | Host folders in the app's settings | Writes outside its private root's binds. |
+| System app | Host folders in the app's settings | Nothing else is writable for it. |
 | User app | Host folders in `BindPaths=` | Writes anywhere else on the host. |
 | Holoscan | The project folder and extra data folders | Mounts the project sets in its own Docker options. |
 
@@ -111,7 +110,7 @@ overlay.
 - Console checks that a declared working directory exists where the app will run: when
   Review is produced, and again before anything is mounted or started. A missing one
   fails there, naming the app and the directory.
-- A service Console creates runs in a private root that holds only the system folders and
+- A system app runs in a private root that holds only the system folders and
   its declared mounts. Its working directory must be inside one of them; a host folder
   outside them is missing for the app.
 - A unit that writes `WorkingDirectory=-/path` accepts a missing directory, and Console
@@ -167,8 +166,7 @@ path, write back keeps the run's version.
 - **Inside the run:** any write through a declared mount, whichever app made it. Apps
   that mount the same host folder share one overlay. The record names the folder and
   the apps that mount it.
-- **Outside the run:** a process that is not part of the run, or a service from your own
-  unit file writing to a host path it did not declare.
+- **Outside the run:** a process that is not part of the run, or a user app writing to a host path it did not declare.
 
 ## One run
 
