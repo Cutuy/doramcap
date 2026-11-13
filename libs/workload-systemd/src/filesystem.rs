@@ -1,6 +1,7 @@
 //! Native mount resolution, working-directory checks and overlay source replacement.
 use crate::{
-    Bind, ConfigurationSnapshot, Result, RunPlan, Scope, SystemdPlan, error, manager::Manager,
+    Bind, ConfigurationSnapshot, Result, RunPlan, Scope, SystemdPlan, error,
+    manager::{MS_REC, Manager},
 };
 use host_filesystem::{
     changes::{self, FilesystemSources, SourcesInput},
@@ -15,7 +16,6 @@ use std::{
 
 const OVERLAY_DROP_IN: &str = "15-doramcap-overlays.conf";
 const WORKSPACE: &str = "overlays";
-const RECURSIVE: u64 = 16384;
 static REVIEWS: AtomicU64 = AtomicU64::new(0);
 type NativeBind = (String, String, bool, u64);
 
@@ -146,7 +146,7 @@ pub(crate) async fn resolve(
             })
             .collect();
         for (_, _, _, flags) in writable.iter().chain(&read_only) {
-            if *flags != 0 && *flags != RECURSIVE {
+            if *flags != 0 && *flags != MS_REC {
                 return Err(format!("{id}: unsupported native bind flags {flags}"));
             }
         }
@@ -332,7 +332,25 @@ fn effective(source: &str, target: &str, consumer: &str, overlays: &OverlaySet) 
 }
 
 /// Redirect typed binds without changing destination or access mode.
-pub(crate) fn redirect(plan: &mut SystemdPlan, overlays: &OverlaySet) -> Result<()> {
+pub(crate) fn redirect(
+    run: &mut RunPlan,
+    plan: &mut SystemdPlan,
+    overlays: &OverlaySet,
+) -> Result<()> {
+    if let Some(runtime) = &mut run.dora_runtime {
+        let directory = Path::new(&runtime.runtime_directory);
+        if let Some(tree) = overlays
+            .trees
+            .iter()
+            .find(|tree| directory.starts_with(&tree.source))
+        {
+            runtime.runtime_directory = tree
+                .merged
+                .join(directory.strip_prefix(&tree.source).unwrap())
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
     for (id, binds) in plan
         .programs
         .iter_mut()
@@ -346,7 +364,9 @@ pub(crate) fn redirect(plan: &mut SystemdPlan, overlays: &OverlaySet) -> Result<
 }
 
 fn quote(value: &str) -> String {
-    format!("\"{}\"", value.as_bytes().escape_ascii()).replace('%', "%%")
+    serde_json::to_string(value)
+        .expect("string serialization cannot fail")
+        .replace('%', "%%")
 }
 
 // Empty BindPaths= clears both native lists, so one writer always restores both.
@@ -362,11 +382,7 @@ fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
             lines.push_str(&format!(
                 "{property}={}{source}:{target}:{}\n",
                 if *optional { "-" } else { "" },
-                if *flags == RECURSIVE {
-                    "rbind"
-                } else {
-                    "norbind"
-                },
+                if *flags == MS_REC { "rbind" } else { "norbind" },
                 source = quote(&source),
                 target = quote(target)
             ));

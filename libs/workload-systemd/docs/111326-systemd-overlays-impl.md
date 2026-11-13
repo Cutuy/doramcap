@@ -1,6 +1,6 @@
 # systemd overlays: implementation plan
 
-Created November 13, 2026. Status: implementation in progress.
+Created November 13, 2026. Status: implemented.
 [Architecture](111326-systemd-overlays.md). Terms follow the overlay design's
 [term list](../../../console/docs/111026-file-change-report.md#terms).
 
@@ -48,13 +48,13 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 - [x] Delete the extra writable mount `private_root` adds for an undeclared working directory.
 - [x] Check declared working directories at Review and before mounting. For a system app,
   check inside its private root. Fail naming the app and directory.
-- [ ] Test that the Dora coordinator and daemon keep `/runtime` under their declared output folder.
+- [x] Test that the Dora coordinator and daemon keep `/runtime` under their declared output folder.
 
 **Validation**
 
 - [x] Writes stay out of the host folder during the run.
 - [x] Missing working directory fails at Review and Start.
-- [ ] Dora system apps start unchanged.
+- [x] Dora system apps start unchanged.
 
 ## Milestone 3: User apps
 
@@ -76,22 +76,24 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 
 **Work items**
 
-- [ ] Agree the shared step IDs with the user (see the architecture's decisions).
-- [ ] Stop all started units and wait until none holds an overlay, then run the shared
+- [x] Agree the shared step IDs with the user (see the architecture's decisions).
+- [x] Stop all started units and wait until none holds an overlay, then run the shared
   read, save, unmount and write-policy steps.
-- [ ] Add the shared file-change result to `SystemdRunReport` and carry it to Console's
+- [x] Add the shared file-change result to `SystemdRunReport` and carry it to Console's
   run result. Remove the "unavailable" case for systemd in `systemd.ts`.
-- [ ] Record overlay ownership so interrupted-run reset stops units, then discards overlays.
+- [x] Record overlay ownership so interrupted-run reset stops units, then discards overlays.
 
 **Validation**
 
-- [ ] Equivalent Compose and systemd fixtures give equivalent change records.
-- [ ] Write back reaches the host folder after the run.
-- [ ] Rollback, cancellation, busy overlay, report-save failure and Console restart.
-- [ ] Owned mounts and units gone after success.
-- [ ] Real systemd run shows File changes in Console.
+- [x] Equivalent Compose and systemd fixtures give equivalent change records.
+- [x] Write back reaches the host folder after the run.
+- [x] Rollback, cancellation, busy overlay, report-save failure and Console restart.
+- [x] Owned mounts and units gone after success.
+- [x] Real systemd run shows File changes in Console.
 
 ## Tests
 
 Capability-required tests build unprivileged and elevate only the test executable.
-Scripted end-to-end checks are TypeScript.
+Scripted end-to-end checks are TypeScript. Compare relative paths, change kinds,
+modes and regular-file sizes; timestamps and directory sizes depend on the backing
+filesystem. The manager exposes missing-ok working directories with a `!` prefix.

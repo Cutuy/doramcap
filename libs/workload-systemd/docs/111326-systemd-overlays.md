@@ -2,7 +2,7 @@
 
 # systemd overlays
 
-Created November 13, 2026. Status: implementation in progress.
+Created November 13, 2026. Status: implemented.
 [Implementation plan](111326-systemd-overlays-impl.md) ·
 [Overlays for writable mounts](../../../console/docs/111026-file-change-report.md), milestone 4.
 
@@ -24,7 +24,7 @@ run. Terms follow the overlay design's [term list](../../../console/docs/111026-
 | Unit | Declared writable mounts | How the overlay directory reaches it | Not tracked |
 | --- | --- | --- | --- |
 | System app | Writable binds in the app's settings | `BindPaths=` property of the transient unit, built in its private root | Nothing else is writable for it |
-| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and lists every entry again, in order, with overlay sources | Writes anywhere else on the host |
+| User app | `BindPaths=` in the unit and its drop-ins | Owned drop-in that resets `BindPaths=` and restores both bind lists, in order, with overlay sources | Writes anywhere else on the host |
 
 Console generates every system app's unit; a system app supplies no unit file.
 Console reads a user app's settings through the service manager and the captured
@@ -84,5 +84,7 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 - Overlays need the service manager to see mounts Console makes. The first milestone
   checks this on a real host and stops the plan if it fails.
 - A unit that writes outside its declared mounts is not tracked.
+- A required working directory inside `RootImage=` is rejected before launch; it
+  cannot be checked without mounting the image.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.

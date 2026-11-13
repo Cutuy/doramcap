@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::CString,
+    os::fd::AsRawFd,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
         fs::OpenOptionsExt,
@@ -140,27 +141,16 @@ fn cstr(path: &Path) -> Result<CString> {
 async fn mount(tree: &OverlayTree) -> Result<()> {
     let tree = tree.clone();
     tokio::task::spawn_blocking(move || {
-        for p in [&tree.source, &tree.upper, &tree.work] {
-            if p.to_str().is_none() {
-                return Err(invalid("non-UTF8 overlay source path"));
-            }
-            if p.as_os_str()
-                .as_bytes()
-                .iter()
-                .any(|b| b",:\\\n".contains(b))
-            {
-                return Err(invalid(format!(
-                    "unsupported OverlayFS option characters: {}",
-                    p.display()
-                )));
-            }
-        }
+        // Kernel path lookup through open directory FDs preserves literal option characters.
+        let source = std::fs::File::open(&tree.source)?;
+        let upper = std::fs::File::open(&tree.upper)?;
+        let work = std::fs::File::open(&tree.work)?;
         let target = cstr(&tree.merged)?;
         let options = CString::new(format!(
-            "lowerdir={},upperdir={},workdir={},index=on,metacopy=off,redirect_dir=off,xino=on",
-            tree.source.display(),
-            tree.upper.display(),
-            tree.work.display()
+            "lowerdir=/proc/self/fd/{},upperdir=/proc/self/fd/{},workdir=/proc/self/fd/{},index=on,metacopy=off,redirect_dir=off,xino=on",
+            source.as_raw_fd(),
+            upper.as_raw_fd(),
+            work.as_raw_fd()
         ))
         .unwrap();
         // SAFETY: all pointers are live NUL-terminated strings; kernel copies them.

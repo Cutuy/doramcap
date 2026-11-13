@@ -63,6 +63,12 @@ pub struct SystemdRunReport {
     /// Every unit this run started, including ones that failed during the run.
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    /// Stopped upper metadata, available only after its checkpoint is durably published.
+    #[serde(default)]
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    /// Write-back or discard result, available only after strict unmount succeeds.
+    #[serde(default)]
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 impl SystemdRunReport {
     pub fn successful(&self) -> bool {
@@ -143,7 +149,7 @@ impl SystemdRunner {
 
     /// Capture and freeze the same inputs as `inspect`, then call `preflight` after admission.
     /// A rejected callback removes its new private artifacts before any units start.
-    /// Native directories, executable files and references inside external units remain live.
+    /// Native directories, executable files and references inside user app units remain live.
     pub async fn run_with_preflight(
         &mut self,
         run: workload_lifecycle::launch::RunPlan,
@@ -281,6 +287,8 @@ impl SystemdRunner {
             diagnostics: Vec::new(),
             prepared,
             runtime: None,
+            filesystem_changes: None,
+            filesystem_results: None,
         };
         // Finish mount setup even if Stop arrives, then let the shared driver skip launch.
         // Dropping a mount future could leave a blocking mount syscall racing cleanup.
@@ -296,6 +304,7 @@ impl SystemdRunner {
         {
             Ok(runtime) => {
                 let redirected = crate::filesystem::redirect(
+                    &mut running.run,
                     &mut running.plan,
                     &runtime.value().filesystem.overlays,
                 );
@@ -330,6 +339,8 @@ impl SystemdRunner {
             cleanup_verified: outcome.cleanup.verified,
             units: removed.units,
             diagnostics,
+            filesystem_changes: removed.filesystem_changes,
+            filesystem_results: removed.filesystem_results,
         };
         let bytes = serde_json::to_vec_pretty(&report).map_err(error)?;
         tokio::fs::write(Path::new(&run.artifacts).join("report.json"), bytes)

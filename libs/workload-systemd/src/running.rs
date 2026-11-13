@@ -27,12 +27,16 @@ pub(crate) struct SystemdRunning {
     pub diagnostics: Vec<String>,
     pub prepared: Output<crate::PreparedRun>,
     pub runtime: Option<Output<crate::runtime::PreparedRuntime>>,
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 
 /// Unit results and failures handed back by removal.
 pub(crate) struct Removed {
     pub units: Vec<UnitExit>,
     pub diagnostics: Vec<String>,
+    pub filesystem_changes: Option<host_filesystem::changes::FilesystemChanges>,
+    pub filesystem_results: Option<host_filesystem::overlay::OverlayResults>,
 }
 
 impl workload_lifecycle::run::Running for SystemdRunning {
@@ -223,9 +227,30 @@ impl workload_lifecycle::run::Running for SystemdRunning {
                 }
             }
         }
+        let mut evidence_durable = true;
+        if stopped && let Some(runtime) = &self.runtime {
+            let filesystem = &runtime.value().filesystem;
+            let finalized = workload_lifecycle::capture::finalize(
+                &self.executor,
+                Input::new(host_filesystem::changes::CollectInput {
+                    sources: filesystem.sources.clone(),
+                    overlays: Some(filesystem.overlays.clone()),
+                    container_layers: None,
+                })
+                .after(runtime),
+                Some(filesystem.overlays.clone()),
+            )
+            .await;
+            for (operation, error) in finalized.failures {
+                self.diagnostics.push(format!("{operation}: {error}"));
+            }
+            evidence_durable = finalized.changes.is_some() && finalized.results.is_some();
+            self.filesystem_changes = finalized.changes;
+            self.filesystem_results = finalized.results;
+        }
         StopRecord {
             writers_stopped: stopped,
-            evidence_durable: true,
+            evidence_durable,
         }
     }
 
@@ -255,7 +280,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             }
         } else {
             self.diagnostics
-                .push("preserved: writers did not stop".into());
+                .push("preserved: shutdown or filesystem evidence incomplete".into());
             false
         };
         (
@@ -263,6 +288,8 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             Removed {
                 units,
                 diagnostics: self.diagnostics,
+                filesystem_changes: self.filesystem_changes,
+                filesystem_results: self.filesystem_results,
             },
         )
     }

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, watch } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, watch } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { once } from 'node:events';
@@ -14,7 +14,7 @@ const quote = JSON.stringify;
 const directory = (name: string) => { const path = join(root, name); mkdirSync(path, { recursive: true }); return path; };
 const repo = directory('repo');
 const source = directory('source');
-const readonly = directory('readonly');
+const readonly = directory('read-only space:é%n');
 writeFileSync(join(readonly, 'read'), 'read-only');
 const scope = `/run/doramcap/${createHash('sha256').update(repo).digest('hex').slice(0, 12)}`;
 let sequence = 0;
@@ -36,7 +36,7 @@ function review(input: ReturnType<typeof inputs>) {
 async function waitForFile(path: string) {
   const watcher = watch(resolve(path, '..'));
   try {
-    while (!existsSync(path)) await once(watcher, 'change', { signal: AbortSignal.timeout(15000) });
+    while (!existsSync(path) || statSync(path).size === 0) await once(watcher, 'change', { signal: AbortSignal.timeout(15000) });
   } finally { watcher.close(); }
 }
 
@@ -72,6 +72,9 @@ async function isolated(plan: string, file: string) {
   });
   assert.equal(report.execution_error, null, JSON.stringify(report));
   assert.equal(report.cleanup_verified, true, JSON.stringify(report));
+  assert.equal(report.filesystem_results.unmounted, true);
+  assert.ok(report.filesystem_changes.host_binds.counts.added > 0);
+  assert.equal(readFileSync(join(source, file), 'utf8').trim(), 'changed', 'write-back must happen after stop');
   assert.equal(readdirSync(scope).length, 0, 'owned runtime resources remain');
   console.log(`PASS: ${file} isolated until stop; runtime cleaned`);
   return { report, input };
@@ -90,7 +93,7 @@ try {
   await isolated(`programs { id:"created" argv:"/bin/sh" argv:"-ec" argv:"echo changed >/work/created; exec sleep 300" working_directory:"/work" binds { source:${quote(source)} target:"/work" } }`, 'created');
 
   const own = join(repo, 'own.service');
-  writeFileSync(own, `[Service]\nWorkingDirectory=-${root}/absent\nBindPaths=${source}:${source}\nBindReadOnlyPaths=${readonly}:${root}/read\nExecStart=/bin/sh -ec 'test "$(cat ${root}/read/read)" = read-only; echo changed >${source}/own; exec sleep 300'\n`);
+  writeFileSync(own, `[Service]\nWorkingDirectory=-${root}/absent\nBindPaths=${source}:${source}\nBindReadOnlyPaths=${quote(readonly).replaceAll('%', '%%')}:${root}/read\nExecStart=/bin/sh -ec 'test "$(cat ${root}/read/read)" = read-only; echo changed >${source}/own; exec sleep 300'\n`);
   mkdirSync(`${own}.d`);
   writeFileSync(join(`${own}.d`, '20-user.conf'), `[Service]\nBindPaths=-${root}/optional:${root}/optional:norbind\n`);
   const native = `unit_files:${quote(own)}`;
@@ -99,6 +102,95 @@ try {
   assert.match(inspected.stdout, /outside declared writable mounts are not tracked/);
   await isolated(native, 'own');
   console.log('PASS: optional user app working directory and read-only bind preserved; Review declares untracked writes');
+
+  const writer = (file: string, policy = '') => `${policy} programs { id:"writer" argv:"/bin/sh" argv:"-ec" argv:${quote(`echo changed >/work/${file}; exec sleep 300`)} binds { source:${quote(source)} target:"/work" } }`;
+  const discard = inputs(writer('discarded', 'discard_writes:true'));
+  const discarded = await run(discard, async () => {
+    const overlay = JSON.parse(readFileSync(join(discard.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+    await waitForFile(join(overlay.merged, 'discarded'));
+  });
+  assert.equal(discarded.filesystem_results.disposition, 'discard');
+  assert.equal(discarded.cleanup_verified, true);
+  assert.equal(existsSync(join(source, 'discarded')), false);
+  console.log('PASS: discard preserves the host and still publishes file changes');
+
+  const failed = inputs(`programs { id:"failure" argv:"/does-not-exist" binds { source:${quote(source)} target:"/work" } }`);
+  const rollback = await run(failed);
+  assert.ok(rollback.execution_error);
+  assert.equal(rollback.cleanup_verified, true, JSON.stringify(rollback));
+  console.log('PASS: launch failure rolls back owned overlays and units');
+
+  const saveFailure = inputs(writer('unsaved'));
+  const unsaved = await run(saveFailure, async () => {
+    const overlay = JSON.parse(readFileSync(join(saveFailure.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+    await waitForFile(join(overlay.merged, 'unsaved'));
+    mkdirSync(join(saveFailure.artifacts, 'filesystem/report.pb'));
+  });
+  assert.equal(unsaved.filesystem_changes, null);
+  assert.equal(unsaved.filesystem_results, null);
+  assert.equal(unsaved.cleanup_verified, false);
+  assert.equal(existsSync(join(source, 'unsaved')), false);
+  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  console.log('PASS: report-save failure preserves uppers; reset discards them');
+
+  let holder: ReturnType<typeof spawn> | undefined;
+  const busy = inputs(writer('busy'));
+  try {
+    const report = await run(busy, async () => {
+      const overlay = JSON.parse(readFileSync(join(busy.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+      await waitForFile(join(overlay.merged, 'busy'));
+      holder = spawn(process.execPath, ['-e', 'process.stdout.write("READY"); process.stdin.resume()'], { cwd: overlay.merged, stdio: ['pipe', 'pipe', 'pipe'] });
+      await once(holder.stdout!, 'data');
+    });
+    assert.equal(report.filesystem_results, null);
+    assert.equal(report.cleanup_verified, false);
+    assert.match(report.diagnostics.join(' '), /busy/i);
+    assert.equal(existsSync(join(source, 'busy')), false);
+  } finally {
+    if (holder) { const closed = once(holder, 'close'); holder.stdin!.end(); await closed; }
+    assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  }
+  console.log('PASS: a busy overlay blocks removal; cleanup succeeds after its holder exits');
+
+  const lingering = join(repo, 'lingering.service');
+  writeFileSync(lingering, `[Service]\nKillMode=process\nWorkingDirectory=${source}\nBindPaths=${source}:${source}\nExecStart=/bin/sh -ec 'sleep 300 & echo $$! >${source}/child.pid; exec sleep 300'\n`);
+  let childPid = 0;
+  try {
+    const input = inputs(`unit_files:${quote(lingering)}`);
+    const report = await run(input, async () => {
+      const overlay = JSON.parse(readFileSync(join(input.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+      await waitForFile(join(overlay.merged, 'child.pid'));
+      childPid = Number(readFileSync(join(overlay.merged, 'child.pid'), 'utf8').trim());
+      assert.ok(childPid > 0);
+    });
+    assert.equal(report.writers_stopped, false);
+    assert.equal(report.filesystem_changes, null);
+    assert.equal(report.cleanup_verified, false);
+    assert.match(report.diagnostics.join(' '), /processes remain/);
+  } finally {
+    if (childPid) process.kill(childPid, 'SIGTERM');
+    const deadline = Date.now() + 5000;
+    while (childPid && existsSync(`/proc/${childPid}`) && Date.now() < deadline) await new Promise(done => setTimeout(done, 10));
+    assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  }
+  console.log('PASS: inactive units with live descendants cannot publish changes or release overlays');
+
+  // Deliberate controller crash after readiness, followed by the next admission's explicit reset.
+  const interrupted = inputs(writer('interrupted'));
+  const controller = spawn(binary, [interrupted.runFile, interrupted.planFile], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  await new Promise<void>(done => controller.stderr.on('data', chunk => { stderr += chunk; if (stderr.includes('READY')) done(); }));
+  const overlay = JSON.parse(readFileSync(join(interrupted.artifacts, 'overlays/prepared.json'), 'utf8')).trees[0];
+  await waitForFile(join(overlay.merged, 'interrupted'));
+  const crashed = once(controller, 'close');
+  controller.kill('SIGKILL');
+  await crashed;
+  assert.equal(existsSync(join(source, 'interrupted')), false);
+  assert.equal(spawnSync(binary, ['--cleanup', repo]).status, 0);
+  assert.equal(existsSync(join(source, 'interrupted')), false);
+  assert.equal(existsSync(join(scope, 'overlays')), false);
+  console.log('PASS: controller restart stops old writers before discarding leftover overlays');
+
 } finally {
   const cleanup = spawnSync(binary, ['--cleanup', repo], { encoding: 'utf8' });
   assert.equal(cleanup.status, 0, cleanup.stderr);

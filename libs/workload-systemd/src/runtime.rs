@@ -16,6 +16,12 @@ pub(crate) fn register(
     scope: Scope,
     child: Weak<LocalExecutor>,
 ) {
+    executor.register::<workload_lifecycle::capture::CollectFilesystemChanges>(|| {
+        workload_lifecycle::capture::CollectFilesystemChanges
+    });
+    executor.register::<workload_lifecycle::capture::FinalizeOverlays>(|| {
+        workload_lifecycle::capture::FinalizeOverlays
+    });
     let setup_manager = manager.clone();
     executor.register::<PrepareRuntime>(move || PrepareRuntime {
         manager: setup_manager.clone(),
