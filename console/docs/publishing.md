@@ -8,5 +8,6 @@ builds on x86_64 and ARM64 runners, then:
 3. Packages one archive per architecture. Packaging runs without registry credentials
    and rejects any image users cannot pull for both architectures.
 4. Generates `install.sh` with both archive hashes and publishes the GitHub release as Latest.
+5. Points each image's `latest` tag at that release's verified multi-arch digest.
 
 GHCR packages must be public. Enable immutable releases in the repository settings.

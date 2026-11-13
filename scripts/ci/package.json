@@ -6,7 +6,7 @@
     "node": ">=26.13.0"
   },
   "scripts": {
-    "test": "node --test test-boundaries.mts test-dora-release.mts test-prepare-build.mts test-snapshot.mts test-worker-runtime.mts macos-linux/test-*.mts wsl2/test-*.mts",
+    "test": "node --test test-boundaries.mts test-dora-release.mts test-release-images.mts test-prepare-build.mts test-snapshot.mts test-worker-runtime.mts macos-linux/test-*.mts wsl2/test-*.mts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
