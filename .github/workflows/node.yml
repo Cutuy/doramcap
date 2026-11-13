@@ -6,6 +6,7 @@ on:
     tags: ['console-v*']
     paths: &node-inputs
       - '.github/workflows/node.yml'
+      - '.agents/**'
       - '.node-version'
       - 'scripts/ci/**'
       - 'console/**'
@@ -69,6 +70,7 @@ jobs:
         run: |
           npm --prefix scripts/ci test
           npm --prefix scripts/ci run typecheck
+          node --test .agents/skills/worktree-pool/scripts/pool.test.ts
       - name: Test Node suites
         run: node scripts/ci/test-node.mts
       - name: Build Project Explorer
