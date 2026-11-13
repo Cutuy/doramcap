@@ -3,7 +3,8 @@ import { doramcap } from './generated/console';
 const { WritePolicy } = doramcap.filesystem.v1;
 export const writePolicyLabel = (policy: number | null | undefined) =>
   policy === WritePolicy.WRITE_POLICY_KEEP ? 'Keep with the run'
-    : policy === WritePolicy.WRITE_POLICY_DISCARD ? 'Discard' : 'Write back';
+    : policy === WritePolicy.WRITE_POLICY_DISCARD ? 'Discard'
+      : policy == null || policy === WritePolicy.WRITE_POLICY_UNSPECIFIED || policy === WritePolicy.WRITE_POLICY_WRITE_BACK ? 'Write back' : 'Unknown';
 
 /** The saved run policy and its retained-file location. */
 export function WritePolicySetting({ policy, kept }: { policy?: number | null; kept?: string | null }) {

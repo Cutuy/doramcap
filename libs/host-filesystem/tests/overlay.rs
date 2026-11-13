@@ -1465,7 +1465,15 @@ async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
     std::fs::write(source.join("edit"), b"before").unwrap();
     std::fs::write(source.join("gone"), b"original").unwrap();
     let cross_fs = tempfile::tempdir_in("/dev/shm").unwrap();
-    for index in 0..2 {
+    for (index, disposition) in [
+        Disposition::Keep,
+        Disposition::Keep,
+        Disposition::Discard,
+        Disposition::WriteBack,
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let artifacts = if index == 0 {
             root.path()
         } else {
@@ -1501,7 +1509,7 @@ async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
             workspace: root.path().join(format!("views-{index}")),
             bind_mounts,
             policy: OverlayPolicy {
-                disposition: Disposition::Keep,
+                disposition: disposition.clone(),
             },
         })
         .await
@@ -1531,43 +1539,52 @@ async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
                 .as_slice(),
         )
         .unwrap();
-        assert_eq!(
-            report.write_policy,
-            host_filesystem::filesystem_proto::WritePolicy::Keep as i32
-        );
+        assert_eq!(report.write_policy, disposition.write_policy() as i32);
         assert_eq!(
             report.overlay_sources[0].source,
             source.as_os_str().as_bytes()
         );
         let result = finalize(set.clone()).await.unwrap();
         // Assert
-        assert_eq!(result.paths, vec![artifacts.join("kept/0")]);
-        assert_eq!(
-            std::fs::read(artifacts.join("kept/0/edit")).unwrap(),
-            b"after"
-        );
-        assert_eq!(
-            std::fs::read(artifacts.join("kept/0/new")).unwrap(),
-            b"kept"
-        );
-        assert!(!artifacts.join("kept/0/gone").exists());
-        assert_eq!(
-            std::fs::read(artifacts.join("kept/0/nested/file")).unwrap(),
-            b"nested"
-        );
-        assert_eq!(
-            std::fs::read_link(artifacts.join("kept/0/link")).unwrap(),
-            PathBuf::from("nested/file")
-        );
+        if disposition == Disposition::Keep {
+            assert_eq!(result.paths, vec![artifacts.join("kept/0")]);
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/edit")).unwrap(),
+                b"after"
+            );
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/new")).unwrap(),
+                b"kept"
+            );
+            assert!(!artifacts.join("kept/0/gone").exists());
+            assert_eq!(
+                std::fs::read(artifacts.join("kept/0/nested/file")).unwrap(),
+                b"nested"
+            );
+            assert_eq!(
+                std::fs::read_link(artifacts.join("kept/0/link")).unwrap(),
+                PathBuf::from("nested/file")
+            );
+        } else {
+            assert!(!artifacts.join("kept").exists());
+        }
         assert!(
             rows.iter()
                 .any(|row| row.path == b"gone" && row.kind() == ChangeKind::Deleted)
         );
-        assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"before");
-        assert_eq!(std::fs::read(source.join("gone")).unwrap(), b"original");
-        assert!(!source.join("new").exists());
+        if disposition == Disposition::WriteBack {
+            assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"after");
+            assert!(!source.join("gone").exists());
+        } else {
+            assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"before");
+            assert_eq!(std::fs::read(source.join("gone")).unwrap(), b"original");
+            assert_eq!(std::fs::read_dir(&source).unwrap().count(), 2);
+            assert!(!source.join("new").exists());
+        }
         assert_eq!(std::fs::read(output.join("result")).unwrap(), b"output");
-        assert!(!set.workspace.exists());
+        if disposition != Disposition::WriteBack {
+            assert!(!set.workspace.exists());
+        }
     }
 }
 

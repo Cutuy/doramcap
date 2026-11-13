@@ -15,6 +15,7 @@ test('authentication, Origin, size and field validation precede native mutations
   let starts = 0; let stops = 0;
   const selections: (string[] | undefined)[] = [];
   const native: ConsoleBackend = {
+    openRunFile: async () => { throw new Error('Missing'); },
     update: async () => ({ data: Buffer.alloc(0), cursor: Buffer.alloc(0) }),
     frames: () => () => {},
     close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
@@ -100,6 +101,7 @@ test('live feed forwards binary Rust frames with opaque cursors at a bounded cad
   const cursors: number[] = [];
   const bridgeFrame = Buffer.from(live.Frame.encode({ stream: 'cpu-monitor_0', sequence: 7, payload: Buffer.from([1, 2, 3]) }).finish());
   const native: ConsoleBackend = {
+    openRunFile: async () => { throw new Error('Missing'); },
     frames: consume => { subscribers++; consume(bridgeFrame); return () => { subscribers--; }; },
     close: async () => {}, fileChanges: async function* () { throw new Error('Missing'); }, openArtifact: async () => { throw new Error('Missing'); },
     history: async () => Buffer.alloc(0), historyRun: async () => Buffer.alloc(0), historyCompare: async () => Buffer.alloc(0),

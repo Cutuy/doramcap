@@ -58,6 +58,21 @@ export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 export const FILE_CHANGES_ARTIFACT = 'file-changes.jsonl';
+export const RUN_FILE_ARTIFACT = 'run-file';
+/** Global zero-based change position in report-category order, or a saved log program ID. */
+export const runFilePath = (runId: string, source: doramcap.console.v1.IRunFileRequest) =>
+  `${artifactPath(runId, RUN_FILE_ARTIFACT)}?${source.changePosition != null ? `change=${String(source.changePosition)}` : `program=${encodeURIComponent(source.program ?? '')}`}`;
+/** Decode the single selector; malformed or duplicate selectors fail before opening files. */
+export function runFileRequest(query: URLSearchParams) {
+  const entries = [...query];
+  if (entries.length !== 1) throw new Error('InvalidInput');
+  const [key, value] = entries[0];
+  if (key === 'change' && /^(0|[1-9][0-9]{0,19})$/.test(value) && BigInt(value) <= 0xffffffffffffffffn)
+    return wire.RunFileRequest.fromObject({ changePosition: value });
+  if (key === 'program' && value && value.length <= LIMITS.stringLength)
+    return wire.RunFileRequest.create({ program: value });
+  throw new Error('InvalidInput');
+}
 /** The name a downloaded artifact is saved under. */
 export const artifactFilename = (kind: string) => kind.includes('.') ? kind : kind === 'report' ? 'console-report.json' : `${kind}.mcap`;
 export const artifactRoute = /^\/api\/artifacts\/([a-f0-9]{32})\/([A-Za-z0-9.-]+)$/;

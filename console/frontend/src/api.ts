@@ -1,4 +1,5 @@
-import { MEDIA_TYPE, LIMITS, artifactPath, historyRunPath, isErrorCode, type ErrorCode } from './generated/transport';
+import { MEDIA_TYPE, LIMITS, artifactPath, runFilePath, historyRunPath, isErrorCode, type ErrorCode } from './generated/transport';
+import type { doramcap } from './generated/console';
 export { PREPARING_RUN } from './generated/transport';
 import { readLive } from './live';
 import type { Frame } from './streams';
@@ -71,7 +72,7 @@ export function createClient(fetcher: typeof fetch = fetch) {
         fetcher,
       ),
     /** Where to download one artifact; undefined when this client has no file for it. */
-    artifactUrl: (runId: string, id: string): string | undefined => artifactPath(runId, id),
+    artifactUrl: (runId: string, id: string, source?: doramcap.console.v1.IRunFileRequest): string | undefined => source ? runFilePath(runId, source) : artifactPath(runId, id),
     live: (consume: (status: Snapshot) => void, signal: AbortSignal, frame?: (frame: Frame) => void) => readLive(consume, signal, fetcher, frame),
   };
 }

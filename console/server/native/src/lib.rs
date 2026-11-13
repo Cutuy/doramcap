@@ -148,6 +148,7 @@ pub fn lock_file(path: String) -> Result<FileLock> {
 }
 
 /// Open a server-authorized regular file beneath a root; the caller owns the descriptor.
+/// Relative paths accept UTF-8 or raw Unix bytes; every symlink component is refused.
 #[napi]
 pub fn open_file(root: String, relative: Either<String, Buffer>) -> Result<i32> {
     let root = workload_docker::evidence::root(Path::new(&root)).map_err(failure)?;

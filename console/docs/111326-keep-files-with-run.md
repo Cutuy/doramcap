@@ -59,7 +59,7 @@ The browser never sends a path. The server resolves the request against the save
 report, opens the file beneath its folder without following symlinks, and always sends
 it as an attachment with an encoded filename. Console's own records are never served.
 
-`GET /api/artifacts/<run id>/run-file.download?change=<position>` names a zero-based position
+`GET /api/artifacts/<run id>/run-file?change=<position>` names a zero-based position
 across the report's categories in saved order. The complete JSON Lines list includes
 each position; the bounded preview keeps those positions when it interleaves categories.
 `?program=<encoded ID>` reserves the same route for the journal-export integration.
@@ -87,10 +87,15 @@ saved size and a single hard-link name, and refuses all symlink components.
 | Verification input | Rescan the copied upper or retain pre-copy metadata | Implementation retains expected metadata in the transfer plan. |
 | Policy contract | Separate enums or one filesystem-owned enum | One `filesystem.v1.WritePolicy`, used by ConsoleConfig and the shared RunPlan. |
 | systemd before overlays | Ignore keep/discard or reject them | Reject non-default policies at Review until the sibling integrates overlays; RunPlan carries the policy for that integration. |
+| File opener prerequisite | Separate PR or separate commit under the active lease | Kept a separate commit here because the lease is bound to this branch; extended the existing confined opener to accept raw path bytes. |
+| Download selector | Path bytes or saved position/program | One `RunFileRequest` source, exposed as exactly one `change` or `program` query parameter on `run-file`. |
+| Position lookup | Add an index or stream manifests | Stream in saved category order and validate EOF before opening; add no persistent index. |
+| Hard-link aliases | Serve aliases or refuse multiple names | Refuse files with multiple hard-link names so an alias cannot expose records or another run. Kept copies already use separate files. |
 
 ## Limits
 
 - Run folders grow; Console has no pruning yet.
 - State an app carries between runs resets, because each run starts from the unchanged host folder.
+- Output files with multiple hard-link names have no download action.
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-11 to D-13; I-03, I-04, I-06, I-07.

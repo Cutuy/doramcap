@@ -613,6 +613,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
             let owned = [
                 PathBuf::from(FILESYSTEM_DIRECTORY),
                 PathBuf::from(overlay::RECORDS_DIRECTORY),
+                PathBuf::from(overlay::KEPT_DIRECTORY),
             ];
             for relative in sources.excluded.iter().chain(&owned) {
                 let record = sources.artifacts.join(relative);
@@ -734,6 +735,14 @@ async fn publish_report(
         excluded: sources
             .excluded
             .iter()
+            .chain(
+                [
+                    PathBuf::from(FILESYSTEM_DIRECTORY),
+                    PathBuf::from(overlay::RECORDS_DIRECTORY),
+                    PathBuf::from(overlay::KEPT_DIRECTORY),
+                ]
+                .iter(),
+            )
             .map(|path| path.as_os_str().as_bytes().to_vec())
             .collect(),
         state: crate::filesystem_proto::ReportState::Complete as i32,

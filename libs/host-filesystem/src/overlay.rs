@@ -10,6 +10,8 @@ use crate::filesystem_proto::{DirectoryMount, SourceKind};
 
 /// Run-relative directory owned by overlay preparation and finalization.
 pub const RECORDS_DIRECTORY: &str = "overlays";
+/// Run-relative root of verified retained copies.
+pub const KEPT_DIRECTORY: &str = "kept";
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -711,7 +713,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             .directory
             .parent()
             .ok_or_else(|| invalid("overlay records have no run folder"))?
-            .join("kept");
+            .join(KEPT_DIRECTORY);
         if keep {
             super::files::create_private_dir(&kept).await?;
         }

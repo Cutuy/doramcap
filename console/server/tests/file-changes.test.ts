@@ -190,6 +190,7 @@ test('a large category leaves preview room for the next category', async () => {
     // Assert: both categories appear and the bound still holds.
     const layers = view!.preview.filter(change => change.category === filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER);
     assert.equal(layers.length, 4);
+    assert.deepEqual(view!.preview.flatMap((row, index) => row.category === 2 ? [String(view!.previewPositions[index])] : []), ['3000', '3001', '3002', '3003']);
     assert.ok(view!.preview.some(change => change.category === filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND));
     assert.ok(view!.downloadable && view!.previewIncomplete);
     assert.ok(wire.FileChanges.encode(view!).finish().length <= FILE_CHANGE_PREVIEW_BYTES);

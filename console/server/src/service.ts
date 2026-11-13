@@ -32,7 +32,7 @@ import { Store } from './store.js';
 import { History } from './history.js';
 import { compareReview, compareRuns, machineChanges, readManifest, type Side } from './compare.js';
 import { sourceState } from './source.js';
-import { fileChangePreview, fileChangeAvailability, exportFileChanges, filesystem } from './file-changes.js';
+import { fileChangePreview, fileChangeAvailability, exportFileChanges, openChangedFile, filesystem } from './file-changes.js';
 import { Progress, MAX_PROGRESS_ROWS } from './progress.js';
 import { LiveRelay, bindRelay, liveStreams } from './live.js';
 import { availablePort } from './launch.js';
@@ -698,6 +698,13 @@ export class ConsoleService implements ConsoleBackend {
     const reference = run.fileChanges?.report;
     if (!reference || !run.fileChanges?.downloadable) throw new Error('Missing');
     yield* exportFileChanges(join(this.config.dataRoot, 'runs', id), reference, signal);
+  }
+  async openRunFile(id: string, source: doramcap.console.v1.IRunFileRequest, signal: AbortSignal) {
+    const run = this.artifactRun(id);
+    if (source.program != null || source.changePosition == null || !run.fileChanges?.report) throw new Error('Missing');
+    try {
+      return await openChangedFile(join(this.config.dataRoot, 'runs', id), run.fileChanges.report, BigInt(String(source.changePosition)), signal);
+    } catch { throw new Error('Missing'); }
   }
   private artifactRun(id: string) {
     if (!/^[a-f0-9]{32}$/.test(id) || this.marker?.runId === id && active(this.snapshot.phase)) throw new Error('Missing');

@@ -90,6 +90,7 @@ message FileChanges {
   repeated uint64 preview_positions = 9; // Parallel to preview; zero-based positions across saved categories in report order.
   string kept_directory = 10; // Absolute retained location when KEEP was selected.
   bool kept_complete = 11; // Every kept copy was verified and synced.
+  repeated uint64 downloadable_positions = 12; // Available regular files in the bounded preview.
 }
 message Status {
   Phase phase = 1;
@@ -157,7 +158,9 @@ enum HistoryState {
   HISTORY_INTERRUPTED = 6; // Console stopped before the run reported a result.
 }
 // Zero preserves recordings in saved entries that predate artifact kinds.
-enum ArtifactKind { RECORDING = 0; REPORT = 1; FILE_CHANGES = 2; }
+enum ArtifactKind { RECORDING = 0; REPORT = 1; FILE_CHANGES = 2; ARTIFACT_KIND_RUN_FILE = 3; }
+// Exactly one saved change-list position or journal program ID; never a path.
+message RunFileRequest { oneof source { uint64 change_position = 1; string program = 2; } }
 // One declared output; an absent size means no file exists on the host.
 message HistoryArtifact {
   string id = 1;

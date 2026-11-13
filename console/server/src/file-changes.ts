@@ -1,4 +1,6 @@
-import { createReadStream, closeSync } from 'node:fs';
+import { createReadStream, closeSync, fstatSync } from 'node:fs';
+import { realpath } from 'node:fs/promises';
+import Long from 'long';
 import { isAbsolute, join } from 'node:path';
 import type { ReadStream } from 'node:fs';
 import { capabilities, wire, browserError } from './native.js';
@@ -9,6 +11,7 @@ export const filesystem = doramcap.filesystem.v1;
 const CATEGORIES = [filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND, filesystem.StorageCategory.STORAGE_CATEGORY_CONTAINER_LAYER, filesystem.StorageCategory.STORAGE_CATEGORY_NAMED_VOLUME];
 const CHANGE_KINDS = [filesystem.ChangeKind.CHANGE_KIND_ADDED, filesystem.ChangeKind.CHANGE_KIND_MODIFIED, filesystem.ChangeKind.CHANGE_KIND_DELETED];
 const CHECKPOINT = 'filesystem/report.pb';
+const PRIVATE_DIRECTORIES = ['filesystem', 'overlays', 'kept'];
 type Reference = doramcap.filesystem.v1.IFileChangeReference;
 type Summary = doramcap.filesystem.v1.ICategorySummary;
 type View = typeof wire.FileChanges.prototype;
@@ -135,17 +138,31 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
       }
     }
     // Take one record from each category in turn so every category with changes shares the budget.
-    const streams = saved.categories.map(category => categoryChanges(runRoot, category.summary!));
+    const canonicalRoot = await realpath(runRoot);
+    let offset = 0n;
+    const streams = saved.categories.map(category => {
+      const stream = { changes: categoryChanges(runRoot, category.summary!), position: offset };
+      offset += count(category.summary!);
+      return stream;
+    });
     try {
       let active = streams;
       while (active.length && !view.previewIncomplete) {
         const remaining: typeof streams = [];
         for (const stream of active) {
-          const next = await stream.next();
+          const next = await stream.changes.next();
           if (next.done) continue;
+          const position = Long.fromString(String(stream.position++), true);
           view.preview.push(next.value);
+          view.previewPositions.push(position);
+          try {
+            closeSync(openChange(runRoot, canonicalRoot, saved, next.value).fd);
+            view.downloadablePositions.push(position);
+          } catch { /* This entry has no downloadable regular file. */ }
           if (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
-            view.preview.pop(); view.previewIncomplete = true;
+            view.preview.pop(); view.previewPositions.pop();
+            view.downloadablePositions = view.downloadablePositions.filter(value => String(value) !== String(position));
+            view.previewIncomplete = true;
             break;
           }
           remaining.push(stream);
@@ -154,7 +171,7 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
       }
     } finally {
       // Close manifests left unread; their tails are validated by export.
-      await Promise.all(streams.map(stream => stream.return(undefined)));
+      await Promise.all(streams.map(stream => stream.changes.return(undefined)));
     }
     view.downloadable = true;
   } catch (error) {
@@ -163,7 +180,11 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
     view.previewIncomplete = true;
   }
   while (wire.FileChanges.encode(view).finish().length > FILE_CHANGE_PREVIEW_BYTES) {
-    if (view.preview.length) { view.preview.pop(); view.previewIncomplete = true; }
+    if (view.preview.length) {
+      view.preview.pop(); const position = view.previewPositions.pop();
+      view.downloadablePositions = view.downloadablePositions.filter(value => String(value) !== String(position));
+      view.previewIncomplete = true;
+    }
     else if (view.coverageNotes.length) { view.coverageNotes.pop(); view.notesIncomplete = true; }
     else return wire.FileChanges.create({ state: filesystem.ReportState.REPORT_STATE_FAILED, error: 'File-change reference exceeds the display budget.' });
   }
@@ -198,9 +219,62 @@ export async function* exportFileChanges(runRoot: string, reference: Reference, 
       const record = filesystem.FileChange.toObject(change, JSON_OPTIONS);
       for (const side of ['before', 'after']) if (record[side]?.symlink != null)
         record[side].symlinkDisplay = displayPath(Buffer.from(record[side].symlink, 'base64'));
-      yield line({ type: 'change', ...record, pathDisplay: displayPath(change.path) });
+      yield line({ type: 'change', position: (total++).toString(), ...record, pathDisplay: displayPath(change.path) });
     }
-    total += count(summary);
   }
   yield line({ type: 'complete', changes: total.toString(), coverageComplete: saved.categories.every(c => c.summary!.coverageComplete) });
+}
+
+/** Resolve a zero-based position after validating every manifest through EOF; memory holds one record.
+ * Paths and roots come only from the saved checkpoint. Symlinks and private records fail closed.
+ */
+export async function openChangedFile(runRoot: string, reference: Reference, position: bigint, signal: AbortSignal) {
+  if (position < 0n) throw new Error('Missing');
+  const saved = await report(runRoot, reference, signal);
+  let index = 0n;
+  let selected: typeof filesystem.FileChange.prototype | undefined;
+  for (const category of saved.categories) {
+    for await (const change of categoryChanges(runRoot, category.summary!, signal)) {
+      if (index++ === position) selected = change;
+    }
+  }
+  signal.throwIfAborted();
+  if (!selected) throw new Error('Missing');
+  return openChange(runRoot, await realpath(runRoot), saved, selected);
+}
+
+function relativeBytes(path: Uint8Array) {
+  const bytes = Buffer.from(path);
+  if (!bytes.length || bytes.includes(0) || bytes.toString('latin1').split('/').some(part => !part || part === '.' || part === '..'))
+    throw new Error('Missing');
+  return bytes;
+}
+function beneath(path: Buffer, parent: Buffer) {
+  return !parent.length || path.equals(parent) || path.subarray(0, parent.length + 1).equals(Buffer.concat([parent, Buffer.from('/')]));
+}
+function openChange(runRoot: string, canonicalRoot: string, saved: typeof filesystem.FileChangeReport.prototype, change: typeof filesystem.FileChange.prototype) {
+  const REGULAR_FILE = 0o100000, FILE_TYPE = 0o170000;
+  if (change.category !== filesystem.StorageCategory.STORAGE_CATEGORY_HOST_BIND || change.kind === filesystem.ChangeKind.CHANGE_KIND_DELETED
+      || !change.after || ((change.after.mode ?? 0) & FILE_TYPE) !== REGULAR_FILE) throw new Error('Missing');
+  const path = relativeBytes(change.path);
+  const mappings = saved.overlaySources.filter(source => Buffer.from(source.source ?? []).equals(Buffer.from(change.source)));
+  let relative: Buffer;
+  if (mappings.length) {
+    if (mappings.length !== 1 || saved.writePolicy !== filesystem.WritePolicy.WRITE_POLICY_KEEP) throw new Error('Missing');
+    closeSync(descriptor(runRoot, 'overlays/results.json'));
+    relative = Buffer.concat([Buffer.from(`kept/${mappings[0].index}/`), path]);
+  } else {
+    if (change.source !== canonicalRoot && !change.source.startsWith(`${canonicalRoot}/`)) throw new Error('Missing');
+    const source = Buffer.from(change.source.slice(canonicalRoot.length + 1));
+    relative = relativeBytes(source.length ? Buffer.concat([source, Buffer.from('/'), path]) : path);
+    const excluded = [...PRIVATE_DIRECTORIES, 'console-report.json'].map(value => Buffer.from(value));
+    excluded.push(...saved.excluded.map(value => Buffer.from(value)));
+    if (excluded.some(parent => beneath(relative, parent))) throw new Error('Missing');
+  }
+  const fd = capabilities.openFile(runRoot, relative);
+  try {
+    const metadata = fstatSync(fd, { bigint: true });
+    if (!metadata.isFile() || metadata.nlink !== 1n || metadata.size !== integer(change.after.size)) throw new Error('Missing');
+    return { fd, filename: path.subarray(path.lastIndexOf(47) + 1) };
+  } catch (error) { closeSync(fd); throw error; }
 }
