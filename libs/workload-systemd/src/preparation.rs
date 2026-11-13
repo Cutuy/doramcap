@@ -172,6 +172,22 @@ fn unit_input(source: &str, name: &str, destination: Option<&Path>) -> Result<St
     capture_files(&sources, name, destination).map(|(path, _)| path)
 }
 
+/// Capture only user app unit bytes for manager-backed Review; the caller owns `directory`.
+pub(crate) fn review_units(plan: &SystemdPlan, directory: &Path) -> Result<SystemdPlan> {
+    let inputs = directory.join(INPUTS);
+    std::fs::create_dir(&inputs).map_err(error)?;
+    let mut plan = plan.clone();
+    for file in &mut plan.unit_files {
+        *file = unit_input(
+            file,
+            &format!("{}.service", crate::unit_stem(file)?),
+            Some(&inputs),
+        )?;
+        replace(file, ARTIFACTS, &directory.to_string_lossy());
+    }
+    Ok(plan)
+}
+
 fn capture_files(
     sources: &[PathBuf],
     name: &str,

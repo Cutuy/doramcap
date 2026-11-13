@@ -15,7 +15,7 @@ const MICROS_PER_SECOND: u64 = 1_000_000;
 /// `MS_REC`: bind mounts include submounts, as systemd's own `BindPaths=` does.
 const MS_REC: u64 = 16384;
 /// Host directories every generated unit sees read-only inside its private root.
-const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
+pub(crate) const SYSTEM_PATHS: [&str; 6] = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"];
 /// Scope subdirectory holding each generated unit's private root.
 pub(crate) const ROOTS: &str = "roots";
 /// Plain runtime source names beside a unit root; normal root cleanup removes these links.
@@ -465,12 +465,12 @@ fn transient_properties(
 /// Run a generated unit in a private root under the scope's runtime directory, so
 /// bind targets never touch the host tree. The unit sees host system directories,
 /// `/proc`, `/sys` and `/dev` (including the shared `/dev/shm`), its executable and
-/// working directory at their own paths, and `binds`.
+/// declared binds. Working directories must exist inside these mounts.
 async fn private_root(
     scope: &Scope,
     name: &str,
     executable: &str,
-    working_directory: &str,
+    _working_directory: &str,
     binds: &[crate::Bind],
     host_shm_access: i32,
 ) -> Result<Vec<(String, OwnedVariant)>> {
@@ -497,13 +497,6 @@ async fn private_root(
             host_filesystem::SHM_PATH,
             false,
         ));
-    }
-    if !working_directory.is_empty()
-        && !binds
-            .iter()
-            .any(|bind| std::path::Path::new(working_directory).starts_with(&bind.target))
-    {
-        writable.push(mount(working_directory, working_directory, false));
     }
     for (index, bind) in binds.iter().enumerate() {
         // systemd serializes D-Bus paths again before handing them to its executor.

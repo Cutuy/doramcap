@@ -31,13 +31,30 @@ async fn main() -> Result<(), String> {
             .cleanup(std::path::Path::new(&repository))
             .await;
     }
-    let run: workload_systemd::RunPlan = read(1, "doramcap.launch.v1.RunPlan")?;
-    let plan: workload_systemd::SystemdPlan = read(2, "doramcap.systemd_plan.v1.SystemdPlan")?;
+    let review = std::env::args().nth(1).as_deref() == Some("--review");
+    let offset = usize::from(review);
+    let run: workload_systemd::RunPlan = read(1 + offset, "doramcap.launch.v1.RunPlan")?;
+    let plan: workload_systemd::SystemdPlan =
+        read(2 + offset, "doramcap.systemd_plan.v1.SystemdPlan")?;
+    if review {
+        let (snapshot, warnings) = workload_systemd::review(&run, &plan).await?;
+        println!(
+            "{}",
+            serde_json::json!({"snapshot": snapshot, "warnings": warnings})
+        );
+        return Ok(());
+    }
     let stop = async {
         let _ = tokio::signal::ctrl_c().await;
     };
+    let (ready, readiness) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        if readiness.await.is_ok() {
+            eprintln!("READY");
+        }
+    });
     let report = workload_systemd::SystemdRunner::new()
-        .run(run, plan, stop, |_: &orchestrator::Event| {}, None)
+        .run(run, plan, stop, |_: &orchestrator::Event| {}, Some(ready))
         .await?;
     println!(
         "{}",

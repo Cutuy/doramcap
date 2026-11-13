@@ -24,11 +24,7 @@ pub struct UnitExit {
 impl UnitExit {
     /// Program ID or adopted unit stem, derived from the owned unit name.
     pub fn id(&self) -> &str {
-        self.unit
-            .strip_suffix(".service")
-            .and_then(|name| name.strip_prefix("doramcap-"))
-            .and_then(|name| name.split_once('-'))
-            .map_or(self.unit.as_str(), |(_, id)| id)
+        unit_id(&self.unit)
     }
 
     fn complete(&self) -> bool {
@@ -47,6 +43,13 @@ impl UnitExit {
             memory_peak_bytes: known(service.memory_peak().await),
         }
     }
+}
+
+pub(crate) fn unit_id(unit: &str) -> &str {
+    unit.strip_suffix(".service")
+        .and_then(|name| name.strip_prefix("doramcap-"))
+        .and_then(|name| name.split_once('-'))
+        .map_or(unit, |(_, id)| id)
 }
 
 /// Outcomes stay independent; inspect `successful()` before trusting evidence.
@@ -264,7 +267,7 @@ impl SystemdRunner {
             })
             .collect();
         self.blocked = true;
-        let running = SystemdRunning {
+        let mut running = SystemdRunning {
             system_apps,
             manager,
             executor: executor.clone(),
@@ -279,8 +282,36 @@ impl SystemdRunner {
             prepared,
             runtime: None,
         };
-        let (outcome, removed) =
-            workload_lifecycle::run::run(running, &executor, recordings, stop).await;
+        // Finish mount setup even if Stop arrives, then let the shared driver skip launch.
+        // Dropping a mount future could leave a blocking mount syscall racing cleanup.
+        let setup_error = match executor
+            .run::<crate::runtime::PrepareRuntime>(
+                orchestrator::Input::new(crate::PreparationInput {
+                    run: Some(run.clone()),
+                    plan: Some(running.plan.clone()),
+                })
+                .after(&running.prepared),
+            )
+            .await
+        {
+            Ok(runtime) => {
+                let redirected = crate::filesystem::redirect(
+                    &mut running.plan,
+                    &runtime.value().filesystem.overlays,
+                );
+                running.runtime = Some(runtime);
+                redirected.err()
+            }
+            Err(error) => Some(crate::error(error)),
+        };
+        let (mut outcome, removed) = if setup_error.is_some() {
+            workload_lifecycle::run::run(running, &executor, recordings, async {}).await
+        } else {
+            workload_lifecycle::run::run(running, &executor, recordings, stop).await
+        };
+        if let Some(error) = setup_error {
+            outcome.execution_error = Some(error);
+        }
         let mut diagnostics = removed.diagnostics;
         diagnostics.extend(outcome.diagnostics);
         for unit in &removed.units {

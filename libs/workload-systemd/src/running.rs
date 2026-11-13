@@ -26,7 +26,7 @@ pub(crate) struct SystemdRunning {
     pub dora: Option<crate::dora::Dora>,
     pub diagnostics: Vec<String>,
     pub prepared: Output<crate::PreparedRun>,
-    pub runtime: Option<Output<Scope>>,
+    pub runtime: Option<Output<crate::runtime::PreparedRuntime>>,
 }
 
 /// Unit results and failures handed back by removal.
@@ -40,8 +40,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
 
     async fn start(&mut self) -> std::result::Result<(), String> {
         let readiness = Duration::from_secs(self.run.readiness_seconds);
-        let cgroups = self
-            .executor
+        self.executor
             .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
                 Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {
                     action: workload_lifecycle::cgroup::Action::Create.into(),
@@ -53,19 +52,6 @@ impl workload_lifecycle::run::Running for SystemdRunning {
             )
             .await
             .map_err(crate::error)?;
-        self.runtime = Some(
-            self.executor
-                .run::<crate::runtime::PrepareRuntime>(
-                    Input::new(crate::PreparationInput {
-                        run: Some(self.run.clone()),
-                        plan: Some(self.plan.clone()),
-                    })
-                    .after(&self.prepared)
-                    .after(&cgroups),
-                )
-                .await
-                .map_err(crate::error)?,
-        );
         use workload_lifecycle::plan::Phase;
         for role in [Phase::Dora, Phase::System, Phase::User] {
             let deadline = Instant::now() + readiness;
@@ -253,7 +239,7 @@ impl workload_lifecycle::run::Running for SystemdRunning {
         }
         let verified = if permit.remove {
             let input = match &self.runtime {
-                Some(runtime) => Input::new(runtime.value().clone()).after(runtime),
+                Some(runtime) => Input::new(runtime.value().scope.clone()).after(runtime),
                 None => Input::new(self.scope.clone()).after(&self.prepared),
             };
             match self

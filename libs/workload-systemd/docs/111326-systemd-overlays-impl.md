@@ -41,35 +41,36 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 
 **Work items**
 
-- [ ] Collect writable binds from `Program::binds`; resolve one
+- [x] Collect writable binds from `Program::binds`; resolve one
   overlay plan through `host_filesystem::overlay::resolve` at Review and Start.
-- [ ] Mount overlays before any unit starts; pass overlay directories to
+- [x] Mount overlays before any unit starts; pass overlay directories to
   `private_root` in place of host folders. Keep targets and access flags.
-- [ ] Delete the extra writable mount `private_root` adds for an undeclared working directory.
-- [ ] Check declared working directories at Review and before mounting. For a system app, check inside its private root. Fail naming the app and directory.
+- [x] Delete the extra writable mount `private_root` adds for an undeclared working directory.
+- [x] Check declared working directories at Review and before mounting. For a system app,
+  check inside its private root. Fail naming the app and directory.
 - [ ] Test that the Dora coordinator and daemon keep `/runtime` under their declared output folder.
 
 **Validation**
 
-- [ ] Writes stay out of the host folder during the run.
-- [ ] Missing working directory fails at Review and Start.
+- [x] Writes stay out of the host folder during the run.
+- [x] Missing working directory fails at Review and Start.
 - [ ] Dora system apps start unchanged.
 
 ## Milestone 3: User apps
 
 **Work items**
 
-- [ ] Read each unit's `BindPaths=` from the service manager after linking the captured copy.
-- [ ] Write the owned drop-in from milestone 1 with overlay sources.
-- [ ] Skip the working directory check for `WorkingDirectory=-/path`.
-- [ ] At Review, list a writable working directory outside every writable mount, and the
+- [x] Read each unit's `BindPaths=` from the service manager after linking the captured copy.
+- [x] Write the owned drop-in from milestone 1 with overlay sources.
+- [x] Skip the working directory check for `WorkingDirectory=-/path`.
+- [x] At Review, list a writable working directory outside every writable mount, and the
   unit's other writes, as not tracked.
 
 **Validation**
 
-- [ ] User app sees overlay directories at its declared paths.
-- [ ] `WorkingDirectory=-/path` starts.
-- [ ] Not-tracked notes at Review.
+- [x] User app sees overlay directories at its declared paths.
+- [x] `WorkingDirectory=-/path` starts.
+- [x] Not-tracked notes at Review.
 
 ## Milestone 4: Run end and report
 
