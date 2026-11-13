@@ -14,7 +14,7 @@ artifact and cleanup verification. Backends only allocate and remove.
 
 | Backend | Allocation | Removal |
 | --- | --- | --- |
-| Docker Compose | Docker creates `cgroup_parent` with its cgroupfs or systemd driver | Whole run group |
+| Docker Compose | Docker creates `cgroup_parent` with its cgroupfs or systemd driver | Whole repository group |
 | Native systemd | Run slices from the service manager | Run, system and user slices |
 | Supervisor | Filesystem group with an ownership ledger | Its own group |
 
@@ -24,6 +24,7 @@ artifact and cleanup verification. Backends only allocate and remove.
 
 - Runs after writers stop and evidence is final.
 - Nothing is removed while any process remains anywhere in the run tree.
+- Compose also removes groups left by crashed runs of the same repository.
 - Compose and native systemd share `cgroup::slice::stop`: stop the slice, confirm the job, wait for unload.
 - Compose cleanup stays within the run's stop budget; failures show in the run report.
 - Systemd removal needs the local system bus and permission to stop the run's slices.

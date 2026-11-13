@@ -15,7 +15,8 @@ use workload_lifecycle::cgroup::{self, Backend, Removal};
 const PARENT_PREFIX: &str = "doramcap-compose";
 const PARENT_HASH_CHARS: usize = 12;
 
-/// Resolve a unique per-run parent without creating containers or requiring host D-Bus access.
+/// Resolve a unique per-run parent below the repository's group, without creating containers
+/// or requiring host D-Bus access.
 pub(crate) async fn placement(
     adapter: &DockerAdapter,
     input: &PrepareInput,
@@ -34,22 +35,28 @@ pub(crate) async fn placement(
     }
     let repository = std::fs::canonicalize(&input.run_plan.repository_root)?;
     let artifacts = std::fs::canonicalize(&input.run_plan.artifacts)?;
-    let digest = Sha256::new()
-        .chain_update(repository.as_os_str().as_encoded_bytes())
-        .chain_update([0])
-        .chain_update(input.run_plan.id.as_bytes())
-        .chain_update([0])
-        .chain_update(artifacts.as_os_str().as_encoded_bytes())
-        .finalize();
-    let run = format!(
+    let hash = |digest: &[u8]| hex::encode(digest)[..PARENT_HASH_CHARS].to_owned();
+    // Admission covers the canonical repository, so its group holds no other live run.
+    let repository_group = format!(
         "{PARENT_PREFIX}-{}",
-        &hex::encode(digest)[..PARENT_HASH_CHARS]
+        hash(&Sha256::digest(repository.as_os_str().as_encoded_bytes()))
+    );
+    let run = hash(
+        &Sha256::new()
+            .chain_update(repository.as_os_str().as_encoded_bytes())
+            .chain_update([0])
+            .chain_update(input.run_plan.id.as_bytes())
+            .chain_update([0])
+            .chain_update(artifacts.as_os_str().as_encoded_bytes())
+            .finalize(),
     );
     let parent = match info.cgroup_driver {
         Some(bollard::models::SystemInfoCgroupDriverEnum::SYSTEMD) => {
-            format!("{run}-{SYSTEM}.slice")
+            format!("{repository_group}-{run}-{SYSTEM}.slice")
         }
-        Some(bollard::models::SystemInfoCgroupDriverEnum::CGROUPFS) => format!("/{run}/{SYSTEM}"),
+        Some(bollard::models::SystemInfoCgroupDriverEnum::CGROUPFS) => {
+            format!("/{repository_group}/{run}/{SYSTEM}")
+        }
         driver => {
             return Err(invalid(format!(
                 "unsupported Docker cgroup driver: {driver:?}"
@@ -80,55 +87,56 @@ impl Role {
     }
 }
 
-/// Generated run group name, `doramcap-compose-‹hash›`, of a placement's system group.
+/// Generated run group name of a placement's system group: `doramcap-compose-‹repository›-‹run›`
+/// for systemd slices, `doramcap-compose-‹repository›/‹run›` for cgroupfs directories.
 pub(crate) fn run_name(placement: &CgroupPlacement) -> std::result::Result<&str, String> {
-    let run = placement
-        .parent
-        .strip_suffix(&format!("-{SYSTEM}.slice"))
-        .or_else(|| {
-            placement
-                .parent
-                .strip_prefix('/')
-                .and_then(|parent| parent.strip_suffix(&format!("/{SYSTEM}")))
-        })
-        .ok_or("accounting parent is not a generated Compose system group")?;
-    generated_run(run).ok_or("accounting parent is not a generated Compose run group")?;
-    Ok(run)
+    split_service_parent(&placement.parent)
+        .filter(|(_, rest)| *rest == format!("-{SYSTEM}.slice") || *rest == format!("/{SYSTEM}"))
+        .map(|(run, _)| run)
+        .ok_or_else(|| "accounting parent is not a generated Compose system group".into())
 }
 
-/// Split a generated service parent into its run group name and the run-independent rest.
+/// Split a generated parent into its run group name and the run-independent rest.
 pub(crate) fn split_service_parent(parent: &str) -> Option<(&str, &str)> {
     let (slice, start) = match parent.strip_prefix('/') {
         Some(rest) => (false, rest),
         None => (true, parent),
     };
-    let run = &start[..start.len().min(PARENT_PREFIX.len() + 1 + PARENT_HASH_CHARS)];
-    generated_run(run)?;
+    let separator = if slice { '-' } else { '/' };
+    let run = generated_run(start, separator)?;
     let rest = &start[run.len()..];
-    let role = |separator: char| {
-        [SYSTEM, USER].into_iter().any(|role| {
-            rest.strip_prefix(separator)
-                .and_then(|rest| rest.strip_prefix(role))
-                .is_some_and(|rest| rest.starts_with(separator))
-        })
-    };
-    let matches = if slice {
-        role('-') && rest.ends_with(".slice")
-    } else {
-        role('/')
-    };
-    matches.then_some((run, rest))
+    let role = [SYSTEM, USER].into_iter().any(|role| {
+        rest.strip_prefix(separator)
+            .and_then(|rest| rest.strip_prefix(role))
+            .is_some_and(|rest| {
+                if slice {
+                    rest == ".slice" || rest.starts_with('-') && rest.ends_with(".slice")
+                } else {
+                    rest.is_empty() || rest.starts_with('/')
+                }
+            })
+    });
+    role.then_some((run, rest))
 }
 
-// Accept only `doramcap-compose-‹lowercase hex hash›`.
-fn generated_run(run: &str) -> Option<&str> {
-    run.strip_prefix(&format!("{PARENT_PREFIX}-"))
-        .filter(|hash| {
-            hash.len() == PARENT_HASH_CHARS
-                && hash
-                    .bytes()
-                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        })
+// Accept only `doramcap-compose-‹hash›‹separator›‹hash›` with lowercase hex hashes.
+fn generated_run(start: &str, separator: char) -> Option<&str> {
+    let hash = |hash: &str| {
+        hash.len() == PARENT_HASH_CHARS
+            && hash
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    };
+    let run = start.get(..PARENT_PREFIX.len() + 2 * (1 + PARENT_HASH_CHARS))?;
+    let (repository, run_hash) = run
+        .strip_prefix(&format!("{PARENT_PREFIX}-"))?
+        .split_once(separator)?;
+    (hash(repository) && hash(run_hash)).then_some(run)
+}
+
+// Repository group name holding every generated run group of the repository.
+fn repository_name(run: &str) -> &str {
+    &run[..PARENT_PREFIX.len() + 1 + PARENT_HASH_CHARS]
 }
 
 /// Docker `cgroup_parent` giving `service` its own group below the run's `role` group.
@@ -173,7 +181,8 @@ fn slice_path(slice: &str) -> PathBuf {
     path.join(slice)
 }
 
-/// Adopt Docker's accounting parent and remove its empty per-run hierarchy at cleanup.
+/// Adopt Docker's accounting parent; cleanup removes the repository group once its whole tree
+/// is empty, which also clears groups left by crashed runs of the same repository.
 pub struct DockerCgroup {
     placement: CgroupPlacement,
     stop: Duration,
@@ -186,17 +195,25 @@ impl DockerCgroup {
     }
 }
 
-// Limit removal to the generated run group; shared ancestor slices remain owned by Docker.
-fn run_path(placement: &CgroupPlacement) -> std::result::Result<PathBuf, String> {
+// Generated group named `group`, using the placement's driver.
+fn group_path(placement: &CgroupPlacement, group: &str) -> std::result::Result<PathBuf, String> {
+    if placement.parent.ends_with(".slice") {
+        Ok(slice_path(&format!("{group}.slice")))
+    } else {
+        cgroup::host_path(&format!("/{group}"))
+    }
+}
+
+/// Run and repository group host paths; shared ancestor slices remain owned by Docker.
+fn run_paths(placement: &CgroupPlacement) -> std::result::Result<(PathBuf, PathBuf), String> {
     let run = run_name(placement)?;
     if parent_path(&placement.parent)? != Path::new(&placement.path) {
         return Err("Compose accounting parent and host path differ".into());
     }
-    if placement.parent.ends_with(".slice") {
-        Ok(slice_path(&format!("{run}.slice")))
-    } else {
-        cgroup::host_path(&format!("/{run}"))
-    }
+    Ok((
+        group_path(placement, run)?,
+        group_path(placement, repository_name(run))?,
+    ))
 }
 
 fn verify_empty_if_present(path: &Path) -> std::result::Result<(), String> {
@@ -233,26 +250,30 @@ impl Backend for DockerCgroup {
     }
     fn remove(&self) -> LocalBoxFuture<'_, std::result::Result<Removal, String>> {
         Box::pin(async {
-            let path = run_path(&self.placement)?;
+            let (run, repository) = run_paths(&self.placement)?;
             tokio::time::timeout(self.stop, async {
                 // Check the whole run before removing anything, including user services.
-                verify_empty_if_present(&path)?;
+                verify_empty_if_present(&run)?;
+                // Admission excludes other live runs, so other run groups are leftovers.
+                let earlier = verify_empty_if_present(&repository);
+                let target = if earlier.is_ok() { &repository } else { &run };
                 if self.placement.parent.ends_with(".slice") {
-                    let name = path
+                    let name = target
                         .file_name()
                         .and_then(|name| name.to_str())
                         .ok_or("Compose slice name is not UTF-8")?;
-                    // Stopping the run slice stops and removes every slice below it.
+                    // Stopping a slice stops and removes every slice below it.
                     cgroup::slice::stop(&cgroup::slice::connect().await?, name).await?;
                 } else {
-                    remove_tree(&path)?;
+                    remove_tree(target)?;
                 }
-                if path.try_exists().map_err(|e| e.to_string())? {
+                if target.try_exists().map_err(|e| e.to_string())? {
                     return Err(format!(
-                        "{}: Compose run cgroup remains after removal",
-                        path.display()
+                        "{}: Compose cgroup remains after removal",
+                        target.display()
                     ));
                 }
+                earlier.map_err(|e| format!("earlier Compose run of this repository: {e}"))?;
                 Ok(Removal::Removed)
             })
             .await

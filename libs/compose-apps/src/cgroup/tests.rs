@@ -7,21 +7,41 @@ use std::{
 const STOP: Duration = Duration::from_secs(10);
 static SEQUENCE: AtomicU16 = AtomicU16::new(0);
 
+/// A run placement in a new repository group.
 fn placement(slice: bool) -> CgroupPlacement {
-    let run = format!(
+    let repository = format!(
         "{PARENT_PREFIX}-{:08x}{:04x}",
         std::process::id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     );
+    in_repository(&repository, slice)
+}
+
+/// Another run placement in `placement`'s repository group.
+fn sibling(placement: &CgroupPlacement) -> CgroupPlacement {
+    let run = run_name(placement).unwrap();
+    in_repository(repository_name(run), placement.parent.ends_with(".slice"))
+}
+
+fn in_repository(repository: &str, slice: bool) -> CgroupPlacement {
+    let run = format!("{:012x}", SEQUENCE.fetch_add(1, Ordering::Relaxed));
     let parent = if slice {
-        format!("{run}-{SYSTEM}.slice")
+        format!("{repository}-{run}-{SYSTEM}.slice")
     } else {
-        format!("/{run}/{SYSTEM}")
+        format!("/{repository}/{run}/{SYSTEM}")
     };
     CgroupPlacement {
         path: parent_path(&parent).unwrap().to_string_lossy().into_owned(),
         parent,
     }
+}
+
+fn run_path(placement: &CgroupPlacement) -> PathBuf {
+    run_paths(placement).unwrap().0
+}
+
+fn repository_path(placement: &CgroupPlacement) -> PathBuf {
+    run_paths(placement).unwrap().1
 }
 
 /// Host path of the group a service's containers are placed below.
@@ -33,29 +53,30 @@ fn service_path(placement: &CgroupPlacement, role: Role, service: &str) -> PathB
 fn service_parents_nest_below_the_run_role_group_for_both_drivers() {
     // Arrange
     let slice = CgroupPlacement {
-        parent: "doramcap-compose-0123456789ab-system.slice".into(),
+        parent: "doramcap-compose-0123456789ab-ba9876543210-system.slice".into(),
         path: String::new(),
     };
     let directory = CgroupPlacement {
-        parent: "/doramcap-compose-0123456789ab/system".into(),
+        parent: "/doramcap-compose-0123456789ab/ba9876543210/system".into(),
         path: String::new(),
     };
     // Act
     let systemd = service_parent(&slice, Role::User, "my-camera").unwrap();
     let cgroupfs = service_parent(&directory, Role::System, "my-camera").unwrap();
     // Assert: escaped dashes keep the service one level below its role group.
-    assert_eq!(
-        systemd,
-        r"doramcap-compose-0123456789ab-user-my\x2dcamera.slice"
-    );
+    let run = "doramcap-compose-0123456789ab-ba9876543210";
+    assert_eq!(systemd, format!(r"{run}-user-my\x2dcamera.slice"));
     assert_eq!(
         slice_path(&systemd),
-        Path::new(cgroup::CGROUP_ROOT).join(concat!(
-            "doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/",
-            r"doramcap-compose-0123456789ab-user.slice/doramcap-compose-0123456789ab-user-my\x2dcamera.slice"
+        Path::new(cgroup::CGROUP_ROOT).join(format!(
+            "doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/\
+             {run}.slice/{run}-user.slice/{systemd}"
         ))
     );
-    assert_eq!(cgroupfs, "/doramcap-compose-0123456789ab/system/my-camera");
+    assert_eq!(
+        cgroupfs,
+        "/doramcap-compose-0123456789ab/ba9876543210/system/my-camera"
+    );
 }
 
 #[tokio::test]
@@ -64,11 +85,14 @@ async fn cleanup_rejects_foreign_names_and_mismatched_paths_before_side_effects(
         "system.slice",
         "doramcap-compose.slice",
         "doramcap-compose-0123456789ab.slice",
-        "doramcap-compose-0123456789ab-user.slice",
+        "doramcap-compose-0123456789ab-system.slice",
+        "doramcap-compose-0123456789ab-ba9876543210.slice",
+        "doramcap-compose-0123456789ab-ba9876543210-user.slice",
         "/",
         "/foreign/system",
-        "/doramcap-compose-0123456789ab",
-        "doramcap-compose-ABCDEF123456-system.slice",
+        "/doramcap-compose-0123456789ab/system",
+        "/doramcap-compose-0123456789ab/ba9876543210",
+        "doramcap-compose-0123456789ab-ABCDEF123456-system.slice",
     ] {
         // Arrange
         let group = DockerCgroup::group(
@@ -102,8 +126,7 @@ struct SliceFixture {
 }
 impl SliceFixture {
     /// Run a long-lived service in `service`'s per-service slice below `role`.
-    fn running(role: Role, service: &str) -> Self {
-        let placement = placement(true);
+    fn running(placement: CgroupPlacement, role: Role, service: &str) -> Self {
         let slice = service_parent(&placement, role, service).unwrap();
         let fixture = Self {
             service: placement.parent.replace(".slice", ".service"),
@@ -124,8 +147,7 @@ impl SliceFixture {
         fixture
     }
     /// Keep per-service slices started after their last unit exits, as Docker does.
-    fn emptied(services: &[(Role, &str)]) -> Self {
-        let placement = placement(true);
+    fn emptied(placement: CgroupPlacement, services: &[(Role, &str)]) -> Self {
         for (role, service) in services {
             let slice = service_parent(&placement, *role, service).unwrap();
             systemd(&["systemctl", "start", &slice]);
@@ -151,9 +173,12 @@ impl SliceFixture {
 }
 impl Drop for SliceFixture {
     fn drop(&mut self) {
-        let run = format!("{}.slice", run_name(&self.placement).unwrap());
+        let repository = format!(
+            "{}.slice",
+            repository_name(run_name(&self.placement).unwrap())
+        );
         let _ = Command::new("systemctl")
-            .args(["stop", &self.service, &run])
+            .args(["stop", &self.service, &repository])
             .output();
     }
 }
@@ -172,11 +197,11 @@ fn systemd(command: &[&str]) {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root, local systemd and cgroup v2"]
-async fn systemd_cleanup_preserves_a_live_user_app_then_removes_the_run_slice() {
+async fn systemd_cleanup_preserves_a_live_user_app_then_removes_the_repository_slice() {
     // Arrange: the system group is absent; only a user service runs.
-    let fixture = SliceFixture::running(Role::User, "camera");
+    let fixture = SliceFixture::running(placement(true), Role::User, "camera");
     let group = DockerCgroup::group(fixture.placement.clone(), STOP);
-    let run = run_path(&fixture.placement).unwrap();
+    let repository = repository_path(&fixture.placement);
     let user = service_path(&fixture.placement, Role::User, "camera");
     assert!(!Path::new(&fixture.placement.path).exists());
     // Act / Assert
@@ -186,9 +211,9 @@ async fn systemd_cleanup_preserves_a_live_user_app_then_removes_the_run_slice() 
     fixture.stop_service();
     assert!(group.remove().await.unwrap().is_none());
     // Assert
-    assert!(!run.exists());
+    assert!(!repository.exists());
     assert!(
-        run.parent().unwrap().exists(),
+        repository.parent().unwrap().exists(),
         "shared Docker slice removed"
     );
     // Act / Assert: completed cleanup is repeatable.
@@ -230,7 +255,7 @@ impl Drop for Member {
 async fn systemd_cleanup_removes_every_service_slice_and_nested_empty_group() {
     // Arrange
     let services = [(Role::System, "dora"), (Role::User, "my-camera")];
-    let fixture = SliceFixture::emptied(&services);
+    let fixture = SliceFixture::emptied(placement(true), &services);
     let group = DockerCgroup::group(fixture.placement.clone(), STOP);
     let mut tree = Vec::new();
     for (role, service) in services {
@@ -240,13 +265,13 @@ async fn systemd_cleanup_removes_every_service_slice_and_nested_empty_group() {
             service,
         )));
     }
-    let run = run_path(&fixture.placement).unwrap();
+    let repository = repository_path(&fixture.placement);
     // Act
     assert!(group.remove().await.unwrap().is_none());
     // Assert
-    assert!(tree.iter().chain([&run]).all(|path| !path.exists()));
+    assert!(tree.iter().chain([&repository]).all(|path| !path.exists()));
     assert!(
-        run.parent().unwrap().exists(),
+        repository.parent().unwrap().exists(),
         "shared Docker slice removed"
     );
 }
@@ -256,14 +281,14 @@ async fn systemd_cleanup_removes_every_service_slice_and_nested_empty_group() {
 async fn cgroupfs_cleanup_removes_the_entire_empty_run_tree_and_is_repeatable() {
     // Arrange
     let placement = placement(false);
-    let run = run_path(&placement).unwrap();
+    let repository = repository_path(&placement);
     let mut tree = nested_tree(&service_path(&placement, Role::System, "dora"));
     tree.extend(nested_tree(&service_path(&placement, Role::User, "camera")));
     let group = DockerCgroup::group(placement, STOP);
     // Act
     assert!(group.remove().await.unwrap().is_none());
     // Assert
-    assert!(tree.iter().chain([&run]).all(|path| !path.exists()));
+    assert!(tree.iter().chain([&repository]).all(|path| !path.exists()));
     // Act / Assert
     assert!(group.remove().await.unwrap().is_none());
 }
@@ -273,17 +298,65 @@ async fn cgroupfs_cleanup_removes_the_entire_empty_run_tree_and_is_repeatable() 
 async fn cgroupfs_cleanup_preserves_the_whole_tree_while_a_user_app_runs() {
     // Arrange
     let placement = placement(false);
-    let run = run_path(&placement).unwrap();
+    let repository = repository_path(&placement);
     let mut tree = nested_tree(&service_path(&placement, Role::System, "dora"));
     tree.extend(nested_tree(&service_path(&placement, Role::User, "camera")));
     let group = DockerCgroup::group(placement, STOP);
     let member = Member::join(tree.last().unwrap());
     // Act / Assert
     assert!(group.remove().await.unwrap_err().contains("live processes"));
-    assert!(tree.iter().chain([&run]).all(|path| path.exists()));
+    assert!(tree.iter().chain([&repository]).all(|path| path.exists()));
     // Act
     drop(member);
     assert!(group.remove().await.unwrap().is_none());
     // Assert
-    assert!(!run.exists());
+    assert!(!repository.exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local systemd and cgroup v2"]
+async fn systemd_cleanup_sweeps_earlier_runs_of_its_repository_only() {
+    // Arrange: a crashed run left a live app; another repository has its own run.
+    let current = placement(true);
+    let earlier = SliceFixture::running(sibling(&current), Role::User, "camera");
+    let other = SliceFixture::emptied(placement(true), &[(Role::System, "dora")]);
+    let current = SliceFixture::emptied(current, &[(Role::System, "dora")]);
+    let group = DockerCgroup::group(current.placement.clone(), STOP);
+    // Act / Assert: this run is removed and the live leftover is reported.
+    let error = group.remove().await.unwrap_err();
+    assert!(error.contains("earlier Compose run"), "{error}");
+    assert!(!run_path(&current.placement).exists());
+    assert!(service_path(&earlier.placement, Role::User, "camera").exists());
+    // Act
+    earlier.stop_service();
+    assert!(group.remove().await.unwrap().is_none());
+    // Assert
+    assert!(!repository_path(&current.placement).exists());
+    assert!(run_path(&other.placement).exists());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root and writable cgroup v2"]
+async fn cgroupfs_cleanup_sweeps_earlier_runs_of_its_repository_only() {
+    // Arrange: a crashed run left a live app; another repository has its own run.
+    let current = placement(false);
+    let earlier = sibling(&current);
+    let other = placement(false);
+    nested_tree(&service_path(&current, Role::System, "dora"));
+    nested_tree(&service_path(&other, Role::System, "dora"));
+    let stale = nested_tree(&service_path(&earlier, Role::User, "camera"));
+    let member = Member::join(stale.last().unwrap());
+    let group = DockerCgroup::group(current.clone(), STOP);
+    // Act / Assert: this run is removed and the live leftover is reported.
+    let error = group.remove().await.unwrap_err();
+    assert!(error.contains("earlier Compose run"), "{error}");
+    assert!(!run_path(&current).exists());
+    assert!(stale.iter().all(|path| path.exists()));
+    // Act
+    drop(member);
+    assert!(group.remove().await.unwrap().is_none());
+    // Assert
+    assert!(!repository_path(&current).exists());
+    assert!(run_path(&other).exists());
+    remove_tree(&repository_path(&other)).unwrap();
 }

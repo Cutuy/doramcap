@@ -178,7 +178,9 @@ impl Drop for Fixture {
             let path = Path::new(&identity.path);
             let name = path.file_name().unwrap().to_str().unwrap();
             if name.ends_with(".slice") {
-                let parent = format!("{}.slice", name.strip_suffix("-system.slice").unwrap());
+                // The repository slice holds the run slice and every service slice.
+                let run = name.strip_suffix("-system.slice").unwrap();
+                let parent = format!("{}.slice", run.rsplit_once('-').unwrap().0);
                 let _ = Command::new("systemctl")
                     .args(["stop", name, &parent])
                     .output();

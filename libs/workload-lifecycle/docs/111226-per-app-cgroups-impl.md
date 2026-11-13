@@ -12,8 +12,10 @@ Docker `cgroup_parent`:
 
 | Driver | Run group | Service parent |
 | --- | --- | --- |
-| systemd | `doramcap-compose-‹run›.slice` | `doramcap-compose-‹run›-‹role›-‹escaped service›.slice` |
-| cgroupfs | `/doramcap-compose-‹run›` | `/doramcap-compose-‹run›/‹role›/‹service›` |
+| systemd | `doramcap-compose-‹repo›-‹run›.slice` | `doramcap-compose-‹repo›-‹run›-‹role›-‹escaped service›.slice` |
+| cgroupfs | `/doramcap-compose-‹repo›/‹run›` | `/doramcap-compose-‹repo›/‹run›/‹role›/‹service›` |
+
+`‹repo›` hashes the canonical repository, the key of repository admission.
 
 **Work items**
 - [x] Generate the placement whenever a system service or a user service without its own `cgroup_parent` exists.
@@ -21,11 +23,12 @@ Docker `cgroup_parent`:
 - [x] Snapshot generated parents as `@run-cgroup/‹role›/‹service›`.
 - [x] Verify each system container against its own service parent.
 - [x] Register the Docker group for every placement; create the system identity only with system apps.
-- [x] Clean up by removing the whole run group.
+- [x] Clean up by removing the whole repository group; keep and report live leftovers of earlier runs.
 
 **Validation**
 - [x] Preparation and snapshot unit tests.
 - [x] Native per-service placement, user-set parent kept, cleanup for both drivers.
+- [x] Sweep of earlier runs, live leftover kept, other repository untouched, for both drivers.
 
 ## Milestone 2: Native systemd user slice
 

@@ -5,8 +5,8 @@
 Created: 2026-11-12. [Implementation](111226-per-app-cgroups-impl.md).
 Extends [system-app cgroup](110926-system-app-cgroup.md).
 
-Each run owns one run group. Below it, `system` and `user` groups hold one group per
-app, so CPU and memory are visible per app and cleanup removes one tree.
+Each run owns one run group inside its repository's group. Below it, `system` and
+`user` groups hold one group per app, so CPU and memory are visible per app.
 
 | Backend | Per-app group | Change |
 | --- | --- | --- |
@@ -19,7 +19,9 @@ app, so CPU and memory are visible per app and cleanup removes one tree.
 - **System apps stay enforced.** Their placement is always generated and verified.
 - **User apps are placed only.** No post-start check.
 - **Accounting is unchanged.** `system-app-cgroup.pb` records the `system` group.
-- **Cleanup removes the run group** after its whole tree is empty, also for runs
-  without system apps.
+- **Cleanup removes the repository group** once its whole tree is empty, also for runs
+  without system apps. Repository admission excludes other live runs, so this also
+  clears groups left by crashed runs. A leftover that still has processes is kept and
+  reported; this run's group is still removed.
 
 Systemd slice names escape `-` in app names (`my\x2dapp`) so names add no extra levels.

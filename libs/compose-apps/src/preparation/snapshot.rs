@@ -240,13 +240,13 @@ mod tests {
         let dora = Default::default();
         let model = |run: &str| {
             json!({"services":{
-                "collector":{"cgroup_parent":format!("{run}-system-collector.slice")},
-                "camera":{"cgroup_parent":format!("/{run}/user/camera")},
+                "collector":{"cgroup_parent":format!("doramcap-compose-0123456789ab-{run}-system-collector.slice")},
+                "camera":{"cgroup_parent":format!("/doramcap-compose-0123456789ab/{run}/user/camera")},
                 "workload":{"cgroup_parent":"/user"}
             }})
         };
-        let first = "doramcap-compose-000000000001";
-        let second = "doramcap-compose-000000000002";
+        let first = "000000000001";
+        let second = "000000000002";
         let normalize = |model| {
             manifest(
                 model,

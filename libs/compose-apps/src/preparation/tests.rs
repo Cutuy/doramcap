@@ -14,7 +14,7 @@ fn every_service_gets_its_own_group_except_user_set_parents() {
     let original_user = model["services"]["user"].clone();
     let mut systems = vec!["monitor".into(), SHM_SERVICE.into()];
     let placement = crate::cgroup::CgroupPlacement {
-        parent: "doramcap-compose-0123456789ab-system.slice".into(),
+        parent: "doramcap-compose-0123456789ab-ba9876543210-system.slice".into(),
         path: String::new(),
     };
     let users = ["user".to_string(), "my-camera".to_string()];
@@ -31,7 +31,7 @@ fn every_service_gets_its_own_group_except_user_set_parents() {
     .unwrap();
 
     // Assert: system parents are always generated; a user-set parent is kept.
-    let run = "doramcap-compose-0123456789ab";
+    let run = "doramcap-compose-0123456789ab-ba9876543210";
     for (service, parent) in [
         ("dora", format!("{run}-system-dora.slice")),
         ("monitor", format!("{run}-system-monitor.slice")),
