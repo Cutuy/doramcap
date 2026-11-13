@@ -26,6 +26,7 @@ export async function runFileFixture() {
   await writeFile(Buffer.concat([Buffer.from(`${runRoot}/kept/0/`), rawName]), 'raw bytes');
   await writeFile(join(runRoot, 'kept/0/tail.bin'), 'tail');
   await writeFile(join(runRoot, 'output/result.bin'), 'output');
+  await writeFile(join(runRoot, 'legacy.mcap'), 'legacy recording');
   await writeFile(join(runRoot, 'console-report.json'), 'private');
   await writeFile(join(runRoot, 'output/private-record'), 'private');
   await writeFile(join(runRoot, 'overlays/results.json'), '{"disposition":"keep"}');
@@ -56,7 +57,8 @@ export async function runFileFixture() {
   validateConfig(config);
   let store = await Store.open(config.dataRoot);
   const status = wire.Status.create({ runId: id, phase: wire.Phase.FINISHED, writePolicy: filesystem.WritePolicy.WRITE_POLICY_KEEP,
-    outcome: { execution: 'Completed', boundaryClean: true }, fileChanges: await fileChangePreview(runRoot, reference) });
+    recordings: [{ id: 'run-file', path: 'legacy.mcap' }],
+    outcome: { execution: 'Completed', recordingFinalized: true, boundaryClean: true }, fileChanges: await fileChangePreview(runRoot, reference) });
   new History(store).record(status, 1, 2);
   store.close(); store = await Store.open(config.dataRoot);
   const engine: NativeExecution = {

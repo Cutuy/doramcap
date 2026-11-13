@@ -37,7 +37,7 @@ try {
     await page.goto(`${origin}/#/history/${run.id}`);
     await page.getByText('Write policy: Keep with the run', { exact: true }).waitFor();
     await page.getByText(join(run.runRoot, 'kept'), { exact: true }).waitFor();
-    const link = page.locator('a[href$="run-file?change=0"]');
+    const link = page.locator('a[href$="run-file.download?change=0"]');
     await link.waitFor();
     const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
     const saved = join(output, `${name}-page.html`);

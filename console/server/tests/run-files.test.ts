@@ -23,6 +23,9 @@ test('saved positions download kept raw names and outputs after restart; private
     // Act / Assert
     assert.equal((await fetch(url(0))).status, 401);
     const cookie = await sessionCookie(base), headers = { cookie };
+    const legacy = await fetch(`${base}/api/artifacts/${run.id}/run-file`, { headers });
+    assert.equal(legacy.status, 200);
+    assert.equal(await legacy.text(), 'legacy recording');
     for (const [position, contents] of [[0, run.html], [1, Buffer.from('raw bytes')], [2, Buffer.from('output')], [run.rows.length - 1, Buffer.from('tail')]] as const) {
       const response = await fetch(url(position), { headers });
       assert.equal(response.status, 200);
@@ -35,7 +38,7 @@ test('saved positions download kept raw names and outputs after restart; private
     for (const position of [3, 4, 5, 6, 7, 8, 9, 10, 9999]) assert.equal((await fetch(url(position), { headers })).status, 404, String(position));
     assert.equal((await fetch(base + runFilePath(run.other, { changePosition: 0 }), { headers })).status, 404);
     for (const query of ['', '?change=-1', '?change=../etc', '?change=0&program=app', '?change=0&change=1', '?path=etc', '?change=18446744073709551616'])
-      assert.equal((await fetch(`${base}/api/artifacts/${run.id}/run-file${query}`, { headers })).status, 400, query);
+      assert.equal((await fetch(`${base}/api/artifacts/${run.id}/run-file.download${query}`, { headers })).status, 400, query);
     assert.equal((await fetch(base + runFilePath(run.id, { program: 'project/writer' }), { headers })).status, 404);
     const detail = wire.HistoryDetail.decode(await run.backend.historyRun(run.id));
     assert.equal(detail.status?.writePolicy, 2);

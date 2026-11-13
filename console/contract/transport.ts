@@ -58,7 +58,7 @@ export const historyCursor = /^\d{1,16}:[a-f0-9]{32}$/;
 export const artifactPath = (runId: string, kind: string) =>
   `/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 export const FILE_CHANGES_ARTIFACT = 'file-changes.jsonl';
-export const RUN_FILE_ARTIFACT = 'run-file';
+export const RUN_FILE_ARTIFACT = 'run-file.download'; // Dots keep this outside the recording-ID namespace.
 /** Global zero-based change position in report-category order, or a saved log program ID. */
 export const runFilePath = (runId: string, source: doramcap.console.v1.IRunFileRequest) =>
   `${artifactPath(runId, RUN_FILE_ARTIFACT)}?${source.changePosition != null ? `change=${String(source.changePosition)}` : `program=${encodeURIComponent(source.program ?? '')}`}`;
