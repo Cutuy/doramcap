@@ -1,5 +1,6 @@
 //! Pure rules for assembling one shared-Dora Compose project.
 use super::*;
+use crate::cgroup::{CgroupPlacement, Role, service_parent};
 use crate::compose::adapter::{EXPERIMENT_OWNER_LABEL, validate_name};
 use crate::dora;
 use dora_core::descriptor::Descriptor;
@@ -50,21 +51,39 @@ pub(super) fn merge_app(
 
 const MCAP_MEMLOCK_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Assign owned infrastructure, including the retained shm holder, to the system-app slice.
-/// User settings remain native.
-pub(super) fn configure_system_cgroup(
+/// Give each system service, including the shm holder, its own group in the run's system group,
+/// and each user service without its own `cgroup_parent` one in the user group.
+pub(super) fn configure_cgroups(
     model: &mut Value,
-    services: &[String],
-    parent: &str,
+    systems: &[String],
+    users: &[String],
+    placement: &CgroupPlacement,
 ) -> Result<()> {
     let shm = model["services"].get(SHM_SERVICE).map(|_| SHM_SERVICE);
-    for name in services.iter().map(String::as_str).chain(shm) {
+    let systems = systems
+        .iter()
+        .map(String::as_str)
+        .chain(shm)
+        .map(|name| (name, Role::System));
+    let users = users.iter().map(|name| (name.as_str(), Role::User));
+    for (name, role) in systems.chain(users) {
         let service = model["services"][name]
             .as_object_mut()
-            .ok_or_else(|| invalid(format!("{name}: system-app service missing")))?;
+            .ok_or_else(|| invalid(format!("{name}: service missing")))?;
+        if matches!(role, Role::User) && service.contains_key("cgroup_parent") {
+            continue;
+        }
+        let parent = service_parent(placement, role, name).map_err(invalid)?;
         service.insert("cgroup_parent".into(), parent.into());
     }
     Ok(())
+}
+
+/// Whether any user service lacks its own `cgroup_parent` and so needs a generated group.
+pub(super) fn needs_user_cgroup(model: &Value, users: &[String]) -> bool {
+    users
+        .iter()
+        .any(|name| model["services"][name].get("cgroup_parent").is_none())
 }
 
 /// Reserved system service keeping the run's /dev/shm available until final shutdown.

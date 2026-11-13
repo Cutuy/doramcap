@@ -83,11 +83,14 @@ fn manifest(
     if let Some(services) = model.get_mut("services").and_then(Value::as_object_mut) {
         for (name, service) in services {
             let runtime = dora.services.contains_key(name);
-            if runtime || systems.contains(name) || name == super::SHM_SERVICE {
-                service
-                    .as_object_mut()
-                    .unwrap()
-                    .insert("cgroup_parent".into(), "@system-apps/cgroup-parent".into());
+            // Generated groups name the run; user-set parents remain significant.
+            if let Some(parent) = service.get_mut("cgroup_parent")
+                && let Some((_, rest)) = parent
+                    .as_str()
+                    .and_then(crate::cgroup::split_service_parent)
+            {
+                let root = if rest.starts_with('/') { "/" } else { "" };
+                *parent = format!("{root}{RUN_CGROUP}{rest}").into();
             }
             if let Some(mounts) = service.get_mut("volumes").and_then(Value::as_array_mut) {
                 for mount in mounts {
@@ -163,6 +166,9 @@ fn manifest(
     model
 }
 
+/// Run-independent stand-in for the generated run group name.
+const RUN_CGROUP: &str = "@run-cgroup";
+
 /// Largest resolved execution manifest captured into a configuration snapshot.
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -232,8 +238,15 @@ mod tests {
     fn generated_cgroup_parents_vary_by_run_and_preserve_user_configuration_identity() {
         // Arrange
         let dora = Default::default();
-        let first = json!({"services":{"collector":{"cgroup_parent":"/first"}, "workload":{"cgroup_parent":"/user"}}});
-        let second = json!({"services":{"collector":{"cgroup_parent":"/second"}, "workload":{"cgroup_parent":"/user"}}});
+        let model = |run: &str| {
+            json!({"services":{
+                "collector":{"cgroup_parent":format!("{run}-system-collector.slice")},
+                "camera":{"cgroup_parent":format!("/{run}/user/camera")},
+                "workload":{"cgroup_parent":"/user"}
+            }})
+        };
+        let first = "doramcap-compose-000000000001";
+        let second = "doramcap-compose-000000000002";
         let normalize = |model| {
             manifest(
                 model,
@@ -244,11 +257,11 @@ mod tests {
             )
         };
         // Act / Assert
-        assert_eq!(normalize(first.clone()), normalize(second));
+        assert_eq!(normalize(model(first)), normalize(model(second)));
         // Act / Assert: native user placement remains a meaningful reviewed setting.
-        let mut changed = first.clone();
+        let mut changed = model(first);
         changed["services"]["workload"]["cgroup_parent"] = "/different-user".into();
-        assert_ne!(normalize(first), normalize(changed));
+        assert_ne!(normalize(model(first)), normalize(changed));
     }
     #[test]
     fn generated_paths_compare_equal_but_commands_images_and_host_binds_remain_exact() {
@@ -381,7 +394,7 @@ mod tests {
                 &["collector".into()],
                 &["workload".into()],
                 &dora,
-                Some(&runtime),
+                Some(&runtime)
             )
             .await
             .unwrap()
@@ -396,7 +409,7 @@ mod tests {
                 &["workload".into()],
                 &["collector".into()],
                 &dora,
-                Some(&runtime),
+                Some(&runtime)
             )
             .await
             .unwrap()
@@ -411,7 +424,7 @@ mod tests {
                 &["collector".into()],
                 &["workload".into()],
                 &dora,
-                Some(&runtime),
+                Some(&runtime)
             )
             .await
             .unwrap()
@@ -434,7 +447,7 @@ mod tests {
                 &["collector".into()],
                 &["workload".into()],
                 &dora,
-                Some(&runtime),
+                Some(&runtime)
             )
             .await
             .unwrap()

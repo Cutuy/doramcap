@@ -329,6 +329,8 @@ async fn placement_and_recovery(fixture: Fixture) {
             .unwrap();
         assert!(membership(system.pid).starts_with(&identity.path));
         assert!(!membership(user.pid).starts_with(&identity.path));
+        // User containers get their own group in the same run group.
+        assert!(membership(user.pid).starts_with(Path::new(&identity.path).parent().unwrap()));
         if index == 1 {
             let shm = state
                 .containers

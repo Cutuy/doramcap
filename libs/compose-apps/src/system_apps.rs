@@ -122,15 +122,23 @@ pub async fn start(
                 .inspect_container(&container.id, None)
                 .await
                 .map_err(|e| orchestrator::Error::message(e.to_string()))?;
+            let expected = prepared
+                .value()
+                .cgroup
+                .as_ref()
+                .map(|placement| {
+                    crate::cgroup::service_parent(
+                        placement,
+                        crate::cgroup::Role::System,
+                        &container.service,
+                    )
+                })
+                .transpose()
+                .map_err(orchestrator::Error::message)?;
             if inspected
                 .host_config
                 .and_then(|config| config.cgroup_parent)
-                .as_deref()
-                != prepared
-                    .value()
-                    .system_cgroup
-                    .as_ref()
-                    .map(|placement| placement.parent.as_str())
+                != expected
             {
                 return Err(orchestrator::Error::message(format!(
                     "{}: system-app cgroup assignment differs",
@@ -152,7 +160,13 @@ pub async fn start(
             pids.push(pid);
         }
     }
-    if prepared.value().system_cgroup.is_some() {
+    // The system group exists only once an infrastructure service was placed in it.
+    if prepared.value().cgroup.is_some()
+        && state
+            .plan
+            .as_ref()
+            .is_some_and(|plan| !plan.services.is_empty())
+    {
         executor
             .run::<workload_lifecycle::cgroup::SystemAppsCgroups>(
                 Input::new(workload_lifecycle::launch::SystemAppsCgroupsInput {

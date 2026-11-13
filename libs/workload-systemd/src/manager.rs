@@ -172,7 +172,8 @@ impl Manager {
     }
 
     /// Link copies of repository unit files into the runtime unit directory and
-    /// place each in the scope's slice. Call [`Self::start_adopted`] after this.
+    /// place each in the scope's slice; units placed in the user slice keep their own `Slice=`.
+    /// Call [`Self::start_adopted`] after this.
     pub async fn adopt(
         &self,
         scope: &Scope,
@@ -182,6 +183,7 @@ impl Manager {
         stop_seconds: u64,
         runtime: Option<&workload_lifecycle::launch::DoraRuntime>,
     ) -> Result<Vec<String>> {
+        let in_user_slice = scope.slice == crate::cgroup::user_name(scope);
         let units = scope.directory.join("units");
         tokio::fs::create_dir_all(&units).await.map_err(error)?;
         let mut names = Vec::new();
@@ -208,12 +210,17 @@ impl Manager {
             {
                 contents.extend(environment_line(variable)?.as_bytes());
             }
-            contents.extend(tokio::fs::read(file).await.map_err(error)?);
+            let source = tokio::fs::read(file).await.map_err(error)?;
+            let own_slice = in_user_slice && declares_slice(&source);
+            contents.extend(source);
             tokio::fs::write(&copy, contents).await.map_err(error)?;
             let drop_in =
                 std::path::Path::new(crate::SYSTEMD_RUNTIME_UNITS).join(format!("{name}.d"));
             tokio::fs::create_dir_all(&drop_in).await.map_err(error)?;
-            let mut run = format!("[Service]\nSlice={}\n", scope.slice);
+            let mut run = "[Service]\n".to_owned();
+            if !own_slice {
+                run.push_str(&format!("Slice={}\n", scope.slice));
+            }
             for variable in environment
                 .iter()
                 .filter(|variable| variable.name != dora_app::environment::NODE_ID)
@@ -392,6 +399,22 @@ pub(crate) fn value<'a>(value: impl Into<Variant<'a>>) -> Result<OwnedVariant> {
 }
 
 /// Quote one approved environment assignment using systemd.syntax C escapes and literal specifiers.
+/// Whether a unit file assigns its own `Slice=` in its `[Service]` section.
+fn declares_slice(unit: &[u8]) -> bool {
+    let mut service = false;
+    String::from_utf8_lossy(unit).lines().any(|line| {
+        let line = line.trim();
+        if line.starts_with('[') {
+            service = line == "[Service]";
+            return false;
+        }
+        service
+            && line
+                .split_once('=')
+                .is_some_and(|(key, value)| key.trim() == "Slice" && !value.trim().is_empty())
+    })
+}
+
 fn environment_line(variable: &crate::EnvironmentVariable) -> Result<String> {
     let assignment = format!("{}={}", variable.name, variable.value);
     if assignment.contains('\0') {

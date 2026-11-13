@@ -209,7 +209,7 @@ impl ComposeRunner {
             .machine
             .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
-        let system_apps = prepared.value().system_cgroup.clone().map(|placement| {
+        let system_apps = prepared.value().cgroup.clone().map(|placement| {
             cgroup::DockerCgroup::group(placement, Duration::from_secs(stop_seconds))
         });
         let mut executor = Rc::try_unwrap(executor)

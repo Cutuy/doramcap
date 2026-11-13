@@ -41,28 +41,124 @@ pub(crate) async fn placement(
         .chain_update([0])
         .chain_update(artifacts.as_os_str().as_encoded_bytes())
         .finalize();
-    let hash = &hex::encode(digest)[..PARENT_HASH_CHARS];
-    let name = format!("{PARENT_PREFIX}-{hash}-system");
-    match info.cgroup_driver {
+    let run = format!(
+        "{PARENT_PREFIX}-{}",
+        &hex::encode(digest)[..PARENT_HASH_CHARS]
+    );
+    let parent = match info.cgroup_driver {
         Some(bollard::models::SystemInfoCgroupDriverEnum::SYSTEMD) => {
-            let parent = format!("{name}.slice");
-            let path = slice_path(&parent);
-            Ok(CgroupPlacement {
-                parent,
-                path: path.to_string_lossy().into_owned(),
-            })
+            format!("{run}-{SYSTEM}.slice")
         }
-        Some(bollard::models::SystemInfoCgroupDriverEnum::CGROUPFS) => {
-            let parent = format!("/{name}");
-            let path = cgroup::host_path(&parent).map_err(invalid)?;
-            Ok(CgroupPlacement {
-                parent,
-                path: path.to_string_lossy().into_owned(),
-            })
+        Some(bollard::models::SystemInfoCgroupDriverEnum::CGROUPFS) => format!("/{run}/{SYSTEM}"),
+        driver => {
+            return Err(invalid(format!(
+                "unsupported Docker cgroup driver: {driver:?}"
+            )));
         }
-        driver => Err(invalid(format!(
-            "unsupported Docker cgroup driver: {driver:?}"
-        ))),
+    };
+    let path = parent_path(&parent).map_err(invalid)?;
+    Ok(CgroupPlacement {
+        parent,
+        path: path.to_string_lossy().into_owned(),
+    })
+}
+
+/// Group below the run group holding one group per service.
+#[derive(Clone, Copy)]
+pub(crate) enum Role {
+    System,
+    User,
+}
+const SYSTEM: &str = "system";
+const USER: &str = "user";
+impl Role {
+    fn name(self) -> &'static str {
+        match self {
+            Self::System => SYSTEM,
+            Self::User => USER,
+        }
+    }
+}
+
+/// Generated run group name, `doramcap-compose-‹hash›`, of a placement's system group.
+pub(crate) fn run_name(placement: &CgroupPlacement) -> std::result::Result<&str, String> {
+    let run = placement
+        .parent
+        .strip_suffix(&format!("-{SYSTEM}.slice"))
+        .or_else(|| {
+            placement
+                .parent
+                .strip_prefix('/')
+                .and_then(|parent| parent.strip_suffix(&format!("/{SYSTEM}")))
+        })
+        .ok_or("accounting parent is not a generated Compose system group")?;
+    generated_run(run).ok_or("accounting parent is not a generated Compose run group")?;
+    Ok(run)
+}
+
+/// Split a generated service parent into its run group name and the run-independent rest.
+pub(crate) fn split_service_parent(parent: &str) -> Option<(&str, &str)> {
+    let (slice, start) = match parent.strip_prefix('/') {
+        Some(rest) => (false, rest),
+        None => (true, parent),
+    };
+    let run = &start[..start.len().min(PARENT_PREFIX.len() + 1 + PARENT_HASH_CHARS)];
+    generated_run(run)?;
+    let rest = &start[run.len()..];
+    let role = |separator: char| {
+        [SYSTEM, USER].into_iter().any(|role| {
+            rest.strip_prefix(separator)
+                .and_then(|rest| rest.strip_prefix(role))
+                .is_some_and(|rest| rest.starts_with(separator))
+        })
+    };
+    let matches = if slice {
+        role('-') && rest.ends_with(".slice")
+    } else {
+        role('/')
+    };
+    matches.then_some((run, rest))
+}
+
+// Accept only `doramcap-compose-‹lowercase hex hash›`.
+fn generated_run(run: &str) -> Option<&str> {
+    run.strip_prefix(&format!("{PARENT_PREFIX}-"))
+        .filter(|hash| {
+            hash.len() == PARENT_HASH_CHARS
+                && hash
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+}
+
+/// Docker `cgroup_parent` giving `service` its own group below the run's `role` group.
+/// Systemd names escape `-` so service names add no slice levels.
+pub(crate) fn service_parent(
+    placement: &CgroupPlacement,
+    role: Role,
+    service: &str,
+) -> std::result::Result<String, String> {
+    let run = run_name(placement)?;
+    let role = role.name();
+    if placement.parent.ends_with(".slice") {
+        Ok(format!(
+            "{run}-{role}-{}.slice",
+            service.replace('-', SLICE_DASH)
+        ))
+    } else {
+        Ok(format!("/{run}/{role}/{service}"))
+    }
+}
+
+/// Systemd's escape for `-` inside one slice name component.
+const SLICE_DASH: &str = "\\x2d";
+
+// Host path of a generated systemd slice or cgroupfs parent.
+fn parent_path(parent: &str) -> std::result::Result<PathBuf, String> {
+    if parent.ends_with(".slice") {
+        Ok(slice_path(parent))
+    } else {
+        cgroup::host_path(parent)
     }
 }
 
@@ -90,35 +186,17 @@ impl DockerCgroup {
     }
 }
 
-// Limit removal to generated per-run paths; shared ancestor slices remain owned by Docker.
-fn cleanup_paths(placement: &CgroupPlacement) -> std::result::Result<Vec<PathBuf>, String> {
-    let slice = placement.parent.strip_suffix(".slice");
-    let name = slice
-        .or_else(|| placement.parent.strip_prefix('/'))
-        .ok_or("invalid Compose accounting parent")?;
-    let hash = name
-        .strip_prefix(&format!("{PARENT_PREFIX}-"))
-        .and_then(|name| name.strip_suffix("-system"))
-        .filter(|hash| {
-            hash.len() == PARENT_HASH_CHARS
-                && hash
-                    .bytes()
-                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        })
-        .ok_or("accounting parent is not a generated Compose run parent")?;
-    let path = if slice.is_some() {
-        slice_path(&placement.parent)
-    } else {
-        cgroup::host_path(&placement.parent)?
-    };
-    if path != Path::new(&placement.path) {
+// Limit removal to the generated run group; shared ancestor slices remain owned by Docker.
+fn run_path(placement: &CgroupPlacement) -> std::result::Result<PathBuf, String> {
+    let run = run_name(placement)?;
+    if parent_path(&placement.parent)? != Path::new(&placement.path) {
         return Err("Compose accounting parent and host path differ".into());
     }
-    let mut paths = vec![path];
-    if slice.is_some() {
-        paths.push(slice_path(&format!("{PARENT_PREFIX}-{hash}.slice")));
+    if placement.parent.ends_with(".slice") {
+        Ok(slice_path(&format!("{run}.slice")))
+    } else {
+        cgroup::host_path(&format!("/{run}"))
     }
-    Ok(paths)
 }
 
 fn verify_empty_if_present(path: &Path) -> std::result::Result<(), String> {
@@ -155,31 +233,25 @@ impl Backend for DockerCgroup {
     }
     fn remove(&self) -> LocalBoxFuture<'_, std::result::Result<Removal, String>> {
         Box::pin(async {
-            let paths = cleanup_paths(&self.placement)?;
+            let path = run_path(&self.placement)?;
             tokio::time::timeout(self.stop, async {
-                // Check the whole run before removing anything, including sibling descendants.
-                for path in &paths {
-                    verify_empty_if_present(path)?;
-                }
+                // Check the whole run before removing anything, including user services.
+                verify_empty_if_present(&path)?;
                 if self.placement.parent.ends_with(".slice") {
-                    let manager = cgroup::slice::connect().await?;
-                    for path in &paths {
-                        let name = path
-                            .file_name()
-                            .and_then(|name| name.to_str())
-                            .ok_or("Compose slice name is not UTF-8")?;
-                        cgroup::slice::stop(&manager, name).await?;
-                    }
+                    let name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .ok_or("Compose slice name is not UTF-8")?;
+                    // Stopping the run slice stops and removes every slice below it.
+                    cgroup::slice::stop(&cgroup::slice::connect().await?, name).await?;
                 } else {
-                    remove_tree(&paths[0])?;
+                    remove_tree(&path)?;
                 }
-                for path in &paths {
-                    if path.try_exists().map_err(|e| e.to_string())? {
-                        return Err(format!(
-                            "{}: Compose accounting cgroup remains after removal",
-                            path.display()
-                        ));
-                    }
+                if path.try_exists().map_err(|e| e.to_string())? {
+                    return Err(format!(
+                        "{}: Compose run cgroup remains after removal",
+                        path.display()
+                    ));
                 }
                 Ok(Removal::Removed)
             })
