@@ -32,7 +32,7 @@ These documents use only these terms.
 ## Goal
 
 1. **Console overlays the writable mounts a launch declares.** Compose services,
-   services Console creates, your own unit files and Holoscan launches each declare
+   system apps and user apps under systemd and Holoscan launches each declare
    mounts in their own format. Console adds none.
 2. **Each of those mounts gets one overlay.** The host folder is the lower.
 3. **The change list is read from the uppers** after the apps stop.
@@ -78,8 +78,9 @@ Recording basic metadata for it without walking the whole folder is later work.
 | Launch | Writable mounts Console overlays | Not tracked |
 | --- | --- | --- |
 | Compose service | Host folders in the Compose file | Named volumes. The container's own filesystem is read through Docker's diff as today. |
-| Service Console creates | Host folders in the app's settings | Nothing else is writable for it. |
-| Your own unit file | Host folders in `BindPaths=` | Writes anywhere else on the host. |
+| System app launched as a command | Host folders in the app's settings | Nothing else is writable for it. |
+| System app shipped as a unit file | Host folders in the app's settings | Writes outside its private root's binds. |
+| User app | Host folders in `BindPaths=` | Writes anywhere else on the host. |
 | Holoscan | The project folder and extra data folders | Mounts the project sets in its own Docker options. |
 
 Compose reads the user's Compose file and works on its own copy for the run. In that
@@ -115,7 +116,7 @@ overlay.
   outside them is missing for the app.
 - A unit that writes `WorkingDirectory=-/path` accepts a missing directory, and Console
   skips the check. Compose needs no check; Docker creates a missing working directory.
-- When your own unit's working directory is writable and outside every writable mount,
+- When a user app's working directory is writable and outside every writable mount,
   Review lists it as not tracked and suggests declaring it. The user makes that change.
 
 Console's Dora coordinator and daemon use `/runtime`, their declared output folder.
