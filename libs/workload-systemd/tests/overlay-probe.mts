@@ -33,10 +33,13 @@ const target = directory('target');
 const otherTarget = directory('other-target');
 const readonlyTarget = directory('readonly-target');
 const missing = join(root, 'missing');
+const noexec = directory('noexec');
+const scratch = directory('scratch');
 let mounted = false;
 let linked = false;
 
-function binds(property: string): unknown[] {
+type NativeBind = [string, string, boolean, number];
+function binds(property: string): NativeBind[] {
   const path = command('systemctl', ['show', '--property=Id', '--value', adopted]);
   assert.equal(path, adopted);
   const unitPath = command('busctl', [
@@ -50,6 +53,22 @@ function binds(property: string): unknown[] {
   ]));
   assert.equal(result.type, 'a(ssbt)');
   return result.data;
+}
+
+function dropIn(writable: NativeBind[], readOnly: NativeBind[]): string {
+  const lines = ['[Service]', 'BindPaths='];
+  for (const [property, entries] of [['BindPaths', writable], ['BindReadOnlyPaths', readOnly]] as const) {
+    for (const [source, target, optional, flags] of entries) {
+      assert.ok(flags === 0 || flags === 16384);
+      lines.push(`${property}=${optional ? '-' : ''}${JSON.stringify(source).replaceAll('%', '%%')}:${JSON.stringify(target).replaceAll('%', '%%')}:${flags ? 'rbind' : 'norbind'}`);
+    }
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+const otherMountProperties = ['ReadWritePaths', 'ReadOnlyPaths', 'InaccessiblePaths', 'ExecPaths', 'NoExecPaths', 'TemporaryFileSystem', 'MountImages', 'ExtensionImages', 'ExtensionDirectories', 'RootDirectory', 'RootImage', 'MountAPIVFS', 'PrivateMounts', 'PrivateTmp', 'PrivateDevices', 'ProtectSystem', 'ProtectHome'];
+function mountSettings(): string {
+  return command('systemctl', ['show', `--property=${otherMountProperties.join(',')}`, adopted]);
 }
 
 try {
@@ -72,7 +91,7 @@ try {
   console.log('PASS: transient service sees Console overlay; writes stay in its upper');
 
   const file = join(root, adopted);
-  writeFileSync(file, `[Unit]\nDescription=Console overlay qualification\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=15s\nBindPaths=${lower}:${target}\nBindPaths=-${missing}:${missing}:norbind\nBindReadOnlyPaths=${readonly}:${readonlyTarget}\nExecStart=/bin/sh -ec 'test "$(cat ${target}/before)" = lower; test "$(cat ${otherTarget}/keep)" = other; if test -e ${target}/from-console; then test "$(cat ${target}/from-console)" = console; printf adopted > ${target}/from-adopted; fi'\n`);
+  writeFileSync(file, `[Unit]\nDescription=Console overlay qualification\n[Service]\nType=oneshot\nRemainAfterExit=yes\nTimeoutStartSec=15s\nBindPaths=${lower}:${target}\nBindPaths=-${missing}:${missing}:norbind\nBindReadOnlyPaths=${readonly}:${readonlyTarget}\nReadWritePaths=${other}\nReadOnlyPaths=${readonly}\nInaccessiblePaths=-${missing}\nExecPaths=/usr\nNoExecPaths=${noexec}\nTemporaryFileSystem=${scratch}:ro\nPrivateMounts=yes\nProtectSystem=full\nProtectHome=read-only\nExecStart=/bin/sh -ec 'test "$(cat ${target}/before)" = lower; test "$(cat ${otherTarget}/keep)" = other; if test -e ${target}/from-console; then test "$(cat ${target}/from-console)" = console; printf adopted > ${target}/from-adopted; fi'\n`);
   mkdirSync(runtimeDropIns);
   writeFileSync(join(runtimeDropIns, '20-user.conf'), `[Service]\nBindPaths=${other}:${otherTarget}\n`);
   command('systemctl', ['link', '--runtime', file]);
@@ -83,16 +102,26 @@ try {
   const readOnlyBefore = binds('BindReadOnlyPaths');
   assert.deepEqual(before, [[lower, target, false, 16384], [missing, missing, true, 0], [other, otherTarget, false, 16384]]);
   assert.deepEqual(readOnlyBefore, [[readonly, readonlyTarget, false, 16384]]);
-  writeFileSync(join(runtimeDropIns, '99-doramcap-overlays.conf'), `[Service]\nBindPaths=\nBindPaths=${merged}:${target}\nBindPaths=-${missing}:${missing}:norbind\nBindPaths=${other}:${otherTarget}\n`);
+  const settingsBefore = mountSettings();
+  const ownedDropIn = join(runtimeDropIns, '99-doramcap-overlays.conf');
+  writeFileSync(ownedDropIn, dropIn(before, readOnlyBefore));
   command('systemctl', ['daemon-reload']);
-  assert.deepEqual(binds('BindPaths'), [[merged, target, false, 16384], ...before.slice(1)]);
+  assert.deepEqual(binds('BindPaths'), before);
+  assert.deepEqual(binds('BindReadOnlyPaths'), readOnlyBefore);
+  assert.equal(mountSettings(), settingsBefore);
+  console.log('PASS: reset and restore round-trips BOTH native lists; other mount settings remain unchanged');
+  const redirected: NativeBind[] = before.map(([source, destination, optional, flags]) => [source === lower ? merged : source, destination, optional, flags]);
+  writeFileSync(ownedDropIn, dropIn(redirected, readOnlyBefore));
+  command('systemctl', ['daemon-reload']);
+  assert.deepEqual(binds('BindPaths'), redirected);
+  assert.deepEqual(binds('BindReadOnlyPaths'), readOnlyBefore);
+  assert.equal(mountSettings(), settingsBefore);
   command('systemctl', ['restart', adopted]);
   assert.equal(readFileSync(join(upper, 'from-adopted'), 'utf8'), 'adopted');
   assert.equal(command('test', ['!', '-e', join(lower, 'from-adopted')]), '');
   console.log('PASS: adopted unit sees Console overlay; reset preserves writable entry order, optional flag and recursion');
   const readOnlyAfter = binds('BindReadOnlyPaths');
-  console.log(`read-only binds before reset: ${JSON.stringify(readOnlyBefore)}`);
-  console.log(`read-only binds after reset: ${JSON.stringify(readOnlyAfter)}`);
+  console.log(`Preserved other mount properties: ${otherMountProperties.join(', ')}`);
   assert.deepEqual(readOnlyAfter, readOnlyBefore, 'BindPaths= reset must preserve existing read-only binds');
   console.log('PASS: reset preserves read-only binds');
 } finally {
