@@ -2,7 +2,7 @@
 
 # systemd overlays
 
-Created November 13, 2026. Status: design for review; implementation not started.
+Created November 13, 2026. Status: blocked at the real-host probe.
 [Implementation plan](111326-systemd-overlays-impl.md) ·
 [Overlays for writable mounts](../../../console/docs/111026-file-change-report.md), milestone 4.
 
@@ -74,10 +74,10 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 
 ## Decisions to make
 
-| Decision | Options | Recommendation |
+| Decision | Options | Choice |
 | --- | --- | --- |
-| Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Rename. New Compose runs get new IDs; saved runs keep theirs. |
-| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Owned drop-in, if the real-host probe confirms it. |
+| Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
+| Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Owner chose the drop-in if the probe confirms it. Preserving read-only binds needs a decision: `BindPaths=` clears both bind lists. |
 
 ## Limits
 

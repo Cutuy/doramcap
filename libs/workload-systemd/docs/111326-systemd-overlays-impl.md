@@ -1,6 +1,6 @@
 # systemd overlays: implementation plan
 
-Created November 13, 2026. Status: planned.
+Created November 13, 2026. Status: blocked at milestone 1.
 [Architecture](111326-systemd-overlays.md). Terms follow the overlay design's
 [term list](../../../console/docs/111026-file-change-report.md#terms).
 
@@ -18,17 +18,22 @@ Created November 13, 2026. Status: planned.
 
 **Work items**
 
-- [ ] On a real systemd host, mount an overlay from Console's process and start a
+- [x] On a real systemd host, mount an overlay from Console's process and start a
   transient service and an adopted unit that bind its overlay directory. Confirm both
   see the overlay.
 - [ ] Confirm an owned drop-in can reset `BindPaths=` and list every entry again, keeping
   the others and their order, for a unit whose own drop-ins also set `BindPaths=`.
-- [ ] Stop and report to the user if either fails.
+- [x] Stop and report to the user if either fails.
 
 **Validation**
 
-- [ ] Overlay visible to transient and adopted units.
-- [ ] Drop-in reset preserves entry order.
+- [x] Overlay visible to transient and adopted units.
+- [x] Drop-in reset preserves entry order.
+- [ ] Drop-in reset preserves read-only binds.
+
+The [host probe](../tests/overlay-probe.mts) uses runtime-only units and one owned
+overlay. An empty `BindPaths=` also clears `BindReadOnlyPaths=`. Milestones 2–4
+await the owner's decision on preserving those entries.
 
 ## Milestone 2: System apps
 
