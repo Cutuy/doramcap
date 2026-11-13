@@ -92,8 +92,10 @@ try {
 
   await isolated(`programs { id:"created" argv:"/bin/sh" argv:"-ec" argv:"echo changed >/work/created; exec sleep 300" working_directory:"/work" binds { source:${quote(source)} target:"/work" } }`, 'created');
 
+  const specifier = directory(`spec-doramcap-${scope.split('/').at(-1)}-own.service`);
+  writeFileSync(join(specifier, 'read'), 'specifier');
   const own = join(repo, 'own.service');
-  writeFileSync(own, `[Service]\nWorkingDirectory=-${root}/absent\nBindPaths=${source}:${source}\nBindReadOnlyPaths=${quote(readonly).replaceAll('%', '%%')}:${root}/read\nExecStart=/bin/sh -ec 'test "$(cat ${root}/read/read)" = read-only; echo changed >${source}/own; exec sleep 300'\n`);
+  writeFileSync(own, `[Service]\nWorkingDirectory=-${root}/absent\nBindPaths=${source}:${source}\nBindReadOnlyPaths=${quote(readonly).replaceAll('%', '%%')}:${root}/read\nBindReadOnlyPaths=${root}/spec-%n:${root}/specifier-read\nExecStart=/bin/sh -ec 'test "$(cat ${root}/read/read)" = read-only; test "$(cat ${root}/specifier-read/read)" = specifier; echo changed >${source}/own; exec sleep 300'\n`);
   mkdirSync(`${own}.d`);
   writeFileSync(join(`${own}.d`, '20-user.conf'), `[Service]\nBindPaths=-${root}/optional:${root}/optional:norbind\n`);
   const native = `unit_files:${quote(own)}`;

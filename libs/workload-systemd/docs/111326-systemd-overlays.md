@@ -78,13 +78,21 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 | --- | --- | --- |
 | Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
 | Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Orchestrator approved one owned drop-in that resets `BindPaths=` and restores both native bind lists, preserving flags and order. |
+| User app Review | Separate names or launch names | Hold repository admission and use launch names, so native specifiers match Start. |
+| Write policy | New shared model or backend field | `SystemdPlan.discard_writes`; false keeps write-back. |
+| Mount setup cancellation | Drop pending setup or await it | Await setup before cancellable launch, then honor Stop. |
+| Host path encoding | Reject names or use directory handles | Open directory descriptors for kernel mount options; retain original report paths. |
+| Stopped writers | Unit state or kernel population too | Check service cgroups before collecting changes. |
+| Required directory in an image | Mount for inspection or reject | Reject before launch; no inspection mounts. |
+| Untracked user app writes | Separate report or shared notes | Add coverage notes to shared filesystem sources before publication. |
+
 
 ## Limits
 
 - Overlays need the service manager to see mounts Console makes. The first milestone
   checks this on a real host and stops the plan if it fails.
 - A unit that writes outside its declared mounts is not tracked.
-- A required working directory inside `RootImage=` is rejected before launch; it
-  cannot be checked without mounting the image.
+- Required native working directories must resolve to absolute paths outside
+  `RootImage=`; checking an image would require mounting it.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.

@@ -57,7 +57,8 @@ for (const form of ['SYSTEMD', 'COMPOSE']) await test(`a real ${form} run publis
     records.push(exported.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.type === 'change' && row.category === 'STORAGE_CATEGORY_HOST_BIND').map(row => [row.pathDisplay, row.kind, row.before?.mode ?? null, row.after?.mode ?? null, ((row.after?.mode ?? 0) & 0o170000) === 0o100000 ? row.after?.size : null]));
     if (form === 'SYSTEMD') {
       const ownerHome = process.env.SUDO_USER ? execFileSync('getent', ['passwd', process.env.SUDO_USER], { encoding: 'utf8' }).trim().split(':')[5] : homedir();
-      const browsers = await Array.fromAsync(glob(join(ownerHome, '.cache/ms-playwright/chromium-*/chrome-linux*/chrome')));
+      const browsers: string[] = [];
+      for await (const browser of glob(join(ownerHome, '.cache/ms-playwright/chromium-*/chrome-linux*/chrome'))) browsers.push(browser);
       assert.ok(browsers.length, 'installed headless Chromium required');
       const { server, origin } = await listenConsole(origin => createConsoleServer({ backend, secret: 'overlay-test', origin, assets: resolve('../frontend/dist') }), await availablePort());
       try {

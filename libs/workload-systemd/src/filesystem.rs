@@ -11,12 +11,10 @@ use host_filesystem::{
 use std::{
     os::unix::fs::DirBuilderExt,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
 };
 
 const OVERLAY_DROP_IN: &str = "15-doramcap-overlays.conf";
 const WORKSPACE: &str = "overlays";
-static REVIEWS: AtomicU64 = AtomicU64::new(0);
 type NativeBind = (String, String, bool, u64);
 
 struct NativeUnit {
@@ -60,31 +58,35 @@ pub async fn review(
         .await?;
         return Ok((snapshot, review_notes(resolved, run).await?));
     }
+    let _admission =
+        workload_lifecycle::admission::Admission::acquire(Path::new(&run.repository_root))
+            .map_err(error)?;
     let manager = Manager::connect().await?;
-    let mut scope = Scope::of(Path::new(&run.repository_root))?;
-    let suffix = format!(
-        "-review-{}-{}",
-        std::process::id(),
-        REVIEWS.fetch_add(1, Ordering::Relaxed)
-    );
-    scope.prefix.push_str(&suffix);
-    scope.directory = scope.directory.with_file_name(format!(
-        "{}{}",
-        scope.directory.file_name().unwrap().to_string_lossy(),
-        suffix
-    ));
+    let scope = Scope::of(Path::new(&run.repository_root))?;
+    let remaining = manager.remaining(&scope).await?;
+    if !remaining.is_empty() {
+        return Err(format!(
+            "prior resources remain: {remaining:?}; clean up before Review"
+        ));
+    }
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(&scope.directory)
         .map_err(error)?;
     let result = async {
-        let captured = crate::preparation::review_units(plan, &scope.directory)?;
+        let capture_plan = plan.clone();
+        let directory = scope.directory.clone();
+        let captured = tokio::task::spawn_blocking(move || {
+            crate::preparation::review_units(&capture_plan, &directory)
+        })
+        .await
+        .map_err(error)??;
         crate::runtime::link_inputs(&manager, &scope, &captured).await?;
         resolve(Some(&manager), &scope, run, &captured, true).await
     }
     .await;
-    // These uniquely named Review copies have never been started.
+    // Admission protects these exact launch names; Review never starts them.
     let cleanup = async {
         for path in crate::manager::runtime_files(&scope).await? {
             crate::manager::remove_path(&path).await?;
@@ -134,17 +136,22 @@ pub(crate) async fn resolve(
             .await?;
         let writable = unit.service.bind_paths().await.map_err(error)?;
         let read_only = unit.service.bind_read_only_paths().await.map_err(error)?;
-        let binds: Vec<_> = writable
+        let mut binds = Vec::new();
+        for ((source, target, optional, _), read_only) in writable
             .iter()
             .map(|entry| (entry, false))
             .chain(read_only.iter().map(|entry| (entry, true)))
-            .filter(|((source, _, optional, _), _)| !*optional || Path::new(source).exists())
-            .map(|((source, target, _, _), read_only)| Bind {
-                source: source.clone(),
-                target: target.clone(),
-                read_only,
-            })
-            .collect();
+        {
+            match std::fs::metadata(source) {
+                Err(error) if *optional && error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("{id}: bind {source}:{target}: {error}")),
+                Ok(_) => binds.push(Bind {
+                    source: source.clone(),
+                    target: target.clone(),
+                    read_only,
+                }),
+            }
+        }
         for (_, _, _, flags) in writable.iter().chain(&read_only) {
             if *flags != 0 && *flags != MS_REC {
                 return Err(format!("{id}: unsupported native bind flags {flags}"));
@@ -187,13 +194,25 @@ pub(crate) async fn resolve(
             read_only,
         });
     }
-    // Review has no output directory yet; source validation still uses the execution classifier.
-    let existing: Vec<_> = resolved
-        .mounts
-        .iter()
-        .filter(|bind| Path::new(&bind.source).exists())
-        .cloned()
-        .collect();
+    // Review accepts only the exact output directories preparation creates.
+    let mut existing = Vec::new();
+    for bind in &resolved.mounts {
+        match std::fs::metadata(&bind.source) {
+            Ok(_) => existing.push(bind.clone()),
+            Err(error)
+                if reviewing
+                    && error.kind() == std::io::ErrorKind::NotFound
+                    && (Path::new(&bind.source) == Path::new(&run.artifacts)
+                        || Path::new(&bind.source)
+                            == Path::new(&run.artifacts).join("dora/runtime")) => {}
+            Err(error) => {
+                return Err(format!(
+                    "{}: bind {}:{}: {error}",
+                    bind.consumer, bind.source, bind.target
+                ));
+            }
+        }
+    }
     overlay::resolve_sources(&existing, Path::new(&run.artifacts))
         .await
         .map_err(error)?;
@@ -236,6 +255,11 @@ fn check_directory(
         return Ok(());
     }
     let path = Path::new(directory);
+    if !path.is_absolute() {
+        return Err(format!(
+            "{id}: working directory {directory} must resolve to an absolute path"
+        ));
+    }
     let host = binds
         .iter()
         .filter(|bind| path.starts_with(&bind.target))
