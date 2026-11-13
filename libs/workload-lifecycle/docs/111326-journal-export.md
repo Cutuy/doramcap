@@ -79,5 +79,6 @@ up to 1 MiB; a larger index shows unavailable and leaves the files on the host.
 | Invocation fields | Two fields, or native invocation matches | Use all four native invocation fields for program, manager and object entries. |
 | Console list | Saved status, or current index | Reread the index on Result and History; apply the explicit display budget. |
 | Change-list exclusion | Per workflow, or lifecycle step | The shared filesystem preparation step excludes `logs`. |
+| Identity writes | Concurrent inspection, a new lock, or lifecycle boundaries | Save Compose identities at serialized startup and cleanup boundaries; inspections remain read-only. |
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.

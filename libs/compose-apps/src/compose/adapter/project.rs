@@ -157,8 +157,6 @@ impl ComposeExecution<'_> {
             if !self.plan.services.contains_key(&service) {
                 return Err(invalid(format!("unexpected service {service}")));
             }
-            // Log persistence is independent of the container's execution outcome.
-            let _ = crate::journal::remember_container(&id, labels).await;
             let state = info
                 .state
                 .ok_or_else(|| invalid("Engine omitted container state"))?;
@@ -203,6 +201,19 @@ impl ComposeExecution<'_> {
         }
         output.trim().to_owned()
     }
+    /// Save owned container identities under the caller's serialized start/cleanup boundary.
+    /// Live inspections remain read-only; journal persistence failures are independent of execution.
+    pub async fn remember_journal(&self) -> Result<()> {
+        for container in self.containers().await? {
+            if !self.owned(&container) {
+                return Err(invalid("journal container ownership changed"));
+            }
+            if let (Some(id), Some(labels)) = (&container.id, &container.labels) {
+                crate::journal::remember_container(id, labels).await?;
+            }
+        }
+        Ok(())
+    }
     /// Start selected services and wait for the requested readiness budget.
     /// Errors or cancellation can leave resources; quiesce joins pending CLI startup.
     pub(crate) async fn start(
@@ -235,7 +246,9 @@ impl ComposeExecution<'_> {
             ..Default::default()
         }));
         tokio::pin!(events);
-        self.command(args, seconds).await?;
+        let command = self.command(args, seconds).await;
+        let _ = self.remember_journal().await;
+        command?;
         let deadline = Instant::now() + Duration::from_secs(seconds);
         loop {
             let state = self.inspect().await?;

@@ -130,7 +130,7 @@ impl workload_lifecycle::run::Running for ComposeRunning {
             .is_some_and(|stopped| stopped.shutdown.value().stopped && stopped.runtime_stopped)
         {
             // Reinspect stopped containers to include partial starts before removal.
-            let _ = self.adapter.project(&self.plan).inspect().await;
+            let _ = self.adapter.project(&self.plan).remember_journal().await;
             let _ = workload_lifecycle::journal::finish(
                 &self.executor,
                 &self.prepared.value().artifacts,

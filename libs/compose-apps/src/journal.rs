@@ -6,7 +6,7 @@ use workload_lifecycle::journal::{self, JournalMatchKind, LogState, ProgramLog};
 /// Frozen logging policy; explicit project logging is always skipped, including journald.
 pub(crate) const EXPORT_LABEL: &str = "io.doramcap.journal-export";
 
-/// Record an owned container as soon as it is inspected, also during admission reset.
+/// Record an owned container during serialized startup or cleanup, including admission reset.
 /// Export metadata never changes launch or cleanup success; callers expose index read failures.
 pub async fn remember_container(id: &str, labels: &HashMap<String, String>) -> std::io::Result<()> {
     let Some(artifacts) = labels.get(ARTIFACTS_LABEL) else {
