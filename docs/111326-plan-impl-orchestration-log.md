@@ -79,3 +79,20 @@ Created 2026-11-13. Kept by the orchestrator (Claude) while the owner is away.
 - Privileged systemd and OverlayFS scenarios ran on x86 only. CUDA/GPU qualification was not run.
 - Full local CI results are the agents' reports. The orchestrator confirmed the ARM64 worker jobs and GitHub checks, and did not review the code line by line.
 - Review the decisions above and each PR's "Decisions made without the owner" list.
+
+## Decisions by the owner after review
+
+Probe behind them (kernel 7.0, ext4, plain overlay mount): through an overlay an app cannot connect to a socket or write to a FIFO that a process outside the run created in the folder, and that process sees none of the app's writes until the run ends.
+
+| # | Decision | Choice | Why |
+| --- | --- | --- | --- |
+| 19 | A user app's bind paths under systemd | Pass through, then withdrawn the same day: overlays stay the default | Pass-through removed only about 100 lines; the overlay code is still needed for system apps, Compose and Holoscan |
+| 20 | Opt-out from overlays | `repeated string passthrough_folders = 16` in `ConsoleConfig`. A mount passes through when its host folder is a listed folder, inside one, or contains one | One shared check covers Compose, systemd and later Holoscan. New configuration input, approved by the owner |
+| 21 | Terms | "System app" (launched as a command, or shipped as a unit file) and "user app" replace "your own unit file" | The owner's vocabulary |
+| 22 | Review screen | A read-only "Writable folders" list: host folder, app, during the run (overlay or passed through), after the run (write policy). No toggle | Console does not write settings today. Its own PR, stacked on decision 20's |
+| 23 | Later | Override per app and per folder for both choices, set from Console | Documented as future work only, in decision 22's PR |
+
+Supersedes decisions 2 and 12 only in wording: the reset drop-in stays, and it re-lists a passed-through bind with its original source.
+
+- 2026-11-13: owner reviewed decision 2. A removal task for option B was started and stopped before any change. The systemd agent is building decisions 20 and 21 on `codex/passthrough-folders` (base #361), then decision 22 and 23 on `codex/review-writable-folders`.
+- Open: Compose on main overlays host folders the same way, so the probe's breakage applies there until decision 20 lands.
