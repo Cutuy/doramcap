@@ -25,7 +25,7 @@ The goal: **configured policy, measured reality, actionable evidence.**
 The project currently provides reusable Rust libraries, runnable Linux demos and
 the Console app.
 Jetson qualification and integrated runtime capabilities follow the
-[platform roadmap](docs/roadmap.md).
+platform roadmap.
 
 ## Run your project in Console
 
@@ -33,9 +33,9 @@ Jetson qualification and integrated runtime capabilities follow the
 changes. Follow each step with live CPU, keep the recordings, and compare any two
 past runs to see what changed in the setup, the machine and the results.
 
-https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
+[![Console demo](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.jpg)](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.mp4)
 
-[Download Console](https://github.com/Cutuy/doramcap/releases/latest) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
+[Download Console](https://github.com/Cutuy/doramcap/releases/latest)
 
 ## Explore a run
 
