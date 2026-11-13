@@ -311,8 +311,7 @@ async fn export_program(program: &mut ProgramLog, path: &Path) -> io::Result<()>
             file.write_all(line.as_bytes()).await?;
             program.entry_count += 1;
         }
-        file.flush().await?;
-        file.sync_all().await
+        Ok::<_, io::Error>(())
     };
     let diagnostic = async {
         let mut stderr = stderr;
@@ -326,7 +325,14 @@ async fn export_program(program: &mut ProgramLog, path: &Path) -> io::Result<()>
     };
     // Drain both pipes and reap the child even when reading or writing an entry fails.
     let (read, diagnostic, status) = tokio::join!(read, diagnostic, child.wait());
+    // Flush accepted writes even if parsing or reading a later entry failed.
+    let persisted = async {
+        file.flush().await?;
+        file.sync_all().await
+    }
+    .await;
     read?;
+    persisted?;
     let diagnostic = diagnostic?;
     let status = status?;
     if !status.success() {
