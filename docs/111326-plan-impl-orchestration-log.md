@@ -26,7 +26,6 @@ Created 2026-11-13. Kept by the orchestrator (Claude) while the owner is away.
 | 7 | PR shape | New stacked draft PRs on the plan branches | Keeps plans reviewable on their own |
 | 8 | #355 log downloads | Logs list up to the download link; attaching is a follow-up | The route belongs to #354 |
 | 9 | Agent mode | Agents ask only for new important decisions and log their own choices in the PR description | Owner's instruction |
-
 | 10 | #355 where start identities are saved | `logs/index.pb` holds identities at start in a pending state, then export results; no second format | Agent's recommendation; one persisted format instead of two. Differs from the plan's "with the run's ownership records" |
 | 11 | #355 agent mode | Told to keep going without answers and log its own choices | It stopped before any implementation; owner is away |
 | 12 | #353 drop-in and read-only binds | Drop-in restores both `BindPaths=` and `BindReadOnlyPaths=` from manager properties | Probe: systemd 255 clears `BindReadOnlyPaths=` when `BindPaths=` is reset. Stays with the drop-in approach; patching Console's copy is the fallback |
