@@ -60,3 +60,23 @@ Created 2026-11-13. Kept by the orchestrator (Claude) while the owner is away.
 - 2026-11-13: GitHub CI passed on the new heads of #356 and #360.
 - 2026-11-13: systemd write-policy integration done. PR #361 marked ready (base #358, carries #353/#357; only `b923d4c5` and `1ec8213c` are new). systemd runs take all three policies; the `discard_writes` flag and the temporary rejection are gone. Agent reports full local CI and privileged keep/discard scenarios passed; ARM64 worker job 700 confirmed `Success`; GitHub CI passed. Its own decisions are in the PR description.
 - 2026-11-13: Bugbot flagged one medium issue on #357 ("Overlay drop-in resolves binds before SHM drop-in exists", `libs/workload-systemd/src/runtime.rs`). Systemd agent resumed to check and fix it and carry it into #361.
+- 2026-11-13: Bugbot finding on #357 judged a false positive by the systemd agent: `15-doramcap-overlays.conf` is applied before `20-doramcap-shm.conf`, so the shared-memory bind survives. Three privileged shared-memory scenarios passed on #357 and #361. Replied on the thread; no code change.
+- 2026-11-13: all agents finished; every agent lease released.
+
+## Final state
+
+| PR | Holds | Base | State |
+| --- | --- | --- | --- |
+| #356 | Journal export (plan #355) | #355 | Ready; GitHub CI green. ARM64 worker job 691 ran before the Bugbot fix; the fix had focused checks only |
+| #357 | systemd overlays (plan #353) | #353 | Ready; GitHub CI green; ARM64 worker job 698 |
+| #358 | Keep files with the run (plan #354) | #354 | Ready; GitHub CI green; ARM64 worker job 696 |
+| #360 | Log downloads | #358, carries #355/#356 | Ready; GitHub CI green. ARM64 worker job 699 ran before the Bugbot fix was carried in |
+| #361 | systemd runs take the shared write policy | #358, carries #353/#357 | Ready; GitHub CI green; ARM64 worker job 700 |
+
+## Left for the owner
+
+- Review and merge order. Suggested: plans #353 to #355, then #358, #357, #356, then rebase #361 and #360 down to their new commits.
+- #360 and #361 were never combined. #357 renames the shared end-of-run step IDs (`d1002e6d`) and #356 adds its step beside the old names, so the second of the two to merge needs a small rebase.
+- Privileged systemd and OverlayFS scenarios ran on x86 only. CUDA/GPU qualification was not run.
+- Full local CI results are the agents' reports. The orchestrator confirmed the ARM64 worker jobs and GitHub checks, and did not review the code line by line.
+- Review the decisions above and each PR's "Decisions made without the owner" list.
