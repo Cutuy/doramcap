@@ -18,6 +18,7 @@ Each run owns one run group inside its repository's group. Below it, `system` an
   user unit with its own `Slice=`, keeps it and stays outside the run tree.
 - **System apps stay enforced.** Their placement is always generated and verified.
 - **User apps are placed only.** No post-start check.
+- **Every Compose run needs Docker cgroup v2**, also runs with only user apps.
 - **Accounting is unchanged.** `system-app-cgroup.pb` records the `system` group.
 - **Cleanup removes the repository group** once its whole tree is empty, also for runs
   without system apps. Repository admission excludes other live runs, so this also
