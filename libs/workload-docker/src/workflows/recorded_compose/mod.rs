@@ -24,7 +24,7 @@ use compose_apps::{
 };
 use orchestrator::{Input, Observer};
 use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, future::Future, path::PathBuf, rc::Rc, time::Duration};
 use system_config::MachineState;
 use tokio::sync::{oneshot, watch};
 pub use workload_lifecycle::recording::Recording;
@@ -209,11 +209,9 @@ impl ComposeRunner {
             .machine
             .send_modify(|capture| capture.before = Some(before));
         check(prepared.value())?;
-        let system_apps = prepared
-            .value()
-            .system_cgroup
-            .clone()
-            .map(cgroup::DockerCgroup::group);
+        let system_apps = prepared.value().system_cgroup.clone().map(|placement| {
+            cgroup::DockerCgroup::group(placement, Duration::from_secs(stop_seconds))
+        });
         let mut executor = Rc::try_unwrap(executor)
             .map_err(|_| invalid("executor still running during cgroup binding"))?;
         if let Some(group) = &system_apps {

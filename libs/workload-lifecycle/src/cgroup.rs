@@ -13,6 +13,8 @@ use std::{
     time::Duration,
 };
 
+pub mod slice;
+
 type Result<T> = std::result::Result<T, String>;
 /// Host cgroup v2 mount used for identity and membership checks.
 pub const CGROUP_ROOT: &str = "/sys/fs/cgroup";

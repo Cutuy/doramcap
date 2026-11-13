@@ -904,6 +904,26 @@ async fn system_apps_start_before_user_apps_and_stop_cleanly() {
     );
     assert!(runtime_units().is_empty(), "{:?}", runtime_units());
     assert!(Path::new(&fixture.root.join("r1/report.json")).is_file());
+    // Assert: the run slice and its system-app slice leave no cgroups behind.
+    let identity = std::fs::read(
+        fixture
+            .root
+            .join("r1")
+            .join(workload_lifecycle::cgroup::IDENTITY_FILE),
+    )
+    .unwrap();
+    let identity = <workload_lifecycle::cgroup::SystemAppCgroup as prost::Message>::decode(
+        identity.as_slice(),
+    )
+    .unwrap();
+    let system = Path::new(&identity.path);
+    for path in [system, system.parent().unwrap()] {
+        assert!(
+            !path.exists(),
+            "accounting cgroup remains: {}",
+            path.display()
+        );
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]

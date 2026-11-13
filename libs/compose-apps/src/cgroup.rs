@@ -77,16 +77,77 @@ fn slice_path(slice: &str) -> PathBuf {
     path.join(slice)
 }
 
-/// Adopt Docker's resolved accounting parent and verify it is empty at cleanup.
+/// Adopt Docker's accounting parent and remove its empty per-run hierarchy at cleanup.
 pub struct DockerCgroup {
     placement: CgroupPlacement,
+    stop: Duration,
 }
 impl DockerCgroup {
-    /// Bind lifecycle accounting to the exact prepared parent; Docker creates its directory.
-    pub fn group(placement: CgroupPlacement) -> Rc<cgroup::Group> {
-        Rc::new(cgroup::Group::new(Rc::new(Self { placement })))
+    /// Bind the prepared parent and cleanup budget; Docker creates the directory.
+    /// Systemd cleanup requires access to the local host's system bus and permission to stop units.
+    pub fn group(placement: CgroupPlacement, stop: Duration) -> Rc<cgroup::Group> {
+        Rc::new(cgroup::Group::new(Rc::new(Self { placement, stop })))
     }
 }
+
+// Limit removal to generated per-run paths; shared ancestor slices remain owned by Docker.
+fn cleanup_paths(placement: &CgroupPlacement) -> std::result::Result<Vec<PathBuf>, String> {
+    let slice = placement.parent.strip_suffix(".slice");
+    let name = slice
+        .or_else(|| placement.parent.strip_prefix('/'))
+        .ok_or("invalid Compose accounting parent")?;
+    let hash = name
+        .strip_prefix(&format!("{PARENT_PREFIX}-"))
+        .and_then(|name| name.strip_suffix("-system"))
+        .filter(|hash| {
+            hash.len() == PARENT_HASH_CHARS
+                && hash
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        })
+        .ok_or("accounting parent is not a generated Compose run parent")?;
+    let path = if slice.is_some() {
+        slice_path(&placement.parent)
+    } else {
+        cgroup::host_path(&placement.parent)?
+    };
+    if path != Path::new(&placement.path) {
+        return Err("Compose accounting parent and host path differ".into());
+    }
+    let mut paths = vec![path];
+    if slice.is_some() {
+        paths.push(slice_path(&format!("{PARENT_PREFIX}-{hash}.slice")));
+    }
+    Ok(paths)
+}
+
+fn verify_empty_if_present(path: &Path) -> std::result::Result<(), String> {
+    if path.try_exists().map_err(|e| e.to_string())? {
+        cgroup::verify_empty(path)?;
+    }
+    Ok(())
+}
+
+// Remove an empty cgroupfs tree deepest first; the kernel refuses any group that gains a process.
+fn remove_tree(path: &Path) -> std::result::Result<(), String> {
+    let entries = match std::fs::read_dir(path) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+            remove_tree(&entry.path())?;
+        }
+    }
+    match std::fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("{}: {error}", path.display())),
+    }
+}
+
 impl Backend for DockerCgroup {
     fn create(&self) -> LocalBoxFuture<'_, std::result::Result<PathBuf, String>> {
         // Docker creates the parent before container exec; adopt only that prepared location.
@@ -94,25 +155,39 @@ impl Backend for DockerCgroup {
     }
     fn remove(&self) -> LocalBoxFuture<'_, std::result::Result<Removal, String>> {
         Box::pin(async {
-            let path = Path::new(&self.placement.path);
-            if path.try_exists().map_err(|e| e.to_string())? {
-                cgroup::verify_empty(path)?;
-            }
-            Ok(Removal::RetainedEmpty(path.to_owned()))
+            let paths = cleanup_paths(&self.placement)?;
+            tokio::time::timeout(self.stop, async {
+                // Check the whole run before removing anything, including sibling descendants.
+                for path in &paths {
+                    verify_empty_if_present(path)?;
+                }
+                if self.placement.parent.ends_with(".slice") {
+                    let manager = cgroup::slice::connect().await?;
+                    for path in &paths {
+                        let name = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .ok_or("Compose slice name is not UTF-8")?;
+                        cgroup::slice::stop(&manager, name).await?;
+                    }
+                } else {
+                    remove_tree(&paths[0])?;
+                }
+                for path in &paths {
+                    if path.try_exists().map_err(|e| e.to_string())? {
+                        return Err(format!(
+                            "{}: Compose accounting cgroup remains after removal",
+                            path.display()
+                        ));
+                    }
+                }
+                Ok(Removal::Removed)
+            })
+            .await
+            .map_err(|_| format!("Compose accounting cleanup exceeded {:?}", self.stop))?
         })
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn systemd_parent_expands_to_the_driver_hierarchy() {
-        // Arrange
-        let parent = "doramcap-compose-abcdef-system.slice";
-        // Act
-        let path = slice_path(parent);
-        // Assert
-        assert_eq!(path, Path::new(cgroup::CGROUP_ROOT).join("doramcap.slice/doramcap-compose.slice/doramcap-compose-abcdef.slice/doramcap-compose-abcdef-system.slice"));
-    }
-}
+mod tests;

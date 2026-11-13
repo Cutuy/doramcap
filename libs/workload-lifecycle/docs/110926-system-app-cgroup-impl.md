@@ -3,9 +3,9 @@
 Created: 2026-11-09. [Architecture](110926-system-app-cgroup.md).
 
 Applicable rules: D-02/03/04/06/07/09/12/13/14; I-03/04/05/06/07/09.
-The owner approved a shared step with backend mechanics and retention of empty
-runtime-owned parents. Existing filesystem, Docker and native systemd APIs provide
-the mechanics; no new third-party package is introduced.
+The shared step uses backend mechanics for allocation and cleanup. Native systemd and
+Compose share one slice stop in `workload_lifecycle::cgroup::slice`, using the approved
+`zbus` and `zbus_systemd` versions already used by native systemd runs.
 
 ## Milestone 1: Shared accounting lifecycle
 
@@ -62,3 +62,20 @@ Latest review evidence for code revision `4a1296f4`:
 
 Supervisor's legacy driver remains in use; its forced-shutdown, readiness and
 ownership behavior is preserved for the separate migration plan.
+
+## Milestone 5: Release Compose accounting parents
+
+**Work items**
+- [x] Remove the empty cgroupfs run tree and both generated per-run systemd slices.
+- [x] Verify the full subtree, generated names and host paths before removal.
+- [x] Share the slice stop, job and unload confirmation with native systemd runs.
+- [x] Bound cleanup with the existing stop budget and preserve visible cleanup failures.
+- [x] Update the host bus/permission contract and completed-run expectations.
+
+**Validation**
+- [x] Focused locked release tests, formatting, Clippy and library boundaries.
+- [x] Native repeated-run cleanup, populated descendants, siblings and idempotence.
+- [x] Nested empty and populated trees for both drivers.
+- [x] Native systemd runs leave no run slices.
+- [x] Native cgroupfs and systemd placement/recovery.
+- [ ] ARM64 worker validation.
