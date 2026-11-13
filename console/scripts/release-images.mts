@@ -1,6 +1,7 @@
 // Publish release images and write a release template pinned to their multi-arch digests.
 //   build: build and push this architecture's images from target/release and --dora.
 //   merge: join both architectures and write the pinned template to --output.
+//   promote: point latest at the verified, published multi-arch version.
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,7 +17,7 @@ const { values, positionals: [command] } = parseArgs({ allowPositionals: true, o
   arch: { type: 'string' }, dora: { type: 'string' }, output: { type: 'string' },
 } });
 const { registry, version, source = 'https://github.com/Cutuy/doramcap' } = values;
-if (!registry || !version) throw new Error('usage: build|merge --registry REGISTRY --version VERSION [--arch ARCH --dora PATH] [--output DIR]');
+if (!registry || !version) throw new Error('usage: build|merge|promote --registry REGISTRY --version VERSION [--arch ARCH --dora PATH] [--output DIR]');
 const images: Record<string, { dockerfile: string; binary?: string }> = {
   dora: { dockerfile: 'libs/workload-docker/deploy/Dockerfile', binary: values.dora ?? '' },
   'system-monitor': { dockerfile: 'apps/system-monitor/deploy/Dockerfile', binary: 'target/release/system-monitor' },
@@ -60,4 +61,25 @@ if (command === 'build') {
     if (next !== text) writeFileSync(path, next);
   };
   rewrite(template);
-} else throw new Error('usage: build|merge');
+} else if (command === 'promote') {
+  // Check every source before changing any moving tag; publish the captured digests.
+  const published = Object.keys(images).map(name => {
+    const tag = `${registry}/${name}:${version}`;
+    const pinned = JSON.parse(digest(tag)) as { digest: string };
+    if (!/^sha256:[0-9a-f]{64}$/.test(pinned.digest)) throw new Error(`Invalid image digest: ${tag}`);
+    const source = `${registry}/${name}@${pinned.digest}`;
+    const manifest = JSON.parse(docker('buildx', 'imagetools', 'inspect', source, '--raw')) as {
+      manifests?: { platform?: { os?: string; architecture?: string } }[];
+    };
+    for (const architecture of ['amd64', 'arm64'])
+      if (!manifest.manifests?.some(entry => entry.platform?.os === 'linux' && entry.platform.architecture === architecture))
+        throw new Error(`Published image lacks linux/${architecture}: ${tag}`);
+    return { latest: `${registry}/${name}:latest`, source, digest: pinned.digest };
+  });
+  for (const image of published) {
+    docker('buildx', 'imagetools', 'create', '--tag', image.latest, image.source);
+    const promoted = JSON.parse(digest(image.latest)) as { digest: string };
+    if (promoted.digest !== image.digest) throw new Error(`Promoted digest differs: ${image.latest}`);
+    console.log(`${image.latest} -> ${image.digest}`);
+  }
+} else throw new Error('usage: build|merge|promote');
