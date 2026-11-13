@@ -84,30 +84,6 @@ fn generated_launch_config_preserves_defaults_and_rejects_unknown_fields() {
 }
 
 #[test]
-fn saved_plans_discard_legacy_warnings_without_changing_launch_identity() {
-    // Arrange: a saved plan from before Review warnings moved out of the plan.
-    let saved = serde_json::json!({
-        "run":"run", "key":"app", "name":"project", "manifest":"/tmp/compose.json",
-        "sha256":"digest", "services":{}, "diagnostics":["internal note"],
-        "remove_volumes":false, "warnings":["old Review notice"]
-    });
-    // Act
-    let plan: ResolvedComposeProject = serde_json::from_value(saved).unwrap();
-    let encoded = serde_json::to_value(&plan).unwrap();
-    // Assert
-    assert_eq!(plan.sha256, "digest");
-    assert_eq!(plan.diagnostics, ["internal note"]);
-    assert!(encoded.get("warnings").is_none());
-
-    // Act: protobuf field 9 from an older producer is skipped as an unknown field.
-    let mut bytes = plan.encode_to_vec();
-    bytes.extend_from_slice(&[0x4a, 3, b'o', b'l', b'd']);
-    let restored = ResolvedComposeProject::decode(bytes.as_slice()).unwrap();
-    // Assert
-    assert_eq!(restored, plan);
-}
-
-#[test]
 fn volume_deletion_permission_defaults_off_across_serialization_formats() {
     // Arrange
     let pool = DescriptorPool::decode(

@@ -152,7 +152,7 @@ pub struct ResolvedRun {
     pub run: workload_lifecycle::launch::RunPlan,
     pub artifacts: PathBuf,
     pub plan: ResolvedComposeProject,
-    /// Review notices excluded from the saved plan and configuration snapshot.
+    /// Notices shown to the user at Review.
     pub warnings: Vec<String>,
     pub system_cgroup: Option<crate::cgroup::CgroupPlacement>,
     pub system_services: Vec<String>,

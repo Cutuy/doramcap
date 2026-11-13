@@ -16,8 +16,6 @@ Both milestones are implemented.
 | Console addon (`console/server/native`) | Put warnings in `Inspection`; return `Invalid` as a rejection `Diagnostic`. |
 | Console server and frontend | Read warnings from `Inspection`; pass `check` through the error body and show it. |
 
-Saved JSON and protobuf plans with `warnings` still decode; the field is ignored.
-
 ## Milestone 1 — Warnings out of the plan
 
 **Work items**
@@ -30,7 +28,6 @@ Saved JSON and protobuf plans with `warnings` still decode; the field is ignored
 
 - [x] Compose warning tests
 - [x] Console warning passthrough test
-- [x] Older saved plan decode
 
 ## Milestone 2 — Located rejections
 

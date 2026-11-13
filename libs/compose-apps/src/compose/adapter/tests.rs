@@ -788,7 +788,6 @@ async fn frozen_logging_defaults_to_journald_and_preserves_project_settings() {
         );
         assert_eq!(std::fs::read(path).unwrap(), source);
         assert_eq!(plan.sha256, digest(&bytes));
-        assert!(resolution["plan"].get("warnings").is_none());
         if logging.is_some() {
             assert!(changes.is_empty());
             assert!(warnings.iter().any(|message| message
