@@ -35,6 +35,8 @@ struct Fixture {
     image: String,
     prefix: String,
     parents: RefCell<Vec<SystemAppCgroup>>,
+    /// A user-chosen `cgroup_parent` and its host path, outside every generated group.
+    own_parent: (String, PathBuf),
 }
 impl Fixture {
     fn new() -> Self {
@@ -43,12 +45,20 @@ impl Fixture {
     fn on_socket(socket: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let prefix = format!("cgroup-native-{}", std::process::id());
+        let driver = docker(socket, &["info", "--format", "{{.CgroupDriver}}"]);
+        let name = format!("ownparent{}", std::process::id());
+        let (parent, group) = match String::from_utf8(driver.stdout).unwrap().trim() {
+            "systemd" => (format!("{name}.slice"), format!("{name}.slice")),
+            "cgroupfs" => (format!("/{name}"), name),
+            driver => panic!("unsupported Docker cgroup driver {driver}"),
+        };
         let fixture = Self {
             parents: RefCell::new(Vec::new()),
             directory,
             socket: socket.into(),
             image: format!("doramcap-cgroup-test:{}", std::process::id()),
             prefix,
+            own_parent: (parent, Path::new(CGROUP_ROOT).join(group)),
         };
         let stage = fixture.directory.path().join("image");
         let root = stage.join("rootfs");
@@ -94,8 +104,12 @@ impl Fixture {
                 "user",
                 format!("printf started > /data/started; {background}"),
             ),
+            ("own-parent", "own-parent", background.to_owned()),
         ] {
             let mut service = serde_json::json!({"image":fixture.image, "command":["-c",command]});
+            if name == "own-parent" {
+                service["cgroup_parent"] = fixture.own_parent.0.clone().into();
+            }
             if name == "user" {
                 service["volumes"] =
                     serde_json::json!([{ "type":"bind", "source":data, "target":"/data" }]);
@@ -115,14 +129,17 @@ impl Fixture {
     fn docker(&self, args: &[&str]) -> Output {
         docker(&self.socket, args)
     }
-    fn spec(&self, index: usize) -> ComposeRun {
-        let app = |key: &str| ComposeProject {
+    fn app(&self, key: &str) -> ComposeProject {
+        ComposeProject {
             key: key.into(),
             directory: self.directory.path().to_string_lossy().into(),
             files: vec![format!("{key}.json")],
             environment: BTreeMap::new(),
             ..Default::default()
-        };
+        }
+    }
+    fn spec(&self, index: usize) -> ComposeRun {
+        let app = |key: &str| self.app(key);
         ComposeRun {
             id: format!("{}-{index}", self.prefix),
             repository_root: self.directory.path().into(),
@@ -187,6 +204,12 @@ impl Drop for Fixture {
             } else {
                 let _ = fs::remove_dir(path);
             }
+        }
+        let (parent, path) = &self.own_parent;
+        if parent.ends_with(".slice") {
+            let _ = Command::new("systemctl").args(["stop", parent]).output();
+        } else {
+            let _ = fs::remove_dir(path);
         }
         self.docker(&["image", "rm", &self.image]);
     }
@@ -286,6 +309,7 @@ async fn placement_and_recovery(fixture: Fixture) {
                     HostShmAccess::Blocked
                 } as i32,
                 id: fixture.spec(0).id,
+                projects: vec![fixture.app("user"), fixture.app("own-parent")],
                 ..fixture.spec(index)
             },
             async {
@@ -332,7 +356,16 @@ async fn placement_and_recovery(fixture: Fixture) {
         assert!(membership(system.pid).starts_with(&identity.path));
         assert!(!membership(user.pid).starts_with(&identity.path));
         // User containers get their own group in the same run group.
-        assert!(membership(user.pid).starts_with(Path::new(&identity.path).parent().unwrap()));
+        let run_group = Path::new(&identity.path).parent().unwrap();
+        assert!(membership(user.pid).starts_with(run_group));
+        // A user-chosen parent is kept, outside the repository group.
+        let own = state
+            .containers
+            .iter()
+            .find(|container| container.service == "own-parent")
+            .unwrap();
+        assert!(membership(own.pid).starts_with(&fixture.own_parent.1));
+        assert!(!membership(own.pid).starts_with(run_group.parent().unwrap()));
         if index == 1 {
             let shm = state
                 .containers
@@ -435,6 +468,10 @@ async fn placement_and_recovery(fixture: Fixture) {
             assert!(
                 !Path::new(&identity.path).exists(),
                 "per-run cgroup remains"
+            );
+            assert!(
+                fixture.own_parent.1.exists(),
+                "cleanup removed a user-chosen cgroup parent"
             );
             assert!(fixture.spec(index).artifacts.join(IDENTITY_FILE).is_file());
             let events = events.borrow();
