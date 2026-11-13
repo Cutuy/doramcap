@@ -86,5 +86,19 @@ Terms follow the [overlay term list](../../../console/docs/111026-file-change-re
 - [x] Write-back, discard and direct run output.
 - [x] Owned runtime resources removed.
 
+## Shared write-policy integration
+
+**Work items**
+
+- [x] Consume `RunPlan.write_policy` and retire `SystemdPlan.discard_writes`.
+- [x] Remove the temporary Console rejection and reuse saved-position downloads.
+
+**Validation**
+
+- [ ] Keep and discard for system apps and user apps.
+- [ ] Keep-copy failure preserves uppers.
+- [ ] Console Review, Result and downloads after restart.
+- [ ] Headless Chromium policy and download actions.
+
 Scripted regressions are TypeScript in [overlays.mts](../tests/overlays.mts).
 Capability-required tests build unprivileged and elevate only the test executable.

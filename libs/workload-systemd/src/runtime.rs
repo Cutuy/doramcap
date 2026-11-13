@@ -206,7 +206,7 @@ impl PrepareRuntime {
                 .await?;
         }
         let filesystem =
-            crate::filesystem::prepare(&self.manager, scope, &run, &plan, resolved, setup).await?;
+            crate::filesystem::prepare(&self.manager, scope, &run, resolved, setup).await?;
         setup.check()?;
         if blocked {
             create_shm(scope)?;

@@ -2,7 +2,7 @@
 
 # Keep files with the run
 
-Created November 13, 2026. Status: implemented; sibling integrations pending.
+Created November 13, 2026. Status: implemented, including systemd overlay integration.
 [Implementation plan](111326-keep-files-with-run-impl.md) ·
 [Overlays for writable mounts](111026-file-change-report.md), milestone 5.
 
@@ -82,7 +82,7 @@ The complete JSON Lines export validates all records and counts through EOF.
 | Verification input | Superseded by trusting rsync; the transfer plan retains paths only. |
 | Copy success | Successful rsync completion, then durability syncing before upper removal. |
 | Policy owner | One filesystem-owned `WritePolicy` in ConsoleConfig and RunPlan. |
-| systemd before overlays | Reject keep/discard at Review until overlay integration. |
+| systemd policy | Shared filesystem policy for write back, keep and discard; the overlay integration removes the temporary Review rejection. |
 | File opener prerequisite | Separate commit in this PR; preserve raw Unix path bytes. |
 | Download selector | Saved change-list position; server resolves paths from run records. |
 | Position lookup | Scan the selected category to its entry; add no persistent index. |
