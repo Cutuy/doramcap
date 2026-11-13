@@ -177,10 +177,10 @@ impl RemoveRuntime {
         for result in results {
             result?;
         }
-        if let Some(artifacts) = journal_run {
-            if let Some(executor) = self.executor.upgrade() {
-                let _ = workload_lifecycle::journal::finish(&executor, &artifacts).await;
-            }
+        if let Some(artifacts) = journal_run
+            && let Some(executor) = self.executor.upgrade()
+        {
+            let _ = workload_lifecycle::journal::finish(&executor, &artifacts).await;
         }
         // Remove accounting only after every owned service has stopped.
         self.executor

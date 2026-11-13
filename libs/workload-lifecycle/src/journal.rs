@@ -14,6 +14,7 @@ pub const INDEX: &str = "index.pb";
 /// Only diagnostics are bounded; exported entries have no size or count ceiling.
 const DIAGNOSTIC_BYTES: u64 = 8192;
 const MICROS_PER_SECOND: u64 = 1_000_000;
+const READ_BUFFER_BYTES: usize = 8192;
 
 /// Read the authoritative index. An absent index is an older run without saved identities.
 /// Decode and filesystem failures are returned; callers must not infer an empty successful export.
@@ -169,6 +170,32 @@ async fn export(input: ExportJournalInput) -> io::Result<LogIndex> {
             Err(error) => {
                 program.state = LogState::Failed.into();
                 program.reason = error.to_string();
+                // Count only complete entries that survived a partial write or prior crash.
+                if let Ok(mut file) = tokio::fs::OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(&path)
+                    .await
+                {
+                    let mut bytes = [0u8; READ_BUFFER_BYTES];
+                    program.entry_count = 0;
+                    loop {
+                        let read = match file.read(&mut bytes).await {
+                            Ok(read) => read,
+                            Err(error) => {
+                                program
+                                    .reason
+                                    .push_str(&format!("; recount partial entries: {error}"));
+                                break;
+                            }
+                        };
+                        if read == 0 {
+                            break;
+                        }
+                        program.entry_count +=
+                            bytes[..read].iter().filter(|byte| **byte == b'\n').count() as u64;
+                    }
+                }
             }
         }
         program.size_bytes = tokio::fs::metadata(&path)

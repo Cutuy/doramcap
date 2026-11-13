@@ -73,7 +73,7 @@ impl SystemdRunReport {
 }
 
 /// Runs one experiment per repository at a time on the system service manager.
-/// Prior owned resources block admission until explicit cleanup succeeds.
+/// Admission resets abandoned owned resources before preparing the next run.
 #[derive(Default)]
 pub struct SystemdRunner {
     blocked: bool,
@@ -115,11 +115,11 @@ impl SystemdRunner {
         self.blocked
     }
 
-    /// Refuse prior owned resources, then run `plan` with the shared `run` inputs until
+    /// Reset prior owned resources, then run `plan` with the shared `run` inputs until
     /// `stop`, then stop and remove.
     ///
     /// # Results and errors
-    /// Invalid plans, a busy repository and prior owned resources return `Err` before
+    /// Invalid plans, a busy repository and failed reset return `Err` before
     /// launch. Start, stop and removal failures enter `Ok(SystemdRunReport)`, which is
     /// also written to `report.json` in the new artifact directory.
     ///
@@ -248,11 +248,10 @@ impl SystemdRunner {
         };
         let _ = workload_lifecycle::journal::save(Path::new(&run.artifacts), &log_index).await;
         // This link locates the existing index; it stores no second identity format.
-        std::os::unix::fs::symlink(
+        let _ = std::os::unix::fs::symlink(
             &run.artifacts,
             scope.directory.join(crate::journal::POINTER),
-        )
-        .map_err(error)?;
+        );
         self.blocked = true;
 
         let recordings: Vec<Recording> = run

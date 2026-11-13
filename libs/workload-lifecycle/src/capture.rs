@@ -12,7 +12,8 @@ impl Step for PrepareFilesystemSources {
         Some("workload_docker::compose::filesystem::CaptureFilesystemBaseline");
     type Input = SourcesInput;
     type Output = FilesystemSources;
-    async fn run(&mut self, input: Self::Input) -> orchestrator::Result<Self::Output> {
+    async fn run(&mut self, mut input: Self::Input) -> orchestrator::Result<Self::Output> {
+        input.excluded.push(crate::journal::DIRECTORY.into());
         changes::prepare_sources(input)
             .await
             .map_err(|e| orchestrator::Error::message(e.to_string()))
