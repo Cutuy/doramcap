@@ -202,7 +202,11 @@ async fn blocked_shm_survives_producer_exit_and_is_removed_after_the_run() {
         .unwrap();
     let cgroups = events
         .iter()
-        .find(|event| event.invocation.step == <workload_lifecycle::cgroup::SystemAppsCgroups as orchestrator::Step>::ID.unwrap())
+        .find(|event| {
+            event.invocation.step
+                == <workload_lifecycle::cgroup::SystemAppsCgroups as orchestrator::Step>::ID
+                    .unwrap()
+        })
         .unwrap();
     let setup = events
         .iter()
