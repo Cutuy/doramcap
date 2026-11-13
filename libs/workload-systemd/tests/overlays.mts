@@ -156,7 +156,7 @@ try {
 
   // Host-created sockets must remain live while unrelated data folders stay isolated.
   const live = directory('live');
-  const socket = createServer(peer => peer.end('host socket'));
+  const socket = createServer(peer => { peer.resume(); peer.end('host socket'); });
   socket.listen(join(live, 'socket'));
   await once(socket, 'listening');
   try {

@@ -117,9 +117,9 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 
 **Validation**
 
-- [ ] Equal, inside, containing and unrelated folder matches.
-- [ ] Compose and systemd live sockets and direct writes beside an overlaid folder.
-- [ ] Review and Result in Chromium.
+- [x] Equal, inside, containing and unrelated folder matches.
+- [x] Compose and systemd live sockets and direct writes beside an overlaid folder.
+- [x] Review and Result in Chromium.
 
 ## Tests
 
