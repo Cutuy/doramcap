@@ -35,6 +35,7 @@ Created 2026-11-13. Kept by the orchestrator (Claude) while the owner is away.
 | 15 | #354 agent mode | Told to keep going without answers and log its own choices | Owner is away |
 | 16 | Prerequisites | Agents may split a worthwhile prerequisite into its own PR and stack on it | Owner's instruction; passed to #354 now, to the others at their next stop |
 | 17 | Log downloads follow-up | New PR on `codex/journal-log-downloads`, based on #358 and carrying #356's commits by cherry-pick | Needs both pieces; no merges. Also shows how the two pieces fit together |
+| 18 | systemd runs and the shared write policy | New PR on `codex/systemd-keep-policy`, based on #358 and carrying #357's commits by cherry-pick; replaces #357's `discard_writes` flag with #358's shared policy and removes the temporary rejection | #358 asked for it; needs both pieces |
 
 ## Events
 
@@ -49,3 +50,7 @@ Created 2026-11-13. Kept by the orchestrator (Claude) while the owner is away.
 - 2026-11-13: GitHub CI on #356 passed (Rust and Node, x86_64 and ARM64).
 - 2026-11-13: #354 agent finished. PR #358 marked ready, lease released. Agent reports full local CI and 19 privileged OverlayFS cases passed; ARM64 worker job 696. Download route: `/api/artifacts/<run>/run-file.download?change=<position>`. Its twelve own decisions are in the PR description. Left for others: systemd runs reject keep/discard at Review until #357 consumes the shared policy.
 - 2026-11-13: journal agent resumed to attach log downloads (decision 17).
+- 2026-11-13: GitHub CI on #358 passed on both architectures.
+- 2026-11-13: #353 agent finished. PR #357 marked ready, lease released, all four milestones ticked. Agent reports full local CI plus 29 systemd, 5 cgroup and 17 OverlayFS scenarios passed; ARM64 worker job 698 confirmed `Success`; GitHub CI passed. The step-ID rename is its own commit, `d1002e6d`. Its fourteen own decisions are in the PR description.
+- 2026-11-13: systemd agent resumed for the write-policy integration (decision 18).
+- 2026-11-13: Bugbot flagged one medium issue on #356 ("Reset leaves runner blocked", `libs/workload-systemd/src/runner.rs`). Queued for the journal agent once its current turn ends. No Bugbot findings on #357 or #358 at that point.
