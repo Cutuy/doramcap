@@ -91,6 +91,7 @@ saved size and a single hard-link name, and refuses all symlink components.
 | Download selector | Path bytes or saved position/program | One `RunFileRequest` source, exposed as exactly one `change` or `program` query parameter on `run-file`. |
 | Position lookup | Add an index or stream manifests | Stream in saved category order and validate EOF before opening; add no persistent index. |
 | Hard-link aliases | Serve aliases or refuse multiple names | Refuse files with multiple hard-link names so an alias cannot expose records or another run. Kept copies already use separate files. |
+| Copy publication | Add a completion flag or use existing results | Sync the existing overlay results record and its directory; derive download availability from that record and the saved files. |
 
 ## Limits
 

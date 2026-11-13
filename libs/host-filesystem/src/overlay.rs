@@ -799,6 +799,17 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
         &serde_json::to_vec_pretty(&result)?,
     )
     .await?;
+    if result.disposition == Disposition::Keep {
+        // Downloads use this existing record as the durable copy-completion gate.
+        tokio::fs::File::open(set.directory.join("results.json"))
+            .await?
+            .sync_all()
+            .await?;
+        tokio::fs::File::open(&set.directory)
+            .await?
+            .sync_all()
+            .await?;
+    }
     Ok(result)
 }
 
