@@ -60,6 +60,7 @@ ssh doramcap-ci@100.64.0.20 pueue log --full JOB_ID
 ### Writing
 
 - Use plain language, brief prose, short bullets and compact tables. State what things do directly; avoid contrastive “A, not B” phrasing.
+- Before editing a doc, look for what to simplify or delete. Never just add text or swap in longer text.
 - Keep READMEs minimal: purpose, architecture SVGs, a small usage example and links to details.
 - Keep validation to the one-line PR summary. Do not list checks, test counts or results in PR descriptions or plan documents. Exception: important, unique validation such as benchmarks or integration tests may record how to run it and its performance results.
 
