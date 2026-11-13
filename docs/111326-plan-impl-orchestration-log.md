@@ -96,3 +96,4 @@ Supersedes decisions 2 and 12 only in wording: the reset drop-in stays, and it r
 
 - 2026-11-13: owner reviewed decision 2. A removal task for option B was started and stopped before any change. The systemd agent is building decisions 20 and 21 on `codex/passthrough-folders` (base #361), then decision 22 and 23 on `codex/review-writable-folders`.
 - Open: Compose on main overlays host folders the same way, so the probe's breakage applies there until decision 20 lands.
+- 2026-11-13: owner agreed with plan #354. Its three Bugbot comments are answered in `55df2454` on the plan branch: directories checked by type only, a download position defined across categories, and `kept/` stated as reserved in the run folder. The first two reuse #358's wording, so #358 still applies cleanly. Replied on each thread.
