@@ -72,7 +72,7 @@ ownership behavior is preserved for the separate migration plan.
 - [x] Update the host bus/permission contract and completed-run expectations.
 
 **Validation**
-- [ ] Focused locked release tests, formatting, Clippy and library boundaries.
-- [ ] Native repeated-run cleanup, populated descendants, siblings and idempotence.
-- [ ] Native cgroupfs and systemd placement/recovery.
+- [x] Focused locked release tests, formatting, Clippy and library boundaries.
+- [x] Native repeated-run cleanup, populated descendants, siblings and idempotence.
+- [x] Native cgroupfs and systemd placement/recovery.
 - [ ] ARM64 worker validation.

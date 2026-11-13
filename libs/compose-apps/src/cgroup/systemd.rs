@@ -70,7 +70,7 @@ pub(super) async fn remove(paths: &[PathBuf]) -> Result<(), String> {
         }
         // Stopped units must unload as well as release their cgroups.
         while !manager
-            .list_units_by_names(vec![name.into()])
+            .list_units_by_patterns(vec![], vec![name.into()])
             .await
             .map_err(error)?
             .is_empty()
