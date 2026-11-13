@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="404" viewBox="0 0 800 404" role="img" aria-label="Per-app cgroups: one repository group holding run groups with system and user groups and one group per app, for Compose and native systemd">
-<style>text{font:13px sans-serif;fill:#18212b}.h{font-size:15px}.s{fill:#4a5866}rect{stroke-width:1.5}.repo{fill:#fdf0e6;stroke:#c0703a}.run{fill:#fbe3cf;stroke:#c0703a}.sys{fill:#eeedfe;stroke:#534ab7}.usr{fill:#e1f5ee;stroke:#0f6e56}.ext{fill:#edf3f8;stroke:#718394}path{fill:none;stroke:#718394;stroke-width:1.5}</style>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="474" viewBox="0 0 800 474" role="img" aria-label="Per-app cgroups: one repository group holding run groups with system and user groups and one group per app, for Compose and native systemd; a container sees only its own group as the root">
+<style>text{font:13px sans-serif;fill:#18212b}.h{font-size:15px}.s{fill:#4a5866}rect{stroke-width:1.5}.repo{fill:#fdf0e6;stroke:#c0703a}.run{fill:#fbe3cf;stroke:#c0703a}.sys{fill:#eeedfe;stroke:#534ab7}.usr{fill:#e1f5ee;stroke:#0f6e56}.ext{fill:#edf3f8;stroke:#718394}.ns{fill:#ffffff;stroke:#0f6e56;stroke-dasharray:5 3}path{fill:none;stroke:#718394;stroke-width:1.5}</style>
 <text x="200" y="24" text-anchor="middle" class="h">Compose</text>
 <text x="600" y="24" text-anchor="middle" class="h">Native systemd</text>
 <rect class="repo" x="60" y="40" width="280" height="34" rx="5"/><text x="200" y="62" text-anchor="middle">doramcap-compose-‹repo›</text>
@@ -23,6 +23,11 @@
 <rect class="usr" x="605" y="148" width="135" height="34" rx="5"/><text x="672" y="170" text-anchor="middle">‹app›.service</text>
 <rect class="ext" x="60" y="310" width="280" height="34" rx="5"/><text x="200" y="332" text-anchor="middle">user service with its own cgroup_parent</text>
 <rect class="ext" x="460" y="310" width="280" height="34" rx="5"/><text x="600" y="332" text-anchor="middle">user unit with its own Slice=</text>
-<rect class="repo" x="300" y="372" width="22" height="16" rx="3"/><text x="330" y="385">repository group, removed at cleanup</text>
-<rect class="ext" x="580" y="372" width="22" height="16" rx="3"/><text x="610" y="385">not created by us</text>
+<text x="400" y="384" text-anchor="middle" class="h">One container, two views</text>
+<rect class="ext" x="60" y="398" width="340" height="34" rx="5"/><text x="230" y="420" text-anchor="middle">host: …/‹service›.slice/docker-‹id›.scope</text>
+<path d="M400 415h50"/><path d="M444 410l6 5-6 5"/>
+<rect class="ns" x="460" y="398" width="280" height="34" rx="5"/><text x="600" y="420" text-anchor="middle">inside the container: /</text>
+<rect class="repo" x="60" y="448" width="22" height="16" rx="3"/><text x="90" y="461">repository group, removed at cleanup</text>
+<rect class="ext" x="362" y="448" width="22" height="16" rx="3"/><text x="392" y="461">not created by us</text>
+<rect class="ns" x="536" y="448" width="22" height="16" rx="3"/><text x="566" y="461">container cgroup namespace</text>
 </svg>
