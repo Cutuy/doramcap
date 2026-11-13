@@ -293,7 +293,8 @@ fn restore_access(file: &File, metadata: &Metadata, acl: Option<&[u8]>) -> Resul
 }
 
 fn acl(file: &File) -> Result<Option<Vec<u8>>> {
-    let size = match rustix::fs::fgetxattr(file, ACCESS_ACL, &mut [0u8; 0]) {
+    // rustix reports an empty-buffer `fgetxattr` as zero bytes; only the query returns the size.
+    let size = match rustix::fs::fgetxattr_query(file, ACCESS_ACL) {
         Ok(size) => size,
         Err(rustix::io::Errno::NODATA | rustix::io::Errno::NOTSUP) => return Ok(None),
         Err(e) => return Err(error(e)),
