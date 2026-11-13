@@ -33,29 +33,27 @@ platform roadmap.
 changes. Follow each step with live CPU, keep the recordings, and compare any two
 past runs to see what changed in the setup, the machine and the results.
 
-[![Console demo](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.jpg)](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.mp4)
+https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
 
 [Download Console](https://github.com/Cutuy/doramcap/releases/latest)
 
 ## Explore a run
 
-The [dataflow tracing demo](apps/dataflow-tracing-demo/) follows inputs through a
+The dataflow tracing demo follows inputs through a
 four-node Dora pipeline. Select an output, inspect the inputs that produced it,
 and compare processing spans with measured latency on linked timelines.
 
-Explore [live CPU activity](apps/cpu-viewer/docs/running.md) or
-[recording and storage behavior](apps/storage-demo/) for a closer look at resource
+Explore live CPU activity or
+recording and storage behavior for a closer look at resource
 contention and capture. Each demo includes its own setup and validation guide.
 
-The [GPU storage demo](apps/gpudirect-demo/) records GPU-produced payloads
+The GPU storage demo records GPU-produced payloads
 through pinned host memory to NVMe.
 
 ## Build with doramcap
 
 Use the [project explorer](apps/project-explorer/) to browse applications,
 libraries, documentation, and dependencies. Start with the
-[library guide](libs/README.md) to find an integration point.
+library guide to find an integration point.
 
-[Architecture and roadmap](docs/roadmap.md) ·
-[Repository conventions](docs/repository-layout.md) ·
-[CI and validation](scripts/ci/README.md)
+[Architecture and roadmap](docs/roadmap.md)
