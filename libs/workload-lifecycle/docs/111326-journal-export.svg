@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+<title id="title">Journal export</title>
+<desc id="desc">systemd units and Compose containers write output to the host journal. Each workflow records a program's identity at start: the invocation ID for a unit and the full container ID for a container. After the programs stop, the export step in workload-lifecycle reads each program's entries through journalctl and writes one numbered log file per program and an index into the run folder's log folder. Console shows the Logs list and offers downloads.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1200" height="420" fill="white"/>
+<text x="600" y="40" class="title">Journal export</text>
+<g id="units">
+<rect x="40" y="90" width="240" height="56" rx="10" class="upper"/>
+<text x="160" y="114">systemd units</text>
+<text x="160" y="137" class="label">invocation ID</text>
+</g>
+<g id="containers">
+<rect x="40" y="270" width="240" height="56" rx="10" class="upper"/>
+<text x="160" y="294">Compose containers</text>
+<text x="160" y="317" class="label">full container ID</text>
+</g>
+<g id="journal">
+<rect x="360" y="180" width="220" height="56" rx="10" class="base"/>
+<text x="470" y="204">Host journal</text>
+<text x="470" y="227" class="label">existing policy</text>
+</g>
+<g id="export">
+<rect x="660" y="180" width="220" height="56" rx="10" class="overlay"/>
+<text x="770" y="204">Export step</text>
+<text x="770" y="227" class="label">workload-lifecycle</text>
+</g>
+<g id="files">
+<rect x="660" y="320" width="220" height="56" rx="10" class="overlay"/>
+<text x="770" y="344">Log folder</text>
+<text x="770" y="367" class="label">&lt;n&gt;.log, index.pb</text>
+</g>
+<g id="console">
+<rect x="960" y="320" width="200" height="56" rx="10" class="base"/>
+<text x="1060" y="344">Console</text>
+<text x="1060" y="367" class="label">Logs list</text>
+</g>
+<path data-from="units" data-to="journal" d="M280 118 H320 V196 H360" class="line"/>
+<path data-from="containers" data-to="journal" d="M280 298 H320 V220 H360" class="line"/>
+<path data-from="journal" data-to="export" d="M580 208 H660" class="line"/>
+<path data-from="export" data-to="files" d="M770 236 V320" class="line"/>
+<path data-from="files" data-to="console" d="M880 348 H960" class="line"/>
+</svg>

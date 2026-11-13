@@ -55,34 +55,6 @@ in milestone 2.
 
 ## Milestone 2 — Journal export and run files, follow-up
 
-Export is independent of [#316](https://github.com/Cutuy/doramcap/pull/316).
-Its milestone 4 adds systemd overlays; milestone 5 adds the log download action.
-
-**Work items**
-
-- [ ] After programs stop, ask the journal to finish writing and use `journalctl`
-  to export all matching retained entries. Reuse the platform tool.
-- [ ] Match each systemd start by its invocation ID, including service-manager
-  entries carrying that invocation under their own field. Read the ID from the
-  service manager after starting the unit.
-- [ ] Match each container by its full container ID. Skip project-managed logging.
-- [ ] Write one plain text file per program, with timestamps, into the run folder's
-  log folder, beside records and recordings. This folder is not mounted into an app
-  or listed as an output folder's added files. Apply the run folder's limits;
-  add no separate per-program cap.
-- [ ] Show exported files with the run's other files; integrate downloads with
-  #316 milestone 5. Describe successful export
-  as reading available journal entries; complete application output remains unknown.
-- [ ] Preserve available output on read, write or finalization failure and report
-  that failure separately from the application's result.
-
-**Validation**
-
-- [ ] Verify adjacent runs cannot read each other's output, including reused unit
-  names and program failure.
-- [ ] Measure identity loss for programs that exit almost immediately.
-- [ ] Cover stop, cancellation, controller restart and interrupted export.
-- [ ] Cover unavailable journal access, retention loss and run-storage exhaustion.
-- [ ] Verify saved files survive refresh/restart and follow run-file retention.
+Planned in the [journal export plan](111326-journal-export-impl.md).
 
 No journal export or run-file integration is implemented by PR #314.
