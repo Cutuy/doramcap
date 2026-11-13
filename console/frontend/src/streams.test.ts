@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { doramcap } from './generated/console';
-import { Health, Kind, LiveModel } from './streams';
+import { Health, Kind, LiveModel, cgroupName } from './streams';
 
 const telemetry = doramcap.telemetry.v1;
 const fault = doramcap.fault.v1;
@@ -12,6 +12,16 @@ const cpuPacket = (sequence: number, runtimeNs: number, sessionId = 's') =>
     sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
     records: [0, 1].map(cpu => ({ cgroupId: 1, cpu, flags: 17, runtimeNs })),
   } } })).finish();
+const REPO = '0123456789ab', RUN = 'fedcba987654', CONTAINER = 'c'.repeat(64);
+const systemdScope = (role: string, escaped: string) =>
+  `/doramcap.slice/doramcap-compose.slice/doramcap-compose-${REPO}.slice/doramcap-compose-${REPO}-${RUN}.slice/doramcap-compose-${REPO}-${RUN}-${role}.slice/doramcap-compose-${REPO}-${RUN}-${role}-${escaped}.slice/docker-${CONTAINER}.scope`;
+const leafPacket = (sequence: number, leaves: { id: number; runtimeNs: number }[]) =>
+  telemetry.Packet.encode(telemetry.Packet.fromObject({ snapshot: { version: 2, sessionId: 's', snapshot: {
+    sequence, captureUnixNs: sequence * 1e9, monotonicEndNs: sequence * 1e9,
+    records: leaves.map(({ id, runtimeNs }) => ({ cgroupId: id, parentId: 1, cpu: 0, flags: 1, runtimeNs })),
+  } } })).finish();
+const dictionary = (entries: { id: number; path: string }[]) =>
+  telemetry.Packet.encode(telemetry.Packet.fromObject({ dictionary: { version: 1, sessionId: 's', revision: 1, entries: entries.map(entry => ({ ...entry, parentId: 1 })) } })).finish();
 const epoch = new Uint8Array(16).fill(1), source = new Uint8Array(16).fill(2);
 const state = (condition: number, health: number) => ({ key: { source, condition }, health, definition: { component: 'camera', code: `E${condition}`, severity: 2 } });
 const publication = (value: object) => fault.AggregationPublication.encode(fault.AggregationPublication.fromObject({ version: 1, ...value })).finish();
@@ -78,4 +88,41 @@ test('fault snapshots replace state, contiguous updates amend it and revision ga
   assert.equal(updated.stale, false);
   assert.deepEqual(gapped.conditions.map(condition => condition.code), ['E2']);
   assert.equal(gapped.stale, true);
+});
+
+test('cgroup names come from per-app groups of both Docker drivers and native units', () => {
+  // Arrange
+  const paths = {
+    systemd: systemdScope('user', 'camera\\x2ddriver'),
+    systemdSlice: systemdScope('system', 'cpu\\x2dmonitor').replace(`/docker-${CONTAINER}.scope`, ''),
+    cgroupfs: `/doramcap-compose-${REPO}/${RUN}/system/live-bridge/${CONTAINER}`,
+    native: `/doramcap.slice/doramcap-${REPO}.slice/doramcap-${REPO}-user.slice/doramcap-${REPO}-motion-planner.service`,
+    userParent: `/robots.slice/docker-${CONTAINER}.scope`,
+    host: '/system.slice/sshd.service',
+    runGroup: `/doramcap-compose-${REPO}/${RUN}/user`,
+  };
+  // Act
+  const names = Object.fromEntries(Object.entries(paths).map(([key, path]) => [key, cgroupName(path)]));
+  // Assert
+  assert.deepEqual(names, {
+    systemd: 'camera-driver', systemdSlice: 'cpu-monitor', cgroupfs: 'live-bridge', native: 'motion-planner',
+    userParent: `docker-${CONTAINER}.scope`, host: 'sshd.service', runGroup: 'user',
+  });
+  assert.equal(cgroupName('/'), '');
+});
+
+test('replicas of one service stay separate rows with the same name', () => {
+  // Arrange
+  const model = new LiveModel();
+  model.configure('run', [stream('cpu_0', Kind.CPU_ACCOUNTING)]);
+  const replica = (id: number) => ({ id, path: systemdScope('user', 'camera\\x2ddriver').replace(CONTAINER, String(id).repeat(64)) });
+  // Act
+  model.receive(frame('cpu_0', 1, dictionary([replica(7), replica(8)])));
+  model.receive(frame('cpu_0', 2, leafPacket(1, [{ id: 7, runtimeNs: 0 }, { id: 8, runtimeNs: 0 }])));
+  model.receive(frame('cpu_0', 3, leafPacket(2, [{ id: 7, runtimeNs: 500_000_000 }, { id: 8, runtimeNs: 250_000_000 }])));
+  // Assert
+  assert.deepEqual(model.view().cpu!.groups, [
+    { id: '7', name: 'camera-driver', percent: 50 },
+    { id: '8', name: 'camera-driver', percent: 25 },
+  ]);
 });

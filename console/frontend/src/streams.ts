@@ -14,6 +14,28 @@ const integer = (value: unknown) => BigInt(String(value ?? 0));
 const hex = (bytes?: Uint8Array | null) => Array.from(bytes ?? [], (byte) => byte.toString(16).padStart(2, '0')).join('');
 const MAX_HISTORY = 1200;
 const MAX_NAME_CHARS = 128;
+/** Per-app cgroups of a run: 12-hex repository and run hashes, `system` or `user` role. */
+const COMPOSE_SLICE = /^doramcap-compose-[0-9a-f]{12}-[0-9a-f]{12}-(?:system|user)-(.+)\.slice$/;
+const COMPOSE_REPOSITORY = /^doramcap-compose-[0-9a-f]{12}$/, RUN_HASH = /^[0-9a-f]{12}$/, ROLE = /^(?:system|user)$/;
+const NATIVE_UNIT = /^doramcap-[0-9a-f]{12}-(.+)\.service$/;
+const SYSTEMD_ESCAPE = /\\x([0-9a-f]{2})/gi;
+
+/**
+ * Display name of a cgroup path: the app of a per-app Compose group or native doramcap
+ * unit, with systemd `\xHH` escapes decoded; otherwise the last segment. Empty for none.
+ */
+export function cgroupName(path: string): string {
+  const segments = path.split('/').filter(Boolean);
+  for (let index = segments.length - 1; index >= 0; index--) {
+    // systemd driver: the service slice is the container's parent.
+    const slice = COMPOSE_SLICE.exec(segments[index]);
+    if (slice) return slice[1].replace(SYSTEMD_ESCAPE, (_, code: string) => String.fromCharCode(parseInt(code, 16)));
+    // cgroupfs driver: repository / run / role / service / container.
+    if (COMPOSE_REPOSITORY.test(segments[index]) && RUN_HASH.test(segments[index + 1] ?? '') && ROLE.test(segments[index + 2] ?? '') && segments[index + 3]) return segments[index + 3];
+  }
+  const leaf = segments.at(-1) ?? '';
+  return NATIVE_UNIT.exec(leaf)?.[1] ?? leaf;
+}
 
 export type CpuSample = { seconds: number; percent: number | null };
 export type CpuView = {
@@ -65,7 +87,7 @@ class CpuStreams {
     const packet = telemetry.Packet.decode(payload);
     const entries = packet.dictionary?.entries ?? packet.snapshot?.dictionary ?? [];
     for (const entry of entries) {
-      const name = String(entry.path ?? '').split('/').filter(Boolean).at(-1)?.slice(0, MAX_NAME_CHARS);
+      const name = cgroupName(String(entry.path ?? '')).slice(0, MAX_NAME_CHARS);
       if (name && name !== '.' && name !== '..') this.names.set(String(entry.id), name);
     }
     const frame = packet.snapshot;
