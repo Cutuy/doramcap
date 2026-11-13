@@ -218,38 +218,7 @@ elevate only the built test executable with that test name.
 
 ## Milestone 5: Keep a run's files with the run
 
-**Work items**
-
-- [ ] Add keep with the run beside write back and discard in `host-filesystem`: copy each
-  upper's files into the run folder and record its deletions. Leave the host folder untouched.
-- [ ] Remove the upper only after the copy is verified. A failed copy keeps the upper, as
-  a write back stopped by an I/O error does.
-- [ ] Record the policy and the kept location in the file-change report.
-- [ ] Add one Console setting selecting write back, keep with the run or discard, default
-  write back. Pass it to Compose and systemd runs.
-- [ ] Show the policy at Review and the kept location with the result. Add no file browser.
-- [ ] Add a download action for kept files, output folder files and log dumps as one new
-  kind on the authenticated artifact route. The request names a saved change-list entry
-  or a program, never a path. The server opens the file only inside the run's kept-files
-  folder, the entry's output folder or the log folder, by its raw name bytes. Send every file as an attachment with an encoded filename.
-
-**Validation**
-
-- [ ] The kept files match the added and modified entries of overlaid host folders
-  exactly. Output folder entries stay in their output folder and are copied nowhere.
-- [ ] The host folder is byte-identical before and after a keep run.
-- [ ] Deletions appear in the report and remove nothing.
-- [ ] A second run starts from the unchanged host folder and keeps its own separate files.
-- [ ] Full disk and an interrupted copy keep the upper and block verified cleanup.
-- [ ] The upper and the run folder on different filesystems.
-- [ ] A kept file, one with a non-UTF-8 name, an output folder file and a log dump
-  download intact. Requests for
-  Console's run records, another run's entries, traversal and symlink escapes are refused.
-  A kept HTML file downloads and never renders in Console.
-- [ ] Under discard the host folder is byte-identical before and after, the run keeps the
-  change list and no kept files.
-- [ ] Output folder files stay in the run folder under all three policies.
-- [ ] Projects with no setting behave as before.
+Planned in the [keep files plan](111326-keep-files-with-run-impl.md).
 
 ## Integration and qualification
 

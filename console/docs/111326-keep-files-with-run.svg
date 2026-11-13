@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+<title id="title">Keep files with the run</title>
+<desc id="desc">The Console setting selects the write policy for a run. host-filesystem reads each upper into the change list and saves the report, then copies the added and modified entries into the run folder's kept folder and removes the upper once the copy is verified. The host folder stays untouched. Console's download route reads the saved report and serves kept files, output folder files and log dumps from the run folder.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1200" height="420" fill="white"/>
+<text x="600" y="40" class="title">Keep files with the run</text>
+<g id="setting">
+<rect x="40" y="80" width="220" height="56" rx="10" class="base"/>
+<text x="150" y="104">Console setting</text>
+<text x="150" y="127" class="label">write_policy: KEEP</text>
+</g>
+<g id="upper">
+<rect x="40" y="200" width="220" height="56" rx="10" class="upper"/>
+<text x="150" y="224">Upper</text>
+<text x="150" y="247" class="label">the run's writes</text>
+</g>
+<g id="host">
+<rect x="40" y="320" width="220" height="56" rx="10" class="base"/>
+<text x="150" y="344">Host folder</text>
+<text x="150" y="367" class="label">untouched</text>
+</g>
+<g id="report">
+<rect x="340" y="200" width="240" height="56" rx="10" class="overlay"/>
+<text x="460" y="224">Change list</text>
+<text x="460" y="247" class="label">report.pb</text>
+</g>
+<g id="kept">
+<rect x="660" y="200" width="240" height="56" rx="10" class="overlay"/>
+<text x="780" y="224">Kept folder</text>
+<text x="780" y="247" class="label">runs/&lt;id&gt;/kept/&lt;n&gt;/</text>
+</g>
+<g id="download">
+<rect x="960" y="200" width="200" height="56" rx="10" class="base"/>
+<text x="1060" y="224">Download</text>
+<text x="1060" y="247" class="label">attachment</text>
+</g>
+<g id="others">
+<rect x="660" y="320" width="240" height="56" rx="10" class="base"/>
+<text x="780" y="344">Output folders, logs</text>
+<text x="780" y="367" class="label">already in run folder</text>
+</g>
+<path data-from="setting" data-to="upper" d="M150 136 V200" class="line"/>
+<path data-from="upper" data-to="report" d="M260 228 H340" class="line"/>
+<path data-from="report" data-to="kept" d="M580 228 H660" class="line"/>
+<path data-from="kept" data-to="download" d="M900 228 H960" class="line"/>
+<path data-from="others" data-to="download" d="M900 348 H930 V240 H960" class="line"/>
+<path data-from="report" data-to="download" d="M460 200 V170 H1060 V200" class="line"/>
+</svg>
