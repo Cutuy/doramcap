@@ -1,6 +1,6 @@
 # Journal export: implementation plan
 
-Created November 13, 2026. Status: planned.
+Created November 13, 2026. Status: implementation in progress.
 [Architecture](111326-journal-export.md). Replaces milestone 2 of the
 [run logs plan](111026-run-logs-impl.md).
 

@@ -2,7 +2,7 @@
 
 # Journal export
 
-Created November 13, 2026. Status: design for review; implementation not started.
+Created November 13, 2026. Status: implementation in progress.
 [Implementation plan](111326-journal-export-impl.md) ·
 [Application logs for a run](111026-run-logs.md), the follow-up to
 [Cutuy/doramcap#314](https://github.com/Cutuy/doramcap/pull/314).
@@ -60,13 +60,13 @@ an app and is not in the change list. It follows run-folder retention.
 | Export stops part way | Written files stay; the program reads failed with the reason. |
 | Run storage full | Same as a stopped export; cleanup still runs. |
 | Program exited almost at once | Its last lines may lack an identity and be missing. |
-| Console stops before export | See the decision below. |
+| Console stops before export | Export during the next admission's reset from saved identities. |
 
 ## Decisions to make
 
-| Decision | Options | Recommendation |
+| Decision | Options | Choice |
 | --- | --- | --- |
-| Export after a Console crash | Export during the next admission's reset from identities saved at start, or skip it | Export during reset; identities are already saved with the run's ownership records. |
-| Reading the journal | `journalctl` as a child process, or a journal-reading crate | `journalctl`, as the run-logs plan agreed; no new dependency. |
+| Export after a Console crash | Export during reset, or skip it | Owner chose export during reset from identities saved at start. Raise added recovery machinery if needed; skipping is the fallback. |
+| Reading the journal | `journalctl`, or a journal-reading crate | Owner chose `journalctl`; no new dependency. |
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.
