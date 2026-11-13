@@ -34,8 +34,7 @@ unit copy. It adds no unit-file parser.
 
 ## Working directory
 
-- A system app gets no mount for its working directory.
-  Today Console adds one when no bind covers it; that mount goes away.
+- System apps get no implicit working-directory mount.
 - Console checks that each declared working directory exists where the unit will run:
   at Review and again before anything is mounted or started. For a system app it
   looks inside the private root, so a host folder outside the declared binds is missing.
@@ -95,7 +94,7 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 - Overlays need the service manager to see mounts Console makes. The first milestone
   checks this on a real host and stops the plan if it fails.
 - A unit that writes outside its declared mounts is not tracked.
-- Required native working directories must resolve to absolute paths outside
+- Required user app working directories must resolve to absolute paths outside
   `RootImage=`; checking an image would require mounting it.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.
