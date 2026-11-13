@@ -33,7 +33,7 @@ platform roadmap.
 changes. Follow each step with live CPU, keep the recordings, and compare any two
 past runs to see what changed in the setup, the machine and the results.
 
-https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
+https://github.com/user-attachments/assets/93ad1fcd-4197-4b98-b524-bf272e6154e7
 
 [Download Console](https://github.com/Cutuy/doramcap/releases/latest)
 
