@@ -79,8 +79,16 @@ export function digest(text: string): string {
 
 const LOAD_JITTER = 0.15, IDLE_BUSY = 0.01, MAX_TOTAL_BUSY = CORES * 0.97;
 const SPIKE_SAMPLES = 3;
-/** Visitor runs name groups after their services, so Top CPU consumers reads by service. */
-const SERVICE_CGROUP_ROOT = '/system.slice/compose';
+/** Hash length of the repository and run in per-app cgroup names. */
+const CGROUP_HASH_CHARS = 12;
+/** A container's cgroup in its service's slice, as Docker's systemd driver places it under per-app cgroups. */
+export function serviceScope(repository: string, runId: string, role: 'system' | 'user', service: string): string {
+  const repo = digest(`repository:${repository}`).slice(0, CGROUP_HASH_CHARS), run = digest(`run:${runId}`).slice(0, CGROUP_HASH_CHARS);
+  // Each `-` in a slice name nests one level, so systemd lists every ancestor slice.
+  const parts = ['doramcap', 'compose', repo, run, role, service.replaceAll('-', '\\x2d')];
+  const slices = parts.map((_, index) => `${parts.slice(0, index + 1).join('-')}.slice`);
+  return `/${slices.join('/')}/docker-${digest(`container:${runId}:${service}`)}.scope`;
+}
 /** The sample project's services, by busy cores; a `spike` multiplies load every `period` samples. */
 type LoadGroup = { name: string; busy: number; spike?: { period: number; factor: number } };
 export const WORKLOAD_SERVICES: LoadGroup[] = [
@@ -94,10 +102,10 @@ export const WORKLOAD_SERVICES: LoadGroup[] = [
 ];
 const SYSTEM_BUSY: LoadGroup[] = [{ name: 'cpu-monitor', busy: 0.05 }, { name: 'live-bridge', busy: 0.03 }];
 
-/** CPU telemetry for one run: services load the machine only while `running`. */
-export function createWorkload(seed: number) {
+/** CPU telemetry for one run of `repository`: services load the machine only while `running`. */
+export function createWorkload(seed: number, repository: string, runId: string) {
   const services = WORKLOAD_SERVICES.length;
-  const groups = [...WORKLOAD_SERVICES, ...SYSTEM_BUSY].map((group, index) => ({ ...group, id: String(5000 + index), path: `${SERVICE_CGROUP_ROOT}/${group.name}` }));
+  const groups = [...WORKLOAD_SERVICES, ...SYSTEM_BUSY].map((group, index) => ({ ...group, id: String(5000 + index), path: serviceScope(repository, runId, index < services ? 'user' : 'system', group.name) }));
   const runtime = groups.map(() => 0);
   const load = (group: typeof groups[number], index: number, sequence: number, running: boolean) => {
     if (index < services && !running) return IDLE_BUSY;
