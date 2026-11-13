@@ -291,7 +291,6 @@ pub(crate) async fn prepare(
     manager: &Manager,
     scope: &Scope,
     run: &RunPlan,
-    plan: &SystemdPlan,
     resolved: Resolved,
 ) -> Result<PreparedFilesystem> {
     let overlay_plan = overlay::resolve(overlay::PrepareInput {
@@ -299,11 +298,7 @@ pub(crate) async fn prepare(
         workspace: workspace(scope),
         bind_mounts: resolved.mounts.clone(),
         policy: OverlayPolicy {
-            disposition: if plan.discard_writes {
-                overlay::Disposition::Discard
-            } else {
-                overlay::Disposition::WriteBack
-            },
+            disposition: overlay::Disposition::from_policy(run.write_policy).map_err(error)?,
         },
     })
     .await

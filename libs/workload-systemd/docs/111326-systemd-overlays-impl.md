@@ -91,6 +91,20 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 - [x] Owned mounts and units gone after success.
 - [x] Real systemd run shows File changes in Console.
 
+## Shared write-policy integration
+
+**Work items**
+
+- [x] Consume `RunPlan.write_policy` and retire `SystemdPlan.discard_writes`.
+- [x] Remove the temporary Console rejection and reuse saved-position downloads.
+
+**Validation**
+
+- [ ] Keep and discard for system apps and user apps.
+- [ ] Keep-copy failure preserves uppers.
+- [ ] Console Review, Result and downloads after restart.
+- [ ] Headless Chromium policy and download actions.
+
 ## Tests
 
 Capability-required tests build unprivileged and elevate only the test executable.
