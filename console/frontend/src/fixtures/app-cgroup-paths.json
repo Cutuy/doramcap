@@ -1,0 +1,11 @@
+{
+  "compose": [
+    { "path": "/doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/doramcap-compose-0123456789ab-fedcba987654.slice/doramcap-compose-0123456789ab-fedcba987654-user.slice/doramcap-compose-0123456789ab-fedcba987654-user-camera\\x2ddriver.slice/docker-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.scope", "name": "camera-driver" },
+    { "path": "/doramcap.slice/doramcap-compose.slice/doramcap-compose-0123456789ab.slice/doramcap-compose-0123456789ab-fedcba987654.slice/doramcap-compose-0123456789ab-fedcba987654-system.slice/doramcap-compose-0123456789ab-fedcba987654-system-cpu\\x2dmonitor.slice", "name": "cpu-monitor" },
+    { "path": "/doramcap-compose-0123456789ab/fedcba987654/system/live-bridge/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "name": "live-bridge" }
+  ],
+  "native": [
+    { "path": "/doramcap.slice/doramcap-0123456789ab.slice/doramcap-0123456789ab-system.slice/doramcap-0123456789ab-recorder.service", "name": "recorder" },
+    { "path": "/doramcap.slice/doramcap-0123456789ab.slice/doramcap-0123456789ab-user.slice/doramcap-0123456789ab-motion-planner.service", "name": "motion-planner" }
+  ]
+}

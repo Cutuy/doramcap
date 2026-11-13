@@ -164,21 +164,10 @@ const SLICE_DASH: &str = "\\x2d";
 // Host path of a generated systemd slice or cgroupfs parent.
 fn parent_path(parent: &str) -> std::result::Result<PathBuf, String> {
     if parent.ends_with(".slice") {
-        Ok(slice_path(parent))
+        Ok(cgroup::slice::path(parent))
     } else {
         cgroup::host_path(parent)
     }
-}
-
-fn slice_path(slice: &str) -> PathBuf {
-    let stem = slice
-        .strip_suffix(".slice")
-        .expect("generated slice suffix");
-    let mut path = PathBuf::from(cgroup::CGROUP_ROOT);
-    for (index, _) in stem.match_indices('-') {
-        path.push(format!("{}.slice", &stem[..index]));
-    }
-    path.join(slice)
 }
 
 /// Adopt Docker's accounting parent; cleanup removes the repository group once its whole tree
@@ -198,7 +187,7 @@ impl DockerCgroup {
 // Generated group named `group`, using the placement's driver.
 fn group_path(placement: &CgroupPlacement, group: &str) -> std::result::Result<PathBuf, String> {
     if placement.parent.ends_with(".slice") {
-        Ok(slice_path(&format!("{group}.slice")))
+        Ok(cgroup::slice::path(&format!("{group}.slice")))
     } else {
         cgroup::host_path(&format!("/{group}"))
     }

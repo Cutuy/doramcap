@@ -152,3 +152,39 @@ pub(crate) async fn verify_unit(group: &Group, slice: &str, unit: &Unit) -> Resu
     }
     group.verify_path(&cgroup::host_path(&path)?)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Per-app paths the Console frontend names apps from; its tests read the same file.
+    const APP_PATHS: &str =
+        include_str!("../../../console/frontend/src/fixtures/app-cgroup-paths.json");
+
+    #[test]
+    fn unit_paths_match_the_console_app_name_fixture() {
+        // Arrange
+        let prefix = "doramcap-0123456789ab".to_owned();
+        let scope = Scope {
+            slice: format!("{prefix}.slice"),
+            directory: PathBuf::new(),
+            prefix,
+        };
+        // Path as the CPU monitor reports it: below the cgroup root, with a leading `/`.
+        let reported = |slice: String, id: &str| {
+            let path = cgroup::slice::path(&slice).join(scope.unit(id));
+            format!(
+                "/{}",
+                path.strip_prefix(cgroup::CGROUP_ROOT).unwrap().display()
+            )
+        };
+        // Act
+        let paths = serde_json::json!([
+            { "path": reported(native_name(&scope), "recorder"), "name": "recorder" },
+            { "path": reported(user_name(&scope), "motion-planner"), "name": "motion-planner" },
+        ]);
+        // Assert
+        let fixture: serde_json::Value = serde_json::from_str(APP_PATHS).unwrap();
+        assert_eq!(paths, fixture["native"]);
+    }
+}

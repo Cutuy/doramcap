@@ -339,7 +339,7 @@ export function createDemoClient() {
       frames = [];
       const startedAtMs = Date.now(), seed = Math.floor(Math.random() * 2 ** 32);
       runs.set(runId, { status, facts, entry: wire.HistoryEntry.create({ runId, profiles: [], systemApps: appSelection(selection), startedAtMs, state: State.HISTORY_RUNNING }) });
-      active = { runId, requestKey, selection, startedAtMs, facts, after: condition(++runCount), sample: 0, stopAt: null, seed, workload: createWorkload(seed), timer: setTimeout(tick, SAMPLE_MS) };
+      active = { runId, requestKey, selection, startedAtMs, facts, after: condition(++runCount), sample: 0, stopAt: null, seed, workload: createWorkload(seed, PROJECT_DIRECTORY, runId), timer: setTimeout(tick, SAMPLE_MS) };
       publishRun(Phase.STARTING);
       return wire.StartResponse.create({ runId });
     },
