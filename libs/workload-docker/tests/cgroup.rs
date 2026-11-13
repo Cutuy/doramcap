@@ -207,6 +207,60 @@ fn membership(pid: i64) -> PathBuf {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires root, local Docker with Compose and cgroup v2"]
+async fn completed_runs_remove_their_accounting_parents() {
+    // Arrange
+    let fixture = Fixture::new();
+    let adapter = Rc::new(DockerAdapter::connect(&fixture.socket).await.unwrap());
+    for index in 0..2 {
+        let mut runner = ComposeRunner::new(adapter.clone());
+        let (ready, started) = tokio::sync::oneshot::channel();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let mut run = Box::pin(runner.run_with_ready(
+            fixture.spec(index),
+            async {
+                let _ = stopped.await;
+            },
+            |_: &Event| {},
+            Some(ready),
+        ));
+        tokio::time::timeout(RUN_LIMIT, async {
+            tokio::select! {
+                plan = started => { plan.unwrap(); },
+                result = &mut run => panic!("startup failed: {result:?}"),
+            }
+        })
+        .await
+        .unwrap();
+        let identity = fixture.identity(index);
+
+        // Act
+        stop.send(()).unwrap();
+        let report = tokio::time::timeout(RUN_LIMIT, run).await.unwrap().unwrap();
+
+        // Assert: completed runs cannot accumulate empty per-run cgroups.
+        assert!(report.successful(), "{report:#?}");
+        let path = Path::new(&identity.path);
+        assert!(
+            !path.exists(),
+            "accounting cgroup remains: {}",
+            path.display()
+        );
+        if path
+            .extension()
+            .is_some_and(|extension| extension == "slice")
+        {
+            let parent = path.parent().unwrap();
+            assert!(
+                !parent.exists(),
+                "per-run slice remains: {}",
+                parent.display()
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires root, local Docker with Compose and cgroup v2"]
 async fn system_app_placement_survives_controller_crash_and_cleans_up() {
     // Arrange
     placement_and_recovery(Fixture::new()).await;
@@ -374,7 +428,10 @@ async fn placement_and_recovery(fixture: Fixture) {
             // Assert
             assert!(report.boundary_clean, "{report:#?}");
             assert!(report.execution_error.is_none(), "{report:#?}");
-            cgroup::verify_empty(Path::new(&identity.path)).unwrap();
+            assert!(
+                !Path::new(&identity.path).exists(),
+                "per-run cgroup remains"
+            );
             assert!(fixture.spec(index).artifacts.join(IDENTITY_FILE).is_file());
             let events = events.borrow();
             let actions: Vec<_> = events
