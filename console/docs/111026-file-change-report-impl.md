@@ -178,6 +178,20 @@ Planned in the [systemd overlays plan](../../libs/workload-systemd/docs/111326-s
 
 Planned in the [keep files plan](111326-keep-files-with-run-impl.md).
 
+## Milestone 6: Writable folders at Review
+
+**Work items**
+
+- [x] Render shared source handling, app associations and the project write policy.
+- [x] Offer copyable configuration lines without editing settings.
+- [x] Save the reviewed rows with the run for Result and restart.
+
+**Validation**
+
+- [ ] Frontend handling states and read-only controls.
+- [ ] Review rows preserved in saved Result.
+- [ ] Desktop and narrow Chromium views and Copy.
+
 ## Integration and qualification
 
 **Work items**
