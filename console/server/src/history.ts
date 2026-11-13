@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { readLogs } from './logs.js';
 import { fileChangeAvailability, fileChangePreview, filesystem } from './file-changes.js';
 import { LIMITS, FILE_CHANGES_ARTIFACT, runId } from './generated/transport.js';
 import { browserError, execution, wire, type Snapshot } from './native.js';
@@ -80,6 +81,7 @@ export class History {
     entry.artifacts = this.artifacts(status);
     status.reportAvailable = this.store.available(id, 'console-report.json');
     fileChangeAvailability(join(this.store.root, 'runs', id), status.fileChanges);
+    Object.assign(status, readLogs(join(this.store.root, 'runs', id)));
     return wire.HistoryDetail.create({ entry, status });
   }
   /** The newest completed run with a machine capture, or null when none has one. */

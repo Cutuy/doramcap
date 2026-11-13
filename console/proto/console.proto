@@ -5,6 +5,7 @@ import "console-config.proto";
 import "workflow.proto";
 import "live.proto";
 import "filesystem.proto";
+import "journal.proto";
 
 // Omitted selection preserves host defaults; an explicit empty list selects no apps.
 message SystemAppSelection {
@@ -113,6 +114,8 @@ message Status {
   repeated LiveStream live_streams = 23; // Empty when the live bridge is not selected.
   repeated StoppingService stopping_services = 24; // Empty once the run finishes.
   FileChanges file_changes = 26;
+  doramcap.journal.v1.LogIndex logs = 40;
+  string logs_error = 41;
   repeated ComparisonRow machine_changes = 25; // What changed since Prepare; row `cells` are before and after. Never saved.
   doramcap.filesystem.v1.WritePolicy write_policy = 27;
 }

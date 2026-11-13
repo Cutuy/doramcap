@@ -5,6 +5,7 @@ import { Phase } from './api';
 import type { ReactNode } from 'react';
 import type { HistoryArtifact, Snapshot } from './api';
 import { FileChanges } from './FileChanges';
+import { Logs } from './Logs';
 import { MachineChanges } from './Comparison';
 import { bytesLabel } from './RunMetrics';
 import { ActionButton } from './ui/ActionButton';
@@ -35,6 +36,7 @@ export function Result({ snapshot, newRun, viewRun, past }: { snapshot: Snapshot
     </div></section></div>{past ? <aside>{past.aside}</aside> : blocked && <aside><section className="panel attention-panel"><h2>Reset required</h2><p>The next run will ask the repository controller to reset the experiment before starting. If reset fails, the run stays blocked; inspect the private report on the host.</p></section></aside>}</div>
     <section className="panel"><WritePolicySetting policy={snapshot.writePolicy} kept={snapshot.fileChanges?.keptDirectory}/></section>
     <FileChanges snapshot={snapshot}/>
+    <Logs snapshot={snapshot}/>
     {!past && snapshot.machineChanges.length > 0 && <MachineChanges rows={snapshot.machineChanges}/>}
   </>;
 }

@@ -52,10 +52,11 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Work items**
 
-- [ ] Show a Logs list on Result and History: program, state and size.
-- [ ] Describe an exported file as the entries still available in the journal.
+- [x] Show a Logs list on Result and History: program, state and size.
+- [x] Describe an exported file as the entries still available in the journal.
 - [ ] Add downloads through the run-file route from the
   [keep files plan](https://github.com/Cutuy/doramcap/pull/354), whichever lands second.
+  Follow-up: attach `logs/<position>.log` through that route after #354 lands.
 
 **Validation**
 

@@ -217,10 +217,20 @@ async fn export_program(program: &mut ProgramLog, path: &Path) -> io::Result<()>
     ]);
     match JournalMatchKind::try_from(program.match_kind) {
         Ok(JournalMatchKind::SystemdInvocation) => {
-            command
-                .arg(format!("_SYSTEMD_INVOCATION_ID={}", program.identity))
-                .arg("+")
-                .arg(format!("INVOCATION_ID={}", program.identity));
+            for (position, field) in [
+                "_SYSTEMD_INVOCATION_ID",
+                "OBJECT_SYSTEMD_INVOCATION_ID",
+                "INVOCATION_ID",
+                "USER_INVOCATION_ID",
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if position > 0 {
+                    command.arg("+");
+                }
+                command.arg(format!("{field}={}", program.identity));
+            }
         }
         _ => {
             command.arg(format!("CONTAINER_ID_FULL={}", program.identity));
