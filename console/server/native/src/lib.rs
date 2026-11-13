@@ -35,15 +35,16 @@ fn capture_parts(
 fn failure(error: impl std::fmt::Display) -> Error {
     Error::new(Status::GenericFailure, error.to_string())
 }
-/// Preserve designed Compose causes in protobuf; execution faults keep the error path.
-fn compose_rejection(error: &compose_apps::compose::Error) -> Option<protocol::ComposeRejection> {
-    error
-        .reason()
-        .map(|(reason, subject)| protocol::ComposeRejection {
-            reason: reason.into(),
-            subject,
-            detail: error.to_string(),
-        })
+/// Carry rejected Compose input to TypeScript as a Diagnostic; other failures stay errors.
+fn compose_rejection(
+    operation: &str,
+    error: compose_apps::compose::Error,
+) -> std::result::Result<compose_apps::compose::Diagnostic, String> {
+    match error {
+        compose_apps::compose::Error::Invalid { .. } => Ok(error.diagnostic(operation)),
+        compose_apps::compose::Error::EmptySelection => Err("EmptySelection".into()),
+        error => Err(error.to_string()),
+    }
 }
 fn dispatch_failure(error: runtime::DispatchError) -> Error {
     failure(match error {
@@ -218,9 +219,7 @@ impl Execution {
                             rejection: None,
                         },
                         Err(error) => protocol::ComposeProfiles {
-                            rejection: Some(
-                                compose_rejection(&error).ok_or_else(|| error.to_string())?,
-                            ),
+                            rejection: Some(compose_rejection("Profiles", error)?),
                             ..Default::default()
                         },
                     };
@@ -284,10 +283,8 @@ impl Execution {
                     let resolved = match resolution {
                         Ok(resolved) => resolved,
                         Err(error) => {
-                            let rejection =
-                                compose_rejection(&error).ok_or_else(|| error.to_string())?;
                             return Ok(protocol::Inspection {
-                                rejection: Some(rejection),
+                                rejection: Some(compose_rejection("Review", error)?),
                                 ..Default::default()
                             }
                             .encode_to_vec());

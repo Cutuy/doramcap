@@ -14,9 +14,9 @@ This design makes two changes:
 
 1. **Warnings move out of the frozen plan.** The plan is launch identity. Review
    warnings belong in `Inspection`, the message that answers Review.
-2. **Rejections become typed errors.** A user-fixable rejection is a named
-   `compose::Error` variant with its service or resource. Console shows its own
-   message for each one.
+2. **Rejections carry their failed check.** A rejected input is one
+   `compose::Error::Invalid` with a message and the source line of the check
+   that failed. Console shows the message and the check.
 
 ## Previous behavior
 
@@ -42,32 +42,20 @@ user-facing text.
 
 ## Rejections
 
-The Review checks below return named variants. The `#[error]` text stays for logs
-and the diagnostics file. Other validation errors use the generic fallback.
+A rejection is a structured error:
 
-| Variant | Case |
+| Field | Meaning |
 | --- | --- |
-| `EmptySelection` | No service is selected. |
-| `NoComposeFile` | The project names no Compose file. |
-| `UnresolvedEnvironment` | Compose could not resolve an environment value. |
-| `ImageNotPrepared { service }` | A service needs a named local image. |
-| `AnonymousVolume { service }` | A volume has no retention settings. |
-| `ImageVolume { service, target }` | An image-declared volume needs an explicit mount. |
-| `ZeroReplicas { service }` | Replicas are zero; deselect through profiles. |
-| `NameOccupied { name }` | A fixed container name is already in use. |
-| `ReservedLabel { label }` | The project sets a label Console owns. |
-| `UnscopedResource { resource }` | A named network or volume is not declared external. |
-| `ForeignResource { resource }` | An existing project resource belongs to another run or controller. |
-| `NoJournal { services }` | The host lacks the journald driver or a reachable journal. |
+| `operation` | Coarse step: `Review` or `Profiles`. |
+| `kind` | `validation`. |
+| `message` | Backend text naming the service, mount or resource; may be empty. |
+| `check` | Source line of the failed check, recorded by `invalid()`. |
 
-The addon already turns `EmptySelection` into a code. It does the same for every
-variant: a reason and its subject. Console keeps HTTP status `InvalidInput` and
-adds the reason; the frontend picks the message for that reason.
-
-The addon carries designed rejections in its protobuf Review responses, including
-profile listing. TypeScript raises an error with the reason and subject while
-preserving the backend detail for diagnostics. Engine and I/O faults keep the
-existing error path.
+These fields are the existing `compose.v1.Diagnostic` plus `check`. The addon
+returns a rejection as a `Diagnostic` in the Inspection or profile-listing
+response. Console keeps HTTP status `InvalidInput`, shows its generic message,
+the backend message and the check. Engine and I/O faults keep the error path.
+`EmptySelection` keeps its own variant because Review offers profiles for it.
 
 ## What stays the same
 
@@ -76,6 +64,6 @@ existing error path.
 - Failures after Review keep their codes and raw detail.
 - Policy changes stay in the resolution record.
 
-Applicable rules: D-03 (core contracts independent of UI), D-07 (facts separate
-from interpretation), D-08 (saved plans), D-09 (one resolution for Review and
-Start).
+Applicable rules: D-02 (one rejection shape, no per-cause table), D-03 (core
+contracts independent of UI), D-07 (facts separate from interpretation), D-08
+(saved plans), D-09 (one resolution for Review and Start).

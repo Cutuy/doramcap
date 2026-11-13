@@ -69,9 +69,8 @@ test('native profile listing preserves a missing Compose file rejection', async 
     await assert.rejects(owner.composeProfiles(execution.ComposeProfilesRequest.create({
       runId: 'profile-rejection', repositoryRoot: root,
       project: { key: 'workload', directory: root },
-    })), (error: Error & { reason?: string; subject?: string }) => {
-      assert.equal(error.reason, 'NoComposeFile');
-      assert.equal(error.subject, '');
+    })), (error: Error & { check?: string }) => {
+      assert.ok(error.check?.startsWith('libs/compose-apps/src/compose/adapter/configuration.rs:'), String(error.check));
       assert.equal(error.message, 'at least one Compose file is required');
       return true;
     });
@@ -272,11 +271,10 @@ test('unchanged Start passes preflight while changed commands reject before cont
   const wire=doramcap.console.v1;
   try {
     // Act / Assert: omitted logging rejects at Review on a host without journald.
-    await assert.rejects(handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())), (error: Error & { reason?: string; subject?: string; detail?: string }) => {
+    await assert.rejects(handle.prepare(Buffer.from(wire.PrepareRequest.encode({profiles:[]}).finish())), (error: Error & { check?: string; detail?: string }) => {
       assert.equal(error.message, 'InvalidInput');
-      assert.equal(error.reason, 'NoJournal');
-      assert.equal(error.subject, 'worker');
-      assert.ok(error.detail?.includes('Docker does not provide the journald logging driver'));
+      assert.ok(error.check?.startsWith('libs/compose-apps/src/compose/adapter/configuration.rs:'), String(error.check));
+      assert.ok(error.detail?.includes('worker: Docker does not provide the journald logging driver'));
       return true;
     });
     assert.deepEqual(mutations,[]);

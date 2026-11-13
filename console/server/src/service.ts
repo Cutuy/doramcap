@@ -58,10 +58,7 @@ const errorCode = (error: unknown) => (error as Error)?.message ?? 'Internal';
 const failure = (code: string, cause: unknown) =>
   Object.assign(new Error(code), {
     detail: errorCode(cause) === code ? '' : browserError(errorCode(cause)),
-    ...(code === 'InvalidInput' && {
-      reason: (cause as { reason?: string })?.reason ?? '',
-      subject: browserError((cause as { subject?: string })?.subject ?? ''),
-    }),
+    check: (cause as { check?: string })?.check ?? '',
   });
 
 /** The TypeScript application owns request coordination, browser state and persistence. */
@@ -230,7 +227,7 @@ export class ConsoleService implements ConsoleBackend {
       try {
         inspected = await this.engine.inspect(runRequest);
       } catch (error) {
-        if (((error as { reason?: string })?.reason ?? errorCode(error)) === 'EmptySelection' && profiles.length && !request.profiles.length) {
+        if (errorCode(error) === 'EmptySelection' && profiles.length && !request.profiles.length) {
           await rm(workspace, { recursive: true, force: true });
           this.snapshot = wire.Status.create({ phase: Phase.IDLE });
           return Buffer.from(

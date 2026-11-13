@@ -6,7 +6,7 @@ export interface NativeExecution {
   composeProfiles(
     request: doramcap.console.execution.v1.ComposeProfilesRequest,
   ): Promise<doramcap.console.execution.v1.ComposeProfiles>;
-  /** Resolve without starting execution; rejects with reason/subject for designed Compose rejections. */
+  /** Resolve the plan and configuration snapshot without starting execution. */
   inspect(
     request: doramcap.console.execution.v1.RunRequest,
   ): Promise<doramcap.console.execution.v1.Inspection>;

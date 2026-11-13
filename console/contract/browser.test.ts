@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { once } from 'node:events';
 import { createClient, ApiError, Phase } from '../frontend/src/api.js';
-import { errorMessage } from '../frontend/src/errors.js';
 import { createConsoleServer } from '../server/src/http.js';
 import type { ConsoleBackend } from '../server/src/native.js';
 import { doramcap } from '../server/src/generated/console.js';
@@ -34,7 +33,7 @@ test(
       prepare: async (input) => {
         const request = wire.PrepareRequest.decode(input);
         if (request.profiles.includes('journal-unavailable'))
-          throw Object.assign(new Error('InvalidInput'), { reason: 'NoJournal', subject: 'worker', detail: 'raw journal failure' });
+          throw Object.assign(new Error('InvalidInput'), { check: 'configuration.rs:1', detail: 'raw journal failure' });
         selections.push(request.systemApps?.ids ?? undefined);
         return Buffer.from(wire.Review.encode({ preparedId: 'prepared', runId: 'run' }).finish());
       },
@@ -113,10 +112,8 @@ test(
     await assert.rejects(client.prepare(['journal-unavailable']), (error: unknown) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.code, 'InvalidInput');
-      assert.equal(error.reason, 'NoJournal');
-      assert.equal(error.subject, 'worker');
+      assert.equal(error.check, 'configuration.rs:1');
       assert.equal(error.detail, 'raw journal failure');
-      assert.ok(errorMessage(error).startsWith('Journal logging is unavailable for worker.'));
       return true;
     });
     assert.equal((await client.start('run', 'accepted')).runId, 'run');

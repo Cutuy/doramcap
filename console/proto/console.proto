@@ -114,8 +114,7 @@ message Status {
 message ConsoleError {
   string code = 1;
   string message = 2;
-  string reason = 3; // Compose Review rejection; unknown reasons use the generic message.
-  string subject = 4; // Service, mount, label or resource identified by the rejection.
+  string check = 3; // Source line of the failed Compose check; empty for other failures.
 }
 message Marker {
   uint32 version = 1;

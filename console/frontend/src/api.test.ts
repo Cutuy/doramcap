@@ -17,16 +17,15 @@ test('browser client rejects wrong media, status and malformed API responses', a
   await assert.rejects(client(202, MEDIA_TYPE, new Uint8Array(LIMITS.frameBytes + 1)).start('run', 'key'), /exceeds limit/);
 });
 
-test('the browser client preserves a Review rejection reason and subject', async () => {
+test('the browser client preserves a Review rejection check', async () => {
   // Arrange
-  const bytes = wire.ConsoleError.encode(wire.ConsoleError.create({ code: 'InvalidInput', message: 'raw evidence', reason: 'NoJournal', subject: 'worker' })).finish();
+  const bytes = wire.ConsoleError.encode(wire.ConsoleError.create({ code: 'InvalidInput', message: 'raw evidence', check: 'configuration.rs:1' })).finish();
   const client = createClient(async () => new Response(new Uint8Array(bytes), { status: 400, headers: { 'content-type': MEDIA_TYPE } }));
   // Act / Assert
   await assert.rejects(client.prepare([]), (error: ApiError) => {
     assert.equal(error.code, 'InvalidInput');
     assert.equal(error.detail, 'raw evidence');
-    assert.equal(error.reason, 'NoJournal');
-    assert.equal(error.subject, 'worker');
+    assert.equal(error.check, 'configuration.rs:1');
     return true;
   });
 });

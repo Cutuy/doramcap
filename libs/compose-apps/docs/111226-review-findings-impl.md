@@ -8,27 +8,21 @@ Both milestones are implemented.
 
 | Area | Change |
 | --- | --- |
-| `libs/compose-apps/proto/compose.proto` | Remove `warnings` from `ResolvedComposeProject`; reserve field 9 and its name. |
-| `console/proto/execution.proto` | Add `Inspection.warnings` and a typed rejection on Inspection and profile-listing responses. |
+| `libs/compose-apps/proto/compose.proto` | Remove `warnings` from `ResolvedComposeProject`; add `Diagnostic.check`. |
+| `console/proto/execution.proto` | Add `Inspection.warnings` and a `Diagnostic` rejection on Inspection and profile-listing responses. |
+| `console/proto/console.proto` | Add `ConsoleError.check`. |
 | `compose-apps` configuration | Collect warnings beside the plan; `preparation::resolve` returns them on `ResolvedRun`. |
-| `compose-apps` error | Add the named rejection variants; replace the matching `invalid(...)` sites. Add `Error::reason()` returning the variant name and subject. |
-| Console addon (`console/server/native`) | Put warnings in `Inspection`. Pass any rejection's reason and subject; generalize the `EmptySelection` match. |
-| Console server | Read warnings from `Inspection`. Keep `InvalidInput` and attach the reason and subject to the error body. |
-| Console frontend | One message per reason; fall back to today's generic message and detail. |
+| `compose-apps` error | `Error::Invalid { message, check }`; `invalid()` and the `From` conversions use `#[track_caller]`. |
+| Console addon (`console/server/native`) | Put warnings in `Inspection`; return `Invalid` as a rejection `Diagnostic`. |
+| Console server and frontend | Read warnings from `Inspection`; pass `check` through the error body and show it. |
 
-Saved JSON plans with `warnings` read without it. Warnings are shown only at
-Review, so no saved value is needed.
-
-`ComposeRejection` carries reason, subject and full diagnostic detail. A rejected
-Inspection contains no plan or snapshot; rejected profile listing contains no
-names. The TypeScript adapter raises these as structured errors. Faults retain
-the addon's existing error path.
+Saved JSON and protobuf plans with `warnings` still decode; the field is ignored.
 
 ## Milestone 1 — Warnings out of the plan
 
 **Work items**
 
-- [x] Reserve plan field 9 and add `Inspection.warnings`
+- [x] Remove plan field 9 and add `Inspection.warnings`
 - [x] Return warnings from resolution beside the plan
 - [x] Fill and read `Inspection.warnings` in the addon and Console
 
@@ -38,18 +32,16 @@ the addon's existing error path.
 - [x] Console warning passthrough test
 - [x] Older saved plan decode
 
-## Milestone 2 — Typed rejections
+## Milestone 2 — Located rejections
 
 **Work items**
 
-- [x] Add rejection variants and `Error::reason()`
-- [x] Replace user-fixable `invalid(...)` sites
-- [x] Pass reason and subject through the addon and Console error body
-- [x] Frontend message table with fallback
+- [x] Record the check location in `Error::Invalid`
+- [x] Return rejections as `Diagnostic` from the addon
+- [x] Pass `check` through the Console error body and show it
 
 **Validation**
 
-- [x] Compose rejection tests by variant
+- [x] Compose journal rejection check location
 - [x] Console error body test
-- [x] Frontend message selection test
-- [x] Native journal rejection regression
+- [x] Native rejection regressions

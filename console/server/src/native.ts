@@ -29,12 +29,9 @@ type RawCapabilities = Omit<NativeCapabilities, 'parseConfig' | 'parseManifest' 
 };
 const addon = require('../build/console.node') as RawCapabilities;
 
-/** Decode designed Review rejections as errors with structured cause facts. */
-function reviewResult<T extends { rejection?: doramcap.console.execution.v1.IComposeRejection | null }>(result: T): T {
-  if (result.rejection) {
-    const { reason, subject, detail } = result.rejection;
-    throw Object.assign(new Error(detail ?? ''), { reason: reason ?? '', subject: subject ?? '' });
-  }
+/** Raise a rejected Compose input as an error that keeps its failed check. */
+function reviewResult<T extends { rejection?: doramcap.compose.v1.IDiagnostic | null }>(result: T): T {
+  if (result.rejection) throw Object.assign(new Error(result.rejection.message ?? ''), { check: result.rejection.check ?? '' });
   return result;
 }
 

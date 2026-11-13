@@ -48,8 +48,6 @@ message ResolvedComposeProject {
   repeated string diagnostics = 7;
   // Whether teardown removes owned named volumes.
   bool remove_volumes = 8;
-  reserved 9;
-  reserved "warnings";
 }
 
 // Read-only view of one bind mount in a resolved Compose manifest.
@@ -128,6 +126,8 @@ message Diagnostic {
   optional string stdout = 5;
   // Captured CLI stderr when available; subject to the runner limit.
   optional string stderr = 6;
+  // Source line of the failed check for rejected inputs; empty for other failures.
+  string check = 7;
 }
 
 // Observed Engine state for an owned container.

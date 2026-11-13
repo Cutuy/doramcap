@@ -26,8 +26,7 @@ class Engine implements NativeExecution {
     return execution.ComposeProfiles.create({ names: this.profileNames });
   }
   async inspect(request: Parameters<NativeExecution['inspect']>[0]) {
-    if (this.needsProfiles && !request.compose!.projects![0].profiles?.length)
-      throw Object.assign(new Error('selection contains no services'), { reason: 'EmptySelection', subject: '' });
+    if (this.needsProfiles && !request.compose!.projects![0].profiles?.length) throw new Error('EmptySelection');
     this.inspected = request;
     if (request.systemd)
       return execution.Inspection.create({ systemdSnapshot: { sha256: 'approved-systemd' } });
@@ -129,17 +128,16 @@ test('Review forwards the warning list without interpreting diagnostic text', as
   }
 });
 
-test('Review preserves typed rejection subjects and saves the complete diagnostic', async () => {
+test('Review preserves the failed check and saves the complete diagnostic', async () => {
   // Arrange
   const { root, config, engine, backend } = await fixture();
   const detail = `worker: journal unavailable: ${'x'.repeat(3000)}`;
-  engine.inspect = async () => { throw Object.assign(new Error(detail), { reason: 'NoJournal', subject: 'worker' }); };
+  engine.inspect = async () => { throw Object.assign(new Error(detail), { check: 'configuration.rs:1' }); };
   try {
     // Act / Assert
-    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), (error: Error & { detail: string; reason: string; subject: string }) => {
+    await assert.rejects(backend.prepare(Buffer.from(wire.PrepareRequest.encode({}).finish())), (error: Error & { detail: string; check: string }) => {
       assert.equal(error.message, 'InvalidInput');
-      assert.equal(error.reason, 'NoJournal');
-      assert.equal(error.subject, 'worker');
+      assert.equal(error.check, 'configuration.rs:1');
       assert.equal(error.detail.length, execution.Limit.MAX_ERROR_CHARS);
       return true;
     });
