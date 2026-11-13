@@ -1,7 +1,7 @@
 //! Native mount resolution, working-directory checks and overlay source replacement.
 use crate::{
     Bind, ConfigurationSnapshot, Result, RunPlan, Scope, SystemdPlan, error,
-    manager::{MS_REC, Manager},
+    manager::{MS_REC, Manager, quote_path},
 };
 use host_filesystem::{
     changes::{self, FilesystemSources, SourcesInput},
@@ -387,12 +387,6 @@ pub(crate) fn redirect(
     Ok(())
 }
 
-fn quote(value: &str) -> String {
-    serde_json::to_string(value)
-        .expect("string serialization cannot fail")
-        .replace('%', "%%")
-}
-
 // Empty BindPaths= clears both native lists, so one writer always restores both.
 fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
     let id = crate::runner::unit_id(&unit.name);
@@ -407,8 +401,8 @@ fn native_drop_in(unit: &NativeUnit, overlays: &OverlaySet) -> Result<String> {
                 "{property}={}{source}:{target}:{}\n",
                 if *optional { "-" } else { "" },
                 if *flags == MS_REC { "rbind" } else { "norbind" },
-                source = quote(&source),
-                target = quote(target)
+                source = quote_path(&source),
+                target = quote_path(target)
             ));
         }
     }

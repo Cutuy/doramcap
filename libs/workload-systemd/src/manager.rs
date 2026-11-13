@@ -25,6 +25,13 @@ pub(crate) const STOP_REPORT_MARGIN: Duration = Duration::from_secs(5);
 /// Bits in each byte of a CPU mask.
 const BITS_PER_BYTE: usize = 8;
 
+/// Quote a native path component while keeping literal systemd specifiers and Unicode.
+pub(crate) fn quote_path(value: &str) -> String {
+    serde_json::to_string(value)
+        .expect("string serialization cannot fail")
+        .replace('%', "%%")
+}
+
 /// One unit this run started, with its state subscription.
 pub(crate) struct Unit {
     pub name: String,
