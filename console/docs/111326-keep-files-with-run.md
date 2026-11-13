@@ -2,7 +2,7 @@
 
 # Keep files with the run
 
-Created November 13, 2026. Status: implementation in progress.
+Created November 13, 2026. Status: implemented; sibling integrations pending.
 [Implementation plan](111326-keep-files-with-run-impl.md) ·
 [Overlays for writable mounts](111026-file-change-report.md), milestone 5.
 

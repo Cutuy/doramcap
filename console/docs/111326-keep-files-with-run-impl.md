@@ -1,6 +1,7 @@
 # Keep files with the run: implementation plan
 
-Created November 13, 2026. Status: implementation complete; final validation in progress.
+Created November 13, 2026. Status: implemented. The systemd overlay handoff and log-program
+downloads await their sibling branches.
 [Architecture](111326-keep-files-with-run.md). Terms follow the overlay design's
 [term list](111026-file-change-report.md#terms).
 
