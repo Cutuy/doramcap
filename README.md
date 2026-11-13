@@ -5,57 +5,63 @@
 [![Rust 1.99.1](https://img.shields.io/badge/Rust-1.99.1-orange?logo=rust)](rust-toolchain.toml)
 [![Dependabot Updates](https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/Cutuy/doramcap/actions/workflows/dependabot/dependabot-updates)
 
-We help robotics teams diagnose and fix performance failures on onboard computers,
-starting with NVIDIA Jetson.
+**Run your robot software, see where the time went, and keep the evidence that proves a fix.**
 
-When perception, control, and recording share a computer, a missed deadline can
-come from CPU contention, a delayed message, or a storage backlog. doramcap is an
-open-source runtime in development that connects execution policy, traces, and
-recordings so engineers can understand what happened and test a fix.
+Perception, control and recording often share one onboard computer. When a
+deadline slips, the cause can be CPU contention, a late message or a storage
+backlog, and the moment is usually gone before anyone can look. doramcap records
+what actually happened on the machine, so you can find the cause and check that
+your change fixed it.
 
-The goal: **configured policy, measured reality, actionable evidence.**
+[![Console demo: review a run, watch it live, keep the evidence and compare two runs](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.jpg)](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.mp4)
 
-- **See where time went.** Inspect CPU activity, message lineage, and processing
-  latency through live timelines.
-- **Keep evidence from a run.** Capture telemetry and activity traces in MCAP for
-  later investigation.
-- **Compare intent with execution.** Build on typed resource policies, workload
-  supervision, and fault reporting to investigate behavior under competing load.
+[Watch the 30 second Console demo](https://github.com/Cutuy/doramcap/releases/download/console-demo-2026-11-12/console-demo.mp4), filmed from real runs.
 
-The project currently provides reusable Rust libraries, runnable Linux demos and
-the Console app.
-Jetson qualification and integrated runtime capabilities follow the
-[platform roadmap](docs/roadmap.md).
+## What Console gives you
 
-## Run your project in Console
+[Console](console/) runs your existing Docker Compose project as it is. No code
+changes, no SDK.
 
-[Console](console/) runs your existing Docker Compose project with no application
-changes. Follow each step with live CPU, keep the recordings, and compare any two
-past runs to see what changed in the setup, the machine and the results.
+- **Review before you run.** See the services, images and system apps that will
+  run, and what changed since your last run.
+- **Watch the run live.** Follow every step on a timeline, with CPU use, the top
+  CPU consumers and faults as they happen.
+- **Keep the full evidence.** Save CPU, message and fault recordings as MCAP,
+  plus a report of the files the run wrote.
+- **Compare any two runs.** Line up setup, machine condition and results side by
+  side to see what changed.
+- **Stay on your hardware.** Console, its data and its recordings stay on the
+  machine you test.
 
-https://github.com/user-attachments/assets/c136be7a-8677-47ed-b17d-c12bf33d820a
+![Console overview](docs/console-overview.svg)
 
-[Download Console](https://github.com/Cutuy/doramcap/releases/latest) · [Download the video](https://github.com/Cutuy/doramcap/releases/download/console-walkthrough-2026-11-04/console-walkthrough.mp4)
+## Try it
 
-## Explore a run
+Console needs Ubuntu 24.04 or newer on x86_64 or ARM64, with Docker Engine and
+Compose v2 ([full requirements](console/scripts/release-readme.md)). Inspect
+`install.sh` before you run it.
 
-The [dataflow tracing demo](apps/dataflow-tracing-demo/) follows inputs through a
-four-node Dora pipeline. Select an output, inspect the inputs that produced it,
-and compare processing spans with measured latency on linked timelines.
+```sh
+curl -fLO https://github.com/Cutuy/doramcap/releases/latest/download/install.sh
+sh install.sh
+cd /path/to/your/compose/project
+doramcap-console start
+```
 
-Explore [live CPU activity](apps/cpu-viewer/docs/running.md) or
-[recording and storage behavior](apps/storage-demo/) for a closer look at resource
-contention and capture. Each demo includes its own setup and validation guide.
+## Status
 
-The [GPU storage demo](apps/gpudirect-demo/) records GPU-produced payloads
-through pinned host memory to NVMe.
+doramcap is open source and in active development. Console and the libraries
+behind it run on Linux workstations today. NVIDIA Jetson Orin and Thor are the
+target platforms, and their qualification is next on the
+[roadmap](docs/roadmap.md).
 
-## Build with doramcap
+## Go deeper
 
-Use the [project explorer](apps/project-explorer/) to browse applications,
-libraries, documentation, and dependencies. Start with the
-[library guide](libs/README.md) to find an integration point.
-
-[Architecture and roadmap](docs/roadmap.md) ·
-[Repository conventions](docs/repository-layout.md) ·
-[CI and validation](scripts/ci/README.md)
+- **Demos:** [dataflow tracing](apps/dataflow-tracing-demo/) ·
+  [live CPU activity](apps/cpu-viewer/docs/running.md) ·
+  [recording and storage](apps/storage-demo/) · [GPU storage](apps/gpudirect-demo/)
+- **Build with doramcap:** [library guide](libs/README.md) ·
+  [project explorer](apps/project-explorer/)
+- **Project:** [architecture and roadmap](docs/roadmap.md) ·
+  [repository conventions](docs/repository-layout.md) ·
+  [CI and validation](scripts/ci/README.md)
