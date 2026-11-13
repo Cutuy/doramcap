@@ -31,6 +31,8 @@ Terms follow its [term list](111026-file-change-report.md#terms).
 | `runs/<run id>/filesystem/report.pb` | The change list, with the policy and each host folder `n` maps to |
 
 Numbering keeps host folder names, which may be any bytes, out of kept paths.
+`kept/` is reserved in the run folder, like `filesystem/` and `overlays/`: the output list
+leaves it out, and keep fails with the upper intact when an app has already created it.
 
 ## Copy
 
@@ -39,7 +41,9 @@ sockets, FIFOs and device files, and hard links copied as separate files. Only t
 destination differs. The upper and the run folder may sit on different filesystems.
 
 Console removes an upper only after its copy is verified: every planned entry exists in
-the kept folder with the planned type and size, and the folder is synced. A failed or
+the kept folder with the planned type, regular-file and symlink sizes match, and the
+folder is synced. Symlink size is its target's byte length; directory size is filesystem-specific.
+A failed or
 interrupted copy keeps the upper and blocks verified cleanup, as a write back stopped by
 an I/O error does.
 
@@ -54,6 +58,16 @@ an I/O error does.
 The browser never sends a path. The server resolves the request against the saved
 report, opens the file beneath its folder without following symlinks, and always sends
 it as an attachment with an encoded filename. Console's own records are never served.
+
+`GET /api/artifacts/<run id>/run-file.download?change=<position>` names a zero-based position
+across the report's categories in saved order. The complete JSON Lines list includes
+each position; the bounded preview keeps those positions when it interleaves categories.
+`?program=<encoded ID>` reserves the same route for the journal-export integration.
+Exactly one selector is required. Program downloads return Missing until that integration lands.
+
+Each request reads the saved manifests through verified EOF before opening its file.
+Memory holds the checkpoint and one change record. The opener checks regular-file type,
+saved size and a single hard-link name, and refuses all symlink components.
 
 ## Owners
 
