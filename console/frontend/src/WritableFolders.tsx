@@ -9,7 +9,7 @@ type Folder = doramcap.filesystem.v1.IWritableFolder;
 /** Read-only handling of reviewed host folders; Copy only writes the clipboard. */
 export function WritableFolders({ folders, policy, kept }: { folders: Folder[]; policy?: number | null; kept?: string | null }) {
   const [copied, setCopied] = useState<{ source: string; success: boolean } | null>(null);
-  const settings = folders.length ? folders.map(folder => folder.source ?? '') : ['<folder>'];
+  const settings = folders.filter(folder => folder.kind === SourceKind.SOURCE_KIND_OVERLAY).map(folder => folder.source ?? '');
   const copy = async (source: string) => {
     try { await navigator.clipboard.writeText(`passthrough_folders: ${JSON.stringify(source)}`); setCopied({ source, success: true }); }
     catch { setCopied({ source, success: false }); }
@@ -25,10 +25,10 @@ export function WritableFolders({ folders, policy, kept }: { folders: Folder[]; 
       </tr>)}
     </tbody></table> : <p>No writable host folders.</p>}
     <WritePolicySetting policy={policy} kept={kept}/>
-    <h3>Pass a folder through</h3>
+    {settings.length > 0 && <><h3>Pass a folder through</h3>
     {settings.map(source => <div className="folder-setting" key={source}>
       <code className="mono break">{`passthrough_folders: ${JSON.stringify(source)}`}</code>
       <ActionButton variant="secondary" aria-label={`Copy passthrough setting for ${source}`} onClick={() => void copy(source)}>{copied?.source === source ? copied.success ? 'Copied' : 'Copy failed' : 'Copy'}</ActionButton>
-    </div>)}
+    </div>)}</>}
   </section>;
 }

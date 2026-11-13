@@ -25,7 +25,9 @@ for (const [policy, label] of [[Policy.WRITE_POLICY_WRITE_BACK, 'Write back'], [
   assert.match(html, /Not tracked: pseudo-filesystem or device mount/);
   assert.match(html, /Write policy:/);
   assert.match(html, /passthrough_folders: &quot;\/data\/shared&quot;/);
-  assert.match(html, /Copy passthrough setting for \/run\/robot/);
+  assert.doesNotMatch(html, /Copy passthrough setting for \/run\/robot/);
+  assert.doesNotMatch(html, /passthrough_folders: &quot;\/run\/robot&quot;/);
+  assert.equal((html.match(/class="folder-setting"/g) ?? []).length, 1);
   assert.doesNotMatch(html, /<(input|select|textarea)|role="switch"/);
   assert.ok(html.indexOf('Write policy:') > html.indexOf('</table>'));
 });
@@ -34,11 +36,22 @@ test('empty and unknown handling stay explicit; configuration paths retain their
   // Arrange / Act
   const empty = renderToStaticMarkup(<WritableFolders folders={[]}/>);
   const unknown = renderToStaticMarkup(<WritableFolders folders={[{ source: '/a/"quoted"', kind: 99 as typeof Kind.SOURCE_KIND_UNSPECIFIED }]}/>);
+  const overlay = renderToStaticMarkup(<WritableFolders folders={[{ source: '/a/"quoted"', kind: Kind.SOURCE_KIND_OVERLAY }]}/>);
   // Assert
   assert.match(empty, /No writable host folders/);
-  assert.match(empty, /passthrough_folders: &quot;&lt;folder&gt;&quot;/);
+  assert.doesNotMatch(empty, /passthrough_folders:|Pass a folder through/);
   assert.match(unknown, /Not tracked: handling unavailable/);
-  assert.ok(unknown.includes('\\&quot;quoted\\&quot;'));
+  assert.ok(overlay.includes('\\&quot;quoted\\&quot;'));
+  assert.doesNotMatch(unknown, /passthrough_folders:|Pass a folder through/);
+});
+
+test('already-passed-through folders keep their row and offer no config line', () => {
+  // Arrange / Act
+  const html = renderToStaticMarkup(<WritableFolders folders={[folders[1]]}/>);
+  // Assert
+  assert.match(html, /\/run\/robot/);
+  assert.match(html, /Passed through/);
+  assert.doesNotMatch(html, /passthrough_folders:|Pass a folder through|Copy/);
 });
 
 test('Result renders the saved folder handling and policy', () => {
@@ -47,4 +60,6 @@ test('Result renders the saved folder handling and policy', () => {
   const html = renderToStaticMarkup(<Result snapshot={snapshot} newRun={() => {}}/>);
   // Assert
   assert.match(html, /Writable folders/); assert.match(html, /\/data\/shared/); assert.match(html, /Keep with the run/);
+  assert.match(html, /Copy passthrough setting for \/data\/shared/);
+  assert.doesNotMatch(html, /Copy passthrough setting for \/run\/robot/);
 });
