@@ -90,7 +90,7 @@ for (const form of ['COMPOSE', 'SYSTEMD']) await test(`${form}: live sockets pas
       await send('Page.bringToFront');
       await evaluate(`document.querySelector('.folder-setting button').click()`);
       await evaluate(waitText('Copied'));
-      assert.equal(await evaluate(`document.querySelector('.folder-setting code').textContent`), `passthrough_folders: ${JSON.stringify(live)}`);
+      assert.equal(await evaluate(`document.querySelector('.folder-setting code').textContent`), `passthrough_folders: ${JSON.stringify(tracked)}`);
       for (const width of [1280, 390]) {
         await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
         await evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
