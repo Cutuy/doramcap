@@ -124,8 +124,6 @@ export async function fileChangePreview(runRoot: string, reference?: Reference |
     const saved = await report(runRoot, reference);
     if (saved.writePolicy === filesystem.WritePolicy.WRITE_POLICY_KEEP) {
       view.keptDirectory = join(runRoot, 'kept');
-      // This record is created only after all kept copies were verified and synced.
-      try { closeSync(descriptor(runRoot, 'overlays/results.json')); view.keptComplete = true; } catch { /* Copy did not complete. */ }
     }
     for (const category of saved.categories) {
       closeSync(descriptor(runRoot, category.summary!.manifest!));

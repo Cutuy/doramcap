@@ -89,8 +89,7 @@ message FileChanges {
   doramcap.filesystem.v1.ReportState state = 8;
   repeated uint64 preview_positions = 9; // Parallel to preview; zero-based positions across saved categories in report order.
   string kept_directory = 10; // Absolute retained location when KEEP was selected.
-  bool kept_complete = 11; // Every kept copy was verified and synced.
-  repeated uint64 downloadable_positions = 12; // Available regular files in the bounded preview.
+  repeated uint64 downloadable_positions = 11; // Available regular files in the bounded preview.
 }
 message Status {
   Phase phase = 1;
