@@ -48,6 +48,7 @@ Machine snapshots and input copies keep their current owners and are outside thi
 | Writable mount | Overlay | Change list | Write policy |
 | --- | --- | --- | --- |
 | Host folder | Yes | From the upper | Applies |
+| Folder matched by `passthrough_folders` | No, mounted directly | Not tracked | None |
 | Output folder | No, mounted directly | Every file listed as added | Files are already in the run folder |
 | Docker named volume | No | Not tracked | Docker keeps the volume |
 | Host folder that cannot be overlaid | No, mounted directly | Not tracked | Writes go straight to the host folder |
@@ -62,7 +63,9 @@ Machine snapshots and input copies keep their current owners and are outside thi
   stop Docker filling a new volume from the image and break volume drivers.
 - **Cannot be overlaid.** The mount is a single file, sits under `/proc`, `/sys` or
   `/dev`, or contains another mount point. The run starts anyway.
-- Review and the result list every mount that is not tracked, with the reason.
+- **Passed through.** `passthrough_folders` matches a mount equal to, inside or
+  containing a listed host folder, using canonical paths where they exist.
+- Review and Result list every mount that is not tracked, with the reason.
 
 Read-only mounts are mounted directly. A read-only mount that contains a writable one
 shares that mount's overlay, so it shows the run's writes.
@@ -251,9 +254,17 @@ the app sees stays with the launch that declares it.
 - A file copied into the upper loses its link to its other names for the run and after
   write back.
 - A change from outside the run to a path the run also wrote is overwritten at write back.
-- Named volumes and mounts that cannot be overlaid are not tracked.
+- An overlaid folder cannot share sockets, FIFOs or live files with a process outside
+  the run. List the host folder in `passthrough_folders` to share it directly.
+- Named volumes, passed-through folders and mounts that cannot be overlaid are not tracked.
 - A file rewritten to the same size with its modification time set back is left out of
   the change list.
+
+## Decisions
+
+| Decision | Choice |
+| --- | --- |
+| Live host folders | Owner approved `passthrough_folders`: equal, inside and containing mounts bypass overlays, tracking and write policy. Existing paths use canonical identities. |
 
 ## Qualification
 

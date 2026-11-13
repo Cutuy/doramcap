@@ -55,6 +55,9 @@ pub struct SourcesInput {
     /// Whether this run prepares OverlayFS views for writable directory sources.
     #[serde(default = "default_overlays")]
     pub overlays: bool,
+    /// Absolute host folders excluded from overlays, tracking and write policy.
+    #[serde(default)]
+    pub passthrough_folders: Vec<String>,
     /// Caller-owned records relative to the run, including records written during teardown.
     pub excluded: Vec<PathBuf>,
     pub bind_mounts: Vec<DirectoryMount>,
@@ -319,8 +322,13 @@ pub async fn prepare_sources(input: SourcesInput) -> Result<FilesystemSources> {
         .values_mut()
         .filter(|s| s.category == StorageCategory::HostBind && !s.read_only)
     {
-        (source.kind, source.reason) =
-            source_coverage(source.path.as_ref().unwrap(), &artifacts, input.overlays).await;
+        (source.kind, source.reason) = source_coverage(
+            source.path.as_ref().unwrap(),
+            &artifacts,
+            input.overlays,
+            &input.passthrough_folders,
+        )
+        .await;
     }
     Ok(FilesystemSources {
         sources: sources.into_values().collect(),
@@ -334,8 +342,9 @@ async fn source_coverage(
     source: &Path,
     artifacts: &Path,
     overlays: bool,
+    passthrough_folders: &[String],
 ) -> (SourceKind, Option<String>) {
-    match overlay::source_kind(source, artifacts).await {
+    match overlay::source_kind(source, artifacts, passthrough_folders).await {
         Ok((SourceKind::Overlay, _)) if !overlays => (
             SourceKind::Untracked,
             Some("not tracked: no overlay".into()),
@@ -363,14 +372,21 @@ pub fn validate_exclusions(paths: impl IntoIterator<Item = impl AsRef<Path>>) ->
     }
     Ok(())
 }
+/// Structured host-folder handling and coverage notes from the same Review resolution.
+#[derive(Debug, Default)]
+pub struct SourceReview {
+    pub folders: Vec<crate::filesystem_proto::WritableFolder>,
+    pub notes: Vec<String>,
+}
 /// Review notes name writable sources left untracked, using the execution classification.
 /// No report files are created.
-pub async fn coverage_notes(
+pub async fn review_sources(
     bind_mounts: &[DirectoryMount],
     metadata_sources: &[MetadataSource],
     artifacts: &Path,
     overlays: bool,
-) -> Result<Vec<String>> {
+    passthrough_folders: &[String],
+) -> Result<SourceReview> {
     if overlays {
         // Docker may create absent short-syntax sources at preparation; Review labels them unavailable.
         let mut existing = Vec::new();
@@ -379,24 +395,39 @@ pub async fn coverage_notes(
                 existing.push(bind.clone());
             }
         }
-        overlay::resolve_sources(&existing, artifacts).await?;
+        overlay::resolve_sources(&existing, artifacts, passthrough_folders).await?;
     }
     let mut notes = Vec::new();
+    let mut folders = BTreeMap::new();
     for bind in bind_mounts.iter().filter(|b| !b.read_only) {
         let source = match tokio::fs::canonicalize(&bind.source).await {
             Ok(source) => source,
             Err(_) => PathBuf::from(&bind.source),
         };
-        // Run output is listed after the run; skipped Console records need no Review note.
-        if let (SourceKind::Untracked, Some(reason)) =
-            source_coverage(&source, artifacts, overlays).await
-        {
+        let (kind, reason) =
+            source_coverage(&source, artifacts, overlays, passthrough_folders).await;
+        if kind == SourceKind::Untracked || kind == SourceKind::Passthrough {
             notes.push(format!(
-                "{}:{}: {}: {reason}",
+                "{}:{}: {}: {}",
                 bind.consumer,
                 bind.target,
-                source.display()
+                source.display(),
+                reason.as_deref().unwrap_or("not tracked")
             ));
+        }
+        // Run outputs have their own file list; this list describes host folders.
+        if kind != SourceKind::RunOutput {
+            let folder = folders.entry(source.clone()).or_insert_with(|| {
+                crate::filesystem_proto::WritableFolder {
+                    source: source.to_string_lossy().into_owned(),
+                    apps: Vec::new(),
+                    kind: kind as i32,
+                    reason: reason.unwrap_or_default(),
+                }
+            });
+            if !folder.apps.contains(&bind.consumer) {
+                folder.apps.push(bind.consumer.clone());
+            }
         }
     }
     for source in metadata_sources.iter().filter(|s| !s.read_only) {
@@ -411,7 +442,10 @@ pub async fn coverage_notes(
             }
         ));
     }
-    Ok(notes)
+    Ok(SourceReview {
+        notes,
+        folders: folders.into_values().collect(),
+    })
 }
 fn validate_change(row: &FileChange) -> Result<()> {
     if row.category() == StorageCategory::Unspecified {
@@ -586,7 +620,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         }
         let path = source.path.as_ref().unwrap();
         let kind = if source.kind == SourceKind::Unspecified {
-            source_coverage(path, &sources.artifacts, input.overlays.is_some())
+            source_coverage(path, &sources.artifacts, input.overlays.is_some(), &[])
                 .await
                 .0
         } else {
@@ -595,7 +629,7 @@ pub async fn collect(input: CollectInput) -> Result<FilesystemChanges> {
         if kind == SourceKind::HostSharedMemory {
             continue;
         }
-        if kind == SourceKind::Untracked {
+        if kind == SourceKind::Untracked || kind == SourceKind::Passthrough {
             out.0.coverage_complete = false;
             out.0.warnings.push(format!(
                 "{}: {} ({})",
@@ -866,11 +900,13 @@ mod source_tests {
             bind(&output, false),
             bind(&output, true),
         ];
-        let notes = coverage_notes(&mounts, &[], root.path(), true)
+        let notes = review_sources(&mounts, &[], root.path(), true, &[])
             .await
-            .unwrap();
+            .unwrap()
+            .notes;
         assert!(notes.is_empty(), "{notes:?}");
         let sources = prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             overlays: true,
             artifacts: root.path().into(),
             bind_mounts: mounts,
@@ -954,10 +990,12 @@ mod source_tests {
                 read_only: false,
             }];
             // Act
-            let notes = coverage_notes(&mounts, &[], &artifacts, false)
+            let notes = review_sources(&mounts, &[], &artifacts, false, &[])
                 .await
-                .unwrap();
+                .unwrap()
+                .notes;
             let sources = prepare_sources(SourcesInput {
+                passthrough_folders: Vec::new(),
                 overlays: false,
                 artifacts,
                 bind_mounts: mounts,
@@ -1017,11 +1055,13 @@ mod source_tests {
             consumer: "app:/data".into(),
             ..Default::default()
         }];
-        let notes = coverage_notes(&mounts, &volumes, &artifacts, true)
+        let notes = review_sources(&mounts, &volumes, &artifacts, true, &[])
             .await
-            .unwrap();
+            .unwrap()
+            .notes;
         assert_eq!(notes.len(), 3);
         let sources = prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             overlays: true,
             artifacts,
             bind_mounts: mounts,
@@ -1076,6 +1116,7 @@ mod exclusion_tests {
             })
             .collect();
         let sources = prepare_sources(SourcesInput {
+            passthrough_folders: Vec::new(),
             overlays: true,
             artifacts: root.path().into(),
             bind_mounts: mounts,

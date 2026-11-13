@@ -402,6 +402,11 @@ pub struct ComposeRun {
 impl ComposeRun {
     fn run_plan(&self) -> Result<workload_lifecycle::launch::RunPlan> {
         Ok(workload_lifecycle::launch::RunPlan {
+            passthrough_folders: self
+                .filesystem
+                .as_ref()
+                .map(|policy| policy.passthrough_folders.clone())
+                .unwrap_or_default(),
             write_policy: self
                 .filesystem
                 .as_ref()
@@ -465,6 +470,7 @@ impl ComposeRun {
             },
             artifacts,
             filesystem: Some(OverlayPolicy {
+                passthrough_folders: run.passthrough_folders,
                 disposition: host_filesystem::overlay::Disposition::from_policy(run.write_policy)?,
             }),
             host_shm_access: run.host_shm_access,

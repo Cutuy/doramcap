@@ -37,10 +37,10 @@ async fn main() -> Result<(), String> {
     let plan: workload_systemd::SystemdPlan =
         read(2 + offset, "doramcap.systemd_plan.v1.SystemdPlan")?;
     if review {
-        let (snapshot, warnings) = workload_systemd::review(&run, &plan).await?;
+        let (snapshot, filesystem) = workload_systemd::review(&run, &plan).await?;
         println!(
             "{}",
-            serde_json::json!({"snapshot": snapshot, "warnings": warnings})
+            serde_json::json!({"snapshot": snapshot, "warnings": filesystem.notes, "writable_folders": filesystem.folders})
         );
         return Ok(());
     }

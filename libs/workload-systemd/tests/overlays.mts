@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { once } from 'node:events';
+import { createServer } from 'node:net';
 
 assert.equal(process.getuid?.(), 0);
 const binary = resolve('target/ci/examples/systemd_run');
@@ -19,12 +20,12 @@ writeFileSync(join(readonly, 'read'), 'read-only');
 const scope = `/run/doramcap/${createHash('sha256').update(repo).digest('hex').slice(0, 12)}`;
 let sequence = 0;
 
-function inputs(plan: string, policy = "WRITE_POLICY_WRITE_BACK") {
+function inputs(plan: string, policy = "WRITE_POLICY_WRITE_BACK", passthrough: string[] = []) {
   const id = `run-${++sequence}`;
   const artifacts = join(root, id);
   const runFile = join(root, `${id}.run.pbtxt`);
   const planFile = join(root, `${id}.plan.pbtxt`);
-  writeFileSync(runFile, `id:${quote(id)} repository_root:${quote(repo)} artifacts:${quote(artifacts)} readiness_seconds:10 stop_seconds:2 host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH write_policy:${policy}`);
+  writeFileSync(runFile, `id:${quote(id)} repository_root:${quote(repo)} artifacts:${quote(artifacts)} readiness_seconds:10 stop_seconds:2 host_shm_access:HOST_SHM_ACCESS_PASSTHROUGH write_policy:${policy} ${passthrough.map(folder => `passthrough_folders:${quote(folder)}`).join(" ")}`);
   writeFileSync(planFile, plan);
   return { artifacts, runFile, planFile };
 }
@@ -152,6 +153,54 @@ try {
       console.log(`PASS: ${kind} app ${policy} preserves the host and reports added, modified and deleted files`);
     }
   }
+
+  // Host-created sockets must remain live while unrelated data folders stay isolated.
+  const live = directory('live');
+  const socket = createServer(peer => peer.end('host socket'));
+  socket.listen(join(live, 'socket'));
+  await once(socket, 'listening');
+  try {
+    for (const kind of ['system', 'user']) {
+      const direct = `${kind}-direct`, tracked = `${kind}-tracked`;
+      const script = `printf hello | /usr/bin/socat - UNIX-CONNECT:/live/socket >/live/${direct}; echo changed >/tracked/${tracked}; exec sleep 300`;
+      const file = join(repo, `${kind}-live.service`);
+      const missing = join(root, 'absent-live');
+      writeFileSync(file, `[Service]\n${kind === 'user' ? `BindPaths=${live}:/live:norbind\nBindPaths=${source}:/tracked:rbind\nBindPaths=-${missing}:/optional:norbind\nBindReadOnlyPaths=${quote(readonly).replaceAll('%', '%%')}:/read:norbind\n` : ''}ExecStart=/bin/sh -ec '${script}'\n`);
+      const binds = `binds {source:${quote(live)} target:"/live"} binds {source:${quote(source)} target:"/tracked"}`;
+      const plan = kind === 'system' ? `programs {id:"live" argv:"/bin/sh" argv:"-ec" argv:${quote(script)} ${binds}}`
+        : `unit_files:${quote(file)}`;
+      const input = inputs(plan, 'WRITE_POLICY_DISCARD', [live]);
+      const inspected = review(input);
+      assert.equal(inspected.status, 0, inspected.stderr);
+      assert.match(inspected.stdout, /not tracked: passed through by passthrough_folders/);
+      const report = await run(input, async () => {
+        await waitForFile(join(live, direct));
+        assert.equal(readFileSync(join(live, direct), 'utf8'), 'host socket');
+        const views = JSON.parse(readFileSync(join(input.artifacts, 'overlays/prepared.json'), 'utf8'));
+        assert.deepEqual(views.trees.map((tree: any) => tree.source), [source]);
+        await waitForFile(join(views.trees[0].merged, tracked));
+        assert.equal(existsSync(join(source, tracked)), false);
+        if (kind === 'user') {
+          const name = `doramcap-${scope.split('/').at(-1)}-user-live.service`;
+          const command = (program: string, args: string[]) => {
+            const result = spawnSync(program, args, { encoding: 'utf8' });
+            assert.equal(result.status, 0, result.stderr); return result.stdout.trim();
+          };
+          const path = command('busctl', ['call', 'org.freedesktop.systemd1', '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', 'GetUnit', 's', name]).match(/^o "([^"\n]+)"$/)![1];
+          const property = (name: string) => JSON.parse(command('busctl', ['--json=short', 'get-property', 'org.freedesktop.systemd1', path, 'org.freedesktop.systemd1.Service', name])).data;
+          assert.deepEqual(property('BindPaths'), [[live, '/live', false, 0], [views.trees[0].merged, '/tracked', false, 16384], [missing, '/optional', true, 0]]);
+          assert.deepEqual(property('BindReadOnlyPaths'), [[readonly, '/read', false, 0]]);
+        }
+      });
+      assert.equal(report.execution_error, null, JSON.stringify(report));
+      assert.equal(report.cleanup_verified, true, JSON.stringify(report));
+      assert.ok(report.filesystem_changes.host_binds.warnings.some((note: string) => note.includes(live) && note.includes('passthrough_folders')));
+      assert.ok(report.filesystem_changes.host_binds.counts.added > 0);
+      assert.equal(existsSync(join(source, tracked)), false, 'keep/discard must still apply to the overlay');
+      assert.equal(readFileSync(join(live, direct), 'utf8'), 'host socket', 'policy must not remove passed-through files');
+      console.log(`PASS: ${kind} reaches the host socket and writes directly; unlisted folder stays tracked`);
+    }
+  } finally { await new Promise<void>(done => socket.close(() => done())); }
 
   const copyFailure = inputs(writer('copy-failure'), 'WRITE_POLICY_KEEP');
   let failedUpper = '';

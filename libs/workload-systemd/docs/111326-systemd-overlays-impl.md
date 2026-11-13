@@ -107,6 +107,20 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 - [x] Console Review, Result and downloads after restart.
 - [x] Headless Chromium policy and download actions.
 
+## Milestone 5: Explicit live host folders
+
+**Work items**
+
+- [x] Carry `passthrough_folders` from Console through the shared run plan and filesystem policy.
+- [x] Use the shared source classifier for Review, overlays and saved coverage notes.
+- [x] Preserve passed-through user binds in the reset drop-in, with source, flags and order.
+
+**Validation**
+
+- [ ] Equal, inside, containing and unrelated folder matches.
+- [ ] Compose and systemd live sockets and direct writes beside an overlaid folder.
+- [ ] Review and Result in Chromium.
+
 ## Tests
 
 Capability-required tests build unprivileged and elevate only the test executable.

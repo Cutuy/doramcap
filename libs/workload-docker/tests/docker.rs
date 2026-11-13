@@ -3227,6 +3227,7 @@ async fn shared_capture_preserves_compose_records_and_step_lineage() {
                     repository_root: root.path().into(),
                     filesystem: Some(overlay::OverlayPolicy {
                         disposition: disposition.clone(),
+                        ..Default::default()
                     }),
                     private_records: Vec::new(),
                     host_shm_access: workload_lifecycle::launch::HostShmAccess::Passthrough as i32,

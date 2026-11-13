@@ -23,6 +23,8 @@ export async function loadConfig(path: string): Promise<{ config: Config; secret
 }
 export function validateConfig(config: Config) {
   const { WritePolicy } = filesystem;
+  if (config.passthroughFolders.some(folder => !isAbsolute(folder)))
+    throw new Error('passthrough_folders must contain absolute host folders');
   if (![WritePolicy.WRITE_POLICY_UNSPECIFIED, WritePolicy.WRITE_POLICY_WRITE_BACK, WritePolicy.WRITE_POLICY_KEEP, WritePolicy.WRITE_POLICY_DISCARD].includes(config.writePolicy))
     throw new Error('write_policy must be WRITE_POLICY_WRITE_BACK, WRITE_POLICY_KEEP or WRITE_POLICY_DISCARD');
   if (config.writePolicy === filesystem.WritePolicy.WRITE_POLICY_UNSPECIFIED) config.writePolicy = filesystem.WritePolicy.WRITE_POLICY_WRITE_BACK;

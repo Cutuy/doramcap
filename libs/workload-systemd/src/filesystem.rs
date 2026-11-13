@@ -4,7 +4,7 @@ use crate::{
     manager::{MS_REC, Manager, quote_path},
 };
 use host_filesystem::{
-    changes::{self, FilesystemSources, SourcesInput},
+    changes::{self, FilesystemSources, SourceReview, SourcesInput},
     filesystem_proto::DirectoryMount,
     overlay::{self, OverlayPolicy, OverlaySet},
 };
@@ -45,7 +45,7 @@ pub(crate) fn workspace(scope: &Scope) -> PathBuf {
 pub async fn review(
     run: &RunPlan,
     plan: &SystemdPlan,
-) -> Result<(ConfigurationSnapshot, Vec<String>)> {
+) -> Result<(ConfigurationSnapshot, SourceReview)> {
     let snapshot = crate::inspect(run, plan).await?;
     if plan.unit_files.is_empty() {
         let resolved = resolve(
@@ -213,19 +213,28 @@ pub(crate) async fn resolve(
             }
         }
     }
-    overlay::resolve_sources(&existing, Path::new(&run.artifacts))
-        .await
-        .map_err(error)?;
+    overlay::resolve_sources(
+        &existing,
+        Path::new(&run.artifacts),
+        &run.passthrough_folders,
+    )
+    .await
+    .map_err(error)?;
     Ok(resolved)
 }
 
-async fn review_notes(mut resolved: Resolved, run: &RunPlan) -> Result<Vec<String>> {
-    resolved.notes.extend(
-        changes::coverage_notes(&resolved.mounts, &[], Path::new(&run.artifacts), true)
-            .await
-            .map_err(error)?,
-    );
-    Ok(resolved.notes)
+async fn review_notes(resolved: Resolved, run: &RunPlan) -> Result<SourceReview> {
+    let mut review = changes::review_sources(
+        &resolved.mounts,
+        &[],
+        Path::new(&run.artifacts),
+        true,
+        &run.passthrough_folders,
+    )
+    .await
+    .map_err(error)?;
+    review.notes.extend(resolved.notes);
+    Ok(review)
 }
 
 fn add_binds(mounts: &mut Vec<DirectoryMount>, id: &str, binds: &[Bind]) {
@@ -298,12 +307,14 @@ pub(crate) async fn prepare(
         workspace: workspace(scope),
         bind_mounts: resolved.mounts.clone(),
         policy: OverlayPolicy {
+            passthrough_folders: run.passthrough_folders.clone(),
             disposition: overlay::Disposition::from_policy(run.write_policy).map_err(error)?,
         },
     })
     .await
     .map_err(error)?;
     let mut sources = changes::prepare_sources(SourcesInput {
+        passthrough_folders: run.passthrough_folders.clone(),
         overlays: true,
         artifacts: run.artifacts.clone().into(),
         bind_mounts: resolved.mounts,
