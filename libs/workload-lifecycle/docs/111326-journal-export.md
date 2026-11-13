@@ -18,7 +18,7 @@ selected. A saved file holds the entries still available; complete output stays 
   starts. Containers with project-managed logging are skipped and listed as such.
 - **When:** after every program stops, before the run's cleanup finishes. Container
   entries stay queryable by full container ID after the container is removed.
-- **Output:** one plain text file per program, one entry per line with its timestamp.
+- **Output:** one plain text file per program, one entry per line with its Unix timestamp in seconds and microseconds. Embedded line breaks are escaped.
 - **Result:** a Logs list naming each program with exported, skipped or failed, and the
   file size. Downloads come with the [keep files plan](https://github.com/Cutuy/doramcap/pull/354).
 - **Failure:** an export failure never changes the run's outcome. Files already written stay.
@@ -66,7 +66,8 @@ an app and is not in the change list. It follows run-folder retention.
 
 | Decision | Options | Choice |
 | --- | --- | --- |
-| Export after a Console crash | Export during reset, or skip it | Owner chose export during reset from identities saved at start. Raise added recovery machinery if needed; skipping is the fallback. |
+| Export after a Console crash | Export during reset, or skip it | Owner chose export during reset from the single `logs/index.pb` written at start. Raise added recovery machinery if needed; skipping is the fallback. |
+| Persisted record | One index, or separate startup identities | Orchestrator approved one atomic `logs/index.pb`: pending identities, then export results. |
 | Reading the journal | `journalctl`, or a journal-reading crate | Owner chose `journalctl`; no new dependency. |
 
 Applicable rules: D-01 to D-03, D-06 to D-08, D-10, D-12, D-13; I-03, I-05, I-06, I-07.

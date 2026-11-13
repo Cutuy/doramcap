@@ -17,13 +17,13 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Work items**
 
-- [ ] Add an export step in `workload-lifecycle` that takes a program list (ID and
+- [x] Add an export step in `workload-lifecycle` that takes a program list (ID and
   journal match) and the run folder.
-- [ ] Ask the journal to finish writing, then run `journalctl` once per program with its
+- [x] Ask the journal to finish writing, then run `journalctl` once per program with its
   match and a timestamped plain text output. Stream into `logs/<n>.log`.
-- [ ] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
+- [x] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
   (exported, skipped, failed), reason, entry count and size.
-- [ ] Report export failure separately from the run outcome; keep written files.
+- [x] Report export failure separately from the run outcome; keep written files.
 
 **Validation**
 
@@ -35,8 +35,8 @@ Created November 13, 2026. Status: implementation in progress.
 
 **Work items**
 
-- [ ] systemd: read each unit's invocation ID after start and save it with the run's
-  ownership records. Match its own output and the service manager's entries for it.
+- [ ] systemd: read each unit's invocation ID after start and save it in the single
+  `logs/index.pb`. Match its own output and the service manager's entries for it.
 - [ ] Compose: save each container's full container ID; skip containers with
   project-managed logging and list them as skipped.
 - [ ] Call the export step after every program stops, before cleanup finishes.

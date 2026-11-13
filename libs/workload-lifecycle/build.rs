@@ -17,11 +17,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ".doramcap.filesystem.v1",
             "::host_filesystem::filesystem_proto",
         )
+        .type_attribute(
+            ".doramcap.journal.v1",
+            "#[derive(serde::Serialize, serde::Deserialize)]",
+        )
         .compile_protos(
-            &["proto/launch.proto"],
+            &["proto/launch.proto", "proto/journal.proto"],
             &["proto", "../host-filesystem/proto"],
         )?;
     println!("cargo:rerun-if-changed=../host-filesystem/proto/filesystem.proto");
     println!("cargo:rerun-if-changed=proto/launch.proto");
+    println!("cargo:rerun-if-changed=proto/journal.proto");
     Ok(())
 }
