@@ -188,9 +188,9 @@ Planned in the [keep files plan](111326-keep-files-with-run-impl.md).
 
 **Validation**
 
-- [ ] Frontend handling states and read-only controls.
-- [ ] Review rows preserved in saved Result.
-- [ ] Desktop and narrow Chromium views and Copy.
+- [x] Frontend handling states and read-only controls.
+- [x] Review rows preserved in saved Result.
+- [x] Desktop and narrow Chromium views and Copy.
 
 ## Integration and qualification
 

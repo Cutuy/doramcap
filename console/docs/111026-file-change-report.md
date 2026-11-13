@@ -274,7 +274,7 @@ afterward. Result keeps that list with the run. The project write policy and cop
 ## Later
 
 Let each app and folder choose overlay or pass-through, and write back, keep or discard,
-from Console. This is future work; it defines no setting, contract or UI here.
+from Console.
 
 ## Qualification
 
