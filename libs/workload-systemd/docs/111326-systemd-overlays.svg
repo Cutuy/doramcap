@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+<title id="title">systemd overlays</title>
+<desc id="desc">Host folders feed host-filesystem, which mounts one overlay per writable host folder. workload-systemd passes each overlay directory to three unit kinds: a service Console creates through BindPaths in its private root, a project app unit through Console's drop-in, and your own unit file through a drop-in that resets BindPaths. After the units stop, host-filesystem reads the uppers into the change list, applies the write policy to the host folders, and Console shows the report.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L8 4 L0 8Z" fill="#52677c"/></marker></defs>
+<style>text{font:17px sans-serif;fill:#17324d;text-anchor:middle}.title{font-size:23px;font-weight:600}.label{font-size:15px;fill:#3d5468}.base{fill:#f0f6fa;stroke:#8aa4ba;stroke-width:1.5}.overlay{fill:#e7f4ee;stroke:#68a188;stroke-width:1.5}.upper{fill:#fbefe9;stroke:#cf8a6a;stroke-width:1.5}.line{fill:none;stroke:#52677c;stroke-width:2;stroke-linejoin:round;marker-end:url(#arrow)}</style>
+<rect width="1200" height="520" fill="white"/>
+<text x="600" y="40" class="title">systemd overlays</text>
+<g id="host">
+<rect x="40" y="200" width="220" height="56" rx="10" class="base"/>
+<text x="150" y="224">Host folders</text>
+<text x="150" y="247" class="label">lowers</text>
+</g>
+<g id="overlays">
+<rect x="320" y="200" width="240" height="56" rx="10" class="overlay"/>
+<text x="440" y="224">Overlays</text>
+<text x="440" y="247" class="label">host-filesystem</text>
+</g>
+<g id="created">
+<rect x="640" y="80" width="280" height="56" rx="10" class="upper"/>
+<text x="780" y="104">Service Console creates</text>
+<text x="780" y="127" class="label">BindPaths in private root</text>
+</g>
+<g id="app">
+<rect x="640" y="200" width="280" height="56" rx="10" class="upper"/>
+<text x="780" y="224">Project app unit</text>
+<text x="780" y="247" class="label">BindPaths in owned drop-in</text>
+</g>
+<g id="own">
+<rect x="640" y="320" width="280" height="56" rx="10" class="upper"/>
+<text x="780" y="344">Your own unit file</text>
+<text x="780" y="367" class="label">drop-in resets BindPaths</text>
+</g>
+<g id="list">
+<rect x="320" y="430" width="240" height="56" rx="10" class="overlay"/>
+<text x="440" y="454">Change list</text>
+<text x="440" y="477" class="label">read from uppers</text>
+</g>
+<g id="policy">
+<rect x="40" y="430" width="220" height="56" rx="10" class="overlay"/>
+<text x="150" y="454">Write policy</text>
+<text x="150" y="477" class="label">onto host folders</text>
+</g>
+<g id="console">
+<rect x="960" y="430" width="200" height="56" rx="10" class="base"/>
+<text x="1060" y="454">Console</text>
+<text x="1060" y="477" class="label">File changes</text>
+</g>
+<path data-from="host" data-to="overlays" d="M260 228 H320" class="line"/>
+<path data-from="overlays" data-to="created" d="M560 216 H600 V108 H640" class="line"/>
+<path data-from="overlays" data-to="app" d="M560 228 H640" class="line"/>
+<path data-from="overlays" data-to="own" d="M560 240 H600 V348 H640" class="line"/>
+<path data-from="overlays" data-to="list" d="M440 256 V430" class="line"/>
+<path data-from="list" data-to="policy" d="M320 458 H260" class="line"/>
+<path data-from="list" data-to="console" d="M560 458 H960" class="line"/>
+<path data-from="policy" data-to="host" d="M150 430 V256" class="line"/>
+</svg>
