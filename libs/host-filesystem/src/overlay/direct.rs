@@ -15,7 +15,7 @@ use std::{
 #[derive(Debug)]
 pub(super) struct ApplyPlan {
     pub remove: BTreeSet<Vec<u8>>,
-    pub transfer: BTreeSet<Vec<u8>>,
+    pub transfer: BTreeMap<Vec<u8>, FileMetadata>,
     pub warnings: Vec<String>,
 }
 
@@ -97,7 +97,7 @@ pub(super) fn inspect(
     };
     let mut plan = ApplyPlan {
         remove: BTreeSet::new(),
-        transfer: BTreeSet::new(),
+        transfer: BTreeMap::new(),
         warnings: Vec::new(),
     };
     let mut reset = BTreeSet::<PathBuf>::new();
@@ -151,13 +151,13 @@ pub(super) fn inspect(
                     ChangeKind::Added as i32
                 },
                 before,
-                after: Some(after),
+                after: Some(after.clone()),
             })?;
         }
         let supported = kind.is_file() || kind.is_dir() || kind.is_symlink();
         if !supported {
             plan.warnings.push(format!(
-                "{}: socket, FIFO or device skipped during write-back",
+                "{}: socket, FIFO or device skipped during copy",
                 tree.source.join(&path).display()
             ));
             continue;
@@ -211,19 +211,19 @@ pub(super) fn inspect(
             }
         }
         if !path.as_os_str().is_empty() {
-            plan.transfer.insert(bytes);
+            plan.transfer.insert(bytes, after);
         }
     }
     for names in hardlinks.into_values() {
         for (path, linked_lower) in &names {
             if *linked_lower {
                 plan.warnings.push(format!(
-                    "{}: copied during write-back; other hard-link names keep their old contents",
+                    "{}: copied separately; other hard-link names keep their old contents",
                     tree.source.join(path).display()
                 ));
             } else if names.len() > 1 {
                 plan.warnings.push(format!(
-                    "{}: hard link copied as a separate file during write-back",
+                    "{}: hard link copied as a separate file",
                     tree.source.join(path).display()
                 ));
             }

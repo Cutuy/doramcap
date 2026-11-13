@@ -1256,7 +1256,7 @@ async fn upper_records_and_writeback_cover_real_kernel_entries() {
         result
             .warnings
             .iter()
-            .filter(|warning| warning.contains("skipped during write-back"))
+            .filter(|warning| warning.contains("skipped during copy"))
             .count(),
         3
     );
@@ -1416,6 +1416,93 @@ async fn writable_parent_and_child_use_one_view_and_write_back_once() {
     let result = finalize(set).await.unwrap();
     assert_eq!(result.paths.as_slice(), std::slice::from_ref(&source));
     assert_eq!(std::fs::read(source.join("child/file")).unwrap(), b"parent");
+}
+
+#[tokio::test]
+#[ignore = "requires CAP_SYS_ADMIN and rsync"]
+async fn keep_runs_retain_files_and_leave_host_and_output_files_unchanged() {
+    use host_filesystem::changes::{self, CollectInput, SourcesInput};
+    use host_filesystem::filesystem_proto::ChangeKind;
+    // Arrange
+    let root = tempfile::tempdir().unwrap();
+    let _cleanup = MountCleanup(root.path().into());
+    let source = root.path().join("source");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(source.join("edit"), b"before").unwrap();
+    std::fs::write(source.join("gone"), b"original").unwrap();
+    for index in 0..2 {
+        let artifacts = root.path().join(format!("run-{index}"));
+        std::fs::create_dir(&artifacts).unwrap();
+        let output = artifacts.join("output");
+        std::fs::create_dir(&output).unwrap();
+        let bind_mounts = vec![
+            BindMount {
+                source: source.to_str().unwrap().into(),
+                target: "/work".into(),
+                ..Default::default()
+            },
+            BindMount {
+                source: output.to_str().unwrap().into(),
+                target: "/output".into(),
+                ..Default::default()
+            },
+        ];
+        let sources = changes::prepare_sources(SourcesInput {
+            artifacts: artifacts.clone(),
+            overlays: true,
+            bind_mounts: bind_mounts.clone(),
+            metadata_sources: vec![],
+            excluded: vec![],
+        })
+        .await
+        .unwrap();
+        let set = prepare(PrepareInput {
+            artifacts: artifacts.clone(),
+            workspace: root.path().join(format!("views-{index}")),
+            bind_mounts,
+            policy: OverlayPolicy {
+                disposition: Disposition::Keep,
+            },
+        })
+        .await
+        .unwrap();
+        let tree = &set.trees[0];
+        assert_eq!(std::fs::read(tree.merged.join("edit")).unwrap(), b"before");
+        // Act
+        std::fs::write(tree.merged.join("edit"), b"after").unwrap();
+        std::fs::write(tree.merged.join("new"), b"kept").unwrap();
+        std::fs::remove_file(tree.merged.join("gone")).unwrap();
+        std::fs::write(output.join("result"), b"output").unwrap();
+        let rows = host_filesystem::overlay::changes(tree).await.unwrap();
+        changes::collect(CollectInput {
+            sources,
+            overlays: Some(set.clone()),
+            container_layers: None,
+        })
+        .await
+        .unwrap();
+        let result = finalize(set.clone()).await.unwrap();
+        // Assert
+        assert_eq!(result.paths, vec![artifacts.join("kept/0")]);
+        assert_eq!(
+            std::fs::read(artifacts.join("kept/0/edit")).unwrap(),
+            b"after"
+        );
+        assert_eq!(
+            std::fs::read(artifacts.join("kept/0/new")).unwrap(),
+            b"kept"
+        );
+        assert!(!artifacts.join("kept/0/gone").exists());
+        assert!(
+            rows.iter()
+                .any(|row| row.path == b"gone" && row.kind() == ChangeKind::Deleted)
+        );
+        assert_eq!(std::fs::read(source.join("edit")).unwrap(), b"before");
+        assert_eq!(std::fs::read(source.join("gone")).unwrap(), b"original");
+        assert!(!source.join("new").exists());
+        assert_eq!(std::fs::read(output.join("result")).unwrap(), b"output");
+        assert!(!set.workspace.exists());
+    }
 }
 
 #[tokio::test]

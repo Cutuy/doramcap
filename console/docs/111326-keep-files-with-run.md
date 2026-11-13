@@ -2,7 +2,7 @@
 
 # Keep files with the run
 
-Created November 13, 2026. Status: design for review; implementation not started.
+Created November 13, 2026. Status: implementation in progress.
 [Implementation plan](111326-keep-files-with-run-impl.md) ·
 [Overlays for writable mounts](111026-file-change-report.md), milestone 5.
 
@@ -79,10 +79,10 @@ saved size and a single hard-link name, and refuses all symlink components.
 
 ## Decisions to make
 
-| Decision | Options | Recommendation |
+| Decision | Options | Choice |
 | --- | --- | --- |
-| How a download names an entry | The entry's position in the saved change list, or its path bytes | Position. The saved report never changes, so the position is stable. |
-| Copy verification | Type and size per entry, or also a content hash | Type and size; hashing reads every byte twice. |
+| How a download names an entry | Saved change-list position or path bytes | Owner chose position; the saved report is stable. |
+| Copy verification | Type and size or also a content hash | Owner chose type and size, without hashes. Directory-size handling awaits a decision because filesystems report different sizes. |
 
 ## Limits
 

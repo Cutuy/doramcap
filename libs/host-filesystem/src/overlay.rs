@@ -16,20 +16,20 @@ use std::{
     ffi::CString,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
-        fs::OpenOptionsExt,
+        fs::{MetadataExt, OpenOptionsExt},
     },
     path::{Path, PathBuf},
 };
 use tokio::io::AsyncWriteExt;
 
 /// Disposition after all writers stop. Default reproduces persistent host output.
-/// Retaining results uses `WriteBack` to the configured host source.
-/// Prefer a per-experiment source directory for isolated retained results.
+/// Keep retains copies in the run's `kept/<tree index>/` directories.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Disposition {
     #[default]
     WriteBack,
+    Keep,
     Discard,
 }
 /// Per-run filesystem policy. Directory binds are isolated by default.
@@ -37,7 +37,7 @@ pub enum Disposition {
 #[serde(deny_unknown_fields)]
 pub struct OverlayPolicy {
     #[serde(default)]
-    /// Apply upper changes to their source, or discard them.
+    /// Write back, keep in the run folder, or discard upper changes.
     pub disposition: Disposition,
 }
 /// One shared tree and its private run-owned mount/staging locations.
@@ -98,12 +98,12 @@ pub struct PrepareInput {
     /// Filesystem disposition selected for this run.
     pub policy: OverlayPolicy,
 }
-/// Final result locations; discard returns no source paths.
+/// Final result locations; discard returns no paths.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OverlayResults {
-    /// Apply upper changes to their source, or discard them.
+    /// Write back, keep in the run folder, or discard upper changes.
     pub disposition: Disposition,
-    /// Original paths after write-back; empty after discard.
+    /// Host sources after write-back, kept folders after keep; empty after discard.
     pub paths: Vec<PathBuf>,
     /// True only after every owned mount has been strictly unmounted.
     pub unmounted: bool,
@@ -606,7 +606,7 @@ pub async fn discard(directory: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Finalize stopped views: apply supported upper changes, or discard them.
+/// Finalize stopped views after capture: write back, keep, or discard changes.
 /// Write-back replaces conflicting host changes; errors preserve upper data until reset.
 /// Application is non-atomic and is never replayed by pre-run cleanup.
 pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
@@ -633,7 +633,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     }
     let mut paths = Vec::new();
     let mut warnings = Vec::new();
-    if set.policy.disposition == Disposition::WriteBack {
+    if set.policy.disposition != Disposition::Discard {
         // Validate every source before mutating any. Upper path bytes are stored
         // as arrays so filesystem names need not be UTF-8.
         let mut plans = Vec::new();
@@ -663,7 +663,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 )
                 .await?;
             }
-            for path in &plan.transfer {
+            for path in plan.transfer.keys() {
                 write_record(
                     &mut actions,
                     &crate::filesystem_proto::FileAction {
@@ -676,17 +676,33 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             actions.flush().await?;
             let selected: BTreeSet<PathBuf> = plan
                 .transfer
-                .iter()
+                .keys()
                 .map(|p| PathBuf::from(std::ffi::OsString::from_vec(p.clone())))
                 .collect();
             list_file(&base.join("changed.paths0"), &selected).await?;
         }
-        let warning = "Host write-back preserves basic rsync archive attributes; ACL, xattr, capability and hardlink fidelity are not qualified";
+        let warning = "Filesystem copies preserve basic rsync archive attributes; ACL, xattr, capability and hardlink fidelity are not qualified";
         eprintln!("warning: {warning}");
         warnings.push(warning.to_string());
         private_write(&set.directory.join("metadata-coverage.txt"), b"Basic rsync archive attributes; ACLs, xattrs, capabilities and hardlinks are not qualified.\n").await?;
-        for (tree, plan) in set.trees.iter().zip(plans) {
-            warnings.extend(plan.warnings);
+        let keep = set.policy.disposition == Disposition::Keep;
+        let kept = set
+            .directory
+            .parent()
+            .ok_or_else(|| invalid("overlay records have no run folder"))?
+            .join("kept");
+        if keep {
+            super::files::create_private_dir(&kept).await?;
+        }
+        for (index, (tree, plan)) in set.trees.iter().zip(plans).enumerate() {
+            warnings.extend(plan.warnings.iter().cloned());
+            let target = if keep {
+                let target = kept.join(index.to_string());
+                super::files::create_private_dir(&target).await?;
+                target
+            } else {
+                tree.source.clone()
+            };
             let base = &tree.records;
             let mut journal = tokio::fs::OpenOptions::new()
                 .create_new(true)
@@ -694,7 +710,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                 .mode(0o600)
                 .open(base.join("apply.pb"))
                 .await?;
-            for bytes in plan.remove {
+            for bytes in plan.remove.iter().filter(|_| !keep) {
                 let relative = PathBuf::from(std::ffi::OsString::from_vec(bytes.clone()));
                 let path = tree.source.join(relative);
                 match tokio::fs::symlink_metadata(&path).await {
@@ -707,7 +723,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
                     &mut journal,
                     &crate::filesystem_proto::FileAction {
                         kind: 1,
-                        path: bytes,
+                        path: bytes.clone(),
                     },
                 )
                 .await?;
@@ -715,7 +731,7 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             journal.flush().await?;
             rsync(
                 &tree.upper,
-                &tree.source,
+                &target,
                 Some(&base.join("changed.paths0")),
                 &base.join("apply.log"),
                 false,
@@ -725,14 +741,28 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
             // Copy root attributes separately so selecting it cannot include whiteouts or special children.
             rsync(
                 &tree.upper,
-                &tree.source,
+                &target,
                 Some(&base.join("root.paths0")),
                 &base.join("apply-root.log"),
                 true,
                 true,
             )
             .await?;
-            paths.push(tree.source.clone());
+            if keep {
+                let target = target.clone();
+                tokio::task::spawn_blocking(move || verify_kept(&target, &plan))
+                    .await
+                    .map_err(|e| invalid(e.to_string()))??;
+            }
+            paths.push(target);
+        }
+        if keep {
+            tokio::fs::File::open(&kept).await?.sync_all().await?;
+            tokio::fs::File::open(kept.parent().unwrap())
+                .await?
+                .sync_all()
+                .await?;
+            discard(&set.workspace).await?;
         }
     }
     let result = OverlayResults {
@@ -747,6 +777,27 @@ pub async fn finalize(set: OverlaySet) -> Result<OverlayResults> {
     )
     .await?;
     Ok(result)
+}
+
+// Verify the stopped copy against the pre-copy plan before releasing any upper.
+fn verify_kept(target: &Path, plan: &direct::ApplyPlan) -> Result<()> {
+    for (bytes, expected) in &plan.transfer {
+        let path = target.join(std::ffi::OsStr::from_bytes(bytes));
+        let actual = std::fs::symlink_metadata(&path)?;
+        if actual.mode() & libc::S_IFMT != expected.mode & libc::S_IFMT
+            || actual.size() != expected.size
+        {
+            return Err(invalid(format!(
+                "kept copy differs from plan: {}",
+                path.display()
+            )));
+        }
+        if !actual.file_type().is_symlink() {
+            std::fs::File::open(&path)?.sync_all()?;
+        }
+    }
+    std::fs::File::open(target)?.sync_all()?;
+    Ok(())
 }
 
 /// Classify an existing canonical source without traversing folders or reading payloads.
