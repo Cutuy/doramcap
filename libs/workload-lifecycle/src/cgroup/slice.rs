@@ -1,10 +1,22 @@
 //! Stop empty systemd slices through the host service manager and confirm their removal.
-use super::{Result, error, host_path, verify_empty};
+use super::{CGROUP_ROOT, Result, error, host_path, verify_empty};
 use futures_util::StreamExt;
+use std::path::PathBuf;
 use zbus::proxy::CacheProperties;
 use zbus_systemd::systemd1::{ManagerProxy, SliceProxy};
 
 const NO_SUCH_UNIT: &str = "org.freedesktop.systemd1.NoSuchUnit";
+
+/// Host path systemd gives the slice `name`: one parent slice per `-` in its stem.
+/// - `name` must end in `.slice`.
+pub fn path(name: &str) -> PathBuf {
+    let stem = name.strip_suffix(".slice").expect("slice name suffix");
+    let mut path = PathBuf::from(CGROUP_ROOT);
+    for (index, _) in stem.match_indices('-') {
+        path.push(format!("{}.slice", &stem[..index]));
+    }
+    path.join(name)
+}
 
 /// Connect to the local system bus and subscribe to unit signals.
 pub async fn connect() -> Result<ManagerProxy<'static>> {
