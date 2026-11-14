@@ -158,9 +158,9 @@ Applicable rules: D-02, D-03, D-05, D-06, D-12, D-13 and D-14 in the
 [implementation guide](../../../docs/impl-guide.md).
 
 Source reviewed at revision `87ba9e2d`:
-[overlay](../../workload-docker/src/compose/overlay.rs),
-[filesystem](../../workload-docker/src/compose/filesystem.rs),
-[adapter](../../workload-docker/src/compose/adapter.rs),
-[ownership cleanup](../../workload-docker/src/compose/adapter/scope.rs),
-[Compose run sequence](../../workload-docker/src/workflows/recorded_compose/mod.rs) and
-[boundary rules](../../../scripts/ci/boundaries.json).
+[overlay](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/overlay.rs),
+[filesystem](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/filesystem.rs),
+[adapter](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/adapter.rs),
+[ownership cleanup](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/compose/adapter/scope.rs),
+[Compose run sequence](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/libs/workload-docker/src/workflows/recorded_compose/mod.rs) and
+[boundary rules](https://github.com/Cutuy/doramcap/blob/87ba9e2d24f115c5eff91f4a8e0f41019ba56343/scripts/ci/boundaries.json).
