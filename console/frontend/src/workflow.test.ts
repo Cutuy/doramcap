@@ -45,3 +45,22 @@ test('labels are independent of step identity', () => {
   assert.equal(stepName(custom), 'Custom stage');
   assert.equal(stepName(step({ step: 'compose::PrepareRun', displayName: null })), 'PrepareRun');
 });
+
+test('stored legacy filesystem step IDs remain readable beside neutral IDs', () => {
+  // Arrange: persisted Event bytes have an open string identity, independent of labels.
+  const identities = [
+    'workload_docker::compose::filesystem::CaptureFilesystemBaseline',
+    'workload_docker::compose::filesystem::CollectFilesystemChanges',
+    'workload_docker::compose::overlay::FinalizeOverlays',
+    'workload_lifecycle::filesystem::CollectFilesystemChanges',
+  ];
+  // Act
+  const restored = identities.map((identity, index) => workflow.Event.decode(workflow.Event.encode(
+    step({ step: identity, invocation: String(index + 1), displayName: null }),
+  ).finish()));
+  // Assert
+  assert.deepEqual(restored.map(row => row.step), identities);
+  assert.deepEqual(summarySteps(restored).map(stepName), [
+    'CaptureFilesystemBaseline', 'CollectFilesystemChanges', 'FinalizeOverlays', 'CollectFilesystemChanges',
+  ]);
+});
