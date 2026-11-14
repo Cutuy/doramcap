@@ -19,8 +19,8 @@ Created November 13, 2026. Updated November 14, 2026. Status: implemented.
 
 - [x] Add an export step in `workload-lifecycle` that takes a program list (ID and
   journal match) and the run folder.
-- [x] Ask the journal to finish writing, then run `journalctl` once per program with its
-  match and a timestamped plain text output. Stream into `logs/<n>.log`.
+- [x] Synchronize through the journald socket; stream each program’s `journalctl`
+  matches as timestamped text into `logs/<n>.log`.
 - [x] Write `logs/index.pb` from a new protobuf message: program ID, identity, state
   (pending, exported, skipped, failed), reason, entry count and size.
 - [x] Report export failure separately from the run outcome; keep written files.

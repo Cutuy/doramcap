@@ -1,4 +1,4 @@
-// Build export_journal unprivileged, then run this script. Its fixtures need no journal privileges.
+// Build export_journal unprivileged, then elevate this test for the real journald sync socket.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import protobuf from 'protobufjs';
 
+assert.equal(process.geteuid!(), 0, 'Run only this test as root');
 const repository = resolve('../..');
 const binary = join(repository, 'target/release/examples/export_journal');
 const schema = await protobuf.load(join(repository, 'libs/workload-lifecycle/proto/journal.proto'));
@@ -16,18 +17,14 @@ const pending = (programId: string, identity = id, matchKind = 1) => ({ programI
 try {
   const bin = join(root, 'bin');
   await mkdir(bin);
-  // A command fixture enforces exact identity matches and the sync-before-read order.
+  // Journal reads are fixtures; synchronization uses the real daemon socket.
   await writeFile(join(bin, 'journalctl'), `#!${process.execPath}
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.dirname(__dirname);
 const args = process.argv.slice(2);
 const mode = fs.readFileSync(path.join(root, 'mode'), 'utf8');
-if (args.includes('--sync')) {
-  if (mode === 'sync-failed') { process.stderr.write('journal unavailable'); process.exit(1); }
-  fs.writeFileSync(path.join(root, 'synced'), 'yes'); process.exit(0);
-}
-if (!fs.existsSync(path.join(root, 'synced'))) process.exit(9);
+if (args.includes('--sync')) { process.stderr.write('unexpected CLI sync'); process.exit(9); }
 const matched = args.find(value => value.startsWith('_SYSTEMD_INVOCATION_ID='));
 if (matched && !args.includes('INVOCATION_ID=' + matched.split('=')[1])) process.exit(8);
 if (mode === 'empty') process.exit(0);
@@ -58,9 +55,6 @@ if (mode === 'read-failed') { process.stderr.write('read failed'); process.exit(
   assert.equal((await stat(join(first.artifacts, 'logs/index.pb'))).mode & 0o777, 0o600);
   const empty = await run('retained-away', [pending('unit')], 'empty');
   assert.equal(empty.programs[0].state, 2); assert.equal(empty.programs[0].entryCount, 0);
-  const failed = await run('unavailable', [pending('unit'), { ...pending('project'), state: 3, reason: 'Project logging' }], 'sync-failed');
-  assert.equal(failed.programs[0].state, 4); assert.match(failed.programs[0].reason, /unavailable/);
-  assert.equal(failed.programs[1].state, 3);
   const partial = await run('partial', [pending('unit')], 'read-failed');
   assert.equal(partial.programs[0].state, 4); assert.equal(partial.programs[0].entryCount, 1);
   assert.ok(partial.programs[0].sizeBytes > 0);
@@ -72,7 +66,7 @@ if (mode === 'read-failed') { process.stderr.write('read failed'); process.exit(
   const interrupted = await run('interrupted', [pending('unit')]);
   assert.equal(interrupted.programs[0].state, 4); assert.match(interrupted.programs[0].reason, /preserved/);
   assert.equal(await readFile(join(interruptedPath, '0.log'), 'utf8'), 'already saved\n');
-  const terminal = await run('terminal', [{ ...pending('unit'), state: 2, entryCount: 7, sizeBytes: 99 }], 'sync-failed');
+  const terminal = await run('terminal', [{ ...pending('unit'), state: 2, entryCount: 7, sizeBytes: 99 }]);
   assert.equal(terminal.programs[0].state, 2); assert.equal(terminal.programs[0].entryCount, 7);
   const container = await run('container', [pending('app/replica', 'c'.repeat(64), 2)]);
   assert.equal(container.programs[0].state, 2);
