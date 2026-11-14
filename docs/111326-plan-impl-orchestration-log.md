@@ -101,3 +101,31 @@ Supersedes decisions 2 and 12 only in wording: the reset drop-in stays, and it r
 - 2026-11-13: decisions 22 and 23 built. PR #364 marked ready (base #363): the Writable folders list on Review and Result, and a "Later" section in the overlay design. ARM64 worker job 702 confirmed `Success`; GitHub CI passed; Bugbot still running. The orchestrator viewed the desktop screenshot.
 - 2026-11-13: owner approved dropping the copyable config line for folders already passed through. Done in `a59f89b1` on #364, which also restores the Console font that the PR had switched to the system font (Bugbot finding, confirmed in the diff). Agent reports frontend tests, type-check and build passed; no ARM64 job for this frontend-only change.
 - 2026-11-13: owner merged plan #354. #358 rebased onto main (`ec1c8f01`) and #360, #361, #363, #364 restacked on it. Each tree differs from its old one only by the plan's two `kept/` lines; #358 already hid `kept/` from the output list, so no code changed.
+
+## #357 rework after the owner's decision replay (2026-11-14)
+
+The owner replayed nine decisions in #357's description and went away. One Codex agent (`gpt-6.1-sol`, `xhigh`, session `01a1da2a-28c1-7400-982d-4a488228d299`) reworked #357 and asked no questions.
+
+### Decisions made by the orchestrator for the owner
+
+| # | Context | Problem | Options | Choice | Why |
+| --- | --- | --- | --- | --- | --- |
+| 24 | The earlier #357 agent session holds cancelled tasks | Which context the rework agent starts from | Resume it, or start fresh | Fresh session with one brief | The description holds every decision; old context could revive withdrawn ones |
+| 25 | #361, #363 and #364 are stacked on #357 | New commits on #357 conflict with them | Restack all three now, or leave them | Leave them; report conflicts | The request covered #357; restacking rewrites three reviewed branches |
+| 26 | The TODO list came from the replay | Open review items were missing | Leave the list, or extend it | Added three: the Bugbot runtime-folder finding, a check of decisions 2, 3, 6, 7 and 9, a stack check | Small, and each is needed to call the rework done |
+| 27 | Decision 8 wants systemd's reason for a late start failure | The readable text lives in the journal | Launch `systemctl status`, or build the reason from D-Bus properties | Kept the agent's `systemctl status` call | Least code that shows systemd's own words. It adds a child process, which #372 removed for `journalctl` |
+
+The owner chose to run Codex without its sandbox; the sandbox cannot start on this host.
+
+### Events
+
+- The agent pushed seven commits; head `ac8047d1`. All nine TODOs are ticked. Its three own choices are in the PR description.
+- The Bugbot runtime-folder finding was real and is fixed. Old step IDs stay readable without migration.
+- Orchestrator confirmed: GitHub CI green on `ac8047d1`, Bugbot found nothing, ARM64 worker job 712 `Success`, lease released. Full local CI and the privileged systemd, OverlayFS and cgroup runs are the agent's report. The code was not reviewed line by line.
+- Skill update: #373.
+
+### Left for the owner
+
+- Decision 27: keep the `systemctl status` call, or replace it with D-Bus properties.
+- Restack #361, #363 and #364. All three conflict in both overlay docs, `filesystem.rs`, `runtime.rs` and `overlays.mts`; #361 must carry cancellation through its policy signature.
+- Review the agent's choices in #357: setup runs in an owned task that holds a lock on the scope directory until its effects settle, and a unit that fails with a systemd setup status (200 or above) now ends the run.
