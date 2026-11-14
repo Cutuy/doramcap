@@ -32,7 +32,7 @@ These documents use only these terms.
 ## Goal
 
 1. **Console overlays the writable mounts a launch declares.** Compose services,
-   services Console creates, your own unit files and Holoscan launches each declare
+   system apps and user apps under systemd and Holoscan launches each declare
    mounts in their own format. Console adds none.
 2. **Each of those mounts gets one overlay.** The host folder is the lower.
 3. **The change list is read from the uppers** after the apps stop.
@@ -48,6 +48,7 @@ Machine snapshots and input copies keep their current owners and are outside thi
 | Writable mount | Overlay | Change list | Write policy |
 | --- | --- | --- | --- |
 | Host folder | Yes | From the upper | Applies |
+| Folder matched by `passthrough_folders` | No, mounted directly | Not tracked | None |
 | Output folder | No, mounted directly | Every file listed as added | Files are already in the run folder |
 | Docker named volume | No | Not tracked | Docker keeps the volume |
 | Host folder that cannot be overlaid | No, mounted directly | Not tracked | Writes go straight to the host folder |
@@ -62,7 +63,9 @@ Machine snapshots and input copies keep their current owners and are outside thi
   stop Docker filling a new volume from the image and break volume drivers.
 - **Cannot be overlaid.** The mount is a single file, sits under `/proc`, `/sys` or
   `/dev`, or contains another mount point. The run starts anyway.
-- Review and the result list every mount that is not tracked, with the reason.
+- **Passed through.** `passthrough_folders` matches a mount equal to, inside or
+  containing a listed host folder, using canonical paths where they exist.
+- Review and Result list every mount that is not tracked, with the reason.
 
 Read-only mounts are mounted directly. A read-only mount that contains a writable one
 shares that mount's overlay, so it shows the run's writes.
@@ -75,8 +78,8 @@ Recording basic metadata for it without walking the whole folder is later work.
 | Launch | Writable mounts Console overlays | Not tracked |
 | --- | --- | --- |
 | Compose service | Host folders in the Compose file | Named volumes. The container's own filesystem is read through Docker's diff as today. |
-| Service Console creates | Host folders in the app's settings | Nothing else is writable for it. |
-| Your own unit file | Host folders in `BindPaths=` | Writes anywhere else on the host. |
+| System app | Host folders in the app's settings | Nothing else is writable for it. |
+| User app | Host folders in `BindPaths=` | Writes anywhere else on the host. |
 | Holoscan | The project folder and extra data folders | Mounts the project sets in its own Docker options. |
 
 Compose reads the user's Compose file and works on its own copy for the run. In that
@@ -107,12 +110,12 @@ overlay.
 - Console checks that a declared working directory exists where the app will run: when
   Review is produced, and again before anything is mounted or started. A missing one
   fails there, naming the app and the directory.
-- A service Console creates runs in a private root that holds only the system folders and
+- A system app runs in a private root that holds only the system folders and
   its declared mounts. Its working directory must be inside one of them; a host folder
   outside them is missing for the app.
 - A unit that writes `WorkingDirectory=-/path` accepts a missing directory, and Console
   skips the check. Compose needs no check; Docker creates a missing working directory.
-- When your own unit's working directory is writable and outside every writable mount,
+- When a user app's working directory is writable and outside every writable mount,
   Review lists it as not tracked and suggests declaring it. The user makes that change.
 
 Console's Dora coordinator and daemon use `/runtime`, their declared output folder.
@@ -163,8 +166,7 @@ path, write back keeps the run's version.
 - **Inside the run:** any write through a declared mount, whichever app made it. Apps
   that mount the same host folder share one overlay. The record names the folder and
   the apps that mount it.
-- **Outside the run:** a process that is not part of the run, or a service from your own
-  unit file writing to a host path it did not declare.
+- **Outside the run:** a process that is not part of the run, or a user app writing to a host path it did not declare.
 
 ## One run
 
@@ -251,9 +253,17 @@ the app sees stays with the launch that declares it.
 - A file copied into the upper loses its link to its other names for the run and after
   write back.
 - A change from outside the run to a path the run also wrote is overwritten at write back.
-- Named volumes and mounts that cannot be overlaid are not tracked.
+- An overlaid folder cannot share sockets, FIFOs or live files with a process outside
+  the run. List the host folder in `passthrough_folders` to share it directly.
+- Named volumes, passed-through folders and mounts that cannot be overlaid are not tracked.
 - A file rewritten to the same size with its modification time set back is left out of
   the change list.
+
+## Decisions
+
+| Decision | Choice |
+| --- | --- |
+| Live host folders | Owner approved `passthrough_folders`: equal, inside and containing mounts bypass overlays, tracking and write policy. Existing paths use canonical identities. |
 
 ## Qualification
 

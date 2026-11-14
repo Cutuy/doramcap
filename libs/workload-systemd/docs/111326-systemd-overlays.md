@@ -11,7 +11,9 @@ run. Terms follow the overlay design's [term list](../../../console/docs/111026-
 
 ## Behavior
 
-- Each writable host folder a unit declares gets one overlay before any unit starts.
+- Each eligible writable host folder gets one overlay before any unit starts.
+- `passthrough_folders` leaves matching binds direct and lists them as not tracked in
+  Review and Result. The write policy applies only to overlays.
 - The unit receives the overlay directory at the path the app sees. Its read-only or
   writable setting stays as declared.
 - After every unit stops, Console reads the uppers into the change list, saves the
@@ -32,8 +34,7 @@ unit copy. It adds no unit-file parser.
 
 ## Working directory
 
-- A system app gets no mount for its working directory.
-  Today Console adds one when no bind covers it; that mount goes away.
+- System apps get no implicit working-directory mount.
 - Console checks that each declared working directory exists where the unit will run:
   at Review and again before anything is mounted or started. For a system app it
   looks inside the private root, so a host folder outside the declared binds is missing.
@@ -77,6 +78,7 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 | Decision | Options | Choice |
 | --- | --- | --- |
 | Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
+| Live host folders | Overlay everything or allow explicit direct folders | Owner approved `passthrough_folders` and its equal/inside/contains rule. |
 | Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Orchestrator approved one owned drop-in that resets `BindPaths=` and restores both native bind lists, preserving flags and order. |
 | User app Review | Separate names or launch names | Hold repository admission and use launch names, so native specifiers match Start. |
 | Write policy | Backend flag or shared filesystem policy | Filesystem owns the enum and semantics; `RunPlan.write_policy` carries the selection for both backends. The backend flag is retired. |
@@ -92,7 +94,7 @@ Recording checks, host `/dev/shm` handling and machine snapshots stay as they ar
 - Overlays need the service manager to see mounts Console makes. The first milestone
   checks this on a real host and stops the plan if it fails.
 - A unit that writes outside its declared mounts is not tracked.
-- Required native working directories must resolve to absolute paths outside
+- Required user app working directories must resolve to absolute paths outside
   `RootImage=`; checking an image would require mounting it.
 
 Applicable rules: D-01 to D-04, D-06, D-07, D-09, D-12, D-13; I-03, I-04, I-06, I-07.

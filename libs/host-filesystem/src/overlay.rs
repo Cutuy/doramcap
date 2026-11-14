@@ -63,6 +63,9 @@ pub struct OverlayPolicy {
     #[serde(default)]
     /// Write back, keep in the run folder, or discard upper changes.
     pub disposition: Disposition,
+    /// Host folders whose equal, ancestor or descendant mounts stay directly bound.
+    #[serde(default)]
+    pub passthrough_folders: Vec<String>,
 }
 /// One shared tree and its private run-owned mount/staging locations.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -261,7 +264,12 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
             "overlay workspace must be canonical and separate from records",
         ));
     }
-    let (mappings, roots) = resolve_sources(&input.bind_mounts, &artifacts).await?;
+    let (mappings, roots) = resolve_sources(
+        &input.bind_mounts,
+        &artifacts,
+        &input.policy.passthrough_folders,
+    )
+    .await?;
     for mapping in &mappings {
         if mapping.original.starts_with(&workspace)
             || roots.iter().any(|root| workspace.starts_with(root))
@@ -288,6 +296,7 @@ pub async fn resolve(input: PrepareInput) -> Result<OverlayPlan> {
 pub async fn resolve_sources(
     bind_mounts: &[DirectoryMount],
     artifacts: &Path,
+    passthrough_folders: &[String],
 ) -> Result<(Vec<MountMapping>, Vec<PathBuf>)> {
     let mountpoints = mounts().await?;
     let mut writable = BTreeSet::new();
@@ -301,7 +310,8 @@ pub async fn resolve_sources(
                     bind.consumer, bind.source
                 ))
             })?;
-        let (kind, reason) = classify_source(&source, artifacts, &mountpoints).await?;
+        let (kind, reason) =
+            classify_source(&source, artifacts, &mountpoints, passthrough_folders).await?;
         if !bind.read_only && kind == SourceKind::Overlay {
             writable.insert(source.clone());
         }
@@ -325,7 +335,8 @@ pub async fn resolve_sources(
     // Include it in the shared tree while retaining read_only on its bind target.
     let aliases: Vec<_> = set_readonly_ancestors(&mappings, &writable);
     for alias in aliases {
-        let (kind, _) = classify_source(&alias, artifacts, &mountpoints).await?;
+        let (kind, _) =
+            classify_source(&alias, artifacts, &mountpoints, passthrough_folders).await?;
         if kind != SourceKind::Overlay {
             return Err(invalid(format!(
                 "read-only ancestor cannot share isolated view: {}",
@@ -352,7 +363,13 @@ pub async fn resolve_sources(
                 )));
             }
             if !mapping.read_only && mapping.original.starts_with(root) {
-                let (kind, _) = classify_source(&mapping.original, artifacts, &mountpoints).await?;
+                let (kind, _) = classify_source(
+                    &mapping.original,
+                    artifacts,
+                    &mountpoints,
+                    passthrough_folders,
+                )
+                .await?;
                 if kind != SourceKind::Overlay {
                     return Err(invalid(format!(
                         "{}:{}: direct source {} cannot share isolated view {}",
@@ -807,14 +824,39 @@ fn sync_kept(target: &Path, paths: &BTreeSet<Vec<u8>>) -> Result<()> {
 
 /// Classify an existing canonical source without traversing folders or reading payloads.
 /// Host shared memory retains native passthrough semantics at every mount path.
-pub async fn source_kind(source: &Path, artifacts: &Path) -> Result<(SourceKind, Option<String>)> {
-    classify_source(source, artifacts, &mounts().await?).await
+pub async fn source_kind(
+    source: &Path,
+    artifacts: &Path,
+    passthrough_folders: &[String],
+) -> Result<(SourceKind, Option<String>)> {
+    classify_source(source, artifacts, &mounts().await?, passthrough_folders).await
 }
 async fn classify_source(
     source: &Path,
     artifacts: &Path,
     mountpoints: &[PathBuf],
+    passthrough_folders: &[String],
 ) -> Result<(SourceKind, Option<String>)> {
+    for folder in passthrough_folders {
+        let folder = Path::new(folder);
+        if !folder.is_absolute() {
+            return Err(invalid(
+                "passthrough_folders must contain absolute host folders",
+            ));
+        }
+        let folder = match tokio::fs::canonicalize(folder).await {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => folder.to_path_buf(),
+            Err(error) => return Err(error.into()),
+        };
+        if source.starts_with(&folder) || folder.starts_with(source) {
+            return Ok((
+                SourceKind::Passthrough,
+                Some("not tracked: passed through by passthrough_folders".into()),
+            ));
+        }
+    }
+
     if crate::is_host_shm_source(source)? {
         return Ok((
             SourceKind::HostSharedMemory,
@@ -902,9 +944,10 @@ mod tests {
                 ]
             };
             // Act: Review and launch reject the same unsupported alias shape.
-            let review_error = crate::changes::coverage_notes(&bind_mounts, &[], &artifacts, true)
-                .await
-                .unwrap_err();
+            let review_error =
+                crate::changes::review_sources(&bind_mounts, &[], &artifacts, true, &[])
+                    .await
+                    .unwrap_err();
             assert!(
                 review_error
                     .to_string()
@@ -967,6 +1010,7 @@ mod tests {
             workspace: root.path().join("workspace"),
             bind_mounts,
             policy: OverlayPolicy {
+                passthrough_folders: Vec::new(),
                 disposition: Disposition::Discard,
             },
         })

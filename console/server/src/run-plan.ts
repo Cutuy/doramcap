@@ -29,5 +29,6 @@ export function runPlan(config: Config, run: RunInputs, dataflowFile: string) {
     hostShmAccess: config.hostShmAccess,
     privateRecords: [artifactFilename('report')],
     writePolicy: config.writePolicy,
+    passthroughFolders: config.passthroughFolders,
   });
 }

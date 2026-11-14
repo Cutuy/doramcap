@@ -141,6 +141,7 @@ mod tests {
         let baseline = capture(
             &adapter,
             SourcesInput {
+                passthrough_folders: Vec::new(),
                 overlays: true,
                 excluded: vec![],
                 artifacts,
@@ -236,6 +237,7 @@ mod tests {
         let baseline = capture(
             &adapter,
             SourcesInput {
+                passthrough_folders: Vec::new(),
                 overlays: true,
                 excluded: vec![],
                 artifacts: root.path().into(),
