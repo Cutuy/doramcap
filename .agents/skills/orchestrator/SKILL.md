@@ -12,6 +12,20 @@ Follow [AGENTS.md](../../../AGENTS.md). You act for the owner: the agents ask yo
 - The owner names the plan PRs, the agent tool, and the model and effort.
 - Give each plan PR one agent and its own stacked draft PR. Nothing is merged.
 
+## Codex CLI
+
+The owner approved running Codex without its sandbox on this host; its workspace sandbox cannot start here.
+
+```sh
+codex exec -m MODEL -c model_reasoning_effort=EFFORT --dangerously-bypass-approvals-and-sandbox \
+  -C /absolute/path/to/main/checkout -o last-PR.md - < brief-PR.md > log-PR.txt 2>&1
+codex exec resume ... SESSION_ID - < followup-PR.md > log-PR-2.txt 2>&1   # same flags; the ID is in the log header
+```
+
+- Run it in the background from a scratch folder. `-o` holds the agent's final message.
+- The brief names the PR, branch, lease owner, decisions, limits while the owner is away, validation and the final report.
+- Send answers and new tasks with `resume`, so the agent keeps its context.
+
 ## Decisions
 
 | Situation | Action |
