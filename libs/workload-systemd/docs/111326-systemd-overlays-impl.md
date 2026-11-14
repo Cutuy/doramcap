@@ -95,8 +95,10 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 
 **Work items**
 
-- [x] Consume `RunPlan.write_policy` and retire `SystemdPlan.discard_writes`.
-- [x] Remove the temporary Console rejection and reuse saved-position downloads.
+- [x] Consume the filesystem-owned enum through `RunPlan.write_policy`; retire
+  `SystemdPlan.discard_writes`, leaving tag 5 and its name unreserved.
+- [x] Remove the temporary Console rejection; use shared plan validation for invalid policies.
+- [x] Reuse saved checkpoints, saved positions and the confined opener for downloads.
 
 **Validation**
 
@@ -108,6 +110,7 @@ The orchestrator approved this single drop-in path; no captured-copy fallback is
 ## Tests
 
 Capability-required tests build unprivileged and elevate only the test executable.
-Scripted end-to-end checks are TypeScript. Compare relative paths, change kinds,
-modes and regular-file sizes; timestamps and directory sizes depend on the backing
+Scripted end-to-end checks use TypeScript host and Console fixtures. Compare raw
+relative-path bytes, change kinds, modes and regular-file sizes. Download positions
+retain saved manifest order. Timestamps and directory sizes depend on the backing
 filesystem. The manager exposes missing-ok working directories with a `!` prefix.

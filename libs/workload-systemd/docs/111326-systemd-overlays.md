@@ -72,14 +72,14 @@ Steps 4 to 6 reuse the shared steps Compose runs, ordered by `workload-lifecycle
 
 Recording checks, host `/dev/shm` handling and machine snapshots stay as they are.
 
-## Decisions to make
+## Decisions
 
 | Decision | Options | Choice |
 | --- | --- | --- |
 | Shared step IDs | Keep `workload_docker::compose::…` for systemd too, or rename to neutral `workload_lifecycle::filesystem::…` | Owner chose a pure rename, subject to checking persisted contracts. |
 | Replacing a user app's mounts | Reset `BindPaths=` in an owned drop-in and list every entry again, or patch the captured unit copy | Orchestrator approved one owned drop-in that resets `BindPaths=` and restores both native bind lists, preserving flags and order. |
 | User app Review | Separate names or launch names | Hold repository admission and use launch names, so native specifiers match Start. |
-| Write policy | Backend flag or shared filesystem policy | `RunPlan.write_policy` uses the filesystem-owned enum: write back, discard or keep with the run. The backend flag is retired. |
+| Write policy | Backend flag or shared filesystem policy | Filesystem owns the enum and semantics; `RunPlan.write_policy` carries the selection for both backends. The backend flag is retired. |
 | Mount setup cancellation | Drop pending setup or await it | Await setup before cancellable launch, then honor Stop. |
 | Host path encoding | Reject names or use directory handles | Open directory descriptors for kernel mount options; retain original report paths. |
 | Stopped writers | Unit state or kernel population too | Check service cgroups before collecting changes. |
